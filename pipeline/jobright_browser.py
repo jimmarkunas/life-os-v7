@@ -79,6 +79,24 @@ DATA_JS = """(keys) => { const out = [];
   return out; }"""
 
 
+def strip_tracking(url):
+    """Drop Jobright's own tracking parameter (jr_id) from an employer URL."""
+    parts = urlsplit(url)
+    query = [q for q in parts.query.split("&") if q and not q.startswith("jr_id=")]
+    return parts._replace(query="&".join(query)).geturl()
+
+
+async def original_post_link(page):
+    """href of the 'Original Job Post' anchor (no click), or None."""
+    try:
+        anchor = page.locator("a", has_text=re.compile(r"original\s+job\s+post", re.I)).first
+        await anchor.wait_for(timeout=8000)
+        href = await anchor.get_attribute("href")
+        return href if href and href.startswith("http") and not is_internal(href) else None
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
 async def page_data_link(page):
     """Employer URL carried in the logged-in job page's own data (no click), or None."""
     try:
@@ -92,10 +110,13 @@ async def page_data_link(page):
 
 async def follow(context, page, job_url, wait_ms=12000):
     await page.goto(job_url, wait_until="domcontentloaded")
-    found = await page_data_link(page)
+    found = await original_post_link(page)
+    via = "original_post"
+    if not found:
+        found, via = await page_data_link(page), "page_data"
     if found:
-        kind, final = outcome_for(found, False)
-        return {"outcome": "landed", "via": "page_data", "kind": kind, "url": final}
+        kind, final = outcome_for(strip_tracking(found), False)
+        return {"outcome": "landed", "via": via, "kind": kind, "url": final}
     try:
         await page.locator(APPLY_XPATH).first.wait_for(timeout=wait_ms)
     except Exception:                                           # noqa: BLE001
