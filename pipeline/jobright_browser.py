@@ -5,11 +5,13 @@ Only the link chain is done here - no descriptions, dates or parsing. Logs: fixe
 """
 import asyncio
 import os
+import re
 from urllib.parse import urlsplit
 
 from pipeline import classify
 
 HOME = "https://jobright.ai/"
+SIGN_IN = re.compile(r"^\s*(sign\s*in|log\s*in)\s*$", re.I)
 APPLY_XPATH = ("xpath=//button[contains(translate(normalize-space(.), 'APPLY', 'apply'), 'apply') "
                "or contains(@class, 'apply-button')]")
 LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
@@ -41,7 +43,7 @@ async def login(page, email, password):
     for attempt in range(3):
         try:
             stage = "sign_in_click"
-            await page.locator("xpath=//span[text()='SIGN IN']").first.click(timeout=20000)
+            await page.get_by_text(SIGN_IN, exact=False).locator("visible=true").first.click(timeout=20000)
             stage = "form_fill"
             await page.locator("#basic_email").fill(email, timeout=15000)
             await page.locator("#basic_password").fill(password, timeout=15000)
@@ -56,6 +58,10 @@ async def login(page, email, password):
                 await page.goto(HOME, wait_until="domcontentloaded")
     try:                                                        # value-free page facts for the public log
         html = (await page.content()).lower()
+        texts = await page.evaluate("""() => [...document.querySelectorAll('a,button,span,div')]
+            .filter(e => e.children.length === 0 && /sign|log ?in|join|continue/i.test(e.textContent || ''))
+            .map(e => e.tagName + ':' + e.textContent.trim().slice(0, 24)).slice(0, 8)""")
+        seen.append(page.url.split("?")[0].split("//")[-1].split("/")[0] + (await page.title())[:30] + "|" + ";".join(texts))
         marks = [m for m in ("captcha", "turnstile", "recaptcha", "incorrect", "invalid", "verify") if m in html]
     except Exception:                                           # noqa: BLE001
         marks = []
