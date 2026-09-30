@@ -2,7 +2,7 @@
 Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending."""
 import time
 
-from pipeline import ats_match, classify, li_apply
+from pipeline import ats_match, classify, li_apply, search_match
 from pipeline.http import fetch
 
 
@@ -28,6 +28,9 @@ def read_guest(url, pause=1.2):
     return {"outcome": "external_hidden"}
 
 
+SEARCH_LIMIT = 90                      # per run; the free Search API allows 30/minute (paced in the client)
+
+
 def resolve_rows(rows):
     """rows: [(id, source_url, company, title, location)] -> aligned result dicts."""
     results = []
@@ -41,4 +44,12 @@ def resolve_rows(rows):
     for i, hit in zip(need, hits):
         results[i] = ({"outcome": "no_match_" + hit} if isinstance(hit, str)
                       else {"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]})
+    searched = 0
+    for i, result in enumerate(results):
+        if not result["outcome"].startswith("no_match_") or searched >= SEARCH_LIMIT:
+            continue
+        searched += 1
+        verdict = search_match.find(rows[i][2], rows[i][3])
+        results[i] = ({"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]}
+                      if verdict[0] == "hit" else {"outcome": results[i]["outcome"] + "+" + verdict[1]})
     return results
