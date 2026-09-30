@@ -16,6 +16,10 @@ on:
         description: "Repair pass: recover cards from recent Processed mail missing in the store (needs live)"
         type: boolean
         default: false
+      probe:
+        description: "Read-only probe of the resolve chain on a sample (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -59,3 +63,6 @@ jobs:
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
         run: python -m pipeline.store
+      - name: Step 5 - resolve probe (read-only, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
+        run: python -m pipeline.resolve --probe --per-source 12

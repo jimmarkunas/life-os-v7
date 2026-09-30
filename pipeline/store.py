@@ -57,6 +57,9 @@ COLUMNS = (
     ("v7_jobs", "salary_text", "VARCHAR(80) NULL", None),
     ("v7_jobs", "source", "VARCHAR(40) NULL", None),
     ("v7_jobs", "mail_received_at", "DATETIME NULL", None),
+    ("v7_jobs", "provider_score", "SMALLINT NULL", None),
+    ("v7_jobs", "posted_date", "DATE NULL", None),
+    ("v7_jobs", "posted_source", "VARCHAR(16) NULL", None),
 )
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.
