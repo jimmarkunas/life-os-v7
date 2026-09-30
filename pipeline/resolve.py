@@ -325,6 +325,21 @@ def probe_jobright_browser(connection, n):
     return facts
 
 
+def probe_linkedin_browser(connection, n):
+    """Free local-Chromium, no-login LinkedIn chain. Counts only."""
+    from pipeline import linkedin_browser          # noqa: PLC0415
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source='linkedin-alerts' "
+                       "ORDER BY RAND() LIMIT %s", (n,))
+        urls = [row[0] for row in cursor.fetchall()]
+    facts = {"n": len(urls), "outcome": {}, "kind": {}}
+    for result in linkedin_browser.resolve_many_sync(urls):
+        facts["outcome"][result["outcome"]] = facts["outcome"].get(result["outcome"], 0) + 1
+        if result.get("kind"):
+            facts["kind"][result["kind"]] = facts["kind"].get(result["kind"], 0) + 1
+    return facts
+
+
 def probe_lensa_browser(connection, n):
     """Free local-Chromium follow of Lensa job links. Counts only."""
     from pipeline import lensa_browser             # noqa: PLC0415
@@ -347,6 +362,7 @@ def main(argv=None):
     parser.add_argument("--probe-linkedin", action="store_true")
     parser.add_argument("--probe-jobright", action="store_true")
     parser.add_argument("--probe-lensa", action="store_true")
+    parser.add_argument("--probe-linkedin-browser", action="store_true")
     parser.add_argument("--resolve", choices=("jobright",), help="resolve NEW jobs of a source and save them")
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results to the database")
@@ -362,13 +378,15 @@ def main(argv=None):
             return 1
         print("resolve-jobright:", json.dumps(counts, sort_keys=True))
         return 0
-    if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright or args.probe_lensa):
+    if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright or args.probe_lensa or args.probe_linkedin_browser):
         print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
         return 1
     try:
         with store.connect() as connection:
             store.ensure_schema(connection)
-            if args.probe_lensa:
+            if args.probe_linkedin_browser:
+                print("probe-linkedin-browser:", json.dumps(probe_linkedin_browser(connection, args.per_source), sort_keys=True))
+            elif args.probe_lensa:
                 print("probe-lensa:", json.dumps(probe_lensa_browser(connection, args.per_source), sort_keys=True))
             elif args.probe_jobright:
                 print("probe-jobright:", json.dumps(probe_jobright_browser(connection, args.per_source), sort_keys=True))

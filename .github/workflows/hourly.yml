@@ -44,6 +44,10 @@ on:
         description: "Resolve NEW Jobright jobs to final apply links and save them (saves only when live)"
         type: boolean
         default: false
+      probe_linkedin_browser:
+        description: "Free Chromium, no-login LinkedIn apply chain on a sample (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -105,7 +109,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_linkedin }}
         run: python -m pipeline.resolve --probe-linkedin --per-source 20
       - name: Step 5 - Jobright browser probe (free Chromium, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.probe_jobright || inputs.probe_lensa) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.probe_jobright || inputs.probe_lensa || inputs.probe_linkedin_browser) }}
         run: |
           python -m playwright install --with-deps chromium
           [ "${{ inputs.probe_jobright }}" = "true" ] && python -m pipeline.resolve --probe-jobright --per-source 8 || true
@@ -115,3 +119,4 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
           python -m pipeline.resolve --resolve jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+          [ "${{ inputs.probe_linkedin_browser }}" = "true" ] && python -m pipeline.resolve --probe-linkedin-browser --per-source 10 || true
