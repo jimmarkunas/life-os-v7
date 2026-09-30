@@ -253,19 +253,23 @@ def summarize_tinyfish(source, urls, results, errors):
 
 
 def probe_tinyfish(connection, per_source):
-    report, pacer = {}, budget.Pacer()
+    """Phase 1 (database): sample + reserve free-tier budget. Phase 2 (network): fetch, no database needed."""
+    plan = {}
     with connection.cursor() as cursor:
         for source in ("lensa", "jobright", "linkedin-alerts"):
             cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source=%s ORDER BY RAND() LIMIT %s",
                            (source, min(per_source, tinyfish.MAX_URLS)))
-            urls = [row[0] for row in cursor.fetchall()]
-            urls = urls[:budget.reserve(connection, len(urls))]          # daily free-tier guard, counted BEFORE sending
-            if not urls:
-                report[source] = {"n": 0, "skipped": "daily_cap_reached"}
-                continue
-            pacer.wait()
-            results, errors = tinyfish.fetch_many(urls)
-            report[source] = summarize_tinyfish(source, urls, results, errors)
+            plan[source] = [row[0] for row in cursor.fetchall()]
+    for source, urls in plan.items():
+        plan[source] = urls[:budget.reserve(connection, len(urls))]      # counted BEFORE sending
+    report, pacer = {}, budget.Pacer()
+    for source, urls in plan.items():
+        if not urls:
+            report[source] = {"n": 0, "skipped": "daily_cap_reached"}
+            continue
+        pacer.wait()
+        results, errors = tinyfish.fetch_many(urls)
+        report[source] = summarize_tinyfish(source, urls, results, errors)
     return report
 
 
