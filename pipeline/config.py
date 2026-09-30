@@ -12,8 +12,12 @@ SENDER_RULES = (
     # individual staffing recruiters (human outreach), not a job newsletter.
 )
 
-# Broad server-side pre-filter only; SENDER_RULES above is the authority.
-GMAIL_QUERY = "in:inbox {from:lensa.com from:jobright.ai from:linkedin.com}"
+# Gmail does the sender matching server-side: one search per rule, no per-message fetches.
+GMAIL_QUERIES = {
+    "lensa": "in:inbox from:lensa.com",
+    "jobright": "in:inbox from:jobright.ai",
+    "linkedin-alerts": "in:inbox {from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com}",
+}
 
 
 def classify(sender: str):

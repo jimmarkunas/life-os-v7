@@ -4,7 +4,6 @@ Idempotent by construction: moved mail leaves the Inbox, so the next run no long
 Usage: python -m pipeline.sweep [--live]   (default is a dry run that changes nothing)
 """
 import argparse
-import collections
 import os
 import sys
 
@@ -14,20 +13,15 @@ from pipeline.gmail import Gmail, GmailError
 
 def sweep(gmail, live):
     label = gmail.label_id(config.NEWSLETTER_LABEL, create=live)
-    by_rule = collections.defaultdict(list)
-    skipped = 0
-    for message_id in gmail.list_ids(config.GMAIL_QUERY):
-        rule = config.classify(gmail.sender(message_id))
-        if rule:
-            by_rule[rule].append(message_id)
-        else:
-            skipped += 1
-    moving = [i for ids in by_rule.values() for i in ids]
+    by_rule, seen = {}, set()
+    for rule, query in config.GMAIL_QUERIES.items():
+        ids = [i for i in gmail.list_ids(query) if i not in seen]
+        seen.update(ids)
+        by_rule[rule] = len(ids)
+    moving = sorted(seen)
     if live and moving:
         gmail.relabel(moving, add=[label], remove=["INBOX"])
-    return {"live": live, "moved": len(moving) if live else 0, "would_move": len(moving),
-            "by_rule": {rule: len(ids) for rule, ids in sorted(by_rule.items())},
-            "skipped_not_newsletter": skipped}
+    return {"live": live, "moved": len(moving) if live else 0, "would_move": len(moving), "by_rule": by_rule}
 
 
 def main(argv=None):
@@ -40,7 +34,7 @@ def main(argv=None):
         print(f"SWEEP FAILED: {error}", file=sys.stderr)
         return 1
     lines = [f"sweep {'LIVE' if result['live'] else 'DRY-RUN'}: would_move={result['would_move']} "
-             f"moved={result['moved']} skipped={result['skipped_not_newsletter']} by_rule={result['by_rule']}"]
+             f"moved={result['moved']} by_rule={result['by_rule']}"]
     print(lines[0])
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
