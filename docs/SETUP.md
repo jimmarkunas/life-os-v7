@@ -14,18 +14,14 @@ Step 1 needs only the first three. The rest are needed by later steps.
 
 The Gmail refresh token must include the `gmail.modify` scope (V2's did).
 
-## Variables (copyable from life-os-v2)
-`LIFEOS_ACQ_SSH_HOST`, `_SSH_PORT`, `_SSH_USER`, `_SSH_KNOWN_HOSTS`, `LIFEOS_ACQ_DB_HOST`, `_DB_PORT`, `_DB_NAME`, `_DB_USER`
+## Hostinger settings (also SECRETS, not variables)
+GitHub variables are **not masked in logs**, and this repo is public, so every Hostinger setting is a secret:
+`LIFEOS_ACQ_SSH_HOST`, `LIFEOS_ACQ_SSH_PORT`, `LIFEOS_ACQ_SSH_USER`, `LIFEOS_ACQ_SSH_KNOWN_HOSTS`,
+`LIFEOS_ACQ_DB_NAME`, `LIFEOS_ACQ_DB_USER` (plus `LIFEOS_ACQ_SSH_PRIVATE_KEY` and `LIFEOS_ACQ_DB_PASSWORD` above).
+The DB host/port are constants in code (loopback through the tunnel).
 
-```bash
-export SRC=OWNER/old-repo DST=OWNER/life-os-v7   # replace OWNER/old-repo with your real names locally; never commit them
-gh api --paginate "repos/$SRC/actions/variables" --jq '.variables[] | [.name,.value] | @tsv' |
-while IFS=$'\t' read -r name value; do
-  gh variable set "$name" --repo "$DST" --body "$value"
-done
-# secrets: one at a time, value typed/pasted at the prompt (never committed):
-gh secret set GMAIL_OAUTH_CLIENT_ID --repo "$DST"
-```
+Add each one at a time in the repo's Settings -> Secrets and variables -> Actions -> Secrets, or with
+`gh secret set NAME --repo OWNER/life-os-v7` (paste the value at the prompt; never commit it).
 
 ## Turn it on
 1. Actions -> hourly -> Run workflow (live = **false**) -> read the dry-run counts.

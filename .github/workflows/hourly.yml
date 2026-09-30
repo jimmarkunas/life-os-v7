@@ -8,6 +8,10 @@ on:
         description: "Actually move mail (false = dry run)"
         type: boolean
         default: false
+      check_store:
+        description: "Also run the Hostinger connectivity/schema check (Step 2)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -21,6 +25,14 @@ jobs:
       GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
       GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
       GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
       # Scheduled runs are live only after you set repo variable V7_LIVE=true.
       LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live || vars.V7_LIVE == 'true' }}
     steps:
@@ -28,7 +40,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: Stage 1 - sweep
         run: python -m pipeline.sweep $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 2 - store check
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
+        run: python -m pipeline.store
