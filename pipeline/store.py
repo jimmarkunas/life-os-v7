@@ -156,9 +156,14 @@ def check():
             total = cursor.fetchone()[0]
         result = ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM v7_jobs")
-            rows = cursor.fetchone()[0]
-    return {"connected": True, "tables_in_db": total, "v7_jobs_rows": rows, **result}
+            cursor.execute("SELECT status, COUNT(*) FROM v7_jobs GROUP BY status")
+            by_status = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.execute("SELECT source, COUNT(*) FROM v7_jobs WHERE status = 'NEW' GROUP BY source")
+            new_by_source = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.execute("SELECT COUNT(DISTINCT fuzzy_key) FROM v7_jobs WHERE status = 'NEW'")
+            distinct_new = cursor.fetchone()[0]
+    return {"connected": True, "tables_in_db": total, "jobs_by_status": by_status, "new_by_source": new_by_source,
+            "distinct_new_by_fuzzy_key": distinct_new, **result}
 
 
 if __name__ == "__main__":

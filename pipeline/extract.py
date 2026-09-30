@@ -118,7 +118,7 @@ def backfill_dates(gmail, connection):
                 (datetime.fromtimestamp(received, timezone.utc).replace(tzinfo=None), age, age, MAX_AGE_DAYS, message_id))
             stale += cursor.rowcount
         done += 1
-    return {"backfilled_messages": done, "newly_stale_jobs": stale}
+    return {"backfilled_messages": done, "rows_dated": stale}
 
 
 def reconcile(gmail, connection, limit):
@@ -127,7 +127,7 @@ def reconcile(gmail, connection, limit):
         cursor.execute("SELECT DISTINCT gmail_message_id FROM v7_job_sources")
         known = {row[0] for row in cursor.fetchall()}
     counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "still_no_cards": 0,
-              "stale_mail": 0, "backfilled_messages": 0, "newly_stale_jobs": 0}
+              "stale_mail": 0, "backfilled_messages": 0, "rows_dated": 0}
     counts.update(backfill_dates(gmail, connection))
     for message_id in gmail.list_ids(config.RECONCILE_QUERY, limit=limit):
         if message_id in known:
