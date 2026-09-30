@@ -1,6 +1,8 @@
 """Minimal Gmail REST client (stdlib only). One small surface: list, sender, relabel."""
 import json
 import os
+import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -9,8 +11,20 @@ API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
+RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError"}
+
+
 class GmailError(RuntimeError):
     pass
+
+
+def _reason(error):
+    """Google's short error reason code (e.g. rateLimitExceeded), or '' - never free text."""
+    try:
+        reason = json.loads(error.read())["error"]["errors"][0]["reason"]
+    except (ValueError, KeyError, IndexError, TypeError, OSError):
+        return ""
+    return reason if re.fullmatch(r"[A-Za-z]{1,40}", str(reason)) else ""
 
 
 class Gmail:
@@ -36,12 +50,19 @@ class Gmail:
         if auth:
             headers["Authorization"] = "Bearer " + self._access_token()
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as error:  # never echo response bodies into logs
-            raise GmailError(f"{method} {url.split('?')[0]} -> HTTP {error.code}") from None
-        return json.loads(raw) if raw else {}
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                    raw = response.read()
+                return json.loads(raw) if raw else {}
+            except urllib.error.HTTPError as error:
+                reason = _reason(error)
+                transient = error.code in (429, 500, 502, 503, 504) or reason in RATE_REASONS
+                if transient and attempt < 3:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                # only a short enumerated reason code is surfaced; bodies never reach logs
+                raise GmailError(f"{method} {url.split('?')[0].split('/messages')[0]} -> HTTP {error.code} {reason}") from None
 
     def _access_token(self):
         if self._token is None:
