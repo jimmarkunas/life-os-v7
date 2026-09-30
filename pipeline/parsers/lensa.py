@@ -61,6 +61,10 @@ class _Collector(HTMLParser):
             self._cur["texts"].append(text.replace("․", "."))  # Lensa uses a one-dot leader in "Inc."
 
 
+def looks_like_jobs(html):
+    return bool(SALARY.search(html or ""))
+
+
 def parse(html):
     """Return a list of Card, one per distinct job link, in email order."""
     collector = _Collector()

@@ -43,7 +43,13 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 - Every resolved job must store its **full description**: complete text plus best-effort sections (summary, responsibilities, requirements, qualifications). Full text is always kept, so sections can be re-split later or scored directly.
 - Source order: ATS API (Greenhouse/Ashby/Lever) -> `JobPosting` JSON-LD on the page -> readable page text. Aggregator-only jobs use the aggregator's text and are flagged.
 - Stored **only in Hostinger** (`v7_job_descriptions`), never in the repo or logs. Phase 2 scoring reads it from there.
-- Notion: summary + requirements + qualifications go in the page *body* inside the same create call (no extra requests, within free-tier limits). Open question for Jim: body, or a Notion property, or both.
+- Notion: summary + requirements + qualifications go in the page *body* inside the same create call (no extra requests, within free-tier limits). **Decided (Jim): page body only, and machine-readable.**
+
+### Notion page body format (machine-readable contract `v7.jd.1`)
+- Block 1: a paragraph exactly `v7-jd:1 | key=<Stable Job Key>`.
+- Then, in fixed order, only for non-empty sections: a `heading_2` whose text is exactly `Summary`, `Responsibilities`, `Requirements`, or `Qualifications`, followed by `bulleted_list_item` blocks (one per bullet) or `paragraph` blocks.
+- Parse rule: walk the page children; a `heading_2` with one of the four exact names starts a section; everything until the next `heading_2` belongs to it. Text longer than 2000 characters is split across consecutive paragraph blocks.
+- The authoritative machine-readable copy is always `v7_job_descriptions` in Hostinger (Phase 2 scoring reads Hostinger, so it needs zero Notion reads). The Notion body is the human-and-machine-readable mirror and is written once in the create call.
 
 ## Freshness gate (front end, before Notion)
 - Keep jobs up to **14 days old**. A job is excluded only when it is *known* older than 14 days (posting date or "N days/weeks ago" text in the newsletter or job page). Age unknown = allowed.
@@ -65,7 +71,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 | **1 sweep** | this commit | dry run prints counts; `--live` moves mail and Inbox count drops; re-run moves 0 |
 | 2 store schema | `v7_jobs`, `v7_runs` tables + connectivity check via SSH tunnel | CI creates tables; re-run is a no-op |
 | 3 extract: Lensa | parse cards (+ age text -> freshness gate) from labeled Lensa mail into `NEW` / `EXCLUDED_STALE` rows | row count matches the cards in 3 hand-checked emails |
-| 4 extract: LinkedIn, Jobright | same for the other senders | same hand-check |
+| 4 extract: LinkedIn, Jobright (done) | same for the other senders; canonical URLs (no personal tracking tokens stored); Jobright gives salary + age | parsed real samples: 6/6 cards each, no tracking query in stored URLs |
 | 5 resolve + describe | final URL + `apply_kind` + full job description (JSON-LD / ATS API / page text) | 20 sampled rows hand-verified; every resolved row has non-empty full text |
 | 6 publish | Notion rows, `Processed` label, no duplicate on re-run | rows appear in the Ledger; 2nd run adds 0 |
 | 7 Jobright browser fallback | only if `__NEXT_DATA__` path fails | unresolved Jobright rate < agreed threshold |

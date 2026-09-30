@@ -13,9 +13,10 @@ import sys
 
 from pipeline import config, store
 from pipeline.gmail import Gmail, GmailError
-from pipeline.parsers import lensa
+from pipeline.parsers import jobright, lensa, linkedin
 
-PARSERS = {"lensa": lensa.parse}
+PARSERS = {"lensa": lensa.parse, "jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
+LOOKS_LIKE_JOBS = {"lensa": lensa.looks_like_jobs, "jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
 MAX_AGE_DAYS = 14   # known-older jobs are kept for dedupe but never published
 
 
@@ -70,7 +71,7 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
 def extract(gmail, live, limit, connection=None):
     processed_label = gmail.label_id(config.PROCESSED_LABEL, create=live)
     counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0,
-              "unsupported_sender": 0, "no_cards": 0, "stale_mail": 0, "marked_processed": 0}
+              "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0}
     done = []
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
         sender, html, received = gmail.message(message_id)
@@ -87,7 +88,12 @@ def extract(gmail, live, limit, connection=None):
             continue
         cards = parser(html)
         counts["cards"] += len(cards)
-        counts["no_cards"] += 0 if cards else 1
+        if not cards and not LOOKS_LIKE_JOBS[rule](html):   # e.g. a password-reset email: nothing to extract, close it out
+            counts["non_job_mail"] += 1
+            if live:
+                done.append(message_id)
+            continue
+        counts["no_cards"] += 0 if cards else 1                # job links but no cards = parser gap: stays pending
         if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
             new, repeat = save_cards(connection, rule, message_id, cards, received)
             counts["new_jobs"] += new
