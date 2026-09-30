@@ -37,18 +37,29 @@ async def login(page, email, password):
             except Exception:                                   # noqa: BLE001 - consent banner is optional
                 pass
             break
+    stage, seen = "start", []
     for attempt in range(3):
         try:
+            stage = "sign_in_click"
             await page.locator("xpath=//span[text()='SIGN IN']").first.click(timeout=20000)
+            stage = "form_fill"
             await page.locator("#basic_email").fill(email, timeout=15000)
             await page.locator("#basic_password").fill(password, timeout=15000)
+            stage = "submit"
             await page.locator("#basic_password").press("Enter")
+            stage = "profile_wait"
             await page.locator("xpath=//span[text()='Profile']").first.wait_for(timeout=25000)
-            return True
+            return "ok"
         except Exception:                                       # noqa: BLE001
+            seen.append(stage)
             if attempt < 2:
                 await page.goto(HOME, wait_until="domcontentloaded")
-    return False
+    try:                                                        # value-free page facts for the public log
+        html = (await page.content()).lower()
+        marks = [m for m in ("captcha", "turnstile", "recaptcha", "incorrect", "invalid", "verify") if m in html]
+    except Exception:                                           # noqa: BLE001
+        marks = []
+    return "login_failed:" + "/".join(seen) + ":" + ",".join(marks)
 
 
 async def follow(context, page, job_url, wait_ms=12000):
@@ -89,8 +100,9 @@ async def resolve_many(urls, environ=os.environ, pause_ms=1500):
         try:
             context = await browser.new_context(viewport={"width": 1920, "height": 1080})
             page = await context.new_page()
-            if not await login(page, email, password):
-                return [{"outcome": "login_failed"} for _ in urls]
+            state = await login(page, email, password)
+            if state != "ok":
+                return [{"outcome": state} for _ in urls]
             for url in urls:
                 try:
                     results.append(await follow(context, page, url))
