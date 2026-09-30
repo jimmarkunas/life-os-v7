@@ -18,7 +18,7 @@ The Gmail refresh token must include the `gmail.modify` scope (V2's did).
 `LIFEOS_ACQ_SSH_HOST`, `_SSH_PORT`, `_SSH_USER`, `_SSH_KNOWN_HOSTS`, `LIFEOS_ACQ_DB_HOST`, `_DB_PORT`, `_DB_NAME`, `_DB_USER`
 
 ```bash
-export SRC=jimmarkunas/life-os-v2 DST=jimmarkunas/life-os-v7
+export SRC=OWNER/old-repo DST=OWNER/life-os-v7   # replace OWNER/old-repo with your real names locally; never commit them
 gh api --paginate "repos/$SRC/actions/variables" --jq '.variables[] | [.name,.value] | @tsv' |
 while IFS=$'\t' read -r name value; do
   gh variable set "$name" --repo "$DST" --body "$value"

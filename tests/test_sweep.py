@@ -25,7 +25,7 @@ SENDERS = {
     "1": "Lensa <jobalert@lensa.com>", "2": "noreply@jobright.ai",
     "3": "LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>",
     "4": "messages-noreply@linkedin.com",           # LinkedIn messages: not a job alert
-    "5": "r5f-v0c-a5q@user.dice.com",               # Dice recruiter relay: not a newsletter
+    "5": "abc-123-xyz@user.dice.com",               # synthetic Dice recruiter relay: not a newsletter
     "6": "friend@gmail.com", "7": "noreply@lensa.com.evil.example",
 }
 
