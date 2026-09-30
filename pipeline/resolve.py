@@ -36,12 +36,39 @@ def _status_class(code):
     return "err" if not code else f"{code // 100}xx"
 
 
+GUEST_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
+
+
+def linkedin_job_id(url):
+    match = re.search(r"/jobs/view/(\d+)", url or "")
+    return match.group(1) if match else None
+
+
+def probe_linkedin(url):
+    """Facts from LinkedIn's public guest endpoint + canonical page (markers only)."""
+    facts = {}
+    job_id = linkedin_job_id(url)
+    guest = fetch(GUEST_API + job_id) if job_id else fetch(url)
+    page = fetch(url)
+    facts["guest_codes"] = ">".join(map(str, guest.codes)) or "none"
+    facts["page_codes"] = ">".join(map(str, page.codes)) or "none"
+    for name, html in (("guest", guest.html), ("page", page.html)):
+        facts[name + "_desc"] = "show-more-less-html__markup" in html or "description__text" in html
+        facts[name + "_posted"] = "posted-time-ago" in html or "datePosted" in html
+        facts[name + "_apply_code"] = 'id="applyUrl"' in html
+        facts[name + "_easy"] = bool(re.search(r"easy\s*apply", html, re.I))
+        facts[name + "_authwall"] = "authwall" in html.lower() or "sign in to view" in html.lower()
+        facts[name + "_len_bucket"] = str(min(len(html) // 20000, 5))
+    return facts
+
+
 def probe_one(source, url):
     """Follow the chain for one job; return a dict of small categorical facts."""
     facts = {"first": "", "hops": 0, "final_kind": "", "next_data": False, "target": False, "jsonld": False,
              "date": False, "desc": False, "easy_apply_marker": False, "offsite_marker": False}
     first = fetch(url)
-    facts["first"] = _status_class(first.status) + (":" + first.error if first.error else "")
+    facts["first"] = ">".join(map(str, first.codes)) or ("err:" + first.error)
+    facts["first_kind"] = classify.apply_kind(first.final_url) if first.status or first.codes else "none"
     facts["hops"] = first.hops
     final = first
     if source == "jobright" and first.html:
@@ -49,9 +76,14 @@ def probe_one(source, url):
         facts["target"] = bool(target)
         if target:
             final = fetch(target)
-    if source == "linkedin-alerts" and first.html:
-        facts["easy_apply_marker"] = "Easy Apply" in first.html
-        facts["offsite_marker"] = "apply-link-offsite" in first.html
+    if source == "linkedin-alerts":
+        facts.update(probe_linkedin(url))
+    if source == "jobright":
+        facts["jr_len_bucket"] = str(min(len(first.html) // 20000, 5))
+        facts["jr_blocked_marker"] = bool(re.search(r"just a moment|captcha|access denied", first.html or "", re.I))
+        posting = jsonld.job_posting(first.html)
+        facts["jr_ld_has_url"] = bool(posting and posting.get("url"))
+        facts["jr_ld_has_org"] = bool(posting and posting.get("hiringOrganization"))
     facts["final_kind"] = classify.apply_kind(final.final_url) if final.status else "unreachable"
     posting = jsonld.job_posting(final.html)
     facts["jsonld"] = posting is not None
@@ -72,11 +104,14 @@ def probe(connection, per_source, workers):
     report = {}
     for source in ("lensa", "jobright", "linkedin-alerts"):
         rows = [f for s, f in results if s == source]
-        tally = lambda key: dict(Counter(str(r[key]) for r in rows))
-        report[source] = {"n": len(rows), "first_fetch": tally("first"), "final_kind": tally("final_kind"),
-                          "avg_hops": round(sum(r["hops"] for r in rows) / max(1, len(rows)), 1),
-                          **{k: sum(1 for r in rows if r[k]) for k in
-                             ("next_data", "target", "jsonld", "date", "desc", "easy_apply_marker", "offsite_marker")}}
+        keys = sorted({k for r in rows for k in r})
+        report[source] = {"n": len(rows)}
+        for key in keys:
+            values = [r.get(key) for r in rows]
+            if all(isinstance(v, bool) or v is None for v in values):
+                report[source][key] = sum(1 for v in values if v)
+            elif key != "hops":
+                report[source][key] = dict(Counter(str(v) for v in values))
     return report
 
 
