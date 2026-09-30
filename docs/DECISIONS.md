@@ -43,7 +43,7 @@ page body only, in the machine-readable `v7.jd.1` format (see PLAN.md); Hostinge
 ## D9 - Provider match scores (DECIDED)
 Aggregator match % is stored as evidence only and counts zero today. Phase 2 decides: 0% or 25% weight.
 
-## D10 - Browser tooling (DECIDED, 2026-09-30)
+## D10 - Browser tooling (DECIDED, 2026-09-30; scope narrowed by D12)
 Automated HTTP fetching is blocked or login-gated for Lensa, LinkedIn (employer link) and Jobright (employer link).
 Resolution uses a real browser path: TinyFish (Fetch first because it is free; Agent only where a login or clicks are
 unavoidable, because it is metered per step) and the existing Jobright login. Browser path is proven on a sample
@@ -55,3 +55,15 @@ Jim's TinyFish wallet is **$35 total and must never be used up**. Only the free 
 sending), pacing of at most 100 URLs/min, and **no code path to the metered Agent ($0.016/step) or Cloud Browser
 ($0.002/min)** - a test fails the build if one appears. Any paid use requires Jim to set an explicit dollar cap first;
 the default is $0. Search API (free, 30/min, 500/hr) is allowed under the same counting rules.
+
+## D12 - Browser is ONLY for the link chain (HARD, 2026-09-30)
+The TinyFish browser is used **only** to follow the link chain from an aggregator job page (Lensa / LinkedIn /
+Jobright) to the employer or official-ATS apply link. It is **not** used for descriptions, posting dates, parsing, or
+anything else. Descriptions and dates come from the final employer/ATS page (plain HTTP or the ATS's public API) or
+the aggregator's own free data. Code enforces this: the browser client is callable only from the link-chain resolver.
+
+## D13 - Paid browser budget (PROPOSED - needs Jim's dollar cap)
+Measured: the free Fetch API loads aggregator pages but does NOT expose the apply button's destination (it sits behind a
+click). The metered **Browser** tool ($0.002/min, scripted click) is ~50x cheaper than the **Agent** ($0.016/step, AI
+clicks). Proposal: use Browser only (never Agent), hard lifetime cap **$5** of the $35 wallet (~2,500 browser minutes),
+minutes counted in Hostinger before each session, hard stop at the cap, no overage. Until Jim approves a dollar cap, paid spend stays $0 (D11).
