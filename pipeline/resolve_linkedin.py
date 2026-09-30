@@ -39,6 +39,6 @@ def resolve_rows(rows):
     need = [i for i, r in enumerate(results) if r["outcome"] == "external_hidden"]
     hits = ats_match.match_many([(rows[i][2], rows[i][3], rows[i][4]) for i in need])
     for i, hit in zip(need, hits):
-        results[i] = ({"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]} if hit
-                      else {"outcome": "no_board_match"})
+        results[i] = ({"outcome": "no_match_" + hit} if isinstance(hit, str)
+                      else {"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]})
     return results

@@ -19,6 +19,12 @@ class MatchTests(unittest.TestCase):
         self.assertIsNone(ats_match.pick(self.jobs, "Senior Data Engineer", "Denver, CO"))
         self.assertIsNone(ats_match.pick(self.jobs, "Staff Data Engineer", "Austin, TX"))
 
+    def test_reasons(self):
+        self.assertEqual(ats_match.why([], "X", "")[0], "no_board")
+        self.assertEqual(ats_match.why(self.jobs, "Staff Data Engineer", "")[0], "no_title")
+        self.assertEqual(ats_match.why(self.jobs, "Senior Data Engineer", "Denver")[0], "ambiguous")
+        self.assertEqual(ats_match.why(self.jobs, "Product Manager.", "")[0], "hit")
+
     def test_slugs(self):
         self.assertEqual(ats_match.slug_candidates("Acme Data Corp, Inc."), ["acmedata", "acme-data", "acme"])
 

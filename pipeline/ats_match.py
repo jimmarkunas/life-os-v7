@@ -3,6 +3,7 @@
 Used when an aggregator hides the employer link (LinkedIn external-apply, Lensa). Precision first: an exact normalized
 title match, location-checked when several match; ambiguous or absent -> None (the job stays pending, never guessed).
 """
+import difflib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -82,16 +83,29 @@ def _location_ok(want, have):
     return bool(tokens & set(have.split())) or ("remote" in want and "remote" in have)
 
 
-def pick(jobs, title, location):
-    """Exactly one confident board posting for (title, location), else None."""
+def why(jobs, title, location):
+    """('hit', job) | ('no_board',) | ('no_title',) | ('ambiguous',)."""
+    if not jobs:
+        return ("no_board",)
     want = norm(title)
     same = [j for j in jobs if norm(j[1]) == want]
+    if not same:                                   # near-exact only (punctuation/level words aside), and unique
+        close = [j for j in jobs if difflib.SequenceMatcher(None, norm(j[1]), want).ratio() >= 0.93]
+        same = close if len(close) == 1 else []
+    if not same:
+        return ("no_title",)
     if len(same) > 1:
         narrowed = [j for j in same if _location_ok(location, j[3])]
-        same = narrowed if narrowed else []
-        if len({j[2] for j in same}) > 1:
-            return None
-    return same[0] if same else None
+        if not narrowed or len({j[2] for j in narrowed}) > 1:
+            return ("ambiguous",)
+        same = narrowed
+    return ("hit", same[0])
+
+
+def pick(jobs, title, location):
+    """Exactly one confident board posting for (title, location), else None."""
+    verdict = why(jobs, title, location)
+    return verdict[1] if verdict[0] == "hit" else None
 
 
 def match_many(rows, workers=8):
@@ -101,6 +115,6 @@ def match_many(rows, workers=8):
         boards = dict(zip(companies, pool.map(boards_for, companies)))
     out = []
     for company, title, location in rows:
-        hit = pick(boards.get(company, []), title, location) if company else None
-        out.append((hit[0], hit[2]) if hit else None)
+        verdict = why(boards.get(company, []), title, location) if company else ("no_company",)
+        out.append((verdict[1][0], verdict[1][2]) if verdict[0] == "hit" else verdict[0])
     return out
