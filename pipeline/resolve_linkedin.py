@@ -50,6 +50,10 @@ def resolve_rows(rows):
             continue
         searched += 1
         verdict = search_match.find(rows[i][2], rows[i][3])
-        results[i] = ({"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]}
-                      if verdict[0] == "hit" else {"outcome": results[i]["outcome"] + "+" + verdict[1]})
+        if verdict[0] != "hit":
+            results[i] = {"outcome": results[i]["outcome"] + "+" + verdict[1]}
+            continue
+        gone = fetch(verdict[2], timeout=12, max_hops=4).status in (404, 410)      # terminal evidence: dead page = closed
+        results[i] = ({"outcome": "closed"} if gone else
+                      {"outcome": "landed", "via": "search", "kind": verdict[1], "url": verdict[2]})
     return results
