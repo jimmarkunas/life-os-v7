@@ -60,6 +60,10 @@ on:
         description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
         type: boolean
         default: false
+      publish:
+        description: "Publish READY jobs to the Notion Job Ledger (dry run counts only unless live)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -74,6 +78,8 @@ jobs:
       GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
       GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
       TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
       JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
       JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
@@ -141,3 +147,6 @@ jobs:
       - name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_lensa }}
         run: python -m pipeline.resolve --resolve lensa --limit 90 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 7 - publish READY jobs to Notion
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        run: python -m pipeline.resolve --publish --limit 60 $([ "$LIVE" = "true" ] && echo --live)
