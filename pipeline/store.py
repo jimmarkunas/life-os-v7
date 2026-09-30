@@ -48,6 +48,7 @@ COLUMNS = (
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
     ("v7_jobs", "salary_text", "VARCHAR(80) NULL", None),
     ("v7_jobs", "source", "VARCHAR(40) NULL", None),
+    ("v7_jobs", "mail_received_at", "DATETIME NULL", None),
 )
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.

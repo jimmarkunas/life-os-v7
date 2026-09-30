@@ -103,10 +103,11 @@ class Gmail:
         return ""
 
     def message(self, message_id):
-        """Return (sender header, html body) for one message. Content stays in memory only."""
-        payload = self._request("GET", f"{API}/messages/{message_id}?format=full").get("payload", {})
+        """Return (sender header, html body, received epoch seconds) for one message. Content stays in memory only."""
+        full = self._request("GET", f"{API}/messages/{message_id}?format=full")
+        payload = full.get("payload", {})
         sender = next((h["value"] for h in payload.get("headers", []) if h["name"].lower() == "from"), "")
-        return sender, _find_html(payload)
+        return sender, _find_html(payload), int(full.get("internalDate", 0)) // 1000
 
     def relabel(self, ids, add=(), remove=()):
         for start in range(0, len(ids), 1000):
