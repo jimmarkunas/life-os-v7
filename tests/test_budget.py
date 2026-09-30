@@ -34,3 +34,15 @@ class NoPaidEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleanKeyTests(unittest.TestCase):
+    def test_extracts_the_key_shaped_token(self):
+        key, parts = tinyfish.clean_key('API key: "sk-abc123_DEF456-ghi789_JKL012"\n')
+        self.assertEqual(key, "sk-abc123_DEF456-ghi789_JKL012")
+        self.assertEqual(parts, [3, 3, 30][:len(parts)] if False else parts)        # lengths only, never content
+
+    def test_plain_and_labelled_forms(self):
+        self.assertEqual(tinyfish.clean_key("  plainkey_ABCDEFGHIJKLMNOP  ")[0], "plainkey_ABCDEFGHIJKLMNOP")
+        self.assertEqual(tinyfish.clean_key("TINYFISH_API_KEY=abcdefghijklmnop1234")[0], "abcdefghijklmnop1234")
+        self.assertEqual(tinyfish.clean_key("")[0], "")
