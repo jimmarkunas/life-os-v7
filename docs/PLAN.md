@@ -21,6 +21,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 | 2 | extract | labeled mail without `Processed` → one row per job card | 1 |
 | 3 | resolve | source link → final apply URL (employer / aggregator / LinkedIn Easy Apply) | 1 |
 | 4 | store | upsert into Hostinger `v7_jobs`, dedupe key = canonical final URL | 1 |
+| 5 | describe | final apply page -> full job description stored privately: full text + summary / responsibilities / requirements / qualifications (`v7_job_descriptions`) | 1 |
 | 5 | publish | fresh (<=14d) `RESOLVED` rows → Notion Job Ledger (core fields only), then mark `Processed` | 1 |
 | 6-7 | triage / score | cursory match, then % fit (Claude project + ChatGPT/GitHub method) | 2 |
 
@@ -32,6 +33,17 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 - Follow redirects until the destination stops being an aggregator; canonicalize tracking URLs (e.g. LinkedIn `/comm/jobs/view/ID?...` -> `/jobs/view/ID`).
 - Jobright: read `originalUrl`/`applyLink` from the page's `__NEXT_DATA__` first; logged-in browser only as fallback.
 - Unresolvable or failed -> `status=UNRESOLVED` with a reason; retried next run, never silently dropped.
+
+## Learned from real mail (structure only; no content)
+- **Lensa** (two layouts: "jobalert/aggregated" digests with ~20 cards, and "career advocate" notes with ~3): each job is a tracked-link card with company, title, salary *estimate*, location. **No posting date**, so freshness comes from the destination page at resolve time.
+- Card links are **per-recipient tracking redirects** (same job = different URL in every email). So: dedupe cannot use the email URL; it happens after the final apply URL is resolved (Step 5). Until then a cheap `fuzzy_key` (company|title|location) prevents resolving the same job repeatedly.
+- Following a tracked link counts as a "click" for Lensa; that is expected and harmless.
+
+## Job descriptions (required)
+- Every resolved job must store its **full description**: complete text plus best-effort sections (summary, responsibilities, requirements, qualifications). Full text is always kept, so sections can be re-split later or scored directly.
+- Source order: ATS API (Greenhouse/Ashby/Lever) -> `JobPosting` JSON-LD on the page -> readable page text. Aggregator-only jobs use the aggregator's text and are flagged.
+- Stored **only in Hostinger** (`v7_job_descriptions`), never in the repo or logs. Phase 2 scoring reads it from there.
+- Notion: summary + requirements + qualifications go in the page *body* inside the same create call (no extra requests, within free-tier limits). Open question for Jim: body, or a Notion property, or both.
 
 ## Freshness gate (front end, before Notion)
 - Keep jobs up to **14 days old**. A job is excluded only when it is *known* older than 14 days (posting date or "N days/weeks ago" text in the newsletter or job page). Age unknown = allowed.
@@ -54,7 +66,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 | 2 store schema | `v7_jobs`, `v7_runs` tables + connectivity check via SSH tunnel | CI creates tables; re-run is a no-op |
 | 3 extract: Lensa | parse cards (+ age text -> freshness gate) from labeled Lensa mail into `NEW` / `EXCLUDED_STALE` rows | row count matches the cards in 3 hand-checked emails |
 | 4 extract: LinkedIn, Jobright | same for the other senders | same hand-check |
-| 5 resolve | final URL + `apply_kind` | 20 sampled rows hand-verified |
+| 5 resolve + describe | final URL + `apply_kind` + full job description (JSON-LD / ATS API / page text) | 20 sampled rows hand-verified; every resolved row has non-empty full text |
 | 6 publish | Notion rows, `Processed` label, no duplicate on re-run | rows appear in the Ledger; 2nd run adds 0 |
 | 7 Jobright browser fallback | only if `__NEXT_DATA__` path fails | unresolved Jobright rate < agreed threshold |
 

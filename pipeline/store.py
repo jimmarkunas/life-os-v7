@@ -35,6 +35,14 @@ SCHEMA = (
         UNIQUE KEY uq_v7_sources_url (source_url_hash),
         KEY ix_v7_sources_job (job_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_job_descriptions (
+        job_id BIGINT NOT NULL PRIMARY KEY,
+        source_kind VARCHAR(24) NOT NULL,
+        full_text MEDIUMTEXT NOT NULL,
+        summary MEDIUMTEXT NULL, responsibilities MEDIUMTEXT NULL,
+        requirements MEDIUMTEXT NULL, qualifications MEDIUMTEXT NULL,
+        fingerprint CHAR(64) NOT NULL, fetched_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_runs (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         stage VARCHAR(24) NOT NULL,
@@ -42,7 +50,14 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_runs")
+# Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
+COLUMNS = (
+    ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
+    ("v7_jobs", "salary_text", "VARCHAR(80) NULL", None),
+    ("v7_jobs", "source", "VARCHAR(40) NULL", None),
+    ("v7_jobs", "mail_received_at", "DATETIME NULL", None),
+)
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.
 FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
@@ -130,6 +145,14 @@ def ensure_schema(connection):
     with connection.cursor() as cursor:
         for statement in SCHEMA:
             cursor.execute(statement)
+    with connection.cursor() as cursor:
+        for table, column, ddl, index in COLUMNS:
+            cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                           "AND table_name = %s AND column_name = %s", (table, column))
+            if not cursor.fetchone()[0]:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                if index:
+                    cursor.execute(f"ALTER TABLE {table} {index}")
     after = existing_v7_tables(connection)
     return {"created": len(after - before), "present": len(after & set(TABLES)), "expected": len(TABLES)}
 
@@ -141,9 +164,14 @@ def check():
             total = cursor.fetchone()[0]
         result = ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM v7_jobs")
-            rows = cursor.fetchone()[0]
-    return {"connected": True, "tables_in_db": total, "v7_jobs_rows": rows, **result}
+            cursor.execute("SELECT status, COUNT(*) FROM v7_jobs GROUP BY status")
+            by_status = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.execute("SELECT source, COUNT(*) FROM v7_jobs WHERE status = 'NEW' GROUP BY source")
+            new_by_source = {row[0]: row[1] for row in cursor.fetchall()}
+            cursor.execute("SELECT COUNT(DISTINCT fuzzy_key) FROM v7_jobs WHERE status = 'NEW'")
+            distinct_new = cursor.fetchone()[0]
+    return {"connected": True, "tables_in_db": total, "jobs_by_status": by_status, "new_by_source": new_by_source,
+            "distinct_new_by_fuzzy_key": distinct_new, **result}
 
 
 if __name__ == "__main__":
