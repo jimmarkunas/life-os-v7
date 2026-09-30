@@ -74,8 +74,28 @@ def quick_apply_signal(body):
     return "easy apply" in text or "quick apply" in text
 
 
+CLOSED = re.compile(r"no longer accepting applications|no longer available|job (is )?closed|position has been filled", re.I)
+
+
+def apply_href_shape(body):
+    """Generic shape of the offsite Apply anchor's href (path token only - never a host or URL)."""
+    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
+        if "apply-link-offsite" in tag:
+            href = re.search(r"href=[\"']([^\"']+)", tag)
+            if not href:
+                return "no_href"
+            path = urlsplit(href.group(1)).path
+            for token in ("externalApply", "safety/go", "redir", "jobs/view", "login", "signup", "authwall"):
+                if token in path or token in href.group(1):
+                    return token
+            return "other_path" if path else "no_path"
+    return "no_offsite_anchor"
+
+
 def read(body):
-    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('unknown', None)."""
+    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
+    if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):
+        return "closed", None
     urls = external_urls(body)
     if urls:
         return "external", urls[0]

@@ -299,6 +299,10 @@ def probe_linkedin_free(connection, n, pause=1.2):
             continue
         kind, target = li_apply.read(page.html)
         bump(facts["read"], kind)
+        if kind == "external_unlinked":
+            bump(facts.setdefault("offsite_href_shape", {}), li_apply.apply_href_shape(page.html))
+        if kind == "unknown":
+            bump(facts.setdefault("unknown_len_bucket", {}), str(min(len(page.html) // 5000, 6)))
         if target:
             bump(facts["external_kind"], classify.apply_kind(target))
     return facts
