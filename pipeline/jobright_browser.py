@@ -75,6 +75,11 @@ async def follow(context, page, job_url, wait_ms=12000):
     except Exception:                                           # noqa: BLE001
         return {"outcome": "apply_unavailable"}
     before = set(context.pages)
+    label = ""
+    try:
+        label = " ".join((await page.locator(APPLY_XPATH).first.inner_text()).split())[:24]
+    except Exception:                                           # noqa: BLE001
+        pass
     try:
         await page.locator(APPLY_XPATH).first.click(timeout=wait_ms)
     except Exception:                                           # noqa: BLE001
@@ -91,7 +96,13 @@ async def follow(context, page, job_url, wait_ms=12000):
             kind, final = outcome_for(page.url, False)
             return {"outcome": "landed", "kind": kind, "url": final}
         await page.wait_for_timeout(250)
-    return {"outcome": "target_timeout"}
+    try:
+        dialog = await page.locator("[role=dialog], .ant-modal, .ant-drawer").count()
+        page_text = (await page.inner_text("body")).lower()
+        marks = [m for m in ("no longer", "expired", "closed", "unavailable", "upgrade", "limit", "verify") if m in page_text]
+    except Exception:                                           # noqa: BLE001
+        dialog, marks = -1, []
+    return {"outcome": f"target_timeout:{label}:dialog={dialog}:pages={len(context.pages)}:{','.join(marks)}"}
 
 
 async def resolve_many(urls, environ=os.environ, pause_ms=1500):
