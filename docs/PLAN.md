@@ -33,6 +33,11 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 - Jobright: read `originalUrl`/`applyLink` from the page's `__NEXT_DATA__` first; logged-in browser only as fallback.
 - Unresolvable or failed -> `status=UNRESOLVED` with a reason; retried next run, never silently dropped.
 
+## Learned from real mail (structure only; no content)
+- **Lensa** (two layouts: "jobalert/aggregated" digests with ~20 cards, and "career advocate" notes with ~3): each job is a tracked-link card with company, title, salary *estimate*, location. **No posting date**, so freshness comes from the destination page at resolve time.
+- Card links are **per-recipient tracking redirects** (same job = different URL in every email). So: dedupe cannot use the email URL; it happens after the final apply URL is resolved (Step 5). Until then a cheap `fuzzy_key` (company|title|location) prevents resolving the same job repeatedly.
+- Following a tracked link counts as a "click" for Lensa; that is expected and harmless.
+
 ## Freshness gate (front end, before Notion)
 - Keep jobs up to **14 days old**. A job is excluded only when it is *known* older than 14 days (posting date or "N days/weeks ago" text in the newsletter or job page). Age unknown = allowed.
 - Excluded rows stay in Hostinger as `EXCLUDED_STALE` (so they are not re-processed) and **never reach Notion**.
