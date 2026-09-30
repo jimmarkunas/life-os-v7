@@ -43,3 +43,18 @@ class LensaParserTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LensaLayoutV3Tests(unittest.TestCase):
+    """Third layout: Mailgun-style tracking host, 'Posted N ago' text, sloppy (unclosed) markup."""
+
+    HTML = ('<a href="https://email.mg3.lensa.com/c/AAA1" style="x"><table><tr><td>Initech</td></tr><tr><td>Delivery Lead</td></tr>'
+            '<tr><td>$45-$58 / hr.</td></tr><tr><td>Posted 5 hours ago</td></tr><tr><td>Remote</td></tr></table>'   # <a> never closed
+            '<a href="https://email.mg3.lensa.com/c/BBB2"><table><tr><td>Hooli</td></tr><tr><td>Scrum Master</td></tr>'
+            '<tr><td>Posted 3 weeks ago</td></tr><tr><td>Remote</td></tr></table></a>')
+
+    def test_new_host_unclosed_anchor_and_age(self):
+        a, b = lensa.parse(self.HTML)
+        self.assertEqual((a.company, a.title, a.age_days, a.location_text), ("Initech", "Delivery Lead", 0, "Remote"))
+        self.assertEqual((b.company, b.age_days), ("Hooli", 21))
+        self.assertEqual(a.salary_text, "$45-$58 / hr.")

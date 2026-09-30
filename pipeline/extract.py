@@ -15,6 +15,7 @@ from pipeline.gmail import Gmail, GmailError
 from pipeline.parsers import lensa
 
 PARSERS = {"lensa": lensa.parse}
+MAX_AGE_DAYS = 14   # known-older jobs are kept for dedupe but never published
 
 
 def _norm(text):
@@ -29,6 +30,10 @@ def url_hash(url):
     return sha256(url.encode()).hexdigest()
 
 
+def status_for(card):
+    return "EXCLUDED_STALE" if card.age_days is not None and card.age_days > MAX_AGE_DAYS else "NEW"
+
+
 def save_cards(connection, rule, message_id, cards):
     """Insert cards idempotently. Returns (new_jobs, repeat_links)."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -38,9 +43,10 @@ def save_cards(connection, rule, message_id, cards):
             key = url_hash(card.url)
             cursor.execute(
                 "INSERT IGNORE INTO v7_jobs (dedupe_key, status, title, company, location_text, source_url, salary_text,"
-                " source, fuzzy_key, first_seen, last_seen, updated_at) VALUES (%s,'NEW',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (key, card.title[:300], card.company[:200], (card.location_text or "")[:200], card.url,
-                 (card.salary_text or "")[:80], rule, fuzzy_key(card), now, now, now))
+                " source, fuzzy_key, posted_age_days, first_seen, last_seen, updated_at)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (key, status_for(card), card.title[:300], card.company[:200], (card.location_text or "")[:200], card.url,
+                 (card.salary_text or "")[:80], rule, fuzzy_key(card), card.age_days, now, now, now))
             new += cursor.rowcount
             repeat += 0 if cursor.rowcount else 1
             cursor.execute(
@@ -65,7 +71,7 @@ def extract(gmail, live, limit, connection=None):
         cards = parser(html)
         counts["cards"] += len(cards)
         counts["no_cards"] += 0 if cards else 1
-        if live:
+        if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
             new, repeat = save_cards(connection, rule, message_id, cards)
             counts["new_jobs"] += new
             counts["repeat_links"] += repeat

@@ -33,8 +33,8 @@ jobs:
       LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
       LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
       LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Scheduled runs are live only after you set repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live || vars.V7_LIVE == 'true' }}
+      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
+      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
