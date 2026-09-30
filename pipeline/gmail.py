@@ -1,4 +1,5 @@
 """Minimal Gmail REST client (stdlib only). One small surface: list, sender, relabel."""
+import base64
 import json
 import os
 import re
@@ -101,7 +102,25 @@ class Gmail:
                 return header["value"]
         return ""
 
+    def message(self, message_id):
+        """Return (sender header, html body, received epoch seconds) for one message. Content stays in memory only."""
+        full = self._request("GET", f"{API}/messages/{message_id}?format=full")
+        payload = full.get("payload", {})
+        sender = next((h["value"] for h in payload.get("headers", []) if h["name"].lower() == "from"), "")
+        return sender, _find_html(payload), int(full.get("internalDate", 0)) // 1000
+
     def relabel(self, ids, add=(), remove=()):
         for start in range(0, len(ids), 1000):
             self._request("POST", f"{API}/messages/batchModify", body={
                 "ids": ids[start:start + 1000], "addLabelIds": list(add), "removeLabelIds": list(remove)})
+
+
+def _find_html(part):
+    """Depth-first search of a Gmail payload for the text/html part; decoded from base64url."""
+    if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
+        return base64.urlsafe_b64decode(part["body"]["data"] + "=" * (-len(part["body"]["data"]) % 4)).decode("utf-8", "replace")
+    for child in part.get("parts", []) or []:
+        found = _find_html(child)
+        if found:
+            return found
+    return ""

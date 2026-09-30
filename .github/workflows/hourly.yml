@@ -12,6 +12,10 @@ on:
         description: "Also run the Hostinger connectivity/schema check (Step 2)"
         type: boolean
         default: false
+      reconcile:
+        description: "Repair pass: recover cards from recent Processed mail missing in the store (needs live)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -33,8 +37,8 @@ jobs:
       LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
       LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
       LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Scheduled runs are live only after you set repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live || vars.V7_LIVE == 'true' }}
+      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
+      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,6 +50,12 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Stage 1 - sweep
         run: python -m pipeline.sweep $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 3 - extract (manual runs only until the pipeline is complete)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python -m pipeline.extract $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 3b - reconcile (repair, manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
+        run: python -m pipeline.extract --reconcile --live --limit 300
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
         run: python -m pipeline.store
