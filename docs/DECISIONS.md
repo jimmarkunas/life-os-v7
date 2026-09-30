@@ -74,3 +74,17 @@ Jobright: log in with the saved GitHub secrets (`JOBRIGHT_EMAIL`, `JOBRIGHT_PASS
 type and employer link come from V2's no-login method (public guest page: apply-control markers, JSON-style apply keys,
 and `/safety/go` / `/redir/redirect` wrapped links), plain HTTP first; browser (no login) only if that fails.
 Credentials are never logged or committed.
+
+## D6 advice - reposts (still PROPOSED until Jim answers)
+Do not auto-exclude reposts as "ghost jobs". A repost is usually the same real opening refreshed by the employer or ATS.
+Policy: one job = one row (dedupe by final URL, then fuzzy key); keep the ORIGINAL first_seen; count sightings
+(`seen_count`, `last_posted_date`). Posting date for freshness is the employer's datePosted when present, else first_seen.
+Ghost risk is evidence, not a rule: flag "possible ghost" (never exclude) when the same vacancy was reposted 3+ times in
+60 days or carries no real posting date for weeks; Phase 2 scoring may down-weight it.
+
+## D15 - Provider limits are canon (DECIDED)
+Every provider limit is a constant in `pipeline/limits.py`, documented in `docs/LIMITS.md`, and enforced by tests. Stages
+stop on the first 429/403.
+
+## D16 - Private evidence stays out of the public repo (DECIDED)
+Fit-model evidence and personal scoring corrections are never committed. `docs/FIT_MODEL.md` holds structure only.
