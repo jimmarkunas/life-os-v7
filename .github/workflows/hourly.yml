@@ -64,6 +64,10 @@ on:
         description: "Publish READY jobs to the Notion Job Ledger (dry run counts only unless live)"
         type: boolean
         default: false
+      publish_limit:
+        description: "How many READY jobs to publish this run (keep small for the first live batch)"
+        type: string
+        default: "60"
 permissions:
   contents: read
 concurrency:
@@ -162,7 +166,7 @@ jobs:
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
-        run: python -m pipeline.resolve --publish --limit 60 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.resolve --publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
       - name: Stage failures fail the run (other stages still ran)
         if: ${{ always() }}
         run: |
