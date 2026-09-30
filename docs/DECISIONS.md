@@ -48,3 +48,10 @@ Automated HTTP fetching is blocked or login-gated for Lensa, LinkedIn (employer 
 Resolution uses a real browser path: TinyFish (Fetch first because it is free; Agent only where a login or clicks are
 unavoidable, because it is metered per step) and the existing Jobright login. Browser path is proven on a sample
 BEFORE anything is published.
+
+## D11 - TinyFish spending guard (HARD, 2026-09-30)
+Jim's TinyFish wallet is **$35 total and must never be used up**. Only the free **Fetch API** is used (free limits:
+150 URLs/min, 1,000 URLs/day). In code: daily cap 900 URLs (counted in Hostinger `v7_spend`, pessimistically, before
+sending), pacing of at most 100 URLs/min, and **no code path to the metered Agent ($0.016/step) or Cloud Browser
+($0.002/min)** - a test fails the build if one appears. Any paid use requires Jim to set an explicit dollar cap first;
+the default is $0. Search API (free, 30/min, 500/hr) is allowed under the same counting rules.
