@@ -50,12 +50,12 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Stage 1 - sweep
         run: python -m pipeline.sweep $([ "$LIVE" = "true" ] && echo --live)
-      - name: Step 2 - store check
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
-        run: python -m pipeline.store
       - name: Step 3 - extract (manual runs only until the pipeline is complete)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: python -m pipeline.extract $([ "$LIVE" = "true" ] && echo --live)
       - name: Step 3b - reconcile (repair, manual only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
         run: python -m pipeline.extract --reconcile --live --limit 300
+      - name: Step 2 - store check
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
+        run: python -m pipeline.store

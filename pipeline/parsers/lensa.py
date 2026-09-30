@@ -7,10 +7,10 @@ Card links are per-recipient tracking redirects; they are returned as-is and res
 from html.parser import HTMLParser
 import re
 
-CARD_HOST = re.compile(r"^https?://email(?:\.[a-z0-9]+)?\.lensa\.com/(?:f/a|c)/")
+CARD_HOST = re.compile(r"^https?://[a-z0-9-]*email(?:\.[a-z0-9]+)?\.lensa\.com/")   # email./sg3email./email.mg3. tracking hosts
 AGE = re.compile(r"(\d+)\s*(minute|hour|day|week|month)s?\s+ago", re.I)
 AGE_DAYS = {"minute": 0, "hour": 0, "day": 1, "week": 7, "month": 30}
-SALARY = re.compile(r"\$\s*[\d.,]+\s*[KkMm]?\s*-\s*\$\s*[\d.,]+\s*[KkMm]?")
+SALARY = re.compile(r"\$\s*[\d.,]+\s*[KkMm]?(?:\s*-\s*\$\s*[\d.,]+\s*[KkMm]?)?\s*/\s*(?:yr|hr|year|hour)", re.I)
 
 
 class Card:

@@ -35,6 +35,14 @@ SCHEMA = (
         UNIQUE KEY uq_v7_sources_url (source_url_hash),
         KEY ix_v7_sources_job (job_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_job_descriptions (
+        job_id BIGINT NOT NULL PRIMARY KEY,
+        source_kind VARCHAR(24) NOT NULL,
+        full_text MEDIUMTEXT NOT NULL,
+        summary MEDIUMTEXT NULL, responsibilities MEDIUMTEXT NULL,
+        requirements MEDIUMTEXT NULL, qualifications MEDIUMTEXT NULL,
+        fingerprint CHAR(64) NOT NULL, fetched_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_runs (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         stage VARCHAR(24) NOT NULL,
@@ -42,7 +50,7 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
