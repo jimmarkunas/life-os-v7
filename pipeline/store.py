@@ -45,7 +45,8 @@ SCHEMA = (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_spend (
         day DATE NOT NULL PRIMARY KEY,
-        fetch_urls INT NOT NULL DEFAULT 0
+        fetch_urls INT NOT NULL DEFAULT 0,
+        browser_seconds INT NOT NULL DEFAULT 0
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_runs (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -64,6 +65,7 @@ COLUMNS = (
     ("v7_jobs", "provider_score", "SMALLINT NULL", None),
     ("v7_jobs", "posted_date", "DATE NULL", None),
     ("v7_jobs", "posted_source", "VARCHAR(16) NULL", None),
+    ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.

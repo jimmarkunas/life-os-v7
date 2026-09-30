@@ -50,3 +50,45 @@ class Pacer:
             if remaining > 0:
                 self._sleep(remaining)
         self._last = self._clock()
+
+
+# ---- Paid browser sessions (D12/D13): link-chain resolution ONLY, hard dollar cap, default $0 ----
+BROWSER_USD_PER_MINUTE = 0.002       # TinyFish Browser API price
+SESSION_MAX_SECONDS = 90             # worst case we ever bill for one job; reserved BEFORE the session starts
+
+
+def browser_cap_usd(environ):
+    """Lifetime cap from V7_BROWSER_CAP_USD. Missing, blank, invalid, or negative -> 0 (no paid use)."""
+    try:
+        return max(0.0, float((environ.get("V7_BROWSER_CAP_USD") or "0").strip()))
+    except ValueError:
+        return 0.0
+
+
+def cap_seconds(cap_usd):
+    return int(cap_usd / BROWSER_USD_PER_MINUTE * 60)
+
+
+def browser_seconds_total(connection):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COALESCE(SUM(browser_seconds), 0) FROM v7_spend")
+        return int(cursor.fetchone()[0])
+
+
+def reserve_browser(connection, cap_usd, seconds=SESSION_MAX_SECONDS):
+    """Count `seconds` against the lifetime cap BEFORE starting a paid session. True only if it fits entirely."""
+    if browser_seconds_total(connection) + seconds > cap_seconds(cap_usd):
+        return False
+    with connection.cursor() as cursor:
+        cursor.execute("INSERT INTO v7_spend (day, browser_seconds) VALUES (%s, %s) "
+                       "ON DUPLICATE KEY UPDATE browser_seconds = browser_seconds + VALUES(browser_seconds)",
+                       (today(), seconds))
+    return True
+
+
+def refund_browser(connection, unused_seconds):
+    """Give back the part of a reservation that was not used (session ended early)."""
+    if unused_seconds > 0:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE v7_spend SET browser_seconds = GREATEST(0, browser_seconds - %s) WHERE day = %s",
+                           (int(unused_seconds), today()))
