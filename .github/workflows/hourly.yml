@@ -126,4 +126,4 @@ jobs:
           python -m pipeline.resolve --resolve jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
       - name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin }}
-        run: python -m pipeline.resolve --resolve linkedin --limit 60 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.resolve --resolve linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
