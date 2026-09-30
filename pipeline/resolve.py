@@ -301,6 +301,7 @@ def probe_linkedin_free(connection, n, pause=1.2):
         bump(facts["read"], kind)
         if kind == "external_unlinked":
             bump(facts.setdefault("offsite_href_shape", {}), li_apply.apply_href_shape(page.html))
+            bump(facts.setdefault("offsite_href_diag", {}), json.dumps(li_apply.apply_href_diagnostics(page.html), sort_keys=True))
         if kind == "unknown":
             bump(facts.setdefault("unknown_len_bucket", {}), str(min(len(page.html) // 5000, 6)))
         if target:

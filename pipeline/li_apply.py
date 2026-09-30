@@ -97,6 +97,26 @@ def apply_href_shape(body):
     return "no_offsite_anchor"
 
 
+def apply_href_diagnostics(body):
+    """Structure of the offsite Apply href, WITHOUT values: path, query parameter NAMES, how the target is written."""
+    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
+        if "apply-link-offsite" not in tag:
+            continue
+        href = re.search(r"href=[\"']([^\"']+)", tag)
+        if not href:
+            return {"href": "missing"}
+        raw = href.group(1)
+        parts = urlsplit(urljoin("https://www.linkedin.com", raw) if raw.startswith("/") else raw)
+        query = parse_qs(parts.query)
+        target = (query.get("url") or query.get("targetUrl") or query.get("redirectUrl") or [""])[0]
+        return {"absolute": raw.startswith("http"), "path": parts.path[:24], "params": ",".join(sorted(query))[:80],
+                "target_prefix": ("http" if target.startswith("http") else "/" if target.startswith("/") else
+                                  "none" if not target else "other"),
+                "target_is_linkedin": is_linkedin(target) if target.startswith("http") else None,
+                "raw_len_bucket": min(len(raw) // 100, 6)}
+    return {"href": "no_offsite_anchor"}
+
+
 def read(body):
     """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
     if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):
