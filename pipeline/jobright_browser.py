@@ -68,8 +68,34 @@ async def login(page, email, password):
     return "login_failed:" + "/".join(seen) + ":" + ",".join(marks)
 
 
+DATA_KEYS = ("originalUrl", "applyLink", "companyApplyUrl", "externalApplyUrl", "jobApplyLink")
+DATA_JS = """(keys) => { const out = [];
+  const walk = (o, d) => { if (!o || d > 12) return;
+    if (Array.isArray(o)) { o.forEach(x => walk(x, d + 1)); return; }
+    if (typeof o === 'object') for (const [k, v] of Object.entries(o)) {
+      if (keys.includes(k) && typeof v === 'string' && v.startsWith('http')) out.push(v); else walk(v, d + 1); } };
+  const el = document.getElementById('__NEXT_DATA__');
+  if (el) { try { walk(JSON.parse(el.textContent), 0); } catch (e) {} }
+  return out; }"""
+
+
+async def page_data_link(page):
+    """Employer URL carried in the logged-in job page's own data (no click), or None."""
+    try:
+        for url in await page.evaluate(DATA_JS, list(DATA_KEYS)):
+            if not is_internal(url):
+                return url
+    except Exception:                                           # noqa: BLE001
+        pass
+    return None
+
+
 async def follow(context, page, job_url, wait_ms=12000):
     await page.goto(job_url, wait_until="domcontentloaded")
+    found = await page_data_link(page)
+    if found:
+        kind, final = outcome_for(found, False)
+        return {"outcome": "landed", "via": "page_data", "kind": kind, "url": final}
     try:
         await page.locator(APPLY_XPATH).first.wait_for(timeout=wait_ms)
     except Exception:                                           # noqa: BLE001
@@ -100,6 +126,9 @@ async def follow(context, page, job_url, wait_ms=12000):
         dialog = await page.locator("[role=dialog], .ant-modal, .ant-drawer").count()
         page_text = (await page.inner_text("body")).lower()
         marks = [m for m in ("no longer", "expired", "closed", "unavailable", "upgrade", "limit", "verify") if m in page_text]
+        labels = await page.evaluate("""() => [...document.querySelectorAll('[role=dialog] button, .ant-modal button, .ant-modal a, [role=dialog] a')]
+            .map(e => (e.textContent || '').trim().slice(0, 22)).filter(Boolean).slice(0, 6)""")
+        marks += ["btn=" + "|".join(labels)]
     except Exception:                                           # noqa: BLE001
         dialog, marks = -1, []
     return {"outcome": f"target_timeout:{label}:dialog={dialog}:pages={len(context.pages)}:{','.join(marks)}"}
