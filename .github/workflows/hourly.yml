@@ -135,7 +135,7 @@ jobs:
       - name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin }}
         run: python -m pipeline.resolve --resolve linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Step 6 - enrich RESOLVED jobs (final page: JD, date, liveness)
+      - name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.enrich }}
         run: python -m pipeline.resolve --enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
       - name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
