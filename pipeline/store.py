@@ -43,8 +43,11 @@ SCHEMA = (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
 TABLES = ("v7_jobs", "v7_job_sources", "v7_runs")
+# All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
+# The database listens on the server's loopback only, reached through the tunnel: host/port are constants.
 FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
-          "SSH_KNOWN_HOSTS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER")
+          "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")
+DB_REMOTE = "127.0.0.1:3306"
 
 
 class StoreError(RuntimeError):
@@ -76,8 +79,6 @@ def _ssh_code(error):
 @contextmanager
 def connect():
     cfg = _cfg()
-    if cfg["DB_HOST"] != "127.0.0.1" or cfg["DB_PORT"] != "3306":
-        raise StoreError("STORE_DB_MUST_BE_LOOPBACK")
     connection = exit_cmd = None
     with tempfile.TemporaryDirectory(prefix="v7-store-") as directory:
         try:
@@ -96,7 +97,7 @@ def connect():
             try:
                 subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
                                 "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
-                                "-L", f"127.0.0.1:{local_port}:127.0.0.1:3306", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
+                                "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
                                check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             except Exception as error:
                 raise StoreError(_ssh_code(error)) from None
