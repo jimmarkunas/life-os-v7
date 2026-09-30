@@ -2,6 +2,9 @@
 import re
 
 NEWSLETTER_LABEL = "J Newsletters"
+PROCESSED_LABEL = "J Newsletters/Processed"
+# Gmail search syntax flattens nested label names; pending = in the folder, not yet Processed.
+PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed"
 
 # (name, regex matched against the bare lowercase sender address). Order is irrelevant.
 SENDER_RULES = (

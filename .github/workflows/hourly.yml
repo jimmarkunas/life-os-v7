@@ -49,3 +49,6 @@ jobs:
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
         run: python -m pipeline.store
+      - name: Step 3 - extract (manual runs only until the pipeline is complete)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python -m pipeline.extract $([ "$LIVE" = "true" ] && echo --live)

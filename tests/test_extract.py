@@ -1,0 +1,82 @@
+import unittest
+
+from pipeline import extract
+from pipeline.parsers import lensa
+
+
+class FakeGmail:
+    def __init__(self, messages):
+        self.messages, self.relabeled = messages, []
+
+    def label_id(self, name, create=False):
+        return "PROC"
+
+    def list_ids(self, query, limit=5000):
+        return list(self.messages)[:limit]
+
+    def message(self, message_id):
+        return self.messages[message_id]
+
+    def relabel(self, ids, add=(), remove=()):
+        self.relabeled.append((list(ids), list(add)))
+
+
+class FakeCursor:
+    def __init__(self, db):
+        self.db, self.rowcount = db, 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, args=()):
+        if sql.startswith("INSERT IGNORE INTO v7_jobs"):
+            key = args[0]
+            self.rowcount = 0 if key in self.db["jobs"] else 1
+            self.db["jobs"].add(key)
+        else:
+            self.rowcount = 1
+            self.db["sources"] += 1
+
+
+class FakeConn:
+    def __init__(self):
+        self.db = {"jobs": set(), "sources": 0}
+
+    def cursor(self):
+        return FakeCursor(self.db)
+
+
+HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><tr><td>Project Manager</td></tr>'
+        '<tr><td>Remote</td></tr></table></a>'
+        '<a href="https://email.lensa.com/f/a/J2"><table><tr><td>Globex</td></tr><tr><td>Program Lead</td></tr>'
+        '<tr><td>Remote</td></tr></table></a>')
+MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML),
+            "m2": ("noreply@jobright.ai", "<p>parser not built yet</p>")}
+
+
+class ExtractTests(unittest.TestCase):
+    def test_dry_run_counts_and_writes_nothing(self):
+        gmail = FakeGmail(MESSAGES)
+        counts = extract.extract(gmail, live=False, limit=10)
+        self.assertEqual((counts["messages"], counts["cards"], counts["unsupported_sender"]), (1, 2, 1))
+        self.assertEqual(gmail.relabeled, [])
+
+    def test_live_saves_then_marks_only_supported_messages_and_is_repeat_safe(self):
+        gmail, conn = FakeGmail(MESSAGES), FakeConn()
+        first = extract.extract(gmail, True, 10, conn)
+        self.assertEqual((first["new_jobs"], first["marked_processed"]), (2, 1))
+        self.assertEqual(gmail.relabeled, [(["m1"], ["PROC"])])
+        second = extract.extract(gmail, True, 10, conn)           # same links again: nothing new
+        self.assertEqual((second["new_jobs"], second["repeat_links"]), (0, 2))
+
+    def test_fuzzy_key_ignores_case_and_punctuation(self):
+        a = lensa.Card("Acme, Inc.", "Project  Manager", None, "Remote", "u1")
+        b = lensa.Card("ACME INC", "project manager", None, "remote", "u2")
+        self.assertEqual(extract.fuzzy_key(a), extract.fuzzy_key(b))
+
+
+if __name__ == "__main__":
+    unittest.main()
