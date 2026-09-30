@@ -193,10 +193,33 @@ def probe(connection, per_source, workers):
     return report
 
 
+CHROME = ("google.", "gstatic.", "facebook.", "twitter.", "x.com", "instagram.", "youtube.", "apple.com", "play.google",
+          "chromewebstore", "cdn", "static", "w3.org", "schema.org", "cloudfront", "amazonaws", "googletagmanager",
+          "doubleclick", "linkedin.com", "lensa.com", "jobright.ai", "trustpilot", "tiktok", "pinterest", "mailto:",
+          "microsoft.com", "gravatar", "fonts.", "bit.ly", "awstrack", "unsubscribe", "privacy", "terms")
+KEYWORDS = {"apply": r"\bapply\b", "requirements": r"requirements?|must[- ]have", "qualifications": r"qualifications?",
+            "responsibilities": r"responsibilit", "about_role": r"about the (role|job|position)|job description",
+            "posted": r"posted|\bago\b", "salary": r"\$\s*\d"}
+
+
+def _real_outbound(links):
+    """Outbound links that are not site chrome/trackers: (ats_count, employer_like_count)."""
+    ats = emp = 0
+    for link in links:
+        if not (isinstance(link, str) and link.startswith("http")) or any(c in link.lower() for c in CHROME):
+            continue
+        kind = classify.apply_kind(link)
+        ats += kind == "ats"
+        emp += kind == "employer"
+    return ats, emp
+
+
 def summarize_tinyfish(source, urls, results, errors):
-    """Counts-only facts about a TinyFish Fetch batch (no URLs, hosts, or text)."""
-    facts = {"n": len(urls), "ok": 0, "errors": {}, "final_kind": {}, "text_bucket": {}, "published_date": 0,
-             "jsonld_posting": 0, "jsonld_desc": 0, "links_bucket": {}, "external_link_pages": 0}
+    """Counts-only facts about a TinyFish Fetch batch (no URLs, hosts, or page content)."""
+    facts = {"n": len(urls), "ok": 0, "errors": {}, "final_kind": {}, "text_len_bucket": {}, "published_date": 0,
+             "has_script_tags": 0, "has_ld_json": 0, "has_datePosted": 0, "has_next_data": 0, "has_originalUrl": 0,
+             "jsonld_desc": 0, "link_shapes": {}, "pages_with_ats_link": 0, "pages_with_employer_link": 0,
+             "kw": {k: 0 for k in KEYWORDS}}
     for err in errors:
         code = str(err.get("code") or err.get("error") or err.get("type") or "unknown")[:30]
         facts["errors"][code] = facts["errors"].get(code, 0) + 1
@@ -208,16 +231,24 @@ def summarize_tinyfish(source, urls, results, errors):
         facts["ok"] += 1
         bump(facts["final_kind"], classify.apply_kind(item.get("final_url") or url))
         text = item.get("text") if isinstance(item.get("text"), str) else ""
-        bump(facts["text_bucket"], str(min(len(text) // 10000, 5)))
+        bump(facts["text_len_bucket"], {0: "0", 1: "<2k", 2: "<5k", 3: "<10k", 4: "<30k"}.get(
+            min(4, (len(text) > 0) + (len(text) > 2000) + (len(text) > 5000) + (len(text) > 10000) + 0), ">=30k")
+            if len(text) < 30000 else ">=30k")
         facts["published_date"] += 1 if item.get("published_date") else 0
+        facts["has_script_tags"] += "<script" in text
+        facts["has_ld_json"] += "ld+json" in text
+        facts["has_datePosted"] += "datePosted" in text
+        facts["has_next_data"] += "__NEXT_DATA__" in text
+        facts["has_originalUrl"] += "originalUrl" in text or "applyLink" in text
         posting = jsonld.job_posting(text)
-        facts["jsonld_posting"] += 1 if posting else 0
         facts["jsonld_desc"] += 1 if posting and len(str(posting.get("description") or "")) > 200 else 0
         links = item.get("links") or []
-        bump(facts["links_bucket"], str(min(len(links) // 25, 4)))
-        facts["external_link_pages"] += 1 if any(
-            classify.apply_kind(link) in ("employer", "ats") and "linkedin" not in link and "lensa" not in link
-            and "jobright" not in link for link in links if isinstance(link, str) and link.startswith("http")) else 0
+        bump(facts["link_shapes"], type(links[0]).__name__ if links else "none")
+        ats, emp = _real_outbound(links)
+        facts["pages_with_ats_link"] += ats > 0
+        facts["pages_with_employer_link"] += emp > 0
+        for key, pattern in KEYWORDS.items():
+            facts["kw"][key] += bool(re.search(pattern, text, re.I))
     return facts
 
 

@@ -44,7 +44,7 @@ class TinyFishSummaryTests(unittest.TestCase):
                                                                       "https://www.linkedin.com/help"]},
                    "u2": {"url": "u2", "final_url": "https://lensa.com/x", "text": "", "links": []}}
         facts = resolve.summarize_tinyfish("linkedin-alerts", ["u1", "u2", "u3"], results, [{"url": "u3", "code": "timeout"}])
-        self.assertEqual((facts["n"], facts["ok"], facts["external_link_pages"], facts["jsonld_desc"]), (3, 2, 1, 1))
+        self.assertEqual((facts["n"], facts["ok"], facts["pages_with_employer_link"], facts["jsonld_desc"]), (3, 2, 1, 1))
         self.assertEqual(facts["errors"], {"timeout": 1})
         self.assertNotIn("careers.acme", str(facts))             # nothing identifying leaks into the report
 
