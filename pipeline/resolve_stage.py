@@ -7,7 +7,7 @@ fixed unresolved_reason so the next run retries. Logs: counts only.
 import hashlib
 from datetime import datetime, timezone
 
-from pipeline import store
+from pipeline import limits, store
 
 
 def _now():
@@ -21,16 +21,16 @@ def url_key(url):
 def pick(connection, source, limit):
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, source_url FROM v7_jobs WHERE status='NEW' AND source=%s "
-                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') "
-                       "ORDER BY last_seen DESC LIMIT %s", (source, limit))
+                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
+                       "ORDER BY resolve_attempts, last_seen DESC LIMIT %s", (source, limits.RESOLVE_MAX_ATTEMPTS, limit))
         return [(row[0], row[1]) for row in cursor.fetchall()]
 
 
 def pick_rows(connection, source, limit):
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, source_url, company, title, location_text FROM v7_jobs WHERE status='NEW' AND source=%s "
-                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') "
-                       "ORDER BY last_seen DESC LIMIT %s", (source, limit))
+                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
+                       "ORDER BY resolve_attempts, last_seen DESC LIMIT %s", (source, limits.RESOLVE_MAX_ATTEMPTS, limit))
         return [tuple(row) for row in cursor.fetchall()]
 
 
@@ -49,7 +49,10 @@ def apply_result(connection, job_id, result):
                            "unresolved_reason=NULL, updated_at=%s WHERE id=%s", (url, kind, now, job_id))
             return "resolved"
         reason = (result.get("outcome") or "unknown")[:100]
-        cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, updated_at=%s WHERE id=%s", (reason, now, job_id))
+        bump = 0 if reason in ("deferred", "rate_limited") else 1        # not tried yet = not an attempt
+        cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, resolve_attempts=resolve_attempts+%s, "
+                       "status=IF(resolve_attempts>=%s, 'HOLD', status), updated_at=%s WHERE id=%s",   # later SET sees the bump
+                       (reason, bump, limits.RESOLVE_MAX_ATTEMPTS, now, job_id))
         return "pending"
 
 

@@ -70,6 +70,7 @@ COLUMNS = (
     ("v7_jobs", "provider_score", "SMALLINT NULL", None),
     ("v7_jobs", "posted_date", "DATE NULL", None),
     ("v7_jobs", "posted_source", "VARCHAR(16) NULL", None),
+    ("v7_jobs", "resolve_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.

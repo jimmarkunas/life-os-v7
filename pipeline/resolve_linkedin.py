@@ -51,7 +51,10 @@ def match_rows(rows, results):
                       else {"outcome": "landed", "via": "ats_match", "kind": "ats", "url": hit[1]})
     searched = 0
     for i, result in enumerate(results):
-        if not result["outcome"].startswith("no_match_") or searched >= SEARCH_LIMIT:
+        if not result["outcome"].startswith("no_match_"):
+            continue
+        if searched >= SEARCH_LIMIT:
+            results[i] = {"outcome": "deferred"}          # search budget for this run is spent; not an attempt
             continue
         searched += 1
         verdict = search_match.find(rows[i][2], rows[i][3])

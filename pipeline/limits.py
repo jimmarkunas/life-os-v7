@@ -39,4 +39,7 @@ GMAIL_REQUESTS_PER_SECOND = 10
 
 # GitHub Actions
 ACTIONS_CRON = "hourly"
-ACTIONS_JOB_MINUTES = 30                 # our own per-job ceiling (platform max is far higher)
+ACTIONS_JOB_MINUTES = 40                 # workflow timeout-minutes (platform max is far higher)
+
+# Retry rule for jobs whose final link cannot be found yet: try again on later runs, then HOLD (kept, never dropped)
+RESOLVE_MAX_ATTEMPTS = 6
