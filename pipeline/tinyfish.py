@@ -33,6 +33,8 @@ def fetch_many(urls, fmt="html", links=True, ttl=0, per_url_timeout_ms=45000, ti
     key, parts = clean_key(raw)
     if not key:
         raise TinyFishError("TINYFISH_KEY_MISSING")
+    if len(parts) > 2:      # a key is one token (optionally with a one-word label); this is prose - do not send it
+        raise TinyFishError(f"TINYFISH_KEY_NOT_A_KEY(parts={len(parts)},raw_len={len(raw)})")
     if not urls or len(urls) > MAX_URLS:
         raise TinyFishError("TINYFISH_BAD_BATCH")
     body = json.dumps({"urls": list(urls), "format": fmt, "links": links, "ttl": ttl,
