@@ -6,7 +6,7 @@ external jobs, the employer URL - either in JSON-ish keys or wrapped in LinkedIn
 """
 import html as htmllib
 import re
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 GUEST_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
 KEYS = ("offsiteApplyUrl", "offsiteApplyTrackingUrl", "companyApplyUrl", "externalApplyUrl", "applyRedirectUrl", "applyUrl")
@@ -29,15 +29,20 @@ def job_id(url):
 
 
 def unwrap(value):
-    """External URL from a LinkedIn redirect wrapper; other URLs pass through; LinkedIn-internal -> None."""
-    value = unquote(htmllib.unescape(value or "")).strip()
-    parts = urlsplit(value)
-    if is_linkedin(value):
+    """External URL from a LinkedIn redirect wrapper (absolute OR relative href); other URLs pass through;
+    LinkedIn-internal links -> None."""
+    raw = htmllib.unescape(value or "").strip()
+    if raw.startswith("/"):                                   # relative href on the guest page
+        raw = urljoin("https://www.linkedin.com", raw)
+    parts = urlsplit(raw)
+    if is_linkedin(raw):
         if parts.path in WRAPPER_PATHS:
-            inner = unquote(parse_qs(parts.query).get("url", [""])[0])
+            inner = parse_qs(parts.query).get("url", [""])[0]        # parse_qs already percent-decodes once
+            inner = unquote(inner) if inner.startswith("http%") else inner
             return inner if inner.startswith("http") and not is_linkedin(inner) else None
         return None
-    return value if value.startswith("http") else None
+    raw = unquote(raw) if raw.startswith("http%") else raw
+    return raw if raw.startswith("http") else None
 
 
 def _decode(body):
