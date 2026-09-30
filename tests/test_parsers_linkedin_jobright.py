@@ -47,3 +47,19 @@ class JobrightTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobrightDigestTests(unittest.TestCase):
+    DIGEST = ('<a href="https://jobright.ai/jobs/info/dig001?u=1"><span>Initech</span><span>Consulting · Late Stage</span>'
+              '<span>80%</span><span>Senior Project Manager</span><span>$88K/yr - $132K/yr</span><span>Remote</span>'
+              '<span>9+ referrals</span><span>1 hour ago ·</span><span>Be among the first applicants</span><span>Apply Now</span></a>')
+
+    def test_single_node_match_score_layout(self):
+        (card,) = jobright.parse(self.DIGEST)
+        self.assertEqual((card.company, card.title, card.salary_text, card.age_days), ("Initech", "Senior Project Manager", "$88K/yr - $132K/yr", 0))
+        self.assertIn("Remote", card.location_text)
+        self.assertIn("Consulting", card.location_text)
+
+    def test_non_job_email_is_distinguished_from_parse_gap(self):
+        self.assertFalse(jobright.looks_like_jobs("<p>Reset your password</p>"))
+        self.assertTrue(jobright.looks_like_jobs('<a href="https://jobright.ai/jobs/info/x1">x</a>'))

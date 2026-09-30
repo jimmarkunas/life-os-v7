@@ -10,6 +10,10 @@ JOB = re.compile(r"linkedin\.com/comm/jobs/view/(\d+)")
 NOISE = re.compile(r"connection|alumni|school|hiring|actively|easy apply|applicant|promoted|viewed|\bago\b", re.I)
 
 
+def looks_like_jobs(html):
+    return bool(JOB.search(html or ""))
+
+
 def parse(html):
     by_id, order = {}, []
     for anchor in _anchors.collect(html, JOB):

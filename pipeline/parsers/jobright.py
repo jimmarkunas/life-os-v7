@@ -8,7 +8,14 @@ from pipeline.parsers.lensa import AGE, AGE_DAYS, Card
 
 JOB = re.compile(r"jobright\.ai/jobs/info/([0-9A-Za-z]+)")
 MONEY = re.compile(r"\$\s*[\d.,]+\s*[KkMm]?\s*/\s*(?:yr|hr|year|hour)", re.I)
+DOT = "\u00b7"
+MATCH = re.compile(r"\d{1,3}\s*%")
 NOT_LOCATION = re.compile(r"referral|experience|years?|apply|first applicants|^\W*$", re.I)
+
+
+def looks_like_jobs(html):
+    """True when the email links to job pages at all (distinguishes a parse gap from a non-job email)."""
+    return bool(JOB.search(html or ""))
 
 
 def parse(html):
@@ -16,12 +23,13 @@ def parse(html):
     for anchor in _anchors.collect(html, JOB):
         job_id = JOB.search(anchor["href"]).group(1)
         texts = anchor["texts"]
-        if job_id in seen or "%" not in texts or texts.index("%") + 1 >= len(texts) or texts.index("%") < 2:
+        marker = next((i for i, t in enumerate(texts) if t == "%" or MATCH.fullmatch(t)), None)
+        if job_id in seen or marker is None or marker < 1 or marker + 1 >= len(texts):
             continue
         seen.add(job_id)
-        marker = texts.index("%")
         company, title = texts[0], texts[marker + 1]
-        detail = [t.lstrip("· ").strip() for t in texts[1:marker - 1] if t.strip("· ")]
+        detail_end = marker - 1 if texts[marker] == "%" else marker      # instant: '89','%' | digest: '80%'
+        detail = [t.lstrip(DOT + " ").strip() for t in texts[1:detail_end] if t.strip(DOT + " ")]
         tail = texts[marker + 2:]
         salary = next((t for t in tail if MONEY.search(t)), None)
         age_text = next((t for t in tail if AGE.search(t) and len(t) < 40), None)
