@@ -23,11 +23,14 @@ class Fetched:
         self.codes = tuple(codes)      # status code of every hop, e.g. (302, 403)
 
 
-def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000):
+MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+
+
+def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None):
     current, codes = url, []
     for hop in range(max_hops + 1):
         request = urllib.request.Request(current, headers={"User-Agent": UA, "Accept": "text/html,application/xhtml+xml",
-                                                           "Accept-Language": "en-US,en;q=0.9"})
+                                                           "Accept-Language": "en-US,en;q=0.9", **(headers or {})})
         try:
             with _OPENER.open(request, timeout=timeout) as response:
                 body = response.read(max_bytes).decode(response.headers.get_content_charset() or "utf-8", "replace")

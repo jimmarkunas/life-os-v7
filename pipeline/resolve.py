@@ -11,7 +11,7 @@ import re
 import sys
 
 from pipeline import classify, jsonld, store
-from pipeline.http import fetch
+from pipeline.http import MOBILE_UA, fetch
 
 NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
@@ -53,6 +53,13 @@ def probe_linkedin(url):
     facts["guest_codes"] = ">".join(map(str, guest.codes)) or "none"
     facts["page_codes"] = ">".join(map(str, page.codes)) or "none"
     for name, html in (("guest", guest.html), ("page", page.html)):
+        facts[name + "_offsite"] = "apply-link-offsite" in html or "externalApply" in html
+        facts[name + "_onsite"] = "apply-link-onsite" in html
+        ext = re.search(r"externalApply/\d+\?url=([^&\"'\s]+)", html)
+        facts[name + "_ext_url"] = bool(ext)
+        if ext:
+            from urllib.parse import unquote
+            facts[name + "_ext_kind"] = classify.apply_kind(unquote(ext.group(1)))
         facts[name + "_desc"] = "show-more-less-html__markup" in html or "description__text" in html
         facts[name + "_posted"] = "posted-time-ago" in html or "datePosted" in html
         facts[name + "_apply_code"] = 'id="applyUrl"' in html
@@ -78,6 +85,11 @@ def probe_one(source, url):
             final = fetch(target)
     if source == "linkedin-alerts":
         facts.update(probe_linkedin(url))
+    if source == "lensa" and first.status == 403:
+        for label, hdrs in (("referer", {"Referer": "https://email.lensa.com/"}), ("mobile", {"User-Agent": MOBILE_UA}),
+                            ("bare", {"User-Agent": "curl/8.5.0", "Accept": "*/*"})):
+            retry = fetch(first.final_url, headers=hdrs)
+            facts["lensa_" + label] = ">".join(map(str, retry.codes)) or "none"
     if source == "jobright":
         facts["jr_len_bucket"] = str(min(len(first.html) // 20000, 5))
         facts["jr_blocked_marker"] = bool(re.search(r"just a moment|captcha|access denied", first.html or "", re.I))
