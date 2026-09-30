@@ -28,6 +28,10 @@ on:
         description: "Read-only probe of TinyFish Fetch on a sample (counts only)"
         type: boolean
         default: false
+      probe_linkedin:
+        description: "Free plain-HTTP probe of the no-login LinkedIn apply-link method (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -83,3 +87,6 @@ jobs:
       - name: Step 5 - TinyFish fetch probe (read-only, counts only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_tinyfish }}
         run: python -m pipeline.resolve --probe-tinyfish --per-source 10
+      - name: Step 5 - LinkedIn no-login probe (free, throttled, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_linkedin }}
+        run: python -m pipeline.resolve --probe-linkedin --per-source 20

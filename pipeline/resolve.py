@@ -10,7 +10,9 @@ import json
 import re
 import sys
 
-from pipeline import budget, classify, jsonld, store, tinyfish
+import time
+
+from pipeline import budget, classify, jsonld, li_apply, store, tinyfish
 from pipeline.http import MOBILE_UA, fetch
 
 NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
@@ -273,20 +275,52 @@ def probe_tinyfish(connection, per_source):
     return report
 
 
+def probe_linkedin_free(connection, n, pause=1.2):
+    """FREE plain-HTTP probe of the no-login LinkedIn method (V2 port). Throttled; stops early on rate limiting."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source='linkedin-alerts' "
+                       "ORDER BY RAND() LIMIT %s", (n,))
+        urls = [row[0] for row in cursor.fetchall()]
+    facts = {"n": len(urls), "codes": {}, "read": {}, "external_kind": {}, "stopped_early": False}
+    bump = lambda d, k: d.__setitem__(k, d.get(k, 0) + 1)
+    for url in urls:
+        jid = li_apply.job_id(url)
+        if not jid:
+            bump(facts["read"], "no_job_id")
+            continue
+        time.sleep(pause)
+        page = fetch(li_apply.GUEST_API + jid, timeout=15, max_hops=2)
+        bump(facts["codes"], str(page.status))
+        if page.status == 429:
+            facts["stopped_early"] = True
+            break
+        if page.status != 200:
+            bump(facts["read"], "closed_or_unavailable" if page.status in (404, 410) else "fetch_failed")
+            continue
+        kind, target = li_apply.read(page.html)
+        bump(facts["read"], kind)
+        if target:
+            bump(facts["external_kind"], classify.apply_kind(target))
+    return facts
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--probe-tinyfish", action="store_true")
+    parser.add_argument("--probe-linkedin", action="store_true")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
-    if not (args.probe or args.probe_tinyfish):
+    if not (args.probe or args.probe_tinyfish or args.probe_linkedin):
         print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
         return 1
     try:
         with store.connect() as connection:
             store.ensure_schema(connection)
-            if args.probe_tinyfish:
+            if args.probe_linkedin:
+                print("probe-linkedin:", json.dumps(probe_linkedin_free(connection, args.per_source), sort_keys=True))
+            elif args.probe_tinyfish:
                 print("probe-tinyfish:", json.dumps(probe_tinyfish(connection, args.per_source), sort_keys=True))
             else:
                 print("probe:", json.dumps(probe(connection, args.per_source, args.workers), sort_keys=True))

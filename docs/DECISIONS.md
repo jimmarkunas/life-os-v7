@@ -67,3 +67,10 @@ Measured: the free Fetch API loads aggregator pages but does NOT expose the appl
 click). The metered **Browser** tool ($0.002/min, scripted click) is ~50x cheaper than the **Agent** ($0.016/step, AI
 clicks). Proposal: use Browser only (never Agent), hard lifetime cap **$5** of the $35 wallet (~2,500 browser minutes),
 minutes counted in Hostinger before each session, hard stop at the cap, no overage. Until Jim approves a dollar cap, paid spend stays $0 (D11).
+
+## D14 - Logins (HARD, 2026-09-30)
+Jobright: log in with the saved GitHub secrets (`JOBRIGHT_EMAIL`, `JOBRIGHT_PASSWORD`) inside the scripted browser session
+(ported from V2's proven flow), once per session, for the link chain only. LinkedIn: **never log in.** LinkedIn apply
+type and employer link come from V2's no-login method (public guest page: apply-control markers, JSON-style apply keys,
+and `/safety/go` / `/redir/redirect` wrapped links), plain HTTP first; browser (no login) only if that fails.
+Credentials are never logged or committed.
