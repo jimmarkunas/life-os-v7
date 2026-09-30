@@ -20,6 +20,10 @@ on:
         description: "Read-only probe of the resolve chain on a sample (counts only)"
         type: boolean
         default: false
+      docs_url:
+        description: "Print text of a public docs page (docs.tinyfish.ai only) for reading API shapes"
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -66,3 +70,8 @@ jobs:
       - name: Step 5 - resolve probe (read-only, counts only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
         run: python -m pipeline.resolve --probe --per-source 12
+      - name: Print public API docs (docs.tinyfish.ai only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.docs_url != '' }}
+        env:
+          DOCS_URL: ${{ inputs.docs_url }}
+        run: python -m pipeline.docs_print
