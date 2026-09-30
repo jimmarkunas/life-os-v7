@@ -32,3 +32,26 @@ class JsonLdTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TinyFishSummaryTests(unittest.TestCase):
+    def test_summary_is_counts_only_and_finds_external_apply_links(self):
+        from pipeline import resolve
+        page = ('<script type="application/ld+json">{"@type":"JobPosting","datePosted":"2026-09-20",'
+                '"description":"' + "x" * 300 + '"}</script>')
+        results = {"u1": {"url": "u1", "final_url": "https://www.linkedin.com/jobs/view/1", "text": page,
+                          "published_date": "2026-09-20", "links": ["https://careers.acme.example/apply/1",
+                                                                      "https://www.linkedin.com/help"]},
+                   "u2": {"url": "u2", "final_url": "https://lensa.com/x", "text": "", "links": []}}
+        facts = resolve.summarize_tinyfish("linkedin-alerts", ["u1", "u2", "u3"], results, [{"url": "u3", "code": "timeout"}])
+        self.assertEqual((facts["n"], facts["ok"], facts["external_link_pages"], facts["jsonld_desc"]), (3, 2, 1, 1))
+        self.assertEqual(facts["errors"], {"timeout": 1})
+        self.assertNotIn("careers.acme", str(facts))             # nothing identifying leaks into the report
+
+    def test_missing_key_is_a_fixed_code(self):
+        import os
+        from pipeline import tinyfish
+        os.environ.pop("TINYFISH_API_KEY", None)
+        with self.assertRaises(tinyfish.TinyFishError) as ctx:
+            tinyfish.fetch_many(["https://example.com"])
+        self.assertEqual(str(ctx.exception), "TINYFISH_KEY_MISSING")

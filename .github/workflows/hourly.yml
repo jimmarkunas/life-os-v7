@@ -24,6 +24,10 @@ on:
         description: "Print text of a public docs page (docs.tinyfish.ai only) for reading API shapes"
         type: string
         default: ""
+      probe_tinyfish:
+        description: "Read-only probe of TinyFish Fetch on a sample (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -37,6 +41,7 @@ jobs:
       GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
       GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
       GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
       LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
       LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -75,3 +80,6 @@ jobs:
         env:
           DOCS_URL: ${{ inputs.docs_url }}
         run: python -m pipeline.docs_print
+      - name: Step 5 - TinyFish fetch probe (read-only, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_tinyfish }}
+        run: python -m pipeline.resolve --probe-tinyfish --per-source 10

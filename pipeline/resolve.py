@@ -10,7 +10,7 @@ import json
 import re
 import sys
 
-from pipeline import classify, jsonld, store
+from pipeline import classify, jsonld, store, tinyfish
 from pipeline.http import MOBILE_UA, fetch
 
 NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
@@ -193,20 +193,64 @@ def probe(connection, per_source, workers):
     return report
 
 
+def summarize_tinyfish(source, urls, results, errors):
+    """Counts-only facts about a TinyFish Fetch batch (no URLs, hosts, or text)."""
+    facts = {"n": len(urls), "ok": 0, "errors": {}, "final_kind": {}, "text_bucket": {}, "published_date": 0,
+             "jsonld_posting": 0, "jsonld_desc": 0, "links_bucket": {}, "external_link_pages": 0}
+    for err in errors:
+        code = str(err.get("code") or err.get("error") or err.get("type") or "unknown")[:30]
+        facts["errors"][code] = facts["errors"].get(code, 0) + 1
+    bump = lambda bucket, key: bucket.__setitem__(key, bucket.get(key, 0) + 1)
+    for url in urls:
+        item = results.get(url)
+        if not item:
+            continue
+        facts["ok"] += 1
+        bump(facts["final_kind"], classify.apply_kind(item.get("final_url") or url))
+        text = item.get("text") if isinstance(item.get("text"), str) else ""
+        bump(facts["text_bucket"], str(min(len(text) // 10000, 5)))
+        facts["published_date"] += 1 if item.get("published_date") else 0
+        posting = jsonld.job_posting(text)
+        facts["jsonld_posting"] += 1 if posting else 0
+        facts["jsonld_desc"] += 1 if posting and len(str(posting.get("description") or "")) > 200 else 0
+        links = item.get("links") or []
+        bump(facts["links_bucket"], str(min(len(links) // 25, 4)))
+        facts["external_link_pages"] += 1 if any(
+            classify.apply_kind(link) in ("employer", "ats") and "linkedin" not in link and "lensa" not in link
+            and "jobright" not in link for link in links if isinstance(link, str) and link.startswith("http")) else 0
+    return facts
+
+
+def probe_tinyfish(connection, per_source):
+    report = {}
+    with connection.cursor() as cursor:
+        for source in ("lensa", "jobright", "linkedin-alerts"):
+            cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source=%s ORDER BY RAND() LIMIT %s",
+                           (source, min(per_source, tinyfish.MAX_URLS)))
+            urls = [row[0] for row in cursor.fetchall()]
+            results, errors = tinyfish.fetch_many(urls)
+            report[source] = summarize_tinyfish(source, urls, results, errors)
+    return report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--probe-tinyfish", action="store_true")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
-    if not args.probe:
-        print("only --probe is implemented so far", file=sys.stderr)
+    if not (args.probe or args.probe_tinyfish):
+        print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
         return 1
     try:
         with store.connect() as connection:
             store.ensure_schema(connection)
-            print("probe:", json.dumps(probe(connection, args.per_source, args.workers), sort_keys=True))
-    except store.StoreError as error:
+            if args.probe_tinyfish:
+                print("probe-tinyfish:", json.dumps(probe_tinyfish(connection, args.per_source), sort_keys=True))
+            else:
+                print("probe:", json.dumps(probe(connection, args.per_source, args.workers), sort_keys=True))
+    except (store.StoreError, tinyfish.TinyFishError) as error:
         print(f"RESOLVE FAILED: {error}", file=sys.stderr)
         return 1
     return 0
