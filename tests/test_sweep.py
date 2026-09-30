@@ -5,28 +5,25 @@ from pipeline.sweep import sweep
 
 
 class FakeGmail:
-    def __init__(self, senders):
-        self.senders, self.calls = senders, []
+    """Synthetic mailbox: each search query returns a fixed id list."""
+
+    def __init__(self, results):
+        self.results, self.calls = results, []
 
     def label_id(self, name, create=False):
         return "LBL"
 
     def list_ids(self, query, limit=5000):
-        return list(self.senders)
-
-    def sender(self, message_id):
-        return self.senders[message_id]
+        return list(self.results.get(query, []))
 
     def relabel(self, ids, add=(), remove=()):
         self.calls.append((list(ids), list(add), list(remove)))
 
 
-SENDERS = {
-    "1": "Lensa <jobalert@lensa.com>", "2": "noreply@jobright.ai",
-    "3": "LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>",
-    "4": "messages-noreply@linkedin.com",           # LinkedIn messages: not a job alert
-    "5": "abc-123-xyz@user.dice.com",               # synthetic Dice recruiter relay: not a newsletter
-    "6": "friend@gmail.com", "7": "noreply@lensa.com.evil.example",
+RESULTS = {
+    config.GMAIL_QUERIES["lensa"]: ["1", "2"],
+    config.GMAIL_QUERIES["jobright"]: ["3", "2"],           # "2" also matched by lensa: counted once
+    config.GMAIL_QUERIES["linkedin-alerts"]: ["4"],
 }
 
 
@@ -35,18 +32,24 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(config.classify("Lensa <aggregated@lensa.com>"), "lensa")
         self.assertIsNone(config.classify("noreply@lensa.com.evil.example"))
         self.assertIsNone(config.classify("invitations@linkedin.com"))
+        self.assertIsNone(config.classify("abc-123-xyz@user.dice.com"))   # synthetic recruiter relay
+
+    def test_queries_never_include_recruiter_or_message_senders(self):
+        text = " ".join(config.GMAIL_QUERIES.values())
+        for forbidden in ("dice", "messages-noreply", "invitations", "inmail"):
+            self.assertNotIn(forbidden, text)
 
     def test_dry_run_changes_nothing(self):
-        gmail = FakeGmail(SENDERS)
+        gmail = FakeGmail(RESULTS)
         result = sweep(gmail, live=False)
         self.assertEqual(gmail.calls, [])
-        self.assertEqual((result["would_move"], result["moved"], result["skipped_not_newsletter"]), (3, 0, 4))
+        self.assertEqual((result["would_move"], result["moved"]), (4, 0))
 
-    def test_live_moves_only_allowlisted_and_leaves_inbox(self):
-        gmail = FakeGmail(SENDERS)
+    def test_live_moves_each_message_once_and_leaves_inbox(self):
+        gmail = FakeGmail(RESULTS)
         result = sweep(gmail, live=True)
-        self.assertEqual(gmail.calls, [(["1", "2", "3"], ["LBL"], ["INBOX"])])
-        self.assertEqual(result["by_rule"], {"jobright": 1, "lensa": 1, "linkedin-alerts": 1})
+        self.assertEqual(gmail.calls, [(["1", "2", "3", "4"], ["LBL"], ["INBOX"])])
+        self.assertEqual(result["by_rule"], {"lensa": 2, "jobright": 1, "linkedin-alerts": 1})
 
 
 if __name__ == "__main__":
