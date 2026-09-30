@@ -82,13 +82,47 @@ def extract(gmail, live, limit, connection=None):
     return counts
 
 
+def reconcile(gmail, connection, limit):
+    """Repair: Processed mail that has no rows in v7_job_sources (e.g. marked before a parser fix). Idempotent."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT DISTINCT gmail_message_id FROM v7_job_sources")
+        known = {row[0] for row in cursor.fetchall()}
+    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "still_no_cards": 0}
+    for message_id in gmail.list_ids(config.RECONCILE_QUERY, limit=limit):
+        if message_id in known:
+            continue
+        sender, html = gmail.message(message_id)
+        rule = config.classify(sender)
+        parser = PARSERS.get(rule)
+        if parser is None:
+            continue
+        counts["checked"] += 1
+        cards = parser(html)
+        if not cards:
+            counts["still_no_cards"] += 1
+            continue
+        new, _ = save_cards(connection, rule, message_id, cards)
+        counts["recovered_messages"] += 1
+        counts["recovered_jobs"] += new
+    return counts
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--reconcile", action="store_true", help="repair pass over recent Processed mail (needs --live)")
     args = parser.parse_args(argv)
     try:
         gmail = Gmail.from_env()
+        if args.reconcile:
+            if not args.live:
+                print("reconcile needs --live (it reads the store)", file=sys.stderr)
+                return 1
+            with store.connect() as connection:
+                store.ensure_schema(connection)
+                print("reconcile LIVE:", reconcile(gmail, connection, args.limit))
+            return 0
         if args.live:
             with store.connect() as connection:
                 store.ensure_schema(connection)

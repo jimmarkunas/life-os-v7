@@ -12,6 +12,10 @@ on:
         description: "Also run the Hostinger connectivity/schema check (Step 2)"
         type: boolean
         default: false
+      reconcile:
+        description: "Repair pass: recover cards from recent Processed mail missing in the store (needs live)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -52,3 +56,6 @@ jobs:
       - name: Step 3 - extract (manual runs only until the pipeline is complete)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: python -m pipeline.extract $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 3b - reconcile (repair, manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
+        run: python -m pipeline.extract --reconcile --live --limit 300
