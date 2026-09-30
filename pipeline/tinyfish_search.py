@@ -6,10 +6,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from pipeline import limits
 from pipeline.tinyfish import TinyFishError, clean_key
 
 ENDPOINT = "https://api.search.tinyfish.ai"
-MIN_GAP_SECONDS = 2.2                      # 30 requests/minute hard limit -> stay under it
+MIN_GAP_SECONDS = limits.TINYFISH_SEARCH_GAP_SECONDS
 _last = [0.0]
 
 

@@ -363,16 +363,27 @@ def main(argv=None):
     parser.add_argument("--probe-jobright", action="store_true")
     parser.add_argument("--probe-lensa", action="store_true")
     parser.add_argument("--probe-linkedin-browser", action="store_true")
-    parser.add_argument("--resolve", choices=("jobright", "linkedin"), help="resolve NEW jobs of a source and save them")
+    parser.add_argument("--resolve", choices=("jobright", "linkedin", "lensa"), help="resolve NEW jobs of a source and save them")
+    parser.add_argument("--enrich", action="store_true", help="read final pages: description, posting date, liveness")
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results to the database")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
-    if args.resolve:
-        from pipeline import jobright_browser, resolve_linkedin, resolve_stage     # noqa: PLC0415
+    if args.enrich:
+        from pipeline import enrich                              # noqa: PLC0415
         try:
-            if args.resolve == "linkedin":
+            print("enrich:", json.dumps(enrich.run(args.limit, args.live), sort_keys=True))
+        except store.StoreError as error:
+            print(f"ENRICH FAILED: {error}", file=sys.stderr)
+            return 1
+        return 0
+    if args.resolve:
+        from pipeline import jobright_browser, resolve_lensa, resolve_linkedin, resolve_stage     # noqa: PLC0415
+        try:
+            if args.resolve == "lensa":
+                counts = resolve_stage.run_rows("lensa", args.limit, args.live, resolve_lensa.resolve_rows)
+            elif args.resolve == "linkedin":
                 counts = resolve_stage.run_rows("linkedin-alerts", args.limit, args.live, resolve_linkedin.resolve_rows)
             else:
                 counts = resolve_stage.run(args.resolve, args.limit, args.live, jobright_browser.resolve_many_sync)

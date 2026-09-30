@@ -2,11 +2,11 @@
 Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending."""
 import time
 
-from pipeline import ats_match, classify, li_apply, search_match
+from pipeline import ats_match, classify, li_apply, limits, search_match
 from pipeline.http import fetch
 
 
-def read_guest(url, pause=1.2):
+def read_guest(url, pause=limits.LINKEDIN_GUEST_GAP_SECONDS):
     jid = li_apply.job_id(url)
     if not jid:
         return {"outcome": "no_job_id"}
@@ -28,7 +28,7 @@ def read_guest(url, pause=1.2):
     return {"outcome": "external_hidden"}
 
 
-SEARCH_LIMIT = 90                      # per run; the free Search API allows 30/minute (paced in the client)
+SEARCH_LIMIT = limits.TINYFISH_SEARCH_PER_RUN
 
 
 def resolve_rows(rows):
@@ -39,6 +39,11 @@ def resolve_rows(rows):
         if results[-1]["outcome"] == "rate_limited":
             results.extend({"outcome": "rate_limited"} for _ in rows[len(results):])
             break
+    return match_rows(rows, results)
+
+
+def match_rows(rows, results):
+    """Fill every 'external_hidden' result: ATS board match, then free Search. Shared with Lensa."""
     need = [i for i, r in enumerate(results) if r["outcome"] == "external_hidden"]
     hits = ats_match.match_many([(rows[i][2], rows[i][3], rows[i][4]) for i in need])
     for i, hit in zip(need, hits):

@@ -52,6 +52,14 @@ on:
         description: "Resolve NEW LinkedIn jobs (guest page, then employer ATS board match); saves only when live"
         type: boolean
         default: false
+      enrich:
+        description: "Read final pages of RESOLVED jobs: description, posting date, liveness (saves only when live)"
+        type: boolean
+        default: false
+      resolve_lensa:
+        description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -127,3 +135,9 @@ jobs:
       - name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin }}
         run: python -m pipeline.resolve --resolve linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 6 - enrich RESOLVED jobs (final page: JD, date, liveness)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.enrich }}
+        run: python -m pipeline.resolve --enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_lensa }}
+        run: python -m pipeline.resolve --resolve lensa --limit 90 $([ "$LIVE" = "true" ] && echo --live)

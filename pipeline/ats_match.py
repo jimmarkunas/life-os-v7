@@ -8,6 +8,7 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 
+from pipeline import limits
 from pipeline.http import fetch
 
 SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "group", "holdings", "technologies",
@@ -28,7 +29,7 @@ def slug_candidates(company):
 
 
 def _json(url):
-    page = fetch(url, timeout=10, max_hops=2)
+    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
     if page.status != 200:
         return None
     try:
@@ -108,7 +109,7 @@ def pick(jobs, title, location):
     return verdict[1] if verdict[0] == "hit" else None
 
 
-def match_many(rows, workers=8):
+def match_many(rows, workers=limits.ATS_WORKERS):
     """rows: [(company, title, location)] -> aligned list of (kind, url) or None. One board fetch per company."""
     companies = list(dict.fromkeys(c for c, _, _ in rows if c))
     with ThreadPoolExecutor(max_workers=workers) as pool:
