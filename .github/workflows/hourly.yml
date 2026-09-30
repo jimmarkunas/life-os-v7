@@ -40,6 +40,10 @@ on:
         description: "Free Chromium follow of Lensa job links (counts only)"
         type: boolean
         default: false
+      resolve_jobright:
+        description: "Resolve NEW Jobright jobs to final apply links and save them (saves only when live)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -106,3 +110,8 @@ jobs:
           python -m playwright install --with-deps chromium
           [ "${{ inputs.probe_jobright }}" = "true" ] && python -m pipeline.resolve --probe-jobright --per-source 8 || true
           [ "${{ inputs.probe_lensa }}" = "true" ] && python -m pipeline.resolve --probe-lensa --per-source 8 || true
+      - name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_jobright }}
+        run: |
+          python -m playwright install --with-deps chromium
+          python -m pipeline.resolve --resolve jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
