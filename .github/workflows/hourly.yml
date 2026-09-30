@@ -36,6 +36,10 @@ on:
         description: "Free Chromium login + Apply click on a Jobright sample (counts only)"
         type: boolean
         default: false
+      probe_lensa:
+        description: "Free Chromium follow of Lensa job links (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -97,7 +101,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_linkedin }}
         run: python -m pipeline.resolve --probe-linkedin --per-source 20
       - name: Step 5 - Jobright browser probe (free Chromium, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_jobright }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.probe_jobright || inputs.probe_lensa) }}
         run: |
           python -m playwright install --with-deps chromium
-          python -m pipeline.resolve --probe-jobright --per-source 8
+          [ "${{ inputs.probe_jobright }}" = "true" ] && python -m pipeline.resolve --probe-jobright --per-source 8 || true
+          [ "${{ inputs.probe_lensa }}" = "true" ] && python -m pipeline.resolve --probe-lensa --per-source 8 || true

@@ -325,22 +325,40 @@ def probe_jobright_browser(connection, n):
     return facts
 
 
+def probe_lensa_browser(connection, n):
+    """Free local-Chromium follow of Lensa job links. Counts only."""
+    from pipeline import lensa_browser             # noqa: PLC0415
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source='lensa' "
+                       "ORDER BY RAND() LIMIT %s", (n,))
+        urls = [row[0] for row in cursor.fetchall()]
+    facts = {"n": len(urls), "outcome": {}, "kind": {}}
+    for result in lensa_browser.resolve_many_sync(urls):
+        facts["outcome"][result["outcome"]] = facts["outcome"].get(result["outcome"], 0) + 1
+        if result.get("kind"):
+            facts["kind"][result["kind"]] = facts["kind"].get(result["kind"], 0) + 1
+    return facts
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--probe-tinyfish", action="store_true")
     parser.add_argument("--probe-linkedin", action="store_true")
     parser.add_argument("--probe-jobright", action="store_true")
+    parser.add_argument("--probe-lensa", action="store_true")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
-    if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright):
+    if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright or args.probe_lensa):
         print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
         return 1
     try:
         with store.connect() as connection:
             store.ensure_schema(connection)
-            if args.probe_jobright:
+            if args.probe_lensa:
+                print("probe-lensa:", json.dumps(probe_lensa_browser(connection, args.per_source), sort_keys=True))
+            elif args.probe_jobright:
                 print("probe-jobright:", json.dumps(probe_jobright_browser(connection, args.per_source), sort_keys=True))
             elif args.probe_linkedin:
                 print("probe-linkedin:", json.dumps(probe_linkedin_free(connection, args.per_source), sort_keys=True))
