@@ -10,7 +10,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from pipeline import ats_match, jd, jsonld, limits, store
+from pipeline import ats_match, budget, jd, jsonld, limits, store, tinyfish
 from pipeline.http import fetch
 
 MAX_AGE_DAYS = 14
@@ -82,17 +82,27 @@ def read_page(url, title):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
-        posting = jsonld.job_posting(page.html)
-        body_text = jd.html_to_text(page.html)
-        if posting and posting.get("description"):
-            desc, source_kind = jd.describe(str(posting["description"]), is_html=True), "jsonld"
-            found_title, posted = posting.get("title") or "", jsonld.posted_date(posting)
-            valid_through = _parse_date(str(posting.get("validThrough") or ""))
-        else:
-            desc, source_kind, found_title, posted, valid_through = jd.describe(body_text, is_html=False), "page_text", "", None, None
-            found_title = (re.search(r"<title[^>]*>(.*?)</title>", page.html, re.S | re.I) or [None, ""])[1]
-        if CLOSED_TEXT.search(body_text[:4000]):
-            return {"outcome": "closed"}
+        return parse_html(url, title, page.html)
+    return finish(title, desc, found_title, posted, source_kind, valid_through)
+
+
+def parse_html(url, title, html):
+    """Description / date / liveness / title-match from already-fetched page HTML (plain HTTP or TinyFish Fetch)."""
+    posting = jsonld.job_posting(html)
+    body_text = jd.html_to_text(html)
+    if CLOSED_TEXT.search(body_text[:4000]):
+        return {"outcome": "closed"}
+    if posting and posting.get("description"):
+        desc, source_kind = jd.describe(str(posting["description"]), is_html=True), "jsonld"
+        found_title, posted = posting.get("title") or "", jsonld.posted_date(posting)
+        valid_through = _parse_date(str(posting.get("validThrough") or ""))
+    else:
+        desc, source_kind, posted, valid_through = jd.describe(body_text, is_html=False), "page_text", None, None
+        found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
+    return finish(title, desc, found_title, posted, source_kind, valid_through)
+
+
+def finish(title, desc, found_title, posted, source_kind, valid_through):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty"}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind == "page_text" else ""):
@@ -155,9 +165,44 @@ def run(limit, live):
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
+    _fallback(results, rows, counts)
     if live and results:
         with store.connect() as connection:
             for job_id, result in results:
                 save(connection, job_id, result)
     counts["saved"] = bool(live)
     return counts
+
+
+def _fallback(results, rows, counts):
+    """Pages that refuse plain HTTP: free TinyFish Fetch (real browser), counted against the daily cap BEFORE sending."""
+    titles = {job_id: (url, title) for job_id, url, title, _ in rows}
+    blocked = [i for i, (_, r) in enumerate(results) if r["outcome"] == "blocked"
+               and (r.get("reason") or "") != "description_empty"]
+    if not blocked:
+        return
+    try:
+        with store.connect() as connection:
+            allowed = budget.reserve(connection, len(blocked))
+    except store.StoreError:
+        return
+    pacer, done = budget.Pacer(), 0
+    for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
+        batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
+        urls = [titles[results[i][0]][0] for i in batch]
+        pacer.wait()
+        try:
+            found, _errors = tinyfish.fetch_many(urls, fmt="html", links=False)
+        except tinyfish.TinyFishError:
+            counts["tinyfish"] = "error"
+            return
+        for i, url in zip(batch, urls):
+            item = found.get(url)
+            text = item.get("text") if item and isinstance(item.get("text"), str) else ""
+            if text:
+                job_id = results[i][0]
+                results[i] = (job_id, parse_html(url, titles[job_id][1], text))
+                counts["outcome"]["blocked"] -= 1
+                counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
+                done += 1
+    counts["tinyfish_recovered"] = done
