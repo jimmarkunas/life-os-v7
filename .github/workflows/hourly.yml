@@ -48,6 +48,10 @@ on:
         description: "Free Chromium, no-login LinkedIn apply chain on a sample (counts only)"
         type: boolean
         default: false
+      resolve_linkedin:
+        description: "Resolve NEW LinkedIn jobs (guest page, then employer ATS board match); saves only when live"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -120,3 +124,6 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
           python -m pipeline.resolve --resolve jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Step 5 - resolve LinkedIn jobs (no login, no browser)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin }}
+        run: python -m pipeline.resolve --resolve linkedin --limit 60 $([ "$LIVE" = "true" ] && echo --live)

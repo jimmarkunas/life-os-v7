@@ -26,6 +26,14 @@ def pick(connection, source, limit):
         return [(row[0], row[1]) for row in cursor.fetchall()]
 
 
+def pick_rows(connection, source, limit):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, source_url, company, title, location_text FROM v7_jobs WHERE status='NEW' AND source=%s "
+                       "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') "
+                       "ORDER BY last_seen DESC LIMIT %s", (source, limit))
+        return [tuple(row) for row in cursor.fetchall()]
+
+
 def apply_result(connection, job_id, result):
     """Write one outcome. Returns 'resolved' | 'duplicate' | 'pending'."""
     now = _now()
@@ -43,6 +51,36 @@ def apply_result(connection, job_id, result):
         reason = (result.get("outcome") or "unknown")[:100]
         cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, updated_at=%s WHERE id=%s", (reason, now, job_id))
         return "pending"
+
+
+def run_rows(source, limit, live, resolver):
+    """Like run(), but the resolver gets full rows [(id, source_url, company, title, location)]."""
+    with store.connect() as connection:
+        store.ensure_schema(connection)
+        rows = pick_rows(connection, source, limit)
+    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "closed": 0, "kind": {}, "why": {}}
+    if not rows:
+        return counts
+    results = resolver(rows)
+    if not live:
+        counts["dry_run"] = True
+    with store.connect() as connection:
+        for row, result in zip(rows, results):
+            key = result.get("outcome") if result.get("outcome") != "landed" else "landed:" + str(result.get("kind"))
+            counts["why"][key] = counts["why"].get(key, 0) + 1
+            if not live:
+                continue
+            if result.get("outcome") == "closed":
+                with connection.cursor() as cursor:
+                    cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s "
+                                   "WHERE id=%s", (_now(), row[0]))
+                counts["closed"] += 1
+                continue
+            verdict = apply_result(connection, row[0], result)
+            counts[verdict] += 1
+            if verdict == "resolved":
+                counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
+    return counts
 
 
 def run(source, limit, live, resolver):

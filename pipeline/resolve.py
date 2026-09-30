@@ -363,20 +363,23 @@ def main(argv=None):
     parser.add_argument("--probe-jobright", action="store_true")
     parser.add_argument("--probe-lensa", action="store_true")
     parser.add_argument("--probe-linkedin-browser", action="store_true")
-    parser.add_argument("--resolve", choices=("jobright",), help="resolve NEW jobs of a source and save them")
+    parser.add_argument("--resolve", choices=("jobright", "linkedin"), help="resolve NEW jobs of a source and save them")
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results to the database")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
     if args.resolve:
-        from pipeline import jobright_browser, resolve_stage     # noqa: PLC0415
+        from pipeline import jobright_browser, resolve_linkedin, resolve_stage     # noqa: PLC0415
         try:
-            counts = resolve_stage.run(args.resolve, args.limit, args.live, jobright_browser.resolve_many_sync)
+            if args.resolve == "linkedin":
+                counts = resolve_stage.run_rows("linkedin-alerts", args.limit, args.live, resolve_linkedin.resolve_rows)
+            else:
+                counts = resolve_stage.run(args.resolve, args.limit, args.live, jobright_browser.resolve_many_sync)
         except store.StoreError as error:
             print(f"RESOLVE FAILED: {error}", file=sys.stderr)
             return 1
-        print("resolve-jobright:", json.dumps(counts, sort_keys=True))
+        print(f"resolve-{args.resolve}:", json.dumps(counts, sort_keys=True))
         return 0
     if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright or args.probe_lensa or args.probe_linkedin_browser):
         print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
