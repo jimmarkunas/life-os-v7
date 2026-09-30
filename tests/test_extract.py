@@ -56,7 +56,7 @@ HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><
 import time
 NOW = int(time.time())
 MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
-            "m2": ("noreply@jobright.ai", "<p>parser not built yet</p>", NOW)}
+            "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW)}
 
 
 class ExtractTests(unittest.TestCase):

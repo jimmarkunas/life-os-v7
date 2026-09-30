@@ -13,9 +13,9 @@ import sys
 
 from pipeline import config, store
 from pipeline.gmail import Gmail, GmailError
-from pipeline.parsers import lensa
+from pipeline.parsers import jobright, lensa, linkedin
 
-PARSERS = {"lensa": lensa.parse}
+PARSERS = {"lensa": lensa.parse, "jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
 MAX_AGE_DAYS = 14   # known-older jobs are kept for dedupe but never published
 
 
