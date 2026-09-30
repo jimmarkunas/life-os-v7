@@ -309,21 +309,40 @@ def probe_linkedin_free(connection, n, pause=1.2):
     return facts
 
 
+def probe_jobright_browser(connection, n):
+    """Free local-Chromium login + Apply click on a Jobright sample. Counts only."""
+    from pipeline import jobright_browser          # noqa: PLC0415 - playwright only needed here
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT source_url FROM v7_jobs WHERE status='NEW' AND source='jobright' "
+                       "ORDER BY RAND() LIMIT %s", (n,))
+        urls = [row[0] for row in cursor.fetchall()]
+    results = jobright_browser.resolve_many_sync(urls)
+    facts = {"n": len(urls), "outcome": {}, "kind": {}}
+    for result in results:
+        facts["outcome"][result["outcome"]] = facts["outcome"].get(result["outcome"], 0) + 1
+        if result.get("kind"):
+            facts["kind"][result["kind"]] = facts["kind"].get(result["kind"], 0) + 1
+    return facts
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--probe-tinyfish", action="store_true")
     parser.add_argument("--probe-linkedin", action="store_true")
+    parser.add_argument("--probe-jobright", action="store_true")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
-    if not (args.probe or args.probe_tinyfish or args.probe_linkedin):
+    if not (args.probe or args.probe_tinyfish or args.probe_linkedin or args.probe_jobright):
         print("only --probe / --probe-tinyfish are implemented so far", file=sys.stderr)
         return 1
     try:
         with store.connect() as connection:
             store.ensure_schema(connection)
-            if args.probe_linkedin:
+            if args.probe_jobright:
+                print("probe-jobright:", json.dumps(probe_jobright_browser(connection, args.per_source), sort_keys=True))
+            elif args.probe_linkedin:
                 print("probe-linkedin:", json.dumps(probe_linkedin_free(connection, args.per_source), sort_keys=True))
             elif args.probe_tinyfish:
                 print("probe-tinyfish:", json.dumps(probe_tinyfish(connection, args.per_source), sort_keys=True))

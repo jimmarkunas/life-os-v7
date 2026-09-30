@@ -32,6 +32,10 @@ on:
         description: "Free plain-HTTP probe of the no-login LinkedIn apply-link method (counts only)"
         type: boolean
         default: false
+      probe_jobright:
+        description: "Free Chromium login + Apply click on a Jobright sample (counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -46,6 +50,8 @@ jobs:
       GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
       GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
       TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
+      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
       LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
       LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -90,3 +96,8 @@ jobs:
       - name: Step 5 - LinkedIn no-login probe (free, throttled, counts only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_linkedin }}
         run: python -m pipeline.resolve --probe-linkedin --per-source 20
+      - name: Step 5 - Jobright browser probe (free Chromium, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_jobright }}
+        run: |
+          python -m playwright install --with-deps chromium
+          python -m pipeline.resolve --probe-jobright --per-source 8
