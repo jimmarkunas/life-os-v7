@@ -69,7 +69,70 @@ def probe_linkedin(url):
     return facts
 
 
-def probe_one(source, url):
+SUFFIX = {"inc", "llc", "corp", "corporation", "ltd", "co", "company", "group", "technologies", "technology", "the", "plc", "lp", "holdings"}
+
+
+def slug_candidates(company):
+    words = [w for w in re.sub(r"[^a-z0-9 ]", " ", (company or "").lower()).split() if w not in SUFFIX]
+    if not words:
+        return []
+    out = ["".join(words), "-".join(words), words[0]]
+    return list(dict.fromkeys(c for c in out if len(c) >= 3))[:3]
+
+
+def _norm(text):
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+def board_jobs(kind, slug):
+    """(title, url, date_hint) rows from a public ATS board API; [] when the board does not exist."""
+    urls = {"greenhouse": f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+            "ashby": f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+            "lever": f"https://api.lever.co/v0/postings/{slug}?mode=json"}
+    page = fetch(urls[kind], timeout=10, max_hops=2)
+    if page.status != 200:
+        return []
+    try:
+        data = json.loads(page.html)
+    except ValueError:
+        return []
+    if kind == "greenhouse":
+        return [(j.get("title"), j.get("absolute_url"), j.get("updated_at")) for j in data.get("jobs", [])]
+    if kind == "ashby":
+        return [(j.get("title"), j.get("jobUrl"), j.get("publishedAt")) for j in data.get("jobs", [])]
+    return [(j.get("text"), j.get("hostedUrl"), j.get("createdAt")) for j in data] if isinstance(data, list) else []
+
+
+def probe_ats_lookup(company, title):
+    """Does the employer's public ATS board list this exact title? Counts-only facts."""
+    facts = {"board_found": False, "title_match": False, "ats": ""}
+    want = _norm(title)
+    for slug in slug_candidates(company):
+        for kind in ("greenhouse", "ashby", "lever"):
+            rows = board_jobs(kind, slug)
+            if not rows:
+                continue
+            facts["board_found"], facts["ats"] = True, kind
+            if any(_norm(t) == want for t, _, _ in rows):
+                facts["title_match"] = True
+                return facts
+    return facts
+
+
+def linkedin_offsite_follow(html):
+    """Follow LinkedIn's external-apply button (if the page has one) and classify where it lands."""
+    import html as htmllib
+    for tag in re.findall(r"<a\b[^>]*>", html or ""):
+        if "apply-link-offsite" in tag or "externalApply" in tag:
+            href = re.search(r'href="([^"]+)"', tag)
+            if href:
+                landed = fetch(htmllib.unescape(href.group(1)), timeout=10, max_hops=6)
+                return {"follow_codes": ">".join(map(str, landed.codes)) or "none",
+                        "follow_kind": classify.apply_kind(landed.final_url) if landed.codes else "none"}
+    return {}
+
+
+def probe_one(source, url, company="", title=""):
     """Follow the chain for one job; return a dict of small categorical facts."""
     facts = {"first": "", "hops": 0, "final_kind": "", "next_data": False, "target": False, "jsonld": False,
              "date": False, "desc": False, "easy_apply_marker": False, "offsite_marker": False}
@@ -85,6 +148,9 @@ def probe_one(source, url):
             final = fetch(target)
     if source == "linkedin-alerts":
         facts.update(probe_linkedin(url))
+        facts.update(linkedin_offsite_follow(fetch(url).html))
+    if source == "lensa":
+        facts.update({"ats_" + k: v for k, v in probe_ats_lookup(company, title).items()})
     if source == "lensa" and first.status == 403:
         for label, hdrs in (("referer", {"Referer": "https://email.lensa.com/"}), ("mobile", {"User-Agent": MOBILE_UA}),
                             ("bare", {"User-Agent": "curl/8.5.0", "Accept": "*/*"})):
@@ -108,11 +174,11 @@ def probe(connection, per_source, workers):
     sample = []
     with connection.cursor() as cursor:
         for source in ("lensa", "jobright", "linkedin-alerts"):
-            cursor.execute("SELECT source, source_url FROM v7_jobs WHERE status='NEW' AND source=%s "
+            cursor.execute("SELECT source, source_url, company, title FROM v7_jobs WHERE status='NEW' AND source=%s "
                            "ORDER BY RAND() LIMIT %s", (source, per_source))
             sample += cursor.fetchall()
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda row: (row[0], probe_one(row[0], row[1])), sample))
+        results = list(pool.map(lambda row: (row[0], probe_one(row[0], row[1], row[2], row[3])), sample))
     report = {}
     for source in ("lensa", "jobright", "linkedin-alerts"):
         rows = [f for s, f in results if s == source]
