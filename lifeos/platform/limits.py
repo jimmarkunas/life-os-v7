@@ -35,6 +35,12 @@ JOBRIGHT_PAUSE_MS = 1500
 ATS_WORKERS = 8
 ATS_TIMEOUT_SECONDS = 10
 
+# Web acquisition (US Remote direct boards): ours, spread over the hourly runs
+WEB_BOARDS_PER_RUN = 12                  # due boards polled per run (26 ready boards drain in three runs)
+WEB_REFRESH_HOURS = 6                    # a COMPLETE board is due again after this
+WEB_RETRY_HOURS = 1                      # a FAILED board is retried after this (doubling, capped at WEB_REFRESH_HOURS)
+WEB_INGEST_PER_RUN = 300                 # new or changed postings admitted into Jobs OS per run; the rest stay PENDING
+
 # Gmail (REST, gmail.modify): per-user quota 250 units/s; list/get = 5 units, batchModify = 50
 GMAIL_REQUESTS_PER_SECOND = 10
 

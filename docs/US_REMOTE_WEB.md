@@ -1,6 +1,6 @@
 # US Remote Web: incremental acquisition plan
 
-Status: SCOPED, not built. Authority: the US Remote web contract (v3, 2026-09-28) and `docs/LANES.md`. The source universe is in
+Status: PHASE 1 BUILT (shadow-safe: `python -m lifeos.run web`, counts only unless live); phases 2-5 scoped. Authority: the US Remote web contract (v3, 2026-09-28) and `docs/LANES.md`. The source universe is in
 `lifeos/sources/web/us_remote.json` (43 sources harvested from V2: 30 employers, 10 staffing agencies, 3 discovery helpers).
 
 ## Principle
@@ -49,7 +49,7 @@ Filter to the target role family and US locations; an upsert that stops matching
 This channel makes most of the 11 bespoke boards unnecessary: it covers the ATS families they sit on.
 
 ## Phases
-1. Registry (done) and the three tables; a status-aware lister over the 5 ready ATS kinds; the diff and classification; 26 sources live in shadow mode
+1. DONE: registry, the three tables (`v7_sources`, `v7_source_items`, `v7_source_runs`), the status-aware lister (Greenhouse, Ashby, Lever, SmartRecruiters, Workable), classification, cheap suppression, the bounded runner (`lifeos/sources/web`), the `web` dispatch input and workflow step, the Easy Apply tag; originally: a status-aware lister over the 5 ready ATS kinds; the diff and classification; 26 sources live in shadow mode
    (dry run counts only). Tests with recorded responses.
 2. Workday listing (Adobe, Postman) and Jibe (GitHub).
 3. Open Jobs feed intake with the cursor and generation rules.
