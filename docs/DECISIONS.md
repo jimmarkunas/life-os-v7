@@ -96,3 +96,10 @@ audit, publish, repost and retention, whatever produced the job. `lifeos/sources
 normalized job through `jobs.intake.add_job` and stop. Imports point downward only (sources -> jobs -> platform);
 `tests/test_boundaries.py` enforces it. Lane and provider live on the job row, so a new producer needs no change in Jobs OS.
 Package renamed from `pipeline` to `lifeos`; the `v7_` table prefix stays.
+
+## D18 - Shared test layer (DECIDED)
+Tests mirror the code: `tests/platform`, `tests/jobs`, `tests/sources/<name>`. Shared fakes for the platform boundaries
+(database, mailbox) live in `tests/kit` and know nothing about any domain. Cross-cutting guards that every OS inherits
+live in `tests/contracts` (privacy, import boundaries, provider limits, workflow validity); the boundary test discovers
+OS packages from `lifeos/`, so a new OS needs no change there. Domain tests stay with their domain. Run:
+`python -m unittest discover -s tests -t .`

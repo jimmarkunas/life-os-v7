@@ -7,7 +7,15 @@ import unittest
 from lifeos.jobs import identity
 
 ROOT = Path(__file__).resolve().parents[2] / "lifeos"
-ALLOWED = {"platform": set(), "jobs": {"platform"}, "sources": {"platform", "jobs"}}
+LAYERS = sorted(p.name for p in ROOT.iterdir() if p.is_dir() and (p / "__init__.py").exists())
+
+
+def allowed(layer):
+    """platform imports nothing; producers (sources) may use platform and any OS; every other layer (an OS such as
+    jobs, finance, ...) may use platform only. A new OS under lifeos/ is covered automatically."""
+    if layer == "platform":
+        return set()
+    return {"platform", *LAYERS} if layer == "sources" else {"platform"}
 
 
 def layer_imports(layer):
@@ -22,8 +30,8 @@ def layer_imports(layer):
 
 class BoundaryTests(unittest.TestCase):
     def test_imports_only_point_downward(self):
-        for layer, allowed in ALLOWED.items():
-            bad = [(f, to) for f, to in layer_imports(layer) if to != layer and to not in allowed]
+        for layer in LAYERS:
+            bad = [(f, to) for f, to in layer_imports(layer) if to != layer and to not in allowed(layer)]
             self.assertEqual(bad, [], f"{layer} must not import {sorted({t for _, t in bad})}")
 
     def test_the_same_opening_has_one_identity(self):
