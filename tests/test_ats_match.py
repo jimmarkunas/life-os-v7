@@ -31,3 +31,29 @@ class MatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MoreBoardTests(unittest.TestCase):
+    def _board(self, kind, payload):
+        from unittest import mock
+        with mock.patch.object(ats_match, "_json", lambda url: payload):
+            return ats_match.board(kind, "acme")
+
+    def test_each_new_board_shape_is_read(self):
+        self.assertEqual(self._board("recruitee", {"offers": [{"title": "PM", "careers_url": "u", "city": "Austin", "country": "US"}]}),
+                         [("PM", "u", "Austin US")])
+        self.assertEqual(self._board("bamboohr", {"result": [{"id": 5, "jobOpeningName": "PM", "location": {"city": "Austin", "state": "TX"}}]}),
+                         [("PM", "https://acme.bamboohr.com/careers/5", "Austin TX")])
+        self.assertEqual(self._board("breezy", [{"name": "PM", "url": "u", "location": {"name": "Remote"}}]), [("PM", "u", "Remote")])
+        self.assertEqual(self._board("pinpoint", {"data": [{"title": "PM", "url": "u", "location": {"name": "NYC"}}]}),
+                         [("PM", "u", "NYC")])
+
+    def test_missing_board_is_empty_not_an_error(self):
+        for kind in ("recruitee", "bamboohr", "breezy", "pinpoint"):
+            self.assertEqual(self._board(kind, None), [])
+
+    def test_smartrecruiters_pages_until_a_short_page(self):
+        from unittest import mock
+        pages = iter([{"content": [{"id": str(i), "name": "J"} for i in range(100)]}, {"content": [{"id": "x", "name": "J"}]}])
+        with mock.patch.object(ats_match, "_json", lambda url: next(pages)):
+            self.assertEqual(len(ats_match.board("smartrecruiters", "acme")), 101)
