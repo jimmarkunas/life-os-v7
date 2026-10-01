@@ -114,7 +114,7 @@ Dice is bundled into the US Remote producer, not built as a newsletter source.
 `lifeos/jobs/lanes.py` holds `LanePolicy` records and one `qualify()` (see docs/LANES.md). US Remote freshness stays 14 days;
 Scale-Up has a 30-day age gate; Skilled Worker is a disabled record. Retention follows the canon (30-day stale purge, 90-day
 tombstone) plus: Applied without reaching interview in 30 days is purged, an interview-stage job is kept. Scale-Up is built and tested
-but not scheduled until Jim promotes it.
+(promoted to the schedule by Jim on 2026-10-01, D32).
 
 ## D21 - Retention follows the canon; Applied is never retired by Jobs yet (DECIDED, 2026-10-01)
 30-day retirement of unapplied, undecided jobs on the employer Posting Date (else First Surfaced), 90-day tombstone, no Lifecycle dependence. Applied jobs
@@ -179,3 +179,7 @@ After D30, GitHub fired no scheduled run for 5+ hours (it fired 2 of ~11 earlier
 `workflow_dispatch` with `tick=true` (a free cron service, any provider; it holds a Actions-only token for this one repo and no logic or data). A tick behaves exactly like a scheduled run: same gate
 (`lifeos.platform.gate` skips it if a run started in the last 50 minutes), `PIPELINE` from `V7_PIPELINE`, `LIVE` from `V7_LIVE`. All pipeline code, state and secrets stay in this repo and GitHub Actions.
 Still no LLM-hosted scheduler. The timer can be replaced by any other HTTP cron without a code change.
+
+## D32 — Scale-Up web acquisition is scheduled; the unused v7_runs table is retired (Jim, 2026-10-01)
+- Step 5c (`lifeos.run web-scale-up --limit 12`) now runs in every scheduled run (`PIPELINE`), not only on dispatch. It uses no TinyFish budget (public ATS boards only); a failure is counted by the existing failed-stage check.
+- `v7_runs` was created by the first schema and never read or written. It is removed from the schema and from `store.TABLES`. An existing empty `v7_runs` in Hostinger is left in place (nothing references it); drop it by hand when convenient.

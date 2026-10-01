@@ -14,7 +14,7 @@ and its lifecycle are shared. A lane adds only opportunity policy, as data (`lif
 | Route evidence | none | Scale-up, positive required | Skilled Worker, positive required |
 | Market | US | UK | UK (unknown market = Review) |
 | Geography evidence | none | positive required | London positive; named non-target place negative; UK-remote / unplaced = Review |
-| Status | active | built, not scheduled until promoted | active (Phase 2, Jim 2026-10-01); depends on the sponsor register being loaded |
+| Status | active | active, scheduled (Jim 2026-10-01, D32) | active (Phase 2, Jim 2026-10-01); depends on the sponsor register being loaded |
 
 Decisions (Jim, 2026-10-01): US Remote keeps 14 days (the Notion canon says 7). Scale-Up gets a 30-day age gate (the earlier canon had
 none; age is still not closure evidence, a closed vacancy is excluded in every lane). A job eligible for both UK routes is one
@@ -43,7 +43,7 @@ Only our own pages are touched (matched by stored page id). Hostinger: descripti
 `lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (13 listable today: 5 Ashby, 3 Greenhouse, 2 Workable, Lever, Pinpoint, Workday; 23 need a
 site parser, 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
 geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
-(workflow input `web_scale_up`): dispatch only, never scheduled until promoted.
+(workflow input `web_scale_up`; also part of every scheduled run, 12 due boards per run).
 
 ## UK Skilled Worker (Phase 2)
 Route evidence is the Home Office register of licensed sponsors, Skilled Worker route, A-rated (`lifeos/sources/sponsor_register.py`, stage `sponsors`,

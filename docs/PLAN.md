@@ -71,7 +71,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 | Step | Ship | Acceptance (on real data) |
 |---|---|---|
 | **1 sweep** | this commit | dry run prints counts; `--live` moves mail and Inbox count drops; re-run moves 0 |
-| 2 store schema | `v7_jobs`, `v7_runs` tables + connectivity check via SSH tunnel | CI creates tables; re-run is a no-op |
+| 2 store schema | `v7_jobs` and the other `v7_` tables + connectivity check via SSH tunnel | CI creates tables; re-run is a no-op |
 | 3 extract: Lensa | parse cards (+ age text -> freshness gate) from labeled Lensa mail into `NEW` / `EXCLUDED_STALE` rows | row count matches the cards in 3 hand-checked emails |
 | 4 extract: LinkedIn, Jobright (done) | same for the other senders; canonical URLs (no personal tracking tokens stored); Jobright gives salary + age | parsed real samples: 6/6 cards each, no tracking query in stored URLs |
 | 5 resolve + describe | final URL + `apply_kind` + full job description (JSON-LD / ATS API / page text) | 20 sampled rows hand-verified; every resolved row has non-empty full text |
