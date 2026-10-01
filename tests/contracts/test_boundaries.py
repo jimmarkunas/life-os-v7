@@ -6,7 +6,7 @@ import unittest
 
 from lifeos.jobs import identity
 
-ROOT = Path(__file__).resolve().parents[1] / "lifeos"
+ROOT = Path(__file__).resolve().parents[2] / "lifeos"
 ALLOWED = {"platform": set(), "jobs": {"platform"}, "sources": {"platform", "jobs"}}
 
 
