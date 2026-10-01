@@ -175,7 +175,7 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
         self.assertEqual(scheduled, ["hourly.yml"])
-        self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 1)
+        self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 3)   # D30: three triggers, one gate
 
     def test_machine_input_universes_are_frozen(self):
         """A change to a source registry must be deliberate: update these numbers in the same commit."""
