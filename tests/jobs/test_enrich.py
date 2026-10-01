@@ -73,5 +73,14 @@ class FallbackOnceTests(unittest.TestCase):
         self.assertEqual(counts["fallback_attempted"], 1)
 
 
+class EmbeddedDataTests(unittest.TestCase):
+    def test_a_shell_page_with_the_posting_in_next_data_is_read(self):
+        body = ("Responsibilities: build pipelines and own data quality. You will need experience with SQL and Python skills. " * 5)
+        page = ('<html><title>Senior Data Engineer | Acme</title><body><div id="root"></div>'
+                '<script id="__NEXT_DATA__" type="application/json">{"props": {"job": {"description": "' + body + '"}}}</script></body></html>')
+        result = enrich.parse_html("https://careers.example.com/j/1", "Senior Data Engineer", page)
+        self.assertEqual((result["outcome"], result["source_kind"]), ("ready", "next_data"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -79,6 +79,13 @@ class ReaderTests(unittest.TestCase):
         job = read("https://jobs.ashbyhq.com/acme/abcdef-12345/application", {"job-postings/abcdef-12345": (200, single)})
         self.assertEqual((job["html"], job["posted"]), ("<p>one</p>", "2026-09-25"))
 
+    def test_shopify_careers_pages_are_read_through_ashby(self):
+        single = {"title": "PM", "descriptionHtml": "<p>shop</p>", "publishedAt": "2026-09-26"}
+        url = "https://www.shopify.com/careers/senior-pm_0a1b2c3d-1111-2222-3333-444455556666"
+        job = read(url, {"/shopify/job-postings/0a1b2c3d-1111-2222-3333-444455556666": (200, single)})
+        self.assertEqual((job["html"], job["posted"]), ("<p>shop</p>", "2026-09-26"))
+        self.assertIsNone(read("https://www.shopify.com/pricing", {}))
+
     def test_reader_failures_are_counted_by_status_and_path_shape_only(self):
         ats_detail.misses()
         self.assertIsNone(read("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Austin/Product-Manager_R9", {"/wday/cxs": (500, "")}))

@@ -178,33 +178,45 @@ def smartrecruiters(parts):
     return _job(data.get("name"), body, data.get("releasedDate"))
 
 
+def _ashby_single(org, ident):
+    """Ashby's single-job endpoint (the one V2 proved) -> job dict | {"closed": True} | None."""
+    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(org)}/job-postings/{quote(ident)}")
+    if data == "gone":
+        return {"closed": True}
+    if isinstance(data, dict) and data.get("descriptionHtml"):
+        return _job(data.get("title"), data.get("descriptionHtml"), data.get("publishedAt") or data.get("updatedAt"))
+    return None
+
+
 def ashby(parts):
-    """https://jobs.ashbyhq.com/{org}/{id}[/application] -> the single-job endpoint (the one V2 proved), else the org's
-    public job board (every published job, with descriptionHtml)."""
+    """https://jobs.ashbyhq.com/{org}/{id}[/application] -> the single-job endpoint, else the org's public job board."""
     segs = [s for s in parts.path.split("/") if s]
     if len(segs) < 2:
         return None
-    org, ident = quote(segs[0]), segs[1]
-    one = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{org}/job-postings/{quote(ident)}")
-    if one == "gone":
-        return {"closed": True}
-    if isinstance(one, dict) and one.get("descriptionHtml"):
-        return _job(one.get("title"), one.get("descriptionHtml"), one.get("publishedAt") or one.get("updatedAt"))
-    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{org}")
+    one = _ashby_single(segs[0], segs[1])
+    if one:
+        return one
+    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(segs[0])}")
     if data == "gone":
         return {"closed": True}
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, list):
         return None
     for job in jobs:
-        if str(job.get("id", "")).lower() == ident.lower():
+        if str(job.get("id", "")).lower() == segs[1].lower():
             return _job(job.get("title"), job.get("descriptionHtml"), job.get("publishedAt"))
     return {"closed": True}
 
 
+def shopify(parts):
+    """https://www.shopify.com/careers/{slug}_{uuid} -> Shopify's Ashby board, job {uuid}."""
+    match = re.search(r"^/careers/[^/]+_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", parts.path, re.I)
+    return _ashby_single("shopify", match.group(1)) if match else None
+
+
 READERS = (("myworkdayjobs.com", workday), ("apply.workable.com", workable), ("bamboohr.com", bamboohr),
            ("oraclecloud.com", oraclecloud), ("recruiting.paylocity.com", paylocity), ("ultipro.com", ukg), ("ukg.com", ukg),
-           ("smartrecruiters.com", smartrecruiters), ("ashbyhq.com", ashby))
+           ("smartrecruiters.com", smartrecruiters), ("ashbyhq.com", ashby), ("shopify.com", shopify))
 
 
 def _shape(path):

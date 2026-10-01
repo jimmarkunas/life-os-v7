@@ -42,3 +42,32 @@ def posted_date(posting):
             return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
         except ValueError:
             return None
+
+
+NEXT_DATA = re.compile(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', re.S | re.I)
+DESCRIPTION_KEYS = {"description", "jobdescription", "job_description", "descriptionhtml", "fulldescription",
+                    "jobdescriptionhtml", "jobdetails", "jobcontent"}
+
+
+def embedded_description(html, minimum=200):
+    """Longest description-like string in the page's embedded Next.js data (the tier V2 uses between JSON-LD and plain
+    text), or None. Server-rendered career sites often carry the whole posting here even when the visible page is a shell."""
+    match = NEXT_DATA.search(html or "")
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except ValueError:
+        return None
+    best, stack = "", [data]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.lower() in DESCRIPTION_KEYS and isinstance(value, str):
+                    best = value if len(value) > len(best) else best
+                else:
+                    stack.append(value)
+        elif isinstance(node, list):
+            stack.extend(node)
+    return best if len(best) >= minimum else None

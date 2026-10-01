@@ -110,7 +110,12 @@ def parse_html(url, title, html):
         found_title, posted = posting.get("title") or "", jsonld.posted_date(posting)
         valid_through = _parse_date(str(posting.get("validThrough") or ""))
     else:
-        desc, source_kind, posted, valid_through = jd.describe(body_text, is_html=False), "page_text", None, None
+        embedded = jsonld.embedded_description(html)
+        if embedded:
+            desc, source_kind = jd.describe(embedded, is_html=True), "next_data"
+        else:
+            desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
+        posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
     return finish(title, desc, found_title, posted, source_kind, valid_through)
 
@@ -123,7 +128,7 @@ def finish(title, desc, found_title, posted, source_kind, valid_through):
         return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
     if problem == "thin":
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
-    if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind == "page_text" else ""):
+    if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else ""):
         return {"outcome": "mismatch"}
     today = _now().date()
     if valid_through and valid_through < today:
