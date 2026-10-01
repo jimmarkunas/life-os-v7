@@ -17,8 +17,8 @@ PLATFORMS = (
     "python", "java", "javascript", "typescript", "node.js", "react", "angular", "vue", "golang", "rust", "c#",
     ".net", "php", "ruby", "rails", "django", "spring boot", "sql", "mysql", "postgresql", "mongodb", "dynamodb", "redis",
     "elasticsearch", "snowpark", "airflow", "dbt", "spark", "hadoop", "tensorflow", "pytorch", "llm", "openai",
-    "generative ai", "machine learning", "retrieval augmented generation", "agile", "scrum", "safe agile", "scaled agile", "kanban", "waterfall", "prince2", "itil",
-    "six sigma", "lean six sigma", "pmp", "csm", "cspo", "togaf", "pmi", "devops", "ci/cd", "microservices", "headless",
+    "generative ai", "machine learning", "retrieval augmented generation", "agile", "scrum", "safe agile", "scaled agile", "kanban", "waterfall", 
+    "lean six sigma", "devops", "ci/cd", "microservices", "headless",
     "composable commerce", "mach alliance", "saas", "paas", "iaas", "api", "sdk", "etl", "ipaas", "rpa", "blockchain",
     "tealium", "google analytics", "adobe analytics", "amplitude", "mixpanel", "optimizely web", "launchdarkly",
 )
@@ -93,10 +93,9 @@ HARD_FAMILY = (
 )
 
 # Generic shape of each dimension (a requirement belongs to exactly one, first match wins in this order).
-DIM_ROLE = (r"\b\d+\s*\+?\s*(?:years?|yrs?)\b|\bsenior\b|\bprincipal\b|\bdirector\b|\bhead of\b|\bexecutive\b|\bc-?level\b|"
-            r"\bvp\b|\bvice president\b|\bmentor|\bpeople management\b|\bmanage (?:a )?team")
+DIM_ROLE = (r"\b\d+\s*\+?\s*(?:years?|yrs?)\b|\bsenior\b|\bprincipal\b|\bdirector\b|\bhead of\b|\bexecutive accountab\w+|\bc-?level\b|"
+            r"\bvp\b|\bvice president\b|\bmentor|\bpeople management\b|\bmanage (?:a )?team|\bportfolio\b|\baccountab\w+|\bauthority\b")
 DIM_TECH = (r"\bplatform\b|\barchitect\w*|\bapis?\b|\bintegrat\w+|\bcloud\b|\binfrastructure\b|\bsoftware\b|\bsystems?\b|"
             r"\bsaas\b|\btechnical\b|\btechnology\b|\bstack\b|\bdata\b|\bmigrat\w+|\breplatform\w*|\bmodernization\b")
-DIM_DELIVERY = (r"cross-?functional|multi-?(?:team|vendor|market|country|region)|\bglobal\b|\benterprise\b|large[- ]scale|"
-                r"\bcomplex\w*|ambigu\w+|\brisks?\b|dependenc\w+|governance|\bbudgets?\b|\bportfolio\b|stakeholders?|"
-                r"distressed|regulated|at scale|\bvendors?\b")
+DIM_DELIVERY = (r"multi-?(?:team|vendor|market|country|region|organi[sz]ation)|\bglobal\b|\benterprise\b|large[- ]scale|"
+                r"\bcomplex\w*|ambigu\w+|distressed|high-?risk|at scale|\bconcurrent\b|multiple (?:teams|vendors|markets|organi[sz]ations)")

@@ -6,7 +6,7 @@ from lifeos.jobs.fit import lexicon
 from lifeos.jobs.fit.profile import norm, term_regex
 
 _PLATFORM_RX = sorted(((t, term_regex(t)) for t in lexicon.PLATFORMS), key=lambda p: -len(p[0]))
-_STRICT = re.compile(r"requirement|required|must|minimum|basic qualification", re.I)
+_STRICT = re.compile(r"required|must|minimum|mandatory|basic qualification", re.I)
 _OPTIONAL = re.compile(lexicon.OPTIONAL, re.I)
 _SHAPE = re.compile(lexicon.SHAPE, re.I)
 _YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:-\s*\d{1,2}\s*)?(?:\+\s*)?(?:years?|yrs?)\b", re.I)
@@ -14,7 +14,7 @@ _TRIGGER = re.compile(r"(?:experience|proficien\w*|knowledge|familiar\w*|experti
                       r"(?:with|in|of|using|on)\s+([^.;:()\n]{3,140})", re.I)
 _NOT_TECH = {"english", "spanish", "french", "german", "bachelor", "master", "masters", "mba", "phd", "us", "usa", "uk",
              "united", "states", "fluent", "strong", "excellent", "proven", "good", "deep", "solid", "senior", "the",
-             "a", "an", "our", "your", "ability", "understanding", "working", "hands", "agile"}
+             "a", "an", "our", "your", "ability", "understanding", "working", "hands", "agile", "rest", "json", "xml", "http", "html", "css", "kpi", "kpis", "okr", "okrs", "roi", "b2b", "b2c", "saas", "sla", "slas"}
 _SPLIT = re.compile(r",|/|\band\b|\bor\b|&|\bsuch as\b|\be\.g\.|\bincluding\b|\bi\.e\.")
 
 
