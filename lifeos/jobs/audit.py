@@ -1,12 +1,14 @@
 """Precision audit: no-network pass over READY and PUBLISHED rows with the quality guards.
 
 A failing row goes back to NEW (final link cleared, reason audit_*) so it is resolved again with the stricter rules.
-A failing PUBLISHED row also has its Notion page trashed and its ledger hash removed. Logs: counts only.
+A failing PUBLISHED row also has its Notion page trashed and its ledger hash removed, UNLESS a human pursuit may exist: lifeos.jobs.guard
+protects a page that is Applied, has an Applied On date or a Saturn Decision, matches an active hiring-pipeline opportunity, or cannot be read.
+A protected row is left exactly as it is (PUBLISHED, page untouched) and only counted. Logs: counts only.
 """
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import quality, store
+from lifeos.jobs import guard, hiring_pipeline, quality, store
 from lifeos.jobs.identity import url_key
 from lifeos.platform import notion_client
 
@@ -25,11 +27,11 @@ def judge(url, full_text):
 
 
 def run(limit, live, environ=os.environ):
-    counts = {"checked": 0, "failed": 0, "demoted": 0, "trashed": 0, "trash_errors": 0, "by_reason": {}}
+    counts = {"checked": 0, "failed": 0, "demoted": 0, "trashed": 0, "trash_errors": 0, "by_reason": {}, "protected": {}}
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT j.id, j.status, j.final_apply_url, j.notion_page_id, d.full_text FROM v7_jobs j"
+            cursor.execute("SELECT j.id, j.status, j.final_apply_url, j.notion_page_id, d.full_text, j.company, j.title FROM v7_jobs j"
                            " LEFT JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status IN ('READY','PUBLISHED')"
                            " ORDER BY j.id LIMIT %s", (limit,))
             rows = cursor.fetchall()
@@ -42,8 +44,19 @@ def run(limit, live, environ=os.environ):
     if not live or not bad:
         return counts
     client = notion_client.Client(environ) if any(r[3] for r, _ in bad) else None
-    for (job_id, status, url, page_id, _), why in bad:
+    opportunities = []
+    pipeline_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    if client and pipeline_id:
+        opportunities, state = hiring_pipeline.snapshot(client, pipeline_id)
+        if state != "ok":
+            counts["protected"]["handoff_unreadable"] = len([1 for r, _ in bad if r[3]])
+            bad = [(r, why) for r, why in bad if not r[3]]            # cannot rule out a pursuit: leave every published row alone
+    for (job_id, status, url, page_id, _, company, title), why in bad:
         if page_id and client:
+            held = guard.protection(client, page_id, company, title, opportunities)
+            if held:
+                counts["protected"][held] = counts["protected"].get(held, 0) + 1
+                continue
             try:
                 client.call("PATCH", f"/pages/{page_id}", {"in_trash": True})
                 counts["trashed"] += 1

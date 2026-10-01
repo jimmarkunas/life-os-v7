@@ -135,3 +135,26 @@ becomes active when INT-7.1A can prove the absence of progression.
 ## D24 — Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff
 - Skilled Worker is active (Jim, 2026-10-01). Route evidence = the actual employer on the sponsor register; recruiters and unloaded registers are Review, never NEGATIVE; 72 Fit floor, 14 days, GBP 65,000 explicit pay floor, London/UK-remote geography, unknown market = Review. Lane routing is `decide_all`; policy version l4.
 - INT-7.1A is the Hiring Pipeline page read by `hiring_pipeline.py`: it protects pursuits with an ACTIVE opportunity (company and role must both match), never unprotects, and fails closed when configured but unreadable. Calendar/Gmail correlation is deliberately not built: it cannot be made deterministic enough to prove the ABSENCE of progression, which is what retiring an Applied job needs.
+
+## D12 amendment (Jim, 2026-10-01): free TinyFish Fetch for unreadable final pages
+D12 stands for everything except one narrow, approved use: when a job's FINAL employer/ATS page refuses plain HTTP (or returns an empty page), enrichment may make
+ONE free TinyFish Fetch of that page (or its public JSON endpoint, e.g. Workday CXS), counted against the daily Fetch cap BEFORE it is sent, never repeated for the same
+job (`description_empty_tf`). The metered Agent is never used outside the link chain. Without this, jobs whose final page is a Workday-style site would sit on HOLD
+forever. The wallet is not spent; the cap is the limit.
+
+## D25 — One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)
+GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring scheduler for V7. No ChatGPT/LLM-hosted schedule, no second scheduler. Any wider LIFE OS
+"Daily Runs" scheduling that conflicts is superseded for V7 (the canon page needs updating on the Notion side). The workflow stays a thin dispatcher over `lifeos.run`.
+
+## D26 — Freshness has one authority; destructive Ledger operations ask the human-state guard
+- `lifeos.jobs.lanes.POLICIES[...].max_age_days` is the only freshness number. Enrichment consults the job's lane policy (`enrich.finish(..., lane)`), so a Scale-Up
+  job is no longer cut at 14 days. Newsletter ingest keeps one coarse mail-age pre-filter (to avoid spending link-resolution budget on stale mail) whose number is read from the
+  US Remote policy. A test fails the build if any other module defines its own freshness constant.
+- `lifeos.jobs.guard.protection()` runs before audit trashes a published page: Applied, Applied On, Saturn Decision, an active hiring-pipeline opportunity, or an unreadable page
+  all protect it (fail closed); the row is left PUBLISHED and only counted. Any future destructive Ledger operation must call the guard first.
+
+## D27 — What the first live-shaped dry runs taught (run 85, 2026-10-01)
+- Open Jobs: one generation held 562,627 events (287,980 upserts, 274,647 removes); with title family, US and age filters alone 9,370 postings still passed, so a bulk feed now requires POSITIVE remote evidence (location, title or the description's explicit statement); a posting that never says remote is not a candidate here. The 3,000-per-generation valve stays and is always counted (`over_cap`).
+- Sponsor register: 120,417 Skilled Worker, A-rated entries read from the gov.uk CSV (dry run).
+- Hiring Pipeline page: readable; 5 active opportunities, 2 with interview rounds; one title does not follow "Company - Role" and cannot match (it protects nothing until renamed).
+- Dice: a job detail page answers plain HTTP with JobPosting JSON-LD (description 5,588 chars) and an "Easy Apply" marker; enrichment's existing JSON-LD tier reads it, and an Easy Apply Dice page is now flagged `apply_kind=easy_apply` (Ledger Source Types "Easy Apply"). Dice search stays script-rendered: no discovery.
