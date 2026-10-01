@@ -71,3 +71,12 @@ class PropertyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VisibleLaneLabel(unittest.TestCase):
+    def test_scale_up_uses_the_ledgers_existing_option_spelling(self):
+        row = {"title": "T", "company": "C", "url": "https://x.example/j/1", "source": "web", "provider": "Ashby", "lane": "Scale-Up",
+               "key": "k", "first_seen": datetime.date(2026, 10, 1), "posted": None}
+        props = publish.properties(row)
+        self.assertEqual(props["Visible Lane"]["select"]["name"], "Scale-up")          # not a new "Scale-Up" option
+        self.assertEqual(props["Eligible Lanes"]["multi_select"], [{"name": "Scale-Up"}])  # Eligible Lanes' own option is "Scale-Up"
