@@ -145,69 +145,80 @@ class Client:
         return page["id"]
 
 
-def _seed(connection, client):
-    """One-time cold start: remember every URL already in the Ledger."""
+def _seeded(connection):
     with connection.cursor() as cursor:
         cursor.execute("SELECT COUNT(*) FROM v7_ledger_urls WHERE source='seed'")
-        if cursor.fetchone()[0]:
-            return 0
-    urls = client.ledger_urls()
+        return cursor.fetchone()[0] > 0
+
+
+def _store_seed(connection, urls):
+    """Remember every URL already in the Ledger (plus a marker row so the read is never repeated)."""
+    rows = [("0" * 64, "seed", _now())] + [(key, "seed", _now()) for key in urls]
     with connection.cursor() as cursor:
-        cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'seed',%s)",
-                       ("0" * 64, _now()))
-        for key in urls:
-            cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'seed',%s)",
-                           (key, _now()))
-    return len(urls)
+        for start in range(0, len(rows), 500):
+            cursor.executemany("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,%s,%s)",
+                               rows[start:start + 500])
+
+
+def _pick(connection, limit):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.first_seen, j.posted_date,"
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text"
+            " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status='READY'"
+            " AND j.notion_page_id IS NULL ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
+        rows = cursor.fetchall()
+        known = set()
+        for row in rows:
+            cursor.execute("SELECT 1 FROM v7_ledger_urls WHERE url_hash=%s", (url_key(row[4]),))
+            if cursor.fetchone():
+                known.add(row[0])
+    return rows, known
 
 
 def run(limit, live, environ=os.environ):
+    """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
     counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
     client = Client(environ)
     with store.connect() as connection:
         store.ensure_schema(connection)
-        if live:
-            counts["seeded"] = _seed(connection, client)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.first_seen, j.posted_date,"
-                " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text"
-                " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status='READY'"
-                " AND j.notion_page_id IS NULL ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
-            rows = cursor.fetchall()
-        counts["picked"] = len(rows)
-        for (job_id, key, title, company, url, source, first_seen, posted, summary, resp, req, qual, full) in rows:
-            digest = url_key(url)
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1 FROM v7_ledger_urls WHERE url_hash=%s", (digest,))
-                known = cursor.fetchone() is not None
-            if known:
-                counts["duplicate"] += 1
-                if live:
-                    with connection.cursor() as cursor:
-                        cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', unresolved_reason='in_ledger', "
-                                       "updated_at=%s WHERE id=%s", (_now(), job_id))
-                continue
-            if not live:
-                counts["created"] += 1
-                continue
-            desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
-            if not any((summary, resp, req, qual)):
-                desc["summary"] = (full or "")[:6000]
-            row = {"title": title, "company": company, "url": url, "source": source, "key": key,
-                   "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted}
-            try:
-                page_id = client.create(properties(row), body_blocks(key, desc))
-            except NotionError:
-                counts["failed"] += 1
-                if counts["failed"] >= 3:          # systemic (auth/schema/limit): stop instead of hammering
-                    break
-                continue
-            with connection.cursor() as cursor:
-                cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s WHERE id=%s",
-                               (page_id, _now(), job_id))
-                cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
-                               (digest, _now()))
+        need_seed = live and not _seeded(connection)
+    if need_seed:
+        urls = client.ledger_urls()                                   # slow: no connection open
+        with store.connect() as connection:
+            _store_seed(connection, urls)
+        counts["seeded"] = len(urls)
+    with store.connect() as connection:
+        rows, known = _pick(connection, limit)
+    counts["picked"] = len(rows)
+    for (job_id, key, title, company, url, source, first_seen, posted, summary, resp, req, qual, full) in rows:
+        if job_id in known:
+            counts["duplicate"] += 1
+            if live:
+                with store.connect() as connection, connection.cursor() as cursor:
+                    cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', unresolved_reason='in_ledger', "
+                                   "updated_at=%s WHERE id=%s", (_now(), job_id))
+            continue
+        if not live:
             counts["created"] += 1
+            continue
+        desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
+        if not any((summary, resp, req, qual)):
+            desc["summary"] = (full or "")[:6000]
+        row = {"title": title, "company": company, "url": url, "source": source, "key": key,
+               "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted}
+        try:
+            page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
+        except NotionError:
+            counts["failed"] += 1
+            if counts["failed"] >= 3:          # systemic (auth/schema/limit): stop instead of hammering
+                break
+            continue
+        with store.connect() as connection, connection.cursor() as cursor:  # record at once: a crash cannot duplicate
+            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s WHERE id=%s",
+                           (page_id, _now(), job_id))
+            cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
+                           (url_key(url), _now()))
+        counts["created"] += 1
     counts["calls"] = client.calls
     return counts
