@@ -15,25 +15,14 @@ from hashlib import sha256
 import json
 import re
 
+from lifeos.platform.names import norm          # noqa: F401 - one normalizer, shared with Interview OS
+
 VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.6, "unsupported": 0.0}   # V2/V3 arithmetic: 1, 3/4, 3/5, 0
 RANK = {"unsupported": 0, "method": 1, "adjacent": 2, "direct": 3}
 
 
 class ProfileError(ValueError):
     pass
-
-
-_BRITISH = re.compile(r"\b(?:(organis|optimis|prioritis|specialis|standardis|utilis)(?=[a-z]*\b)|(programme|centre|analyse|licence|catalogue|modelling|labour)(?=(?:s|d)?\b))")
-_AMERICAN = {"programme": "program", "organis": "organiz", "optimis": "optimiz", "prioritis": "prioritiz", "specialis": "specializ",
-             "standardis": "standardiz", "utilis": "utiliz", "centre": "center", "analyse": "analyze", "licence": "license",
-             "catalogue": "catalog", "modelling": "modeling", "labour": "labor"}
-
-
-def norm(text):
-    """Lower-case, British spellings to American (a UK "Technical Programme Manager" is a Technical Program Manager), punctuation to
-    spaces except the characters technology names use, single spaced. Profile terms and posting text both pass through here."""
-    lowered = _BRITISH.sub(lambda m: _AMERICAN[m.group(1) or m.group(2)], (text or "").lower())
-    return " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#./&-]+", " ", lowered)).strip() + " "
 
 
 def term_regex(term):

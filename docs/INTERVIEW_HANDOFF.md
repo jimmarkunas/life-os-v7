@@ -6,6 +6,11 @@ this file covers repo mechanics and safety. Decisions: docs/DECISIONS.md (D1–D
 ## Ownership
 - Interview track owns `lifeos/interview/` (new). Jobs owns `lifeos/jobs/`, `lifeos/sources/`. Shared platform lives in `lifeos/platform/` and may import nothing from either (the boundary test enforces it).
 - Shared code only when a second executable consumer exists. `platform/runtime.py` (RunContext, ExecutionResult) and `platform/redact.py` already exist; the resolve stage is runtime's second consumer, Interview is the third.
+- **Normalization is shared.** `lifeos/platform/names.py` is the one normalizer (British to American spellings, legal-suffix and generic-word rules, `same_company`, `same_role`, `split_title`). Interview imports it from `platform`; it must NOT write its own and must not import from `lifeos.jobs` (boundary test).
+- **Notion client:** reuse `lifeos.platform.notion_client.Client(environ)` by passing an environment mapping whose `NOTION_API_TOKEN` is filled from `NOTION_INTERVIEW_TOKEN` and never falling back to the Jobs token. For the read-only probe/B1, create the Notion integration with read-only capability on the Hiring Pipeline page only; widen it for B2.
+- **First machine-owned page.** Existing pages are HUMAN (no write). A page becomes MACHINE only when Interview OS creates it (B2: parent creation) or Jim adds the marker himself (explicit adoption). The marker lives in the FIRST BODY BLOCK (like Jobs' `v7-jd:1`), not a property, so existing page schemas are untouched.
+- **Workflow wiring is Claude's.** `hourly.yml` already has the `interview` job (dispatch inputs `interview_probe` and `interview`, only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID`, every Jobs secret blanked, step-level `continue-on-error` + a warning so an Interview failure never fails the Jobs run). Codex adds only `STAGES` entries `interview` and `interview-probe` in `lifeos/run.py` and the stage code.
+- **Decision numbers:** Interview D39 to D49, Jobs D50 and up.
 - Jobs reads Interview state only through `jobs/hiring_pipeline.py` (INT-7.1A): company AND role must match one ACTIVE opportunity, it can only PROTECT a Job Ledger page, and it fails closed. When Interview ships a stricter parent resolver, Jobs will switch to it; keep BLOCKED/ambiguous distinguishable from "no match" so Jobs can stay fail-closed.
 
 ## Hard rules

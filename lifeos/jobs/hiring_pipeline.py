@@ -10,13 +10,11 @@ Legacy Lifecycle / Liveness are never read.
 from dataclasses import dataclass, field
 import re
 
-from lifeos.jobs.fit.profile import norm
-from lifeos.jobs.names import LEGAL
+from lifeos.platform.names import LEGAL, norm, same_company, same_role, split_title          # noqa: F401 - shared with Interview OS
 from lifeos.platform.notion_client import NotionError
 
 ACTIVE, RETIRED = "ACTIVE", "RETIRED"
 INTERVIEW_ACTIVE, HIRING_ACTIVE = "INTERVIEW_ACTIVE", "HIRING_ACTIVE"
-SPLIT = re.compile(r"\s+[—–-]\s+|\s*[—–]\s*|:\s+")
 MAX_DEPTH, MAX_BLOCKS = 4, 2000
 
 
@@ -60,11 +58,6 @@ def _children(client, block_id, budget):
     return out
 
 
-def split_title(title):
-    parts = SPLIT.split(title.strip(), maxsplit=1)
-    return (parts[0], parts[1]) if len(parts) == 2 else (title, "")
-
-
 def _section(text, current):
     low = text.lower()
     return RETIRED if "retired" in low else ACTIVE if "active" in low else current
@@ -96,28 +89,6 @@ def read(client, root_id):
 
     walk(root_id, None, 0)
     return found
-
-
-def _tokens(text):
-    return [t for t in norm(text).split() if t not in LEGAL]
-
-
-def same_company(a, b):
-    x, y = _tokens(a), _tokens(b)
-    if not x or not y:
-        return False
-    if x == y:
-        return True
-    short, long = (x, y) if len(x) < len(y) else (y, x)
-    # "Walmart" ~ "Walmart Global Tech"; never a bare substring, and "Smith" is not "Smith & Wesson"
-    return long[:len(short)] == short and long[len(short)] not in ("&", "and", "+")
-
-
-def same_role(a, b):
-    x, y = set(_tokens(a)), set(_tokens(b))
-    if not x or not y:
-        return False
-    return len(x & y) / len(x | y) >= 0.8
 
 
 def handoff_for(company, title, opportunities):

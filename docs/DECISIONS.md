@@ -217,3 +217,8 @@ Notion keeps a trashed page for 30 days. A page with no Hostinger row or no stor
 `lifeos/platform/runtime.py` (RunContext: run id, deadline, bounded timeout; ExecutionStatus/ExecutionResult with scalar-only detail) and `lifeos/platform/redact.py` (structured and free-text redaction; meeting passcodes, meeting ids, join tokens, Notion ids, emails, URL secrets)
 are ported and trimmed from V2. Counts-only logs remain the primary control; redaction guards exception text and any diagnostic. The resolve stage's batch deadline is runtime's first consumer; Interview OS is the next.
 `docs/INTERVIEW_HANDOFF.md` is the shared contract for the Interview track: ownership, hard rules, build order, the one open decision (how Derived content is produced).
+
+## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
+`lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
+`hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
+(the gate and the stale-pipeline alert are keyed on run success). Decision numbers: Interview D39 to D49, Jobs D50 and up.

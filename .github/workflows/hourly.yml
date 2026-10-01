@@ -6,6 +6,14 @@ on:
     - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
+      interview_probe:
+        description: "Interview OS shape probe (counts only, never writes): reads the Hiring Pipeline page with the separate Interview token"
+        type: boolean
+        default: false
+      interview:
+        description: "Interview OS stage (dry run unless Actually move mail is ticked); a failure is a warning and never fails the Jobs run"
+        type: boolean
+        default: false
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
         type: boolean
@@ -320,6 +328,56 @@ jobs:
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
+
+  interview:
+    # Interview OS runs in its OWN job (D38/handoff): dispatch-only until promoted, no Jobs secrets, and its failure never fails the Jobs run
+    # (the stale-pipeline alert and the gate are keyed on run success). Step-level continue-on-error + a warning, not job-level.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:                                   # least privilege: blank every secret this job does not use (workflow-level env is inherited)
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - id: iprobe
+        continue-on-error: true
+        name: Interview shape probe (counts only, writes nothing)
+        if: ${{ inputs.interview_probe }}
+        run: python -m lifeos.run interview-probe
+      - id: irun
+        continue-on-error: true
+        name: Interview stage (live only when Actually move mail is ticked)
+        if: ${{ inputs.interview }}
+        run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Interview warning (does not fail the run)
+        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure') }}
+        run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
