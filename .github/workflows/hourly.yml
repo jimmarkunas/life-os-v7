@@ -43,7 +43,7 @@ on:
         type: boolean
         default: false
       web_scale_up:
-        description: "UK Scale-Up web acquisition (never scheduled): poll due sponsor boards; counts only unless live"
+        description: "UK Scale-Up web acquisition (also scheduled): poll due sponsor boards; counts only unless live"
         type: boolean
         default: false
       openjobs:
@@ -252,8 +252,8 @@ jobs:
         run: python -m lifeos.run openjobs $([ "$LIVE" = "true" ] && echo --live)
       - id: web_scale_up
         continue-on-error: true
-        name: Step 5c - UK Scale-Up web acquisition (dispatch only, not scheduled until promoted)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
+        name: Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
         run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: sponsors
         continue-on-error: true

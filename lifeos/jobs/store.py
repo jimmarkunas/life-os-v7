@@ -96,14 +96,8 @@ SCHEMA = (
         fetch_urls INT NOT NULL DEFAULT 0,
         browser_seconds INT NOT NULL DEFAULT 0
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-    """CREATE TABLE IF NOT EXISTS v7_runs (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        stage VARCHAR(24) NOT NULL,
-        started_at DATETIME NOT NULL, finished_at DATETIME NULL,
-        status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
