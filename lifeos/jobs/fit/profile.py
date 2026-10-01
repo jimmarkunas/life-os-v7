@@ -55,7 +55,7 @@ class Profile:
         for row in data.get("functions") or []:
             if row.get("class") not in VALUE or not row.get("terms"):
                 raise ProfileError("function: needs a valid class and terms")
-            self.functions.append({"class": row["class"], "label": row["terms"][0],
+            self.functions.append({"class": row["class"], "label": row["terms"][0], "terms": row["terms"],
                                    "rx": [term_regex(t) for t in row["terms"]]})
         for row in self.exclusions:
             if not (row.get("terms") or row.get("patterns")):

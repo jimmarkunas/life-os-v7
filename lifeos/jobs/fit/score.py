@@ -36,6 +36,7 @@ class Req:
     cls: str
     weight: Fraction = Fraction(1)
     strength: str = ""
+    sim: float = 0.0
 
 
 @dataclass
@@ -50,6 +51,10 @@ class Result:
     buckets: dict = field(default_factory=dict)
     items: list = field(default_factory=list)
     soft: list = field(default_factory=list)
+    shadow_score: int | None = None    # the score if the semantic layer's matches were applied (shadow: never used)
+    shadow_changes: int = 0            # requirements the semantic layer would reclassify
+    shadow_flip: bool = False          # would the Go / No-Go decision differ
+    shadow_sims: list = field(default_factory=list)
 
 
 def _half_up(x):
@@ -104,7 +109,7 @@ def _classify(unit, profile):
     return "unsupported", ""
 
 
-def _requirements(units, profile, year):
+def _requirements(units, profile, year, semantic=None, changes=None):
     reqs, claimed = [], set()
     # named platforms: one technical requirement per distinct tool (a stack list is not one requirement)
     found = {}
@@ -137,7 +142,16 @@ def _requirements(units, profile, year):
         if extract.scope_hits([u]) and not _best(profile, u.norm) and u.section != "duty":
             continue                                              # team size / budget / reach: scored from scope below
         cls, strength = _classify(u, profile)
-        reqs.append(Req(_dimension(u, profile), _short(u.text), cls, _weight(u, year), strength))
+        req = Req(_dimension(u, profile), _short(u.text), cls, _weight(u, year), strength)
+        reqs.append(req)
+        if semantic is not None and cls == "unsupported":
+            changes.append((req, u.text))
+    if changes:
+        for req, (row, sim, cls) in zip((r for r, _ in changes), semantic.best_many([t for _, t in changes])):
+            if row is not None and cls != "unsupported":
+                req.cls, req.strength = cls, row["label"]
+                req.sim = sim
+        changes[:] = [(r, t) for r, t in changes if r.cls != "unsupported"]
     yrs = extract.max_years(units)
     if yrs and profile.years:
         n, unit = yrs
@@ -217,7 +231,7 @@ def _line(score, decision, reqs, gate=None):
     return f"{head} | Strengths: {', '.join(strengths) or 'none evidenced'} | Gaps: {', '.join(gaps) or 'none'}"
 
 
-def evaluate(title, company, text, profile, today):
+def evaluate(title, company, text, profile, today, semantic=None):
     """Professional Fit for one posting, plus the separate exclusion gate. `today` is a date (inflation uses its year)."""
     text = text or ""
     gate, soft = exclusions.check(title, company, text, profile)
@@ -243,7 +257,15 @@ def evaluate(title, company, text, profile, today):
         why = f"Meets the {GO_THRESHOLD}% bar."
     flat = ([Req("role", _short(title), title_cls, Fraction(1), title_strength)] if title_strength else []) + reqs
     confident = len(reqs) >= 8 and len(text) >= 1200 and len([d for d in buckets if d != "role"]) >= 2
-    return Result(score, decision, _line(score, decision, flat, gate), why, exclusion=gate["id"] if gate else None,
-                  confidence="high" if confident else "low", capped=capped,
-                  buckets={NAMES[d]: v for d, v in buckets.items()},
-                  items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft)
+    result = Result(score, decision, _line(score, decision, flat, gate), why, exclusion=gate["id"] if gate else None,
+                    confidence="high" if confident else "low", capped=capped,
+                    buckets={NAMES[d]: v for d, v in buckets.items()},
+                    items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft)
+    if semantic is not None:                       # shadow: the same posting with semantic matches applied; never used
+        changes = []
+        shadow_reqs = _requirements(units, profile, today.year, semantic, changes)
+        shadow, _ = _arithmetic(shadow_reqs, title_cls, bonus, capped)
+        result.shadow_score, result.shadow_changes = shadow, len(changes)
+        result.shadow_sims = sorted(round(r.sim, 2) for r, _ in changes)
+        result.shadow_flip = (not gate) and ((shadow >= GO_THRESHOLD) != (score >= GO_THRESHOLD))
+    return result

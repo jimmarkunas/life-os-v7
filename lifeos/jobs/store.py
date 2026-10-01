@@ -80,6 +80,8 @@ COLUMNS = (
     ("v7_jobs", "ghost_flag", "TINYINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "notion_synced_at", "DATETIME NULL", None),
     ("v7_jobs", "notion_expired_at", "DATETIME NULL", None),
+    ("v7_job_fit", "shadow_score", "SMALLINT NULL", None),
+    ("v7_job_fit", "shadow_changes", "SMALLINT NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 def existing_v7_tables(connection):

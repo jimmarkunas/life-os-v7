@@ -25,6 +25,15 @@ model version and profile hash. `publish` writes **LIFE OS Fit** and **Why It Fi
 `fit` runs after `enrich`, before `publish`. Shadow mode by default; `V7_FIT_GATE=true` makes No-Go jobs `EXCLUDED_FIT` and
 publishes only Go. Missing profile = the stage is a no-op.
 
+## Semantic layer (shadow, local, free)
+`semantic.py` + `requirements-fit.txt` (`fastembed`, a small local sentence-embedding model, cached between runs; no text leaves
+the runner). It only ranks how close a requirement line is to the profile's own capability phrases; the evidence CLASS always
+comes from that capability, never from the model (canon: no upgrade because a JD sounds similar). Cosine >= 0.82 keeps the
+capability's class, 0.72-0.82 is one step weaker, below 0.72 is no match (fail closed, stays Unsupported). **Shadow mode:** the
+real score never uses it; `v7_job_fit.shadow_score` / `shadow_changes` record what it would change and the stage log reports
+counts (jobs changed, decision flips, similarity bands). If the model cannot load, the layer is off and scoring is unchanged.
+Thresholds are starting values, to be tuned from the shadow counts against your Ledger decisions before it may affect a score.
+
 ## Known limit
 Recall depends on the profile's term lists (a requirement the profile does not name is Unsupported). Calibrate against the
 accepted outcomes and the Job Ledger before turning the gate on.
