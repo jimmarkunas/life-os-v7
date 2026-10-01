@@ -48,6 +48,12 @@ class MoreBoardTests(unittest.TestCase):
         self.assertEqual(self._board("pinpoint", {"data": [{"title": "PM", "url": "u", "location": {"name": "NYC"}}]}),
                          [("PM", "u", "NYC")])
 
+    def test_workable_jobs_keep_the_account_in_the_url(self):
+        from unittest import mock
+        widget = {"jobs": [{"title": "PM", "shortcode": "AB12", "url": "https://apply.workable.com/j/AB12", "city": "Austin"}]}
+        with mock.patch.object(ats_match, "_json", lambda url: widget):
+            self.assertEqual(ats_match.board("workable", "acme")[0][1], "https://apply.workable.com/acme/j/AB12/")
+
     def test_missing_board_is_empty_not_an_error(self):
         for kind in ("recruitee", "bamboohr", "breezy", "pinpoint"):
             self.assertEqual(self._board(kind, None), [])

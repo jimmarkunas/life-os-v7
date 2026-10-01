@@ -44,3 +44,4 @@ ACTIONS_JOB_MINUTES = 40                 # workflow timeout-minutes (platform ma
 
 # Retry rule for jobs whose final link cannot be found yet: try again on later runs, then HOLD (kept, never dropped)
 RESOLVE_MAX_ATTEMPTS = 6
+ENRICH_MAX_ATTEMPTS = 12                 # ours: a page that stays unreadable this many hourly runs goes on HOLD (visible, not retried)

@@ -65,6 +65,7 @@ COLUMNS = (
     ("v7_jobs", "resolve_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "seen_count", "INT NOT NULL DEFAULT 1", None),
     ("v7_jobs", "repost_of", "BIGINT NULL", None),
+    ("v7_jobs", "enrich_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "lane", "VARCHAR(24) NOT NULL DEFAULT 'Newsletter'", None),
     ("v7_jobs", "provider", "VARCHAR(40) NULL", None),
     ("v7_jobs", "ghost_flag", "TINYINT NOT NULL DEFAULT 0", None),
