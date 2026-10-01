@@ -179,5 +179,17 @@ def lane_funnel():
     return {"by_lane_status": by_status, "scale_up_fit": reasons}
 
 
+def scale_up_listing(fetcher=fetch, only=None):
+    """Per ready Scale-Up sponsor: listing status, failure reason and job count from the runner's own network (counts only, no text)."""
+    from lifeos.sources.web import lister                                                    # noqa: PLC0415
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["status"] != "ready" or (only and source["id"] not in only):
+            continue
+        listing = lister.list_source(source, fetcher)
+        out[source["id"]] = f"{listing.status}:{listing.reason or ''}:{len(listing.jobs)}"
+    return out
+
+
 def run(limit, live):
-    return {"lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
