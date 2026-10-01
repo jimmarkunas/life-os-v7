@@ -13,7 +13,7 @@ from lifeos.sources.web import diff, lister, registry, suppress
 
 DEFAULT_LANE = "US Remote"
 PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable",
-            "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe"}
+            "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe", "teamtailor": "Teamtailor"}
 
 
 def _now():
@@ -137,7 +137,7 @@ class SqlRepo:
     @staticmethod
     def _admit(connection, source, job, now, lane):
         """One posting into Jobs OS: the employer's own URL is the final link; a description in the list is guarded by enrich.finish."""
-        provider = PROVIDER[source["kind"]]
+        provider = PROVIDER.get(source["kind"], "Open Jobs")
         with connection.cursor() as cursor:
             key, is_new = intake.add_job(cursor, {
                 "url": job["url"], "status": "RESOLVED", "title": job["title"], "company": source["company"],
