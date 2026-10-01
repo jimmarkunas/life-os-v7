@@ -13,6 +13,7 @@ TINYFISH_SEARCH_LANES = 2                # resolve lanes that run at the same ti
 TINYFISH_SEARCH_GAP_SECONDS = 2.2 * TINYFISH_SEARCH_LANES   # ours: 13.6/min per lane, 27/min across both
 TINYFISH_SEARCH_GAP_SOLO = 2.2             # ours: 27/min when a lane has the key to itself (the 30/min provider limit)
 TINYFISH_SEARCH_SOLO_AFTER_SECONDS = 540   # Lensa only: LinkedIn's 100 searches at the shared pace are done well inside 9 minutes
+LENSA_DEADLINE_MINUTES = 15               # ours: Lensa stops starting batches after this (a run must not hold the one-run-at-a-time queue for 30 minutes); the rest waits for the next run
 TINYFISH_SEARCH_PER_RUN_LENSA = 300      # ours: Lensa + LinkedIn stay at 400 of the 500/hour allowance
 TINYFISH_SEARCH_PER_RUN_LINKEDIN = 100
 TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
