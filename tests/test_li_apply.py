@@ -40,11 +40,6 @@ class ClosedAndShapeTests(unittest.TestCase):
     def test_closed_posting_is_detected(self):
         self.assertEqual(li_apply.read("<div>No longer accepting applications</div>"), ("closed", None))
 
-    def test_offsite_anchor_shape_is_generic(self):
-        page = '<a data-tracking-control-name="public_jobs_apply-link-offsite" href="https://www.linkedin.com/jobs/view/externalApply/123?x=1">Apply</a>'
-        self.assertEqual(li_apply.apply_href_shape(page), "externalApply")
-        self.assertEqual(li_apply.apply_href_shape("<p>none</p>"), "no_offsite_anchor")
-
 
 class RelativeWrapperTests(unittest.TestCase):
     def test_relative_redir_href_is_unwrapped(self):

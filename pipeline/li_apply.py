@@ -82,41 +82,6 @@ def quick_apply_signal(body):
 CLOSED = re.compile(r"no longer accepting applications|no longer available|job (is )?closed|position has been filled", re.I)
 
 
-def apply_href_shape(body):
-    """Generic shape of the offsite Apply anchor's href (path token only - never a host or URL)."""
-    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
-        if "apply-link-offsite" in tag:
-            href = re.search(r"href=[\"']([^\"']+)", tag)
-            if not href:
-                return "no_href"
-            path = urlsplit(href.group(1)).path
-            for token in ("externalApply", "safety/go", "redir", "jobs/view", "login", "signup", "authwall"):
-                if token in path or token in href.group(1):
-                    return token
-            return "other_path" if path else "no_path"
-    return "no_offsite_anchor"
-
-
-def apply_href_diagnostics(body):
-    """Structure of the offsite Apply href, WITHOUT values: path, query parameter NAMES, how the target is written."""
-    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
-        if "apply-link-offsite" not in tag:
-            continue
-        href = re.search(r"href=[\"']([^\"']+)", tag)
-        if not href:
-            return {"href": "missing"}
-        raw = href.group(1)
-        parts = urlsplit(urljoin("https://www.linkedin.com", raw) if raw.startswith("/") else raw)
-        query = parse_qs(parts.query)
-        target = (query.get("url") or query.get("targetUrl") or query.get("redirectUrl") or [""])[0]
-        return {"absolute": raw.startswith("http"), "path": parts.path[:24], "params": ",".join(sorted(query))[:80],
-                "target_prefix": ("http" if target.startswith("http") else "/" if target.startswith("/") else
-                                  "none" if not target else "other"),
-                "target_is_linkedin": is_linkedin(target) if target.startswith("http") else None,
-                "raw_len_bucket": min(len(raw) // 100, 6)}
-    return {"href": "no_offsite_anchor"}
-
-
 def read(body):
     """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
     if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):

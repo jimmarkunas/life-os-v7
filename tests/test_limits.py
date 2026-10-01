@@ -16,7 +16,6 @@ class LimitsTests(unittest.TestCase):
     def test_code_uses_the_canonical_numbers(self):
         self.assertEqual(budget.FETCH_DAILY_CAP, limits.TINYFISH_FETCH_DAILY_CAP)
         self.assertEqual(budget.FETCH_BATCH, limits.TINYFISH_FETCH_BATCH)
-        self.assertEqual(budget.BROWSER_USD_PER_MINUTE, limits.TINYFISH_BROWSER_USD_PER_MINUTE)
         self.assertEqual(tinyfish_search.MIN_GAP_SECONDS, limits.TINYFISH_SEARCH_GAP_SECONDS)
 
 

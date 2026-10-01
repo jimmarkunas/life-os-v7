@@ -16,36 +16,8 @@ on:
         description: "Repair pass: recover cards from recent Processed mail missing in the store (needs live)"
         type: boolean
         default: false
-      probe:
-        description: "Read-only probe of the resolve chain on a sample (counts only)"
-        type: boolean
-        default: false
-      docs_url:
-        description: "Print text of a public docs page (docs.tinyfish.ai only) for reading API shapes"
-        type: string
-        default: ""
-      probe_tinyfish:
-        description: "Read-only probe of TinyFish Fetch on a sample (counts only)"
-        type: boolean
-        default: false
-      probe_linkedin:
-        description: "Free plain-HTTP probe of the no-login LinkedIn apply-link method (counts only)"
-        type: boolean
-        default: false
-      probe_jobright:
-        description: "Free Chromium login + Apply click on a Jobright sample (counts only)"
-        type: boolean
-        default: false
-      probe_lensa:
-        description: "Free Chromium follow of Lensa job links (counts only)"
-        type: boolean
-        default: false
       resolve_jobright:
         description: "Resolve NEW Jobright jobs to final apply links and save them (saves only when live)"
-        type: boolean
-        default: false
-      probe_linkedin_browser:
-        description: "Free Chromium, no-login LinkedIn apply chain on a sample (counts only)"
         type: boolean
         default: false
       resolve_linkedin:
@@ -76,6 +48,26 @@ on:
         description: "How many READY jobs to publish this run (keep small for the first live batch)"
         type: string
         default: "60"
+env:
+  PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
+  GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+  GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+  GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+  TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+  NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+  NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+  JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
+  JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
+  LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+  LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+  LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+  LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+  LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+  LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+  LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+  LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+  # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
+  LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
 permissions:
   contents: read
 concurrency:
@@ -87,26 +79,6 @@ jobs:
     timeout-minutes: 20
     outputs:
       extract: ${{ steps.extract.outcome }}
-    env:
-      PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
-      GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-      GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -124,27 +96,6 @@ jobs:
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
         run: python -m pipeline.store
-      - name: Step 5 - resolve probe (read-only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
-        run: python -m pipeline.resolve --probe --per-source 12
-      - name: Print public API docs (docs.tinyfish.ai only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.docs_url != '' }}
-        env:
-          DOCS_URL: ${{ inputs.docs_url }}
-        run: python -m pipeline.docs_print
-      - name: Step 5 - TinyFish fetch probe (read-only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_tinyfish }}
-        run: python -m pipeline.resolve --probe-tinyfish --per-source 10
-      - name: Step 5 - LinkedIn no-login probe (free, throttled, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_linkedin }}
-        run: python -m pipeline.resolve --probe-linkedin --per-source 20
-      - name: Step 5 - Jobright browser probe (free Chromium, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.probe_jobright || inputs.probe_lensa || inputs.probe_linkedin_browser) }}
-        run: |
-          python -m playwright install --with-deps chromium
-          [ "${{ inputs.probe_jobright }}" = "true" ] && python -m pipeline.resolve --probe-jobright --per-source 8 || true
-          [ "${{ inputs.probe_lensa }}" = "true" ] && python -m pipeline.resolve --probe-lensa --per-source 8 || true
-          [ "${{ inputs.probe_linkedin_browser }}" = "true" ] && python -m pipeline.resolve --probe-linkedin-browser --per-source 10 || true
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail
@@ -156,26 +107,6 @@ jobs:
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
-      GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-      GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -188,33 +119,13 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
         run: |
           python -m playwright install --with-deps chromium
-          python -m pipeline.resolve --resolve jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+          python -m pipeline.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
 
   linkedin:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
-      GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-      GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -225,33 +136,13 @@ jobs:
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
-        run: python -m pipeline.resolve --resolve linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.run resolve-linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
 
   lensa:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
-      GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-      GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -262,33 +153,13 @@ jobs:
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
-        run: python -m pipeline.resolve --resolve lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
 
   finish:
     needs: [prep, jobright, linkedin, lensa]
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
-      GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-      GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-      TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-      NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-      JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-      JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-      # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-      LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -300,25 +171,25 @@ jobs:
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
-        run: python -m pipeline.resolve --enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
-        run: python -m pipeline.resolve --audit $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.run audit $([ "$LIVE" = "true" ] && echo --live)
       - id: publish
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
-        run: python -m pipeline.resolve --publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m pipeline.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
       - id: maintain
         continue-on-error: true
         name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
         run: |
-          python -m pipeline.resolve --sync-seen $([ "$LIVE" = "true" ] && echo --live)
+          python -m pipeline.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
           if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
-            python -m pipeline.resolve --purge $([ "$LIVE" = "true" ] && echo --live)
+            python -m pipeline.run purge $([ "$LIVE" = "true" ] && echo --live)
           fi
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}

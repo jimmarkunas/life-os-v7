@@ -13,7 +13,6 @@ TINYFISH_SEARCH_LANES = 2                # resolve lanes that run at the same ti
 TINYFISH_SEARCH_GAP_SECONDS = 2.2 * TINYFISH_SEARCH_LANES   # ours: 13.6/min per lane, 27/min across both
 TINYFISH_SEARCH_PER_RUN_LENSA = 300      # ours: Lensa + LinkedIn stay at 400 of the 500/hour allowance
 TINYFISH_SEARCH_PER_RUN_LINKEDIN = 100
-TINYFISH_BROWSER_USD_PER_MINUTE = 0.002  # paid; default cap $0 (budget.browser_cap_usd)
 TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
 
 # Notion (free official API, integration token)
