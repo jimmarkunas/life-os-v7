@@ -1,8 +1,10 @@
 """Find the employer's own posting through web search (free TinyFish Search), precision first.
 Attempt 1: ATS domains only. Attempt 2: any non-aggregator site whose host carries the company name.
 Accept only when the result title contains the job title AND the company name appears in host/title/snippet."""
-from pipeline import ats_match, classify, quality, tinyfish_search
-from pipeline.tinyfish import TinyFishError
+from lifeos.jobs.resolve import ats_match
+from lifeos.jobs import classify, quality
+from lifeos.platform import tinyfish_search
+from lifeos.platform.tinyfish import TinyFishError
 
 ATS_DOMAINS = ("greenhouse.io", "lever.co", "ashbyhq.com", "myworkdayjobs.com", "icims.com", "smartrecruiters.com",
                "workable.com", "jobvite.com", "bamboohr.com", "recruitee.com", "applytojob.com", "teamtailor.com",

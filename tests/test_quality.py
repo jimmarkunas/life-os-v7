@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import quality
+from lifeos.jobs import quality
 
 
 class UrlTests(unittest.TestCase):

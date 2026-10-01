@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import jd
+from lifeos.jobs import jd
 
 SYNTHETIC = """<div><h2>About the Role</h2><p>Acme is hiring a Project Manager to run launches.</p>
 <h3>Responsibilities</h3><ul><li>Plan launches</li><li>Report status</li></ul>

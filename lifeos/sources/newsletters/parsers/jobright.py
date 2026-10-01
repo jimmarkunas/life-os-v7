@@ -3,8 +3,8 @@
 The provider's match % is stored as evidence only (provider_score); it counts zero toward fit until Phase 2 decides a weight."""
 import re
 
-from pipeline.parsers import _anchors
-from pipeline.parsers.lensa import AGE, AGE_DAYS, Card
+from lifeos.sources.newsletters.parsers import _anchors
+from lifeos.sources.newsletters.parsers.lensa import AGE, AGE_DAYS, Card
 
 JOB = re.compile(r"jobright\.ai/jobs/info/([0-9A-Za-z]+)")
 MONEY = re.compile(r"\$\s*[\d.,]+\s*[KkMm]?\s*/\s*(?:yr|hr|year|hour)", re.I)

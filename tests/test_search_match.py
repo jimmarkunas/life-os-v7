@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import search_match
+from lifeos.jobs.resolve import search_match
 
 
 class SearchMatchTests(unittest.TestCase):

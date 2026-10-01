@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import jobright_browser as jb
+from lifeos.jobs.resolve.aggregators import jobright as jb
 
 
 class OutcomeTests(unittest.TestCase):

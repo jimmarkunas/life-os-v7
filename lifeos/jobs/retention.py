@@ -7,7 +7,8 @@ One filtered Notion query per page of 100 (the approved weekly read). Counts onl
 """
 from datetime import datetime, timedelta, timezone
 
-from pipeline import limits, notion, store
+from lifeos.jobs import store
+from lifeos.platform import limits, notion_client
 
 EXPIRE_DAYS = 14
 TRASH_DAYS = 90
@@ -21,12 +22,12 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def query_filter(cutoff):
+def query_filter(cutoff, lane):
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
         {"property": "Saturn Decision", "select": {"is_empty": True}},
         {"property": "Lifecycle", "select": {"does_not_equal": "Application"}},
-        {"property": "Visible Lane", "select": {"equals": "Newsletter"}},
+        {"property": "Visible Lane", "select": {"equals": lane}},
         {"property": "Created At", "created_time": {"before": cutoff.isoformat() + "Z"}},
     ]}
 
@@ -60,11 +61,11 @@ def purge_database(live, now):
     return counts
 
 
-def candidates(client, now):
-    """Pages (id, created, lifecycle) from the filtered query, up to MAX_PAGES pages of 100."""
+def candidates(client, now, lane):
+    """Pages (id, created, lifecycle) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
     found, cursor = [], None
     for _ in range(MAX_PAGES):
-        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=EXPIRE_DAYS))}
+        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=EXPIRE_DAYS), lane)}
         if cursor:
             body["start_cursor"] = cursor
         data = client.call("POST", f"/data_sources/{client.source}/query", body)
@@ -81,8 +82,11 @@ def candidates(client, now):
 
 def purge_notion(live, now, environ=None):
     counts = {"candidates": 0, "ours": 0, "expired": 0, "trashed": 0, "failed": 0}
-    client = notion.Client(environ) if environ is not None else notion.Client()
-    pages = candidates(client, now)                                   # slow: no DB connection open
+    client = notion_client.Client(environ) if environ is not None else notion_client.Client()
+    with store.connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT DISTINCT lane FROM v7_jobs WHERE notion_page_id IS NOT NULL")
+        lanes = [row[0] for row in cursor.fetchall()]
+    pages = [page for lane in lanes for page in candidates(client, now, lane)]   # slow: no DB connection open
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
         ours = {}
@@ -107,7 +111,7 @@ def purge_notion(live, now, environ=None):
                 client.call("PATCH", f"/pages/{page_id}", {"properties": {
                     "Lifecycle": {"select": {"name": "Expired"}},
                     "Expired At": {"date": {"start": now.date().isoformat()}}}})
-        except notion.NotionError:
+        except notion_client.NotionError:
             counts["failed"] += 1
             if counts["failed"] >= 3:
                 break

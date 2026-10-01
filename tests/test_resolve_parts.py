@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from pipeline import classify, jsonld
+from lifeos.jobs import classify, jsonld
 
 PAGE = """<html><head><script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[{"@type":"WebSite"},{"@type":"JobPosting","title":"PM",
@@ -37,7 +37,7 @@ if __name__ == "__main__":
 class TinyFishSummaryTests(unittest.TestCase):
     def test_missing_key_is_a_fixed_code(self):
         import os
-        from pipeline import tinyfish
+        from lifeos.platform import tinyfish
         os.environ.pop("TINYFISH_API_KEY", None)
         with self.assertRaises(tinyfish.TinyFishError) as ctx:
             tinyfish.fetch_many(["https://example.com"])

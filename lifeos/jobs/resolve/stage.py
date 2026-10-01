@@ -8,7 +8,8 @@ import hashlib
 import time
 from datetime import datetime, timezone
 
-from pipeline import limits, store
+from lifeos.platform import limits
+from lifeos.jobs import store
 
 
 def _now():

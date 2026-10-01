@@ -1,14 +1,14 @@
 """Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
 
 Idempotent by construction: moved mail leaves the Inbox, so the next run no longer sees it.
-Usage: python -m pipeline.sweep [--live]   (default is a dry run that changes nothing)
+Usage: python -m lifeos.sources.newsletters.sweep [--live]   (default is a dry run that changes nothing)
 """
 import argparse
 import os
 import sys
 
-from pipeline import config
-from pipeline.gmail import Gmail, GmailError
+from lifeos.sources.newsletters import config
+from lifeos.platform.gmail import Gmail, GmailError
 
 
 def sweep(gmail, live):

@@ -89,18 +89,18 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: Stage 1 - sweep
-        run: python -m pipeline.sweep $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.sources.newsletters.sweep $([ "$LIVE" = "true" ] && echo --live)
       - name: Step 3b - reconcile (repair, manual only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
-        run: python -m pipeline.extract --reconcile --live --limit 300
+        run: python -m lifeos.sources.newsletters.ingest --reconcile --live --limit 300
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
-        run: python -m pipeline.store
+        run: python -m lifeos.jobs.store
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail
         if: ${{ github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true' }}
-        run: python -m pipeline.extract $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.sources.newsletters.ingest $([ "$LIVE" = "true" ] && echo --live)
 
   jobright:
     needs: prep
@@ -119,7 +119,7 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
         run: |
           python -m playwright install --with-deps chromium
-          python -m pipeline.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+          python -m lifeos.run resolve-jobright --limit 40 $([ "$LIVE" = "true" ] && echo --live)
 
   linkedin:
     needs: prep
@@ -136,7 +136,7 @@ jobs:
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
-        run: python -m pipeline.run resolve-linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run resolve-linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
 
   lensa:
     needs: prep
@@ -153,7 +153,7 @@ jobs:
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
-        run: python -m pipeline.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
 
   finish:
     needs: [prep, jobright, linkedin, lensa]
@@ -171,25 +171,25 @@ jobs:
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
-        run: python -m pipeline.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
-        run: python -m pipeline.run audit $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run audit $([ "$LIVE" = "true" ] && echo --live)
       - id: publish
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
-        run: python -m pipeline.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
       - id: maintain
         continue-on-error: true
         name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
         run: |
-          python -m pipeline.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
+          python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
           if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
-            python -m pipeline.run purge $([ "$LIVE" = "true" ] && echo --live)
+            python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live)
           fi
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}

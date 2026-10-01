@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from pipeline import enrich
+from lifeos.jobs import enrich
 
 
 class Page:

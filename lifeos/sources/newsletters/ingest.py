@@ -2,34 +2,21 @@
 
 Only supported senders are processed; others stay pending. A message is marked Processed only AFTER its
 cards are safely written (accounting before cleanup). Dry run parses and counts; it writes nothing.
-Usage: python -m pipeline.extract [--live] [--limit N]      Logs: counts only (public repo).
+Usage: python -m lifeos.sources.newsletters.ingest [--live] [--limit N]      Logs: counts only (public repo).
 """
 import argparse
 from datetime import datetime, timezone
 import time
-from hashlib import sha256
-import re
 import sys
 
-from pipeline import config, repost, store
-from pipeline.gmail import Gmail, GmailError
-from pipeline.parsers import jobright, lensa, linkedin
+from lifeos.sources.newsletters import config
+from lifeos.jobs import intake, store
+from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.sources.newsletters.parsers import jobright, lensa, linkedin
 
 PARSERS = {"lensa": lensa.parse, "jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
 LOOKS_LIKE_JOBS = {"lensa": lensa.looks_like_jobs, "jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
 MAX_AGE_DAYS = 14   # known-older jobs are kept for dedupe but never published
-
-
-def _norm(text):
-    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
-
-
-def fuzzy_key(card):
-    return sha256("|".join(_norm(x) for x in (card.company, card.title, card.location_text)).encode()).hexdigest()
-
-
-def url_hash(url):
-    return sha256(url.encode()).hexdigest()
 
 
 def mail_age_days(received_epoch, now=None):
@@ -45,27 +32,32 @@ def status_for(card, mail_age=0):
     return "EXCLUDED_STALE" if known_age(card, mail_age) > MAX_AGE_DAYS else "NEW"
 
 
+LANE = "Newsletter"
+PROVIDERS = {"lensa": "Lensa", "jobright": "Jobright", "linkedin-alerts": "LinkedIn Jobs"}   # the Notion "Source Types" names
+
+
+def backfill_provider(connection):
+    """Rows saved before `provider` existed: label them once (idempotent)."""
+    with connection.cursor() as cursor:
+        for rule, label in PROVIDERS.items():
+            cursor.execute("UPDATE v7_jobs SET provider=%s WHERE provider IS NULL AND source=%s", (label, rule))
+
+
 def save_cards(connection, rule, message_id, cards, received_epoch=None):
-    """Insert cards idempotently. Returns (new_jobs, repeat_links)."""
+    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links)."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     mail_age = mail_age_days(received_epoch) if received_epoch else 0
     received = datetime.fromtimestamp(received_epoch, timezone.utc).replace(tzinfo=None) if received_epoch else None
     new = repeat = 0
     with connection.cursor() as cursor:
         for card in cards:
-            key = url_hash(card.url)
-            cursor.execute(
-                "INSERT IGNORE INTO v7_jobs (dedupe_key, status, title, company, location_text, source_url, salary_text,"
-                " source, fuzzy_key, posted_age_days, mail_received_at, provider_score, first_seen, last_seen, updated_at)"
-                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (key, status_for(card, mail_age), card.title[:300], card.company[:200], (card.location_text or "")[:200], card.url,
-                 (card.salary_text or "")[:80], rule, fuzzy_key(card), known_age(card, mail_age), received, card.provider_score, now, now, now))
-            new += cursor.rowcount
-            repeat += 0 if cursor.rowcount else 1
-            if cursor.rowcount:
-                repost.link(cursor, key, fuzzy_key(card), now)         # D6: same job under a new URL -> one row
-            else:
-                cursor.execute("UPDATE v7_jobs SET seen_count=seen_count+1, last_seen=%s WHERE dedupe_key=%s", (now, key))
+            key, is_new = intake.add_job(cursor, {
+                "url": card.url, "status": status_for(card, mail_age), "title": card.title, "company": card.company,
+                "location": card.location_text, "salary": card.salary_text, "source": rule, "provider": PROVIDERS[rule],
+                "lane": LANE, "age_days": known_age(card, mail_age), "received": received,
+                "provider_score": card.provider_score}, now)
+            new += is_new
+            repeat += not is_new
             cursor.execute(
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
                 " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s", (rule, key, message_id, now, key))
@@ -180,6 +172,7 @@ def main(argv=None):
         if args.live:
             with store.connect() as connection:
                 store.ensure_schema(connection)
+                backfill_provider(connection)
                 counts = extract(gmail, True, args.limit, connection)
         else:
             counts = extract(gmail, False, args.limit)
