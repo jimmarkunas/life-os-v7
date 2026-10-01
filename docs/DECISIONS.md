@@ -195,3 +195,9 @@ the first runs may report some as FAILED `bad_shape`; the counts say which.
 Otto Car and Truvi publish their own job pages, so they move to `static_complete_html` (38 of 48 listable; a page that is not a provable list simply reports FAILED `bad_shape`). The other 10 have only LinkedIn/Indeed
 company pages, a team page or a homepage: LinkedIn company jobs need a login (never used) and Indeed is bot-walled. `probe` now includes `discover_scale_up`: free TinyFish Search per sponsor, printing only `kind:slug`
 for a board V7 can already list, `own:<host>` for the sponsor's own site, or None. Results decide which rows get a real board; nothing is added automatically.
+
+## D35 — Lensa: one search per job and a 15-minute cap (Jim, 2026-10-01)
+Run 92's Lensa log (old code): 250 rows in 32 minutes, 89 resolved. Each row ran TWO searches (ATS domains, then any site) while the run budget counted ONE, so the real use was up to 2x the stated 300 (a risk to the
+500/hour allowance) and misses (143 of 250) cost the full two calls. Employer-site hits were 79 of the ~100 search hits. `search_match.find` now makes one unfiltered search per job and judges each result by
+the rule for its own kind (ATS domain: title + company; employer page: also the company in its host). Lensa also stops starting batches after 15 minutes (`LENSA_DEADLINE_MINUTES`): a run held the one-run-at-a-time queue
+for 30+ minutes; the unfinished rows stay NEW for the next run. Expected: about twice the rows per minute and a run of roughly 15-17 minutes.

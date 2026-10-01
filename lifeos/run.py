@@ -21,7 +21,8 @@ def _jobright(limit, live):
 def _lensa(limit, live):
     from lifeos.jobs.resolve.aggregators import lensa                                     # noqa: PLC0415
     from lifeos.jobs.resolve import stage                                     # noqa: PLC0415
-    return stage.run_rows("lensa", limit, live, lensa.make_resolver())
+    from lifeos.platform import limits                                                       # noqa: PLC0415
+    return stage.run_rows("lensa", limit, live, lensa.make_resolver(), deadline_minutes=limits.LENSA_DEADLINE_MINUTES)
 
 
 def _linkedin(limit, live):
