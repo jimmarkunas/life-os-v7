@@ -45,6 +45,9 @@ def body_blocks(key, description):
     return blocks
 
 
+VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}        # the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
+
+
 def properties(row):
     """row: dict with title, company, url, provider (or source), lane, key, first_seen (date), posted (date|None)."""
     provider = row.get("provider") or row["source"]
@@ -58,7 +61,7 @@ def properties(row):
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
-        "Visible Lane": {"select": {"name": lanes.lane_for(row["lane"])}},
+        "Visible Lane": {"select": {"name": VISIBLE_LANE_LABEL.get(lanes.lane_for(row["lane"]), lanes.lane_for(row["lane"]))}},
         "Eligible Lanes": {"multi_select": [{"name": n} for n in (row.get("eligible") or [lanes.lane_for(row["lane"])])]},
         "Admission Status": {"select": {"name": lanes.ADMISSION_LABEL.get(row.get("admission"), "Passed / Review")}},
     }
