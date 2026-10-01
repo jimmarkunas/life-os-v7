@@ -40,9 +40,10 @@ class JobrightTests(unittest.TestCase):
         self.assertIn("Austin, TX", first.location_text)
         self.assertEqual((second.title, second.age_days, second.salary_text), ("Delivery Manager", 3, None))
 
-    def test_match_percentage_is_not_carried(self):
-        first = jobright.parse(JOBRIGHT)[0]
-        self.assertNotIn("89", " ".join(str(getattr(first, s)) for s in first.__slots__))
+    def test_match_percentage_is_evidence_only(self):
+        first, second = jobright.parse(JOBRIGHT)
+        self.assertEqual((first.provider_score, second.provider_score), (89, 95))
+        self.assertNotIn("89", " ".join(str(getattr(first, s)) for s in first.__slots__ if s != "provider_score"))
 
 
 if __name__ == "__main__":

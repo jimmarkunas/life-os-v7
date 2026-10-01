@@ -1,5 +1,7 @@
 # Plan: Job Newsletter pipeline (Phase 1), built to grow
 
+> Binding decisions and hard constraints live in [DECISIONS.md](DECISIONS.md) and win over anything below.
+
 ## Rules that prevent the V1/V2 spin
 1. **One step at a time.** A step ships only when its acceptance check passes on real data. No step starts before the previous one is green.
 2. **One table is the queue.** Every stage reads rows in status X and writes status Y. No orchestrator, no framework, no shared "engine".
@@ -32,7 +34,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 4. **Aggregator only** (Lensa/Jobright/LinkedIn page that never resolves): published but flagged `apply_kind=aggregator`; always replaced if a better source appears later.
 - Follow redirects until the destination stops being an aggregator; canonicalize tracking URLs (e.g. LinkedIn `/comm/jobs/view/ID?...` -> `/jobs/view/ID`).
 - Jobright: read `originalUrl`/`applyLink` from the page's `__NEXT_DATA__` first; logged-in browser only as fallback.
-- Unresolvable or failed -> `status=UNRESOLVED` with a reason; retried next run, never silently dropped.
+- **No unresolved jobs, no tiered publishing** (DECISIONS D1, D2): a job is published only when fully resolved; a failing resolver is a bug to fix, not a state to ship.
 
 ## Learned from real mail (structure only; no content)
 - **Lensa** (two layouts: "jobalert/aggregated" digests with ~20 cards, and "career advocate" notes with ~3): each job is a tracked-link card with company, title, salary *estimate*, location. **No posting date**, so freshness comes from the destination page at resolve time.
