@@ -2,56 +2,24 @@ import unittest
 
 from lifeos.sources.newsletters import ingest
 from lifeos.sources.newsletters.parsers import lensa
+from tests.kit.db import FakeConn
+from tests.kit.gmail import FakeGmail
 
 
-class FakeGmail:
-    def __init__(self, messages):
-        self.messages, self.relabeled = messages, []
+def store_double():
+    """In-memory v7_jobs / v7_job_sources: a URL key is new once; no reposts in these fixtures."""
+    db = {"jobs": set(), "sources": 0}
 
-    def label_id(self, name, create=False):
-        return "PROC"
-
-    def list_ids(self, query, limit=5000):
-        return list(self.messages)[:limit]
-
-    def message(self, message_id):
-        return self.messages[message_id]
-
-    def relabel(self, ids, add=(), remove=()):
-        self.relabeled.append((list(ids), list(add)))
-
-
-class FakeCursor:
-    def __init__(self, db):
-        self.db, self.rowcount = db, 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def execute(self, sql, args=()):
+    def handler(sql, args, cursor):
         if sql.startswith("INSERT IGNORE INTO v7_jobs"):
-            key = args[0]
-            self.rowcount = 0 if key in self.db["jobs"] else 1
-            self.db["jobs"].add(key)
+            cursor.rowcount = 0 if args[0] in db["jobs"] else 1
+            db["jobs"].add(args[0])
         elif sql.startswith(("SELECT id FROM v7_jobs", "UPDATE v7_jobs")):
-            self.rowcount = 0                              # repost link / seen_count bump: no repost in these fixtures
+            cursor.rowcount = 0
         else:
-            self.rowcount = 1
-            self.db["sources"] += 1
-
-    def fetchone(self):
-        return None
-
-
-class FakeConn:
-    def __init__(self):
-        self.db = {"jobs": set(), "sources": 0}
-
-    def cursor(self):
-        return FakeCursor(self.db)
+            cursor.rowcount = 1
+            db["sources"] += 1
+    return FakeConn(handler=handler), db
 
 
 HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><tr><td>Project Manager</td></tr>'
@@ -66,24 +34,24 @@ MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
 
 class ExtractTests(unittest.TestCase):
     def test_dry_run_counts_and_writes_nothing(self):
-        gmail = FakeGmail(MESSAGES)
+        gmail = FakeGmail(messages=MESSAGES)
         counts = ingest.extract(gmail, live=False, limit=10)
         self.assertEqual((counts["messages"], counts["cards"], counts["unsupported_sender"]), (1, 2, 1))
-        self.assertEqual(gmail.relabeled, [])
+        self.assertEqual(gmail.calls, [])
 
     def test_live_saves_then_marks_only_supported_messages_and_is_repeat_safe(self):
-        gmail, conn = FakeGmail(MESSAGES), FakeConn()
+        gmail, conn = FakeGmail(messages=MESSAGES), store_double()[0]
         first = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((first["new_jobs"], first["marked_processed"]), (2, 1))
-        self.assertEqual(gmail.relabeled, [(["m1"], ["PROC"])])
+        self.assertEqual(gmail.calls, [(["m1"], ["LBL"], [])])
         second = ingest.extract(gmail, True, 10, conn)           # same links again: nothing new
         self.assertEqual((second["new_jobs"], second["repeat_links"]), (0, 2))
 
     def test_no_cards_message_stays_pending_and_stale_jobs_are_excluded(self):
-        gmail, conn = FakeGmail({"m3": ("Lensa <jobalert@lensa.com>", "<p>$100K / yr. layout we cannot read</p>", NOW)}), FakeConn()
+        gmail, conn = FakeGmail(messages={"m3": ("Lensa <jobalert@lensa.com>", "<p>$100K / yr. layout we cannot read</p>", NOW)}), store_double()[0]
         counts = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((counts["no_cards"], counts["marked_processed"]), (1, 0))
-        self.assertEqual(gmail.relabeled, [])
+        self.assertEqual(gmail.calls, [])
         old = lensa.Card("A", "B", None, "Remote", "u", age_days=15)
         self.assertEqual(ingest.status_for(lensa.Card("A", "B", None, "R", "u", age_days=5), mail_age=10), "EXCLUDED_STALE")
         self.assertEqual(ingest.status_for(lensa.Card("A", "B", None, "R", "u"), mail_age=14), "NEW")
@@ -94,7 +62,7 @@ class ExtractTests(unittest.TestCase):
 
     def test_mail_older_than_window_is_skipped_but_accounted(self):
         old = {"m9": ("Lensa <jobalert@lensa.com>", HTML, NOW - 15 * 86400)}
-        gmail, conn = FakeGmail(old), FakeConn()
+        gmail, conn = FakeGmail(messages=old), store_double()[0]
         counts = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((counts["stale_mail"], counts["new_jobs"], counts["marked_processed"]), (1, 0, 1))
 
