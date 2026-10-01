@@ -20,3 +20,9 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 - Lensa job pages return 403 to GitHub's datacenter addresses even in a real browser; nothing in V7 loads them.
 - LinkedIn's external-apply destination is behind a login wall; V7 resolves those jobs by matching the employer's board.
 - Jobright's free tier opens an upgrade dialog on the Apply click; the employer link is the page's "Original Job Post" anchor.
+
+## Web acquisition (US Remote direct boards, ours)
+`WEB_BOARDS_PER_RUN` 12 due boards per run (26 ready boards drain in three runs); `WEB_REFRESH_HOURS` 6 for a COMPLETE board, plus a deterministic
+0-59 minute slot per board; `WEB_RETRY_HOURS` 1 for a FAILED board (doubling, capped at the refresh interval); `WEB_INGEST_PER_RUN` 300 postings
+admitted per run, the rest stay PENDING and their board is due again at once. Boards are different hosts, polled `ATS_WORKERS` at a time, one list
+request per board (SmartRecruiters pages of 100, at most 30 pages). Stops a board on 403/429.

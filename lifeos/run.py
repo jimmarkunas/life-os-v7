@@ -32,6 +32,11 @@ def _linkedin(limit, live):
                                   functools.partial(linkedin.resolve_rows, budget=budget))
 
 
+def _web(limit, live):
+    from lifeos.sources.web import run as web                                                   # noqa: PLC0415
+    return web.run(limit, live)
+
+
 def _enrich(limit, live):
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
     return enrich.run(limit, live)
@@ -66,6 +71,7 @@ STAGES = {
     "resolve-jobright": _jobright,
     "resolve-linkedin": _linkedin,
     "resolve-lensa": _lensa,
+    "web": _web,
     "enrich": _enrich,
     "fit": _fit,
     "audit": _audit,

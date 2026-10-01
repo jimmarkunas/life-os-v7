@@ -53,7 +53,7 @@ def properties(row):
         "Company": {"rich_text": rich_text(row["company"] or "")},
         "Apply URL": {"url": row["url"]},
         "Source Provider": {"rich_text": rich_text(provider)},
-        "Source Types": {"multi_select": [{"name": provider}]},
+        "Source Types": {"multi_select": [{"name": provider}] + ([{"name": "Easy Apply"}] if row.get("apply_kind") == "easy_apply" else [])},
         "Stable Job Key": {"rich_text": rich_text(row["key"])},
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
@@ -113,7 +113,7 @@ def _pick(connection, limit, gated=False):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
-            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text"
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "") +
             " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
@@ -142,7 +142,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -161,7 +161,7 @@ def run(limit, live, environ=os.environ):
                "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted,
                "fit": fit, "fit_line": fit_line,
                "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
-               "work_mode": work_mode, "salary": salary}
+               "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind}
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
         except NotionError:

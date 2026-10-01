@@ -44,6 +44,33 @@ SCHEMA = (
         scored_at DATETIME NOT NULL,
         KEY ix_v7_fit_decision (decision)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_sources (
+        source_id VARCHAR(40) NOT NULL PRIMARY KEY,
+        kind VARCHAR(24) NOT NULL,
+        due_at DATETIME NOT NULL,
+        last_status VARCHAR(10) NULL, last_reason VARCHAR(24) NULL,
+        last_complete_at DATETIME NULL, frontier_hash CHAR(64) NULL,
+        failures SMALLINT NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_source_items (
+        source_id VARCHAR(40) NOT NULL, provider_job_id VARCHAR(120) NOT NULL,
+        material_hash CHAR(64) NOT NULL,
+        state VARCHAR(8) NOT NULL DEFAULT 'CURRENT',
+        ingest VARCHAR(10) NOT NULL DEFAULT 'PENDING',
+        suppress_reason VARCHAR(24) NULL,
+        first_seen DATETIME NOT NULL, last_seen DATETIME NOT NULL,
+        job_id BIGINT NULL,
+        PRIMARY KEY (source_id, provider_job_id),
+        KEY ix_v7_items_ingest (ingest)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_source_runs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        source_id VARCHAR(40) NOT NULL, ran_at DATETIME NOT NULL,
+        status VARCHAR(10) NOT NULL, reason VARCHAR(24) NULL,
+        added INT NOT NULL DEFAULT 0, changed INT NOT NULL DEFAULT 0, unchanged INT NOT NULL DEFAULT 0,
+        removed INT NOT NULL DEFAULT 0, suppressed INT NOT NULL DEFAULT 0, ingested INT NOT NULL DEFAULT 0,
+        KEY ix_v7_runs_source (source_id, ran_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_ledger_urls (
         url_hash CHAR(64) NOT NULL PRIMARY KEY,
         source VARCHAR(12) NOT NULL,
@@ -61,7 +88,7 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_ledger_urls", "v7_spend", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),

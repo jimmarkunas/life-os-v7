@@ -1,0 +1,406 @@
+{
+ "version": 1,
+ "source": "harvested from life-os-v2 contracts/us_remote_sources.json (2026-10-01); public company and ATS names only",
+ "statuses": {
+  "ready": "V7 can list the board through lifeos.jobs.resolve.ats_match / ats_detail today",
+  "port": "public JSON API; a small adapter to port (Open Jobs / V2 shape)",
+  "bespoke": "site-specific list parser; harvest from V2 only if Open Jobs does not cover the board",
+  "discovery": "aggregator: finds candidates, never authoritative Apply or JD evidence"
+ },
+ "sources": [
+  {
+   "id": "stripe",
+   "company": "Stripe",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "stripe"
+  },
+  {
+   "id": "shopify",
+   "company": "Shopify",
+   "tier": "employer",
+   "kind": "html",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.shopify.com/careers"
+  },
+  {
+   "id": "adobe",
+   "company": "Adobe",
+   "tier": "employer",
+   "kind": "workday",
+   "status": "port",
+   "enabled": true,
+   "url": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced/jobs",
+   "public_job_base_url": "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced"
+  },
+  {
+   "id": "klaviyo",
+   "company": "Klaviyo",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "klaviyo"
+  },
+  {
+   "id": "databricks",
+   "company": "Databricks",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "databricks"
+  },
+  {
+   "id": "samsara",
+   "company": "Samsara",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "samsara"
+  },
+  {
+   "id": "acryl-data",
+   "company": "Acryl Data",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "acryldata"
+  },
+  {
+   "id": "airtable",
+   "company": "Airtable",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "airtable"
+  },
+  {
+   "id": "postman",
+   "company": "Postman",
+   "tier": "employer",
+   "kind": "workday",
+   "status": "port",
+   "enabled": true,
+   "url": "https://postman.wd108.myworkdayjobs.com/wday/cxs/postman/careers/jobs",
+   "public_job_base_url": "https://postman.wd108.myworkdayjobs.com/careers"
+  },
+  {
+   "id": "webflow",
+   "company": "Webflow",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "webflow"
+  },
+  {
+   "id": "confluent",
+   "company": "Confluent",
+   "tier": "employer",
+   "kind": "ashby",
+   "status": "ready",
+   "enabled": true,
+   "slug": "confluent"
+  },
+  {
+   "id": "ramp",
+   "company": "Ramp",
+   "tier": "employer",
+   "kind": "ashby",
+   "status": "ready",
+   "enabled": true,
+   "slug": "ramp"
+  },
+  {
+   "id": "vanta",
+   "company": "Vanta",
+   "tier": "employer",
+   "kind": "ashby",
+   "status": "ready",
+   "enabled": true,
+   "slug": "vanta"
+  },
+  {
+   "id": "affirm",
+   "company": "Affirm",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "affirm"
+  },
+  {
+   "id": "braze",
+   "company": "Braze",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "braze"
+  },
+  {
+   "id": "twilio",
+   "company": "Twilio",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "twilio"
+  },
+  {
+   "id": "datadog",
+   "company": "Datadog",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "datadog"
+  },
+  {
+   "id": "mongodb",
+   "company": "MongoDB",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "mongodb"
+  },
+  {
+   "id": "okta",
+   "company": "Okta",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "okta"
+  },
+  {
+   "id": "atlassian",
+   "company": "Atlassian",
+   "tier": "employer",
+   "kind": "html",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.atlassian.com/company/careers/all-jobs"
+  },
+  {
+   "id": "cloudflare",
+   "company": "Cloudflare",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "cloudflare"
+  },
+  {
+   "id": "github",
+   "company": "GitHub",
+   "tier": "employer",
+   "kind": "jibe",
+   "status": "port",
+   "enabled": true,
+   "url": "https://www.github.careers/api/jobs",
+   "job_base_url": "https://www.github.careers/careers-home/jobs"
+  },
+  {
+   "id": "gitlab",
+   "company": "GitLab",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "gitlab"
+  },
+  {
+   "id": "pagerduty",
+   "company": "PagerDuty",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "pagerduty"
+  },
+  {
+   "id": "notion",
+   "company": "Notion",
+   "tier": "employer",
+   "kind": "ashby",
+   "status": "ready",
+   "enabled": true,
+   "slug": "notion"
+  },
+  {
+   "id": "figma",
+   "company": "Figma",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "figma"
+  },
+  {
+   "id": "servicenow",
+   "company": "ServiceNow",
+   "tier": "employer",
+   "kind": "smartrecruiters",
+   "status": "ready",
+   "enabled": true,
+   "slug": "ServiceNow"
+  },
+  {
+   "id": "workato",
+   "company": "Workato",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "workato"
+  },
+  {
+   "id": "commercetools",
+   "company": "commercetools",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "commercetools"
+  },
+  {
+   "id": "contentful",
+   "company": "Contentful",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "status": "ready",
+   "enabled": true,
+   "slug": "contentful"
+  },
+  {
+   "id": "insight-global",
+   "company": "Insight Global",
+   "tier": "staffing",
+   "kind": "insight_global",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://insightglobal.com/all/jobs",
+   "job_base_url": "https://insightglobal.com/jobs"
+  },
+  {
+   "id": "teksystems",
+   "company": "TEKsystems",
+   "tier": "staffing",
+   "kind": "phenom",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://careers.teksystems.com/us/en/c/project-manager-jobs",
+   "job_base_url": "https://careers.teksystems.com/us/en/job"
+  },
+  {
+   "id": "motion-recruitment",
+   "company": "Motion Recruitment",
+   "tier": "staffing",
+   "kind": "motion",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://motionrecruitment.com/tech-jobs"
+  },
+  {
+   "id": "randstad-usa",
+   "company": "Randstad USA",
+   "tier": "staffing",
+   "kind": "html",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.randstadusa.com/jobs/"
+  },
+  {
+   "id": "akkodis",
+   "company": "Akkodis",
+   "tier": "staffing",
+   "kind": "akkodis",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.akkodis.com/api/data/jobs/summarized",
+   "job_base_url": "https://www.akkodis.com/en-us/careers/jobs",
+   "detail_brand": "modis"
+  },
+  {
+   "id": "apex-systems",
+   "company": "Apex Systems",
+   "tier": "staffing",
+   "kind": "smartrecruiters",
+   "status": "ready",
+   "enabled": true,
+   "slug": "apexsystems3"
+  },
+  {
+   "id": "kforce",
+   "company": "Kforce",
+   "tier": "staffing",
+   "kind": "html",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://myhiring.kforce.com/careersection/ex/moresearch.ftl"
+  },
+  {
+   "id": "robert-half",
+   "company": "Robert Half",
+   "tier": "staffing",
+   "kind": "robert_half",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.roberthalf.com/us/en/jobs/all/remote"
+  },
+  {
+   "id": "experis",
+   "company": "Experis",
+   "tier": "staffing",
+   "kind": "experis",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://www.experis.com/en/all-jobs"
+  },
+  {
+   "id": "dexian",
+   "company": "Dexian",
+   "tier": "staffing",
+   "kind": "html",
+   "status": "bespoke",
+   "enabled": true,
+   "url": "https://dexian.com/jobs/"
+  },
+  {
+   "id": "linkedin-jobs",
+   "company": "LinkedIn Jobs",
+   "tier": "helper",
+   "kind": "html",
+   "status": "discovery",
+   "enabled": true,
+   "url": "https://www.linkedin.com/jobs/search/"
+  },
+  {
+   "id": "built-in",
+   "company": "Built In",
+   "tier": "helper",
+   "kind": "html",
+   "status": "discovery",
+   "enabled": true,
+   "url": "https://builtin.com/jobs"
+  },
+  {
+   "id": "dice",
+   "company": "Dice",
+   "tier": "helper",
+   "kind": "html",
+   "status": "discovery",
+   "enabled": true,
+   "url": "https://www.dice.com/jobs"
+  }
+ ]
+}
