@@ -4,9 +4,12 @@ from lifeos.jobs import guard, hiring_pipeline as hp
 from lifeos.platform.notion_client import NotionError
 
 
+BASE = {"Applied": {"checkbox": False}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}}
+
+
 class Page:
     def __init__(self, props=None, fail=False):
-        self.props, self.fail = props or {}, fail
+        self.props, self.fail = {**BASE, **(props or {})}, fail
 
     def call(self, method, path, body=None):
         if self.fail:

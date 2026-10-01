@@ -62,7 +62,7 @@ class PurgeTests(unittest.TestCase):
     def test_query_never_selects_acted_on_rows_and_uses_the_employer_clock(self):
         flt = retention.query_filter(NOW, "US Remote")["and"]
         props = [f.get("property") for f in flt]
-        for needed in ("Applied", "Saturn Decision", "Visible Lane"):
+        for needed in ("Applied", "Applied On", "Saturn Decision", "Visible Lane"):
             self.assertIn(needed, props)
         text = str(flt)
         self.assertIn("Posting Date", text)
