@@ -125,3 +125,18 @@ class Parsing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarketTests(unittest.TestCase):
+    def test_market_detection(self):
+        for text, market in (("Remote - United States", "US"), ("Austin, TX", "US"), ("London, UK", "UK"), ("Manchester", "UK"),
+                             ("Toronto, ON", "OTHER"), ("Berlin, Germany", "OTHER"), ("Remote", None), ("", None), ("US or UK", None),
+                             ("London, ON", "OTHER"), ("Remote, Europe", "OTHER")):
+            with self.subTest(text):
+                self.assertEqual(lanes.market_of(text), market)
+
+    def test_us_remote_excludes_a_uk_posting_and_scale_up_a_us_one(self):
+        facts = lanes.facts_for(80, "Program Manager", "London, UK", "remote", None, None, date(2026, 10, 1))
+        self.assertEqual(lanes.qualify(lanes.POLICIES["US Remote"], facts, date(2026, 10, 1)).status, lanes.EXCLUDE)
+        facts = lanes.facts_for(80, "Program Manager", "Remote", "remote", None, date(2026, 10, 1), date(2026, 10, 1))
+        self.assertEqual(lanes.qualify(lanes.POLICIES["US Remote"], facts, date(2026, 10, 1)).status, lanes.ADMIT)
