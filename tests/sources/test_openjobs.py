@@ -101,5 +101,32 @@ class FeedTests(unittest.TestCase):
         repo = MemRepo(checkpoint=g[0]["generation"])
         self.assertEqual(oj.run(10, True, fetcher=Site(g), repo=repo)["generations"], 0)
 
+    def test_removes_with_long_keys_and_the_cheap_title_prefilter_count_correctly(self):
+        events = [event("greenhouse/a-company-with-a-very-long-board-slug#" + "9" * 12, op="remove"),
+                  event("greenhouse/acme#1", title="Software Engineer"), event("greenhouse/acme#2")]
+        repo = MemRepo()
+        counts = oj.run(10, True, fetcher=Site(generation(events)), repo=repo)
+        self.assertEqual((counts["events"], counts["removes"], counts["upserts"], counts["admit"]), (3, 1, 2, 1))
+        self.assertEqual(counts["why"], {"off_family": 1})
+
+    def test_many_pages_are_applied_in_order(self):
+        pages = [[event(f"greenhouse/acme#{i}", title="Program Manager")] for i in range(40)]
+        files = {}
+        header = {"version": 2, "scope": "crawler-export-v1", "kind": "delta", "cursor": "2026-09-30", "previous": None, "counts": {}, "pages": []}
+        for n, page in enumerate(pages):
+            data = b"".join(oj._canonical(e) + b"\n" for e in page)
+            name = f"{n:06d}.ndjson"
+            files[name] = data
+            header["pages"].append({"file": name, "rows": 1, "bytes": len(data), "sha256": oj._digest(data)})
+        header["generation"] = oj._digest(oj._canonical(header))
+
+        def fetcher(url, **kw):
+            path = url.split("/changes/")[1].split("?")[0]
+            if path == "latest.json":
+                return Fetched(url, 200, oj._canonical(header).decode())
+            return Fetched(url, 200, files[path.split("/")[1]].decode())
+        admits, removes, counts = oj.process(header, fetcher)
+        self.assertEqual([k for k, _ in admits], [f"greenhouse/acme#{i}" for i in range(40)])
+
     def test_company_from_slug(self):
         self.assertEqual(oj.company_from("acme-labs"), "Acme Labs")
