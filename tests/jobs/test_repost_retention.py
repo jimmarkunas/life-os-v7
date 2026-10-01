@@ -2,30 +2,20 @@ from datetime import datetime, timedelta
 import unittest
 
 from lifeos.jobs import retention, repost
+from tests.kit.db import FakeCursor
 
 NOW = datetime(2026, 10, 1, 12, 0)
 
 
-class FakeCursor:
-    def __init__(self, found):
-        self.found, self.sql = found, []
-
-    def execute(self, sql, args=()):
-        self.sql.append((sql.split()[0], args))
-
-    def fetchone(self):
-        return self.found
-
-
 class RepostTests(unittest.TestCase):
     def test_repost_becomes_duplicate_of_the_original(self):
-        cursor = FakeCursor((7,))
+        cursor = FakeCursor(rowcount=0, script={"SELECT": (7,)})
         self.assertEqual(repost.link(cursor, "k", "f", NOW), 7)
-        kinds = [k for k, _ in cursor.sql]
+        kinds = cursor.verbs()
         self.assertEqual(kinds, ["SELECT", "UPDATE", "UPDATE"])
 
     def test_no_match_is_a_new_job(self):
-        cursor = FakeCursor(None)
+        cursor = FakeCursor(rowcount=0)
         self.assertIsNone(repost.link(cursor, "k", "f", NOW))
         self.assertEqual(len(cursor.sql), 1)
 

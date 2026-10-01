@@ -1,33 +1,9 @@
 import unittest
 
 from lifeos.jobs.resolve import stage
+from tests.kit.db import FakeConn
 
-
-class FakeCursor:
-    def __init__(self, dup):
-        self.dup, self.sql, self._row = dup, [], None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def execute(self, sql, args=()):
-        self.sql.append((sql.split()[0] + " " + sql.split()[1], args))
-        if sql.startswith("SELECT id FROM v7_jobs WHERE final_apply_url"):
-            self._row = (99,) if self.dup else None
-
-    def fetchone(self):
-        return self._row
-
-
-class FakeConn:
-    def __init__(self, dup=False):
-        self.cur = FakeCursor(dup)
-
-    def cursor(self):
-        return self.cur
+DUP = {"SELECT id FROM v7_jobs WHERE final_apply_url": (99,)}
 
 
 class ApplyResultTests(unittest.TestCase):
@@ -39,7 +15,7 @@ class ApplyResultTests(unittest.TestCase):
 
     def test_same_final_link_is_duplicate(self):
         ok = {"outcome": "landed", "url": "https://careers.acme.example/j/1", "kind": "employer"}
-        self.assertEqual(stage.apply_result(FakeConn(dup=True), 1, ok), "duplicate")
+        self.assertEqual(stage.apply_result(FakeConn(DUP), 1, ok), "duplicate")
 
     def test_failure_stays_pending_with_reason(self):
         conn = FakeConn()
