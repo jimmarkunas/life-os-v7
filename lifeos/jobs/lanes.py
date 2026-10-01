@@ -142,7 +142,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l2"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l3"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):

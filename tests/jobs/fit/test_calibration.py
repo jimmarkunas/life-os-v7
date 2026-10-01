@@ -108,3 +108,11 @@ class CalibrationFixtures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BritishSpellingTests(unittest.TestCase):
+    def test_programme_is_program(self):
+        from lifeos.jobs.fit.profile import norm
+        self.assertEqual(norm("Technical Programme Manager"), norm("Technical Program Manager"))
+        self.assertEqual(norm("Programmer"), " programmer ")                       # not a programme
+        self.assertEqual(norm("Organisational optimisation"), " organizational optimization ")
