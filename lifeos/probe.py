@@ -82,6 +82,27 @@ def hiring(environ=os.environ):
             "unparsed_titles": sum(not o.role for o in opportunities)}
 
 
+def interview_environ(environ=os.environ):
+    """The environment for Interview's Notion client: ONLY the Interview token, never the Jobs token (no fallback), or None when it is missing.
+    Notion's `Client` insists on a data-source id; Interview does not use one, so a fixed placeholder satisfies it."""
+    token = (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip()
+    return {"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "interview-unused"} if token else None
+
+
+def interview_access(environ=os.environ, client_factory=None):
+    """Can the Interview token read the Hiring Pipeline page? Counts and fixed codes only; writes nothing; never prints an id, a title or the token."""
+    from lifeos.jobs import hiring_pipeline                                                  # noqa: PLC0415
+    from lifeos.platform.notion_client import Client                                          # noqa: PLC0415
+    page_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    mapped = interview_environ(environ)
+    if not page_id or mapped is None:
+        return {"status": "config_missing", "token": mapped is not None, "page": bool(page_id)}
+    opportunities, status = hiring_pipeline.snapshot((client_factory or Client)(mapped), page_id)
+    return {"status": status, "token": True, "page": True, "active": sum(o.section == hiring_pipeline.ACTIVE for o in opportunities),
+            "retired": sum(o.section == hiring_pipeline.RETIRED for o in opportunities), "with_rounds": sum(bool(o.rounds) for o in opportunities),
+            "unparsed_titles": sum(not o.role for o in opportunities)}
+
+
 def ledger_target(environ=os.environ):
     """Does the configured data source pass the Job Ledger target check? Property names that fail are schema, not content."""
     from lifeos.jobs import ledger                                                           # noqa: PLC0415
