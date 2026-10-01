@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 import html as htmllib
 import json
 import re
+from email.utils import parsedate_to_datetime
+import xml.etree.ElementTree as ET
 from urllib.parse import quote, urlsplit
 
 from lifeos.jobs import jd
@@ -218,13 +220,56 @@ def _jibe(source, fetcher):
     return Listing(COMPLETE, jobs)
 
 
+def _teamtailor(source, fetcher):
+    """Teamtailor career sites publish every open job as an RSS feed at <jobs url>.rss (found by the shape probe; the HTML list has no JSON-LD)."""
+    page = fetcher(source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
+    if page.status in (403, 429):
+        return Listing(FAILED, reason="rate_limited")
+    if page.status == 404:
+        return Listing(FAILED, reason="not_found")
+    if page.status != 200:
+        return Listing(FAILED, reason=f"http_{page.status}" if page.status else "network")
+    if "<!DOCTYPE" in page.html[:2000].upper() or "<!ENTITY" in page.html.upper():
+        return Listing(FAILED, reason="bad_shape")                   # never expand entities from a third-party feed
+    try:
+        channel = ET.fromstring(page.html).find("channel")
+    except ET.ParseError:
+        return Listing(FAILED, reason="bad_xml")
+    if channel is None:
+        return Listing(FAILED, reason="bad_shape")                   # a valid empty board still has a channel; anything else is not an inventory
+    jobs, seen = [], set()
+    for item in channel.findall("item"):
+        def text(name):
+            node = item.find(name)
+            return (node.text or "").strip() if node is not None and node.text else ""
+        link = text("link")
+        ident = text("guid") or link
+        if not ident or ident in seen:
+            return Listing(FAILED, reason="bad_shape")
+        seen.add(ident)
+        places = []
+        for node in item.iter():
+            name = node.tag.rsplit("}", 1)[-1].lower()
+            if name in ("city", "country", "location") and node.text and node.text.strip() and not len(node):
+                if node.text.strip() not in places:
+                    places.append(node.text.strip())
+            elif name == "remotestatus" and (node.text or "").strip().lower() in ("fully", "remote", "full"):
+                places.append("Remote")
+        try:
+            posted = parsedate_to_datetime(text("pubDate")).date().isoformat()
+        except (TypeError, ValueError):
+            posted = None
+        jobs.append(_job(ident, text("title"), ", ".join(places), link, posted, _text(text("description"))))
+    return Listing(COMPLETE, jobs)
+
+
 def _by_slug(reader):
     return lambda source, fetcher: reader(source["slug"], fetcher)
 
 
 READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "lever": _by_slug(_lever),
            "smartrecruiters": _by_slug(_smartrecruiters), "workable": _by_slug(_workable),
-           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe}
+           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe, "teamtailor": _teamtailor}
 
 
 def list_source(source, fetcher=fetch):

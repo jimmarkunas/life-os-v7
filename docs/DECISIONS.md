@@ -126,3 +126,8 @@ becomes active when INT-7.1A can prove the absence of progression.
 - Newsletter mail gets the `J Newsletters/Done` label only when no job from it is NEW/RESOLVED/READY and every PUBLISHED one is verified (`finalize`). `Processed` keeps its extract meaning.
 - Market comes from the location text alone (US / UK / OTHER, silent or mixed = unknown, never guessed); a known market that is not the lane's market is EXCLUDE. Policy version l2 re-scores.
 - `probe` (dispatch only, counts-only) reports the shape of Open Jobs, Teamtailor and Dice pages from Actions before any parser is written against them.
+
+## D23 — Open Jobs as a tail consumer; Teamtailor via RSS; Dice
+- Open Jobs (`lifeos/sources/openjobs.py`) follows the published change generations forward. It never bootstraps the multi-million-row corpus; it applies each generation atomically (admitted rows and the `v7_feed` checkpoint commit together), verifies every manifest hash, page size/sha256 and row count, and a gap or corrupt page is DEGRADED (nothing applied, checkpoint kept, never skipped). First run applies the newest delta only. Events are filtered by the cheap US Remote suppression before any Fit work; the company comes from the board slug (the feed carries none); removals close only jobs V7 holds that are still unpublished.
+- Teamtailor boards (6 Scale-Up sponsors) are read from the `<jobs url>.rss` feed (probe run 83: all six answered 200, item counts equal the page's job links, no JSON-LD on the HTML list). An empty channel is a COMPLETE empty board; anything that is not a valid channel is FAILED.
+- Dice: the public search page is script-rendered (probe run 83: 200, no job-detail links). No Dice discovery; a Dice job page is read only when a job already points at it.

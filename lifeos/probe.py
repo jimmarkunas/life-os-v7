@@ -37,7 +37,7 @@ def open_jobs(fetcher=fetch):
 def teamtailor(fetcher=fetch):
     out = {}
     for source in registry.load(registry.PATHS["Scale-Up"]):
-        if source["kind"] != "teamtailor_html":
+        if source["kind"] != "teamtailor":
             continue
         page = fetcher(source["url"], timeout=20, max_bytes=3_000_000)
         rss = fetcher(source["url"].rstrip("/") + ".rss", timeout=20, max_bytes=3_000_000)
