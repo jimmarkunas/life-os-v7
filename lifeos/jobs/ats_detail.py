@@ -1,0 +1,140 @@
+"""Direct job readers for ATS pages that are JavaScript shells. The job URL already names the tenant and the job, so each
+reader asks the ATS's public JSON (or the JSON embedded in the page) for that one job: no browser, no daily cap.
+Endpoint shapes follow open-jobs (CC0) and career-ops (MIT). read(url) -> dict(title, html, posted) | {"closed": True} | None.
+"""
+import html as htmllib
+import json
+import re
+from urllib.parse import quote, urlsplit
+
+from lifeos.platform import limits
+from lifeos.platform.http import fetch
+
+LOCALE = re.compile(r"^[a-z]{2}([-_][A-Za-z]{2,4})?$")
+
+
+def _get_json(url):
+    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
+    if page.status in (404, 410):
+        return "gone"
+    if page.status != 200:
+        return None
+    try:
+        return json.loads(page.html)
+    except ValueError:
+        return None
+
+
+def _job(title, html, posted):
+    return {"title": title, "html": html or "", "posted": str(posted or "")[:10]}
+
+
+def workday(parts):
+    """https://{tenant}.wd{N}.myworkdayjobs.com[/{locale}]/{site}/job/... -> /wday/cxs/{tenant}/{site}/job/..."""
+    host, segs = parts.hostname.lower(), [s for s in parts.path.split("/") if s]
+    if segs and LOCALE.match(segs[0]):
+        segs = segs[1:]
+    if len(segs) < 3 or segs[1] != "job":
+        return None
+    data = _get_json(f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}")
+    if data == "gone":
+        return {"closed": True}
+    info = (data or {}).get("jobPostingInfo") if isinstance(data, dict) else None
+    return _job(info.get("title"), info.get("jobDescription"), info.get("startDate")) if info else None
+
+
+def workable(parts):
+    """https://apply.workable.com/{account}/j/{SHORTCODE}/ -> the account widget (all published jobs, with descriptions)."""
+    segs = [s for s in parts.path.split("/") if s]
+    if len(segs) < 3 or segs[1] != "j":
+        return None
+    data = _get_json(f"https://apply.workable.com/api/v1/widget/accounts/{quote(segs[0])}?details=true")
+    if data == "gone":
+        return {"closed": True}
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, list):
+        return None
+    for job in jobs:
+        if str(job.get("shortcode", "")).lower() == segs[2].lower():
+            return _job(job.get("title"), job.get("description"), job.get("published_on"))
+    return {"closed": True}                      # the account lists every published job; this one is not among them
+
+
+def bamboohr(parts):
+    """https://{slug}.bamboohr.com/careers/{id} -> /careers/{id}/detail"""
+    segs = [s for s in parts.path.split("/") if s]
+    if len(segs) < 2 or segs[0] != "careers" or not segs[1].isdigit():
+        return None
+    data = _get_json(f"https://{parts.hostname}/careers/{segs[1]}/detail")
+    if data == "gone":
+        return {"closed": True}
+    opening = ((data or {}).get("result") or {}).get("jobOpening") if isinstance(data, dict) else None
+    return _job(opening.get("jobOpeningName"), opening.get("description"), opening.get("datePosted")) if opening else None
+
+
+def oraclecloud(parts):
+    """https://{host}.oraclecloud.com/.../job/{id} -> recruitingCEJobRequisitionDetails?q=Id={id}"""
+    match = re.search(r"/job/(\d+)", parts.path)
+    if not match:
+        return None
+    url = (f"https://{parts.hostname}/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
+           f"?onlyData=true&q=Id={match.group(1)}")
+    data = _get_json(url)
+    if data == "gone":
+        return {"closed": True}
+    if not isinstance(data, dict):
+        return None
+    items = data.get("items") or []
+    if not items:
+        return {"closed": True}                  # unknown or closed requisitions answer with an empty list
+    item = items[0]
+    body = "\n\n".join(item.get(k) for k in ("ExternalDescriptionStr", "ExternalResponsibilitiesStr",
+                                              "ExternalQualificationsStr") if item.get(k))
+    return _job(item.get("Title"), body, item.get("ExternalPostedStartDate"))
+
+
+def paylocity(parts):
+    """The detail page carries a JSON-LD JobPosting whose description is entity-encoded HTML. (Its datePosted is the
+    render time, so it is ignored.)"""
+    page = fetch(f"https://{parts.hostname}{parts.path}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
+    if page.status in (404, 410) or "JobNotFound" in page.final_url:
+        return {"closed": True}
+    match = re.search(r'<script type="application/ld\+json">\s*(.*?)\s*</script>', page.html, re.S) if page.status == 200 else None
+    if not match:
+        return None
+    try:
+        posting = json.loads(match.group(1))
+    except ValueError:
+        return None
+    return _job(posting.get("title"), htmllib.unescape(posting.get("description") or ""), None) if isinstance(posting, dict) else None
+
+
+def ukg(parts):
+    """UKG / UltiPro job boards embed the opportunity JSON in the page; read its Description string."""
+    page = fetch(f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
+                 timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
+    if page.status in (404, 410):
+        return {"closed": True}
+    match = re.search(r'"Description":"((?:[^"\\]|\\.)*)"', page.html) if page.status == 200 else None
+    if not match:
+        return None
+    try:
+        return _job(None, json.loads(f'"{match.group(1)}"'), None)
+    except ValueError:
+        return None
+
+
+READERS = (("myworkdayjobs.com", workday), ("apply.workable.com", workable), ("bamboohr.com", bamboohr),
+           ("oraclecloud.com", oraclecloud), ("recruiting.paylocity.com", paylocity), ("ultipro.com", ukg), ("ukg.com", ukg))
+
+
+def read(url):
+    parts = urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    for suffix, reader in READERS:
+        if host == suffix or host.endswith("." + suffix):
+            try:
+                return reader(parts)
+            except Exception:                    # noqa: BLE001 - a reader must never take the stage down
+                return None
+    return None

@@ -12,10 +12,11 @@ from urllib.parse import urlsplit
 
 from lifeos.jobs.resolve import ats_match, search_match
 from lifeos.platform import usage, limits, tinyfish
-from lifeos.jobs import jd, jsonld, quality, store
+from lifeos.jobs import ats_detail, jd, jsonld, quality, store
 from lifeos.platform.http import fetch
 
 MAX_AGE_DAYS = 14
+TRIED_REASON = "description_empty_tf"     # the real-browser fetch already ran once and the page was still empty: do not spend the cap again
 CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
                          r"posting (has )?expired|this job has expired|not accepting applications", re.I)
 
@@ -74,11 +75,13 @@ def read_page(url, title):
     """Facts for one final URL. Never raises; fixed outcome codes."""
     if quality.url_problem(url):
         return {"outcome": "mismatch", "reason": quality.url_problem(url)}
-    api = _api_job(url)
+    api = ats_detail.read(url) or _api_job(url)
+    if api and api.get("closed"):
+        return {"outcome": "closed"}
     if api:
         text_source = api.get("plain") or api["html"]
         desc = jd.describe(text_source, is_html=not api.get("plain"))
-        found_title, posted, source_kind = api.get("title"), _parse_date(api.get("posted")), "ats_api"
+        found_title, posted, source_kind = api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api"
         valid_through = None
     else:
         page = fetch(url, timeout=15, max_hops=6)
@@ -180,12 +183,12 @@ def run(limit, live):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind FROM v7_jobs WHERE status='RESOLVED' "
+            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
             rows = [tuple(r) for r in cursor.fetchall()]
     counts = {"picked": len(rows), "outcome": {}, "source": {}}
     results = []
-    for job_id, url, title, kind in rows:
+    for job_id, url, title, kind, _prev in rows:
         url = quality.canonical_job_url(url)
         target = url
         if kind == "easy_apply" or "linkedin.com" in (urlsplit(url).hostname or ""):
@@ -193,13 +196,15 @@ def run(limit, live):
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         result = read_page(target, title)
+        if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
+            result["reason"] = TRIED_REASON                          # stays marked: the browser fetch already tried it
         result["final_url"] = url
         results.append((job_id, result))
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
     _fallback(results, rows, counts)
-    counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _ in rows})
+    counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     if live and results:
         with store.connect() as connection:
             for job_id, result in results:
@@ -210,9 +215,9 @@ def run(limit, live):
 
 def _fallback(results, rows, counts):
     """Pages that refuse plain HTTP: free TinyFish Fetch (real browser), counted against the daily cap BEFORE sending."""
-    titles = {job_id: (url, title) for job_id, url, title, _ in rows}
-    blocked = [i for i, (_, r) in enumerate(results) if r["outcome"] == "blocked"
-               and (r.get("reason") or "") != "description_empty"]
+    titles = {job_id: (url, title) for job_id, url, title, _, _ in rows}
+    tried = {job_id for job_id, _, _, _, prev in rows if prev == TRIED_REASON}
+    blocked = [i for i, (job_id, r) in enumerate(results) if r["outcome"] == "blocked" and job_id not in tried]
     if not blocked:
         return
     try:
@@ -234,9 +239,13 @@ def _fallback(results, rows, counts):
         for i, url in zip(batch, urls):
             item = found.get(url)
             text = item.get("text") if item and isinstance(item.get("text"), str) else ""
+            if not text and results[i][1].get("reason") == "description_empty":
+                results[i][1]["reason"] = TRIED_REASON
             if text:
                 job_id = results[i][0]
                 results[i] = (job_id, parse_html(url, titles[job_id][1], text))
+                if results[i][1].get("reason") == "description_empty":
+                    results[i][1]["reason"] = TRIED_REASON
                 counts["outcome"]["blocked"] -= 1
                 counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
                 done += 1

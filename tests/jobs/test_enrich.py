@@ -55,5 +55,23 @@ class BlockedReportTests(unittest.TestCase):
         self.assertNotIn("acme", str(report))
 
 
+class FallbackOnceTests(unittest.TestCase):
+    def test_empty_pages_get_one_browser_fetch_then_are_marked_and_skipped(self):
+        from unittest import mock
+        from tests.kit.db import FakeConn
+        rows = [(1, "https://a.example/j/1", "PM", "ats", None), (2, "https://b.example/j/2", "PM", "ats", enrich.TRIED_REASON)]
+        results = [(1, {"outcome": "blocked", "reason": "description_empty"}),
+                   (2, {"outcome": "blocked", "reason": enrich.TRIED_REASON})]
+        counts = {"outcome": {"blocked": 2}}
+        asked = []
+        with mock.patch.object(enrich.store, "connect", FakeConn), \
+                mock.patch.object(enrich.usage, "reserve", lambda c, n: n), \
+                mock.patch.object(enrich.tinyfish, "fetch_many", lambda urls, **kw: (asked.extend(urls) or ({}, []))):
+            enrich._fallback(results, rows, counts)
+        self.assertEqual(asked, ["https://a.example/j/1"])                 # the already-tried page was not sent again
+        self.assertEqual(results[0][1]["reason"], enrich.TRIED_REASON)
+        self.assertEqual(counts["fallback_attempted"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
