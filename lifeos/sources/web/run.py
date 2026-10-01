@@ -169,7 +169,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         sources = [{**s, "route_evidence": "Scale-up:POSITIVE"} for s in sources]      # membership of the curated sponsor universe is the route evidence
     sources = [s for s in sources if s["kind"] in lister.READERS]
     repo = repo or SqlRepo()
-    if live and isinstance(repo, SqlRepo):
+    if isinstance(repo, SqlRepo):                     # a dry run reads the state tables too, so they must exist (CREATE IF NOT EXISTS; no rows written)
         with store.connect() as connection:
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})

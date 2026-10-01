@@ -3,6 +3,8 @@ import re
 
 NEWSLETTER_LABEL = "J Newsletters"
 PROCESSED_LABEL = "J Newsletters/Processed"
+DONE_LABEL = "J Newsletters/Done"                      # every job in the mail has an outcome (finalize)
+FINALIZE_QUERY = "label:j-newsletters-processed -label:j-newsletters-done newer_than:45d"
 # Gmail search syntax flattens nested label names; pending = in the folder, not yet Processed.
 RECONCILE_QUERY = "label:j-newsletters-processed from:lensa.com newer_than:5d"
 PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed"

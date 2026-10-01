@@ -40,6 +40,10 @@ on:
         description: "UK Scale-Up web acquisition (never scheduled): poll due sponsor boards; counts only unless live"
         type: boolean
         default: false
+      probe:
+        description: "Shape probe (counts only): Open Jobs feed, Teamtailor boards, Dice job pages. Writes nothing"
+        type: boolean
+        default: false
       fit:
         description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
         type: boolean
@@ -84,6 +88,7 @@ env:
   LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
   FIT_PROFILE_JSON: ${{ secrets.FIT_PROFILE_JSON }}
   V7_FIT_GATE: ${{ vars.V7_FIT_GATE }}
+  OPEN_JOBS_CONTACT: ${{ secrets.OPEN_JOBS_CONTACT }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
   LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
 permissions:
@@ -226,6 +231,16 @@ jobs:
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
         run: python -m lifeos.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
+      - id: finalize
+        continue-on-error: true
+        name: Step 7b - close out newsletter mail whose jobs all have an outcome
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
+      - id: probe
+        continue-on-error: true
+        name: Probe - source shapes (dispatch only, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
+        run: python -m lifeos.run probe
       - id: maintain
         continue-on-error: true
         name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
@@ -239,7 +254,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

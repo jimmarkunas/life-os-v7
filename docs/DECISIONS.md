@@ -120,3 +120,9 @@ but not scheduled until Jim promotes it.
 30-day retirement of unapplied, undecided jobs on the employer Posting Date (else First Surfaced), 90-day tombstone, no Lifecycle dependence. Applied jobs
 resolve UNKNOWN in `progression.resolve` until INT-7.1A, so they are kept (fail closed). Jim's rule "Applied without an interview is purged after 30 days"
 becomes active when INT-7.1A can prove the absence of progression.
+
+## D22 — Newsletter closure, Ledger read-back, market detection, shape probes
+- A PUBLISHED job is finished only after a read-back of the Notion page (key, Apply URL, title, Fit present, v7-jd body marker); `v7_jobs.verified_at` records it.
+- Newsletter mail gets the `J Newsletters/Done` label only when no job from it is NEW/RESOLVED/READY and every PUBLISHED one is verified (`finalize`). `Processed` keeps its extract meaning.
+- Market comes from the location text alone (US / UK / OTHER, silent or mixed = unknown, never guessed); a known market that is not the lane's market is EXCLUDE. Policy version l2 re-scores.
+- `probe` (dispatch only, counts-only) reports the shape of Open Jobs, Teamtailor and Dice pages from Actions before any parser is written against them.

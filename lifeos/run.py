@@ -42,6 +42,11 @@ def _web_scale_up(limit, live):
     return web.run(limit, live, lane="Scale-Up")
 
 
+def _probe(limit, live):
+    from lifeos import probe                                                                    # noqa: PLC0415
+    return probe.run(limit, live)
+
+
 def _enrich(limit, live):
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
     return enrich.run(limit, live)
@@ -78,6 +83,7 @@ STAGES = {
     "resolve-lensa": _lensa,
     "web": _web,
     "web-scale-up": _web_scale_up,
+    "probe": _probe,
     "enrich": _enrich,
     "fit": _fit,
     "audit": _audit,
