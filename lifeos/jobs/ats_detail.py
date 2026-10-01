@@ -13,8 +13,18 @@ from lifeos.platform.http import fetch
 LOCALE = re.compile(r"^[a-z]{2}([-_][A-Za-z]{2,4})?$")
 
 
+_last = {"status": 0}
+_misses = {}
+
+
+def _fetch(url, **kwargs):
+    page = fetch(url, **kwargs)
+    _last["status"] = page.status
+    return page
+
+
 def _get_json(url):
-    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
+    page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
     if page.status in (404, 410):
         return "gone"
     if page.status != 200:
@@ -96,7 +106,7 @@ def oraclecloud(parts):
 def paylocity(parts):
     """The detail page carries a JSON-LD JobPosting whose description is entity-encoded HTML. (Its datePosted is the
     render time, so it is ignored.)"""
-    page = fetch(f"https://{parts.hostname}{parts.path}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
+    page = _fetch(f"https://{parts.hostname}{parts.path}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
     if page.status in (404, 410) or "JobNotFound" in page.final_url:
         return {"closed": True}
     match = re.search(r'<script type="application/ld\+json">\s*(.*?)\s*</script>', page.html, re.S) if page.status == 200 else None
@@ -111,7 +121,7 @@ def paylocity(parts):
 
 def ukg(parts):
     """UKG / UltiPro job boards embed the opportunity JSON in the page; read its Description string."""
-    page = fetch(f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
+    page = _fetch(f"https://{parts.hostname}{parts.path}" + (f"?{parts.query}" if parts.query else ""),
                  timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3)
     if page.status in (404, 410):
         return {"closed": True}
@@ -124,8 +134,61 @@ def ukg(parts):
         return None
 
 
+def smartrecruiters(parts):
+    """https://jobs.smartrecruiters.com/{company}/{id}[-slug] -> api.smartrecruiters.com/v1/companies/{company}/postings/{id}"""
+    segs = [s for s in parts.path.split("/") if s]
+    match = re.match(r"(\d+)", segs[1]) if len(segs) >= 2 else None
+    if not match:
+        return None
+    data = _get_json(f"https://api.smartrecruiters.com/v1/companies/{quote(segs[0])}/postings/{match.group(1)}")
+    if data == "gone":
+        return {"closed": True}
+    if not isinstance(data, dict):
+        return None
+    sections = ((data.get("jobAd") or {}).get("sections") or {})
+    body = "\n\n".join((sections.get(k) or {}).get("text") or "" for k in
+                        ("jobDescription", "qualifications", "additionalInformation"))
+    return _job(data.get("name"), body, data.get("releasedDate"))
+
+
+def ashby(parts):
+    """https://jobs.ashbyhq.com/{org}/{id} -> the org's public job board (every published job, with descriptionHtml)."""
+    segs = [s for s in parts.path.split("/") if s]
+    if len(segs) < 2:
+        return None
+    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(segs[0])}")
+    if data == "gone":
+        return {"closed": True}
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, list):
+        return None
+    for job in jobs:
+        if str(job.get("id", "")).lower() == segs[1].lower():
+            return _job(job.get("title"), job.get("descriptionHtml"), job.get("publishedAt"))
+    return {"closed": True}
+
+
 READERS = (("myworkdayjobs.com", workday), ("apply.workable.com", workable), ("bamboohr.com", bamboohr),
-           ("oraclecloud.com", oraclecloud), ("recruiting.paylocity.com", paylocity), ("ultipro.com", ukg), ("ukg.com", ukg))
+           ("oraclecloud.com", oraclecloud), ("recruiting.paylocity.com", paylocity), ("ultipro.com", ukg), ("ukg.com", ukg),
+           ("smartrecruiters.com", smartrecruiters), ("ashbyhq.com", ashby))
+
+
+def _shape(path):
+    """Counts-only shape of a URL path (never the words in it): loc = locale, n = digits, w = any other word."""
+    out = []
+    for seg in (x for x in path.split("/") if x):
+        out.append("loc" if LOCALE.match(seg) else "n" if seg.isdigit() else seg if seg in KEYWORDS else "w")
+    return "/".join(out)
+
+
+KEYWORDS = {"job", "jobs", "j", "careers", "details", "sites", "apply"}
+
+
+def misses():
+    """Reader failures since the last call, as counts: {'workday:http_406:w/job/w/w': n}. Fixed codes and path shapes only."""
+    out = dict(_misses)
+    _misses.clear()
+    return out
 
 
 def read(url):
@@ -133,8 +196,13 @@ def read(url):
     host = (parts.hostname or "").lower()
     for suffix, reader in READERS:
         if host == suffix or host.endswith("." + suffix):
+            _last["status"] = 0
             try:
-                return reader(parts)
+                result = reader(parts)
             except Exception:                    # noqa: BLE001 - a reader must never take the stage down
-                return None
+                result = None
+            if result is None:
+                key = f"{suffix}:http_{_last['status']}:{_shape(parts.path)}"
+                _misses[key] = _misses.get(key, 0) + 1
+            return result
     return None

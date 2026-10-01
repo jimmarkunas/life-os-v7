@@ -56,6 +56,21 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(read("https://recruiting.ultipro.com/ACM/JobBoard/g/OpportunityDetail?opportunityId=1",
                               {"OpportunityDetail": (200, page)})["html"], "<p>Line one</p>")
         self.assertIsNone(read("https://careers.example.com/job/1", {}))
+    def test_smartrecruiters_and_ashby(self):
+        sr = {"name": "PM", "releasedDate": "2026-09-22T10:00:00Z",
+              "jobAd": {"sections": {"jobDescription": {"text": "<p>do</p>"}, "qualifications": {"text": "<p>have</p>"}}}}
+        job = read("https://jobs.smartrecruiters.com/Acme/743999675384156-pm-role", {"/companies/Acme/postings/743999675384156": (200, sr)})
+        self.assertEqual((job["title"], job["html"], job["posted"]), ("PM", "<p>do</p>\n\n<p>have</p>\n\n", "2026-09-22"))
+        board = {"jobs": [{"id": "abc-1", "title": "PM", "descriptionHtml": "<p>d</p>", "publishedAt": "2026-09-23"}]}
+        self.assertEqual(read("https://jobs.ashbyhq.com/acme/abc-1", {"job-board/acme": (200, board)})["posted"], "2026-09-23")
+        self.assertEqual(read("https://jobs.ashbyhq.com/acme/gone-2", {"job-board/acme": (200, board)}), {"closed": True})
+
+    def test_reader_failures_are_counted_by_status_and_path_shape_only(self):
+        ats_detail.misses()
+        self.assertIsNone(read("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Austin/Product-Manager_R9", {"/wday/cxs": (500, "")}))
+        self.assertEqual(ats_detail.misses(), {"myworkdayjobs.com:http_500:loc/w/job/w/w": 1})
+        self.assertEqual(ats_detail.misses(), {})
+
 
     def test_a_broken_reader_returns_none_instead_of_raising(self):
         with mock.patch.object(ats_detail, "fetch", side_effect=RuntimeError("boom")):

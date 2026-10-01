@@ -36,6 +36,8 @@ def _api_job(url):
         if board and ident:
             page = fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}", timeout=limits.ATS_TIMEOUT_SECONDS,
                          max_hops=2)
+            if page.status in (404, 410):
+                return {"closed": True}                        # the board's API no longer knows the job
             if page.status == 200:
                 try:
                     data = json.loads(page.html)
@@ -45,6 +47,8 @@ def _api_job(url):
                 return {"title": data.get("title"), "html": data.get("content") or "", "posted": posted}
     if host == "jobs.lever.co" and len(segs) >= 2:
         page = fetch(f"https://api.lever.co/v0/postings/{segs[0]}/{segs[1]}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
+        if page.status in (404, 410):
+            return {"closed": True}
         if page.status == 200:
             try:
                 data = json.loads(page.html)
@@ -111,12 +115,12 @@ def parse_html(url, title, html):
 
 def finish(title, desc, found_title, posted, source_kind, valid_through):
     if len(desc["full_text"]) < 200:
-        return {"outcome": "blocked", "reason": "description_empty"}
+        return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
     if problem in ("template", "listing"):
         return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
     if problem == "thin":
-        return {"outcome": "blocked", "reason": "jd_thin"}
+        return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind == "page_text" else ""):
         return {"outcome": "mismatch"}
     today = _now().date()
@@ -153,8 +157,9 @@ def save(connection, job_id, result):
             cursor.execute("UPDATE v7_jobs SET status='NEW', final_apply_url=NULL, apply_kind=NULL, "
                            "unresolved_reason=%s, updated_at=%s WHERE id=%s", ((result.get("reason") or "link_mismatch")[:100], now, job_id))
         else:
-            cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, updated_at=%s WHERE id=%s",
-                           ((result.get("reason") or "blocked")[:100], now, job_id))
+            cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, enrich_attempts=enrich_attempts+1, "
+                           "status=IF(enrich_attempts>=%s,'HOLD',status), updated_at=%s WHERE id=%s",
+                           ((result.get("reason") or "blocked")[:100], limits.ENRICH_MAX_ATTEMPTS, now, job_id))
 
 
 def host_family(url):
@@ -170,13 +175,15 @@ def host_family(url):
 
 def blocked_report(results, urls):
     """Why pages stayed blocked, as counts: {'reasons': {code: n}, 'families': {host family: n}}."""
-    reasons, families = {}, {}
+    reasons, families, sources = {}, {}, {}
     for job_id, result in results:
         if result["outcome"] == "blocked":
+            kind = result.get("source_kind") or "none"
+            sources[kind] = sources.get(kind, 0) + 1
             reasons[result.get("reason") or "blocked"] = reasons.get(result.get("reason") or "blocked", 0) + 1
             family = host_family(urls.get(job_id))
             families[family] = families.get(family, 0) + 1
-    return {"reasons": reasons, "families": families}
+    return {"reasons": reasons, "families": families, "by_source": sources}
 
 
 def run(limit, live):
@@ -204,6 +211,7 @@ def run(limit, live):
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
     _fallback(results, rows, counts)
+    counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     if live and results:
         with store.connect() as connection:
