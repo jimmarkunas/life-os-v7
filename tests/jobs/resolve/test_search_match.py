@@ -32,3 +32,27 @@ class SearchMatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OneSearchPerJob(unittest.TestCase):
+    def test_one_call_and_both_kinds_of_hit_are_accepted(self):
+        from unittest import mock
+        calls = []
+        ats = {"url": "https://boards.greenhouse.io/acmedata/jobs/1", "title": "Senior Data Engineer - Acme Data", "snippet": "Acme Data"}
+        own = {"url": "https://www.acmedata.com/careers/senior-data-engineer", "title": "Senior Data Engineer | Acme Data", "snippet": ""}
+        for result, kind in ((ats, "ats"), (own, "employer")):
+            def fake(query, domains=None, _r=result):
+                calls.append((query, domains))
+                return [_r]
+            with mock.patch.object(search_match.tinyfish_search, "search", fake):
+                verdict = search_match.find("Acme Data", "Senior Data Engineer")
+            self.assertEqual((verdict[0], verdict[2]), ("hit", result["url"]))
+        self.assertEqual(len(calls), 2)                                   # one search per job, not two
+        self.assertTrue(all(domains is None for _, domains in calls))
+
+    def test_a_miss_costs_one_search(self):
+        from unittest import mock
+        calls = []
+        with mock.patch.object(search_match.tinyfish_search, "search", lambda q, d=None: calls.append(q) or []):
+            self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("miss", "no_result"))
+        self.assertEqual(len(calls), 1)

@@ -6,7 +6,7 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 | Provider | Provider limit | Our ceiling | Notes |
 |---|---|---|---|
 | TinyFish Fetch | 150 URLs/min, 1,000/day | 100/min (batch 10, 6 s apart), 900/day | free; wallet is $35 and must never be spent |
-| TinyFish Search | 30 req/min, 500/hour | one request per 4.4 s per lane, two lanes share the key (27/min total); 300 Lensa + 100 LinkedIn per run (400 of 500/hour) | free, but the account needs Search API access (402 otherwise) |
+| TinyFish Search | 30 req/min, 500/hour | one request per 4.4 s per lane, two lanes share the key (27/min total); 300 Lensa + 100 LinkedIn per run (400 of 500/hour); each job costs ONE search (D35); Lensa stops starting batches after 15 minutes | free, but the account needs Search API access (402 otherwise) |
 | TinyFish Agent | $0.016/step | forbidden | |
 | Notion API | ~3 req/s average | 2.5/s (0.4 s gap), 60 pages/run | free official API only; 100 child blocks per call; 2,000 chars per rich_text |
 | LinkedIn guest pages | unpublished | 1 request per 1.2 s, 150/run, stop on first 429 | never logged in |

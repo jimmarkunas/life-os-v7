@@ -37,11 +37,12 @@ def find(company, title):
     if not company or not title:
         return ("miss", "no_company_or_title")
     try:
-        for domains, need_host, kind_hint in ((ATS_DOMAINS, False, "ats"), (None, True, "employer")):
-            query = f"{company} {title}" if domains else f"{company} {title} careers apply"
-            for result in tinyfish_search.search(query, domains)[:8]:
-                if _good(result, company, title, need_host):
-                    return ("hit", classify.apply_kind(result["url"]), result["url"])
+        # ONE search per job (it used to be two, ATS domains then any site: live runs showed the any-site hits dominate and the second call doubled the time and the budget).
+        # Each result is judged by the rule for its own kind: an ATS-domain page needs the job title and company; an employer page also needs the company in its host.
+        for result in tinyfish_search.search(f"{company} {title} careers apply")[:8]:
+            on_ats = any(domain in classify.host(result["url"]) for domain in ATS_DOMAINS)
+            if _good(result, company, title, need_host=not on_ats):
+                return ("hit", classify.apply_kind(result["url"]), result["url"])
     except TinyFishError as error:
         return ("miss", str(error).lower())
     return ("miss", "no_result")
