@@ -183,6 +183,8 @@ def run(limit, live, environ=os.environ):
             cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
                            (url_key(url), _now()))
         counts["created"] += 1
+    from lifeos.jobs import fit_sync                                                 # noqa: PLC0415
+    counts["fit_sync"] = fit_sync.run(client, live, gated)                          # pages published before they were scored get their Fit
     if live:
         from lifeos.jobs import readback                                              # noqa: PLC0415
         counts["readback"] = readback.run(client, live)
