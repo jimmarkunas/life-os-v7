@@ -16,6 +16,8 @@ def protection(client, page_id, company, title, opportunities=()):
         props = (client.call("GET", f"/pages/{page_id}").get("properties")) or {}
     except NotionError:
         return UNREADABLE
+    if any(name not in props for name in ("Applied", "Applied On", "Saturn Decision")):
+        return UNREADABLE                                    # a missing safety property is unknown, never "not applied"
     if (props.get("Applied") or {}).get("checkbox"):
         return APPLIED
     if ((props.get("Applied On") or {}).get("date") or {}).get("start"):
