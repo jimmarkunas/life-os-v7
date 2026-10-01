@@ -367,11 +367,24 @@ def main(argv=None):
     parser.add_argument("--publish", action="store_true", help="publish READY jobs to the Notion Job Ledger")
     parser.add_argument("--enrich", action="store_true", help="read final pages: description, posting date, liveness")
     parser.add_argument("--audit", action="store_true", help="demote READY/PUBLISHED rows that fail the quality guards")
+    parser.add_argument("--sync-seen", action="store_true", help="daily Notion Last Seen / ghost note for resighted jobs")
+    parser.add_argument("--purge", action="store_true", help="weekly retention: Hostinger descriptions, Notion expire/trash")
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results to the database")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
+    if args.sync_seen or args.purge:
+        from pipeline import notion, purge, repost                # noqa: PLC0415
+        try:
+            if args.sync_seen:
+                print("sync-seen:", json.dumps(repost.sync_last_seen(live=args.live), sort_keys=True))
+            if args.purge:
+                print("purge:", json.dumps(purge.run(args.live), sort_keys=True))
+        except (store.StoreError, notion.NotionError) as error:
+            print(f"MAINTENANCE FAILED: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.audit:
         from pipeline import audit, notion                       # noqa: PLC0415
         try:

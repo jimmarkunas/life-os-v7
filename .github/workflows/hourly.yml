@@ -68,6 +68,10 @@ on:
         description: "Publish READY jobs to the Notion Job Ledger (dry run counts only unless live)"
         type: boolean
         default: false
+      maintenance:
+        description: "Run Last Seen sync and the retention purge now (saves only when live)"
+        type: boolean
+        default: false
       publish_limit:
         description: "How many READY jobs to publish this run (keep small for the first live batch)"
         type: string
@@ -307,11 +311,20 @@ jobs:
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
         run: python -m pipeline.resolve --publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
+      - id: maintain
+        continue-on-error: true
+        name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
+        run: |
+          python -m pipeline.resolve --sync-seen $([ "$LIVE" = "true" ] && echo --live)
+          if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
+            python -m pipeline.resolve --purge $([ "$LIVE" = "true" ] && echo --live)
+          fi
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} enrich=${{ steps.enrich.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} enrich=${{ steps.enrich.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
