@@ -207,3 +207,8 @@ The 10 remaining sponsors have no readable board (probe: nothing found for 4, ag
 search pace; dispatch input `discover`) runs one free web search per sponsor, keeps results that are a single-job URL naming the sponsor with a readable role, and adds them as NEW candidates (lane Scale-Up, route evidence
 `Scale-up:POSITIVE`, source `discover`, provider Public Web). They then take the normal final-link chain (employer ATS board match, one employer-site search, 40 searches per run); nothing is published without a final employer/ATS link and a full
 description, so an aggregator-only lead stays unresolved and is never shown. Aggregator pages are never fetched or scraped. myvisajobs (a general list, not company pages) is not used.
+
+## D37 — Published pages whose lane decision is EXCLUDE are trashed (Jim, 2026-10-01)
+The Fit gate already keeps new EXCLUDE jobs out of Notion (EXCLUDED_FIT, never published). 11 pages published before they were scored showed Admission Status Excluded. With V7_FIT_GATE=true the audit stage now trashes a published page whose stored
+decision is EXCLUDE, under the same human-state guard (Applied, Applied On, Saturn Decision, active hiring-pipeline match, unreadable or wrong target = left alone), marks the job EXCLUDED_FIT and keeps its description and ledger hash so it is never published again.
+Notion keeps a trashed page for 30 days. A page with no Hostinger row or no stored decision is not touched.
