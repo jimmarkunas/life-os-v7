@@ -43,5 +43,17 @@ class EnrichTests(unittest.TestCase):
         self.assertFalse(enrich._title_ok("Data Engineer", "Account Executive"))
 
 
+class BlockedReportTests(unittest.TestCase):
+    def test_counts_reasons_and_host_families_without_naming_anyone(self):
+        results = [(1, {"outcome": "blocked", "reason": "http_403"}), (2, {"outcome": "blocked", "reason": "http_403"}),
+                   (3, {"outcome": "blocked", "reason": "jd_thin"}), (4, {"outcome": "ready"})]
+        urls = {1: "https://acme.wd5.myworkdayjobs.com/en/job/1", 2: "https://careers.example.com/j/2",
+                3: "https://www.linkedin.com/jobs/view/3", 4: "https://boards.greenhouse.io/x/jobs/4"}
+        report = enrich.blocked_report(results, urls)
+        self.assertEqual(report["reasons"], {"http_403": 2, "jd_thin": 1})
+        self.assertEqual(report["families"], {"myworkdayjobs.com": 1, "employer_site": 1, "linkedin": 1})
+        self.assertNotIn("acme", str(report))
+
+
 if __name__ == "__main__":
     unittest.main()

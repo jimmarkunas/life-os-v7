@@ -10,7 +10,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from lifeos.jobs.resolve import ats_match
+from lifeos.jobs.resolve import ats_match, search_match
 from lifeos.platform import usage, limits, tinyfish
 from lifeos.jobs import jd, jsonld, quality, store
 from lifeos.platform.http import fetch
@@ -154,6 +154,28 @@ def save(connection, job_id, result):
                            ((result.get("reason") or "blocked")[:100], now, job_id))
 
 
+def host_family(url):
+    """Counts-only label for where a page lives: a known ATS domain, LinkedIn, or 'employer_site' (never a company name)."""
+    host = (urlsplit(url or "").hostname or "").lower()
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return "linkedin"
+    for domain in search_match.ATS_DOMAINS:
+        if host == domain or host.endswith("." + domain):
+            return domain
+    return "employer_site"
+
+
+def blocked_report(results, urls):
+    """Why pages stayed blocked, as counts: {'reasons': {code: n}, 'families': {host family: n}}."""
+    reasons, families = {}, {}
+    for job_id, result in results:
+        if result["outcome"] == "blocked":
+            reasons[result.get("reason") or "blocked"] = reasons.get(result.get("reason") or "blocked", 0) + 1
+            family = host_family(urls.get(job_id))
+            families[family] = families.get(family, 0) + 1
+    return {"reasons": reasons, "families": families}
+
+
 def run(limit, live):
     with store.connect() as connection:
         store.ensure_schema(connection)
@@ -177,6 +199,7 @@ def run(limit, live):
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
     _fallback(results, rows, counts)
+    counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _ in rows})
     if live and results:
         with store.connect() as connection:
             for job_id, result in results:
@@ -197,6 +220,7 @@ def _fallback(results, rows, counts):
             allowed = usage.reserve(connection, len(blocked))
     except store.StoreError:
         return
+    counts["fallback_attempted"] = min(allowed, len(blocked))       # the rest waited on the daily Fetch cap
     pacer, done = usage.Pacer(), 0
     for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
         batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
