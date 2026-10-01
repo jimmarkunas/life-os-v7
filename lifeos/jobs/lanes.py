@@ -138,3 +138,29 @@ def detect_work_mode(location, title="", text=""):
     if re.search(r"\bon-?site\b|\bin[- ]office\b|\bonsite\b", head + " " + body):
         return "onsite"
     return "unknown"
+
+
+LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
+ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
+POLICY_VERSION = "l1"                            # bump when a policy changes so stored decisions are re-evaluated
+
+
+def lane_for(row_lane):
+    return LANE_ALIAS.get(row_lane or "Newsletter", row_lane or "US Remote")
+
+
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None):
+    """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
+    posting date). Pay comes only from the posted pay field."""
+    pay_min, currency = parse_pay(salary_text)
+    when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
+    return Facts(fit=fit, market=market, work_mode=detect_work_mode(location, title, text), pay_min=pay_min,
+                 pay_currency=currency, posted=when)
+
+
+def decide(row_lane, facts, today, exclusion=None):
+    """-> (Decision, lane name). A private exclusion rule (fit.exclusions) excludes in every lane, with the Fit untouched."""
+    lane = lane_for(row_lane)
+    if exclusion:
+        return Decision(EXCLUDE, f"excluded: {exclusion}"), lane
+    return qualify(POLICIES[lane], facts, today), lane

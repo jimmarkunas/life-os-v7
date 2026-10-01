@@ -170,10 +170,25 @@ class Scoring(unittest.TestCase):
 
 
 class Stage(unittest.TestCase):
+    def test_lane_decision_for_a_newsletter_job(self):
+        from lifeos.jobs.fit import stage
+        base = (1, "Technical Program Manager", "Beta", GOOD, "fp", "Newsletter")
+        remote = stage.score_rows([base + ("Remote - United States", "$120K/yr - $150K/yr", None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        self.assertEqual((remote[3].status, remote[4], remote[5]), ("ADMIT", "US Remote", "remote"))
+        onsite = stage.score_rows([base + ("Austin, TX (Hybrid)", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        self.assertEqual(onsite[3].status, "EXCLUDE")
+        low = stage.score_rows([base + ("Remote", "$60K/yr", None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        self.assertEqual(low[3].status, "EXCLUDE")                   # explicit pay below $80K
+        stale = stage.score_rows([base + ("Remote", None, date(2026, 8, 1), date(2026, 9, 30))], PROFILE, TODAY)[0]
+        self.assertEqual(stale[3].status, "EXCLUDE")                 # employer Posting Date beats First Surfaced
+        gated = stage.score_rows([(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
+        self.assertEqual((gated[3].status, gated[2].decision), ("EXCLUDE", "No-Go"))
+
     def test_score_rows_is_pure_and_missing_profile_is_a_noop(self):
         from lifeos.jobs.fit import stage
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)
         self.assertEqual((out[0][0], out[0][2].decision), (1, "Go"))
+        self.assertEqual(out[0][3].status, "REVIEW")                 # no location or pay evidence: work mode unresolved
         self.assertEqual(stage.run(10, False, environ={})["profile"], "missing")
 
 

@@ -23,6 +23,13 @@ job and Scale-Up is the visible lane. Target/Curated never changes the Fit floor
 `detect_work_mode` decides from location and title, with the description only confirming explicit statements.
 Tests: `tests/jobs/test_lanes.py` encodes the matrix.
 
+## In the pipeline
+`fit` judges every scored job by its lane policy (a Newsletter job is a US Remote job) and stores `admission`, a reason, the detected
+work mode and the lane in `v7_job_fit`. Shadow mode (default) records only; publishing and the Ledger's Admission Status are unchanged.
+With `V7_FIT_GATE=true`: EXCLUDE becomes `EXCLUDED_FIT` and is never published; ADMIT publishes as **Admitted**; REVIEW publishes as
+**Passed / Review** with a **Review Reason**. Published rows also get Work Mode, Compensation (posted pay), Fit Authority, Eligible Lanes
+and Visible Lane = the lane name.
+
 ## Retention (decided, not yet implemented)
 30-day stale purge of canonical Jobs with a 90-day suppression tombstone (so a repost does not recreate a purged job); a job marked
 Applied that has not reached an interview stage within 30 days is purged; a job that reaches an interview stage is kept.

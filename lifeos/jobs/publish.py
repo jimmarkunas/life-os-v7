@@ -3,13 +3,13 @@
 Hostinger is the dedupe brain: each job is created once and its page id stored. The ONE cold-start read of the Ledger
 (to avoid duplicating rows V2 already wrote) is remembered in v7_ledger_urls and never repeated.
 Properties written (all exist in the Ledger): Job, Company, Apply URL, Source Provider, Source Types, Stable Job Key,
-First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admission Status. LIFE OS Fit / Why It Fits are written when the fit stage scored the job; with V7_FIT_GATE=true only Go jobs publish.
+First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admission Status. LIFE OS Fit / Why It Fits are written when the fit stage scored the job; with V7_FIT_GATE=true only jobs the lane policy admits (or sends to Review) publish.
 The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 """
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import store
+from lifeos.jobs import lanes, store
 from lifeos.jobs.identity import url_key
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -58,14 +58,22 @@ def properties(row):
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
-        "Visible Lane": {"select": {"name": row["lane"]}},
-        "Admission Status": {"select": {"name": "Passed / Review"}},
+        "Visible Lane": {"select": {"name": lanes.lane_for(row["lane"])}},
+        "Eligible Lanes": {"multi_select": [{"name": lanes.lane_for(row["lane"])}]},
+        "Admission Status": {"select": {"name": lanes.ADMISSION_LABEL.get(row.get("admission"), "Passed / Review")}},
     }
+    if row.get("admission") == lanes.REVIEW and row.get("admission_reason"):
+        props["Review Reason"] = {"rich_text": rich_text(row["admission_reason"])}
+    if row.get("work_mode") in ("remote", "hybrid", "onsite", "unknown"):
+        props["Work Mode"] = {"select": {"name": row["work_mode"].capitalize()}}
+    if row.get("salary"):
+        props["Compensation"] = {"rich_text": rich_text(row["salary"])}
     if row.get("posted"):
         props["Posting Date"] = {"date": {"start": row["posted"].isoformat()}}
     if row.get("fit") is not None:                                    # Phase 2: the deterministic fit score and its line
         props["LIFE OS Fit"] = {"number": row["fit"]}
         props["Why It Fits"] = {"rich_text": rich_text(row.get("fit_line") or "")}
+        props["Fit Authority"] = {"select": {"name": "Authoritative"}}
     return props
 
 
@@ -105,9 +113,9 @@ def _pick(connection, limit, gated=False):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
-            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line"
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
-            " AND j.notion_page_id IS NULL" + (" AND f.decision='Go'" if gated else "") +
+            " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "") +
             " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
         rows = cursor.fetchall()
         known = set()
@@ -119,6 +127,7 @@ def _pick(connection, limit, gated=False):
 
 
 def run(limit, live, environ=os.environ):
+    gated = environ.get("V7_FIT_GATE") == "true"       # shadow mode: the lane decision is stored but not shown as Admission Status
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
     counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
     client = Client(environ)
@@ -131,9 +140,9 @@ def run(limit, live, environ=os.environ):
             _store_seed(connection, urls)
         counts["seeded"] = len(urls)
     with store.connect() as connection:
-        rows, known = _pick(connection, limit, environ.get("V7_FIT_GATE") == "true")
+        rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -150,7 +159,9 @@ def run(limit, live, environ=os.environ):
         row = {"title": title, "company": company, "url": url, "source": source, "provider": provider, "lane": lane,
                "key": key,
                "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted,
-               "fit": fit, "fit_line": fit_line}
+               "fit": fit, "fit_line": fit_line,
+               "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
+               "work_mode": work_mode, "salary": salary}
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
         except NotionError:

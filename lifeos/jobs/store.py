@@ -82,6 +82,10 @@ COLUMNS = (
     ("v7_jobs", "notion_expired_at", "DATETIME NULL", None),
     ("v7_job_fit", "shadow_score", "SMALLINT NULL", None),
     ("v7_job_fit", "shadow_changes", "SMALLINT NULL", None),
+    ("v7_job_fit", "admission", "VARCHAR(8) NULL", None),
+    ("v7_job_fit", "admission_reason", "VARCHAR(80) NULL", None),
+    ("v7_job_fit", "work_mode", "VARCHAR(8) NULL", None),
+    ("v7_job_fit", "lane", "VARCHAR(24) NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 def existing_v7_tables(connection):
