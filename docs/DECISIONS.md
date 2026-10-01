@@ -183,3 +183,10 @@ Still no LLM-hosted scheduler. The timer can be replaced by any other HTTP cron 
 ## D32 — Scale-Up web acquisition is scheduled; the unused v7_runs table is retired (Jim, 2026-10-01)
 - Step 5c (`lifeos.run web-scale-up --limit 12`) now runs in every scheduled run (`PIPELINE`), not only on dispatch. It uses no TinyFish budget (public ATS boards only); a failure is counted by the existing failed-stage check.
 - `v7_runs` was created by the first schema and never read or written. It is removed from the schema and from `store.TABLES`. An existing empty `v7_runs` in Hostinger is left in place (nothing references it); drop it by hand when convenient.
+
+## D33 — The 17 Scale-Up sponsors with their own careers page are readable (Jim, 2026-10-01)
+Ported the proven first-party readers from the V2 Scale-Up acquirer into `lifeos/sources/web/html_readers.py` (static pages and JSON-LD, WTTJ/Stream/Popsa/JOIN/Rippling paths, Bluestonex, Six & Flow, Futuristic portal,
+Doubleword bundle array, Revolut `__NEXT_DATA__` with an exhaustive count check, TG0, Veramed cards). A reader that cannot prove the inventory raises, which the lister reports as FAILED `bad_shape`
+(never zero jobs, never a removal); an empty page is a COMPLETE zero only for the self-proving readers or when the registry row carries a `zero_marker` phrase (Intrepid). The 17 rows moved from `bespoke` to `ready`
+(36 of 48 now listable). Not done: the 12 sponsors with no discoverable ATS (LinkedIn/Indeed company pages) stay `fallback`/DEGRADED. These readers have not yet seen the live pages from the runner:
+the first runs may report some as FAILED `bad_shape`; the counts say which.

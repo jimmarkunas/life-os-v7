@@ -152,8 +152,9 @@ class ScaleUp(unittest.TestCase):
         rows = registry.load(registry.PATHS["Scale-Up"])
         self.assertEqual(len(rows), 48)
         ready = registry.for_lane("Scale-Up")
-        self.assertEqual(sorted({r["kind"] for r in ready}), ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
-        self.assertEqual(len(ready), 19)
+        self.assertEqual(sorted({r["kind"] for r in ready if "_html" not in r["kind"] and r["kind"] != "doubleword_bundle"}),
+                         ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
+        self.assertEqual(len(ready), 36)                                          # 19 public ATS boards + 17 first-party careers pages (D33)
         self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):
