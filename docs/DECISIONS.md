@@ -212,3 +212,8 @@ description, so an aggregator-only lead stays unresolved and is never shown. Agg
 The Fit gate already keeps new EXCLUDE jobs out of Notion (EXCLUDED_FIT, never published). 11 pages published before they were scored showed Admission Status Excluded. With V7_FIT_GATE=true the audit stage now trashes a published page whose stored
 decision is EXCLUDE, under the same human-state guard (Applied, Applied On, Saturn Decision, active hiring-pipeline match, unreadable or wrong target = left alone), marks the job EXCLUDED_FIT and keeps its description and ledger hash so it is never published again.
 Notion keeps a trashed page for 30 days. A page with no Hostinger row or no stored decision is not touched.
+
+## D38 — Shared runtime and redaction primitives; Interview handoff (Jim, 2026-10-01)
+`lifeos/platform/runtime.py` (RunContext: run id, deadline, bounded timeout; ExecutionStatus/ExecutionResult with scalar-only detail) and `lifeos/platform/redact.py` (structured and free-text redaction; meeting passcodes, meeting ids, join tokens, Notion ids, emails, URL secrets)
+are ported and trimmed from V2. Counts-only logs remain the primary control; redaction guards exception text and any diagnostic. The resolve stage's batch deadline is runtime's first consumer; Interview OS is the next.
+`docs/INTERVIEW_HANDOFF.md` is the shared contract for the Interview track: ownership, hard rules, build order, the one open decision (how Derived content is produced).
