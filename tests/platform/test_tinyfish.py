@@ -35,3 +35,18 @@ class KeyConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SearchPace(unittest.TestCase):
+    def test_lensa_speeds_up_after_the_window_and_a_429_puts_it_back(self):
+        from lifeos.platform import limits, tinyfish_search as ts
+        saved = ts._solo_after[0]
+        try:
+            ts._solo_after[0] = None
+            self.assertEqual(ts.gap_seconds(), limits.TINYFISH_SEARCH_GAP_SECONDS)                    # LinkedIn and everyone else: shared pace
+            ts.solo_after(540)
+            self.assertEqual(ts.gap_seconds(ts._started + 100), limits.TINYFISH_SEARCH_GAP_SECONDS)   # inside the window
+            self.assertEqual(ts.gap_seconds(ts._started + 541), limits.TINYFISH_SEARCH_GAP_SOLO)      # after it
+            self.assertLess(60 / limits.TINYFISH_SEARCH_GAP_SOLO, 30)                                    # under the provider's 30/min limit
+        finally:
+            ts._solo_after[0] = saved

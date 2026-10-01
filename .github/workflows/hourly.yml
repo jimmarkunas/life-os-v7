@@ -201,7 +201,7 @@ jobs:
         run: python -m lifeos.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
 
   finish:
-    needs: [prep, jobright, linkedin, lensa]
+    needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -292,7 +292,21 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
+
+  report:
+    needs: [prep, jobright, linkedin, lensa, finish]
+    if: ${{ always() && needs.prep.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
+        run: |
+          failed=""
+          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          if [ -n "$failed" ]; then echo "FAILED LANES:$failed"; exit 1; fi
