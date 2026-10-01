@@ -34,6 +34,13 @@ class PropertyTests(unittest.TestCase):
         for fit in ("LIFE OS Fit", "Saturn Decision", "Provider Score"):
             self.assertNotIn(fit, props)
 
+    def test_fit_fields_appear_only_when_scored(self):
+        row = {"title": "T", "company": "C", "url": "https://x.example/j/1", "source": "lensa", "provider": "Lensa",
+               "lane": "Newsletter", "key": "k", "first_seen": datetime.date(2026, 9, 30), "posted": None}
+        props = publish.properties({**row, "fit": 81, "fit_line": "[81%] Go | Strengths: a | Gaps: none"})
+        self.assertEqual(props["LIFE OS Fit"]["number"], 81)
+        self.assertTrue(props["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("[81%] Go"))
+
     def test_url_key_ignores_query_case_and_trailing_slash(self):
         self.assertEqual(identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
                          identity.url_key("https://boards.greenhouse.io/a/jobs/1"))

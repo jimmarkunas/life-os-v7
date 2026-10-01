@@ -3,7 +3,7 @@
 Hostinger is the dedupe brain: each job is created once and its page id stored. The ONE cold-start read of the Ledger
 (to avoid duplicating rows V2 already wrote) is remembered in v7_ledger_urls and never repeated.
 Properties written (all exist in the Ledger): Job, Company, Apply URL, Source Provider, Source Types, Stable Job Key,
-First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admission Status. Fit fields are left blank.
+First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admission Status. LIFE OS Fit / Why It Fits are written when the fit stage scored the job; with V7_FIT_GATE=true only Go jobs publish.
 The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 """
 from datetime import datetime, timezone
@@ -63,6 +63,9 @@ def properties(row):
     }
     if row.get("posted"):
         props["Posting Date"] = {"date": {"start": row["posted"].isoformat()}}
+    if row.get("fit") is not None:                                    # Phase 2: the deterministic fit score and its line
+        props["LIFE OS Fit"] = {"number": row["fit"]}
+        props["Why It Fits"] = {"rich_text": rich_text(row.get("fit_line") or "")}
     return props
 
 
@@ -98,13 +101,14 @@ def _store_seed(connection, urls):
                                rows[start:start + 500])
 
 
-def _pick(connection, limit):
+def _pick(connection, limit, gated=False):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
-            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text"
-            " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status='READY'"
-            " AND j.notion_page_id IS NULL ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line"
+            " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
+            " AND j.notion_page_id IS NULL" + (" AND f.decision='Go'" if gated else "") +
+            " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
         rows = cursor.fetchall()
         known = set()
         for row in rows:
@@ -127,9 +131,9 @@ def run(limit, live, environ=os.environ):
             _store_seed(connection, urls)
         counts["seeded"] = len(urls)
     with store.connect() as connection:
-        rows, known = _pick(connection, limit)
+        rows, known = _pick(connection, limit, environ.get("V7_FIT_GATE") == "true")
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -145,7 +149,8 @@ def run(limit, live, environ=os.environ):
             desc["summary"] = (full or "")[:6000]
         row = {"title": title, "company": company, "url": url, "source": source, "provider": provider, "lane": lane,
                "key": key,
-               "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted}
+               "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted,
+               "fit": fit, "fit_line": fit_line}
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
         except NotionError:
