@@ -28,6 +28,9 @@ class ReaderTests(unittest.TestCase):
                    {"/wday/cxs/acme/Careers/job/Remote/PM_R1": (200, info)})
         self.assertEqual((job["title"], job["html"], job["posted"]), ("PM", "<p>desc</p>", "2026-09-24"))
         self.assertEqual(read("https://acme.wd5.myworkdayjobs.com/Careers/job/x/PM_R2", {}), {"closed": True})
+        applied = read("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Remote/PM_R1/apply/autostart",
+                       {"/wday/cxs/acme/Careers/job/Remote/PM_R1": (200, info)})           # the apply form is cut off the path
+        self.assertEqual(applied["title"], "PM")
 
     def test_workable_finds_the_shortcode_in_the_account_widget(self):
         widget = {"jobs": [{"shortcode": "ABC123", "title": "PM", "description": "<p>d</p>", "published_on": "2026-09-20"}]}

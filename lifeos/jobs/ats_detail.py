@@ -25,6 +25,9 @@ def _fetch(url, **kwargs):
 
 def _get_json(url):
     page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, headers={"Accept": "application/json"})
+    if page.status == 403:                       # some tenants refuse a browser user agent on their JSON endpoint
+        page = _fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2,
+                      headers={"Accept": "application/json", "User-Agent": "lifeos-jobs/0.1"})
     if page.status in (404, 410):
         return "gone"
     if page.status != 200:
@@ -44,6 +47,8 @@ def workday(parts):
     host, segs = parts.hostname.lower(), [s for s in parts.path.split("/") if s]
     if segs and LOCALE.match(segs[0]):
         segs = segs[1:]
+    if "apply" in segs:
+        segs = segs[:segs.index("apply")]        # the apply form lives under the job path; the job is what precedes it
     if len(segs) < 3 or segs[1] != "job":
         return None
     data = _get_json(f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}")
