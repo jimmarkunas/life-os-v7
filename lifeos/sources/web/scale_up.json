@@ -327,7 +327,10 @@
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://www.revolut.com/en-GB/careers/"
+   "url": "https://www.revolut.com/en-GB/careers/",
+   "impersonate": true,
+   "warm_url": "https://www.revolut.com/",
+   "alt_urls": ["https://www.revolut.com/careers/"]
   },
   {
    "id": "su-six-flow-ltd",
