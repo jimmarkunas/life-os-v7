@@ -14,6 +14,13 @@ class RepostTests(unittest.TestCase):
         kinds = cursor.verbs()
         self.assertEqual(kinds, ["SELECT", "UPDATE", "UPDATE"])
 
+    def test_two_candidates_are_ambiguous_and_nothing_is_linked(self):
+        cursor = FakeCursor(rowcount=0)
+        cursor.fetchall = lambda: [(7,), (9,)]
+        self.assertIsNone(repost.link(cursor, "k", "f", NOW))
+        self.assertEqual(cursor.verbs(), ["SELECT", "UPDATE"])
+        self.assertEqual(cursor.sql[-1][1][-1], "k")                       # only the new row is touched; neither original is
+
     def test_no_match_is_a_new_job(self):
         cursor = FakeCursor(rowcount=0)
         self.assertIsNone(repost.link(cursor, "k", "f", NOW))

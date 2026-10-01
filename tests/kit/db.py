@@ -21,6 +21,9 @@ class FakeCursor:
     def fetchone(self):
         return self.row
 
+    def fetchall(self):
+        return [self.row] if self.row else []
+
     def verbs(self):
         return [words.split()[0] for words, _ in self.sql]
 
