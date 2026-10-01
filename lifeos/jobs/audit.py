@@ -8,7 +8,7 @@ A protected row is left exactly as it is (PUBLISHED, page untouched) and only co
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import guard, hiring_pipeline, quality, store
+from lifeos.jobs import guard, hiring_pipeline, ledger, quality, store
 from lifeos.jobs.identity import url_key
 from lifeos.platform import notion_client
 
@@ -44,6 +44,9 @@ def run(limit, live, environ=os.environ):
     if not live or not bad:
         return counts
     client = notion_client.Client(environ) if any(r[3] for r, _ in bad) else None
+    if client and ledger.verify(client) != ledger.OK:                    # the Job Ledger target check comes before any read of a page or a trash
+        counts["protected"]["target_" + ledger.verify(client)] = len([1 for r, _ in bad if r[3]])
+        bad = [(r, why) for r, why in bad if not r[3]]
     opportunities = []
     pipeline_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     if client and pipeline_id:

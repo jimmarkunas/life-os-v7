@@ -9,7 +9,7 @@ The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import lanes, store
+from lifeos.jobs import lanes, ledger, store
 from lifeos.jobs.identity import url_key
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -131,6 +131,9 @@ def run(limit, live, environ=os.environ):
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
     counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
     client = Client(environ)
+    counts["target"] = ledger.OK if not live else ledger.verify(client)           # a live run never writes to a data source that is not the Job Ledger
+    if counts["target"] != ledger.OK:
+        return counts
     with store.connect() as connection:
         store.ensure_schema(connection)
         need_seed = live and not _seeded(connection)

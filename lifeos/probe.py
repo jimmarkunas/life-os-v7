@@ -82,5 +82,20 @@ def hiring(environ=os.environ):
             "unparsed_titles": sum(not o.role for o in opportunities)}
 
 
+def ledger_target(environ=os.environ):
+    """Does the configured data source pass the Job Ledger target check? Property names that fail are schema, not content."""
+    from lifeos.jobs import ledger                                                           # noqa: PLC0415
+    from lifeos.platform.notion_client import Client, NotionError                             # noqa: PLC0415
+    client = Client(environ)
+    status = ledger.verify(client)
+    out = {"status": status}
+    if status == ledger.MISMATCH:
+        try:
+            out["missing_or_wrong_type"] = ledger.missing(client)
+        except NotionError:
+            pass
+    return out
+
+
 def run(limit, live):
-    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring()}
+    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
