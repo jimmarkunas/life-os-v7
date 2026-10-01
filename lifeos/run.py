@@ -48,6 +48,17 @@ def _discover_jobs(limit, live):
     return discover_jobs.run(limit, live)
 
 
+def _interview_probe(limit, live):
+    from lifeos import probe                                                                    # noqa: PLC0415
+    return {"interview_access": probe.interview_access()}
+
+
+def _interview(limit, live):
+    """Placeholder until INT-7.1B1 lands lifeos.interview.stage: proves the wiring and the Interview token, writes nothing."""
+    from lifeos import probe                                                                    # noqa: PLC0415
+    return {"stage": "placeholder", "writes": 0, "interview_access": probe.interview_access()}
+
+
 def _openjobs(limit, live):
     from lifeos.sources import openjobs                                                         # noqa: PLC0415
     return openjobs.run(limit, live)
@@ -100,6 +111,8 @@ STAGES = {
     "web": _web,
     "web-scale-up": _web_scale_up,
     "discover-jobs": _discover_jobs,
+    "interview-probe": _interview_probe,
+    "interview": _interview,
     "openjobs": _openjobs,
     "sponsors": _sponsors,
     "probe": _probe,
