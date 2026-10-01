@@ -10,7 +10,7 @@ No legacy Lifecycle / Liveness value is read for a decision or written. One filt
 from datetime import date, datetime, timedelta, timezone
 import os
 
-from lifeos.jobs import hiring_pipeline, lanes, progression, store, tombstone
+from lifeos.jobs import hiring_pipeline, lanes, ledger, progression, store, tombstone
 from lifeos.platform import limits, notion_client
 
 RETIRE_DAYS = 30
@@ -25,13 +25,11 @@ def _now():
 
 
 def query_filter(cutoff, lane):
-    """Unapplied, no Saturn Decision, our lane, and old by the employer Posting Date (else First Surfaced). Lifecycle = Application is a
-    legacy PROTECTIVE exclusion only (fail closed), never a trigger."""
+    """Unapplied, no Saturn Decision, our lane, and old by the employer Posting Date (else First Surfaced). The legacy Lifecycle field is not read."""
     day = cutoff.date().isoformat()
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
         {"property": "Saturn Decision", "select": {"is_empty": True}},
-        {"property": "Lifecycle", "select": {"does_not_equal": "Application"}},
         {"property": "Visible Lane", "select": {"equals": lane}},
         {"or": [{"property": "Posting Date", "date": {"before": day}},
                 {"and": [{"property": "Posting Date", "date": {"is_empty": True}},
@@ -96,8 +94,11 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "handoff": "not_configured"}
+    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "handoff": "not_configured", "target": ledger.OK}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
+    counts["target"] = ledger.verify(client)                         # never query or trash against a data source that is not the Job Ledger
+    if counts["target"] != ledger.OK:
+        return counts
     pipeline_id = ((environ if environ is not None else os.environ).get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     opportunities = []
     if pipeline_id:                                                  # INT-7.1A: protect pursuits with a live hiring process
