@@ -75,6 +75,9 @@ class ReaderTests(unittest.TestCase):
         board = {"jobs": [{"id": "abc-1", "title": "PM", "descriptionHtml": "<p>d</p>", "publishedAt": "2026-09-23"}]}
         self.assertEqual(read("https://jobs.ashbyhq.com/acme/abc-1", {"job-board/acme": (200, board)})["posted"], "2026-09-23")
         self.assertEqual(read("https://jobs.ashbyhq.com/acme/gone-2", {"job-board/acme": (200, board)}), {"closed": True})
+        single = {"title": "PM", "descriptionHtml": "<p>one</p>", "publishedAt": "2026-09-25"}          # V2's per-job endpoint
+        job = read("https://jobs.ashbyhq.com/acme/abcdef-12345/application", {"job-postings/abcdef-12345": (200, single)})
+        self.assertEqual((job["html"], job["posted"]), ("<p>one</p>", "2026-09-25"))
 
     def test_reader_failures_are_counted_by_status_and_path_shape_only(self):
         ats_detail.misses()

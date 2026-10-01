@@ -179,18 +179,25 @@ def smartrecruiters(parts):
 
 
 def ashby(parts):
-    """https://jobs.ashbyhq.com/{org}/{id} -> the org's public job board (every published job, with descriptionHtml)."""
+    """https://jobs.ashbyhq.com/{org}/{id}[/application] -> the single-job endpoint (the one V2 proved), else the org's
+    public job board (every published job, with descriptionHtml)."""
     segs = [s for s in parts.path.split("/") if s]
     if len(segs) < 2:
         return None
-    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{quote(segs[0])}")
+    org, ident = quote(segs[0]), segs[1]
+    one = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{org}/job-postings/{quote(ident)}")
+    if one == "gone":
+        return {"closed": True}
+    if isinstance(one, dict) and one.get("descriptionHtml"):
+        return _job(one.get("title"), one.get("descriptionHtml"), one.get("publishedAt") or one.get("updatedAt"))
+    data = _get_json(f"https://api.ashbyhq.com/posting-api/job-board/{org}")
     if data == "gone":
         return {"closed": True}
     jobs = data.get("jobs") if isinstance(data, dict) else None
     if not isinstance(jobs, list):
         return None
     for job in jobs:
-        if str(job.get("id", "")).lower() == segs[1].lower():
+        if str(job.get("id", "")).lower() == ident.lower():
             return _job(job.get("title"), job.get("descriptionHtml"), job.get("publishedAt"))
     return {"closed": True}
 
