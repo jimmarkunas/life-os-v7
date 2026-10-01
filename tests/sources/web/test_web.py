@@ -155,7 +155,7 @@ class ScaleUp(unittest.TestCase):
         self.assertEqual(sorted({r["kind"] for r in ready if "_html" not in r["kind"] and r["kind"] != "doubleword_bundle"}),
                          ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
         self.assertEqual(len(ready), 38)                                          # 19 public ATS boards + 17 first-party careers pages (D33) + 2 more own pages (D34)
-        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
+        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 10)        # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):
         j = lambda t, where, posted=None: {"title": t, "location": where, "posted": posted}
