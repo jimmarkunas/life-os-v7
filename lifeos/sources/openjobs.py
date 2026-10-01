@@ -12,7 +12,7 @@ import json
 import os
 import re
 
-from lifeos.jobs import store
+from lifeos.jobs import lanes, store
 from lifeos.platform.http import fetch
 from lifeos.sources.web import suppress
 from lifeos.sources.web.run import SqlRepo
@@ -127,6 +127,10 @@ def candidate(event):
     if HTML.search(content):
         from lifeos.jobs import jd                                                      # noqa: PLC0415
         content = jd.html_to_text(content)
+    # A bulk feed needs positive evidence: the US Remote lane is remote-only, so a posting that never says remote (in its place, title or the
+    # description's explicit statements) is not a candidate here. (A newsletter or board job with an unknown mode still goes to Review.)
+    if lanes.detect_work_mode(view["location"], view["title"], content) != "remote":
+        return None, "no_remote_evidence"
     return {"id": event["key"], "title": view["title"], "location": view["location"], "url": job["url"], "posted": view["posted"],
             "content": content or None, "ats": job.get("ats")}, None
 

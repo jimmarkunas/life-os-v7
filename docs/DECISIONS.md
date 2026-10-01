@@ -152,3 +152,9 @@ GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring s
   US Remote policy. A test fails the build if any other module defines its own freshness constant.
 - `lifeos.jobs.guard.protection()` runs before audit trashes a published page: Applied, Applied On, Saturn Decision, an active hiring-pipeline opportunity, or an unreadable page
   all protect it (fail closed); the row is left PUBLISHED and only counted. Any future destructive Ledger operation must call the guard first.
+
+## D27 — What the first live-shaped dry runs taught (run 85, 2026-10-01)
+- Open Jobs: one generation held 562,627 events (287,980 upserts, 274,647 removes); with title family, US and age filters alone 9,370 postings still passed, so a bulk feed now requires POSITIVE remote evidence (location, title or the description's explicit statement); a posting that never says remote is not a candidate here. The 3,000-per-generation valve stays and is always counted (`over_cap`).
+- Sponsor register: 120,417 Skilled Worker, A-rated entries read from the gov.uk CSV (dry run).
+- Hiring Pipeline page: readable; 5 active opportunities, 2 with interview rounds; one title does not follow "Company - Role" and cannot match (it protects nothing until renamed).
+- Dice: a job detail page answers plain HTTP with JobPosting JSON-LD (description 5,588 chars) and an "Easy Apply" marker; enrichment's existing JSON-LD tier reads it, and an Easy Apply Dice page is now flagged `apply_kind=easy_apply` (Ledger Source Types "Easy Apply"). Dice search stays script-rendered: no discovery.

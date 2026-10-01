@@ -110,3 +110,14 @@ class FreshnessAuthority(unittest.TestCase):
         bad = [str(p.relative_to(root)) for p in root.rglob("*.py") if p.name != "lanes.py"
                and re.search(r"^(MAX_AGE_DAYS|MAX_AGE|FRESH\w*DAYS)\s*=\s*\d+", p.read_text(), re.M)]
         self.assertEqual(bad, [])
+
+
+class DiceEasyApply(unittest.TestCase):
+    def test_a_dice_page_with_the_easy_apply_marker_is_flagged(self):
+        from unittest import mock
+        html = JOB % (enrich._now().date().isoformat(), LONG.replace('"', "'")) + "<button>Easy Apply</button>"
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
+            got = enrich.read_page("https://www.dice.com/job-detail/1dde497d-8758-4eed-8aac-816bed294b63", "Senior Data Engineer")
+            plain = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer")
+        self.assertEqual((got["outcome"], got.get("apply_kind")), ("ready", "easy_apply"))
+        self.assertNotIn("apply_kind", plain)

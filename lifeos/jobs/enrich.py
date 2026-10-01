@@ -94,7 +94,10 @@ def read_page(url, title, lane=None):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
-        return parse_html(url, title, page.html, lane)
+        result = parse_html(url, title, page.html, lane)
+        if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
+            result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
+        return result
     return finish(title, desc, found_title, posted, source_kind, valid_through, lane)
 
 
@@ -151,6 +154,8 @@ def save(connection, job_id, result):
                 " qualifications=VALUES(qualifications), fingerprint=VALUES(fingerprint), fetched_at=VALUES(fetched_at)",
                 (job_id, result["source_kind"], d["full_text"], d["summary"], d["responsibilities"], d["requirements"],
                  d["qualifications"], d["fingerprint"], now))
+            if result.get("apply_kind"):
+                cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
             cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
