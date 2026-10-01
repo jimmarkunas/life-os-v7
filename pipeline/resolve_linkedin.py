@@ -28,7 +28,7 @@ def read_guest(url, pause=limits.LINKEDIN_GUEST_GAP_SECONDS):
     return {"outcome": "external_hidden"}
 
 
-SEARCH_LIMIT = limits.TINYFISH_SEARCH_PER_RUN
+SEARCH_LIMIT = limits.TINYFISH_SEARCH_PER_RUN_LINKEDIN
 
 
 def resolve_rows(rows):
@@ -39,10 +39,10 @@ def resolve_rows(rows):
         if results[-1]["outcome"] == "rate_limited":
             results.extend({"outcome": "rate_limited"} for _ in rows[len(results):])
             break
-    return match_rows(rows, results)
+    return match_rows(rows, results, SEARCH_LIMIT)
 
 
-def match_rows(rows, results):
+def match_rows(rows, results, search_limit=SEARCH_LIMIT):
     """Fill every 'external_hidden' result: ATS board match, then free Search. Shared with Lensa."""
     need = [i for i, r in enumerate(results) if r["outcome"] == "external_hidden"]
     hits = ats_match.match_many([(rows[i][2], rows[i][3], rows[i][4]) for i in need])
@@ -53,7 +53,7 @@ def match_rows(rows, results):
     for i, result in enumerate(results):
         if not result["outcome"].startswith("no_match_"):
             continue
-        if searched >= SEARCH_LIMIT:
+        if searched >= search_limit:
             results[i] = {"outcome": "deferred"}          # search budget for this run is spent; not an attempt
             continue
         searched += 1

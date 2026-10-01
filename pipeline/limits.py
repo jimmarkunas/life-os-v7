@@ -9,8 +9,10 @@ TINYFISH_FETCH_DAILY_CAP = 900           # ours (budget.FETCH_DAILY_CAP)
 TINYFISH_FETCH_BATCH = 10                # max URLs per call
 TINYFISH_SEARCH_PER_MINUTE = 30          # provider limit (free, needs Search API access)
 TINYFISH_SEARCH_PER_HOUR = 500           # provider limit
-TINYFISH_SEARCH_GAP_SECONDS = 2.2        # ours: 27/min
-TINYFISH_SEARCH_PER_RUN = 90             # ours: one run never exceeds ~20% of the hourly allowance
+TINYFISH_SEARCH_LANES = 2                # resolve lanes that run at the same time and share the one key
+TINYFISH_SEARCH_GAP_SECONDS = 2.2 * TINYFISH_SEARCH_LANES   # ours: 13.6/min per lane, 27/min across both
+TINYFISH_SEARCH_PER_RUN_LENSA = 300      # ours: Lensa + LinkedIn stay at 400 of the 500/hour allowance
+TINYFISH_SEARCH_PER_RUN_LINKEDIN = 100
 TINYFISH_BROWSER_USD_PER_MINUTE = 0.002  # paid; default cap $0 (budget.browser_cap_usd)
 TINYFISH_AGENT_ALLOWED = False           # $0.016/step - forbidden
 
