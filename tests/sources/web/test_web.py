@@ -146,6 +146,35 @@ class Suppression(unittest.TestCase):
         self.assertIsNone(suppress.reason(self.j("Director, Strategy", "New York, NY")))
 
 
+class ScaleUp(unittest.TestCase):
+    def test_the_universe_is_harvested_and_route_is_the_curated_membership(self):
+        from lifeos.sources.web import registry
+        rows = registry.load(registry.PATHS["Scale-Up"])
+        self.assertEqual(len(rows), 48)
+        ready = registry.for_lane("Scale-Up")
+        self.assertEqual(sorted({r["kind"] for r in ready}), ["ashby", "greenhouse", "lever", "pinpoint", "workable", "workday"])
+        self.assertEqual(len(ready), 13)
+        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
+
+    def test_scale_up_suppression_is_not_us_remote_suppression(self):
+        j = lambda t, where, posted=None: {"title": t, "location": where, "posted": posted}
+        self.assertIsNone(suppress.reason(j("Program Manager", "London, UK (Hybrid)"), NOW.date(), "Scale-Up"))        # any work mode
+        self.assertIsNone(suppress.reason(j("Program Manager", "London", date(2026, 9, 10)), NOW.date(), "Scale-Up"))  # 21 days: inside 30
+        self.assertEqual(suppress.reason(j("Program Manager", "London", date(2026, 8, 20)), NOW.date(), "Scale-Up"), "stale")
+        self.assertEqual(suppress.reason(j("Program Manager", "Paris, France"), NOW.date(), "Scale-Up"), "non_target_geography")
+        self.assertEqual(suppress.reason(j("Software Engineer", "London"), NOW.date(), "Scale-Up"), "off_target_title")
+        self.assertEqual(suppress.reason(j("Program Manager", "Paris, France"), NOW.date(), "US Remote"), "non_us")
+
+    def test_a_scale_up_run_admits_into_the_scale_up_lane_with_route_evidence(self):
+        repo = MemRepo()
+        src = [{"id": "su-x", "company": "X Ltd", "kind": "greenhouse", "slug": "x", "tier": "employer", "status": "ready"}]
+        board = lister.list_board("greenhouse", "x", fetcher({"boards-api": (200, gh((1, "Program Manager", "London, UK"), (2, "Product Manager", "Paris")))}))
+        got = run.run(10, True, NOW, lambda source: board, repo, src, lane="Scale-Up")
+        self.assertEqual((got["lane"], got["admit"], got["why"]), ("Scale-Up", 1, {"non_target_geography": 1}))
+        self.assertEqual(repo.commits[0][1], "Scale-Up")
+        self.assertEqual(repo.commits[0][0].source["route_evidence"], "Scale-up:POSITIVE")
+
+
 class MemRepo:
     def __init__(self):
         self.state, self.items_by, self.commits = {}, {}, []
@@ -156,8 +185,8 @@ class MemRepo:
     def items(self, sid):
         return dict(self.items_by.get(sid, {}))
 
-    def commit(self, o, failures):
-        self.commits.append(o)
+    def commit(self, o, failures, lane="US Remote"):
+        self.commits.append((o, lane))
         self.state[o.source["id"]] = {"due_at": o.due_at, "failures": 0 if o.status == "COMPLETE" else failures + 1}
         if o.status == "COMPLETE":
             book = self.items_by.setdefault(o.source["id"], {})

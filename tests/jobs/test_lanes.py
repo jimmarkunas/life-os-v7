@@ -105,6 +105,16 @@ class Parsing(unittest.TestCase):
         self.assertEqual(lanes.parse_pay("competitive salary"), (None, None))
         self.assertEqual(lanes.parse_pay("$5"), (None, None))
 
+    def test_geography_and_route_evidence(self):
+        self.assertEqual(lanes.geography_status("London, UK"), POSITIVE)
+        self.assertEqual(lanes.geography_status("Manchester"), NEGATIVE)
+        self.assertEqual(lanes.geography_status("Remote"), UNRESOLVED)
+        self.assertEqual(lanes.route_dict("Scale-up:POSITIVE"), {"Scale-up": POSITIVE})
+        self.assertEqual(lanes.route_dict(None), {})
+        facts = lanes.facts_for(80, "Program Manager", "London", "text", None, None, TODAY, route="Scale-up:POSITIVE")
+        self.assertEqual(lanes.decide("Scale-Up", facts, TODAY)[0].status, ADMIT)        # route + geography positive, any work mode
+        self.assertEqual(lanes.decide("Scale-Up", lanes.facts_for(80, "PM", "London", "t", None, None, TODAY), TODAY)[0].status, REVIEW)
+
     def test_work_mode(self):
         self.assertEqual(lanes.detect_work_mode("Remote - United States"), "remote")
         self.assertEqual(lanes.detect_work_mode("Austin, TX (Hybrid)"), "hybrid")

@@ -37,6 +37,11 @@ def _web(limit, live):
     return web.run(limit, live)
 
 
+def _web_scale_up(limit, live):
+    from lifeos.sources.web import run as web                                                   # noqa: PLC0415
+    return web.run(limit, live, lane="Scale-Up")
+
+
 def _enrich(limit, live):
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
     return enrich.run(limit, live)
@@ -72,6 +77,7 @@ STAGES = {
     "resolve-linkedin": _linkedin,
     "resolve-lensa": _lensa,
     "web": _web,
+    "web-scale-up": _web_scale_up,
     "enrich": _enrich,
     "fit": _fit,
     "audit": _audit,
