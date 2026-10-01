@@ -107,5 +107,5 @@ OS packages from `lifeos/`, so a new OS needs no change there. Domain tests stay
 ## D19 - Fit is deterministic; no LLM in the chain (DECIDED)
 The Claude project's fit method is ported as code (`lifeos/jobs/fit`, docs/FIT_MODEL.md). No Anthropic or other model call
 is made to extract or classify requirements. The profile is a private secret (`FIT_PROFILE_JSON`), validated and hashed on
-load; scores record the profile hash so a profile change re-scores. Shadow mode first (`V7_FIT_GATE` unset), gate after calibration.
+load; scores record the profile hash so a profile change re-scores. Shadow mode first (`V7_FIT_GATE` unset), gate after calibration. Professional Fit follows the live Candidate Profile (V3 five dimensions, Go at 72); exclusions are a separate gate and never change the Fit number.
 Dice is bundled into the US Remote producer, not built as a newsletter source.

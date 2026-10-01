@@ -29,7 +29,7 @@ def score_rows(rows, profile, today):
 
 
 def run(limit, live, environ=os.environ):
-    counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "no_data": 0, "low_confidence": 0, "gated": 0, "profile": "ok"}
+    counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok"}
     try:
         profile = fit_profile.load(environ)
     except fit_profile.ProfileError:
@@ -44,10 +44,10 @@ def run(limit, live, environ=os.environ):
     counts["picked"] = len(rows)
     scored = score_rows(rows, profile, _now().date())
     for _, _, result in scored:
-        key = {"Go": "go", "No-Go": "no_go", "No-Data": "no_data"}[result.decision]
+        key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
         counts[key] += 1
         counts["excluded"] += bool(result.exclusion)
-        counts["low_confidence"] += result.confidence == "low" and result.decision != "No-Data"
+        counts["low_confidence"] += result.confidence == "low" and result.decision != "Unscorable"
     if live and scored:
         with store.connect() as connection, connection.cursor() as cursor:
             for job_id, fingerprint, r in scored:

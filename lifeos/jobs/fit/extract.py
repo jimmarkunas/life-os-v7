@@ -6,6 +6,7 @@ from lifeos.jobs.fit import lexicon
 from lifeos.jobs.fit.profile import norm, term_regex
 
 _PLATFORM_RX = sorted(((t, term_regex(t)) for t in lexicon.PLATFORMS), key=lambda p: -len(p[0]))
+_STRICT = re.compile(r"requirement|required|must|minimum|basic qualification", re.I)
 _OPTIONAL = re.compile(lexicon.OPTIONAL, re.I)
 _SHAPE = re.compile(lexicon.SHAPE, re.I)
 _YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:-\s*\d{1,2}\s*)?(?:\+\s*)?(?:years?|yrs?)\b", re.I)
@@ -21,6 +22,7 @@ _SPLIT = re.compile(r",|/|\band\b|\bor\b|&|\bsuch as\b|\be\.g\.|\bincluding\b|\b
 class Unit:
     text: str
     section: str          # summary | required | preferred | duty | skip
+    strict: bool = False  # the heading itself makes it mandatory (Requirements / Minimum / Must have)
 
     @property
     def norm(self):
@@ -43,7 +45,7 @@ def _heading(line):
 
 def parse(text):
     """Units in document order. A line that is a known heading switches section; long paragraphs split to sentences."""
-    units, section = [], "summary"
+    units, section, strict = [], "summary", False
     for line in (text or "").split("\n"):
         line = line.strip()
         if not line:
@@ -51,14 +53,15 @@ def parse(text):
         kind = _heading(line)
         if kind:
             section = kind
+            strict = kind == "required" and bool(_STRICT.search(line))
             continue
         if line.endswith(":") and len(line) < 90:
             continue
         pieces = [line.lstrip("• ").strip()] if line.startswith("•") or len(line) < 220 else \
             [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
-        units += [Unit(p, section) for p in pieces if len(p) > 3]
+        units += [Unit(p, section, strict) for p in pieces if len(p) > 3]
     if not any(u.section in ("required", "preferred", "duty") for u in units):
-        units = [Unit(u.text, "required") for u in units]       # no recognisable headings: every sentence is judged on its shape
+        units = [Unit(u.text, "required", False) for u in units]       # no recognisable headings: every sentence is judged on its shape
     return units
 
 

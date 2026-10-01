@@ -82,3 +82,21 @@ DEFAULT_EXCLUSIONS = (
     {"id": "federal", "reason": "federal/DoD", "terms": ["department of defense", "dod", "federal government",
                                                           "federal agency", "u.s. government", "us government"]},
 )
+
+# Professions that are a different job, not a stray requirement (Fit caps at 40 only when the posting IS one of these).
+HARD_FAMILY = (
+    "software engineer", "software developer", "backend engineer", "frontend engineer", "full stack engineer",
+    "hands-on software development", "machine learning engineer", "model development", "data scientist", "data science",
+    "devops engineer", "site reliability", "infrastructure engineer", "cloud engineer", "database administrator",
+    "sap basis", "salesforce administrator", "security engineer", "security architect", "penetration", "accountant",
+    "accounting", "financial modeling", "financial analyst", "chief marketing officer", "cmo",
+)
+
+# Generic shape of each dimension (a requirement belongs to exactly one, first match wins in this order).
+DIM_ROLE = (r"\b\d+\s*\+?\s*(?:years?|yrs?)\b|\bsenior\b|\bprincipal\b|\bdirector\b|\bhead of\b|\bexecutive\b|\bc-?level\b|"
+            r"\bvp\b|\bvice president\b|\bmentor|\bpeople management\b|\bmanage (?:a )?team")
+DIM_TECH = (r"\bplatform\b|\barchitect\w*|\bapis?\b|\bintegrat\w+|\bcloud\b|\binfrastructure\b|\bsoftware\b|\bsystems?\b|"
+            r"\bsaas\b|\btechnical\b|\btechnology\b|\bstack\b|\bdata\b|\bmigrat\w+|\breplatform\w*|\bmodernization\b")
+DIM_DELIVERY = (r"cross-?functional|multi-?(?:team|vendor|market|country|region)|\bglobal\b|\benterprise\b|large[- ]scale|"
+                r"\bcomplex\w*|ambigu\w+|\brisks?\b|dependenc\w+|governance|\bbudgets?\b|\bportfolio\b|stakeholders?|"
+                r"distressed|regulated|at scale|\bvendors?\b")

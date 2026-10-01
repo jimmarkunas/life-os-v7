@@ -7,6 +7,7 @@ Shape (JSON, held in the FIT_PROFILE_JSON secret):
    "functions": [{"terms": ["..."], "class": "direct|adjacent|method"}],       # role families / duties
    "scope": {"team_size": 12, "budget_usd": 50000000, "global": "direct", "enterprise": "direct", ...},
    "exclusions": [{"id": "", "reason": "", "terms": [], "patterns": [], "where": "title|company|any", "strict": false}],
+   "advantage": ["ai", "automation"], "specialization": ["technical program manager"], "hard_family": [],
    "baseline": true}
 `committed` capabilities are the user's corrections: they are always Direct, whatever `class` says.
 """
@@ -14,7 +15,7 @@ from hashlib import sha256
 import json
 import re
 
-VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.5, "unsupported": 0.0}
+VALUE = {"direct": 1.0, "adjacent": 0.75, "method": 0.6, "unsupported": 0.0}   # V2/V3 arithmetic: 1, 3/4, 3/5, 0
 RANK = {"unsupported": 0, "method": 1, "adjacent": 2, "direct": 3}
 
 
@@ -39,6 +40,9 @@ class Profile:
         self.years = int(data.get("years") or 0)
         self.scope = dict(data.get("scope") or {})
         self.baseline = bool(data.get("baseline", True))
+        self.advantage = [term_regex(t) for t in data.get("advantage") or []]          # competitive-advantage terms (AI, ...)
+        self.specialization = [term_regex(t) for t in data.get("specialization") or []]  # a direct title specialization: +3
+        self.hard_family = [term_regex(t) for t in data.get("hard_family") or []]        # private additions to the generic list
         self.exclusions = list(data.get("exclusions") or [])
         self.capabilities, self.functions = [], []
         for row in data.get("capabilities") or []:
