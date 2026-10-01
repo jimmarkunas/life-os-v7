@@ -201,3 +201,9 @@ Run 92's Lensa log (old code): 250 rows in 32 minutes, 89 resolved. Each row ran
 500/hour allowance) and misses (143 of 250) cost the full two calls. Employer-site hits were 79 of the ~100 search hits. `search_match.find` now makes one unfiltered search per job and judges each result by
 the rule for its own kind (ATS domain: title + company; employer page: also the company in its host). Lensa also stops starting batches after 15 minutes (`LENSA_DEADLINE_MINUTES`): a run held the one-run-at-a-time queue
 for 30+ minutes; the unfinished rows stay NEW for the next run. Expected: about twice the rows per minute and a run of roughly 15-17 minutes.
+
+## D36 — Discovery for the Scale-Up sponsors with no job board (Jim, 2026-10-01)
+The 10 remaining sponsors have no readable board (probe: nothing found for 4, aggregator pages only for 4, unverified domains for 2). `lifeos.sources.web.discover_jobs` (stage `discover-jobs`, step 5f in the Lensa job so it shares the
+search pace; dispatch input `discover`) runs one free web search per sponsor, keeps results that are a single-job URL naming the sponsor with a readable role, and adds them as NEW candidates (lane Scale-Up, route evidence
+`Scale-up:POSITIVE`, source `discover`, provider Public Web). They then take the normal final-link chain (employer ATS board match, one employer-site search, 40 searches per run); nothing is published without a final employer/ATS link and a full
+description, so an aggregator-only lead stays unresolved and is never shown. Aggregator pages are never fetched or scraped. myvisajobs (a general list, not company pages) is not used.
