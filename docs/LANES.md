@@ -40,8 +40,7 @@ Saturn Decision exists) until the Interview progression handoff (INT-7.1A) suppl
 Only our own pages are touched (matched by stored page id). Hostinger: descriptions 90 days, never-published job rows 365 days, tombstones 90 days.
 
 ## Scale-Up on the shared web substrate
-`lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (13 listable today: 5 Ashby, 3 Greenhouse, 2 Workable, Lever, Pinpoint, Workday; 23 need a
-site parser, 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
+`lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (36 listable: 19 public ATS boards, 17 first-party careers pages read by `html_readers`, D33; 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
 geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
 (workflow input `web_scale_up`; also part of every scheduled run, 12 due boards per run).
 

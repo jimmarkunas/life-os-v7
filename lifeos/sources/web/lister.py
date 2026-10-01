@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from urllib.parse import quote, urlsplit
 
 from lifeos.jobs import jd
+from lifeos.sources.web import html_readers
 from lifeos.platform import limits
 from lifeos.platform.http import fetch
 
@@ -263,13 +264,41 @@ def _teamtailor(source, fetcher):
     return Listing(COMPLETE, jobs)
 
 
+def _first_party_html(source, fetcher):
+    """A sponsor's own careers page (no public ATS API). COMPLETE only when the reader proves the inventory, or the page carries the
+    registry's `zero_marker` phrase; an ambiguous page is FAILED (bad_shape), never zero jobs."""
+    def fetch_text(url):
+        got = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
+        if got.status != 200:
+            raise ValueError(f"http_{got.status}")
+        return got.html
+    page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
+    if page.status in (403, 429):
+        return Listing(FAILED, reason="rate_limited")
+    if page.status == 404:
+        return Listing(FAILED, reason="not_found")
+    if page.status != 200:
+        return Listing(FAILED, reason=f"http_{page.status}" if page.status else "network")
+    try:
+        rows = html_readers.READERS[source["kind"]](page.html, source, fetch_text)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return Listing(FAILED, reason="bad_shape")
+    if rows:
+        return Listing(COMPLETE, rows)
+    marker = source.get("zero_marker")
+    if source["kind"] in html_readers.SELF_PROVING or (marker and marker.casefold() in html_readers.strip_html(page.html).casefold()):
+        return Listing(COMPLETE, [])
+    return Listing(FAILED, reason="bad_shape")
+
+
 def _by_slug(reader):
     return lambda source, fetcher: reader(source["slug"], fetcher)
 
 
 READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "lever": _by_slug(_lever),
            "smartrecruiters": _by_slug(_smartrecruiters), "workable": _by_slug(_workable),
-           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe, "teamtailor": _teamtailor}
+           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe, "teamtailor": _teamtailor,
+           **{kind: _first_party_html for kind in html_readers.READERS}}
 
 
 def list_source(source, fetcher=fetch):

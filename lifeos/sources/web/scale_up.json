@@ -155,7 +155,7 @@
    "kind": "bluestonex_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://bluestonex.com/careers/"
   },
   {
@@ -175,7 +175,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.citisense.com/careers/"
   },
   {
@@ -195,7 +195,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.inetsoftwaresolutions.co.uk/careers/"
   },
   {
@@ -205,8 +205,9 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
-   "url": "https://beintrepid.co.uk/open-positions"
+   "status": "ready",
+   "url": "https://beintrepid.co.uk/open-positions",
+   "zero_marker": "There are no open positions at Intrepid at the moment"
   },
   {
    "id": "su-lessel-limited",
@@ -215,7 +216,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.lessel.co.uk/careers"
   },
   {
@@ -225,7 +226,7 @@
    "kind": "wttj_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://app.welcometothejungle.com/companies/Plentific"
   },
   {
@@ -235,7 +236,7 @@
    "kind": "rippling_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://ats.rippling.com/eml-payments-ltd/jobs"
   },
   {
@@ -275,7 +276,7 @@
    "kind": "popsa_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://popsa.com/careers/"
   },
   {
@@ -285,7 +286,7 @@
    "kind": "stream_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://stream.co/en/company/careers"
   },
   {
@@ -295,7 +296,7 @@
    "kind": "join_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://join.com/companies/transreport"
   },
   {
@@ -305,7 +306,7 @@
    "kind": "wttj_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://app.welcometothejungle.com/companies/Zero-Gravity"
   },
   {
@@ -315,7 +316,7 @@
    "kind": "futuristic_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.futuristictechnologies.co.uk/careers/"
   },
   {
@@ -325,7 +326,7 @@
    "kind": "revolut_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.revolut.com/en-GB/careers/"
   },
   {
@@ -335,7 +336,7 @@
    "kind": "sixflow_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://www.sixandflow.com/careers/future-opportunities"
   },
   {
@@ -345,7 +346,7 @@
    "kind": "tg0_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://tg0.co.uk/company/"
   },
   {
@@ -355,7 +356,7 @@
    "kind": "doubleword_bundle",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://doubleword.ai/careers/"
   },
   {
@@ -365,7 +366,7 @@
    "kind": "veramed_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://veramed.com/job-openings/"
   },
   {
