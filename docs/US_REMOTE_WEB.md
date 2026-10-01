@@ -63,8 +63,13 @@ Notion writes; one qualifying NEW job creates exactly one Notion row and is read
 vacancy converge to one job (same `dedupe_key` and fuzzy key); human lifecycle state is never overwritten; one run touches only bounded due work.
 
 ## Decisions (Jim, 2026-10-01)
-1. Open Jobs feed as channel A: explained to Jim, answer pending (recommendation: both, direct boards for the 43 priority sources, the feed for breadth).
+1. Open Jobs feed as channel A: YES, in addition to the direct boards (direct boards keep the 43 priority sources fresh, the feed gives breadth).
 2. Staffing agencies: keep all 10.
 3. Discovery helpers (LinkedIn Jobs, Built In, Dice): keep. Their output is a candidate, not an authoritative job: it enters as provider `LinkedIn` /
    `Built In` / `Dice`, status NEW, and goes through the same resolve lane as Lensa (employer ATS board match, then free Search) before it can be enrich-read,
    scored and published. No login for LinkedIn, no browser (D12). Dice matters most for contract and C2C roles that never appear on a public ATS feed.
+4. Easy Apply (LinkedIn, Dice) when the aggregator IS the final board: allowed under D3 (rank 3, only when it is the sole path) and the canon's
+   "native application platform" authority. Conditions: a stable provider vacancy id, a substantive employer-written JD read from the provider's public
+   page, and a verified native apply control (never inferred from absence). LinkedIn already works this way (`li_apply`, `apply_kind=easy_apply`, JD from the
+   public guest page). Dice needs a probe first (does the public job page carry JSON-LD and an Easy Apply marker from the runner?). Easy Apply rows are flagged in
+   the Ledger (Source Types gets an "Easy Apply" tag). External "Apply" on either site is never terminal and goes through employer/ATS resolution.
