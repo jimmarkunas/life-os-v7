@@ -14,6 +14,7 @@ from pipeline.http import fetch
 SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "group", "holdings", "technologies",
           "technology", "solutions", "services", "limited", "plc", "gmbh", "lp", "llp", "usa", "us"}
 KINDS = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee", "bamboohr", "breezy", "pinpoint")
+SUBDOMAIN_KINDS = ("recruitee", "bamboohr", "breezy", "pinpoint")
 SMARTRECRUITERS_PAGES = 5      # 100 postings per page; big employers have several hundred
 
 
@@ -30,17 +31,17 @@ def slug_candidates(company):
 
 
 def _json(url):
-    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
-    if page.status != 200:
-        return None
     try:
-        return json.loads(page.html)
-    except ValueError:
+        page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
+        return json.loads(page.html) if page.status == 200 else None
+    except (ValueError, OSError):            # bad hostname (UnicodeError is a ValueError), bad JSON, network
         return None
 
 
 def board(kind, slug):
     """[(title, url, location_text)] from a public board API; [] when the board does not exist."""
+    if kind in SUBDOMAIN_KINDS and not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", slug):
+        return []                                  # not a valid hostname label: no such board
     if kind == "greenhouse":
         data = _json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
         return [(j.get("title"), j.get("absolute_url"), (j.get("location") or {}).get("name"))
@@ -88,7 +89,14 @@ def board(kind, slug):
 
 
 def boards_for(company):
-    """All jobs on every public board found for the company: [(kind, title, url, location)]."""
+    """All jobs on every public board found for the company: [(kind, title, url, location)]. Never raises."""
+    try:
+        return _boards_for(company)
+    except Exception:                              # noqa: BLE001 - one odd company must not stop the stage
+        return []
+
+
+def _boards_for(company):
     found = []
     for slug in slug_candidates(company):
         for kind in KINDS:

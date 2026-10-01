@@ -57,3 +57,15 @@ class MoreBoardTests(unittest.TestCase):
         pages = iter([{"content": [{"id": str(i), "name": "J"} for i in range(100)]}, {"content": [{"id": "x", "name": "J"}]}])
         with mock.patch.object(ats_match, "_json", lambda url: next(pages)):
             self.assertEqual(len(ats_match.board("smartrecruiters", "acme")), 101)
+
+
+class RobustnessTests(unittest.TestCase):
+    def test_a_name_too_long_for_a_hostname_is_no_board_not_a_crash(self):
+        from unittest import mock
+        with mock.patch.object(ats_match, "fetch", side_effect=AssertionError("must not be requested")):
+            self.assertEqual(ats_match.board("recruitee", "x" * 70), [])
+
+    def test_one_failing_company_returns_empty(self):
+        from unittest import mock
+        with mock.patch.object(ats_match, "board", side_effect=RuntimeError("boom")):
+            self.assertEqual(ats_match.boards_for("Acme Corp"), [])
