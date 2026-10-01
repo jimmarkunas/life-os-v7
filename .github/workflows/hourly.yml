@@ -25,7 +25,7 @@ on:
         type: boolean
         default: false
       enrich:
-        description: "Read final pages of RESOLVED jobs: description, posting date, liveness (saves only when live)"
+        description: "ENRICH - read final pages of RESOLVED jobs: description, posting date, liveness (saves only when live)"
         type: boolean
         default: false
       resolve_lensa:
@@ -70,6 +70,10 @@ on:
         default: false
       maintenance:
         description: "Run Last Seen sync and the retention purge now (saves only when live)"
+        type: boolean
+        default: false
+      finalize:
+        description: "FINALIZE - label newsletter mail Done when every job in it has an outcome (also runs with Publish; saves only when live)"
         type: boolean
         default: false
       publish_limit:
@@ -255,7 +259,7 @@ jobs:
       - id: finalize
         continue-on-error: true
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
         run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
       - id: probe
         continue-on-error: true
