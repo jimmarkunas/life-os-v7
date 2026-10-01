@@ -23,8 +23,8 @@ def load(path=PATH):
         if row["id"] in seen:
             raise RegistryError(f"duplicate source id {row['id']}")
         seen.add(row["id"])
-        if row["status"] == "ready" and not row.get("slug"):
-            raise RegistryError(f"{row['id']}: a ready board needs its slug")
+        if row["status"] == "ready" and not (row.get("slug") or row.get("url")):
+            raise RegistryError(f"{row['id']}: a ready board needs its slug or url")
         if row["status"] != "ready" and not (row.get("url") or row.get("slug")):
             raise RegistryError(f"{row['id']}: needs a url or slug")
     return data["sources"]

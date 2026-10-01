@@ -2,7 +2,7 @@
  "version": 1,
  "source": "harvested from life-os-v2 contracts/us_remote_sources.json (2026-10-01); public company and ATS names only",
  "statuses": {
-  "ready": "V7 can list the board through lifeos.jobs.resolve.ats_match / ats_detail today",
+  "ready": "V7 can list the board today (lifeos.sources.web.lister: Greenhouse, Ashby, Lever, SmartRecruiters, Workable, Pinpoint, Workday, Jibe)",
   "port": "public JSON API; a small adapter to port (Open Jobs / V2 shape)",
   "bespoke": "site-specific list parser; harvest from V2 only if Open Jobs does not cover the board",
   "discovery": "aggregator: finds candidates, never authoritative Apply or JD evidence"
@@ -31,7 +31,7 @@
    "company": "Adobe",
    "tier": "employer",
    "kind": "workday",
-   "status": "port",
+   "status": "ready",
    "enabled": true,
    "url": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced/jobs",
    "public_job_base_url": "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced"
@@ -86,7 +86,7 @@
    "company": "Postman",
    "tier": "employer",
    "kind": "workday",
-   "status": "port",
+   "status": "ready",
    "enabled": true,
    "url": "https://postman.wd108.myworkdayjobs.com/wday/cxs/postman/careers/jobs",
    "public_job_base_url": "https://postman.wd108.myworkdayjobs.com/careers"
@@ -204,7 +204,7 @@
    "company": "GitHub",
    "tier": "employer",
    "kind": "jibe",
-   "status": "port",
+   "status": "ready",
    "enabled": true,
    "url": "https://www.github.careers/api/jobs",
    "job_base_url": "https://www.github.careers/careers-home/jobs"

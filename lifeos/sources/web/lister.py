@@ -2,9 +2,11 @@
 fully-read inventory; anything else is FAILED with a fixed reason. FAILED is never "zero jobs" and never implies a removal.
 (`resolve.ats_match.board` returns [] for both, which is fine for matching a title but not for acquisition.)"""
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import html as htmllib
 import json
+import re
+from urllib.parse import quote, urlsplit
 
 from lifeos.jobs import jd
 from lifeos.platform import limits
@@ -22,8 +24,9 @@ class Listing:
     reason: str | None = None
 
 
-def _json(url, fetcher):
-    page = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
+def _json(url, fetcher, body=None):
+    extra = {"data": json.dumps(body).encode(), "headers": {"Content-Type": "application/json", "Accept": "application/json"}} if body is not None else {}
+    page = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES, **extra)
     if page.status in (403, 429):
         return None, "rate_limited"
     if page.status == 404:
@@ -119,17 +122,124 @@ def _workable(slug, fetcher):
     return Listing(COMPLETE, jobs)
 
 
-READERS = {"greenhouse": _greenhouse, "ashby": _ashby, "lever": _lever, "smartrecruiters": _smartrecruiters, "workable": _workable}
+def _pinpoint(source, fetcher):
+    url = source.get("url") or f"https://{source['slug']}.pinpointhq.com/postings.json"
+    data, err = _json(url, fetcher)
+    if err or not isinstance(data, dict) or not isinstance(data.get("data"), list):
+        return Listing(FAILED, reason=err or "bad_shape")
+    return Listing(COMPLETE, [_job(j.get("id"), j.get("title"), (j.get("location") or {}).get("name"), j.get("url"),
+                                   j.get("published_at") or j.get("created_at"), _text(j.get("description")))
+                              for j in data["data"]])
 
 
-def list_board(kind, slug, fetcher=fetch):
-    reader = READERS.get(kind)
+WORKDAY_PAGE, WORKDAY_MAX = 20, 2000            # Workday's page size is 20; a board past the bound is FAILED, not COMPLETE
+
+
+def workday_urls(source):
+    """(CXS list url, public job base) from either a CXS url or a public site url."""
+    url = source["url"]
+    if "/wday/cxs/" in url:
+        return url, (source.get("public_job_base_url") or "").rstrip("/")
+    parts = urlsplit(url)
+    site = [p for p in parts.path.split("/") if p][-1]
+    tenant = parts.hostname.split(".")[0]
+    return f"{parts.scheme}://{parts.hostname}/wday/cxs/{tenant}/{site}/jobs", url.rstrip("/")
+
+
+def _posted_on(text, today):
+    """'Posted Today' / 'Posted Yesterday' / 'Posted 3 Days Ago' -> a date; '30+ Days Ago' and anything else -> None."""
+    low = (text or "").lower()
+    if "today" in low:
+        return today
+    if "yesterday" in low:
+        return today - timedelta(days=1)
+    m = re.search(r"(\d+)\s*days?\s*ago", low)
+    return today - timedelta(days=int(m.group(1))) if m and "+" not in low else None
+
+
+def _workday(source, fetcher, today=None):
+    today = today or date.today()
+    list_url, base = workday_urls(source)
+    jobs, offset, total = [], 0, None
+    while offset < WORKDAY_MAX:
+        data, err = _json(list_url, fetcher, {"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": offset, "searchText": ""})
+        if err or not isinstance(data, dict) or not isinstance(data.get("jobPostings"), list):
+            return Listing(FAILED, reason=err or "bad_shape")
+        batch = data["jobPostings"]
+        if total is None:
+            total = data.get("total")                       # only the first page carries a real total
+            if not isinstance(total, int) or total < 0:
+                return Listing(FAILED, reason="bad_shape")
+            if total > WORKDAY_MAX:
+                return Listing(FAILED, reason="too_many")
+        for j in batch:
+            path = j.get("externalPath")
+            if path:
+                jobs.append(_job(path, j.get("title"), j.get("locationsText"), f"{base}{path}", None))
+                jobs[-1]["posted"] = _posted_on(j.get("postedOn"), today)
+        offset += len(batch)
+        if not batch or offset >= total:
+            break
+    if total is None or len(jobs) < total and offset < total:
+        return Listing(FAILED, reason="incomplete")
+    return Listing(COMPLETE, jobs)
+
+
+def _jibe(source, fetcher):
+    base, job_base = (source.get("url") or "").rstrip("?"), (source.get("job_base_url") or "").rstrip("/")
+    if not base or not job_base:
+        return Listing(FAILED, reason="bad_config")
+    jobs, page, total, seen = [], 1, None, set()
+    while total is None or len(seen) < total:
+        data, err = _json(f"{base}?page={page}&sortBy=relevance&descending=false&internal=false", fetcher)
+        if err or not isinstance(data, dict) or not isinstance(data.get("jobs"), list) or not isinstance(data.get("totalCount"), int):
+            return Listing(FAILED, reason=err or "bad_shape")
+        if total is None:
+            total = data["totalCount"]
+            if total > WORKDAY_MAX:
+                return Listing(FAILED, reason="too_many")
+        elif data["totalCount"] != total:
+            return Listing(FAILED, reason="inconsistent")      # the inventory moved while we read it
+        if not data["jobs"]:
+            if len(seen) < total:
+                return Listing(FAILED, reason="incomplete")
+            break
+        for item in data["jobs"]:
+            d = item.get("data", item) if isinstance(item, dict) else {}
+            ident = str(d.get("slug") or d.get("req_id") or "").strip()
+            if not ident or ident in seen:
+                return Listing(FAILED, reason="bad_shape")
+            seen.add(ident)
+            where = " ".join(" ".join(str(d.get(k) or "").split()) for k in ("full_location", "short_location", "location_name", "country") if d.get(k))
+            body = "\n\n".join(t for t in (_text(d.get(k)) for k in ("description", "responsibilities", "qualifications")) if t) or None
+            jobs.append(_job(ident, " ".join(str(d.get("title") or "").split()), where,
+                             f"{job_base}/{quote(ident, safe='')}?lang=en-us", d.get("posted_date") or d.get("create_date"), body))
+        page += 1
+    return Listing(COMPLETE, jobs)
+
+
+def _by_slug(reader):
+    return lambda source, fetcher: reader(source["slug"], fetcher)
+
+
+READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "lever": _by_slug(_lever),
+           "smartrecruiters": _by_slug(_smartrecruiters), "workable": _by_slug(_workable),
+           "pinpoint": _pinpoint, "workday": _workday, "jibe": _jibe}
+
+
+def list_source(source, fetcher=fetch):
+    """The listing for one registry source (any reader above)."""
+    reader = READERS.get(source["kind"])
     if reader is None:
         return Listing(FAILED, reason="no_reader")
     try:
-        listing = reader(slug, fetcher)
-    except (OSError, ValueError):
+        listing = reader(source, fetcher)
+    except (OSError, ValueError, KeyError):
         return Listing(FAILED, reason="network")
     if listing.status == COMPLETE:
         listing.jobs = [j for j in listing.jobs if j["id"] and j["title"] and j["url"]]     # a row without identity is not a job
     return listing
+
+
+def list_board(kind, slug, fetcher=fetch):
+    return list_source({"kind": kind, "slug": slug}, fetcher)

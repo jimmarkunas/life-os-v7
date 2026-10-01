@@ -12,9 +12,9 @@ class RegistryTests(unittest.TestCase):
 
     def test_ready_boards_are_the_ats_families_v7_already_reads(self):
         ready = registry.enabled(status="ready")
-        self.assertEqual({r["kind"] for r in ready}, {"greenhouse", "ashby", "smartrecruiters"})
-        self.assertEqual(len(ready), 26)                      # 20 greenhouse + 4 ashby + ServiceNow + Apex Systems
-        self.assertTrue(all(r["slug"] for r in ready))
+        self.assertEqual({r["kind"] for r in ready}, {"greenhouse", "ashby", "smartrecruiters", "workday", "jibe"})
+        self.assertEqual(len(ready), 29)                      # 20 greenhouse + 4 ashby + ServiceNow + Apex + 2 Workday + GitHub (Jibe)
+        self.assertTrue(all(r.get("slug") or r.get("url") for r in ready))
 
     def test_aggregators_are_discovery_only(self):
         helpers = registry.enabled(tier="helper")
@@ -23,8 +23,8 @@ class RegistryTests(unittest.TestCase):
 
     def test_coverage_counts(self):
         cov = registry.coverage()
-        self.assertEqual(cov[("employer", "ready")], 25)       # 20 Greenhouse + 4 Ashby + ServiceNow
-        self.assertEqual(cov[("employer", "port")], 3)         # Adobe + Postman (Workday), GitHub (Jibe)
+        self.assertEqual(cov[("employer", "ready")], 28)       # 20 Greenhouse + 4 Ashby + ServiceNow + Adobe, Postman (Workday) + GitHub (Jibe)
+        self.assertNotIn(("employer", "port"), cov)
         self.assertEqual(cov[("employer", "bespoke")], 2)      # Shopify, Atlassian (company career pages)
         self.assertEqual((cov[("staffing", "ready")], cov[("staffing", "bespoke")]), (1, 9))   # Apex (SmartRecruiters) is the only ready agency
         self.assertEqual(cov[("helper", "discovery")], 3)

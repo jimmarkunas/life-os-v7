@@ -12,7 +12,8 @@ from lifeos.platform import limits
 from lifeos.sources.web import diff, lister, registry, suppress
 
 LANE = "US Remote"
-PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable"}
+PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable",
+            "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe"}
 
 
 def _now():
@@ -156,7 +157,7 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_board, repo=None, sources=None):
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None):
     now = now or _now()
     sources = sources if sources is not None else registry.enabled(status="ready")
     sources = [s for s in sources if s["kind"] in lister.READERS]
@@ -169,7 +170,7 @@ def run(limit, live, now=None, lister_fn=lister.list_board, repo=None, sources=N
     counts = {"sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}}
     with ThreadPoolExecutor(max_workers=limits.ATS_WORKERS) as pool:               # different hosts: no shared limit
-        listings = list(pool.map(lambda s: lister_fn(s["kind"], s["slug"]), due))
+        listings = list(pool.map(lister_fn, due))
     budget = limits.WEB_INGEST_PER_RUN
     for source, listing in zip(due, listings):
         previous = repo.items(source["id"])

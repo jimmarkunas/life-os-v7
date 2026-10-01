@@ -65,6 +65,55 @@ class Listing(unittest.TestCase):
         self.assertEqual(got.jobs, [])
 
 
+class WorkdayJibePinpoint(unittest.TestCase):
+    def test_workday_pages_until_total_and_reads_relative_dates(self):
+        pages = {0: {"total": 3, "jobPostings": [{"title": "Program Manager", "externalPath": "/job/a_1", "locationsText": "Remote, US", "postedOn": "Posted Today"},
+                                                   {"title": "Product Manager", "externalPath": "/job/b_2", "locationsText": "Remote", "postedOn": "Posted 3 Days Ago"}]},
+                 20: {"total": 0, "jobPostings": [{"title": "TPM", "externalPath": "/job/c_3", "locationsText": "Remote", "postedOn": "Posted 30+ Days Ago"}]}}
+        seen = []
+
+        def fake(url, **kw):
+            body = json.loads(kw["data"])
+            seen.append((url, body["offset"], body["limit"]))
+            return Fetched(url, 200, json.dumps(pages[body["offset"]]))
+        # two jobs on the first page are fewer than the page size, so the second request is made only while offset < total
+        pages[0]["jobPostings"].append({"title": "x", "externalPath": "/job/z_0", "locationsText": "", "postedOn": ""})
+        src = {"kind": "workday", "url": "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external/jobs",
+               "public_job_base_url": "https://adobe.wd5.myworkdayjobs.com/en-US/external"}
+        got = lister.list_source(src, fake)
+        self.assertEqual((got.status, len(got.jobs), len(seen)), (lister.COMPLETE, 3, 1))
+        self.assertEqual(got.jobs[0]["url"], "https://adobe.wd5.myworkdayjobs.com/en-US/external/job/a_1")
+        self.assertEqual(got.jobs[0]["posted"], date.today())
+        self.assertIsNone(got.jobs[2]["posted"])
+
+    def test_workday_incomplete_and_oversize_are_failed(self):
+        src = {"kind": "workday", "url": "https://acme.wd1.myworkdayjobs.com/en-US/careers"}
+        self.assertEqual(lister.workday_urls(src)[0], "https://acme.wd1.myworkdayjobs.com/wday/cxs/acme/careers/jobs")
+        short = lambda url, **kw: Fetched(url, 200, json.dumps({"total": 50, "jobPostings": []}))
+        self.assertEqual(lister.list_source(src, short).reason, "incomplete")
+        big = lambda url, **kw: Fetched(url, 200, json.dumps({"total": 99999, "jobPostings": []}))
+        self.assertEqual(lister.list_source(src, big).reason, "too_many")
+
+    def test_jibe_paginates_and_rejects_a_moving_total(self):
+        def page(n, total):
+            return {"totalCount": total, "jobs": [{"data": {"slug": f"{n}-{i}", "title": "Program Manager", "full_location": "Remote",
+                                                            "description": "<p>" + "Lead delivery. " * 30 + "</p>", "posted_date": "2026-09-30"}} for i in range(2)]}
+        src = {"kind": "jibe", "url": "https://x.example/api/jobs", "job_base_url": "https://x.example/jobs"}
+        ok = lambda url, **kw: Fetched(url, 200, json.dumps(page(1, 2) if "page=1" in url else {"totalCount": 2, "jobs": []}))
+        got = lister.list_source(src, ok)
+        self.assertEqual((got.status, len(got.jobs), got.jobs[0]["posted"]), (lister.COMPLETE, 2, date(2026, 9, 30)))
+        self.assertIn("Lead delivery", got.jobs[0]["content"])
+        moving = lambda url, **kw: Fetched(url, 200, json.dumps(page(1, 4) if "page=1" in url else page(2, 5)))
+        self.assertEqual(lister.list_source(src, moving).reason, "inconsistent")
+
+    def test_pinpoint_custom_domain(self):
+        data = {"data": [{"id": 7, "title": "Programme Manager", "url": "https://careers.x.example/en/postings/7", "location": {"name": "London"},
+                          "description": "<p>" + "Run programmes. " * 30 + "</p>"}]}
+        got = lister.list_source({"kind": "pinpoint", "url": "https://careers.x.example/postings.json"},
+                                 lambda url, **kw: Fetched(url, 200, json.dumps(data)))
+        self.assertEqual((got.status, got.jobs[0]["location"]), (lister.COMPLETE, "London"))
+
+
 class Diffing(unittest.TestCase):
     def job(self, i, title="Program Manager", content="c"):
         return {"id": i, "title": title, "location": "Remote", "url": f"https://x/{i}", "posted": None, "content": content}
@@ -122,7 +171,7 @@ SOURCES = [{"id": "s1", "company": "S1", "kind": "greenhouse", "slug": "s1"}, {"
 
 
 def fixed(listings):
-    return lambda kind, slug: listings[slug]
+    return lambda source: listings[source["slug"]]
 
 
 class OneRun(unittest.TestCase):
