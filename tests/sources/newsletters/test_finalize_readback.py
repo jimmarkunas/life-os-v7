@@ -105,6 +105,23 @@ class FinalizeTests(unittest.TestCase):
         self.assertEqual(calls, [(["b", "d"], ["LBL"], [])])
         self.assertEqual((counts["hold"], counts["other"], counts["closed"]), (1, 1, 2))
 
+    def test_dry_run_before_the_done_label_exists_still_reports(self):
+        from lifeos.platform.gmail import GmailError
+
+        class NoLabel(FakeGmail):
+            def label_id(self, name, create=False):
+                if not create:
+                    raise GmailError(f"label not found: {name}")
+                return "LBL"
+        gmail = NoLabel(results={config.FINALIZE_QUERY: ["a"]})
+        counts = finalize.finalize(gmail, False, 50, lambda: Conn([("a", "PUBLISHED", 0)]))
+        self.assertEqual((counts["would_close"], gmail.calls), (1, []))
+        with self.assertRaises(GmailError):                                   # a LIVE run must not hide a lookup failure it cannot fix
+            class Broken(FakeGmail):
+                def label_id(self, name, create=False):
+                    raise GmailError("boom")
+            finalize.finalize(Broken(results={}), True, 50, lambda: Conn([]))
+
     def test_dry_run_changes_nothing(self):
         counts, calls = self.run_finalize([("a", "PUBLISHED", 0)], ["a"], live=False)
         self.assertEqual((calls, counts["closed"], counts["would_close"]), ([], 0, 1))
