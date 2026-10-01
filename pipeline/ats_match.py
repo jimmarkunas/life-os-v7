@@ -13,7 +13,9 @@ from pipeline.http import fetch
 
 SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "group", "holdings", "technologies",
           "technology", "solutions", "services", "limited", "plc", "gmbh", "lp", "llp", "usa", "us"}
-KINDS = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable")
+KINDS = ("greenhouse", "ashby", "lever", "smartrecruiters", "workable", "recruitee", "bamboohr", "breezy", "pinpoint")
+SUBDOMAIN_KINDS = ("recruitee", "bamboohr", "breezy", "pinpoint")
+SMARTRECRUITERS_PAGES = 5      # 100 postings per page; big employers have several hundred
 
 
 def norm(text):
@@ -29,17 +31,17 @@ def slug_candidates(company):
 
 
 def _json(url):
-    page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
-    if page.status != 200:
-        return None
     try:
-        return json.loads(page.html)
-    except ValueError:
+        page = fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
+        return json.loads(page.html) if page.status == 200 else None
+    except (ValueError, OSError):            # bad hostname (UnicodeError is a ValueError), bad JSON, network
         return None
 
 
 def board(kind, slug):
     """[(title, url, location_text)] from a public board API; [] when the board does not exist."""
+    if kind in SUBDOMAIN_KINDS and not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", slug):
+        return []                                  # not a valid hostname label: no such board
     if kind == "greenhouse":
         data = _json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
         return [(j.get("title"), j.get("absolute_url"), (j.get("location") or {}).get("name"))
@@ -52,19 +54,49 @@ def board(kind, slug):
         return [(j.get("text"), j.get("hostedUrl"), (j.get("categories") or {}).get("location"))
                 for j in data] if isinstance(data, list) else []
     if kind == "smartrecruiters":
-        data = _json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100")
-        return [(j.get("name"), f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
-                 " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")])))
-                for j in (data or {}).get("content", [])]
+        rows = []
+        for page in range(SMARTRECRUITERS_PAGES):
+            data = _json(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={page * 100}")
+            part = (data or {}).get("content", [])
+            rows += [(j.get("name"), f"https://jobs.smartrecruiters.com/{slug}/{j.get('id')}",
+                      " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")])))
+                     for j in part]
+            if len(part) < 100:
+                break
+        return rows
     if kind == "workable":
         data = _json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
         return [(j.get("title"), j.get("url"), " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])))
                 for j in (data or {}).get("jobs", [])]
+    if kind == "recruitee":
+        data = _json(f"https://{slug}.recruitee.com/api/offers/")
+        return [(j.get("title"), j.get("careers_url"), " ".join(filter(None, [j.get("city"), j.get("country")])))
+                for j in (data or {}).get("offers", [])]
+    if kind == "bamboohr":
+        data = _json(f"https://{slug}.bamboohr.com/careers/list")
+        return [(j.get("jobOpeningName"), f"https://{slug}.bamboohr.com/careers/{j.get('id')}",
+                 " ".join(filter(None, [(j.get("location") or {}).get("city"), (j.get("location") or {}).get("state")])))
+                for j in (data or {}).get("result", [])]
+    if kind == "breezy":
+        data = _json(f"https://{slug}.breezy.hr/json")
+        return [(j.get("name"), j.get("url"), (j.get("location") or {}).get("name"))
+                for j in data] if isinstance(data, list) else []
+    if kind == "pinpoint":
+        data = _json(f"https://{slug}.pinpointhq.com/postings.json")
+        return [(j.get("title"), j.get("url"), (j.get("location") or {}).get("name"))
+                for j in (data or {}).get("data", [])]
     return []
 
 
 def boards_for(company):
-    """All jobs on every public board found for the company: [(kind, title, url, location)]."""
+    """All jobs on every public board found for the company: [(kind, title, url, location)]. Never raises."""
+    try:
+        return _boards_for(company)
+    except Exception:                              # noqa: BLE001 - one odd company must not stop the stage
+        return []
+
+
+def _boards_for(company):
     found = []
     for slug in slug_candidates(company):
         for kind in KINDS:

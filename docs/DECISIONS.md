@@ -62,7 +62,7 @@ Jobright) to the employer or official-ATS apply link. It is **not** used for des
 anything else. Descriptions and dates come from the final employer/ATS page (plain HTTP or the ATS's public API) or
 the aggregator's own free data. Code enforces this: the browser client is callable only from the link-chain resolver.
 
-## D13 - Paid browser budget (PROPOSED - needs Jim's dollar cap)
+## D13 - Paid browser budget (RETIRED - code removed; the free Chromium in the runner and free Search/Fetch cover it)
 Measured: the free Fetch API loads aggregator pages but does NOT expose the apply button's destination (it sits behind a
 click). The metered **Browser** tool ($0.002/min, scripted click) is ~50x cheaper than the **Agent** ($0.016/step, AI
 clicks). Proposal: use Browser only (never Agent), hard lifetime cap **$5** of the $35 wallet (~2,500 browser minutes),

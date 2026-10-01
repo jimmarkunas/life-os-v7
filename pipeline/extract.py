@@ -11,7 +11,7 @@ from hashlib import sha256
 import re
 import sys
 
-from pipeline import config, store
+from pipeline import config, repost, store
 from pipeline.gmail import Gmail, GmailError
 from pipeline.parsers import jobright, lensa, linkedin
 
@@ -62,6 +62,10 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
                  (card.salary_text or "")[:80], rule, fuzzy_key(card), known_age(card, mail_age), received, card.provider_score, now, now, now))
             new += cursor.rowcount
             repeat += 0 if cursor.rowcount else 1
+            if cursor.rowcount:
+                repost.link(cursor, key, fuzzy_key(card), now)         # D6: same job under a new URL -> one row
+            else:
+                cursor.execute("UPDATE v7_jobs SET seen_count=seen_count+1, last_seen=%s WHERE dedupe_key=%s", (now, key))
             cursor.execute(
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
                 " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s", (rule, key, message_id, now, key))

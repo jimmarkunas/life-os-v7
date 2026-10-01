@@ -36,9 +36,14 @@ class FakeCursor:
             key = args[0]
             self.rowcount = 0 if key in self.db["jobs"] else 1
             self.db["jobs"].add(key)
+        elif sql.startswith(("SELECT id FROM v7_jobs", "UPDATE v7_jobs")):
+            self.rowcount = 0                              # repost link / seen_count bump: no repost in these fixtures
         else:
             self.rowcount = 1
             self.db["sources"] += 1
+
+    def fetchone(self):
+        return None
 
 
 class FakeConn:
