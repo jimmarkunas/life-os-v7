@@ -1,7 +1,7 @@
 """Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
 
 Source order for the description: ATS API (Greenhouse, Lever) -> schema.org JobPosting JSON-LD -> readable page text.
-Outcomes: READY (fresh, live, matches) | CLOSED | EXCLUDED_STALE (>14 days, known) | back to NEW (page does not match the
+Outcomes: READY (fresh, live, matches) | CLOSED | EXCLUDED_STALE (older than the job's LANE policy allows, known; lifeos.jobs.lanes owns the number) | back to NEW (page does not match the
 job: a wrong link is never published) | pending with a fixed reason when the page cannot be read (retried later).
 Plain HTTP only. Logs: counts only.
 """
@@ -12,10 +12,9 @@ from urllib.parse import urlsplit
 
 from lifeos.jobs.resolve import ats_match, search_match
 from lifeos.platform import usage, limits, tinyfish
-from lifeos.jobs import ats_detail, jd, jsonld, quality, store
+from lifeos.jobs import ats_detail, jd, jsonld, lanes, quality, store
 from lifeos.platform.http import fetch
 
-MAX_AGE_DAYS = 14
 TRIED_REASON = "description_empty_tf"     # the real-browser fetch already ran once and the page was still empty: do not spend the cap again
 CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
                          r"posting (has )?expired|this job has expired|not accepting applications", re.I)
@@ -75,7 +74,7 @@ def _title_ok(want, *found):
     return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= 0.6
 
 
-def read_page(url, title):
+def read_page(url, title, lane=None):
     """Facts for one final URL. Never raises; fixed outcome codes."""
     if re.match(r"^https?://apply\.workable\.com/j/[^/]+/?$", url or "", re.I):
         return {"outcome": "mismatch", "reason": "workable_no_account"}     # re-resolve: the matcher now keeps the account
@@ -95,11 +94,14 @@ def read_page(url, title):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
-        return parse_html(url, title, page.html)
-    return finish(title, desc, found_title, posted, source_kind, valid_through)
+        result = parse_html(url, title, page.html, lane)
+        if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
+            result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
+        return result
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane)
 
 
-def parse_html(url, title, html):
+def parse_html(url, title, html, lane=None):
     """Description / date / liveness / title-match from already-fetched page HTML (plain HTTP or TinyFish Fetch)."""
     posting = jsonld.job_posting(html)
     body_text = jd.html_to_text(html)
@@ -117,10 +119,10 @@ def parse_html(url, title, html):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-    return finish(title, desc, found_title, posted, source_kind, valid_through)
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane)
 
 
-def finish(title, desc, found_title, posted, source_kind, valid_through):
+def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
@@ -133,7 +135,8 @@ def finish(title, desc, found_title, posted, source_kind, valid_through):
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
-    if posted and (today - posted) > timedelta(days=MAX_AGE_DAYS):
+    max_age = lanes.POLICIES[lanes.lane_for(lane)].max_age_days            # the lane policy is the only freshness authority
+    if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
         return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind}
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind}
 
@@ -151,6 +154,8 @@ def save(connection, job_id, result):
                 " qualifications=VALUES(qualifications), fingerprint=VALUES(fingerprint), fetched_at=VALUES(fetched_at)",
                 (job_id, result["source_kind"], d["full_text"], d["summary"], d["responsibilities"], d["requirements"],
                  d["qualifications"], d["fingerprint"], now))
+            if result.get("apply_kind"):
+                cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
             cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
@@ -197,9 +202,11 @@ def run(limit, live):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason FROM v7_jobs WHERE status='RESOLVED' "
+            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
-            rows = [tuple(r) for r in cursor.fetchall()]
+            fetched = [tuple(r) for r in cursor.fetchall()]
+    rows = [r[:5] for r in fetched]
+    lane_of = {r[0]: r[5] for r in fetched}
     counts = {"picked": len(rows), "outcome": {}, "source": {}}
     results = []
     for job_id, url, title, kind, _prev in rows:
@@ -209,7 +216,7 @@ def run(limit, live):
             from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
-        result = read_page(target, title)
+        result = read_page(target, title, lane_of.get(job_id))
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
             result["reason"] = TRIED_REASON                          # stays marked: the browser fetch already tried it
         result["final_url"] = url
@@ -217,7 +224,7 @@ def run(limit, live):
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
-    _fallback(results, rows, counts)
+    _fallback(results, rows, counts, lane_of)
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     if live and results:
@@ -228,7 +235,7 @@ def run(limit, live):
     return counts
 
 
-def _fallback(results, rows, counts):
+def _fallback(results, rows, counts, lane_of=None):
     """Pages that refuse plain HTTP: free TinyFish Fetch (real browser), counted against the daily cap BEFORE sending."""
     titles = {job_id: (url, title) for job_id, url, title, _, _ in rows}
     tried = {job_id for job_id, _, _, _, prev in rows if prev == TRIED_REASON}
@@ -261,7 +268,7 @@ def _fallback(results, rows, counts):
                     job_id = results[i][0]
                     desc = jd.describe(job["html"], is_html=True)
                     results[i] = (job_id, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
-                                                 _parse_date(job["posted"]), "ats_api", None))
+                                                 _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id)))
                     counts["outcome"]["blocked"] -= 1
                     counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
                     done += 1
@@ -270,7 +277,7 @@ def _fallback(results, rows, counts):
                 results[i][1]["reason"] = TRIED_REASON
             if text:
                 job_id = results[i][0]
-                results[i] = (job_id, parse_html(url, titles[job_id][1], text))
+                results[i] = (job_id, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id)))
                 if results[i][1].get("reason") == "description_empty":
                     results[i][1]["reason"] = TRIED_REASON
                 counts["outcome"]["blocked"] -= 1

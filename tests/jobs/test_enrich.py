@@ -84,3 +84,40 @@ class EmbeddedDataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FreshnessAuthority(unittest.TestCase):
+    """The lane policy is the only freshness authority: enrich consults it, it never carries its own day count."""
+
+    def desc(self):
+        from lifeos.jobs import jd
+        return jd.describe(LONG, is_html=True)
+
+    def test_scale_up_keeps_a_20_day_old_job_us_remote_does_not(self):
+        from datetime import timedelta
+        from lifeos.jobs import enrich
+        posted = enrich._now().date() - timedelta(days=20)
+        scale = enrich.finish("Program Manager", self.desc(), "Program Manager", posted, "ats_api", None, "Scale-Up")
+        us = enrich.finish("Program Manager", self.desc(), "Program Manager", posted, "ats_api", None, "Newsletter")
+        self.assertEqual((scale["outcome"], us["outcome"]), ("ready", "stale"))
+        old = enrich.finish("Program Manager", self.desc(), "Program Manager", enrich._now().date() - timedelta(days=45), "ats_api", None, "Scale-Up")
+        self.assertEqual(old["outcome"], "stale")                                  # 30 days for Scale-Up
+
+    def test_no_module_outside_lanes_defines_its_own_freshness_number(self):
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2] / "lifeos"
+        bad = [str(p.relative_to(root)) for p in root.rglob("*.py") if p.name != "lanes.py"
+               and re.search(r"^(MAX_AGE_DAYS|MAX_AGE|FRESH\w*DAYS)\s*=\s*\d+", p.read_text(), re.M)]
+        self.assertEqual(bad, [])
+
+
+class DiceEasyApply(unittest.TestCase):
+    def test_a_dice_page_with_the_easy_apply_marker_is_flagged(self):
+        from unittest import mock
+        html = JOB % (enrich._now().date().isoformat(), LONG.replace('"', "'")) + "<button>Easy Apply</button>"
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
+            got = enrich.read_page("https://www.dice.com/job-detail/1dde497d-8758-4eed-8aac-816bed294b63", "Senior Data Engineer")
+            plain = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer")
+        self.assertEqual((got["outcome"], got.get("apply_kind")), ("ready", "easy_apply"))
+        self.assertNotIn("apply_kind", plain)

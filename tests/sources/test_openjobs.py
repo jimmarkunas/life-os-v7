@@ -66,14 +66,14 @@ class FeedTests(unittest.TestCase):
         site = Site(generation(EVENTS))
         repo = MemRepo()
         counts = oj.run(10, True, fetcher=site, repo=repo)
-        self.assertEqual(repo.committed[0][1:], (["greenhouse/acme#1", "lever/beta#4"], ["greenhouse/acme#9"]))
-        self.assertEqual((counts["events"], counts["admit"], counts["status"]), (6, 2, "OK"))
-        self.assertEqual(counts["why"], {"off_family": 1, "non_us": 1, "stale": 1})
+        self.assertEqual(repo.committed[0][1:], (["greenhouse/acme#1"], ["greenhouse/acme#9"]))
+        self.assertEqual((counts["events"], counts["admit"], counts["status"]), (6, 1, "OK"))
+        self.assertEqual(counts["why"], {"off_family": 1, "non_us": 1, "no_remote_evidence": 1, "stale": 1})
 
     def test_dry_run_commits_nothing(self):
         repo = MemRepo()
         counts = oj.run(10, False, fetcher=Site(generation(EVENTS)), repo=repo)
-        self.assertEqual((repo.committed, counts["admit"]), ([], 2))
+        self.assertEqual((repo.committed, counts["admit"]), ([], 1))
 
     def test_applies_every_generation_after_the_checkpoint_in_order(self):
         g1 = generation([event("greenhouse/acme#1")], cursor="2026-09-28")

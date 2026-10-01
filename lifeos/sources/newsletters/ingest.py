@@ -16,7 +16,10 @@ from lifeos.sources.newsletters.parsers import jobright, lensa, linkedin
 
 PARSERS = {"lensa": lensa.parse, "jobright": jobright.parse, "linkedin-alerts": linkedin.parse}
 LOOKS_LIKE_JOBS = {"lensa": lensa.looks_like_jobs, "jobright": jobright.looks_like_jobs, "linkedin-alerts": linkedin.looks_like_jobs}
-MAX_AGE_DAYS = 14   # known-older jobs are kept for dedupe but never published
+from lifeos.jobs import lanes                                                # noqa: E402
+
+# A coarse mail-age pre-filter only, so link-resolution budget is not spent on stale mail; the number is the lane policy's, never a second authority.
+MAX_AGE_DAYS = lanes.POLICIES["US Remote"].max_age_days
 
 
 def mail_age_days(received_epoch, now=None):
