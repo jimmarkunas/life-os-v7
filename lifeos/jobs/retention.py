@@ -29,6 +29,7 @@ def query_filter(cutoff, lane):
     day = cutoff.date().isoformat()
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
+        {"property": "Applied On", "date": {"is_empty": True}},            # an Applied On date is human state even if the checkbox is clear
         {"property": "Saturn Decision", "select": {"is_empty": True}},
         {"property": "Visible Lane", "select": {"equals": lane}},
         {"or": [{"property": "Posting Date", "date": {"before": day}},

@@ -33,14 +33,69 @@ class HumanStateIsNeverDestroyed(unittest.TestCase):
 
     def test_retention_only_ever_selects_unapplied_undecided_rows(self):
         text = str(retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote"))
-        self.assertIn("'Applied'", text)
-        self.assertIn("'Saturn Decision'", text)
+        flt = {f["property"]: f for f in retention.query_filter(__import__("datetime").datetime(2026, 10, 1), "US Remote")["and"] if "property" in f}
+        self.assertEqual(flt["Applied"]["checkbox"], {"equals": False})
+        self.assertEqual(flt["Applied On"]["date"], {"is_empty": True})
+        self.assertEqual(flt["Saturn Decision"]["select"], {"is_empty": True})
 
     def test_unknown_is_protected(self):
         class Dead:
             def call(self, *a, **k):
                 raise NotionError("NOTION_HTTP_500")
         self.assertEqual(guard.protection(Dead(), "p", "X", "Y"), guard.UNREADABLE)
+
+
+class AuditBehaviour(unittest.TestCase):
+    """Behavioural proof: for every protected state, a failing published row is neither trashed nor demoted."""
+
+    FULL = {"Applied": {"checkbox": False}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}}
+
+    def run_audit(self, page_props, target=None):
+        from unittest import mock
+        from tests.kit.db import FakeConn
+        trashed, writes = [], []
+        target_props = target if target is not None else {n: {"type": k} for n, k in ledger.REQUIRED.items()}
+
+        class Client:
+            source = "ds"
+
+            def call(self, method, path, body=None):
+                if method == "PATCH":
+                    trashed.append(path)
+                    return {}
+                if path.startswith("/data_sources/"):
+                    return {"properties": target_props}
+                if page_props is None:
+                    raise NotionError("NOTION_HTTP_500")
+                return {"properties": page_props}
+
+        conn = FakeConn(handler=lambda sql, args, cur: writes.append(sql.split()[0]))
+        served = []
+        conn.cur.fetchall = lambda: [] if served else (served.append(1) or [(1, "PUBLISHED", "https://x.example/jobs/1", "page1", "x", "Acme", "Program Manager")])
+        with mock.patch.object(audit.store, "connect", return_value=conn), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=Client()):
+            counts = audit.run(10, True, environ={})
+        return counts, trashed, [w for w in writes if w in ("UPDATE", "DELETE")]
+
+    def test_unprotected_failing_row_is_trashed_and_demoted(self):
+        counts, trashed, writes = self.run_audit(self.FULL)
+        self.assertEqual((len(trashed), counts["demoted"]), (1, 1))
+
+    def test_every_protected_state_blocks_the_trash_and_the_demotion(self):
+        cases = {"applied": {**self.FULL, "Applied": {"checkbox": True}},
+                 "applied_on": {**self.FULL, "Applied On": {"date": {"start": "2026-09-15"}}},
+                 "saturn_decision": {**self.FULL, "Saturn Decision": {"select": {"name": "Pursue"}}},
+                 "unreadable": None,
+                 "missing_property": {"Applied": {"checkbox": False}}}
+        for why, props in cases.items():
+            with self.subTest(why):
+                counts, trashed, writes = self.run_audit(props)
+                self.assertEqual((trashed, writes, counts["demoted"]), ([], [], 0))
+                self.assertEqual(counts["protected"], {"unreadable" if why in ("unreadable", "missing_property") else why: 1})
+
+    def test_a_wrong_target_blocks_everything(self):
+        counts, trashed, writes = self.run_audit(self.FULL, target={"Job": {"type": "title"}})
+        self.assertEqual((trashed, writes, counts["protected"]), ([], [], {"target_mismatch": 1}))
 
 
 class NoLegacyLifecycleAuthority(unittest.TestCase):

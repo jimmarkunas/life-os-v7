@@ -137,7 +137,7 @@ becomes active when INT-7.1A can prove the absence of progression.
 - INT-7.1A is the Hiring Pipeline page read by `hiring_pipeline.py`: it protects pursuits with an ACTIVE opportunity (company and role must both match), never unprotects, and fails closed when configured but unreadable. Calendar/Gmail correlation is deliberately not built: it cannot be made deterministic enough to prove the ABSENCE of progression, which is what retiring an Applied job needs.
 
 ## D12 amendment (Jim, 2026-10-01; wording tightened after TL review): rendered-fetch fallback
-Interactive browser/link navigation stays restricted to final-link resolution (D12). Free TinyFish Fetch may additionally render an **already-resolved final employer/ATS URL**
+Interactive browser/link navigation stays restricted to final-link resolution (D12). Free TinyFish Fetch may additionally render an **already-resolved final employer/ATS URL (or its public data endpoint)**
 ONCE when the ATS API and plain HTTP cannot retrieve usable page content. It may extract JD, date and liveness evidence only. It may not click, authenticate, search, traverse
 links, select a different vacancy, or change `final_apply_url`. It is counted against the daily Fetch cap BEFORE it is sent and is never repeated for the same job
 (`description_empty_tf`). The metered Agent is never used outside the link chain. `resolve` decides WHERE a job is; `enrich` reads WHAT is at that decided location.
