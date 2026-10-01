@@ -5,6 +5,7 @@ Outcome per job: RESOLVED (final_apply_url + apply_kind), DUPLICATE (same final 
 fixed unresolved_reason so the next run retries. Logs: counts only.
 """
 import hashlib
+import time
 from datetime import datetime, timezone
 
 from pipeline import limits, store
@@ -56,17 +57,35 @@ def apply_result(connection, job_id, result):
         return "pending"
 
 
-def run_rows(source, limit, live, resolver):
-    """Like run(), but the resolver gets full rows [(id, source_url, company, title, location)]."""
+BATCH_ROWS = 50
+DEADLINE_MINUTES = 28          # stop starting batches well before the 40-minute job limit; unfinished rows stay NEW
+
+
+def run_rows(source, limit, live, resolver, batch=BATCH_ROWS, deadline_minutes=DEADLINE_MINUTES, clock=time.monotonic):
+    """Like run(), but the resolver gets full rows [(id, source_url, company, title, location)].
+    Rows go in batches that are saved as they finish, so a slow or killed run keeps its work."""
     with store.connect() as connection:
         store.ensure_schema(connection)
         rows = pick_rows(connection, source, limit)
-    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "closed": 0, "kind": {}, "why": {}}
-    if not rows:
-        return counts
-    results = resolver(rows)
-    if not live:
-        counts["dry_run"] = True
+    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "closed": 0, "kind": {}, "why": {},
+              "batches": 0, "not_reached": 0}
+    started = clock()
+    for start in range(0, len(rows), batch):
+        if clock() - started > deadline_minutes * 60:
+            counts["not_reached"] = len(rows) - start
+            break
+        part = rows[start:start + batch]
+        results = resolver(part)                                      # slow: no database connection open
+        counts["batches"] += 1
+        if not live:
+            counts["dry_run"] = True
+        _save(counts, part, results, live)
+        print(f"{source} batch {counts['batches']}: rows {start + len(part)}/{len(rows)} resolved={counts['resolved']} "
+              f"pending={counts['pending']} duplicate={counts['duplicate']} closed={counts['closed']}", flush=True)
+    return counts
+
+
+def _save(counts, rows, results, live):
     with store.connect() as connection:
         for row, result in zip(rows, results):
             key = result.get("outcome") if result.get("outcome") != "landed" else "landed:" + str(result.get("kind"))
@@ -83,7 +102,6 @@ def run_rows(source, limit, live, resolver):
             counts[verdict] += 1
             if verdict == "resolved":
                 counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
-    return counts
 
 
 def run(source, limit, live, resolver):
