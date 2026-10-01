@@ -191,5 +191,26 @@ def scale_up_listing(fetcher=fetch, only=None):
     return out
 
 
+def source_pages(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "su-truvi-holdings-ltd"), plain=fetch):
+    """Shape of a sponsor's page, plain versus Chrome-impersonated (counts and flags only): status, size, anchors, JobPosting JSON-LD,
+    __NEXT_DATA__, and the hostnames of outbound links that look like a job board."""
+    from lifeos.platform import impersonate                                                  # noqa: PLC0415
+    from urllib.parse import urlsplit                                                        # noqa: PLC0415
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["id"] not in ids:
+            continue
+        shapes = {}
+        for how, got in (("plain", plain(source["url"], timeout=20, max_hops=3, max_bytes=3_000_000)),
+                         ("chrome", impersonate.fetch(source["url"], warm_url=source.get("warm_url"), rounds=1))):
+            text = got.html or ""
+            hosts = sorted({(urlsplit(h).hostname or "").removeprefix("www.") for h in re.findall(r'href=["\'](https?://[^"\']+)', text, re.I)
+                            if re.search(r"greenhouse|lever|ashby|workable|teamtailor|bamboohr|recruitee|personio|breezy|join\.com|pinpoint|smartrecruiters|rippling|jobs", h, re.I)})[:6]
+            shapes[how] = {"status": got.status, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)), "jsonld_job": len(re.findall(r"JobPosting", text)),
+                           "next_data": "__NEXT_DATA__" in text, "job_hosts": hosts, "final": (urlsplit(got.final_url).path or "/")[:40]}
+        out[source["id"]] = shapes
+    return out
+
+
 def run(limit, live):
-    return {"scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}

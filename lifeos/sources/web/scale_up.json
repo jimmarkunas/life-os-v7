@@ -317,7 +317,10 @@
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://www.futuristictechnologies.co.uk/careers/"
+   "url": "https://www.futuristictechnologies.co.uk/careers/",
+   "impersonate": true,
+   "warm_url": "https://www.futuristictechnologies.co.uk/",
+   "must_contain": "rjjobportal-careers-wrapper"
   },
   {
    "id": "su-revolut-ltd",
@@ -421,7 +424,9 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "ready",
-   "url": "https://careers.ottocar.co.uk/jobs"
+   "url": "https://careers.ottocar.co.uk/jobs",
+   "impersonate": true,
+   "warm_url": "https://careers.ottocar.co.uk/"
   },
   {
    "id": "su-quantum-services-management-lt",
@@ -491,7 +496,9 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "ready",
-   "url": "https://truvi.com/careers/"
+   "url": "https://truvi.com/careers/",
+   "impersonate": true,
+   "warm_url": "https://truvi.com/"
   }
  ]
 }
