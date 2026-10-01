@@ -164,5 +164,20 @@ def discover(search=None, sources=None):
     return out
 
 
+def lane_funnel():
+    """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
+    from lifeos.jobs import store                                                            # noqa: PLC0415
+    with store.connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT lane, status, COUNT(*) FROM v7_jobs GROUP BY lane, status")
+        by_status = {f"{lane}/{status}": n for lane, status, n in cursor.fetchall()}
+        cursor.execute("SELECT f.lane, f.admission, f.admission_reason, COUNT(*) FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id "
+                       "WHERE j.lane = 'Scale-Up' GROUP BY f.lane, f.admission, f.admission_reason")
+        reasons = {}
+        for lane, admission, reason, n in cursor.fetchall():
+            key = f"{lane}/{admission}/{re.sub(r'[0-9]+', '#', reason or '')[:48]}"
+            reasons[key] = reasons.get(key, 0) + n
+    return {"by_lane_status": by_status, "scale_up_fit": reasons}
+
+
 def run(limit, live):
-    return {"discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
