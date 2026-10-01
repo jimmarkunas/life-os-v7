@@ -6,6 +6,10 @@ on:
     - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
+      tick:
+        description: "Scheduler tick - sent by the outside timer (D31); runs the full pipeline exactly like a scheduled run. Do not tick by hand."
+        type: boolean
+        default: false
       live:
         description: "Actually move mail (false = dry run)"
         type: boolean
@@ -83,7 +87,7 @@ on:
         type: string
         default: "60"
 env:
-  PIPELINE: ${{ github.event_name == 'schedule' && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
+  PIPELINE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tick)) && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
   GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
   GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
   GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
@@ -105,7 +109,7 @@ env:
   OPEN_JOBS_CONTACT: ${{ secrets.OPEN_JOBS_CONTACT }}
   HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
-  LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
+  LIVE: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
 permissions:
   contents: read
 concurrency:
@@ -126,6 +130,7 @@ jobs:
       - name: Gate - skip a scheduled run when a run started in the last 50 minutes; flag a stale pipeline
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          TICK: ${{ inputs.tick }}
         run: python3 -m lifeos.platform.gate
       - uses: actions/setup-python@v5
         with:
