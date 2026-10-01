@@ -43,6 +43,11 @@ def _web_scale_up(limit, live):
     return web.run(limit, live, lane="Scale-Up")
 
 
+def _discover_jobs(limit, live):
+    from lifeos.sources.web import discover_jobs                                               # noqa: PLC0415
+    return discover_jobs.run(limit, live)
+
+
 def _openjobs(limit, live):
     from lifeos.sources import openjobs                                                         # noqa: PLC0415
     return openjobs.run(limit, live)
@@ -94,6 +99,7 @@ STAGES = {
     "resolve-lensa": _lensa,
     "web": _web,
     "web-scale-up": _web_scale_up,
+    "discover-jobs": _discover_jobs,
     "openjobs": _openjobs,
     "sponsors": _sponsors,
     "probe": _probe,

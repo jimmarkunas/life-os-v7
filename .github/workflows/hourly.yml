@@ -6,6 +6,10 @@ on:
     - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
+      discover:
+        description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
+        type: boolean
+        default: false
       tick:
         description: "Scheduler tick - sent by the outside timer (D31); runs the full pipeline exactly like a scheduled run. Do not tick by hand."
         type: boolean
@@ -214,6 +218,11 @@ jobs:
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
         run: python -m lifeos.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
+      - id: discover
+        continue-on-error: true
+        name: Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (runs after Lensa on the same search pace)
+        if: ${{ always() && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
+        run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
   finish:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
