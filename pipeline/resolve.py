@@ -4,6 +4,7 @@
 (no URLs, hosts, titles) so we can measure what works from CI before building the writer. Public repo.
 """
 import argparse
+import functools
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -415,7 +416,8 @@ def main(argv=None):
             if args.resolve == "lensa":
                 counts = resolve_stage.run_rows("lensa", args.limit, args.live, resolve_lensa.resolve_rows)
             elif args.resolve == "linkedin":
-                counts = resolve_stage.run_rows("linkedin-alerts", args.limit, args.live, resolve_linkedin.resolve_rows)
+                counts = resolve_stage.run_rows("linkedin-alerts", args.limit, args.live,
+                                              functools.partial(resolve_linkedin.resolve_rows, budget={"left": resolve_linkedin.SEARCH_LIMIT}))
             else:
                 counts = resolve_stage.run(args.resolve, args.limit, args.live, jobright_browser.resolve_many_sync)
         except store.StoreError as error:
