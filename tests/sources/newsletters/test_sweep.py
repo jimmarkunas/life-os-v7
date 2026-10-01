@@ -2,22 +2,7 @@ import unittest
 
 from lifeos.sources.newsletters import config
 from lifeos.sources.newsletters.sweep import sweep
-
-
-class FakeGmail:
-    """Synthetic mailbox: each search query returns a fixed id list."""
-
-    def __init__(self, results):
-        self.results, self.calls = results, []
-
-    def label_id(self, name, create=False):
-        return "LBL"
-
-    def list_ids(self, query, limit=5000):
-        return list(self.results.get(query, []))
-
-    def relabel(self, ids, add=(), remove=()):
-        self.calls.append((list(ids), list(add), list(remove)))
+from tests.kit.gmail import FakeGmail
 
 
 RESULTS = {

@@ -10,7 +10,7 @@ except ImportError:          # PyYAML is a dev convenience, not a runtime depend
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class WorkflowTests(unittest.TestCase):
     def test_hourly_workflow_is_valid_yaml_with_dispatch_inputs(self):
-        path = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows" / "hourly.yml"
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(path.read_text())
         self.assertIn("workflow_dispatch", data[True])
         self.assertIn("live", data[True]["workflow_dispatch"]["inputs"])

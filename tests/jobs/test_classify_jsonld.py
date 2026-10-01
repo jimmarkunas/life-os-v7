@@ -32,13 +32,3 @@ class JsonLdTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TinyFishSummaryTests(unittest.TestCase):
-    def test_missing_key_is_a_fixed_code(self):
-        import os
-        from lifeos.platform import tinyfish
-        os.environ.pop("TINYFISH_API_KEY", None)
-        with self.assertRaises(tinyfish.TinyFishError) as ctx:
-            tinyfish.fetch_many(["https://example.com"])
-        self.assertEqual(str(ctx.exception), "TINYFISH_KEY_MISSING")

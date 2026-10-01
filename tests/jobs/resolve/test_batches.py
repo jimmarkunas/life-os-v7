@@ -2,20 +2,13 @@ import unittest
 from unittest import mock
 
 from lifeos.jobs.resolve import stage
-
-
-class FakeConn:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
+from tests.kit.db import FakeConn
 
 
 class BatchTests(unittest.TestCase):
     def _run(self, rows, clock, **kw):
         saved = []
-        with mock.patch.object(stage.store, "connect", lambda: FakeConn()), \
+        with mock.patch.object(stage.store, "connect", FakeConn), \
                 mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
                 mock.patch.object(stage, "pick_rows", lambda c, s, l: rows), \
                 mock.patch.object(stage, "apply_result", lambda c, i, r: saved.append(i) or "resolved"):
