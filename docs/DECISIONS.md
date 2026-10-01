@@ -83,8 +83,16 @@ Ghost risk is evidence, not a rule: flag "possible ghost" (never exclude) when t
 60 days or carries no real posting date for weeks; Phase 2 scoring may down-weight it.
 
 ## D15 - Provider limits are canon (DECIDED)
-Every provider limit is a constant in `pipeline/limits.py`, documented in `docs/LIMITS.md`, and enforced by tests. Stages
+Every provider limit is a constant in `lifeos/platform/limits.py`, documented in `docs/LIMITS.md`, and enforced by tests. Stages
 stop on the first 429/403.
 
 ## D16 - Private evidence stays out of the public repo (DECIDED)
 Fit-model evidence and personal scoring corrections are never committed. `docs/FIT_MODEL.md` holds structure only.
+
+## D17 - Ownership boundaries (DECIDED)
+`lifeos/platform` is shared infrastructure (database connection, Gmail, HTTP, Notion transport, provider limits, usage
+guards) and knows nothing about jobs. `lifeos/jobs` is Jobs OS: one job model, identity, intake, resolve, enrich, quality,
+audit, publish, repost and retention, whatever produced the job. `lifeos/sources/<name>` are producers: they emit a
+normalized job through `jobs.intake.add_job` and stop. Imports point downward only (sources -> jobs -> platform);
+`tests/test_boundaries.py` enforces it. Lane and provider live on the job row, so a new producer needs no change in Jobs OS.
+Package renamed from `pipeline` to `lifeos`; the `v7_` table prefix stays.

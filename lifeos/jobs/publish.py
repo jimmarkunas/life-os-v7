@@ -7,45 +7,23 @@ First Surfaced, Posting Date, Freshness Status, Liveness, Visible Lane, Admissio
 The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 """
 from datetime import datetime, timezone
-import hashlib
-import json
 import os
-import re
-import time
-import urllib.error
-import urllib.request
-from urllib.parse import urlsplit
 
-from pipeline import limits, store
+from lifeos.jobs import store
+from lifeos.jobs.identity import url_key
+from lifeos.platform import limits
+from lifeos.platform.notion_client import Client, NotionError, rich_text
 
-API = "https://api.notion.com/v1"
-VERSION = "2025-09-03"
 SECTIONS = (("summary", "Summary"), ("responsibilities", "Responsibilities"), ("requirements", "Requirements"),
             ("qualifications", "Qualifications"))
-PROVIDER = {"lensa": "Lensa", "jobright": "Jobright", "linkedin-alerts": "LinkedIn Jobs"}
-
-
-class NotionError(RuntimeError):
-    """Fixed codes only - never tokens, ids, or response bodies."""
 
 
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def url_key(url):
-    """Normalized Apply URL for dedupe: host + path, no query/fragment, lowercase, no trailing slash."""
-    parts = urlsplit((url or "").strip())
-    return hashlib.sha256(((parts.hostname or "") + parts.path.rstrip("/")).lower().encode()).hexdigest()
-
-
-def _text(content):
-    return [{"type": "text", "text": {"content": content[i:i + limits.NOTION_MAX_RICH_TEXT_CHARS]}}
-            for i in range(0, max(len(content), 1), limits.NOTION_MAX_RICH_TEXT_CHARS)][:100]
-
-
 def _block(kind, content):
-    return {"object": "block", "type": kind, kind: {"rich_text": _text(content)}}
+    return {"object": "block", "type": kind, kind: {"rich_text": rich_text(content)}}
 
 
 def body_blocks(key, description):
@@ -68,19 +46,19 @@ def body_blocks(key, description):
 
 
 def properties(row):
-    """row: dict with title, company, url, source, key, first_seen (date), posted (date|None)."""
-    provider = PROVIDER.get(row["source"], row["source"])
+    """row: dict with title, company, url, provider (or source), lane, key, first_seen (date), posted (date|None)."""
+    provider = row.get("provider") or row["source"]
     props = {
-        "Job": {"title": _text(row["title"] or "Untitled")},
-        "Company": {"rich_text": _text(row["company"] or "")},
+        "Job": {"title": rich_text(row["title"] or "Untitled")},
+        "Company": {"rich_text": rich_text(row["company"] or "")},
         "Apply URL": {"url": row["url"]},
-        "Source Provider": {"rich_text": _text(provider)},
+        "Source Provider": {"rich_text": rich_text(provider)},
         "Source Types": {"multi_select": [{"name": provider}]},
-        "Stable Job Key": {"rich_text": _text(row["key"])},
+        "Stable Job Key": {"rich_text": rich_text(row["key"])},
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
-        "Visible Lane": {"select": {"name": "Newsletter"}},
+        "Visible Lane": {"select": {"name": row["lane"]}},
         "Admission Status": {"select": {"name": "Passed / Review"}},
     }
     if row.get("posted"):
@@ -88,61 +66,21 @@ def properties(row):
     return props
 
 
-class Client:
-    def __init__(self, environ=os.environ, clock=time.monotonic, sleep=time.sleep):
-        self.token = (environ.get("NOTION_API_TOKEN") or "").strip()
-        self.source = (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip().replace("collection://", "")
-        if not self.token or not self.source:
-            raise NotionError("NOTION_CONFIG_MISSING")
-        self._clock, self._sleep, self._last = clock, sleep, 0.0
-        self.calls = 0
-
-    def call(self, method, path, body=None):
-        for attempt in range(4):
-            wait = limits.NOTION_GAP_SECONDS - (self._clock() - self._last)
-            if wait > 0:
-                self._sleep(wait)
-            self._last, self.calls = self._clock(), self.calls + 1
-            request = urllib.request.Request(
-                API + path, method=method, data=json.dumps(body).encode() if body is not None else None,
-                headers={"Authorization": f"Bearer {self.token}", "Notion-Version": VERSION,
-                         "Content-Type": "application/json"})
-            try:
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    return json.loads(response.read() or b"{}")
-            except urllib.error.HTTPError as error:
-                if error.code == 429 and attempt < 3:
-                    self._sleep(min(float(error.headers.get("Retry-After") or 2), 30))
-                    continue
-                raise NotionError(f"NOTION_HTTP_{error.code}") from None
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-                raise NotionError("NOTION_NETWORK") from None
-        raise NotionError("NOTION_RATE_LIMITED")
-
-    def ledger_urls(self):
-        """Every Apply URL already in the Ledger (paged, 100 per request)."""
-        urls, cursor = set(), None
-        while True:
-            body = {"page_size": limits.NOTION_PAGE_SIZE}
-            if cursor:
-                body["start_cursor"] = cursor
-            data = self.call("POST", f"/data_sources/{self.source}/query", body)
-            for page in data.get("results", []):
-                value = ((page.get("properties") or {}).get("Apply URL") or {}).get("url")
-                if value:
-                    urls.add(url_key(value))
-            if not data.get("has_more"):
-                return urls
-            cursor = data.get("next_cursor")
-
-    def create(self, props, blocks):
-        first, rest = blocks[:limits.NOTION_MAX_CHILD_BLOCKS], blocks[limits.NOTION_MAX_CHILD_BLOCKS:]
-        page = self.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": self.source},
-                                            "properties": props, "children": first})
-        for start in range(0, len(rest), limits.NOTION_MAX_CHILD_BLOCKS):
-            self.call("PATCH", f"/blocks/{page['id']}/children",
-                      {"children": rest[start:start + limits.NOTION_MAX_CHILD_BLOCKS]})
-        return page["id"]
+def ledger_urls(client):
+    """Every Apply URL already in the Ledger (paged, 100 per request)."""
+    urls, cursor = set(), None
+    while True:
+        body = {"page_size": limits.NOTION_PAGE_SIZE}
+        if cursor:
+            body["start_cursor"] = cursor
+        data = client.call("POST", f"/data_sources/{client.source}/query", body)
+        for page in data.get("results", []):
+            value = ((page.get("properties") or {}).get("Apply URL") or {}).get("url")
+            if value:
+                urls.add(url_key(value))
+        if not data.get("has_more"):
+            return urls
+        cursor = data.get("next_cursor")
 
 
 def _seeded(connection):
@@ -163,7 +101,7 @@ def _store_seed(connection, urls):
 def _pick(connection, limit):
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.first_seen, j.posted_date,"
+            "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
             " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
@@ -184,14 +122,14 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         need_seed = live and not _seeded(connection)
     if need_seed:
-        urls = client.ledger_urls()                                   # slow: no connection open
+        urls = ledger_urls(client)                                   # slow: no connection open
         with store.connect() as connection:
             _store_seed(connection, urls)
         counts["seeded"] = len(urls)
     with store.connect() as connection:
         rows, known = _pick(connection, limit)
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, first_seen, posted, summary, resp, req, qual, full) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -205,7 +143,8 @@ def run(limit, live, environ=os.environ):
         desc = {"summary": summary, "responsibilities": resp, "requirements": req, "qualifications": qual}
         if not any((summary, resp, req, qual)):
             desc["summary"] = (full or "")[:6000]
-        row = {"title": title, "company": company, "url": url, "source": source, "key": key,
+        row = {"title": title, "company": company, "url": url, "source": source, "provider": provider, "lane": lane,
+               "key": key,
                "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted}
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open

@@ -3,8 +3,8 @@
 clean canonical https://www.linkedin.com/jobs/view/<id> - tokens are never kept."""
 import re
 
-from pipeline.parsers import _anchors
-from pipeline.parsers.lensa import Card
+from lifeos.sources.newsletters.parsers import _anchors
+from lifeos.sources.newsletters.parsers.lensa import Card
 
 JOB = re.compile(r"linkedin\.com/comm/jobs/view/(\d+)")
 NOISE = re.compile(r"connection|alumni|school|hiring|actively|easy apply|applicant|promoted|viewed|\bago\b", re.I)

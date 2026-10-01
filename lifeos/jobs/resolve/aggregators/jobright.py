@@ -8,7 +8,7 @@ import os
 import re
 from urllib.parse import urlsplit
 
-from pipeline import classify
+from lifeos.jobs import classify
 
 HOME = "https://jobright.ai/"
 SIGN_IN = re.compile(r"^\s*(sign\s*in|log\s*in)\s*$", re.I)

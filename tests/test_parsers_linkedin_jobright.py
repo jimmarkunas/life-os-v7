@@ -1,7 +1,7 @@
 """Synthetic LinkedIn / Jobright shapes (invented data only)."""
 import unittest
 
-from pipeline.parsers import jobright, linkedin
+from lifeos.sources.newsletters.parsers import jobright, linkedin
 
 TRACK = "?trackingId=SYNTH&midToken=SYNTH&otpToken=SYNTH&eid=SYNTH"
 LINKEDIN = (

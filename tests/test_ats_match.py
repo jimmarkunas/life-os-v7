@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import ats_match
+from lifeos.jobs.resolve import ats_match
 
 
 class MatchTests(unittest.TestCase):
