@@ -142,10 +142,10 @@
    "id": "su-blis-global-ltd",
    "company": "Blis Global Ltd",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://careers.blis.com/jobs"
   },
   {
@@ -162,10 +162,10 @@
    "id": "su-breathe-battery-technologies-l",
    "company": "Breathe Battery Technologies Limited",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://breathebatterytechnologies.teamtailor.com/jobs"
   },
   {
@@ -182,10 +182,10 @@
    "id": "su-community-fibre-limited",
    "company": "Community Fibre Limited",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://careers.communityfibre.co.uk/jobs"
   },
   {
@@ -242,30 +242,30 @@
    "id": "su-revalue-nature-ltd",
    "company": "Revalue Nature Ltd",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://revalue.teamtailor.com/jobs"
   },
   {
    "id": "su-sano-genetics-limited",
    "company": "Sano Genetics Limited",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://careers.sanogenetics.com/jobs"
   },
   {
    "id": "su-sharegain-ltd",
    "company": "Sharegain Ltd",
    "tier": "employer",
-   "kind": "teamtailor_html",
+   "kind": "teamtailor",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "bespoke",
+   "status": "ready",
    "url": "https://careers.sharegain.com/jobs"
   },
   {

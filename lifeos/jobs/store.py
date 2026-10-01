@@ -71,6 +71,11 @@ SCHEMA = (
         removed INT NOT NULL DEFAULT 0, suppressed INT NOT NULL DEFAULT 0, ingested INT NOT NULL DEFAULT 0,
         KEY ix_v7_runs_source (source_id, ran_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_feed (
+        feed_id VARCHAR(24) NOT NULL PRIMARY KEY,
+        generation CHAR(64) NULL, cursor_date DATE NULL,
+        applied_at DATETIME NOT NULL, status VARCHAR(10) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_tombstones (
         dedupe_key CHAR(64) NOT NULL PRIMARY KEY,
         fuzzy_key CHAR(64) NULL,
@@ -95,7 +100,7 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "verified_at", "DATETIME NULL", None),

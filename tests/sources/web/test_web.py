@@ -152,8 +152,8 @@ class ScaleUp(unittest.TestCase):
         rows = registry.load(registry.PATHS["Scale-Up"])
         self.assertEqual(len(rows), 48)
         ready = registry.for_lane("Scale-Up")
-        self.assertEqual(sorted({r["kind"] for r in ready}), ["ashby", "greenhouse", "lever", "pinpoint", "workable", "workday"])
-        self.assertEqual(len(ready), 13)
+        self.assertEqual(sorted({r["kind"] for r in ready}), ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
+        self.assertEqual(len(ready), 19)
         self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):
@@ -258,3 +258,30 @@ class OneRun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RSS = """<?xml version="1.0"?><rss xmlns:tt="https://teamtailor.com/locations"><channel><title>Jobs</title>
+<item><guid>101</guid><title>Programme Manager</title><link>https://careers.x.com/jobs/101-pm</link><pubDate>Tue, 29 Sep 2026 10:00:00 +0000</pubDate>
+<description>&lt;p&gt;Lead delivery&lt;/p&gt;</description><tt:locations><tt:location><tt:city>London</tt:city><tt:country>United Kingdom</tt:country></tt:location></tt:locations></item>
+</channel></rss>"""
+
+
+class Teamtailor(unittest.TestCase):
+    def read(self, status, body):
+        from lifeos.platform.http import Fetched
+        from lifeos.sources.web import lister
+        return lister.list_source({"kind": "teamtailor", "url": "https://careers.x.com/jobs"}, lambda url, **kw: Fetched(url, status, body))
+
+    def test_rss_listing(self):
+        got = self.read(200, RSS)
+        self.assertEqual((got.status, len(got.jobs)), ("COMPLETE", 1))
+        job = got.jobs[0]
+        self.assertEqual((job["title"], job["location"], str(job["posted"])), ("Programme Manager", "London, United Kingdom", "2026-09-29"))
+        self.assertIn("Lead delivery", job["content"])
+
+    def test_empty_board_is_complete_but_a_blocked_or_odd_feed_is_not(self):
+        self.assertEqual((self.read(200, '<rss><channel><title>x</title></channel></rss>').status, ), ("COMPLETE",))
+        self.assertEqual(self.read(403, "").reason, "rate_limited")
+        self.assertEqual(self.read(200, "<html>").reason, "bad_xml")
+        self.assertEqual(self.read(200, "<rss></rss>").reason, "bad_shape")
+        self.assertEqual(self.read(200, '<!DOCTYPE x [<!ENTITY a "b">]><rss><channel/></rss>').reason, "bad_shape")
