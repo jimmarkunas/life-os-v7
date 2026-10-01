@@ -142,7 +142,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l1"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l2"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -161,6 +161,27 @@ def geography_status(location):
     return UNRESOLVED
 
 
+_UK = re.compile(r"\bUK\b|\bU\.K\.|\b(united kingdom|england|scotland|wales|northern ireland|london|manchester|birmingham|leeds|bristol|edinburgh|glasgow|cardiff|belfast|cambridge|oxford)\b", re.I)
+_CANADA = re.compile(r"\b(canada|ontario|toronto|vancouver|montreal|alberta|british columbia|quebec)\b|,\s*(?:ON|BC|AB|QC)\b", re.I)
+_US = re.compile(r"(?i:\bunited states\b|\busa\b)|\bU\.?S\.?A?\b|,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b")
+_OTHER = re.compile(r"\b(ireland|dublin|germany|berlin|munich|france|paris|spain|madrid|barcelona|netherlands|amsterdam|poland|warsaw|"
+                    r"india|bangalore|bengaluru|hyderabad|pune|mumbai|australia|sydney|melbourne|singapore|japan|tokyo|brazil|mexico|israel|"
+                    r"philippines|ukraine|portugal|lisbon|europe|emea|apac|latam|worldwide|global)\b", re.I)
+
+
+def market_of(location):
+    """'US' | 'UK' | 'OTHER' from the location text alone; None when it is silent, ambiguous or names several markets (never guessed)."""
+    text = location or ""
+    found = []
+    if _CANADA.search(text) or _OTHER.search(text):
+        found.append("OTHER")
+    if _UK.search(text) and not _CANADA.search(text):                # "London, ON" is Canada
+        found.append("UK")
+    if _US.search(text):
+        found.append("US")
+    return found[0] if len(found) == 1 else None
+
+
 def route_dict(stored):
     """'Scale-up:POSITIVE' (as stored on the job) -> {'Scale-up': 'POSITIVE'}."""
     name, _, state = (stored or "").partition(":")
@@ -172,7 +193,7 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
-    return Facts(fit=fit, market=market, work_mode=detect_work_mode(location, title, text), pay_min=pay_min,
+    return Facts(fit=fit, market=market or market_of(location), work_mode=detect_work_mode(location, title, text), pay_min=pay_min,
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location))
 
 
