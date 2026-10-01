@@ -23,9 +23,17 @@ class ProfileError(ValueError):
     pass
 
 
+_BRITISH = re.compile(r"\b(?:(organis|optimis|prioritis|specialis|standardis|utilis)(?=[a-z]*\b)|(programme|centre|analyse|licence|catalogue|modelling|labour)(?=(?:s|d)?\b))")
+_AMERICAN = {"programme": "program", "organis": "organiz", "optimis": "optimiz", "prioritis": "prioritiz", "specialis": "specializ",
+             "standardis": "standardiz", "utilis": "utiliz", "centre": "center", "analyse": "analyze", "licence": "license",
+             "catalogue": "catalog", "modelling": "modeling", "labour": "labor"}
+
+
 def norm(text):
-    """Lower-case, punctuation to spaces except the characters technology names use, single spaced."""
-    return " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#./&-]+", " ", (text or "").lower())).strip() + " "
+    """Lower-case, British spellings to American (a UK "Technical Programme Manager" is a Technical Program Manager), punctuation to
+    spaces except the characters technology names use, single spaced. Profile terms and posting text both pass through here."""
+    lowered = _BRITISH.sub(lambda m: _AMERICAN[m.group(1) or m.group(2)], (text or "").lower())
+    return " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#./&-]+", " ", lowered)).strip() + " "
 
 
 def term_regex(term):
