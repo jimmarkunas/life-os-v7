@@ -12,7 +12,7 @@ class Page:
 JOB = ("<html><head><title>Senior Data Engineer</title><script type='application/ld+json'>"
        '{"@type":"JobPosting","title":"Senior Data Engineer","datePosted":"%s","description":"%s"}'
        "</script></head><body>x</body></html>")
-LONG = "<p>" + ("Build pipelines and own data quality across the platform. " * 8) + "</p>"
+LONG = "<p>" + ("Responsibilities: build pipelines and own data quality across the platform. You will need experience with SQL and Python skills. " * 4) + "</p>"
 
 
 class EnrichTests(unittest.TestCase):

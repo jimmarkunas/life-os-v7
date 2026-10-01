@@ -1,7 +1,7 @@
 """Find the employer's own posting through web search (free TinyFish Search), precision first.
 Attempt 1: ATS domains only. Attempt 2: any non-aggregator site whose host carries the company name.
 Accept only when the result title contains the job title AND the company name appears in host/title/snippet."""
-from pipeline import ats_match, classify, tinyfish_search
+from pipeline import ats_match, classify, quality, tinyfish_search
 from pipeline.tinyfish import TinyFishError
 
 ATS_DOMAINS = ("greenhouse.io", "lever.co", "ashbyhq.com", "myworkdayjobs.com", "icims.com", "smartrecruiters.com",
@@ -17,9 +17,12 @@ def _good(result, company, title, need_host):
     host = classify.host(result["url"])
     if classify.apply_kind(result["url"]) == "aggregator":
         return False
+    if quality.url_problem(result["url"]):                  # search/listing pages are not the job
+        return False
+    page_title = ats_match.norm(result.get("title") or "")
     text = ats_match.norm(" ".join([result.get("title") or "", result.get("snippet") or ""]))
     tokens = _company_tokens(company)
-    if not tokens or ats_match.norm(title) not in text:
+    if not tokens or ats_match.norm(title) not in page_title:    # the page TITLE must carry the job title
         return False
     hay = ats_match.norm(host + " " + result["url"]) + " " + text
     if not all(t in hay for t in tokens[:2]):

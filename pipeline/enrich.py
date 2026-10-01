@@ -10,7 +10,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from pipeline import ats_match, budget, jd, jsonld, limits, store, tinyfish
+from pipeline import ats_match, budget, jd, jsonld, limits, quality, store, tinyfish
 from pipeline.http import fetch
 
 MAX_AGE_DAYS = 14
@@ -70,6 +70,8 @@ def _title_ok(want, *found):
 
 def read_page(url, title):
     """Facts for one final URL. Never raises; fixed outcome codes."""
+    if quality.url_problem(url):
+        return {"outcome": "mismatch", "reason": quality.url_problem(url)}
     api = _api_job(url)
     if api:
         text_source = api.get("plain") or api["html"]
@@ -105,6 +107,11 @@ def parse_html(url, title, html):
 def finish(title, desc, found_title, posted, source_kind, valid_through):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty"}
+    problem = quality.jd_problem(desc["full_text"])
+    if problem in ("template", "listing"):
+        return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
+    if problem == "thin":
+        return {"outcome": "blocked", "reason": "jd_thin"}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind == "page_text" else ""):
         return {"outcome": "mismatch"}
     today = _now().date()
@@ -130,16 +137,16 @@ def save(connection, job_id, result):
                  d["qualifications"], d["fingerprint"], now))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
-            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, "
+            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
                            "posted_age_days=COALESCE(%s, posted_age_days), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
                            ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted,
-                            "employer" if posted else None, age, now, job_id))
+                            "employer" if posted else None, result.get("final_url") or None, age, now, job_id))
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
         elif outcome == "mismatch":                      # wrong link: take it back, never publish it
             cursor.execute("UPDATE v7_jobs SET status='NEW', final_apply_url=NULL, apply_kind=NULL, "
-                           "unresolved_reason='link_mismatch', updated_at=%s WHERE id=%s", (now, job_id))
+                           "unresolved_reason=%s, updated_at=%s WHERE id=%s", ((result.get("reason") or "link_mismatch")[:100], now, job_id))
         else:
             cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, updated_at=%s WHERE id=%s",
                            ((result.get("reason") or "blocked")[:100], now, job_id))
@@ -155,12 +162,14 @@ def run(limit, live):
     counts = {"picked": len(rows), "outcome": {}, "source": {}}
     results = []
     for job_id, url, title, kind in rows:
+        url = quality.canonical_job_url(url)
         target = url
         if kind == "easy_apply" or "linkedin.com" in (urlsplit(url).hostname or ""):
             from pipeline import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         result = read_page(target, title)
+        result["final_url"] = url
         results.append((job_id, result))
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
