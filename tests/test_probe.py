@@ -38,3 +38,31 @@ class Discover(unittest.TestCase):
     def test_an_unrelated_result_is_not_a_match(self):
         out = probe.discover(lambda q: [{"url": "https://boards.greenhouse.io/other", "title": "Other Co", "snippet": ""}], [{"id": "su-a", "company": "Acme Robotics Ltd"}])
         self.assertEqual(out, {"su-a": None})
+
+
+class InterviewAccess(unittest.TestCase):
+    def test_only_the_interview_token_is_ever_used_never_the_jobs_token(self):
+        self.assertIsNone(probe.interview_environ({"NOTION_API_TOKEN": "jobs-token"}))
+        mapped = probe.interview_environ({"NOTION_API_TOKEN": "jobs-token", "NOTION_INTERVIEW_TOKEN": "interview-token"})
+        self.assertEqual(mapped["NOTION_API_TOKEN"], "interview-token")
+
+    def test_missing_config_is_a_fixed_code_not_an_empty_success(self):
+        self.assertEqual(probe.interview_access({"NOTION_API_TOKEN": "jobs-token", "HIRING_PIPELINE_PAGE_ID": "p"}),
+                         {"status": "config_missing", "token": False, "page": True})
+        self.assertEqual(probe.interview_access({"NOTION_INTERVIEW_TOKEN": "t"})["status"], "config_missing")
+
+    def test_reports_counts_only_and_builds_the_client_from_the_interview_token(self):
+        from unittest import mock
+        from lifeos.jobs import hiring_pipeline as hp
+        seen = []
+        opps = [hp.Opportunity("p1", "Acme — PM", hp.ACTIVE, 2, "Acme", "PM"), hp.Opportunity("p2", "weird title", hp.ACTIVE, 0, "weird title", "")]
+
+        def factory(env):
+            seen.append(env)
+            return object()
+        with mock.patch.object(hp, "snapshot", return_value=(opps, "ok")):
+            out = probe.interview_access({"NOTION_INTERVIEW_TOKEN": "SECRETVALUE123", "NOTION_API_TOKEN": "jobs", "HIRING_PIPELINE_PAGE_ID": "page"}, factory)
+        self.assertEqual(out, {"status": "ok", "token": True, "page": True, "active": 2, "retired": 0, "with_rounds": 1, "unparsed_titles": 1})
+        self.assertEqual(seen[0]["NOTION_API_TOKEN"], "SECRETVALUE123")
+        self.assertNotIn("jobs", seen[0].values())
+        self.assertNotIn("SECRETVALUE123", str(out))
