@@ -14,7 +14,7 @@ from lifeos.jobs.fit import MODEL_VERSION, profile as fit_profile, semantic as f
 from lifeos.jobs.fit.score import evaluate
 
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
-        " j.posted_date, j.first_seen FROM v7_jobs j"
+        " j.posted_date, j.first_seen, j.route_evidence FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
         " WHERE j.status IN (%s) AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
@@ -28,12 +28,12 @@ def _now():
 
 def score_rows(rows, profile, today, semantic=None):
     """[(job_id, fingerprint, Result, Decision, lane, work_mode)] for rows of (id, title, company, full_text, fingerprint,
-    [lane, location, salary_text, posted_date, first_seen]). Pure."""
+    [lane, location, salary_text, posted_date, first_seen, route_evidence]). Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
-        lane, location, salary, posted, first_seen = (list(rest) + [None] * 5)[:5]
+        lane, location, salary, posted, first_seen, route = (list(rest) + [None] * 6)[:6]
         result = evaluate(title, company, text, profile, today, semantic)
-        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today)
+        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route)
         decision, lane_name = lanes.decide(lane, facts, today, result.exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode))
     return out

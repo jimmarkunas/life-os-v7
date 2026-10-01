@@ -149,13 +149,31 @@ def lane_for(row_lane):
     return LANE_ALIAS.get(row_lane or "Newsletter", row_lane or "US Remote")
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None):
+def geography_status(location):
+    """Scale-Up geography (V2 rules, target London): London is POSITIVE, a named non-target place is NEGATIVE, anything else UNRESOLVED."""
+    text = (location or "").casefold()
+    if not text:
+        return UNRESOLVED
+    if "london" in text:
+        return POSITIVE
+    if any(place in text for place in ("ontario", "canada", "manchester", "paris", "new york")):
+        return NEGATIVE
+    return UNRESOLVED
+
+
+def route_dict(stored):
+    """'Scale-up:POSITIVE' (as stored on the job) -> {'Scale-up': 'POSITIVE'}."""
+    name, _, state = (stored or "").partition(":")
+    return {name: state} if name and state else {}
+
+
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     return Facts(fit=fit, market=market, work_mode=detect_work_mode(location, title, text), pay_min=pay_min,
-                 pay_currency=currency, posted=when)
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location))
 
 
 def decide(row_lane, facts, today, exclusion=None):

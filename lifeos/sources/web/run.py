@@ -11,8 +11,9 @@ from lifeos.jobs import enrich, intake, store
 from lifeos.platform import limits
 from lifeos.sources.web import diff, lister, registry, suppress
 
-LANE = "US Remote"
-PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable"}
+DEFAULT_LANE = "US Remote"
+PROVIDER = {"greenhouse": "Greenhouse", "ashby": "Ashby", "lever": "Lever", "smartrecruiters": "SmartRecruiters", "workable": "Workable",
+            "pinpoint": "Pinpoint", "workday": "Workday", "jibe": "Jibe"}
 
 
 def _now():
@@ -50,7 +51,7 @@ def next_due(source_id, now, complete, failures, pending):
     return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, limits.WEB_REFRESH_HOURS))
 
 
-def plan(source, listing, previous, now, budget):
+def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
     """Pure: the outcome of one board. previous: {provider job id: (material hash, ingest state)}."""
     if listing.status != lister.COMPLETE:
         return Outcome(source, now, "FAILED", listing.reason)
@@ -61,7 +62,7 @@ def plan(source, listing, previous, now, budget):
                   unchanged=[i for i in unchanged if previous[i][1] != "PENDING"], removed=removed)
     suppressed = {}
     for job, digest, is_new in [(j, h, True) for j, h in new] + [(j, h, False) for j, h in changed]:
-        why = suppress.reason(job, now.date())
+        why = suppress.reason(job, now.date(), lane)
         if why:
             suppressed[why] = suppressed.get(why, 0) + 1
             out.items.append((job, digest, "SUPPRESSED", why, is_new))
@@ -95,13 +96,13 @@ class SqlRepo:
             cursor.execute("SELECT provider_job_id, material_hash, ingest FROM v7_source_items WHERE source_id=%s AND state='CURRENT'", (source_id,))
             return {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
-    def commit(self, o, failures):
+    def commit(self, o, failures, lane=DEFAULT_LANE):
         now, sid = o.now, o.source["id"]
         with store.connect() as connection:
             if o.status == "COMPLETE":
                 job_ids = {}
                 for job in o.admit:
-                    job_ids[job["id"]] = self._admit(connection, o.source, job, now)
+                    job_ids[job["id"]] = self._admit(connection, o.source, job, now, lane)
                 with connection.cursor() as cursor:
                     for job, digest, ingest, why, is_new in o.items:
                         cursor.execute(
@@ -134,18 +135,23 @@ class SqlRepo:
                      c.get("suppressed", 0), c.get("admit", 0)))
 
     @staticmethod
-    def _admit(connection, source, job, now):
+    def _admit(connection, source, job, now, lane):
         """One posting into Jobs OS: the employer's own URL is the final link; a description in the list is guarded by enrich.finish."""
         provider = PROVIDER[source["kind"]]
         with connection.cursor() as cursor:
             key, is_new = intake.add_job(cursor, {
                 "url": job["url"], "status": "RESOLVED", "title": job["title"], "company": source["company"],
-                "location": job["location"], "salary": None, "source": "web:" + source["id"], "provider": provider, "lane": LANE,
-                "age_days": (now.date() - job["posted"]).days if job["posted"] else None, "received": now, "provider_score": None}, now)
+                "location": job["location"], "salary": None, "source": "web:" + source["id"], "provider": provider, "lane": lane,
+                "age_days": (now.date() - job["posted"]).days if job["posted"] else None, "received": now, "provider_score": None,
+                "posted": job["posted"]}, now)
             cursor.execute("SELECT id FROM v7_jobs WHERE dedupe_key=%s", (key,))
-            job_id = cursor.fetchone()[0]
+            found = cursor.fetchone()
+            if not found:
+                return None                                              # a 90-day tombstone kept it out
+            job_id = found[0]
             if is_new:
-                cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', updated_at=%s WHERE id=%s", (job["url"], now, job_id))
+                cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
+                               (job["url"], source.get("route_evidence"), now, job_id))
         if is_new and job["content"]:
             from lifeos.jobs import jd                                              # noqa: PLC0415
             desc = jd.describe(job["content"], is_html=False)
@@ -156,9 +162,11 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_board, repo=None, sources=None):
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE):
     now = now or _now()
-    sources = sources if sources is not None else registry.enabled(status="ready")
+    sources = sources if sources is not None else registry.for_lane(lane)
+    if lane == "Scale-Up":
+        sources = [{**s, "route_evidence": "Scale-up:POSITIVE"} for s in sources]      # membership of the curated sponsor universe is the route evidence
     sources = [s for s in sources if s["kind"] in lister.READERS]
     repo = repo or SqlRepo()
     if live and isinstance(repo, SqlRepo):
@@ -166,14 +174,14 @@ def run(limit, live, now=None, lister_fn=lister.list_board, repo=None, sources=N
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
     due = pick_due(sources, states, now, min(limit, limits.WEB_BOARDS_PER_RUN))
-    counts = {"sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
+    counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}}
     with ThreadPoolExecutor(max_workers=limits.ATS_WORKERS) as pool:               # different hosts: no shared limit
-        listings = list(pool.map(lambda s: lister_fn(s["kind"], s["slug"]), due))
+        listings = list(pool.map(lister_fn, due))
     budget = limits.WEB_INGEST_PER_RUN
     for source, listing in zip(due, listings):
         previous = repo.items(source["id"])
-        outcome = plan(source, listing, previous, now, budget)
+        outcome = plan(source, listing, previous, now, budget, lane)
         failures = states.get(source["id"], {}).get("failures", 0)
         outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending)
         if outcome.status == "FAILED":
@@ -187,6 +195,6 @@ def run(limit, live, now=None, lister_fn=lister.list_board, repo=None, sources=N
             for why, n in outcome.counts["why"].items():
                 counts["why"][why] = counts["why"].get(why, 0) + n
         if live:
-            repo.commit(outcome, failures)
+            repo.commit(outcome, failures, lane)
     counts["saved"] = bool(live)
     return counts

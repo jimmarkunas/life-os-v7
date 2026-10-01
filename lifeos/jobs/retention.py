@@ -1,19 +1,20 @@
-"""Retention (weekly). Hostinger: descriptions go at 90 days, tombstone rows (dedupe key, status, dates) at 365.
-Ledger URL hashes are never purged. Notion, OUR pages only (matched by stored page id; the pre-existing ledger rows are
-never touched) and only untouched ones (Applied unchecked, no Saturn Decision, Lifecycle not Application):
-  14+ days old  -> Lifecycle = Expired, Expired At = today
-  90+ days old  -> trashed (recoverable 30 days) and marked PURGED here.
-One filtered Notion query per page of 100 (the approved weekly read). Counts only.
-"""
-from datetime import datetime, timedelta, timezone
+"""Retention (weekly), per the Jobs canon plus Jim's rules (docs/LANES.md).
 
-from lifeos.jobs import store
+Hostinger: job descriptions go at 90 days; job rows that were never published or are already PURGED go at 365; suppression tombstones expire at 90 days.
+Notion, OUR pages only (matched by stored page id; pre-existing ledger rows are never touched):
+  an UNAPPLIED job with no Saturn Decision whose age is 30+ days (employer Posting Date, else First Surfaced; never Created At)
+  and for which progression.resolve says NOT_PROTECTED  ->  trashed (recoverable 30 days), marked PURGED here, and a 90-day tombstone is written.
+Applied jobs are never destructively retired by Jobs until the Interview progression handoff (INT-7.1A) exists: they resolve UNKNOWN and are kept.
+No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
+"""
+from datetime import date, datetime, timedelta, timezone
+
+from lifeos.jobs import lanes, progression, store, tombstone
 from lifeos.platform import limits, notion_client
 
-EXPIRE_DAYS = 14
-TRASH_DAYS = 90
+RETIRE_DAYS = 30
 DESC_DAYS = 90
-TOMBSTONE_DAYS = 365
+JOB_ROW_DAYS = 365
 MAX_PAGES = 20
 WRITES_PER_RUN = 150
 
@@ -23,57 +24,70 @@ def _now():
 
 
 def query_filter(cutoff, lane):
+    """Unapplied, no Saturn Decision, our lane, and old by the employer Posting Date (else First Surfaced). Lifecycle = Application is a
+    legacy PROTECTIVE exclusion only (fail closed), never a trigger."""
+    day = cutoff.date().isoformat()
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
         {"property": "Saturn Decision", "select": {"is_empty": True}},
         {"property": "Lifecycle", "select": {"does_not_equal": "Application"}},
         {"property": "Visible Lane", "select": {"equals": lane}},
-        {"property": "Created At", "created_time": {"before": cutoff.isoformat() + "Z"}},
+        {"or": [{"property": "Posting Date", "date": {"before": day}},
+                {"and": [{"property": "Posting Date", "date": {"is_empty": True}},
+                         {"property": "First Surfaced", "date": {"before": day}}]}]},
     ]}
 
 
-def action(created, lifecycle, now):
-    """'trash' | 'expire' | None for a page created at `created` (naive UTC)."""
-    age = (now - created).days
-    if age >= TRASH_DAYS:
-        return "trash"
-    if age >= EXPIRE_DAYS and lifecycle != "Expired":
-        return "expire"
-    return None
+def age_days(posted, first_surfaced, today):
+    """Whole days since the Posting Date, else since First Surfaced; None when neither is known (never retire on a guess)."""
+    anchor = posted or first_surfaced
+    return (today - anchor).days if anchor else None
+
+
+def action(posted, first_surfaced, applied, saturn, today):
+    """'retire' | None. Retire only a stale, unprotected, unapplied job."""
+    age = age_days(posted, first_surfaced, today)
+    if age is None or age < RETIRE_DAYS:
+        return None
+    return "retire" if progression.resolve(applied, saturn) == progression.NOT_PROTECTED else None
 
 
 def purge_database(live, now):
-    counts = {"descriptions": 0, "tombstones": 0}
+    counts = {"descriptions": 0, "job_rows": 0, "tombstones_expired": 0}
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT COUNT(*) FROM v7_job_descriptions d JOIN v7_jobs j ON j.id=d.job_id WHERE j.first_seen < %s",
                        (now - timedelta(days=DESC_DAYS),))
         counts["descriptions"] = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE first_seen < %s AND (notion_page_id IS NULL OR status='PURGED')",
-                       (now - timedelta(days=TOMBSTONE_DAYS),))
-        counts["tombstones"] = cursor.fetchone()[0]
+                       (now - timedelta(days=JOB_ROW_DAYS),))
+        counts["job_rows"] = cursor.fetchone()[0]
         if live:
             cursor.execute("DELETE d FROM v7_job_descriptions d JOIN v7_jobs j ON j.id=d.job_id WHERE j.first_seen < %s",
                            (now - timedelta(days=DESC_DAYS),))
             cursor.execute("DELETE s FROM v7_job_sources s JOIN v7_jobs j ON j.id=s.job_id WHERE j.first_seen < %s"
-                           " AND (j.notion_page_id IS NULL OR j.status='PURGED')", (now - timedelta(days=TOMBSTONE_DAYS),))
+                           " AND (j.notion_page_id IS NULL OR j.status='PURGED')", (now - timedelta(days=JOB_ROW_DAYS),))
             cursor.execute("DELETE FROM v7_jobs WHERE first_seen < %s AND (notion_page_id IS NULL OR status='PURGED')",
-                           (now - timedelta(days=TOMBSTONE_DAYS),))
+                           (now - timedelta(days=JOB_ROW_DAYS),))
+            counts["tombstones_expired"] = tombstone.expire(cursor, now)
     return counts
 
 
+def _date(prop):
+    value = ((prop or {}).get("date") or {}).get("start")
+    return date.fromisoformat(value[:10]) if value else None
+
+
 def candidates(client, now, lane):
-    """Pages (id, created, lifecycle) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
+    """(page id, Posting Date, First Surfaced) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
     found, cursor = [], None
     for _ in range(MAX_PAGES):
-        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=EXPIRE_DAYS), lane)}
+        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=RETIRE_DAYS), lane)}
         if cursor:
             body["start_cursor"] = cursor
         data = client.call("POST", f"/data_sources/{client.source}/query", body)
         for page in data.get("results", []):
             props = page.get("properties") or {}
-            life = ((props.get("Lifecycle") or {}).get("select") or {}).get("name")
-            created = datetime.fromisoformat(page["created_time"].replace("Z", "+00:00")).replace(tzinfo=None)
-            found.append((page["id"], created, life))
+            found.append((page["id"], _date(props.get("Posting Date")), _date(props.get("First Surfaced"))))
         if not data.get("has_more"):
             break
         cursor = data.get("next_cursor")
@@ -81,47 +95,40 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "expired": 0, "trashed": 0, "failed": 0}
+    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT DISTINCT lane FROM v7_jobs WHERE notion_page_id IS NOT NULL")
-        lanes = [row[0] for row in cursor.fetchall()]
-    pages = [page for lane in lanes for page in candidates(client, now, lane)]   # slow: no DB connection open
+        names = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}    # rows carry the lane they were published under
+    pages = [page for lane in sorted(names) for page in candidates(client, now, lane)]            # slow: no DB connection open
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
         ours = {}
-        for page_id, created, life in pages:
-            cursor.execute("SELECT id FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
+        for page_id, posted, first in pages:
+            cursor.execute("SELECT id, dedupe_key, fuzzy_key FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
             row = cursor.fetchone()
             if row:
-                ours[page_id] = (row[0], created, life)
+                ours[page_id] = (row, posted, first)
     counts["ours"] = len(ours)
     if not live:
         return counts
-    writes = 0
-    for page_id, (job_id, created, life) in ours.items():
-        todo = action(created, life, now)
-        if not todo or writes >= WRITES_PER_RUN:
+    writes, today = 0, now.date()
+    for page_id, ((job_id, key, fuzzy), posted, first) in ours.items():
+        # the filter already excluded Applied and Saturn Decision rows, so what remains resolves NOT_PROTECTED
+        if action(posted, first, False, None, today) != "retire" or writes >= WRITES_PER_RUN:
             continue
         writes += 1
         try:
-            if todo == "trash":
-                client.call("PATCH", f"/pages/{page_id}", {"in_trash": True})
-            else:
-                client.call("PATCH", f"/pages/{page_id}", {"properties": {
-                    "Lifecycle": {"select": {"name": "Expired"}},
-                    "Expired At": {"date": {"start": now.date().isoformat()}}}})
+            client.call("PATCH", f"/pages/{page_id}", {"in_trash": True})
         except notion_client.NotionError:
             counts["failed"] += 1
             if counts["failed"] >= 3:
                 break
             continue
         with store.connect() as connection, connection.cursor() as cursor:
-            if todo == "trash":
-                cursor.execute("UPDATE v7_jobs SET status='PURGED', updated_at=%s WHERE id=%s", (now, job_id))
-            else:
-                cursor.execute("UPDATE v7_jobs SET notion_expired_at=%s, updated_at=%s WHERE id=%s", (now, now, job_id))
-        counts["trashed" if todo == "trash" else "expired"] += 1
+            cursor.execute("UPDATE v7_jobs SET status='PURGED', updated_at=%s WHERE id=%s", (now, job_id))
+            tombstone.write(cursor, key, fuzzy, now)
+        counts["retired"] += 1
     return counts
 
 

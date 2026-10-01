@@ -1,0 +1,492 @@
+{
+ "version": 1,
+ "source": "harvested from life-os-v2 contracts/scale_up_sources.json (2026-10-01): 48 curated UK Scale-up sponsors; public names and ATS identities only",
+ "route": "Scale-up",
+ "statuses": {
+  "ready": "listed by lifeos.sources.web.lister today",
+  "bespoke": "public full job list, needs a site parser (Teamtailor family and one-offs)",
+  "fallback": "no discoverable ATS: stays DEGRADED until a recovery channel supplies evidence"
+ },
+ "sources": [
+  {
+   "id": "su-a-y-j-solicitors",
+   "company": "A Y & J Solicitors",
+   "tier": "employer",
+   "kind": "workable",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "ayjsolicitors"
+  },
+  {
+   "id": "su-clear-junction-limited",
+   "company": "Clear Junction Limited",
+   "tier": "employer",
+   "kind": "workable",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "clearjunction"
+  },
+  {
+   "id": "su-chattermill-analytics-limited",
+   "company": "Chattermill Analytics Limited",
+   "tier": "employer",
+   "kind": "ashby",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "chattermill"
+  },
+  {
+   "id": "su-eighteen-and-a-half-limited",
+   "company": "Eighteen And A Half Limited",
+   "tier": "employer",
+   "kind": "ashby",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "nous"
+  },
+  {
+   "id": "su-hyperexponential-ltd",
+   "company": "Hyperexponential Ltd",
+   "tier": "employer",
+   "kind": "ashby",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "hyperexponential"
+  },
+  {
+   "id": "su-safi-technologies-ltd",
+   "company": "Safi Technologies Ltd",
+   "tier": "employer",
+   "kind": "ashby",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "safi"
+  },
+  {
+   "id": "su-tau-marketing-services-limited",
+   "company": "Tau Marketing Services Limited",
+   "tier": "employer",
+   "kind": "ashby",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "quantum"
+  },
+  {
+   "id": "su-garrison-technology-ltd",
+   "company": "Garrison Technology Ltd",
+   "tier": "employer",
+   "kind": "workday",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "url": "https://evergreenix.wd1.myworkdayjobs.com/en-US/external-careers2"
+  },
+  {
+   "id": "su-godesic-limited-t-a-cutover",
+   "company": "Godesic Limited T/A Cutover",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "cutover"
+  },
+  {
+   "id": "su-techary-limited",
+   "company": "Techary Limited",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "techary"
+  },
+  {
+   "id": "su-wheely-technologies-ltd",
+   "company": "Wheely Technologies Ltd",
+   "tier": "employer",
+   "kind": "greenhouse",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "wheely"
+  },
+  {
+   "id": "su-kido-schools-uk-limited",
+   "company": "Kido Schools UK Limited",
+   "tier": "employer",
+   "kind": "pinpoint",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "url": "https://careers.kidoschools.com/postings.json"
+  },
+  {
+   "id": "su-vivacity-labs-limited",
+   "company": "Vivacity Labs Limited",
+   "tier": "employer",
+   "kind": "lever",
+   "enabled": true,
+   "completeness": "api_full",
+   "status": "ready",
+   "slug": "vivacitylabs"
+  },
+  {
+   "id": "su-blis-global-ltd",
+   "company": "Blis Global Ltd",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://careers.blis.com/jobs"
+  },
+  {
+   "id": "su-bluestonex-consulting-ltd",
+   "company": "Bluestonex Consulting Ltd",
+   "tier": "employer",
+   "kind": "bluestonex_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://bluestonex.com/careers/"
+  },
+  {
+   "id": "su-breathe-battery-technologies-l",
+   "company": "Breathe Battery Technologies Limited",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://breathebatterytechnologies.teamtailor.com/jobs"
+  },
+  {
+   "id": "su-citisense-ltd",
+   "company": "Citisense Ltd",
+   "tier": "employer",
+   "kind": "static_complete_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.citisense.com/careers/"
+  },
+  {
+   "id": "su-community-fibre-limited",
+   "company": "Community Fibre Limited",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://careers.communityfibre.co.uk/jobs"
+  },
+  {
+   "id": "su-i-net-software-solutions",
+   "company": "I-Net Software Solutions",
+   "tier": "employer",
+   "kind": "static_complete_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.inetsoftwaresolutions.co.uk/careers/"
+  },
+  {
+   "id": "su-intrepid-ltd",
+   "company": "Intrepid Ltd",
+   "tier": "employer",
+   "kind": "static_complete_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://beintrepid.co.uk/open-positions"
+  },
+  {
+   "id": "su-lessel-limited",
+   "company": "LESSEL LIMITED",
+   "tier": "employer",
+   "kind": "static_complete_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.lessel.co.uk/careers"
+  },
+  {
+   "id": "su-plentific",
+   "company": "Plentific",
+   "tier": "employer",
+   "kind": "wttj_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://app.welcometothejungle.com/companies/Plentific"
+  },
+  {
+   "id": "su-prepaid-financial-services-lim",
+   "company": "Prepaid Financial Services Limited",
+   "tier": "employer",
+   "kind": "rippling_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://ats.rippling.com/eml-payments-ltd/jobs"
+  },
+  {
+   "id": "su-revalue-nature-ltd",
+   "company": "Revalue Nature Ltd",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://revalue.teamtailor.com/jobs"
+  },
+  {
+   "id": "su-sano-genetics-limited",
+   "company": "Sano Genetics Limited",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://careers.sanogenetics.com/jobs"
+  },
+  {
+   "id": "su-sharegain-ltd",
+   "company": "Sharegain Ltd",
+   "tier": "employer",
+   "kind": "teamtailor_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://careers.sharegain.com/jobs"
+  },
+  {
+   "id": "su-social-promotions-limited-t-a-",
+   "company": "Social Promotions Limited (T/A Popsa)",
+   "tier": "employer",
+   "kind": "popsa_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://popsa.com/careers/"
+  },
+  {
+   "id": "su-stream-platforms-ltd",
+   "company": "Stream Platforms Ltd",
+   "tier": "employer",
+   "kind": "stream_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://stream.co/en/company/careers"
+  },
+  {
+   "id": "su-transreport-limited",
+   "company": "TRANSREPORT LIMITED",
+   "tier": "employer",
+   "kind": "join_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://join.com/companies/transreport"
+  },
+  {
+   "id": "su-zero-gravity-tech-ltd",
+   "company": "Zero Gravity Tech Ltd",
+   "tier": "employer",
+   "kind": "wttj_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://app.welcometothejungle.com/companies/Zero-Gravity"
+  },
+  {
+   "id": "su-futuristic-technologies-ltd",
+   "company": "Futuristic Technologies Ltd",
+   "tier": "employer",
+   "kind": "futuristic_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.futuristictechnologies.co.uk/careers/"
+  },
+  {
+   "id": "su-revolut-ltd",
+   "company": "Revolut Ltd",
+   "tier": "employer",
+   "kind": "revolut_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.revolut.com/en-GB/careers/"
+  },
+  {
+   "id": "su-six-flow-ltd",
+   "company": "Six & Flow Ltd",
+   "tier": "employer",
+   "kind": "sixflow_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://www.sixandflow.com/careers/future-opportunities"
+  },
+  {
+   "id": "su-tangi0-ltd",
+   "company": "Tangi0 Ltd.",
+   "tier": "employer",
+   "kind": "tg0_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://tg0.co.uk/company/"
+  },
+  {
+   "id": "su-tytn-ltd",
+   "company": "TYTN Ltd",
+   "tier": "employer",
+   "kind": "doubleword_bundle",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://doubleword.ai/careers/"
+  },
+  {
+   "id": "su-veramed-limited",
+   "company": "Veramed Limited",
+   "tier": "employer",
+   "kind": "veramed_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "bespoke",
+   "url": "https://veramed.com/job-openings/"
+  },
+  {
+   "id": "su-agt-retail-limited",
+   "company": "AGT Retail Limited",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://www.linkedin.com/company/refinednetworks"
+  },
+  {
+   "id": "su-blue-sky-ip-ltd",
+   "company": "Blue Sky IP Ltd",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.linkedin.com/company/skarper"
+  },
+  {
+   "id": "su-fomtech-ltd-floww",
+   "company": "Fomtech Ltd (Floww)",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.indeed.com/cmp/Floww"
+  },
+  {
+   "id": "su-i-f-concept-ltd",
+   "company": "I.F. CONCEPT LTD",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.linkedin.com/company/if-concept"
+  },
+  {
+   "id": "su-otto-car-limited",
+   "company": "Otto Car Limited",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://careers.ottocar.co.uk/jobs"
+  },
+  {
+   "id": "su-quantum-services-management-lt",
+   "company": "Quantum Services Management Ltd",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.linkedin.com/company/quantum-services-management-ltd"
+  },
+  {
+   "id": "su-raptor-marketing-limited",
+   "company": "Raptor Marketing Limited",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.indeed.com/cmp/Raptor-Marketing"
+  },
+  {
+   "id": "su-sa3-group-ltd",
+   "company": "Sa3 Group Ltd",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://nl.linkedin.com/company/sa3-power"
+  },
+  {
+   "id": "su-sixfold-bioscience-limited",
+   "company": "Sixfold Bioscience Limited",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://www.sixfold.bio/team"
+  },
+  {
+   "id": "su-taipec-ltd",
+   "company": "Taipec Ltd",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://uk.indeed.com/q-uk-bubble-tea-jobs.html"
+  },
+  {
+   "id": "su-tambo-marketplaces-limited",
+   "company": "Tambo Marketplaces Limited",
+   "tier": "employer",
+   "kind": "generic_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://www.tambo.io/"
+  },
+  {
+   "id": "su-truvi-holdings-ltd",
+   "company": "Truvi Holdings Ltd",
+   "tier": "employer",
+   "kind": "provider_html",
+   "enabled": true,
+   "completeness": "fallback_partial",
+   "status": "fallback",
+   "url": "https://truvi.com/careers/"
+  }
+ ]
+}
