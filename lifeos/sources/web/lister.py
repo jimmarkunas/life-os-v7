@@ -273,7 +273,7 @@ def _first_party_html(source, fetcher):
             raise ValueError(f"http_{got.status}")
         return got.html
     if source.get("impersonate"):                       # a site that refuses plain requests (Revolut): Chrome TLS fingerprint, warm-up, retries
-        page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain="__NEXT_DATA__")
+        page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
     if page.status in (403, 429):
