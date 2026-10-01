@@ -1,7 +1,9 @@
 name: hourly
 on:
   schedule:
-    - cron: "7 * * * *"          # hourly; GitHub may delay by several minutes
+    - cron: "7 * * * *"          # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
+    - cron: "27 * * * *"         # keeps the effective cadence at about one run per hour and a dropped slot is covered by the next
+    - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
       live:
@@ -113,10 +115,18 @@ jobs:
   prep:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+      issues: write
     outputs:
       extract: ${{ steps.extract.outcome }}
     steps:
       - uses: actions/checkout@v4
+      - name: Gate - skip a scheduled run when a run started in the last 50 minutes; flag a stale pipeline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -m lifeos.platform.gate
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

@@ -168,3 +168,8 @@ GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring s
 - A newsletter mail closes (`Done`) only when every job from it is in an explicit terminal state: verified PUBLISHED, CLOSED, DUPLICATE, PURGED or EXCLUDED_*. HOLD, NEW/RESOLVED/READY and any unknown status keep it open (counted as hold / in_flight / other).
 - `repost.link` links a new row to an original only when exactly ONE candidate matches the fuzzy key; with more than one it links nothing and marks `unresolved_reason='repost_ambiguous'`.
 - Deferred: merging a duplicate observation's stronger evidence (URL, provider, lane) into the original, until live runs show it is needed.
+
+## D30 — Scheduled triggers are unreliable, so there are three per hour and a gate (2026-10-01)
+GitHub fired 2 of ~11 scheduled runs in one stretch. Still one scheduler (D25): `hourly.yml` now has crons at :07, :27 and :47. `lifeos.platform.gate` (first step of `prep`) cancels a scheduled
+run when another run started in the last 50 minutes, so the effective cadence stays about hourly and the TinyFish allowance (500/hour) is not doubled; a dropped slot is covered by the next.
+The same step opens ONE GitHub issue (label `pipeline-stale`) when no run has succeeded for 150 minutes and closes it on recovery; alert failures never stop the pipeline. Dispatch runs are never gated.
