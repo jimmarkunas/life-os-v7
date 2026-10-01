@@ -59,7 +59,7 @@ def properties(row):
         "Freshness Status": {"select": {"name": "Fresh"}},
         "Liveness": {"select": {"name": "Live"}},
         "Visible Lane": {"select": {"name": lanes.lane_for(row["lane"])}},
-        "Eligible Lanes": {"multi_select": [{"name": lanes.lane_for(row["lane"])}]},
+        "Eligible Lanes": {"multi_select": [{"name": n} for n in (row.get("eligible") or [lanes.lane_for(row["lane"])])]},
         "Admission Status": {"select": {"name": lanes.ADMISSION_LABEL.get(row.get("admission"), "Passed / Review")}},
     }
     if row.get("admission") == lanes.REVIEW and row.get("admission_reason"):
@@ -113,7 +113,7 @@ def _pick(connection, limit, gated=False):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
-            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind"
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind, f.lane, f.eligible"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "") +
             " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
@@ -142,7 +142,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -162,6 +162,8 @@ def run(limit, live, environ=os.environ):
                "fit": fit, "fit_line": fit_line,
                "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
                "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind}
+        if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
+            row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
         except NotionError:

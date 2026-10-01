@@ -26,6 +26,7 @@ class LanePolicy:
     route: str | None = None             # required route evidence ("Scale-up", "Skilled Worker")
     geography_required: bool = False
     enabled: bool = True
+    market_required: bool = False        # an unknown market is REVIEW (the UK lanes: never assume a job is in the UK)
     bucket: str = "Curated"              # Curated | Target (sourcing priority only; never a different Fit floor)
 
 
@@ -35,8 +36,10 @@ POLICIES = {
     # (Jim, 2026-10-01; the earlier canon had no age gate). A missing posting date does not suppress it.
     "Scale-Up": LanePolicy("Scale-Up", "UK", "£", max_age_days=30, unknown_date_blocks=False, route="Scale-up",
                            geography_required=True, bucket="Target"),
+    # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
+    # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 72 like every lane.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
-                                 enabled=False, bucket="Target"),
+                                 geography_required=True, market_required=True, bucket="Target"),
 }
 
 
@@ -64,6 +67,8 @@ def qualify(policy, facts, today):
         return Decision(DISABLED, "lane disabled")
     if facts.market and facts.market != policy.market:
         return Decision(EXCLUDE, f"market {facts.market} is not {policy.market}")
+    if policy.market_required and not facts.market:
+        return Decision(REVIEW, "market unresolved")
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
     if facts.fit is not None and facts.fit < FIT_FLOOR:
@@ -142,7 +147,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l3"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l4"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -183,9 +188,19 @@ def market_of(location):
 
 
 def route_dict(stored):
-    """'Scale-up:POSITIVE' (as stored on the job) -> {'Scale-up': 'POSITIVE'}."""
-    name, _, state = (stored or "").partition(":")
-    return {name: state} if name and state else {}
+    """'Scale-up:POSITIVE;Skilled Worker:NEGATIVE' (as stored on the job) -> {'Scale-up': 'POSITIVE', 'Skilled Worker': 'NEGATIVE'}."""
+    out = {}
+    for part in (stored or "").split(";"):
+        name, _, state = part.partition(":")
+        if name.strip() and state.strip():
+            out[name.strip()] = state.strip()
+    return out
+
+
+def join_routes(stored, **extra):
+    """Add route states to the stored string without losing what is there: join_routes('Scale-up:POSITIVE', **{'Skilled Worker': 'POSITIVE'})."""
+    merged = {**route_dict(stored), **extra}
+    return ";".join(f"{k}:{v}" for k, v in merged.items())
 
 
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None):
@@ -197,9 +212,24 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location))
 
 
-def decide(row_lane, facts, today, exclusion=None):
-    """-> (Decision, lane name). A private exclusion rule (fit.exclusions) excludes in every lane, with the Fit untouched."""
-    lane = lane_for(row_lane)
+def decide_all(row_lane, facts, today, exclusion=None):
+    """-> (Decision, visible lane, eligible lanes). The job's own lane judges it first; when another enabled lane admits it and its own does not
+    (a UK newsletter job at a licensed sponsor), that lane takes it. A lane that already admits it keeps it unless a lane that precedes it also
+    admits (Scale-Up wins a dual route). A private exclusion rule excludes in every lane, with the Fit untouched."""
+    own = lane_for(row_lane)
     if exclusion:
-        return Decision(EXCLUDE, f"excluded: {exclusion}"), lane
-    return qualify(POLICIES[lane], facts, today), lane
+        return Decision(EXCLUDE, f"excluded: {exclusion}"), own, []
+    results, visible = qualify_all(facts, today)
+    eligible = [n for n in PRECEDENCE if n in results and results[n].status == ADMIT]
+    if own in results and results[own].status == ADMIT:
+        lane = visible if visible and PRECEDENCE.index(visible) < PRECEDENCE.index(own) else own
+        return results[lane], lane, eligible
+    if visible:
+        return results[visible], visible, eligible
+    return qualify(POLICIES[own], facts, today), own, eligible
+
+
+def decide(row_lane, facts, today, exclusion=None):
+    """-> (Decision, lane name)."""
+    decision, lane, _ = decide_all(row_lane, facts, today, exclusion)
+    return decision, lane

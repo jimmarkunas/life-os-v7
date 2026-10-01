@@ -12,8 +12,9 @@ and its lifecycle are shared. A lane adds only opportunity policy, as data (`lif
 | Explicit pay floor | $80,000 (missing pay allowed) | none | £65,000 (missing pay allowed) |
 | New-admission age | 14 days (unknown date = Review) | 30 days (unknown date does not suppress) | 14 days (unknown date = Review) |
 | Route evidence | none | Scale-up, positive required | Skilled Worker, positive required |
-| Geography evidence | none | positive required | none (London policy at acquisition) |
-| Status | active | built, not scheduled until promoted | disabled (Phase 2) |
+| Market | US | UK | UK (unknown market = Review) |
+| Geography evidence | none | positive required | London positive; named non-target place negative; UK-remote / unplaced = Review |
+| Status | active | built, not scheduled until promoted | active (Phase 2, Jim 2026-10-01); depends on the sponsor register being loaded |
 
 Decisions (Jim, 2026-10-01): US Remote keeps 14 days (the Notion canon says 7). Scale-Up gets a 30-day age gate (the earlier canon had
 none; age is still not closure evidence, a closed vacancy is excluded in every lane). A job eligible for both UK routes is one
@@ -43,3 +44,20 @@ Only our own pages are touched (matched by stored page id). Hostinger: descripti
 site parser, 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
 geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
 (workflow input `web_scale_up`): dispatch only, never scheduled until promoted.
+
+## UK Skilled Worker (Phase 2)
+Route evidence is the Home Office register of licensed sponsors, Skilled Worker route, A-rated (`lifeos/sources/sponsor_register.py`, stage `sponsors`,
+weekly or forced; read from the gov.uk content API; replaces `v7_sponsors` atomically; a bad download keeps the old register). Lookup
+(`lifeos/jobs/sponsors.py`) is distinctive-token equality of the ACTUAL employer name (`lifeos/jobs/names.py`): POSITIVE on the register, NEGATIVE
+when the register is loaded and the employer is not on it, UNRESOLVED (Review) when no register is loaded, the company is empty, or the company is a
+recruiter/intermediary (its own licence cannot qualify an unresolved client employer). Sources: any job the pipeline already holds, so UK jobs from the
+newsletters and Open Jobs are judged too. `decide_all` lets the job's own lane judge it first; when another lane admits it and its own does not, that
+lane takes it (a UK newsletter job at a sponsor becomes Skilled Worker); a dual route is one job, Scale-Up visible, both lanes in Eligible Lanes.
+Until the register is loaded every UK job simply stays in its own lane's decision.
+
+## Interview progression handoff (INT-7.1A, bounded)
+`lifeos/jobs/hiring_pipeline.py` reads the Notion Hiring Pipeline page (secret `HIRING_PIPELINE_PAGE_ID`; the integration must be shared on the page):
+Active / Retired Opportunities hold one page per pursuit ("Company - Role"), an opportunity page holds one child page per round. A job is PROTECTED
+only on a deterministic company AND role match to an ACTIVE opportunity (`Handoff`: state HIRING_ACTIVE / INTERVIEW_ACTIVE, page-id evidence).
+No match proves nothing, so this source can protect a pursuit but never unprotect one; Applied jobs stay UNKNOWN and are never retired. When the page
+is configured but unreadable, retention retires nothing. When it is not configured, retention behaves as before and reports `handoff: not_configured`.
