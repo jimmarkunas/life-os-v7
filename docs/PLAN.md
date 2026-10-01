@@ -65,7 +65,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 
 ## Mail classification rules
 - Only **automated job-alert newsletters** are swept. Recruiter-led mail (Dice Private Email relays, LinkedIn messages/InMail/invitations) is **not** a newsletter and is left alone (a separate recruiter-lead stream may come later).
-- A real Dice job-alert newsletter will be added as its own sender rule when you subscribe.
+- Dice is not a newsletter source (decided): it is bundled into the US Remote producer (a second `lifeos/sources/<name>` that emits jobs through `intake.add_job`).
 
 ## Build order (each step = one commit, one acceptance check)
 | Step | Ship | Acceptance (on real data) |
@@ -87,6 +87,6 @@ Ship target: steps 1-6 within the 2-hour window. Step 7 and all of Phase 2 follo
 
 ## Decisions recorded
 - Repo: life-os-v7 (fresh). Destination: existing Notion Job Ledger, **core fields only** (Job, Company, Apply URL, Source Provider, First Surfaced, Stable Job Key; Admission Status = "Passed / Review"; Fit blank).
-- Senders: Lensa, Jobright, LinkedIn job alerts. **Dice relays excluded** (recruiter-led, confirmed); a real Dice newsletter gets a rule when subscribed.
+- Senders: Lensa, Jobright, LinkedIn job alerts. **Dice relays excluded** (recruiter-led, confirmed); Dice is handled by the US Remote producer, not a newsletter rule.
 - First run backfills the entire Inbox. Hostinger: reuse existing DB, new `v7_` tables only.
 - Scheduled runs are dry-run until repo variable `V7_LIVE=true`.

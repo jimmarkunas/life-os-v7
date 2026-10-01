@@ -103,3 +103,15 @@ Tests mirror the code: `tests/platform`, `tests/jobs`, `tests/sources/<name>`. S
 live in `tests/contracts` (privacy, import boundaries, provider limits, workflow validity); the boundary test discovers
 OS packages from `lifeos/`, so a new OS needs no change there. Domain tests stay with their domain. Run:
 `python -m unittest discover -s tests -t .`
+
+## D19 - Fit is deterministic; no LLM in the chain (DECIDED)
+The Claude project's fit method is ported as code (`lifeos/jobs/fit`, docs/FIT_MODEL.md). No Anthropic or other model call
+is made to extract or classify requirements. The profile is a private secret (`FIT_PROFILE_JSON`), validated and hashed on
+load; scores record the profile hash so a profile change re-scores. Shadow mode first (`V7_FIT_GATE` unset), gate after calibration. Professional Fit follows the live Candidate Profile (V3 five dimensions, Go at 72); exclusions are a separate gate and never change the Fit number.
+Dice is bundled into the US Remote producer, not built as a newsletter source.
+
+## D20 - One lane policy, data not code (DECIDED, 2026-10-01)
+`lifeos/jobs/lanes.py` holds `LanePolicy` records and one `qualify()` (see docs/LANES.md). US Remote freshness stays 14 days;
+Scale-Up has a 30-day age gate; Skilled Worker is a disabled record. Retention follows the canon (30-day stale purge, 90-day
+tombstone) plus: Applied without reaching interview in 30 days is purged, an interview-stage job is kept. Scale-Up is built and tested
+but not scheduled until Jim promotes it.
