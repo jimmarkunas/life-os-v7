@@ -60,6 +60,10 @@ on:
         description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
         type: boolean
         default: false
+      audit:
+        description: "Demote READY/PUBLISHED jobs failing the quality guards; trash their Notion pages (saves only when live)"
+        type: boolean
+        default: false
       publish:
         description: "Publish READY jobs to the Notion Job Ledger (dry run counts only unless live)"
         type: boolean
@@ -162,6 +166,11 @@ jobs:
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
         run: python -m pipeline.resolve --enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+      - id: audit
+        continue-on-error: true
+        name: Step 6b - precision audit (before publish)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
+        run: python -m pipeline.resolve --audit $([ "$LIVE" = "true" ] && echo --live)
       - id: publish
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
@@ -171,7 +180,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ steps.extract.outcome }} jobright=${{ steps.jobright.outcome }} linkedin=${{ steps.linkedin.outcome }} lensa=${{ steps.lensa.outcome }} enrich=${{ steps.enrich.outcome }} publish=${{ steps.publish.outcome }}; do
+          for pair in extract=${{ steps.extract.outcome }} jobright=${{ steps.jobright.outcome }} linkedin=${{ steps.linkedin.outcome }} lensa=${{ steps.lensa.outcome }} enrich=${{ steps.enrich.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

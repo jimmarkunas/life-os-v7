@@ -366,11 +366,20 @@ def main(argv=None):
     parser.add_argument("--resolve", choices=("jobright", "linkedin", "lensa"), help="resolve NEW jobs of a source and save them")
     parser.add_argument("--publish", action="store_true", help="publish READY jobs to the Notion Job Ledger")
     parser.add_argument("--enrich", action="store_true", help="read final pages: description, posting date, liveness")
+    parser.add_argument("--audit", action="store_true", help="demote READY/PUBLISHED rows that fail the quality guards")
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--live", action="store_true", help="write results to the database")
     parser.add_argument("--per-source", type=int, default=12)
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args(argv)
+    if args.audit:
+        from pipeline import audit, notion                       # noqa: PLC0415
+        try:
+            print("audit:", json.dumps(audit.run(max(args.limit, 2000), args.live), sort_keys=True))
+        except (store.StoreError, notion.NotionError) as error:
+            print(f"AUDIT FAILED: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.publish:
         from pipeline import notion                              # noqa: PLC0415
         try:
