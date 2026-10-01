@@ -16,8 +16,10 @@ from lifeos.jobs.fit.score import evaluate
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
         " j.posted_date, j.first_seen FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-        " WHERE j.status IN ('READY', 'RESOLVED') AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
+        " WHERE j.status IN (%s) AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
+OPEN = ("'READY'", "'RESOLVED'")
+ALL = OPEN + ("'PUBLISHED'", "'EXCLUDED_FIT'")          # FIT_ALL=true: also re-score jobs already published (calibration)
 
 
 def _now():
@@ -54,7 +56,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute(PICK, (MODEL_VERSION, tag, limit))
+            cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else OPEN), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
     scored = score_rows(rows, profile, _now().date(), matcher)
