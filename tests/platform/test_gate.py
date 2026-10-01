@@ -30,5 +30,16 @@ class Gate(unittest.TestCase):
         self.assertTrue(gate.stale([run(1, "2026-10-01T16:00:00Z", "failure")], NOW, 9))
 
 
+class Tick(unittest.TestCase):
+    def test_workflow_accepts_a_timer_tick_with_the_same_gate(self):
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[2]
+        text = (root / ".github/workflows/hourly.yml").read_text()
+        self.assertIn("      tick:", text)
+        self.assertIn("inputs.tick", text.split("PIPELINE:")[1].split("\n")[0])
+        self.assertIn("TICK: ${{ inputs.tick }}", text)
+        self.assertIn('os.environ.get("TICK")', (root / "lifeos/platform/gate.py").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

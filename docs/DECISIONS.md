@@ -173,3 +173,9 @@ GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring s
 GitHub fired 2 of ~11 scheduled runs in one stretch. Still one scheduler (D25): `hourly.yml` now has crons at :07, :27 and :47. `lifeos.platform.gate` (first step of `prep`) cancels a scheduled
 run when another run started in the last 50 minutes, so the effective cadence stays about hourly and the TinyFish allowance (500/hour) is not doubled; a dropped slot is covered by the next.
 The same step opens ONE GitHub issue (label `pipeline-stale`) when no run has succeeded for 150 minutes and closes it on recovery; alert failures never stop the pipeline. Dispatch runs are never gated.
+
+## D31 — An outside timer may TICK the same workflow; GitHub Actions still does all the work (Jim, 2026-10-01)
+After D30, GitHub fired no scheduled run for 5+ hours (it fired 2 of ~11 earlier). D25 is amended: the only thing allowed outside GitHub is a dumb timer that calls the workflow's
+`workflow_dispatch` with `tick=true` (a free cron service, any provider; it holds a Actions-only token for this one repo and no logic or data). A tick behaves exactly like a scheduled run: same gate
+(`lifeos.platform.gate` skips it if a run started in the last 50 minutes), `PIPELINE` from `V7_PIPELINE`, `LIVE` from `V7_LIVE`. All pipeline code, state and secrets stay in this repo and GitHub Actions.
+Still no LLM-hosted scheduler. The timer can be replaced by any other HTTP cron without a code change.

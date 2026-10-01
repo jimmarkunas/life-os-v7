@@ -66,8 +66,8 @@ def _issue(is_stale):
 
 
 def main():
-    if os.environ.get("GITHUB_EVENT_NAME") != "schedule":
-        print("gate: not a scheduled run -> run")
+    if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
+        print("gate: not a scheduled run or a timer tick -> run")
         return 0
     current = int(os.environ["GITHUB_RUN_ID"])
     runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]

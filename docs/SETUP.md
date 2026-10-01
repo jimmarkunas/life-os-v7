@@ -27,3 +27,12 @@ Add each one at a time in the repo's Settings -> Secrets and variables -> Action
 1. Actions -> hourly -> Run workflow (live = **false**) -> read the dry-run counts.
 2. Run again with live = **true**. Re-run: it must report 0 moved.
 3. Set repo variable `V7_LIVE` = `true` so the hourly schedule is live.
+
+## Outside timer (D31) - because GitHub drops scheduled runs
+1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate. Resource owner: you. Repository access: **Only select repositories -> life-os-v7**.
+   Permissions: **Actions: Read and write** (nothing else). Expiration: 1 year (put a reminder in your calendar).
+2. At a free cron service (cron-job.org works): new job, URL
+   `https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches`, method POST, schedule **every hour at minute 17**,
+   headers `Authorization: Bearer <the token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, body `{"ref":"main","inputs":{"tick":"true"}}`.
+3. Run it once from the service. A tick that arrives within 50 minutes of another run cancels itself (that is correct).
+The token lives only at the timer service. Never put it in the repo.
