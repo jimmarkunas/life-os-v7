@@ -80,6 +80,8 @@ def run_rows(source, limit, live, resolver, batch=BATCH_ROWS, deadline_minutes=D
         if not live:
             counts["dry_run"] = True
         _save(counts, part, results, live)
+        print(f"{source} batch {counts['batches']}: rows {start + len(part)}/{len(rows)} resolved={counts['resolved']} "
+              f"pending={counts['pending']} duplicate={counts['duplicate']} closed={counts['closed']}", flush=True)
     return counts
 
 
