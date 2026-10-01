@@ -66,8 +66,9 @@ def board(kind, slug):
         return rows
     if kind == "workable":
         data = _json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}")
-        return [(j.get("title"), j.get("url"), " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])))
-                for j in (data or {}).get("jobs", [])]
+        return [(j.get("title"), f"https://apply.workable.com/{slug}/j/{j['shortcode']}/" if j.get("shortcode") else j.get("url"),
+                 " ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")])))
+                for j in (data or {}).get("jobs", [])]            # the account in the URL is what lets enrich read it later
     if kind == "recruitee":
         data = _json(f"https://{slug}.recruitee.com/api/offers/")
         return [(j.get("title"), j.get("careers_url"), " ".join(filter(None, [j.get("city"), j.get("country")])))

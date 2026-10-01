@@ -30,5 +30,15 @@ class JsonLdTests(unittest.TestCase):
         self.assertIsNone(jsonld.posted_date(None))
 
 
+class EmbeddedDataTests(unittest.TestCase):
+    def test_longest_description_like_string_in_next_data(self):
+        text = "Build things. " * 30
+        page = ('<script id="__NEXT_DATA__" type="application/json">'
+                '{"props": {"pageProps": {"job": {"title": "PM", "jobDescription": "' + text + '", "other": {"description": "short"}}}}}</script>')
+        self.assertEqual(jsonld.embedded_description(page), text)
+        self.assertIsNone(jsonld.embedded_description("<p>no data</p>"))
+        self.assertIsNone(jsonld.embedded_description('<script id="__NEXT_DATA__">{"description": "short"}</script>'))
+
+
 if __name__ == "__main__":
     unittest.main()
