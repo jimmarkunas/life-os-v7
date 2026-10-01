@@ -142,9 +142,13 @@ class SqlRepo:
             key, is_new = intake.add_job(cursor, {
                 "url": job["url"], "status": "RESOLVED", "title": job["title"], "company": source["company"],
                 "location": job["location"], "salary": None, "source": "web:" + source["id"], "provider": provider, "lane": lane,
-                "age_days": (now.date() - job["posted"]).days if job["posted"] else None, "received": now, "provider_score": None}, now)
+                "age_days": (now.date() - job["posted"]).days if job["posted"] else None, "received": now, "provider_score": None,
+                "posted": job["posted"]}, now)
             cursor.execute("SELECT id FROM v7_jobs WHERE dedupe_key=%s", (key,))
-            job_id = cursor.fetchone()[0]
+            found = cursor.fetchone()
+            if not found:
+                return None                                              # a 90-day tombstone kept it out
+            job_id = found[0]
             if is_new:
                 cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
                                (job["url"], source.get("route_evidence"), now, job_id))
