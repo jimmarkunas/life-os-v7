@@ -1,6 +1,6 @@
 import unittest
 
-from pipeline import li_apply
+from lifeos.jobs.resolve.aggregators import li_apply
 
 WRAPPED = '<a class="apply" href="https://www.linkedin.com/safety/go/?url=https%3A%2F%2Fboards.greenhouse.io%2Facme%2Fjobs%2F42&amp;urlHash=x">Apply</a>'
 JSONISH = '{"companyApplyUrl":"https:\\/\\/careers.acme.example\\/apply\\/9","other":1}'

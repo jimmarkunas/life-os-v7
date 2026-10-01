@@ -7,7 +7,8 @@ sync_last_seen(): daily Notion write per resighted/flagged page (no reads).
 """
 from datetime import datetime, timedelta, timezone
 
-from pipeline import notion, store
+from lifeos.jobs import store
+from lifeos.platform import notion_client
 
 WINDOW_DAYS = 60
 GHOST_SEEN = 3
@@ -46,7 +47,7 @@ def is_ghost(seen_count, first_seen, posted_date, now):
 def sync_props(last_seen, ghost):
     props = {"Last Seen": {"date": {"start": last_seen.date().isoformat()}}}
     if ghost:
-        props["Review Reason"] = {"rich_text": notion._text("possible ghost: reposted or long-open without a real date")}
+        props["Review Reason"] = {"rich_text": notion_client.rich_text("possible ghost: reposted or long-open without a real date")}
     return props
 
 
@@ -64,12 +65,12 @@ def sync_last_seen(limit=SYNC_PER_RUN, live=False, environ=None):
     counts["due"] = len(rows)
     if not live or not rows:
         return counts
-    client = notion.Client(environ) if environ is not None else notion.Client()
+    client = notion_client.Client(environ) if environ is not None else notion_client.Client()
     for job_id, page_id, seen, first_seen, last_seen, posted in rows:
         ghost = is_ghost(seen, first_seen, posted, now)
         try:
             client.call("PATCH", f"/pages/{page_id}", {"properties": sync_props(last_seen, ghost)})
-        except notion.NotionError:
+        except notion_client.NotionError:
             counts["failed"] += 1
             if counts["failed"] >= 3:
                 break

@@ -2,8 +2,11 @@
 Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> pending."""
 import time
 
-from pipeline import ats_match, classify, li_apply, limits, search_match
-from pipeline.http import fetch
+from lifeos.jobs.resolve import ats_match, search_match
+from lifeos.jobs import classify
+from lifeos.jobs.resolve.aggregators import li_apply
+from lifeos.platform import limits
+from lifeos.platform.http import fetch
 
 
 def read_guest(url, pause=limits.LINKEDIN_GUEST_GAP_SECONDS):

@@ -6,7 +6,9 @@ A failing PUBLISHED row also has its Notion page trashed and its ledger hash rem
 from datetime import datetime, timezone
 import os
 
-from pipeline import notion, quality, store
+from lifeos.jobs import quality, store
+from lifeos.jobs.identity import url_key
+from lifeos.platform import notion_client
 
 
 def _now():
@@ -39,18 +41,18 @@ def run(limit, live, environ=os.environ):
         counts["by_reason"][why] = counts["by_reason"].get(why, 0) + 1
     if not live or not bad:
         return counts
-    client = notion.Client(environ) if any(r[3] for r, _ in bad) else None
+    client = notion_client.Client(environ) if any(r[3] for r, _ in bad) else None
     for (job_id, status, url, page_id, _), why in bad:
         if page_id and client:
             try:
                 client.call("PATCH", f"/pages/{page_id}", {"in_trash": True})
                 counts["trashed"] += 1
-            except notion.NotionError:
+            except notion_client.NotionError:
                 counts["trash_errors"] += 1
                 continue                                   # keep the row PUBLISHED so the next audit retries
         with store.connect() as connection, connection.cursor() as cursor:
             if page_id and url:
-                cursor.execute("DELETE FROM v7_ledger_urls WHERE url_hash=%s AND source='v7'", (notion.url_key(url),))
+                cursor.execute("DELETE FROM v7_ledger_urls WHERE url_hash=%s AND source='v7'", (url_key(url),))
             cursor.execute("UPDATE v7_jobs SET status='NEW', final_apply_url=NULL, notion_page_id=NULL,"
                            " unresolved_reason=%s, resolve_attempts=0, updated_at=%s WHERE id=%s", (why, _now(), job_id))
             cursor.execute("DELETE FROM v7_job_descriptions WHERE job_id=%s", (job_id,))

@@ -10,8 +10,10 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from pipeline import ats_match, budget, jd, jsonld, limits, quality, store, tinyfish
-from pipeline.http import fetch
+from lifeos.jobs.resolve import ats_match
+from lifeos.platform import usage, limits, tinyfish
+from lifeos.jobs import jd, jsonld, quality, store
+from lifeos.platform.http import fetch
 
 MAX_AGE_DAYS = 14
 CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
@@ -165,7 +167,7 @@ def run(limit, live):
         url = quality.canonical_job_url(url)
         target = url
         if kind == "easy_apply" or "linkedin.com" in (urlsplit(url).hostname or ""):
-            from pipeline import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
+            from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         result = read_page(target, title)
@@ -192,10 +194,10 @@ def _fallback(results, rows, counts):
         return
     try:
         with store.connect() as connection:
-            allowed = budget.reserve(connection, len(blocked))
+            allowed = usage.reserve(connection, len(blocked))
     except store.StoreError:
         return
-    pacer, done = budget.Pacer(), 0
+    pacer, done = usage.Pacer(), 0
     for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
         batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
         urls = [titles[results[i][0]][0] for i in batch]

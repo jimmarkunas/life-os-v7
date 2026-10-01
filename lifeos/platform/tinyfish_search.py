@@ -6,8 +6,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from pipeline import limits
-from pipeline.tinyfish import TinyFishError, clean_key
+from lifeos.platform import limits
+from lifeos.platform.tinyfish import TinyFishError, clean_key
 
 ENDPOINT = "https://api.search.tinyfish.ai"
 MIN_GAP_SECONDS = limits.TINYFISH_SEARCH_GAP_SECONDS

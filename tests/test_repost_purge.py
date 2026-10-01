@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import unittest
 
-from pipeline import purge, repost
+from lifeos.jobs import retention, repost
 
 NOW = datetime(2026, 10, 1, 12, 0)
 
@@ -43,13 +43,13 @@ class RepostTests(unittest.TestCase):
 
 class PurgeTests(unittest.TestCase):
     def test_actions_by_age(self):
-        self.assertIsNone(purge.action(NOW - timedelta(days=5), None, NOW))
-        self.assertEqual(purge.action(NOW - timedelta(days=20), "Today", NOW), "expire")
-        self.assertIsNone(purge.action(NOW - timedelta(days=20), "Expired", NOW))
-        self.assertEqual(purge.action(NOW - timedelta(days=91), "Expired", NOW), "trash")
+        self.assertIsNone(retention.action(NOW - timedelta(days=5), None, NOW))
+        self.assertEqual(retention.action(NOW - timedelta(days=20), "Today", NOW), "expire")
+        self.assertIsNone(retention.action(NOW - timedelta(days=20), "Expired", NOW))
+        self.assertEqual(retention.action(NOW - timedelta(days=91), "Expired", NOW), "trash")
 
     def test_query_never_selects_acted_on_rows(self):
-        props = [f["property"] for f in purge.query_filter(NOW)["and"]]
+        props = [f["property"] for f in retention.query_filter(NOW, "Newsletter")["and"]]
         for needed in ("Applied", "Saturn Decision", "Lifecycle", "Visible Lane", "Created At"):
             self.assertIn(needed, props)
 

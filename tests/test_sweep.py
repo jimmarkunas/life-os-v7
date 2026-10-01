@@ -1,7 +1,7 @@
 import unittest
 
-from pipeline import config
-from pipeline.sweep import sweep
+from lifeos.sources.newsletters import config
+from lifeos.sources.newsletters.sweep import sweep
 
 
 class FakeGmail:

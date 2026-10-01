@@ -1,6 +1,7 @@
 """Lensa rows -> final apply link. Lensa pages are blocked from the runner, so nothing here touches Lensa: the card's
 company / title / location are matched against the employer's public ATS boards, then the free Search API."""
-from pipeline import limits, resolve_linkedin
+from lifeos.platform import limits
+from lifeos.jobs.resolve.aggregators import linkedin
 
 
 def make_resolver():
@@ -8,7 +9,7 @@ def make_resolver():
     budget = {"left": limits.TINYFISH_SEARCH_PER_RUN_LENSA}
 
     def resolve_rows(rows):
-        return resolve_linkedin.match_rows(rows, [{"outcome": "external_hidden"} for _ in rows], budget=budget)
+        return linkedin.match_rows(rows, [{"outcome": "external_hidden"} for _ in rows], budget=budget)
     return resolve_rows
 
 

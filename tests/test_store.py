@@ -1,7 +1,8 @@
 import re
 import unittest
 
-from pipeline import store
+from lifeos.jobs import store
+from lifeos.platform import db
 
 
 class StoreSchemaTests(unittest.TestCase):
@@ -15,10 +16,10 @@ class StoreSchemaTests(unittest.TestCase):
 
     def test_config_error_names_settings_not_values(self):
         import os
-        for field in store.FIELDS:
+        for field in db.FIELDS:
             os.environ.pop("LIFEOS_ACQ_" + field, None)
-        with self.assertRaises(store.StoreError) as ctx:
-            store._cfg()
+        with self.assertRaises(db.StoreError) as ctx:
+            db._cfg()
         self.assertTrue(str(ctx.exception).startswith("STORE_CONFIG_MISSING:"))
 
 

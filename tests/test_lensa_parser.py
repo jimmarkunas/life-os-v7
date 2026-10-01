@@ -1,7 +1,7 @@
 """Synthetic Lensa-shaped emails (invented companies/URLs only; never paste real mail here)."""
 import unittest
 
-from pipeline.parsers import lensa
+from lifeos.sources.newsletters.parsers import lensa
 
 CARD = """<a href="https://email.lensa.com/f/a/{id}" style="text-decoration:none;">
 <table style="width:100%"><tr><td>{company}</td><td rowspan=4>&rsaquo;</td></tr>

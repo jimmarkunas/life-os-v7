@@ -8,8 +8,8 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-from pipeline import limits
-from pipeline.http import fetch
+from lifeos.platform import limits
+from lifeos.platform.http import fetch
 
 SUFFIX = {"inc", "llc", "ltd", "corp", "corporation", "company", "co", "the", "group", "holdings", "technologies",
           "technology", "solutions", "services", "limited", "plc", "gmbh", "lp", "llp", "usa", "us"}

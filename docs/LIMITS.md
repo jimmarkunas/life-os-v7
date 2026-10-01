@@ -1,6 +1,6 @@
 # Provider limits (canon)
 
-Numbers live in `pipeline/limits.py` (code imports them) and `tests/test_limits.py` fails if code drifts above a provider
+Numbers live in `lifeos/platform/limits.py` (code imports them) and `tests/test_limits.py` fails if code drifts above a provider
 limit. Rule: stay UNDER the published limit with a margin, stop a stage on the first 429/403, never retry harder.
 
 | Provider | Provider limit | Our ceiling | Notes |
