@@ -32,6 +32,10 @@ on:
         description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
         type: boolean
         default: false
+      fit:
+        description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
+        type: boolean
+        default: false
       audit:
         description: "Demote READY/PUBLISHED jobs failing the quality guards; trash their Notion pages (saves only when live)"
         type: boolean
@@ -186,7 +190,7 @@ jobs:
       - id: fit
         continue-on-error: true
         name: Step 6a - fit scoring (deterministic, private profile)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
