@@ -15,7 +15,7 @@ from lifeos.platform import usage, limits, tinyfish
 from lifeos.jobs import ats_detail, jd, jsonld, lanes, quality, store
 from lifeos.platform.http import fetch
 
-TRIED_REASON = "description_empty_tf"     # the real-browser fetch already ran once and the page was still empty: do not spend the cap again
+TRIED_REASON = "description_empty_tf"     # the rendered fetch already ran once and the page was still empty: do not spend the cap again
 CLOSED_TEXT = re.compile(r"no longer accepting|no longer available|position (has been|is) filled|job (is )?closed|"
                          r"posting (has )?expired|this job has expired|not accepting applications", re.I)
 
@@ -218,7 +218,7 @@ def run(limit, live):
             target = (li_apply.GUEST_API + jid) if jid else url
         result = read_page(target, title, lane_of.get(job_id))
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
-            result["reason"] = TRIED_REASON                          # stays marked: the browser fetch already tried it
+            result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
         result["final_url"] = url
         results.append((job_id, result))
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
@@ -236,7 +236,9 @@ def run(limit, live):
 
 
 def _fallback(results, rows, counts, lane_of=None):
-    """Pages that refuse plain HTTP: free TinyFish Fetch (real browser), counted against the daily cap BEFORE sending."""
+    """Rendered-fetch fallback (D12 amendment): ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS API gave no usable page.
+    It reads JD, date and liveness evidence only: no clicking, signing in, searching, link traversal, or choosing another vacancy, and it never
+    changes final_apply_url. Counted against the daily cap BEFORE sending."""
     titles = {job_id: (url, title) for job_id, url, title, _, _ in rows}
     tried = {job_id for job_id, _, _, _, prev in rows if prev == TRIED_REASON}
     blocked = [i for i, (job_id, r) in enumerate(results) if r["outcome"] == "blocked" and job_id not in tried]

@@ -13,6 +13,7 @@ from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters import config
 
 IN_FLIGHT = ("NEW", "RESOLVED", "READY")
+TERMINAL = ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")       # plus EXCLUDED_*; anything else (HOLD included) keeps the mail open
 
 
 def blockers(connection, message_ids):
@@ -28,15 +29,19 @@ def blockers(connection, message_ids):
         for message_id, status, unverified in cursor.fetchall():
             if status in IN_FLIGHT:
                 out.setdefault(message_id, "in_flight")
+            elif status == "HOLD":
+                out.setdefault(message_id, "hold")                       # unreadable after every attempt: not an outcome, stays visible
             elif status == "PUBLISHED" and unverified:
                 out.setdefault(message_id, "unverified")
+            elif status not in TERMINAL and not status.startswith("EXCLUDED_"):
+                out.setdefault(message_id, "other")                      # an allowlist, never "whatever is not in flight"
     return out
 
 
 def finalize(gmail, live, limit, connection_factory=store.connect):
     done_label = gmail.label_id(config.DONE_LABEL, create=live)
     ids = gmail.list_ids(config.FINALIZE_QUERY, limit=limit)
-    counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0}
+    counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "hold": 0, "other": 0}
     if not ids:
         return counts
     with connection_factory() as connection:
