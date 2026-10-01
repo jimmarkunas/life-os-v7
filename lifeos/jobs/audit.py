@@ -4,6 +4,9 @@ A failing row goes back to NEW (final link cleared, reason audit_*) so it is res
 A failing PUBLISHED row also has its Notion page trashed and its ledger hash removed, UNLESS a human pursuit may exist: lifeos.jobs.guard
 protects a page that is Applied, has an Applied On date or a Saturn Decision, matches an active hiring-pipeline opportunity, or cannot be read.
 A protected row is left exactly as it is (PUBLISHED, page untouched) and only counted. Logs: counts only.
+
+With V7_FIT_GATE=true the audit also clears out published pages whose lane decision is EXCLUDE (published before they were scored, or re-scored since): the page is
+trashed (recoverable 30 days) under the same guard, the job becomes EXCLUDED_FIT and keeps its ledger hash so it is never published again.
 """
 from datetime import datetime, timezone
 import os
@@ -28,6 +31,7 @@ def judge(url, full_text):
 
 def run(limit, live, environ=os.environ):
     counts = {"checked": 0, "failed": 0, "demoted": 0, "trashed": 0, "trash_errors": 0, "by_reason": {}, "protected": {}}
+    gated = environ.get("V7_FIT_GATE") == "true"
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
@@ -35,9 +39,17 @@ def run(limit, live, environ=os.environ):
                            " LEFT JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status IN ('READY','PUBLISHED')"
                            " ORDER BY j.id LIMIT %s", (limit,))
             rows = cursor.fetchall()
+            excluded = []
+            if gated:
+                cursor.execute("SELECT j.id, j.status, j.final_apply_url, j.notion_page_id, NULL, j.company, j.title FROM v7_jobs j"
+                               " JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL"
+                               " AND f.admission='EXCLUDE' ORDER BY j.id LIMIT %s", (limit,))
+                excluded = cursor.fetchall()
     counts["checked"] = len(rows)
     bad = [(r, judge(r[2], r[4])) for r in rows]
     bad = [(r, why) for r, why in bad if why]
+    already = {r[0] for r, _ in bad}
+    bad += [(r, "excluded_fit") for r in excluded if r[0] not in already]
     counts["failed"] = len(bad)
     for _, why in bad:
         counts["by_reason"][why] = counts["by_reason"].get(why, 0) + 1
@@ -67,6 +79,12 @@ def run(limit, live, environ=os.environ):
             except notion_client.NotionError:
                 counts["trash_errors"] += 1
                 continue                                   # keep the row PUBLISHED so the next audit retries
+        if why == "excluded_fit":                          # keep the description and the ledger hash: it must never be published again
+            with store.connect() as connection, connection.cursor() as cursor:
+                cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', notion_page_id=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s",
+                               ("excluded_fit", _now(), job_id))
+            counts["excluded_cleared"] = counts.get("excluded_cleared", 0) + 1
+            continue
         with store.connect() as connection, connection.cursor() as cursor:
             if page_id and url:
                 cursor.execute("DELETE FROM v7_ledger_urls WHERE url_hash=%s AND source='v7'", (url_key(url),))

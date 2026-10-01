@@ -193,3 +193,48 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExcludedPagesAreCleared(unittest.TestCase):
+    """With the Fit gate on, a published page whose lane decision is EXCLUDE is trashed (never when a human pursuit may exist) and never published again."""
+    FULL = {"Applied": {"checkbox": False}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}}
+
+    def run_audit(self, page_props, gated=True):
+        from unittest import mock
+        from tests.kit.db import FakeConn
+        trashed, writes = [], []
+        target_props = {n: {"type": k} for n, k in ledger.REQUIRED.items()}
+
+        class Client:
+            source = "ds"
+
+            def call(self, method, path, body=None):
+                if method == "PATCH":
+                    trashed.append(path)
+                    return {}
+                if path.startswith("/data_sources/"):
+                    return {"properties": target_props}
+                return {"properties": page_props}
+
+        conn = FakeConn(handler=lambda sql, args, cur: writes.append(sql))
+        batches = iter([[], [(7, "PUBLISHED", "https://x.example/jobs/7", "page7", None, "Acme", "Program Manager")]])
+        conn.cur.fetchall = lambda: next(batches, [])
+        with mock.patch.object(audit.store, "connect", return_value=conn), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=Client()):
+            counts = audit.run(10, True, environ={"V7_FIT_GATE": "true"} if gated else {})
+        return counts, trashed, [w for w in writes if w.split()[0] in ("UPDATE", "DELETE")]
+
+    def test_an_unprotected_excluded_page_is_trashed_and_marked_excluded_fit_keeping_its_hash(self):
+        counts, trashed, writes = self.run_audit(self.FULL)
+        self.assertEqual((len(trashed), counts["by_reason"], counts["excluded_cleared"]), (1, {"excluded_fit": 1}, 1))
+        self.assertTrue(any("EXCLUDED_FIT" in w for w in writes))
+        self.assertFalse(any("DELETE" in w for w in writes))                # the ledger hash and the description stay
+
+    def test_applied_or_decided_pages_are_never_trashed(self):
+        for props in ({**self.FULL, "Applied": {"checkbox": True}}, {**self.FULL, "Saturn Decision": {"select": {"name": "Apply"}}}):
+            counts, trashed, writes = self.run_audit(props)
+            self.assertEqual((trashed, writes, counts.get("excluded_cleared", 0)), ([], [], 0))
+
+    def test_without_the_gate_nothing_is_cleared(self):
+        counts, trashed, writes = self.run_audit(self.FULL, gated=False)
+        self.assertEqual((trashed, writes, counts["failed"]), ([], [], 0))
