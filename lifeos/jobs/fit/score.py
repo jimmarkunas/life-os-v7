@@ -171,26 +171,43 @@ def _family(title, units, profile):
     return hits >= 3 and hits / max(len(body), 1) >= FAMILY_SHARE
 
 
-def _arithmetic(reqs, title_cls, bonus, capped):
-    """V2/V3 fit_arithmetic: dimension budgets over the dimensions the posting activates, scaled to 100."""
+@dataclass(frozen=True)
+class Calc:
+    """Exact arithmetic: nothing is rounded until `final`."""
+    applicable_max: Fraction
+    contributions: dict            # dimension -> exact normalized contribution (0-100 scale)
+    uncapped: Fraction             # before the specialization bonus and the cap
+    capped: bool
+    final: int
+    attainment: dict = field(default_factory=dict)   # dimension -> share of its own budget earned (0-100), applicable only
+
+
+def calculate(reqs, title_cls, bonus=False, capped=False):
+    """The V3 formula over classified requirements: Req(dim, label, cls, weight) and the title's evidence class.
+    Title is a fixed 7.25 sub-budget of Role/Seniority; the 21.75 JD sub-budget is applicable only when a role requirement exists."""
     title = TITLE_SHARE * EVIDENCE[title_cls]
-    applicable = TITLE_SHARE
-    dims = {}
+    applicable, earned = TITLE_SHARE, {d: Fraction(0) for d in BUDGET}
+    earned["role"] = title
     for dim, budget in BUDGET.items():
         rows = [r for r in reqs if r.dim == dim]
         if dim == "role":
             budget -= TITLE_SHARE
         if rows:
             applicable += budget
-        total = sum(r.weight for r in rows)
-        got = budget * sum(r.weight * EVIDENCE[r.cls] for r in rows) / total if total else Fraction(0)
-        dims[dim] = (got + (title if dim == "role" else 0), budget + (TITLE_SHARE if dim == "role" else 0), bool(rows))
+            total = sum(r.weight for r in rows)
+            earned[dim] += budget * sum(r.weight * EVIDENCE[r.cls] for r in rows) / total
     scale = Fraction(100) / applicable
-    raw = sum(v[0] for v in dims.values()) * scale
-    total = min(Fraction(100), raw + (3 if bonus else 0))
-    if capped:
-        total = min(total, Fraction(40))
-    return _half_up(total), {d: _half_up(v[0] / v[1] * 100) for d, v in dims.items() if v[2] or d == "role"}
+    contributions = {d: v * scale for d, v in earned.items() if v or d == "role" or any(r.dim == d for r in reqs)}
+    uncapped = sum(earned.values()) * scale
+    total = min(Fraction(100), uncapped + (3 if bonus else 0))
+    attain = {d: earned[d] / (BUDGET[d] if d != "role" else BUDGET[d]) * 100 for d in BUDGET
+              if any(r.dim == d for r in reqs) or d == "role"}
+    return Calc(applicable, contributions, uncapped, capped, _half_up(min(total, Fraction(40)) if capped else total), attain)
+
+
+def _arithmetic(reqs, title_cls, bonus, capped):
+    calc = calculate(reqs, title_cls, bonus, capped)
+    return calc.final, {d: _half_up(v) for d, v in calc.attainment.items()}
 
 
 def _line(score, decision, reqs, gate=None):
