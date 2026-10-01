@@ -1,0 +1,131 @@
+"""LinkedIn apply-type and employer link WITHOUT logging in (ported from V2's proven logic, D12/D14).
+
+The public guest posting page exposes (a) which apply path a job uses (native Easy Apply vs external) and (b) for
+external jobs, the employer URL - either in JSON-ish keys or wrapped in LinkedIn redirect links
+(/safety/go/?url=..., /redir/redirect?url=...). Plain HTTP only; LinkedIn is never logged in to.
+"""
+import html as htmllib
+import re
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+
+GUEST_API = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
+KEYS = ("offsiteApplyUrl", "offsiteApplyTrackingUrl", "companyApplyUrl", "externalApplyUrl", "applyRedirectUrl", "applyUrl")
+WRAPPER_PATHS = ("/safety/go/", "/safety/go", "/redir/redirect", "/redir/redirect/")
+MARKERS = ("/safety/go", "/redir/redirect", "externalApply")
+
+
+def _host(url):
+    return (urlsplit(url).hostname or "").lower().removeprefix("www.")
+
+
+def is_linkedin(url):
+    host = _host(url)
+    return host == "linkedin.com" or host.endswith(".linkedin.com")
+
+
+def job_id(url):
+    match = re.search(r"/jobs/view/(?:[^/?#]*-)?(\d{6,})", url or "") or re.search(r"(\d{6,})/?$", urlsplit(url or "").path)
+    return match.group(1) if match else None
+
+
+def unwrap(value):
+    """External URL from a LinkedIn redirect wrapper (absolute OR relative href); other URLs pass through;
+    LinkedIn-internal links -> None."""
+    raw = htmllib.unescape(value or "").strip()
+    if raw.startswith("/"):                                   # relative href on the guest page
+        raw = urljoin("https://www.linkedin.com", raw)
+    parts = urlsplit(raw)
+    if is_linkedin(raw):
+        if parts.path in WRAPPER_PATHS:
+            inner = parse_qs(parts.query).get("url", [""])[0]        # parse_qs already percent-decodes once
+            inner = unquote(inner) if inner.startswith("http%") else inner
+            return inner if inner.startswith("http") and not is_linkedin(inner) else None
+        return None
+    raw = unquote(raw) if raw.startswith("http%") else raw
+    return raw if raw.startswith("http") else None
+
+
+def _decode(body):
+    text = htmllib.unescape(body or "")
+    for escaped, plain in (("\\u002F", "/"), ("\\u003A", ":"), ("\\u0026", "&"), ("\\u003d", "="), ("\\/", "/")):
+        text = text.replace(escaped, plain)
+    return text
+
+
+def external_urls(body):
+    """Up to 3 distinct non-LinkedIn apply URLs found in JSON-ish keys or wrapped redirect anchors."""
+    decoded, found = _decode(body), []
+    for key in KEYS:
+        for match in re.finditer(r"[\"']" + re.escape(key) + r"[\"']\s*:\s*[\"']([^\"']+)", decoded, re.I):
+            url = unwrap(match.group(1))
+            if url and url not in found:
+                found.append(url)
+    for href in re.findall(r"href=[\"']([^\"']+)[\"']", decoded):
+        if any(marker in href for marker in MARKERS):
+            url = unwrap(href)
+            if url and url not in found:
+                found.append(url)
+    return found[:3]
+
+
+def quick_apply_signal(body):
+    """True = native Easy/Quick Apply; False = external or unavailable; never inferred from absence."""
+    raw = htmllib.unescape(body or "").casefold()
+    if "public_jobs_apply-link-offsite" in raw or "easy apply is not available" in raw or "quick apply is not available" in raw:
+        return False
+    if "public_jobs_apply-link-onsite" in raw:
+        return True
+    text = re.sub(r"<[^>]+>", " ", raw)
+    return "easy apply" in text or "quick apply" in text
+
+
+CLOSED = re.compile(r"no longer accepting applications|no longer available|job (is )?closed|position has been filled", re.I)
+
+
+def apply_href_shape(body):
+    """Generic shape of the offsite Apply anchor's href (path token only - never a host or URL)."""
+    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
+        if "apply-link-offsite" in tag:
+            href = re.search(r"href=[\"']([^\"']+)", tag)
+            if not href:
+                return "no_href"
+            path = urlsplit(href.group(1)).path
+            for token in ("externalApply", "safety/go", "redir", "jobs/view", "login", "signup", "authwall"):
+                if token in path or token in href.group(1):
+                    return token
+            return "other_path" if path else "no_path"
+    return "no_offsite_anchor"
+
+
+def apply_href_diagnostics(body):
+    """Structure of the offsite Apply href, WITHOUT values: path, query parameter NAMES, how the target is written."""
+    for tag in re.findall(r"<a\b[^>]*>", htmllib.unescape(body or "")):
+        if "apply-link-offsite" not in tag:
+            continue
+        href = re.search(r"href=[\"']([^\"']+)", tag)
+        if not href:
+            return {"href": "missing"}
+        raw = href.group(1)
+        parts = urlsplit(urljoin("https://www.linkedin.com", raw) if raw.startswith("/") else raw)
+        query = parse_qs(parts.query)
+        target = (query.get("url") or query.get("targetUrl") or query.get("redirectUrl") or [""])[0]
+        return {"absolute": raw.startswith("http"), "path": parts.path[:24], "params": ",".join(sorted(query))[:80],
+                "target_prefix": ("http" if target.startswith("http") else "/" if target.startswith("/") else
+                                  "none" if not target else "other"),
+                "target_is_linkedin": is_linkedin(target) if target.startswith("http") else None,
+                "raw_len_bucket": min(len(raw) // 100, 6)}
+    return {"href": "no_offsite_anchor"}
+
+
+def read(body):
+    """('external', url) | ('easy_apply', None) | ('external_unlinked', None) | ('closed', None) | ('unknown', None)."""
+    if CLOSED.search(re.sub(r"<[^>]+>", " ", htmllib.unescape(body or ""))):
+        return "closed", None
+    urls = external_urls(body)
+    if urls:
+        return "external", urls[0]
+    if quick_apply_signal(body):
+        return "easy_apply", None
+    if "public_jobs_apply-link-offsite" in htmllib.unescape(body or "").casefold():
+        return "external_unlinked", None
+    return "unknown", None

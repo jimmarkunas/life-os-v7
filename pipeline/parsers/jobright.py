@@ -1,6 +1,6 @@
 """Jobright alert emails. Card link: jobright.ai/jobs/info/<id>. Text nodes, in order:
 [company, industry, '. seniority', match, '%', TITLE, salary?, location?, experience, 'N minutes ago', ...].
-The provider's match % is deliberately NOT carried (provider scores count zero toward fit)."""
+The provider's match % is stored as evidence only (provider_score); it counts zero toward fit until Phase 2 decides a weight."""
 import re
 
 from pipeline.parsers import _anchors
@@ -28,6 +28,8 @@ def parse(html):
             continue
         seen.add(job_id)
         company, title = texts[0], texts[marker + 1]
+        score_text = texts[marker - 1] if texts[marker] == "%" else texts[marker]
+        score = int(re.sub(r"\D", "", score_text)) if re.search(r"\d", score_text) else None
         detail_end = marker - 1 if texts[marker] == "%" else marker      # instant: '89','%' | digest: '80%'
         detail = [t.lstrip(DOT + " ").strip() for t in texts[1:detail_end] if t.strip(DOT + " ")]
         tail = texts[marker + 2:]
@@ -37,5 +39,5 @@ def parse(html):
         age_days = int(AGE.search(age_text).group(1)) * AGE_DAYS[AGE.search(age_text).group(2).lower()] if age_text else None
         cards.append(Card(company=company, title=title, salary_text=salary,
                           location_text=" / ".join(x for x in ([location] + detail) if x) or None,
-                          url=f"https://jobright.ai/jobs/info/{job_id}", age_days=age_days))
+                          url=f"https://jobright.ai/jobs/info/{job_id}", age_days=age_days, provider_score=score))
     return cards

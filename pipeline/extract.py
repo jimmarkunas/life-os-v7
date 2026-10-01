@@ -56,10 +56,10 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
             key = url_hash(card.url)
             cursor.execute(
                 "INSERT IGNORE INTO v7_jobs (dedupe_key, status, title, company, location_text, source_url, salary_text,"
-                " source, fuzzy_key, posted_age_days, mail_received_at, first_seen, last_seen, updated_at)"
-                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                " source, fuzzy_key, posted_age_days, mail_received_at, provider_score, first_seen, last_seen, updated_at)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (key, status_for(card, mail_age), card.title[:300], card.company[:200], (card.location_text or "")[:200], card.url,
-                 (card.salary_text or "")[:80], rule, fuzzy_key(card), known_age(card, mail_age), received, now, now, now))
+                 (card.salary_text or "")[:80], rule, fuzzy_key(card), known_age(card, mail_age), received, card.provider_score, now, now, now))
             new += cursor.rowcount
             repeat += 0 if cursor.rowcount else 1
             cursor.execute(
