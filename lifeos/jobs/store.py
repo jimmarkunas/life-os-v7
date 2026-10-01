@@ -35,6 +35,15 @@ SCHEMA = (
         requirements MEDIUMTEXT NULL, qualifications MEDIUMTEXT NULL,
         fingerprint CHAR(64) NOT NULL, fetched_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_job_fit (
+        job_id BIGINT NOT NULL PRIMARY KEY,
+        score SMALLINT NULL, decision VARCHAR(8) NOT NULL, line VARCHAR(600) NOT NULL, why VARCHAR(300) NULL,
+        exclusion VARCHAR(40) NULL, confidence VARCHAR(8) NOT NULL,
+        buckets VARCHAR(400) NULL, trace MEDIUMTEXT NULL,
+        model_version VARCHAR(8) NOT NULL, profile_hash CHAR(16) NOT NULL, jd_fingerprint CHAR(64) NOT NULL,
+        scored_at DATETIME NOT NULL,
+        KEY ix_v7_fit_decision (decision)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_ledger_urls (
         url_hash CHAR(64) NOT NULL PRIMARY KEY,
         source VARCHAR(12) NOT NULL,
@@ -52,7 +61,7 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_ledger_urls", "v7_spend", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
@@ -71,6 +80,12 @@ COLUMNS = (
     ("v7_jobs", "ghost_flag", "TINYINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "notion_synced_at", "DATETIME NULL", None),
     ("v7_jobs", "notion_expired_at", "DATETIME NULL", None),
+    ("v7_job_fit", "shadow_score", "SMALLINT NULL", None),
+    ("v7_job_fit", "shadow_changes", "SMALLINT NULL", None),
+    ("v7_job_fit", "admission", "VARCHAR(8) NULL", None),
+    ("v7_job_fit", "admission_reason", "VARCHAR(80) NULL", None),
+    ("v7_job_fit", "work_mode", "VARCHAR(8) NULL", None),
+    ("v7_job_fit", "lane", "VARCHAR(24) NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 def existing_v7_tables(connection):

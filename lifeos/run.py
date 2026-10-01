@@ -37,6 +37,11 @@ def _enrich(limit, live):
     return enrich.run(limit, live)
 
 
+def _fit(limit, live):
+    from lifeos.jobs.fit import stage                                                          # noqa: PLC0415
+    return stage.run(max(limit, 500), live)
+
+
 def _audit(limit, live):
     from lifeos.jobs import audit                                                            # noqa: PLC0415
     return audit.run(max(limit, 2000), live)
@@ -62,6 +67,7 @@ STAGES = {
     "resolve-linkedin": _linkedin,
     "resolve-lensa": _lensa,
     "enrich": _enrich,
+    "fit": _fit,
     "audit": _audit,
     "publish": _publish,
     "sync-seen": _sync_seen,

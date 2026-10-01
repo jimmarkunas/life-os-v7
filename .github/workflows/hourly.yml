@@ -32,6 +32,14 @@ on:
         description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
         type: boolean
         default: false
+      fit:
+        description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
+        type: boolean
+        default: false
+      fit_all:
+        description: "With Fit: also re-score jobs already published (calibration; counts only unless live)"
+        type: boolean
+        default: false
       audit:
         description: "Demote READY/PUBLISHED jobs failing the quality guards; trash their Notion pages (saves only when live)"
         type: boolean
@@ -66,6 +74,8 @@ env:
   LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
   LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
   LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+  FIT_PROFILE_JSON: ${{ secrets.FIT_PROFILE_JSON }}
+  V7_FIT_GATE: ${{ vars.V7_FIT_GATE }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
   LIVE: ${{ github.event_name == 'workflow_dispatch' && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
 permissions:
@@ -160,6 +170,8 @@ jobs:
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -167,11 +179,25 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Semantic layer (optional, shadow) - local embedding model, cached
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-v1
+      - name: Install semantic layer
+        run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
         run: python -m lifeos.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+      - id: fit
+        continue-on-error: true
+        name: Step 6a - fit scoring (deterministic, private profile)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        env:
+          FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
+        run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
@@ -195,7 +221,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} enrich=${{ steps.enrich.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

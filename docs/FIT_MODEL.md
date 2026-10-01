@@ -1,23 +1,39 @@
-# Phase 2 - fit scoring model (generic spec)
+# Phase 2 - professional Fit (deterministic, no LLM)
 
-Personal evidence (career facts, engagements, committed scoring corrections, hard-exclusion specifics) is NOT stored in
-this public repo. It lives in private storage and is loaded at run time. This file holds only the model's structure.
+Code: `lifeos/jobs/fit/` (generic, public). Personal evidence is injected at run time from the `FIT_PROFILE_JSON` secret
+(shape: `profile.py`) and never committed (D16, D19). The live Candidate Experience & Fit Profile (Notion) is the authority;
+the secret is a derived projection stamped with a hash, and a changed profile re-scores every job.
 
-## Flow
-0. Hard exclusions (configured privately) -> instant No-Go, score 0, reason, stop.
-1. Extract JD requirements into four weighted buckets: Required Skills 40%, Platform/Stack 25%, Role/Title 20%,
-   Seniority/Scope 15%.
-2. Classify each requirement against the private evidence: Direct 100%, Adjacent 75%, Method-equivalent 50%,
-   Unsupported 0%. Committed corrections (private) override a default classification.
-3. bucket_score = sum(values) / (count x 100); total = 0.40 R + 0.25 P + 0.20 T + 0.15 S.
-4. Inflated/aspirational requirements (unrealistic years, stacked nice-to-haves) carry ~50% less penalty.
-5. Output first line: `[XX%] Go/No-Go | Strengths: ... | Gaps: ...`. Go at 76% or higher; below is No-Go with one sentence.
-6. On Go: resume tailoring (separate, later).
+## Two layers, never mixed
+1. **Professional Fit (0-100)** = title + substantive JD + candidate evidence. Never sees location, work mode, pay, visa,
+   provider score, freshness (tested). Title-only or requirement-free postings are UNSCORABLE, not 0.
+2. **Gates** (`exclusions.py`): hard exclusions (clinical, healthcare, security clearance, federal/DoD, plus private rules).
+   A gated job keeps its real Fit score; decision is No-Go and the line says `Excluded: <reason>`.
+Decision: **Go at 72 or higher** and no gate; otherwise No-Go.
 
-## How it fits the pipeline
-- Input is the job description in `v7_job_descriptions` (Hostinger). LinkedIn and Jobright pages expose a full JD
-  without the final link, so a provisional score can be computed early and the scarce resolve effort (Search is 30
-  requests/min) spent on jobs that clear the threshold. The final link is still required before publishing (D1).
-- The provider's own match score is stored as evidence only (D9), never as the score.
-- The scorer needs an LLM to classify requirements; it will run with an Anthropic API key held as a secret and read the
-  private evidence from private storage. Decision pending: where the private evidence lives.
+## Arithmetic (V3, ported from V2 `fit_arithmetic`)
+Dimensions: Role/Seniority 29 (title evidence is a separate channel, 29/4 of it), Functional 29, Technical/Platform 21,
+Delivery complexity 14, Competitive advantage 7. Each requirement belongs to exactly one. Evidence: Direct 1,
+Adjacent 3/4, Method-equivalent 3/5, Unsupported 0. REQUIRED counts double; an inflated requirement (15+ years, years beyond a
+technology's age, a PhD for a PM role, the tail of a 12+ platform list) counts half. A dimension the posting does not activate is
+not applicable. A Direct title specialization adds 3 (positive-only). Fit is capped at 40 only when the posting's actual
+profession is a hard-family mismatch (title, or at least half of 3+ requirement/duty lines), never for one stray requirement.
+Committed corrections are always Direct. Stored in `v7_job_fit` with dimension scores, a per-requirement trace, confidence,
+model version and profile hash. `publish` writes **LIFE OS Fit** and **Why It Fits**.
+
+## Pipeline
+`fit` runs after `enrich`, before `publish`. Shadow mode by default; `V7_FIT_GATE=true` makes No-Go jobs `EXCLUDED_FIT` and
+publishes only Go. Missing profile = the stage is a no-op.
+
+## Semantic layer (shadow, local, free)
+`semantic.py` + `requirements-fit.txt` (`fastembed`, a small local sentence-embedding model, cached between runs; no text leaves
+the runner). It only ranks how close a requirement line is to the profile's own capability phrases; the evidence CLASS always
+comes from that capability, never from the model (canon: no upgrade because a JD sounds similar). Cosine >= 0.82 keeps the
+capability's class, 0.72-0.82 is one step weaker, below 0.72 is no match (fail closed, stays Unsupported). **Shadow mode:** the
+real score never uses it; `v7_job_fit.shadow_score` / `shadow_changes` record what it would change and the stage log reports
+counts (jobs changed, decision flips, similarity bands). If the model cannot load, the layer is off and scoring is unchanged.
+Thresholds are starting values, to be tuned from the shadow counts against your Ledger decisions before it may affect a score.
+
+## Known limit
+Recall depends on the profile's term lists (a requirement the profile does not name is Unsupported). Calibrate against the
+accepted outcomes and the Job Ledger before turning the gate on.
