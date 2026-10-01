@@ -4,6 +4,7 @@ A failing row goes back to NEW (final link cleared, reason audit_*) so it is res
 A failing PUBLISHED row also has its Notion page trashed and its ledger hash removed. Logs: counts only.
 """
 from datetime import datetime, timezone
+import os
 
 from pipeline import notion, quality, store
 
@@ -21,7 +22,7 @@ def judge(url, full_text):
     return "audit_jd_" + problem if problem else None
 
 
-def run(limit, live, environ=None):
+def run(limit, live, environ=os.environ):
     counts = {"checked": 0, "failed": 0, "demoted": 0, "trashed": 0, "trash_errors": 0, "by_reason": {}}
     with store.connect() as connection:
         store.ensure_schema(connection)
