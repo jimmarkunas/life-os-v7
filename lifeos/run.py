@@ -47,6 +47,11 @@ def _openjobs(limit, live):
     return openjobs.run(limit, live)
 
 
+def _sponsors(limit, live):
+    from lifeos.sources import sponsor_register                                                 # noqa: PLC0415
+    return sponsor_register.run(limit, live)
+
+
 def _probe(limit, live):
     from lifeos import probe                                                                    # noqa: PLC0415
     return probe.run(limit, live)
@@ -89,6 +94,7 @@ STAGES = {
     "web": _web,
     "web-scale-up": _web_scale_up,
     "openjobs": _openjobs,
+    "sponsors": _sponsors,
     "probe": _probe,
     "enrich": _enrich,
     "fit": _fit,

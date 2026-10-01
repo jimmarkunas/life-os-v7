@@ -8,8 +8,9 @@ Applied jobs are never destructively retired by Jobs until the Interview progres
 No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
 """
 from datetime import date, datetime, timedelta, timezone
+import os
 
-from lifeos.jobs import lanes, progression, store, tombstone
+from lifeos.jobs import hiring_pipeline, lanes, progression, store, tombstone
 from lifeos.platform import limits, notion_client
 
 RETIRE_DAYS = 30
@@ -95,8 +96,14 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0}
+    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "handoff": "not_configured"}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
+    pipeline_id = ((environ if environ is not None else os.environ).get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    opportunities = []
+    if pipeline_id:                                                  # INT-7.1A: protect pursuits with a live hiring process
+        opportunities, counts["handoff"] = hiring_pipeline.snapshot(client, pipeline_id)
+        if counts["handoff"] != "ok":
+            return counts if not live else {**counts, "retired": 0}                  # unreadable handoff = UNKNOWN: fail closed
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT DISTINCT lane FROM v7_jobs WHERE notion_page_id IS NOT NULL")
         names = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}    # rows carry the lane they were published under
@@ -105,7 +112,7 @@ def purge_notion(live, now, environ=None):
     with store.connect() as connection, connection.cursor() as cursor:
         ours = {}
         for page_id, posted, first in pages:
-            cursor.execute("SELECT id, dedupe_key, fuzzy_key FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
+            cursor.execute("SELECT id, dedupe_key, fuzzy_key, company, title FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
             row = cursor.fetchone()
             if row:
                 ours[page_id] = (row, posted, first)
@@ -113,8 +120,11 @@ def purge_notion(live, now, environ=None):
     if not live:
         return counts
     writes, today = 0, now.date()
-    for page_id, ((job_id, key, fuzzy), posted, first) in ours.items():
-        # the filter already excluded Applied and Saturn Decision rows, so what remains resolves NOT_PROTECTED
+    for page_id, ((job_id, key, fuzzy, company, title), posted, first) in ours.items():
+        # the filter already excluded Applied and Saturn Decision rows; the handoff can still protect an unapplied pursuit
+        if hiring_pipeline.handoff_for(company, title, opportunities).protected:
+            counts["protected"] += 1
+            continue
         if action(posted, first, False, None, today) != "retire" or writes >= WRITES_PER_RUN:
             continue
         writes += 1

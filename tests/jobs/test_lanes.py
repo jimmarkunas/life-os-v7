@@ -64,14 +64,39 @@ class ScaleUp(unittest.TestCase):
 
 
 class SkilledWorker(unittest.TestCase):
-    def test_disabled_and_ready_for_phase_2(self):
-        self.assertEqual(qualify(SW, uk(route={"Skilled Worker": POSITIVE}), TODAY).status, DISABLED)
-        on = lanes.LanePolicy(**{**SW.__dict__, "enabled": True})
-        sw = {"Skilled Worker": POSITIVE}
+    def test_the_policy(self):
+        on, sw = SW, {"Skilled Worker": POSITIVE}
+        self.assertTrue(SW.enabled)
         self.assertEqual(qualify(on, uk(route=sw), TODAY).status, ADMIT)
         self.assertEqual(qualify(on, uk(route=sw, pay_min=50_000, pay_currency="£"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(on, uk(route={}), TODAY).status, REVIEW)                           # sponsor unresolved
         self.assertEqual(qualify(on, uk(route=sw, posted=None), TODAY).status, REVIEW)
+        self.assertEqual(qualify(on, uk(route=sw, market=None), TODAY).status, REVIEW)              # never assume the job is in the UK
+        self.assertEqual(qualify(on, uk(route=sw, geography=UNRESOLVED), TODAY).status, REVIEW)      # UK-remote / unplaced
+        self.assertEqual(qualify(on, uk(route=sw, geography=NEGATIVE), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(on, uk(route={"Skilled Worker": NEGATIVE}), TODAY).status, EXCLUDE)  # employer not on the register
+        self.assertEqual(qualify(on, uk(route=sw, posted=ago(20)), TODAY).status, EXCLUDE)            # 14 days, unlike Scale-Up
+
+
+class Routing(unittest.TestCase):
+    def test_a_uk_newsletter_job_at_a_sponsor_goes_to_skilled_worker(self):
+        facts = uk(route={"Skilled Worker": POSITIVE})
+        decision, lane, eligible = lanes.decide_all("Newsletter", facts, TODAY)
+        self.assertEqual((decision.status, lane, eligible), (ADMIT, "Skilled Worker", ["Skilled Worker"]))
+
+    def test_a_us_job_stays_us_remote_and_a_dual_route_is_scale_up(self):
+        self.assertEqual(lanes.decide_all("Newsletter", us(), TODAY)[1:], ("US Remote", ["US Remote"]))
+        both = uk(route={"Scale-up": POSITIVE, "Skilled Worker": POSITIVE})
+        self.assertEqual(lanes.decide_all("Scale-Up", both, TODAY)[1:], ("Scale-Up", ["Scale-Up", "Skilled Worker"]))
+        self.assertEqual(lanes.decide_all("Skilled Worker", both, TODAY)[1:], ("Scale-Up", ["Scale-Up", "Skilled Worker"]))
+
+    def test_nothing_admits_keeps_the_own_lane_decision(self):
+        decision, lane, eligible = lanes.decide_all("Newsletter", uk(route={}), TODAY)
+        self.assertEqual((decision.status, lane, eligible), (EXCLUDE, "US Remote", []))               # a UK job is not a US Remote job
+
+    def test_route_strings_merge(self):
+        self.assertEqual(lanes.route_dict("Scale-up:POSITIVE;Skilled Worker:NEGATIVE"), {"Scale-up": "POSITIVE", "Skilled Worker": "NEGATIVE"})
+        self.assertEqual(lanes.join_routes("Scale-up:POSITIVE", **{"Skilled Worker": "POSITIVE"}), "Scale-up:POSITIVE;Skilled Worker:POSITIVE")
 
 
 class CrossLane(unittest.TestCase):
@@ -88,8 +113,7 @@ class CrossLane(unittest.TestCase):
         self.assertEqual(qualify(US, us(pay_min=50_000, pay_currency="£"), TODAY).status, ADMIT)
 
     def test_dual_route_is_one_job_and_scale_up_is_visible(self):
-        policies = {**POLICIES, "Skilled Worker": lanes.LanePolicy(**{**SW.__dict__, "enabled": True})}
-        results, visible = lanes.qualify_all(uk(route={"Scale-up": POSITIVE, "Skilled Worker": POSITIVE}), TODAY, policies)
+        results, visible = lanes.qualify_all(uk(route={"Scale-up": POSITIVE, "Skilled Worker": POSITIVE}), TODAY)
         self.assertEqual(visible, "Scale-Up")
         self.assertEqual(results["Skilled Worker"].status, ADMIT)          # both routes preserved on the one job
 

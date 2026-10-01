@@ -76,6 +76,9 @@ SCHEMA = (
         generation CHAR(64) NULL, cursor_date DATE NULL,
         applied_at DATETIME NOT NULL, status VARCHAR(10) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_sponsors (
+        name_key VARCHAR(160) NOT NULL PRIMARY KEY, name VARCHAR(200) NOT NULL, refreshed_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_tombstones (
         dedupe_key CHAR(64) NOT NULL PRIMARY KEY,
         fuzzy_key CHAR(64) NULL,
@@ -100,9 +103,10 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
+    ("v7_job_fit", "eligible", "VARCHAR(80) NULL", None),
     ("v7_jobs", "verified_at", "DATETIME NULL", None),
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
     ("v7_jobs", "salary_text", "VARCHAR(80) NULL", None),

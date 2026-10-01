@@ -47,10 +47,14 @@ def teamtailor(fetcher=fetch):
     return out
 
 
+DICE_SAMPLES = ("1dde497d-8758-4eed-8aac-816bed294b63",)             # a public job id from a Dice search the user shared
+
+
 def dice(fetcher=fetch):
     search = fetcher("https://www.dice.com/jobs?q=technical%20program%20manager&filters.workplaceTypes=Remote", timeout=25, max_bytes=3_000_000)
     links = sorted(set(re.findall(r'href="(https://www\.dice\.com/job-detail/[0-9a-f-]{36})', search.html)))[:3]
     out = {"search_status": search.status, "detail_links": len(links), "pages": []}
+    links += [f"https://www.dice.com/job-detail/{i}" for i in DICE_SAMPLES]
     for link in links:
         page = fetcher(link, timeout=25, max_bytes=3_000_000)
         blocks = [b for b in JSONLD.findall(page.html) if "JobPosting" in b]
@@ -60,9 +64,23 @@ def dice(fetcher=fetch):
         except ValueError:
             pass
         out["pages"].append({"status": page.status, "bytes": len(page.html), "jobposting_ld": len(blocks), "ld_description_chars": len(description),
-                             "easy_apply_marker": "easy apply" in page.html.lower(), "apply_link_marker": "applyurl" in page.html.lower()})
+                             "easy_apply_marker": "easy apply" in page.html.lower(), "apply_link_marker": "applyurl" in page.html.lower(),
+                             "next_data": "__NEXT_DATA__" in page.html, "title_in_html": "<title>" in page.html.lower()})
     return out
 
 
+def hiring(environ=os.environ):
+    """Can the runner read the Hiring Pipeline page, and what does the tree look like (counts only)?"""
+    from lifeos.jobs import hiring_pipeline                                                  # noqa: PLC0415
+    from lifeos.platform.notion_client import Client                                          # noqa: PLC0415
+    page_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    if not page_id:
+        return {"configured": False}
+    opportunities, status = hiring_pipeline.snapshot(Client(environ), page_id)
+    return {"configured": True, "status": status, "active": sum(o.section == hiring_pipeline.ACTIVE for o in opportunities),
+            "retired": sum(o.section == hiring_pipeline.RETIRED for o in opportunities), "with_rounds": sum(bool(o.rounds) for o in opportunities),
+            "unparsed_titles": sum(not o.role for o in opportunities)}
+
+
 def run(limit, live):
-    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice()}
+    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring()}

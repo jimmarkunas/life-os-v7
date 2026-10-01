@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import json
 import os
 
-from lifeos.jobs import lanes, store
+from lifeos.jobs import lanes, sponsors, store
 from lifeos.jobs.fit import MODEL_VERSION, profile as fit_profile, semantic as fit_semantic
 from lifeos.jobs.fit.score import evaluate
 
@@ -26,16 +26,18 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def score_rows(rows, profile, today, semantic=None):
-    """[(job_id, fingerprint, Result, Decision, lane, work_mode)] for rows of (id, title, company, full_text, fingerprint,
-    [lane, location, salary_text, posted_date, first_seen, route_evidence]). Pure."""
+def score_rows(rows, profile, today, semantic=None, register=None):
+    """[(job_id, fingerprint, Result, Decision, lane, work_mode, eligible)] for rows of (id, title, company, full_text, fingerprint,
+    [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence). Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route = (list(rest) + [None] * 6)[:6]
         result = evaluate(title, company, text, profile, today, semantic)
+        if register is not None:
+            route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route)
-        decision, lane_name = lanes.decide(lane, facts, today, result.exclusion)
-        out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode))
+        decision, lane_name, eligible = lanes.decide_all(lane, facts, today, result.exclusion)
+        out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out
 
 
@@ -59,8 +61,8 @@ def run(limit, live, environ=os.environ):
             cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else OPEN), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
-    scored = score_rows(rows, profile, _now().date(), matcher)
-    for _, _, result, decision, _, _ in scored:
+    scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here
+    for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
         key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
         counts[key] += 1
@@ -73,15 +75,15 @@ def run(limit, live, environ=os.environ):
             counts["sim_82_up" if sim >= 0.82 else "sim_77_82" if sim >= 0.77 else "sim_72_77"] += 1
     if live and scored:
         with store.connect() as connection, connection.cursor() as cursor:
-            for job_id, fingerprint, r, decision, lane_name, work_mode in scored:
+            for job_id, fingerprint, r, decision, lane_name, work_mode, eligible in scored:
                 cursor.execute(
                     "REPLACE INTO v7_job_fit (job_id, score, decision, line, why, exclusion, confidence, buckets, trace,"
                     " model_version, profile_hash, jd_fingerprint, scored_at, shadow_score, shadow_changes,"
-                    " admission, admission_reason, work_mode, lane)"
-                    " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    " admission, admission_reason, work_mode, lane, eligible)"
+                    " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
                      json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
-                     decision.status, (decision.reason or "")[:80], work_mode, lane_name))
+                     decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
                 if gate and decision.status == lanes.EXCLUDE:
                     cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))

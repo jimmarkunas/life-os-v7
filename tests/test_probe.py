@@ -20,4 +20,4 @@ class ProbeTests(unittest.TestCase):
 
     def test_dice_without_links_is_a_clean_count(self):
         out = probe.dice(lambda url, **kw: Fetched(url, 403, ""))
-        self.assertEqual((out["search_status"], out["detail_links"], out["pages"]), (403, 0, []))
+        self.assertEqual((out["search_status"], out["detail_links"], [p["status"] for p in out["pages"]]), (403, 0, [403]))
