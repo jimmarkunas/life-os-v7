@@ -32,6 +32,10 @@ on:
         description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
         type: boolean
         default: false
+      web:
+        description: "US Remote web acquisition: poll due ATS boards, classify, admit new postings (counts only unless live)"
+        type: boolean
+        default: false
       fit:
         description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
         type: boolean
@@ -186,6 +190,11 @@ jobs:
           key: fastembed-bge-small-v1
       - name: Install semantic layer
         run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
+      - id: web
+        continue-on-error: true
+        name: Step 5b - US Remote web acquisition (due ATS boards)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web) }}
+        run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
@@ -221,7 +230,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

@@ -56,6 +56,14 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(admitted["Admission Status"]["select"]["name"], "Admitted")
         self.assertNotIn("Review Reason", admitted)
 
+    def test_easy_apply_is_flagged_in_source_types(self):
+        row = {"title": "T", "company": "C", "url": "https://www.linkedin.com/jobs/view/1", "source": "linkedin", "provider": "LinkedIn",
+               "lane": "Newsletter", "key": "k", "first_seen": datetime.date(2026, 9, 30), "posted": None, "apply_kind": "easy_apply"}
+        names = [o["name"] for o in publish.properties(row)["Source Types"]["multi_select"]]
+        self.assertEqual(names, ["LinkedIn", "Easy Apply"])
+        plain = publish.properties({**row, "apply_kind": "ats"})["Source Types"]["multi_select"]
+        self.assertEqual([o["name"] for o in plain], ["LinkedIn"])
+
     def test_url_key_ignores_query_case_and_trailing_slash(self):
         self.assertEqual(identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
                          identity.url_key("https://boards.greenhouse.io/a/jobs/1"))
