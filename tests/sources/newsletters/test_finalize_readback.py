@@ -99,6 +99,12 @@ class FinalizeTests(unittest.TestCase):
         self.assertEqual(calls, [(["done", "empty"], ["LBL"], [])])                 # no saved jobs = nothing in flight
         self.assertEqual((counts["closed"], counts["in_flight"], counts["unverified"]), (2, 1, 1))
 
+    def test_hold_and_unknown_statuses_keep_the_mail_open_and_terminal_ones_close_it(self):
+        rows = [("a", "HOLD", 1), ("b", "EXCLUDED_FIT", 1), ("b", "DUPLICATE", 1), ("b", "CLOSED", 1), ("c", "WEIRD", 1), ("d", "PURGED", 1)]
+        counts, calls = self.run_finalize(rows, ["a", "b", "c", "d"])
+        self.assertEqual(calls, [(["b", "d"], ["LBL"], [])])
+        self.assertEqual((counts["hold"], counts["other"], counts["closed"]), (1, 1, 2))
+
     def test_dry_run_changes_nothing(self):
         counts, calls = self.run_finalize([("a", "PUBLISHED", 0)], ["a"], live=False)
         self.assertEqual((calls, counts["closed"], counts["would_close"]), ([], 0, 1))

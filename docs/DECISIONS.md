@@ -136,11 +136,11 @@ becomes active when INT-7.1A can prove the absence of progression.
 - Skilled Worker is active (Jim, 2026-10-01). Route evidence = the actual employer on the sponsor register; recruiters and unloaded registers are Review, never NEGATIVE; 72 Fit floor, 14 days, GBP 65,000 explicit pay floor, London/UK-remote geography, unknown market = Review. Lane routing is `decide_all`; policy version l4.
 - INT-7.1A is the Hiring Pipeline page read by `hiring_pipeline.py`: it protects pursuits with an ACTIVE opportunity (company and role must both match), never unprotects, and fails closed when configured but unreadable. Calendar/Gmail correlation is deliberately not built: it cannot be made deterministic enough to prove the ABSENCE of progression, which is what retiring an Applied job needs.
 
-## D12 amendment (Jim, 2026-10-01): free TinyFish Fetch for unreadable final pages
-D12 stands for everything except one narrow, approved use: when a job's FINAL employer/ATS page refuses plain HTTP (or returns an empty page), enrichment may make
-ONE free TinyFish Fetch of that page (or its public JSON endpoint, e.g. Workday CXS), counted against the daily Fetch cap BEFORE it is sent, never repeated for the same
-job (`description_empty_tf`). The metered Agent is never used outside the link chain. Without this, jobs whose final page is a Workday-style site would sit on HOLD
-forever. The wallet is not spent; the cap is the limit.
+## D12 amendment (Jim, 2026-10-01; wording tightened after TL review): rendered-fetch fallback
+Interactive browser/link navigation stays restricted to final-link resolution (D12). Free TinyFish Fetch may additionally render an **already-resolved final employer/ATS URL**
+ONCE when the ATS API and plain HTTP cannot retrieve usable page content. It may extract JD, date and liveness evidence only. It may not click, authenticate, search, traverse
+links, select a different vacancy, or change `final_apply_url`. It is counted against the daily Fetch cap BEFORE it is sent and is never repeated for the same job
+(`description_empty_tf`). The metered Agent is never used outside the link chain. `resolve` decides WHERE a job is; `enrich` reads WHAT is at that decided location.
 
 ## D25 — One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)
 GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring scheduler for V7. No ChatGPT/LLM-hosted schedule, no second scheduler. Any wider LIFE OS
@@ -163,3 +163,8 @@ GitHub Actions cron (`hourly.yml`, driving `lifeos.run`) is the sole recurring s
 - Retention no longer reads the legacy Lifecycle field at all (the Applied checkbox and Saturn Decision are the human-state filters; the hiring-pipeline handoff adds protection).
 - `lifeos.jobs.ledger.verify()` checks that the configured data source has the Job Ledger's properties with the right types (`REQUIRED`) before ANY Notion write: publish (live), audit trash, retention trash. Mismatch or unreadable = no write, reported as `target`. The `probe` stage reports it (and any missing/wrong-type property names) so it can be proven before the pipeline is turned on.
 - `tests/contracts/test_guardrails.py` ports the V1-V5 invariants as assertions: every trash call is behind a protection check; retention selects only unapplied, undecided rows; unknown is protected; no Lifecycle/Liveness authority in code; every Notion writer verifies the target first; a failed board is never zero or a removal and every due source is accounted for; a disabled lane can never admit; exactly one recurring scheduler; the source universes are frozen.
+
+## D29 — Finalization is an allowlist; ambiguous repost identity is not auto-linked
+- A newsletter mail closes (`Done`) only when every job from it is in an explicit terminal state: verified PUBLISHED, CLOSED, DUPLICATE, PURGED or EXCLUDED_*. HOLD, NEW/RESOLVED/READY and any unknown status keep it open (counted as hold / in_flight / other).
+- `repost.link` links a new row to an original only when exactly ONE candidate matches the fuzzy key; with more than one it links nothing and marks `unresolved_reason='repost_ambiguous'`.
+- Deferred: merging a duplicate observation's stronger evidence (URL, provider, lane) into the original, until live runs show it is needed.

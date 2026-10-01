@@ -25,11 +25,15 @@ def _now():
 def link(cursor, key, fuzzy, now):
     """Called right after a fresh insert (dedupe_key=key). Returns the original id when it was a repost, else None."""
     cursor.execute("SELECT id FROM v7_jobs WHERE fuzzy_key=%s AND dedupe_key<>%s AND repost_of IS NULL AND status IN %s"
-                   " AND first_seen >= %s ORDER BY first_seen LIMIT 1",
+                   " AND first_seen >= %s ORDER BY first_seen LIMIT 2",
                    (fuzzy, key, LIVE_STATES, now - timedelta(days=WINDOW_DAYS)))
-    row = cursor.fetchone()
-    if not row:
+    rows = cursor.fetchall()
+    if not rows:
         return None
+    if len(rows) > 1:                                  # ambiguous identity evidence: never pick one arbitrarily, keep both and mark it
+        cursor.execute("UPDATE v7_jobs SET unresolved_reason='repost_ambiguous', updated_at=%s WHERE dedupe_key=%s", (now, key))
+        return None
+    row = rows[0]
     cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='repost', updated_at=%s"
                    " WHERE dedupe_key=%s", (row[0], now, key))
     cursor.execute("UPDATE v7_jobs SET seen_count=seen_count+1, last_seen=%s WHERE id=%s", (now, row[0]))
