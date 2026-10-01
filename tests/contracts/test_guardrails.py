@@ -238,3 +238,26 @@ class ExcludedPagesAreCleared(unittest.TestCase):
     def test_without_the_gate_nothing_is_cleared(self):
         counts, trashed, writes = self.run_audit(self.FULL, gated=False)
         self.assertEqual((trashed, writes, counts["failed"]), ([], [], 0))
+
+
+class InterviewJobIsIsolated(unittest.TestCase):
+    """The Interview job gets only its own token: every Jobs secret is blanked, it is dispatch-only, and its failure is a warning, not a failed run."""
+
+    def block(self):
+        text = (ROOT / ".github/workflows/hourly.yml").read_text()
+        start = text.index("\n  interview:\n")
+        return text[start:text.index("\n  report:\n")]
+
+    def test_no_jobs_secret_reaches_the_interview_job(self):
+        block = self.block()
+        for name in ("NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "GMAIL_OAUTH_CLIENT_SECRET", "TINYFISH_API_KEY", "LIFEOS_ACQ_DB_PASSWORD", "FIT_PROFILE_JSON"):
+            self.assertIn(f'{name}: ""', block, name)
+        self.assertNotIn("secrets.NOTION_API_TOKEN", block)
+        self.assertIn("secrets.NOTION_INTERVIEW_TOKEN", block)
+
+    def test_dispatch_only_and_failure_is_a_warning(self):
+        block = self.block()
+        self.assertIn("github.event_name == 'workflow_dispatch'", block)
+        self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
+        self.assertEqual(block.count("continue-on-error: true"), 2)            # the two steps
+        self.assertIn("::warning", block)
