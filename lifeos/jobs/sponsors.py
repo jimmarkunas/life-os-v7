@@ -32,13 +32,12 @@ class Register:
 
 
 def load(connection=None):
-    """The register from Hostinger, or an empty one (every state UNRESOLVED) when it has not been loaded yet."""
-    own = connection is None
-    connection = connection or store.connect()
-    try:
+    """The register from Hostinger, or an empty one (every state UNRESOLVED) when it has not been loaded yet.
+    store.connect() is a context manager (it opens the tunnel and the connection together), so it is always used with `with`."""
+    if connection is not None:
         with connection.cursor() as cursor:
             cursor.execute("SELECT name FROM v7_sponsors")
             return Register(r[0] for r in cursor.fetchall())
-    finally:
-        if own:
-            connection.close()
+    with store.connect() as opened, opened.cursor() as cursor:
+        cursor.execute("SELECT name FROM v7_sponsors")
+        return Register(r[0] for r in cursor.fetchall())

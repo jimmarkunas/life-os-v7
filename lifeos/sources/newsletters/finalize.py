@@ -39,7 +39,12 @@ def blockers(connection, message_ids):
 
 
 def finalize(gmail, live, limit, connection_factory=store.connect):
-    done_label = gmail.label_id(config.DONE_LABEL, create=live)
+    try:
+        done_label = gmail.label_id(config.DONE_LABEL, create=live)
+    except GmailError:
+        if live:
+            raise
+        done_label = None                       # a dry run before the label exists: report what WOULD close, create nothing
     ids = gmail.list_ids(config.FINALIZE_QUERY, limit=limit)
     counts = {"candidates": len(ids), "closed": 0, "in_flight": 0, "unverified": 0, "hold": 0, "other": 0}
     if not ids:

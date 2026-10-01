@@ -49,3 +49,16 @@ class Refresh(unittest.TestCase):
         self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 200, page)), ("https://assets.publishing.service.gov.uk/media/abc/2026-10-01_Worker.csv", None))
         self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 200, "{}"))[1], "no_csv_link")
         self.assertEqual(reg.csv_url(lambda url, **kw: Fetched(url, 403, ""))[1], "http_403")
+
+
+class LoadUsesTheConnectionContextManager(unittest.TestCase):
+    """Run 88 crashed fit here: store.connect() is a context manager, not a connection."""
+
+    def test_load_reads_the_register_through_store_connect(self):
+        from unittest import mock
+        from tests.kit.db import FakeConn
+        conn = FakeConn()
+        conn.cur.fetchall = lambda: [("Monzo Bank Limited",), ("Acme Widgets Ltd",)]
+        with mock.patch.object(sponsors.store, "connect", return_value=conn):
+            register = sponsors.load()
+        self.assertEqual((len(register), register.state("Monzo")), (2, POSITIVE))
