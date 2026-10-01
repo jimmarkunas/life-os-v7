@@ -70,7 +70,7 @@ class FirstPartyReaders(unittest.TestCase):
         self.assertEqual(listing("futuristic_html", "<p>no wrapper</p>").status, "FAILED")
 
     def test_doubleword_array_in_the_app_bundle(self):
-        js = ('x=[{title:"ML Engineer",slug:"ml-engineer",department:"Eng",type:"Full",seniority:"Senior",location:"London",compensation:"£90k",applyEmail:"a@b.c"}];'
+        js = ('x=[{title:"ML Engineer",slug:"ml-engineer",department:"Eng",type:"Full",seniority:"Senior",location:"London",compensation:"£90k",applyEmail:"x"}];'
               'x.map(r=>r);"Open Positions"')
         page = '<script src="/assets/index-abc.js"></script>'
         got = listing("doubleword_bundle", page, url="https://dw.example/careers/", more={"https://dw.example/assets/index-abc.js": Page(js)})

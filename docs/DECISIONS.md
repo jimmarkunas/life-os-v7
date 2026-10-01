@@ -190,3 +190,8 @@ Doubleword bundle array, Revolut `__NEXT_DATA__` with an exhaustive count check,
 (never zero jobs, never a removal); an empty page is a COMPLETE zero only for the self-proving readers or when the registry row carries a `zero_marker` phrase (Intrepid). The 17 rows moved from `bespoke` to `ready`
 (36 of 48 now listable). Not done: the 12 sponsors with no discoverable ATS (LinkedIn/Indeed company pages) stay `fallback`/DEGRADED. These readers have not yet seen the live pages from the runner:
 the first runs may report some as FAILED `bad_shape`; the counts say which.
+
+## D34 — The remaining 12 Scale-Up sponsors: discovery first (Jim, 2026-10-01)
+Otto Car and Truvi publish their own job pages, so they move to `static_complete_html` (38 of 48 listable; a page that is not a provable list simply reports FAILED `bad_shape`). The other 10 have only LinkedIn/Indeed
+company pages, a team page or a homepage: LinkedIn company jobs need a login (never used) and Indeed is bot-walled. `probe` now includes `discover_scale_up`: free TinyFish Search per sponsor, printing only `kind:slug`
+for a board V7 can already list, `own:<host>` for the sponsor's own site, or None. Results decide which rows get a real board; nothing is added automatically.

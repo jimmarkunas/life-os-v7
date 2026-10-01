@@ -413,10 +413,10 @@
    "id": "su-otto-car-limited",
    "company": "Otto Car Limited",
    "tier": "employer",
-   "kind": "provider_html",
+   "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "fallback",
+   "status": "ready",
    "url": "https://careers.ottocar.co.uk/jobs"
   },
   {
@@ -483,10 +483,10 @@
    "id": "su-truvi-holdings-ltd",
    "company": "Truvi Holdings Ltd",
    "tier": "employer",
-   "kind": "provider_html",
+   "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "fallback",
+   "status": "ready",
    "url": "https://truvi.com/careers/"
   }
  ]
