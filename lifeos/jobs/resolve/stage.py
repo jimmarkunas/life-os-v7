@@ -8,7 +8,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 
-from lifeos.platform import limits
+from lifeos.platform import limits, runtime
 from lifeos.jobs import store
 
 
@@ -70,9 +70,9 @@ def run_rows(source, limit, live, resolver, batch=BATCH_ROWS, deadline_minutes=D
         rows = pick_rows(connection, source, limit)
     counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "closed": 0, "kind": {}, "why": {},
               "batches": 0, "not_reached": 0}
-    started = clock()
+    context = runtime.RunContext.start(deadline_minutes * 60, clock=clock)         # the shared deadline primitive (second consumer: Interview OS)
     for start in range(0, len(rows), batch):
-        if clock() - started > deadline_minutes * 60:
+        if context.expired():
             counts["not_reached"] = len(rows) - start
             break
         part = rows[start:start + batch]
