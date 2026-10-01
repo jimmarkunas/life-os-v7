@@ -7,6 +7,7 @@ is DEGRADED: nothing is applied, the checkpoint stays, and a gap is never skippe
 Counts only in the log; the User-Agent carries the contact from OPEN_JOBS_CONTACT (kept out of the public repo).
 """
 from datetime import date, datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -84,8 +85,8 @@ def plan_chain(head, checkpoint, load):
     return list(reversed(chain))
 
 
-def page_events(header, name, fetcher=fetch):
-    """Verified events of one page."""
+def page_lines(header, name, fetcher=fetch):
+    """The verified raw lines of one page (size, sha256 and row count all checked; the hash proves the content, so lines are parsed lazily)."""
     meta = next((p for p in header["pages"] if p["file"] == name), None)
     if meta is None:
         raise Degraded("unknown_page")
@@ -95,10 +96,22 @@ def page_events(header, name, fetcher=fetch):
     lines = data.splitlines()
     if len(lines) != meta["rows"]:
         raise Degraded("page_rows")
+    return lines
+
+
+def page_events(header, name, fetcher=fetch):
+    """Verified, fully parsed events of one page."""
     try:
-        return [json.loads(line) for line in lines]
+        return [json.loads(line) for line in page_lines(header, name, fetcher)]
     except ValueError:
         raise Degraded("page_json") from None
+
+
+REMOVE = b'"op":"remove"'
+KEY = re.compile(rb'"key":"((?:[^"\\]|\\.)*)"')
+TITLE = re.compile(rb'"title":"((?:[^"\\]|\\.)*)"')
+WORKERS = 8                  # pages downloaded at once (public static files on one host; the order of application is unchanged)
+CHUNK = 16                   # pages held in memory at a time
 
 
 def _day(value):
@@ -139,21 +152,38 @@ def process(header, fetcher=fetch):
     """One generation -> (admits, removed keys, counts). Pure of the database."""
     counts = {"events": 0, "upserts": 0, "removes": 0, "admit": 0, "over_cap": 0, "why": {}}
     admits, removes = [], []
-    for meta in header["pages"]:
-        for event in page_events(header, meta["file"], fetcher):
-            counts["events"] += 1
-            if event["op"] == "remove":
-                counts["removes"] += 1
-                removes.append(event["key"])
-                continue
-            counts["upserts"] += 1
-            job, why = candidate(event)
-            if why:
-                counts["why"][why] = counts["why"].get(why, 0) + 1
-            elif len(admits) >= MAX_ADMIT:
-                counts["over_cap"] += 1
-            else:
-                admits.append((event["key"], job))
+    names = [meta["file"] for meta in header["pages"]]
+
+    def why_not(reason):
+        counts["why"][reason] = counts["why"].get(reason, 0) + 1
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for start in range(0, len(names), CHUNK):
+            for lines in pool.map(lambda n: page_lines(header, n, fetcher), names[start:start + CHUNK]):    # downloads in parallel, applied in order
+                for line in lines:
+                    counts["events"] += 1
+                    if not line.startswith(b'{"job"') and REMOVE in line:        # events are canonical JSON with sorted keys: upserts open with "job"
+                        counts["removes"] += 1
+                        match = KEY.search(line)
+                        if match:
+                            removes.append(json.loads(b'"' + match.group(1) + b'"'))
+                        continue
+                    counts["upserts"] += 1
+                    title = TITLE.search(line)
+                    if title and title.group(1) and not suppress.TARGET.search(title.group(1).decode("utf-8", "replace")):
+                        why_not("off_family")                                # the common case, decided without parsing the whole record
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        raise Degraded("page_json") from None
+                    job, why = candidate(event)
+                    if why:
+                        why_not(why)
+                    elif len(admits) >= MAX_ADMIT:
+                        counts["over_cap"] += 1
+                    else:
+                        admits.append((event["key"], job))
     counts["admit"] = len(admits)
     return admits, removes, counts
 

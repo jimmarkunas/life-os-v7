@@ -12,6 +12,19 @@ from lifeos.platform.tinyfish import TinyFishError, clean_key
 ENDPOINT = "https://api.search.tinyfish.ai"
 MIN_GAP_SECONDS = limits.TINYFISH_SEARCH_GAP_SECONDS
 _last = [0.0]
+_started = time.monotonic()
+_solo_after = [None]          # seconds after which this process has the key to itself (set by the Lensa lane only)
+
+
+def solo_after(seconds):
+    """Opt this process into the faster pace once the other lane's window is over. Any 429 puts it back on the shared pace for good."""
+    _solo_after[0] = seconds
+
+
+def gap_seconds(now=None):
+    after = _solo_after[0]
+    solo = after is not None and ((now if now is not None else time.monotonic()) - _started) >= after
+    return limits.TINYFISH_SEARCH_GAP_SOLO if solo else MIN_GAP_SECONDS
 
 
 def _key():
@@ -23,7 +36,7 @@ def _key():
 
 def search(query, include_domains=None, timeout=30):
     """[{url,title,snippet,site_name}] (possibly empty). Raises TinyFishError('TINYFISH_SEARCH_HTTP_<code>')."""
-    wait = MIN_GAP_SECONDS - (time.monotonic() - _last[0])
+    wait = gap_seconds() - (time.monotonic() - _last[0])
     if wait > 0:
         time.sleep(wait)
     params = {"query": query[:400]}
@@ -36,6 +49,8 @@ def search(query, include_domains=None, timeout=30):
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read())
     except urllib.error.HTTPError as error:
+        if error.code == 429:
+            _solo_after[0] = None                                   # the key is shared after all: back to the safe pace
         raise TinyFishError(f"TINYFISH_SEARCH_HTTP_{error.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         raise TinyFishError("TINYFISH_SEARCH_NETWORK") from None
