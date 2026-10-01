@@ -223,6 +223,7 @@ are ported and trimmed from V2. Counts-only logs remain the primary control; red
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
 (the gate and the stale-pipeline alert are keyed on run success). Decision numbers: Interview D39 to D49, Jobs D50 and up.
 
-## D51 — Revolut is fetched as Chrome (2026-10-01)
+## D51 — Revolut is fetched as Chrome (2026-10-01; verified on the runner: 363 jobs, was blocked)
 Revolut's careers page refuses plain scripted requests from the runner. A registry source may set `impersonate` (plus `warm_url`, `alt_urls`): `lifeos/platform/impersonate.py` then fetches it with `curl_cffi` (Chrome TLS fingerprint), warming a session on the home page first, 3 tries, accepting only a 200 that carries `__NEXT_DATA__`. This is the V1 mechanic, scoped to one source; every other source keeps the plain fetcher.
 A blocked or ambiguous page is still FAILED, never zero jobs (D33). `curl_cffi` is pinned in `requirements.txt`.
+Tried and rejected on the runner (probe, same day): Futuristic still refuses a Chrome-style fetch (401; plain 403) and Otto Car still returns 404, so they need a real browser or another route; Truvi's page loads (200) but exposes no job links the generic reader recognises. All three stay FAILED (never zero jobs); the flag is set on Revolut only.
