@@ -97,5 +97,51 @@ def ledger_target(environ=os.environ):
     return out
 
 
+ATS_PATTERNS = (                                   # (reader kind, regex over the result URL) -> slug; only kinds V7 can already list
+    ("greenhouse", r"^https?://(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/([a-z0-9_-]+)"),
+    ("lever", r"^https?://jobs(?:\.eu)?\.lever\.co/([a-z0-9_-]+)"),
+    ("ashby", r"^https?://jobs\.ashbyhq\.com/([a-z0-9_.-]+)"),
+    ("workable", r"^https?://apply\.workable\.com/([a-z0-9_-]+)"),
+    ("teamtailor", r"^https?://([a-z0-9-]+)\.teamtailor\.com"),
+    ("rippling_html", r"^https?://ats\.rippling\.com/([a-z0-9_-]+)"),
+    ("join_html", r"^https?://join\.com/companies/([a-z0-9_-]+)"),
+)
+
+
+def discover(search=None, sources=None):
+    """For each Scale-Up sponsor with no readable job board, ask web search (free TinyFish Search) where its jobs live. Prints, per sponsor id,
+    only `kind:slug` for a board V7 can already list, or `own:<host>` for the sponsor's own site, or None. No posting text, no URLs."""
+    from lifeos.platform import tinyfish_search                                                # noqa: PLC0415
+    from lifeos.platform.tinyfish import TinyFishError                                         # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                                  # noqa: PLC0415
+    from urllib.parse import urlsplit                                                          # noqa: PLC0415
+    search = search or tinyfish_search.search
+    out = {}
+    for source in sources if sources is not None else [r for r in registry.load(registry.PATHS["Scale-Up"]) if r["status"] == "fallback"]:
+        tokens = [w for w in ats_match.norm(source["company"]).split() if w not in ats_match.SUFFIX and len(w) > 2][:2]
+        found = None
+        try:
+            for result in search(f"{source['company']} careers jobs UK")[:8]:
+                url = result.get("url") or ""
+                hay = ats_match.norm(url + " " + (result.get("title") or "") + " " + (result.get("snippet") or ""))
+                if not tokens or not all(t in hay for t in tokens):
+                    continue
+                for kind, pattern in ATS_PATTERNS:
+                    match = re.match(pattern, url, re.I)
+                    if match:
+                        found = f"{kind}:{match.group(1)}"
+                        break
+                if found:
+                    break
+                host = (urlsplit(url).hostname or "").removeprefix("www.")
+                if found is None and host and re.search(r"career|jobs|join|work-with|vacanc|opportunit", url, re.I) \
+                        and not any(x in host for x in ("linkedin.", "indeed.", "glassdoor.", "reed.", "totaljobs.", "cv-library.", "jooble.", "adzuna.", "ziprecruiter.")):
+                    found = f"own:{host}"
+        except TinyFishError as error:
+            found = str(error).lower()
+        out[source["id"]] = found
+    return out
+
+
 def run(limit, live):
-    return {"open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
