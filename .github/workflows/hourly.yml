@@ -36,6 +36,10 @@ on:
         description: "US Remote web acquisition: poll due ATS boards, classify, admit new postings (counts only unless live)"
         type: boolean
         default: false
+      web_scale_up:
+        description: "UK Scale-Up web acquisition (never scheduled): poll due sponsor boards; counts only unless live"
+        type: boolean
+        default: false
       fit:
         description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
         type: boolean
@@ -195,6 +199,11 @@ jobs:
         name: Step 5b - US Remote web acquisition (due ATS boards)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web) }}
         run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
+      - id: web_scale_up
+        continue-on-error: true
+        name: Step 5c - UK Scale-Up web acquisition (dispatch only, not scheduled until promoted)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
+        run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
@@ -230,7 +239,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

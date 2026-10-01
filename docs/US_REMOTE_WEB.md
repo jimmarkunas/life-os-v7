@@ -51,7 +51,7 @@ This channel makes most of the 11 bespoke boards unnecessary: it covers the ATS 
 ## Phases
 1. DONE: registry, the three tables (`v7_sources`, `v7_source_items`, `v7_source_runs`), the status-aware lister (Greenhouse, Ashby, Lever, SmartRecruiters, Workable), classification, cheap suppression, the bounded runner (`lifeos/sources/web`), the `web` dispatch input and workflow step, the Easy Apply tag; originally: a status-aware lister over the 5 ready ATS kinds; the diff and classification; 26 sources live in shadow mode
    (dry run counts only). Tests with recorded responses.
-2. Workday listing (Adobe, Postman) and Jibe (GitHub).
+2. DONE: Workday listing (Adobe, Postman) and Jibe (GitHub), plus Pinpoint for Scale-Up. 28 of 30 employers are listable now.
 3. Open Jobs feed intake with the cursor and generation rules.
 4. Bespoke staffing parsers only where the feed does not cover the board and you still want that agency.
 5. Discovery helpers: LinkedIn (no login), Built In, Dice stay discovery-only: they can propose a candidate, never an Apply URL or a JD.

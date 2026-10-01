@@ -71,6 +71,13 @@ SCHEMA = (
         removed INT NOT NULL DEFAULT 0, suppressed INT NOT NULL DEFAULT 0, ingested INT NOT NULL DEFAULT 0,
         KEY ix_v7_runs_source (source_id, ran_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_tombstones (
+        dedupe_key CHAR(64) NOT NULL PRIMARY KEY,
+        fuzzy_key CHAR(64) NULL,
+        retired_at DATETIME NOT NULL, expires_at DATETIME NOT NULL,
+        hits INT NOT NULL DEFAULT 0,
+        KEY ix_v7_tomb_fuzzy (fuzzy_key), KEY ix_v7_tomb_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_ledger_urls (
         url_hash CHAR(64) NOT NULL PRIMARY KEY,
         source VARCHAR(12) NOT NULL,
@@ -88,7 +95,7 @@ SCHEMA = (
         status VARCHAR(16) NOT NULL, counts VARCHAR(500) NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_ledger_urls", "v7_spend", "v7_runs")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_runs")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),
@@ -109,6 +116,7 @@ COLUMNS = (
     ("v7_jobs", "notion_expired_at", "DATETIME NULL", None),
     ("v7_job_fit", "shadow_score", "SMALLINT NULL", None),
     ("v7_job_fit", "shadow_changes", "SMALLINT NULL", None),
+    ("v7_jobs", "route_evidence", "VARCHAR(40) NULL", None),
     ("v7_job_fit", "admission", "VARCHAR(8) NULL", None),
     ("v7_job_fit", "admission_reason", "VARCHAR(80) NULL", None),
     ("v7_job_fit", "work_mode", "VARCHAR(8) NULL", None),

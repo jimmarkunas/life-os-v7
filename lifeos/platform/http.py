@@ -26,11 +26,11 @@ class Fetched:
 MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
 
 
-def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None):
+def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None, data=None):
     current, codes = url, []
     for hop in range(max_hops + 1):
-        request = urllib.request.Request(current, headers={"User-Agent": UA, "Accept": "text/html,application/xhtml+xml",
-                                                           "Accept-Language": "en-US,en;q=0.9", **(headers or {})})
+        request = urllib.request.Request(current, data=data if hop == 0 else None, headers={
+            "User-Agent": UA, "Accept": "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9", **(headers or {})})
         try:
             with _OPENER.open(request, timeout=timeout) as response:
                 body = response.read(max_bytes).decode(response.headers.get_content_charset() or "utf-8", "replace")

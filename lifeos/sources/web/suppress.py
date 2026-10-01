@@ -18,16 +18,19 @@ NON_US = re.compile(r"\b(canada|toronto|vancouver|montreal|ontario|united kingdo
 US = re.compile(r"\b(united states|usa|u\.s\.|us)\b|(?:,\s*|\s)(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b")
 
 
-def reason(job, today=None):
-    """A fixed reason code when the posting is an unequivocal miss for US Remote, else None."""
+def reason(job, today=None, lane="US Remote"):
+    """A fixed reason code when the posting is an unequivocal miss for the lane, else None."""
     title, where = job["title"], job["location"]
+    policy = lanes.POLICIES[lane]
     if not TARGET.search(title) and OFF.search(title):
         return "off_target_title"
-    if NON_US.search(where) and not US.search(where):
-        return "non_us"
-    if lanes.detect_work_mode(where, title) in ("onsite", "hybrid"):
-        return "not_remote"
-    policy = lanes.POLICIES["US Remote"]
-    if job["posted"] and ((today or date.today()) - job["posted"]).days > policy.max_age_days:
+    if policy.market == "US":
+        if NON_US.search(where) and not US.search(where):
+            return "non_us"
+        if policy.work_mode == "remote_only" and lanes.detect_work_mode(where, title) in ("onsite", "hybrid"):
+            return "not_remote"
+    elif lanes.geography_status(where) == lanes.NEGATIVE:
+        return "non_target_geography"                   # Scale-Up: any work mode, but a named non-target place is out
+    if policy.max_age_days and job["posted"] and ((today or date.today()) - job["posted"]).days > policy.max_age_days:
         return "stale"
     return None

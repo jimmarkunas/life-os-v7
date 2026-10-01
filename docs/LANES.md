@@ -30,6 +30,16 @@ With `V7_FIT_GATE=true`: EXCLUDE becomes `EXCLUDED_FIT` and is never published; 
 **Passed / Review** with a **Review Reason**. Published rows also get Work Mode, Compensation (posted pay), Fit Authority, Eligible Lanes
 and Visible Lane = the lane name.
 
-## Retention (decided, not yet implemented)
-30-day stale purge of canonical Jobs with a 90-day suppression tombstone (so a repost does not recreate a purged job); a job marked
-Applied that has not reached an interview stage within 30 days is purged; a job that reaches an interview stage is kept.
+## Retention (built)
+Unapplied jobs are retired 30 days after the employer Posting Date (else First Surfaced; never Notion's Created At) when `progression.resolve` says
+NOT_PROTECTED: the page is trashed (recoverable for 30 days in Notion), marked PURGED in Hostinger, and a **90-day tombstone** (dedupe key and fuzzy key only)
+stops the same vacancy being recreated. A vacancy with a later posting date than the retirement may re-enter. The legacy Lifecycle field is never read
+for a decision or written. **Applied jobs are never destructively retired by Jobs**: `progression.resolve` returns UNKNOWN for them (and PROTECTED when a
+Saturn Decision exists) until the Interview progression handoff (INT-7.1A) supplies evidence; a job that reaches an interview stage is therefore always kept.
+Only our own pages are touched (matched by stored page id). Hostinger: descriptions 90 days, never-published job rows 365 days, tombstones 90 days.
+
+## Scale-Up on the shared web substrate
+`lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (13 listable today: 5 Ashby, 3 Greenhouse, 2 Workable, Lever, Pinpoint, Workday; 23 need a
+site parser, 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
+geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
+(workflow input `web_scale_up`): dispatch only, never scheduled until promoted.

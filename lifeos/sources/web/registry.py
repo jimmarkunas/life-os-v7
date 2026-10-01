@@ -7,7 +7,8 @@ from pathlib import Path
 
 PATH = Path(__file__).with_name("us_remote.json")
 TIERS = ("employer", "staffing", "helper")
-STATUSES = ("ready", "port", "bespoke", "discovery")
+STATUSES = ("ready", "port", "bespoke", "discovery", "fallback")
+PATHS = {"US Remote": PATH, "Scale-Up": Path(__file__).with_name("scale_up.json")}
 
 
 class RegistryError(ValueError):
@@ -23,8 +24,8 @@ def load(path=PATH):
         if row["id"] in seen:
             raise RegistryError(f"duplicate source id {row['id']}")
         seen.add(row["id"])
-        if row["status"] == "ready" and not row.get("slug"):
-            raise RegistryError(f"{row['id']}: a ready board needs its slug")
+        if row["status"] == "ready" and not (row.get("slug") or row.get("url")):
+            raise RegistryError(f"{row['id']}: a ready board needs its slug or url")
         if row["status"] != "ready" and not (row.get("url") or row.get("slug")):
             raise RegistryError(f"{row['id']}: needs a url or slug")
     return data["sources"]
@@ -40,3 +41,8 @@ def coverage(path=PATH):
     for row in enabled(path=path):
         out[(row["tier"], row["status"])] = out.get((row["tier"], row["status"]), 0) + 1
     return out
+
+
+def for_lane(lane, status="ready"):
+    """Enabled sources of one lane's universe (default: the ones V7 can list today)."""
+    return enabled(status=status, path=PATHS[lane])

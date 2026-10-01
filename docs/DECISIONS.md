@@ -115,3 +115,8 @@ Dice is bundled into the US Remote producer, not built as a newsletter source.
 Scale-Up has a 30-day age gate; Skilled Worker is a disabled record. Retention follows the canon (30-day stale purge, 90-day
 tombstone) plus: Applied without reaching interview in 30 days is purged, an interview-stage job is kept. Scale-Up is built and tested
 but not scheduled until Jim promotes it.
+
+## D21 - Retention follows the canon; Applied is never retired by Jobs yet (DECIDED, 2026-10-01)
+30-day retirement of unapplied, undecided jobs on the employer Posting Date (else First Surfaced), 90-day tombstone, no Lifecycle dependence. Applied jobs
+resolve UNKNOWN in `progression.resolve` until INT-7.1A, so they are kept (fail closed). Jim's rule "Applied without an interview is purged after 30 days"
+becomes active when INT-7.1A can prove the absence of progression.
