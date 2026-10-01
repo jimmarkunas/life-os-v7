@@ -62,7 +62,9 @@ with no JD or Notion work; a plausible job gets JD, Apply URL, non-null Fit and 
 Notion writes; one qualifying NEW job creates exactly one Notion row and is read back; a below-floor job creates no row; Newsletter and Web evidence for one
 vacancy converge to one job (same `dedupe_key` and fuzzy key); human lifecycle state is never overwritten; one run touches only bounded due work.
 
-## Decisions for Jim
-1. Take the Open Jobs feed as channel A (broad coverage), or direct boards only?
-2. Staffing agencies: keep all 10 (your canon prefers C2C/1099 over W-2 over permanent, so agencies matter) or start with the one ready agency (Apex)?
-3. Discovery helpers (LinkedIn, Built In, Dice): keep as discovery-only, or drop them once the feed is in?
+## Decisions (Jim, 2026-10-01)
+1. Open Jobs feed as channel A: explained to Jim, answer pending (recommendation: both, direct boards for the 43 priority sources, the feed for breadth).
+2. Staffing agencies: keep all 10.
+3. Discovery helpers (LinkedIn Jobs, Built In, Dice): keep. Their output is a candidate, not an authoritative job: it enters as provider `LinkedIn` /
+   `Built In` / `Dice`, status NEW, and goes through the same resolve lane as Lensa (employer ATS board match, then free Search) before it can be enrich-read,
+   scored and published. No login for LinkedIn, no browser (D12). Dice matters most for contract and C2C roles that never appear on a public ATS feed.
