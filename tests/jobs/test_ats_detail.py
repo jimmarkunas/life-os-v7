@@ -32,6 +32,14 @@ class ReaderTests(unittest.TestCase):
                        {"/wday/cxs/acme/Careers/job/Remote/PM_R1": (200, info)})           # the apply form is cut off the path
         self.assertEqual(applied["title"], "PM")
 
+    def test_workday_url_and_browser_wrapped_json(self):
+        self.assertEqual(ats_detail.workday_cxs_url("https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Remote/PM_R1/apply"),
+                         "https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/Careers/job/Remote/PM_R1")
+        self.assertIsNone(ats_detail.workday_cxs_url("https://acme.example.com/job/1"))
+        wrapped = '<html><pre>{"jobPostingInfo": {"title": "PM", "jobDescription": "<p>x</p>", "startDate": "2026-09-24"}}</pre></html>'
+        self.assertEqual(ats_detail.parse_workday(wrapped)["title"], "PM")
+        self.assertIsNone(ats_detail.parse_workday("<html>nothing here</html>"))
+
     def test_workable_finds_the_shortcode_in_the_account_widget(self):
         widget = {"jobs": [{"shortcode": "ABC123", "title": "PM", "description": "<p>d</p>", "published_on": "2026-09-20"}]}
         routes = {"widget/accounts/acme": (200, widget)}

@@ -239,7 +239,8 @@ def _fallback(results, rows, counts):
     pacer, done = usage.Pacer(), 0
     for start in range(0, allowed, limits.TINYFISH_FETCH_BATCH):
         batch = blocked[start:min(start + limits.TINYFISH_FETCH_BATCH, allowed)]
-        urls = [titles[results[i][0]][0] for i in batch]
+        asked = {i: ats_detail.workday_cxs_url(titles[results[i][0]][0]) for i in batch}   # Workday: ask its JSON endpoint
+        urls = [asked[i] or titles[results[i][0]][0] for i in batch]
         pacer.wait()
         try:
             found, _errors = tinyfish.fetch_many(urls, fmt="html", links=False)
@@ -249,6 +250,17 @@ def _fallback(results, rows, counts):
         for i, url in zip(batch, urls):
             item = found.get(url)
             text = item.get("text") if item and isinstance(item.get("text"), str) else ""
+            if asked[i] and text:
+                job = ats_detail.parse_workday(text)
+                if job:
+                    job_id = results[i][0]
+                    desc = jd.describe(job["html"], is_html=True)
+                    results[i] = (job_id, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
+                                                 _parse_date(job["posted"]), "ats_api", None))
+                    counts["outcome"]["blocked"] -= 1
+                    counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
+                    done += 1
+                    continue
             if not text and results[i][1].get("reason") == "description_empty":
                 results[i][1]["reason"] = TRIED_REASON
             if text:

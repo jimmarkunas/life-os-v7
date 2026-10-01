@@ -42,16 +42,38 @@ def _job(title, html, posted):
     return {"title": title, "html": html or "", "posted": str(posted or "")[:10]}
 
 
-def workday(parts):
-    """https://{tenant}.wd{N}.myworkdayjobs.com[/{locale}]/{site}/job/... -> /wday/cxs/{tenant}/{site}/job/..."""
-    host, segs = parts.hostname.lower(), [s for s in parts.path.split("/") if s]
+def workday_cxs_url(url):
+    """The CXS JSON URL for a Workday job URL (locale and any /apply part removed), or None."""
+    parts = urlsplit(url or "")
+    host, segs = (parts.hostname or "").lower(), [s for s in parts.path.split("/") if s]
+    if not host.endswith("myworkdayjobs.com"):
+        return None
     if segs and LOCALE.match(segs[0]):
         segs = segs[1:]
     if "apply" in segs:
         segs = segs[:segs.index("apply")]        # the apply form lives under the job path; the job is what precedes it
     if len(segs) < 3 or segs[1] != "job":
         return None
-    data = _get_json(f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}")
+    return f"https://{host}/wday/cxs/{host.split('.')[0]}/{segs[0]}/{'/'.join(segs[1:])}"
+
+
+def parse_workday(text):
+    """A CXS answer (raw JSON, or JSON wrapped in page markup by a browser fetch) -> dict(title, html, posted) | None."""
+    start, end = (text or "").find("{"), (text or "").rfind("}")
+    try:
+        data = json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+    info = data.get("jobPostingInfo") if isinstance(data, dict) else None
+    return _job(info.get("title"), info.get("jobDescription"), info.get("startDate")) if info else None
+
+
+def workday(parts):
+    """https://{tenant}.wd{N}.myworkdayjobs.com[/{locale}]/{site}/job/... -> /wday/cxs/{tenant}/{site}/job/..."""
+    api = workday_cxs_url(f"https://{parts.hostname}{parts.path}")
+    if not api:
+        return None
+    data = _get_json(api)
     if data == "gone":
         return {"closed": True}
     info = (data or {}).get("jobPostingInfo") if isinstance(data, dict) else None
