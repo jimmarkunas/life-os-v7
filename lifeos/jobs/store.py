@@ -101,6 +101,7 @@ TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
+    ("v7_jobs", "meta_v", "SMALLINT NULL", None),
     ("v7_job_fit", "eligible", "VARCHAR(80) NULL", None),
     ("v7_jobs", "verified_at", "DATETIME NULL", None),
     ("v7_jobs", "fuzzy_key", "CHAR(64) NULL", "ADD KEY ix_v7_jobs_fuzzy (fuzzy_key)"),

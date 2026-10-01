@@ -9,7 +9,7 @@ The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import lanes, ledger, store
+from lifeos.jobs import meta, lanes, ledger, store
 from lifeos.jobs.identity import url_key
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -69,8 +69,8 @@ def properties(row):
         props["Review Reason"] = {"rich_text": rich_text(row["admission_reason"])}
     if row.get("work_mode") in ("remote", "hybrid", "onsite", "unknown"):
         props["Work Mode"] = {"select": {"name": row["work_mode"].capitalize()}}
-    if row.get("salary"):
-        props["Compensation"] = {"rich_text": rich_text(row["salary"])}
+    props.update(meta.properties(row.get("location"), row.get("salary"), row.get("text"), row.get("route"),
+                                 ",".join(row.get("eligible") or []), lanes.lane_for(row["lane"])))
     if row.get("posted"):
         props["Posting Date"] = {"date": {"start": row["posted"].isoformat()}}
     if row.get("fit") is not None:                                    # Phase 2: the deterministic fit score and its line
@@ -116,7 +116,7 @@ def _pick(connection, limit, gated=False):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT j.id, j.dedupe_key, j.title, j.company, j.final_apply_url, j.source, j.provider, j.lane, j.first_seen, j.posted_date,"
-            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind, f.lane, f.eligible"
+            " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind, f.lane, f.eligible, j.location_text, j.route_evidence"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "") +
             " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
@@ -148,7 +148,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
-    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible) in rows:
+    for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible, location, route) in rows:
         if job_id in known:
             counts["duplicate"] += 1
             if live:
@@ -167,7 +167,8 @@ def run(limit, live, environ=os.environ):
                "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted,
                "fit": fit, "fit_line": fit_line,
                "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
-               "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind}
+               "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind,
+               "location": location, "route": route, "text": full}
         if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
