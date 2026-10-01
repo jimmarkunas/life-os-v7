@@ -155,7 +155,7 @@ class SqlRepo:
         if is_new and job["content"]:
             from lifeos.jobs import jd                                              # noqa: PLC0415
             desc = jd.describe(job["content"], is_html=False)
-            result = enrich.finish(job["title"], desc, job["title"], job["posted"], "ats_list", None)
+            result = enrich.finish(job["title"], desc, job["title"], job["posted"], "ats_list", None, lane)
             if result["outcome"] in ("ready", "stale"):
                 result["final_url"] = job["url"]
                 enrich.save(connection, job_id, result)
