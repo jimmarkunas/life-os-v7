@@ -106,6 +106,11 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             counts["derived_created"] += int(result["code"] == "derived_created")
             counts["derived_match"] += int(result["code"] == "derived_match")
             reason(result["code"])
+            if result["code"] not in ("derived_allowed", "derived_created", "derived_match"):
+                counts["blocked"] += 1
+            if result["code"] in ("derived_readback_failed", "readback_protected_changed") or (
+                    result["writes"] > 0 and result["code"] != "derived_created"):
+                break
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         counts["blocked"] += 1

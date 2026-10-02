@@ -2,8 +2,8 @@ import copy
 import json
 import unittest
 from unittest.mock import patch
-from lifeos.interview import create, notion, prep
-from lifeos.interview.models import ParentQuery, PrepEvidence, RoundQuery
+from lifeos.interview import create, notion, prep, stage
+from lifeos.interview.models import Child, ParentQuery, PrepEvidence, RoundQuery, Scan
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.runtime import RunContext
 from tests.interview.test_create import WritableFake, machine_parent, PARENT, ROUND
@@ -123,36 +123,53 @@ class PrepTests(unittest.TestCase):
         self.assertLess(rendered.index("Current risk"), rendered.index("Old risk"))
         self.assertLess(rendered.index("Current question"), rendered.index("Old question"))
 
-    def test_date_selection_and_bad_or_human_prior_rounds_are_ignored(self):
+    def _date_round(self, client, parent_id, day, interviewer):
+        query = RoundQuery(True, day, interviewer=interviewer)
+        result = create.apply(client, ENV, PARENT, query, True, RunContext.start(60), set())
+        self.assertEqual(result["code"], "round_created")
+        return f"created-{len(client.posts)}", query
+
+    def test_date_fallback_selects_latest_earlier_and_ignores_same_or_later(self):
         client = PrepFake()
-        parent_id, old_id, _ = machine_round(client, ordinal=1, day="2026-09-29")
-        old_query = RoundQuery(True, "2026-09-29", interviewer="Prior interviewer")
-        old = PrepEvidence(pressure_points=("Earlier",), questions=("Earlier question",))
-        prep.apply(client, ENV, PARENT, old_query, old, True, RunContext.start(60))
-        # A malformed machine round and a human round must not be selected.
-        client.blocks[parent_id].append({"id": "bad-round", "type": "child_page", "child_page": {"title": "Interview broken"}})
-        client.pages["bad-round"] = copy.deepcopy(client.pages[old_id])
-        client.pages["bad-round"]["parent"] = {"page_id": parent_id}
-        client.blocks["bad-round"] = [block(notion.MARKERS["round"]), block("invalid identity")]
-        client.blocks["bad-round"][0]["id"] = "bad-marker"
-        client.blocks["bad-round"][1]["id"] = "bad-identity"
-        client.blocks[parent_id].append({"id": "human-round", "type": "child_page", "child_page": {"title": "Human"}})
-        client.pages["human-round"] = copy.deepcopy(client.pages[old_id])
-        client.pages["human-round"]["parent"] = {"page_id": parent_id}
-        client.blocks["human-round"] = [block("human")]
-        current_query = RoundQuery(True, "2026-10-02", interviewer="Current interviewer", ordinal=2)
-        current_id = "date-current"
-        client.pages[current_id] = {"parent": {"page_id": parent_id}, "properties": {"title": {"type": "title", "title": []}}}
-        client.blocks[current_id] = [block(notion.MARKERS["round"]), block(create.identity_text(RoundQuery(True, "2026-10-02", ordinal=2))),
-                                     block("Live Notes", "heading_2"), block("Raw Notes", "heading_2"), block("Derived", "heading_2")]
-        client.blocks[current_id][-1]["id"] = "current-derived"
-        client.blocks[parent_id].append({"id": current_id, "type": "child_page", "child_page": {"title": "Date current"}})
-        current_query = RoundQuery(True, "2026-10-02", ordinal=2, explicit_child_page_id=current_id)
-        result = prep.apply(client, ENV, PARENT, RoundQuery(True, "2026-10-02", ordinal=2, explicit_child_page_id=current_id), PrepEvidence(focus=("Date current",)), True, RunContext.start(60))
+        parent_id = machine_parent(client)
+        prior_id, prior_query = self._date_round(client, parent_id, "2026-10-01", "Prior One")
+        latest_id, latest_query = self._date_round(client, parent_id, "2026-10-03", "Prior Latest")
+        later_id, _ = self._date_round(client, parent_id, "2026-10-05", "Later Date")
+        prep.apply(client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Older",)), True, RunContext.start(60))
+        prep.apply(client, ENV, PARENT, latest_query, PrepEvidence(pressure_points=("Latest Earlier",)), True, RunContext.start(60))
+        same_id, _ = self._date_round(client, parent_id, "2026-10-02", "Same Date")
+        client.blocks[same_id][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Same Date")))
+        prep.apply(client, ENV, PARENT, RoundQuery(True, "2026-10-04", interviewer="Same Date"), PrepEvidence(pressure_points=("Same",)), True, RunContext.start(60))
+        prep.apply(client, ENV, PARENT, RoundQuery(True, "2026-10-05", interviewer="Later Date"), PrepEvidence(pressure_points=("Later",)), True, RunContext.start(60))
+        current_id, _ = self._date_round(client, parent_id, "2026-10-06", "Current")
+        client.blocks[current_id][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current")))
+        current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
+        result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
         self.assertEqual(result["code"], "derived_created")
-        _, heading, _ = notion.derived_blocks(client, current_id)
         _, _, payload = notion.derived_blocks(client, current_id)
-        self.assertIn("Earlier", [notion.text(b) for b in payload])
+        values = [notion.text(b) for b in payload]
+        self.assertIn("Latest Earlier", values)
+        self.assertNotIn("Same", values)
+        self.assertNotIn("Later", values)
+        self.assertLess(values.index("Latest Earlier"), values.index("Older"))
+
+    def test_ambiguous_latest_date_means_empty_carry_but_current_succeeds(self):
+        client = PrepFake()
+        parent_id = machine_parent(client)
+        first_id, first_query = self._date_round(client, parent_id, "2026-10-02", "Prior A")
+        second_id, second_query = self._date_round(client, parent_id, "2026-10-03", "Prior B")
+        client.blocks[first_id][1] = block(create.identity_text(RoundQuery(True, "2026-10-03", interviewer="Prior A")))
+        prep.apply(client, ENV, PARENT, first_query, PrepEvidence(pressure_points=("A",)), True, RunContext.start(60))
+        prep.apply(client, ENV, PARENT, second_query, PrepEvidence(pressure_points=("B",)), True, RunContext.start(60))
+        current_id, _ = self._date_round(client, parent_id, "2026-10-05", "Current")
+        client.blocks[current_id][1] = block(create.identity_text(RoundQuery(True, "2026-10-04", interviewer="Current")))
+        current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
+        result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
+        self.assertEqual(result["code"], "derived_created")
+        _, _, payload = notion.derived_blocks(client, current_id)
+        values = [notion.text(b) for b in payload]
+        self.assertNotIn("A", values)
+        self.assertNotIn("B", values)
 
     def test_rejects_oversized_caps_and_returns_counts_only(self):
         client = PrepFake()
@@ -173,6 +190,67 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(set(result), {"writes_planned", "writes", "code"})
         self.assertNotIn(private, json.dumps(result))
         self.assertFalse(any("/jobs/" in path or "Live Notes" in path or "Raw Notes" in path for _, path in client.calls))
+
+    def test_marker_requires_canonical_paragraph_and_valid_hash(self):
+        client = PrepFake()
+        _, page_id, query = machine_round(client)
+        normalized = prep.normalize(PrepEvidence(focus=("A",)))
+        marker = prep.render(normalized)[0]
+        for kind, text, expected in (("paragraph", prep.DERIVED_PREFIX + prep.digest(normalized), "marker"),
+                                     ("heading_3", prep.DERIVED_PREFIX + prep.digest(normalized), "conflict"),
+                                     ("bulleted_list_item", prep.DERIVED_PREFIX + prep.digest(normalized), "conflict"),
+                                     ("paragraph", prep.DERIVED_PREFIX + "z" * 64, "conflict")):
+            with self.subTest(kind=kind, text=text[-8:]):
+                marker_block = copy.deepcopy(marker)
+                marker_block["type"] = kind
+                marker_block[kind] = marker_block.pop("paragraph")
+                marker_block[kind]["rich_text"][0]["text"]["content"] = text
+                client.blocks[page_id] = client.blocks[page_id][:5] + [marker_block] + prep.render(normalized)[1:]
+                state, _ = prep._read_derived(client, page_id)
+                self.assertEqual(state, expected)
+
+    def test_current_priority_truncates_only_inherited_items(self):
+        current = prep.normalize(PrepEvidence(pressure_points=("A", "B", "C", "D"), questions=("Q1", "Q2", "Q3", "Q4")))
+        inherited = {"pressure_points": ("A", "E", "F", "G"), "questions": ("Q5", "Q6")}
+        merged = prep._merge(current, inherited)
+        self.assertEqual(merged["pressure_points"], ("A", "B", "C", "D", "E"))
+        self.assertEqual(merged["questions"], ("Q1", "Q2", "Q3", "Q4", "Q5"))
+        with self.assertRaises(OverflowError):
+            prep.normalize(PrepEvidence(pressure_points=tuple("ABCDEF")))
+
+    def test_carry_uses_existing_scan_and_fetches_only_winning_owner(self):
+        client = PrepFake()
+        parent_id, prior_id, prior_query = machine_round(client, ordinal=1)
+        prep.apply(client, ENV, PARENT, prior_query, PrepEvidence(pressure_points=("Prior",)), True, RunContext.start(60))
+        current = Child("current", parent_id, interview_date="2026-10-02", ordinal=2, identity_valid=True)
+        prior = Child(prior_id, parent_id, interview_date="2026-10-01", ordinal=1, identity_valid=True)
+        children = Scan((prior, current), True)
+        with patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("rescan")), \
+             patch("lifeos.interview.notion.explicit_child", side_effect=AssertionError("identity refetch")), \
+             patch("lifeos.interview.notion.ownership", wraps=notion.ownership) as ownership:
+            inherited = prep._carry(client, children, current, RunContext.start(60))
+        self.assertEqual(inherited["pressure_points"], ["Prior"])
+        ownership.assert_called_once_with(client, prior_id, "round")
+
+    def test_b3_stage_failures_block_and_uncertain_write_stops(self):
+        client = PrepFake()
+        machine_parent(client)
+        cases = [
+            ({"writes_planned": 0, "writes": 0, "code": "derived_conflict"}, 1, 1),
+            ({"writes_planned": 1, "writes": 1, "code": "derived_readback_failed"}, 1, 2),
+            ({"writes_planned": 0, "writes": 0, "code": "derived_match"}, 2, 2),
+        ]
+        for outcome, expected_calls, evidence_count in cases:
+            with self.subTest(code=outcome["code"]), patch("lifeos.interview.prep.apply", return_value=outcome) as apply_prep:
+                result = stage.run(5, True, environ=ENV, client=client,
+                    prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * evidence_count)
+                self.assertEqual(apply_prep.call_count, expected_calls)
+                if outcome["code"] == "derived_conflict":
+                    self.assertEqual((result["blocked"], result["why"]["derived_conflict"], result["writes"]), (1, 1, 0))
+                elif outcome["code"] == "derived_readback_failed":
+                    self.assertEqual((result["blocked"], result["why"]["derived_readback_failed"]), (1, 1))
+                else:
+                    self.assertEqual((result["blocked"], result["derived_match"], result["writes"]), (0, 2, 0))
 
 
 if __name__ == "__main__":

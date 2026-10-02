@@ -60,6 +60,8 @@ def _read_derived(client, page_id):
     _, _, blocks = notion.derived_blocks(client, page_id)
     if not blocks:
         return "empty", None
+    if blocks[0].get("type") != "paragraph":
+        return "conflict", None
     first = notion.text(blocks[0])
     if first.startswith(DERIVED_PREFIX) and len(first) == len(DERIVED_PREFIX) + 64:
         marker = first[len(DERIVED_PREFIX):]
@@ -69,64 +71,36 @@ def _read_derived(client, page_id):
     return "conflict", None
 
 
-def _children(client, parent_id, context):
-    from .models import Child, Scan
-    try:
-        blocks = notion.children(client, parent_id, [notion.MAX_CALLS], context)
-        found = []
-        for block in blocks:
-            if block.get("type") != "child_page":
-                continue
-            try:
-                found.append(notion.explicit_child(client, block["id"]))
-            except (NotionError, KeyError, TypeError, ValueError):
-                found.append(Child(block.get("id", ""), parent_id, identity_valid=False))
-        return Scan(tuple(item for item in found if item is not None), True)
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
-        return Scan((), False)
-
-
-def _carry(client, parent_id, current, current_input, context):
-    scan = _children(client, parent_id, context)
-    if not scan.complete:
-        return {}, False
-    valid = []
-    try:
-        for child in scan.items:
-            if child.identity_valid is not True:
-                continue
-            owner = notion.ownership(client, child.page_id, "round")
-            if owner != Ownership.MACHINE:
-                continue
-            data = notion.explicit_child(client, child.page_id)
-            if not data or data.identity_valid is not True:
-                continue
-            valid.append((child, data))
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
-        return {}, False
-    previous = []
+def _carry(client, children, current, context):
+    if not children.complete:
+        return {}
+    valid = [child for child in children.items if child.identity_valid is True
+             and not notion.same_notion_id(child.page_id, current.page_id)]
     if type(current.ordinal) is int and current.ordinal > 0:
-        previous = [(c, d) for c, d in valid if type(d.ordinal) is int and 0 < d.ordinal < current.ordinal]
+        previous = [child for child in valid if type(child.ordinal) is int and 0 < child.ordinal < current.ordinal]
         if previous:
-            greatest = max(d.ordinal for _, d in previous)
-            previous = [(c, d) for c, d in previous if d.ordinal == greatest]
+            greatest = max(child.ordinal for child in previous)
+            previous = [child for child in previous if child.ordinal == greatest]
     elif valid_date(current.interview_date):
-        previous = [(c, d) for c, d in valid if valid_date(d.interview_date) and d.interview_date < current.interview_date]
+        previous = [child for child in valid if valid_date(child.interview_date) and child.interview_date < current.interview_date]
         if previous:
-            latest = max(d.interview_date for _, d in previous)
-            previous = [(c, d) for c, d in previous if d.interview_date == latest]
-    if len(previous) != 1 or notion.same_notion_id(previous[0][0].page_id, current.page_id):
-        return {}, False
+            latest = max(child.interview_date for child in previous)
+            previous = [child for child in previous if child.interview_date == latest]
+    else:
+        previous = []
+    if len(previous) != 1:
+        return {}
+    prior = previous[0]
     try:
-        state, _ = _read_derived(client, previous[0][0].page_id)
-        if state != "marker":
-            return {}, False
-    except (NotionError, KeyError, TypeError, ValueError):
-        return {}, False
-    try:
-        return _parse_payload(client, previous[0][0].page_id), True
+        context.require_time()
+        if notion.ownership(client, prior.page_id, "round") != Ownership.MACHINE:
+            return {}
+        context.require_time()
+        state, _ = _read_derived(client, prior.page_id)
+        context.require_time()
+        return _parse_payload(client, prior.page_id) if state == "marker" else {}
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
-        return {}, False
+        return {}
 
 
 def _parse_payload(client, page_id):
@@ -169,10 +143,8 @@ def _merge(current, inherited):
     for key in ("pressure_points", "questions"):
         values = list(result[key])
         for value in inherited.get(key, ()):
-            if value not in values:
+            if value not in values and len(values) < CAPS[key]:
                 values.append(value)
-        if len(values) > CAPS[key]:
-            return None
         result[key] = tuple(values)
     return result
 
@@ -197,15 +169,14 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         if child.state != State.MATCH: return finish(child.code)
         if notion.ownership(client, child.page_id, "round") != Ownership.MACHINE:
             return finish("human_page" if notion.ownership(client, child.page_id, "round") == Ownership.HUMAN else "ownership_unknown")
-        identity = notion.explicit_child(client, child.page_id)
+        identity = next((item for item in children.items if notion.same_notion_id(item.page_id, child.page_id)), None)
         if not identity or identity.identity_valid is not True: return finish("round_identity_incomplete")
         before = notion.protected_snapshot(client, child.page_id)
         if before is None: return finish("readback_protected_missing")
         state, marker_hash = _read_derived(client, child.page_id)
         if state == "conflict": return finish("derived_conflict")
-        inherited, _ = _carry(client, parent.page_id, identity, current, context)
+        inherited = _carry(client, children, identity, context)
         merged = _merge(current, inherited)
-        if merged is None: return finish("prep_too_large")
         expected = digest(merged)
         if state == "marker": return finish("derived_match" if marker_hash == expected else "derived_conflict")
         out["writes_planned"] = 1
