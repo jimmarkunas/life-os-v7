@@ -53,3 +53,40 @@ class StageTests(unittest.TestCase):
         with patch("lifeos.interview.stage.probe", return_value={"writes": 0}) as probe:
             STAGES["interview-probe"](2, False)
             probe.assert_called_once_with(2, False)
+
+    def test_blocked_parents_stop_before_ownership_and_children(self):
+        client = Fake()
+        client.blocks["root"].append({"id": "duplicate", "type": "child_page", "child_page": {"title": "Example — Program Manager"}})
+        with patch("lifeos.interview.notion.ownership", side_effect=AssertionError("blocked ownership read")), \
+             patch("lifeos.interview.notion.child_scan", side_effect=AssertionError("blocked child scan")):
+            result = stage.run(10, True, environ=ENV, client=client)
+        self.assertEqual(result["observed"], 2)
+        self.assertEqual(result["blocked"], 2)
+        self.assertEqual(result["why"], {"parent_ambiguous": 2})
+        for count in ("valid_parents", "with_rounds", "machine_pages", "human_pages", "writes_planned", "writes"):
+            self.assertEqual(result[count], 0)
+        self.assertEqual(client.calls, [("GET", "/pages/root"), ("GET", "/blocks/root/children?page_size=100")])
+
+    def test_unrelated_malformed_parent_does_not_hide_valid_parent(self):
+        client = Fake()
+        client.blocks["root"].append({"id": "bad", "type": "child_page", "child_page": {"title": "Other Program Manager"}})
+        result = stage.run(10, True, environ=ENV, client=client)
+        self.assertEqual(result["valid_parents"], 1)
+        self.assertEqual(result["machine_pages"], 1)
+        self.assertEqual(result["why"], {"identity_invalid": 1})
+        self.assertFalse(any("/bad/" in path for _, path in client.calls))
+
+    def test_legacy_round_preserves_parent_and_human_gate(self):
+        client = Fake()
+        client.blocks["p"][0] = block("human opportunity")
+        client.blocks["p"].append({"id": "c", "type": "child_page", "child_page": {"title": "Legacy Round"}})
+        client.blocks["c"][0] = block("human round")
+        result = stage.run(10, True, environ=ENV, client=client,
+                           evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, explicit_child_page_id="c"))])
+        self.assertEqual(result["valid_parents"], 1)
+        self.assertEqual(result["with_rounds"], 1)
+        self.assertEqual(result["matched"], 1)
+        self.assertEqual(result["human_pages"], 2)
+        self.assertEqual(result["why"]["human_page"], 1)
+        self.assertEqual(result["writes"], 0)
+        self.assertTrue(all(method == "GET" for method, _ in client.calls))

@@ -56,3 +56,44 @@ class IdentityTests(unittest.TestCase):
         result = resolve_child(parent, RoundQuery(True, "2026-10-01", ordinal=1), Scan((Child("legacy", "p"),), True))
         self.assertEqual(result.code, "round_identity_incomplete")
         self.assertEqual(result.state, State.BLOCKED)
+
+    def test_unrelated_malformed_parent_allows_valid_match(self):
+        scan = Scan((Parent("bad", "Other Programme Manager"), Parent("good", "Example — Program Manager")), True)
+        result = resolve_parent(ParentQuery("Example", "Program Manager"), scan)
+        self.assertEqual((result.state, result.code, result.page_id), (State.MATCH, "parent_match", "good"))
+
+    def test_unrelated_malformed_parent_allows_not_found(self):
+        result = resolve_parent(ParentQuery("Example", "Engineer"), Scan((Parent("bad", "Other Engineer"),), True))
+        self.assertEqual((result.state, result.code), (State.NOT_FOUND, "parent_not_found"))
+
+    def test_relevant_malformed_parent_blocks_even_with_valid_match(self):
+        for title in ("Example Global Programme Manager", "Example — "):
+            with self.subTest(title=title):
+                scan = Scan((Parent("good", "Example — Program Manager"), Parent("bad", title)), True)
+                result = resolve_parent(ParentQuery("Example Global Ltd", "Program Manager"), scan)
+                self.assertEqual((result.state, result.code), (State.BLOCKED, "identity_invalid"))
+                self.assertIsNone(result.page_id)
+
+    def test_malformed_title_never_supplies_guessed_role(self):
+        result = resolve_parent(ParentQuery("Example", "Engineer"), Scan((Parent("bad", "Example Program Manager"),), True))
+        self.assertEqual((result.state, result.code), (State.BLOCKED, "identity_invalid"))
+        self.assertIsNone(result.page_id)
+
+    def test_malformed_relevance_uses_tokens_not_substrings(self):
+        result = resolve_parent(ParentQuery("Example", "Engineer"), Scan((Parent("bad", "Exampleton Engineer"),), True))
+        self.assertEqual(result.code, "parent_not_found")
+
+    def test_legacy_round_metadata_and_explicit_identity(self):
+        parent = resolve_parent(ParentQuery("Example", "Program Manager"), Scan((Parent("p", "Example — Program Manager"),), True))
+        self.assertEqual(parent.state, State.MATCH)
+        legacy = Child("legacy", "p")
+        scan = Scan((legacy,), True)
+        for query in (RoundQuery(True, interview_date="2026-10-01"), RoundQuery(True, interviewer="Example Person"), RoundQuery(True, ordinal=1)):
+            with self.subTest(query=query):
+                result = resolve_child(parent, query, scan)
+                self.assertEqual((result.state, result.code), (State.BLOCKED, "round_identity_incomplete"))
+        explicit = RoundQuery(True, explicit_child_page_id="legacy")
+        result = resolve_child(parent, explicit, scan, legacy)
+        self.assertEqual((result.state, result.code), (State.MATCH, "child_match"))
+        result = resolve_child(parent, explicit, scan, Child("legacy", "other"))
+        self.assertEqual((result.state, result.code), (State.BLOCKED, "child_wrong_parent"))

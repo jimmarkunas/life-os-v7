@@ -1,6 +1,6 @@
 """Fail-closed identity decisions with platform-owned normalization."""
 from datetime import date
-from lifeos.platform.names import norm, same_company, same_role, split_title
+from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from .models import Ownership, Resolution, State
 
 
@@ -22,7 +22,11 @@ def resolve_parent(query, scan):
             continue
         company, role = split_title(parent.title)
         if not company.strip() or not role.strip():
-            return Resolution(State.BLOCKED, "identity_invalid")
+            # Missing role is never inferred; only relevant malformed evidence blocks this query.
+            distinctive = set(core(query.company))
+            if not distinctive or distinctive.issubset(set(norm(parent.title).split())):
+                return Resolution(State.BLOCKED, "identity_invalid")
+            continue
         if same_company(company, query.company) and same_role(role, query.role):
             matches.append(parent)
     if len(matches) > 1:

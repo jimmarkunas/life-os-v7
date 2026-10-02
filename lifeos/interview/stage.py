@@ -48,6 +48,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None)
             if resolved.state == State.BLOCKED:
                 counts["blocked"] += 1
                 reason(resolved.code)
+                continue
             counts["valid_parents"] += 1
             owner = notion.ownership(client, parent.page_id, "opportunity")
             owners[parent.page_id] = owner
