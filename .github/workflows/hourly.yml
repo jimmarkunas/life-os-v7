@@ -320,6 +320,13 @@ jobs:
           if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
             python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live)
           fi
+      - id: alerts
+        continue-on-error: true
+        name: Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)
+        if: ${{ env.PIPELINE == 'true' }}
+        run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}
         run: |
@@ -385,10 +392,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           failed=""
           for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
-          if [ -n "$failed" ]; then echo "FAILED LANES:$failed"; exit 1; fi
+          if [ -n "$failed" ]; then
+            python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed. Open the Actions tab."
+            echo "FAILED LANES:$failed"; exit 1
+          fi

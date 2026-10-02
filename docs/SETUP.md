@@ -36,3 +36,9 @@ Add each one at a time in the repo's Settings -> Secrets and variables -> Action
    headers `Authorization: Bearer <the token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, body `{"ref":"main","inputs":{"tick":"true"}}`.
 3. Run it once from the service. A tick that arrives within 50 minutes of another run cancels itself (that is correct).
 The token lives only at the timer service. Never put it in the repo.
+
+
+## Phone alerts (D53)
+1. Install the free **ntfy** app (iPhone or Android) and subscribe to your private topic name (Subscribe to topic; leave the server as ntfy.sh).
+2. In GitHub: Settings > Secrets and variables > Actions > New repository secret: name `NTFY_TOPIC`, value = the same topic name. The name is the password: use a long random one and never commit it.
+3. Test: Actions > watchdog > Run workflow does nothing unless the pipeline is stale; to see a push now, run `python3 -m lifeos.platform.alerts push --title Test --body Hello` with `NTFY_TOPIC` set.

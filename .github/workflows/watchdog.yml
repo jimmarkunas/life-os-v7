@@ -14,7 +14,8 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Stale-pipeline check (counts only; no secrets, no job data)
+      - name: Stale-pipeline check (counts only; no job data; the only secret is the push topic)
         run: python3 -m lifeos.platform.gate --watch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
