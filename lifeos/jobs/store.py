@@ -71,6 +71,11 @@ SCHEMA = (
         removed INT NOT NULL DEFAULT 0, suppressed INT NOT NULL DEFAULT 0, ingested INT NOT NULL DEFAULT 0,
         KEY ix_v7_runs_source (source_id, ran_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_alerts (
+        alert_key VARCHAR(40) NOT NULL PRIMARY KEY,
+        severity VARCHAR(8) NOT NULL, status VARCHAR(8) NOT NULL,
+        first_seen DATETIME NOT NULL, last_seen DATETIME NOT NULL, last_notified DATETIME NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_feed (
         feed_id VARCHAR(24) NOT NULL PRIMARY KEY,
         generation CHAR(64) NULL, cursor_date DATE NULL,
@@ -97,7 +102,7 @@ SCHEMA = (
         browser_seconds INT NOT NULL DEFAULT 0
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),

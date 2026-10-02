@@ -48,6 +48,11 @@ def _discover_jobs(limit, live):
     return discover_jobs.run(limit, live)
 
 
+def _alerts(limit, live):
+    from lifeos.jobs import alerts                                                              # noqa: PLC0415
+    return alerts.run(limit, live)
+
+
 def _interview_probe(limit, live):
     from lifeos import probe                                                                    # noqa: PLC0415
     return {"interview_access": probe.interview_access()}
@@ -111,6 +116,7 @@ STAGES = {
     "web": _web,
     "web-scale-up": _web_scale_up,
     "discover-jobs": _discover_jobs,
+    "alerts": _alerts,
     "interview-probe": _interview_probe,
     "interview": _interview,
     "openjobs": _openjobs,

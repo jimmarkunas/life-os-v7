@@ -231,3 +231,9 @@ Tried and rejected on the runner (probe, same day): Futuristic still refuses a C
 ## D52 — A watchdog outside the pipeline raises the stale-pipeline alert (2026-10-02)
 The gate only runs when an hourly run starts, so a total stall (no GitHub schedule and no timer tick) was silent: on 2026-10-01 the outside timer was set to once a day and nothing ran for about 3 hours with no alert.
 `watchdog.yml` (twice an hour, no secrets, `issues: write` only) runs `python -m lifeos.platform.gate --watch`: it opens the `pipeline-stale` issue when no hourly run has succeeded for 150 minutes and closes it when one has. It is an alarm, not a scheduler: it never runs the pipeline (D25/D30 stand), and a contract test pins that.
+
+## D53 — One alerts layer in the platform, with a phone push (2026-10-02)
+`lifeos/platform/alerts.py` is the single place that decides what is worth telling a person: an `Alert` (stable key, severity PAGE or INFO, counts-only text, one next step), `reconcile` (open once, remind every 6 h for PAGE and 24 h for INFO, resolve once) and sinks (phone push through ntfy). Text is redacted before it leaves; nothing but counts ever reaches a public log or a push.
+Detectors live in the OS that owns the facts (`lifeos/jobs/alerts.py`): nothing published in 24 h, sponsors failing 3+ runs, jobs stuck over a day, a credential expiring (`lifeos/jobs/expiries.json`). State is in `v7_alerts` so a reminder is not a repeat; a failed push is retried next run.
+Two layers: the detectors run at the end of the `finish` job, and the secret-light watchdog (D52) stays as the independent "nothing ran at all" alarm and also pushes. The `report` job pushes when a lane fails. The push topic (`NTFY_TOPIC`) is the only new secret and is never in the repo. An alert failing to send never fails a run.
+Not built yet (each is one detector or one sink): Notion alerts view, GitHub issue per alert, Interview OS alerts (the TL specifies which).
