@@ -264,6 +264,11 @@ The Advisor is preview-first. Generation does not commit to the interview round.
 
 Runtime private material will live outside the public repository. Raw private corpus material is never committed to this repository. Real model transmission requires Jim's explicit acceptance authorization.
 
+## D43 — Advisor private store is bounded; previews are immutable and insert-only
+Interview Advisor runtime doctrine, candidate profile, evidence, Guidance and Accepted Signals live under one explicitly configured private Notion root shared with the Interview integration. The runtime never searches the workspace globally and never treats arbitrary Notion content as Advisor input. The store is fail-closed: exact root identity, exact required child surfaces, source markers, version metadata and corpus hashes must validate before a current bundle may be assembled.
+
+Advisor generation writes only an immutable MACHINE preview beneath the dedicated Advisor Previews container. A preview commits to the exact AdvisorInputBundle digest and to the complete rendered preview body. Preview creation is insert-only and performs authoritative read-back. It does not write Hiring Pipeline, B3 Derived, Live Notes or Raw Notes. Approval and B3 commit remain separate future actions.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run

@@ -31,7 +31,14 @@ class Client:
         self.calls = 0
 
     def call(self, method, path, body=None):
-        for attempt in range(4):
+        return self._call(method, path, body, 4)
+
+    def call_once(self, method, path, body=None):
+        """Perform one request without retrying an operation with uncertain write outcome."""
+        return self._call(method, path, body, 1)
+
+    def _call(self, method, path, body, attempts):
+        for attempt in range(attempts):
             wait = limits.NOTION_GAP_SECONDS - (self._clock() - self._last)
             if wait > 0:
                 self._sleep(wait)
@@ -44,7 +51,7 @@ class Client:
                 with urllib.request.urlopen(request, timeout=30) as response:
                     return json.loads(response.read() or b"{}")
             except urllib.error.HTTPError as error:
-                if error.code == 429 and attempt < 3:
+                if error.code == 429 and attempt < attempts - 1:
                     self._sleep(min(float(error.headers.get("Retry-After") or 2), 30))
                     continue
                 raise NotionError(f"NOTION_HTTP_{error.code}") from None
