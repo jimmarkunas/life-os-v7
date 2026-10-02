@@ -127,12 +127,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
     now = now or datetime.now(tz)
     total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0,
              "catchup": 0, "created": 0, "carried": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
-    for project, board_id, _ in configured:
+    for position, (project, board_id, _) in enumerate(configured, 1):
         try:
             result = run_project(client, project, board_id, live, now, tz, sleep)
         except JiraError as error:
             total["failed"] += 1
-            code = str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR"
+            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name
             total["why"][code] = total["why"].get(code, 0) + 1
             continue
         total["ok"] += 1

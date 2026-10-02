@@ -72,12 +72,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     total = {"projects": len(configured), "ok": 0, "failed": 0, "saved": 0, "current": 0, "next": 0, "overdue": 0,
              "blocked": 0, "triage": 0, "done": 0, "why": {}}
     built = []
-    for project, board_id, triage_all in configured:
+    for position, (project, board_id, triage_all) in enumerate(configured, 1):
         try:
             snap = project_snapshot(client, project, board_id, triage_all, now)
         except JiraError as error:
             total["failed"] += 1
-            code = str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR"
+            code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name
             total["why"][code] = total["why"].get(code, 0) + 1
             continue
         total["ok"] += 1

@@ -234,7 +234,7 @@ class RolloverTests(unittest.TestCase):
         env = {**ENV, "JIRA_BOARDS": "AAA:11,BBB:22"}
         with self.assertRaises(JiraError) as error:
             rollover.run(1, True, environ=env, client=client, now=at(5, 6), sleep=lambda s: None)
-        self.assertEqual(str(error.exception), "JIRA_ROLLOVER_FAILED:1of2:JIRA_HTTP_404")
+        self.assertEqual(str(error.exception), "JIRA_ROLLOVER_FAILED:1of2:JIRA_HTTP_404@2")
         self.assertIn("closed", client.log)            # the healthy project still rolled
 
 
@@ -293,7 +293,7 @@ class SnapshotTests(unittest.TestCase):
         client = self.Board(week(), scrum=False)
         with self.assertRaises(JiraError) as error:
             snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
-        self.assertEqual(str(error.exception), "JIRA_SNAPSHOT_FAILED:1of1:JIRA_BOARD_NOT_SCRUM")
+        self.assertEqual(str(error.exception), "JIRA_SNAPSHOT_FAILED:1of1:JIRA_BOARD_NOT_SCRUM@1")
 
     def test_store_schema_is_one_row_per_project(self):
         self.assertIn("project_key VARCHAR(16) NOT NULL PRIMARY KEY", store.SCHEMA[0])
