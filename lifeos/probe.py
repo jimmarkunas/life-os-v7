@@ -212,37 +212,5 @@ def source_pages(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "
     return out
 
 
-def _rows(html_readers, source, text):
-    """How many rows the source's own reader finds in `text`, or the error class when it refuses the page."""
-    if not text:
-        return None
-    try:
-        return len(html_readers.READERS[source["kind"]](text, source, None))
-    except (ValueError, KeyError, TypeError, AttributeError) as error:
-        return type(error).__name__
-
-
-def browser_pages(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "su-truvi-holdings-ltd"), fetcher=None):
-    """Same shape as source_pages but through the real headless Chromium, plus (for pages with no job markup) the first link labels so a reader can be
-    written: public navigation text only, capped. Counts and flags otherwise."""
-    from lifeos.platform import browser                                                      # noqa: PLC0415
-    from lifeos.sources.web import html_readers                                              # noqa: PLC0415
-    from urllib.parse import urlsplit                                                        # noqa: PLC0415
-    fetcher = fetcher or browser.fetch
-    out = {}
-    for source in registry.load(registry.PATHS["Scale-Up"]):
-        if source["id"] not in ids:
-            continue
-        got = fetcher(source["url"], warm_url=source.get("warm_url"))
-        text = got.html or ""
-        page = html_readers.parse_page(text) if text else None
-        labels = [" ".join(label.split())[:40] for _, label in (page.links if page else []) if label.strip()][:25]
-        out[source["id"]] = {"status": got.status, "error": got.error, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)),
-                             "jsonld_job": len(re.findall(r"JobPosting", text)), "final": (urlsplit(got.final_url).path or "/")[:40],
-                             "reader_rows": _rows(html_readers, source, text),
-                             "labels": labels if source["kind"] == "static_complete_html" else []}
-    return out
-
-
 def run(limit, live):
-    return {"browser_pages": browser_pages(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}

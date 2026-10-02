@@ -257,12 +257,6 @@ jobs:
       - name: Install semantic layer
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
-      - name: Chromium for the sponsors whose own site needs a real browser (Scale-Up step and the probe only; failure is not fatal)
-        continue-on-error: true
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.probe || inputs.web_scale_up)) }}
-        run: |
-          pip install -r requirements-browser.txt
-          python -m playwright install --with-deps chromium
       - id: web
         continue-on-error: true
         name: Step 5b - US Remote web acquisition (due ATS boards)
