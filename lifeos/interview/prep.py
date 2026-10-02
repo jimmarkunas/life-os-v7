@@ -10,9 +10,8 @@ from .models import Ownership, PrepEvidence, State
 CAPS = {"focus": 5, "strongest_evidence": 5, "pressure_points": 5, "questions": 5}
 LABELS = {"focus": "Focus", "strongest_evidence": "Strongest Evidence",
           "pressure_points": "Pressure Points", "questions": "Questions"}
-CARRIED = ("pressure_points", "questions")
 MAX_ITEM = 500
-DERIVED_PREFIX = "v7-interview-derived:1;"
+DERIVED_PREFIX = "v7-interview-derived:2;"
 
 
 def normalize(evidence):
@@ -48,8 +47,11 @@ def digest(normalized):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def render(normalized):
-    blocks = [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(DERIVED_PREFIX + digest(normalized))}}]
+def render(normalized, current_hash=None):
+    current_hash = current_hash or digest(normalized)
+    full_hash = digest(normalized)
+    marker = f"{DERIVED_PREFIX}{current_hash};{full_hash}"
+    blocks = [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(marker)}}]
     for name, label in LABELS.items():
         if normalized[name]:
             blocks.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": rich_text(label)}})
@@ -64,12 +66,12 @@ def _read_derived(client, page_id):
     if blocks[0].get("type") != "paragraph":
         return "conflict", None, None
     first = notion.text(blocks[0])
-    if first.startswith(DERIVED_PREFIX) and len(first) == len(DERIVED_PREFIX) + 64:
-        marker = first[len(DERIVED_PREFIX):]
-        if all(c in "0123456789abcdef" for c in marker):
+    if first.startswith(DERIVED_PREFIX):
+        hashes = first[len(DERIVED_PREFIX):].split(";")
+        if len(hashes) == 2 and all(len(value) == 64 and all(c in "0123456789abcdef" for c in value) for value in hashes):
             payload = _parse_blocks(blocks)
-            if payload is not None and digest(payload) == marker:
-                return "marker", marker, payload
+            if payload is not None and digest(payload) == hashes[1]:
+                return "marker", tuple(hashes), payload
     return "conflict", None, None
 
 
@@ -134,20 +136,9 @@ def _parse_blocks(blocks):
     return out
 
 
-def _consistent(existing, current):
-    """An existing valid Derived answers this evidence when it holds exactly the current Focus / Strongest Evidence and
-    the current items first in Pressure Points / Questions. Any trailing items are inherited ones written earlier, so a
-    replay stays a no-op even if earlier rounds have since changed."""
-    for name in CAPS:
-        have, want = tuple(existing[name]), current[name]
-        if (have[:len(want)] if name in CARRIED else have) != want:
-            return False
-    return True
-
-
 def _merge(current, inherited):
     result = dict(current)
-    for key in CARRIED:
+    for key in ("pressure_points", "questions"):
         values = list(result[key])
         for value in inherited.get(key, ()):
             if value not in values and len(values) < CAPS[key]:
@@ -163,6 +154,7 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         return out
     try:
         current = normalize(evidence)
+        current_hash = digest(current)
         context.require_time()
         target = notion.target_check(client, environ)
         if target != "target_ok": return finish(target)
@@ -178,9 +170,9 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
             return finish("human_page" if notion.ownership(client, child.page_id, "round") == Ownership.HUMAN else "ownership_unknown")
         identity = next((item for item in children.items if notion.same_notion_id(item.page_id, child.page_id)), None)
         if not identity or identity.identity_valid is not True: return finish("round_identity_incomplete")
-        state, _, existing = _read_derived(client, child.page_id)
+        state, marker_hash, _ = _read_derived(client, child.page_id)
         if state == "conflict": return finish("derived_conflict")
-        if state == "marker": return finish("derived_match" if _consistent(existing, current) else "derived_conflict")
+        if state == "marker": return finish("derived_match" if marker_hash[0] == current_hash else "derived_conflict")
         merged = _merge(current, _carry(client, children, identity, context))
         expected = digest(merged)
         out["writes_planned"] = 1
@@ -189,10 +181,10 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         heading, _ = notion.derived_blocks(client, child.page_id)
         before = notion.protected_snapshot(client, child.page_id)
         if before is None: return finish("readback_protected_missing")
-        notion.append_children(client, child.page_id, heading["id"], render(merged))
+        notion.append_children(client, child.page_id, heading["id"], render(merged, current_hash))
         out["writes"] = 1
         after_state, after_hash, _ = _read_derived(client, child.page_id)
-        if after_state != "marker" or after_hash != expected: return finish("derived_readback_failed")
+        if after_state != "marker" or after_hash != (current_hash, expected): return finish("derived_readback_failed")
         page = client.call("GET", f"/pages/{child.page_id}")
         if page.get("archived") or page.get("in_trash") or not notion.same_notion_id((page.get("parent") or {}).get("page_id"), parent.page_id):
             return finish("derived_readback_failed")
