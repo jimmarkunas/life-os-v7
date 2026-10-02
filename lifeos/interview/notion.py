@@ -1,0 +1,183 @@
+"""Read-only Notion evidence and reusable protected read-back primitives."""
+import hashlib
+import json
+import os
+from urllib.parse import quote
+from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.runtime import DeadlineExceeded
+from .models import Child, Ownership, Parent, Scan
+
+MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
+PROTECTED = ("Live Notes", "Raw Notes")
+MAX_CALLS, MAX_DEPTH = 40, 4
+
+
+def environment(environ):
+    return {"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(),
+            "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "interview-unused"}
+
+
+def make_client(environ=os.environ):
+    return Client(environment(environ))
+
+
+def text(block):
+    parts = (block.get(block.get("type")) or {}).get("rich_text") or []
+    return "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in parts)
+
+
+def target_check(client, environ):
+    root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
+    if not root or not environment(environ)["NOTION_API_TOKEN"]:
+        return "target_config_missing"
+    try:
+        page = client.call("GET", f"/pages/{root}")
+        titles = [p.get("title") for p in (page.get("properties") or {}).values() if p.get("type") == "title"]
+        title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
+        return "target_ok" if title == "Hiring Pipeline" and not page.get("archived") and not page.get("in_trash") else "target_mismatch"
+    except (NotionError, KeyError, TypeError, ValueError):
+        return "target_unreadable"
+
+
+def ownership(client, page_id, kind):
+    try:
+        data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
+        blocks = data["results"]
+        first = text(blocks[0]) if blocks else ""
+        if first == MARKERS.get(kind):
+            return Ownership.MACHINE
+        return Ownership.UNKNOWN if "interview:" in first else Ownership.HUMAN
+    except (NotionError, KeyError, TypeError, ValueError):
+        return Ownership.UNKNOWN
+
+
+def children(client, page_id, budget, context=None):
+    out, cursor, seen = [], None, set()
+    while budget[0] > 0:
+        if context:
+            context.require_time()
+        budget[0] -= 1
+        path = f"/blocks/{page_id}/children?page_size=100"
+        data = client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
+        if not isinstance(data.get("results"), list) or type(data.get("has_more")) is not bool:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        out.extend(data["results"])
+        if not data["has_more"]:
+            return out
+        cursor = data.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        seen.add(cursor)
+    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+
+
+def parent_scan(client, root, context=None):
+    found, budget = [], [MAX_CALLS]
+
+    def walk(page_id, active, depth):
+        if depth > MAX_DEPTH:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        current = active
+        for block in children(client, page_id, budget, context):
+            kind = block.get("type", "")
+            title = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
+            if title in ("Active Opportunities", "Retired Opportunities"):
+                current = title == "Active Opportunities"
+                if block.get("has_children") or kind == "child_page":
+                    walk(block["id"], current, depth + 1)
+            elif kind == "child_page":
+                if current is None:
+                    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                found.append(Parent(block["id"], title, current))
+            elif block.get("has_children") and kind in ("toggle", "column", "column_list"):
+                walk(block["id"], current, depth + 1)
+
+    try:
+        walk(root, None, 0)
+        return Scan(tuple(found), True)
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
+        return Scan(tuple(found), False)
+
+
+def child_scan(client, parent_id, context=None):
+    try:
+        blocks = children(client, parent_id, [MAX_CALLS], context)
+        # B1 reads verified identity properties only; never guesses identities from legacy titles.
+        found = []
+        for block in blocks:
+            if block.get("type") != "child_page":
+                continue
+            if context:
+                context.require_time()
+            if len(found) >= MAX_CALLS:
+                raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+            child = explicit_child(client, block["id"])
+            if child is None or child.parent_id != parent_id:
+                raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+            found.append(child)
+        return Scan(tuple(found), True)
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
+        return Scan((), False)
+
+
+def explicit_child(client, page_id):
+    page = client.call("GET", f"/pages/{page_id}")
+    if page.get("archived") or page.get("in_trash"):
+        return None
+    parent = page.get("parent") or {}
+    props = page.get("properties") or {}
+    when = ((props.get("Interview Date") or {}).get("date") or {}).get("start")
+    who = text({"type": "x", "x": {"rich_text": (props.get("Interviewer") or {}).get("rich_text", [])}})
+    ordinal = (props.get("Ordinal") or {}).get("number")
+    return Child(page_id, parent.get("page_id", ""), when, who or None, ordinal)
+
+
+def protected_snapshot(client, page_id):
+    """Call only around an authorized mutation. Hash ordered anchors and all descendant evidence privately."""
+    budget, regions = [MAX_CALLS], {}
+
+    def subtree(block, depth):
+        if depth > MAX_DEPTH:
+            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+        value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
+        if block.get("has_children"):
+            value["protected_children"] = [subtree(b, depth + 1) for b in children(client, block["id"], budget)]
+        return value
+
+    current = None
+    order = []
+    for block in children(client, page_id, budget):
+        label = text(block)
+        if label in PROTECTED and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
+            if label in regions:
+                raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+            current = label
+            order.append((label, block.get("id")))
+            regions[label] = []
+        elif block.get("type", "").startswith("heading"):
+            current = None
+        if current:
+            regions[current].append(subtree(block, 0))
+    if any(label not in regions for label in PROTECTED):
+        return None
+    return hashlib.sha256(json.dumps([order, regions], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def readback(client, page_id, parent_id, kind, before=None):
+    try:
+        page = client.call("GET", f"/pages/{page_id}")
+        if page.get("archived") or page.get("in_trash"):
+            return "readback_page_gone"
+        if (page.get("parent") or {}).get("page_id") != parent_id:
+            return "readback_parent_mismatch"
+        blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"]
+        if not blocks or text(blocks[0]) != MARKERS.get(kind):
+            return "readback_marker_missing"
+        after = protected_snapshot(client, page_id)
+        if after is None:
+            return "readback_protected_missing"
+        return "readback_protected_changed" if before is not None and before != after else "readback_ok"
+    except NotionError as error:
+        return "readback_page_gone" if str(error) == "NOTION_HTTP_404" else "readback_unreadable"
+    except (KeyError, TypeError, ValueError):
+        return "readback_unreadable"
