@@ -10,6 +10,7 @@ from .models import Ownership, PrepEvidence, State
 CAPS = {"focus": 5, "strongest_evidence": 5, "pressure_points": 5, "questions": 5}
 LABELS = {"focus": "Focus", "strongest_evidence": "Strongest Evidence",
           "pressure_points": "Pressure Points", "questions": "Questions"}
+CARRIED = ("pressure_points", "questions")
 MAX_ITEM = 500
 DERIVED_PREFIX = "v7-interview-derived:1;"
 
@@ -57,18 +58,19 @@ def render(normalized):
 
 
 def _read_derived(client, page_id):
-    _, _, blocks = notion.derived_blocks(client, page_id)
+    _, blocks = notion.derived_blocks(client, page_id)
     if not blocks:
-        return "empty", None
+        return "empty", None, None
     if blocks[0].get("type") != "paragraph":
-        return "conflict", None
+        return "conflict", None, None
     first = notion.text(blocks[0])
     if first.startswith(DERIVED_PREFIX) and len(first) == len(DERIVED_PREFIX) + 64:
         marker = first[len(DERIVED_PREFIX):]
         if all(c in "0123456789abcdef" for c in marker):
             payload = _parse_blocks(blocks)
-            return ("marker", marker) if payload is not None and digest(payload) == marker else ("conflict", None)
-    return "conflict", None
+            if payload is not None and digest(payload) == marker:
+                return "marker", marker, payload
+    return "conflict", None, None
 
 
 def _carry(client, children, current, context):
@@ -96,16 +98,10 @@ def _carry(client, children, current, context):
         if notion.ownership(client, prior.page_id, "round") != Ownership.MACHINE:
             return {}
         context.require_time()
-        state, _ = _read_derived(client, prior.page_id)
-        context.require_time()
-        return _parse_payload(client, prior.page_id) if state == "marker" else {}
+        state, _, payload = _read_derived(client, prior.page_id)
+        return payload if state == "marker" else {}
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return {}
-
-
-def _parse_payload(client, page_id):
-    _, _, blocks = notion.derived_blocks(client, page_id)
-    return _parse_blocks(blocks) or {}
 
 
 def _parse_blocks(blocks):
@@ -138,9 +134,20 @@ def _parse_blocks(blocks):
     return out
 
 
+def _consistent(existing, current):
+    """An existing valid Derived answers this evidence when it holds exactly the current Focus / Strongest Evidence and
+    the current items first in Pressure Points / Questions. Any trailing items are inherited ones written earlier, so a
+    replay stays a no-op even if earlier rounds have since changed."""
+    for name in CAPS:
+        have, want = tuple(existing[name]), current[name]
+        if (have[:len(want)] if name in CARRIED else have) != want:
+            return False
+    return True
+
+
 def _merge(current, inherited):
     result = dict(current)
-    for key in ("pressure_points", "questions"):
+    for key in CARRIED:
         values = list(result[key])
         for value in inherited.get(key, ()):
             if value not in values and len(values) < CAPS[key]:
@@ -171,21 +178,20 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
             return finish("human_page" if notion.ownership(client, child.page_id, "round") == Ownership.HUMAN else "ownership_unknown")
         identity = next((item for item in children.items if notion.same_notion_id(item.page_id, child.page_id)), None)
         if not identity or identity.identity_valid is not True: return finish("round_identity_incomplete")
-        state, marker_hash = _read_derived(client, child.page_id)
+        state, _, existing = _read_derived(client, child.page_id)
         if state == "conflict": return finish("derived_conflict")
-        inherited = _carry(client, children, identity, context)
-        merged = _merge(current, inherited)
+        if state == "marker": return finish("derived_match" if _consistent(existing, current) else "derived_conflict")
+        merged = _merge(current, _carry(client, children, identity, context))
         expected = digest(merged)
-        if state == "marker": return finish("derived_match" if marker_hash == expected else "derived_conflict")
         out["writes_planned"] = 1
         if not live: return finish("derived_allowed")
         context.require_time()
-        _, heading, _ = notion.derived_blocks(client, child.page_id)
+        heading, _ = notion.derived_blocks(client, child.page_id)
         before = notion.protected_snapshot(client, child.page_id)
         if before is None: return finish("readback_protected_missing")
         notion.append_children(client, child.page_id, heading["id"], render(merged))
         out["writes"] = 1
-        after_state, after_hash = _read_derived(client, child.page_id)
+        after_state, after_hash, _ = _read_derived(client, child.page_id)
         if after_state != "marker" or after_hash != expected: return finish("derived_readback_failed")
         page = client.call("GET", f"/pages/{child.page_id}")
         if page.get("archived") or page.get("in_trash") or not notion.same_notion_id((page.get("parent") or {}).get("page_id"), parent.page_id):
@@ -197,10 +203,10 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
             return finish("derived_readback_failed")
         if notion.protected_snapshot(client, child.page_id) != before: return finish("readback_protected_changed")
         return finish("derived_created")
-    except OverflowError: return finish("prep_too_large")
-    except (ValueError, TypeError): return finish("prep_invalid")
-    except NotionError as error:
-        if out["writes"]: return finish("derived_readback_failed")
-        return finish("derived_missing" if str(error) == "INTERVIEW_DERIVED_MISSING" else "derived_readback_failed")
-    except (DeadlineExceeded, KeyError, AttributeError):
-        return finish("derived_readback_failed" if out["writes"] else "derived_missing")
+    except (OverflowError, ValueError, TypeError, NotionError, DeadlineExceeded, KeyError, AttributeError) as error:
+        if out["writes"]:
+            return finish("derived_readback_failed")          # whatever failed after the append, the page is unverified
+        if isinstance(error, OverflowError): return finish("prep_too_large")
+        if isinstance(error, (ValueError, TypeError)): return finish("prep_invalid")
+        if isinstance(error, NotionError) and str(error) != "INTERVIEW_DERIVED_MISSING": return finish("derived_readback_failed")
+        return finish("derived_missing")
