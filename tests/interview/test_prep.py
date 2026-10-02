@@ -58,7 +58,8 @@ class PrepTests(unittest.TestCase):
         dry = self.apply(client, query, evidence, False)
         self.assertEqual((dry["writes_planned"], dry["writes"], dry["code"]), (1, 0, "derived_allowed"))
         self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
-        self.assertEqual(self.apply(client, query, evidence)["code"], "derived_match")
+        replay = self.apply(client, query, evidence)
+        self.assertEqual((replay["code"], replay["writes"]), ("derived_match", 0))
         self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 1)
         blocks = client.blocks[round_id]
         heading = next(i for i, b in enumerate(blocks) if notion.text(b) == "Derived")
@@ -66,6 +67,12 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(notion.protected_snapshot(client, round_id), before)
         self.assertEqual(self.apply(client, query, PrepEvidence(focus=("Different",)))["code"], "derived_conflict")
         self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 1)
+        heading, payload = notion.derived_blocks(client, round_id)
+        current_hash, full_hash = notion.text(payload[0]).removeprefix(prep.DERIVED_PREFIX).split(";")
+        self.assertRegex(current_hash, r"^[0-9a-f]{64}$")
+        self.assertRegex(full_hash, r"^[0-9a-f]{64}$")
+        self.assertEqual(current_hash, prep.digest(prep.normalize(evidence)))
+        self.assertEqual(full_hash, prep.digest(prep.normalize(evidence)))
 
     def test_protected_snapshot_failure_and_append_failure_do_not_retry(self):
         client = PrepFake()
@@ -196,10 +203,12 @@ class PrepTests(unittest.TestCase):
         _, page_id, query = machine_round(client)
         normalized = prep.normalize(PrepEvidence(focus=("A",)))
         marker = prep.render(normalized)[0]
-        for kind, text, expected in (("paragraph", prep.DERIVED_PREFIX + prep.digest(normalized), "marker"),
-                                     ("heading_3", prep.DERIVED_PREFIX + prep.digest(normalized), "conflict"),
-                                     ("bulleted_list_item", prep.DERIVED_PREFIX + prep.digest(normalized), "conflict"),
-                                     ("paragraph", prep.DERIVED_PREFIX + "z" * 64, "conflict")):
+        canonical = notion.text(marker)
+        for kind, text, expected in (("paragraph", canonical, "marker"),
+                                     ("heading_3", canonical, "conflict"),
+                                     ("bulleted_list_item", canonical, "conflict"),
+                                     ("paragraph", prep.DERIVED_PREFIX + "z" * 64 + ";" + prep.digest(normalized), "conflict"),
+                                     ("paragraph", prep.DERIVED_PREFIX + prep.digest(normalized) + ";" + "z" * 64, "conflict")):
             with self.subTest(kind=kind, text=text[-8:]):
                 marker_block = copy.deepcopy(marker)
                 marker_block["type"] = kind
@@ -308,13 +317,75 @@ class PrepTests(unittest.TestCase):
         self.assertNotIn(("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:])   # never reads its Derived
         self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
 
-    def test_inherited_items_written_earlier_still_match_but_extra_current_content_conflicts(self):
-        existing = {"focus": ["F"], "strongest_evidence": [], "pressure_points": ["A", "Inherited"], "questions": []}
-        current = {"focus": ("F",), "strongest_evidence": (), "pressure_points": ("A",), "questions": ()}
-        self.assertTrue(prep._consistent(existing, current))
-        self.assertFalse(prep._consistent({**existing, "focus": ["F", "Extra"]}, current))
-        self.assertFalse(prep._consistent({**existing, "pressure_points": ["Inherited", "A"]}, current))
-        self.assertFalse(prep._consistent({**existing, "pressure_points": []}, current))
+    def test_replay_requires_exact_current_evidence_hash(self):
+        variants = (
+            (PrepEvidence(pressure_points=("A", "B")), PrepEvidence(pressure_points=("A",))),
+            (PrepEvidence(pressure_points=("A",)), PrepEvidence(pressure_points=("A", "B"))),
+            (PrepEvidence(focus=("A", "B")), PrepEvidence(focus=("B", "A"))),
+            (PrepEvidence(focus=("A",)), PrepEvidence(focus=("Changed",))),
+            (PrepEvidence(focus=("F",)), PrepEvidence(focus=("F",), strongest_evidence=("S",))),
+            (PrepEvidence(pressure_points=("P",)), PrepEvidence(pressure_points=("Changed",))),
+            (PrepEvidence(questions=("Q",)), PrepEvidence(questions=("Changed",))),
+        )
+        for original, replay in variants:
+            with self.subTest(original=original, replay=replay):
+                client = PrepFake()
+                _, prior_id, prior_query = machine_round(client, ordinal=1)
+                prep.apply(client, ENV, PARENT, prior_query,
+                           PrepEvidence(pressure_points=("B", "Inherited")), True, RunContext.start(60))
+                current_query = RoundQuery(True, "2026-10-02", ordinal=3)
+                create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
+                self.assertEqual(self.apply(client, current_query, original)["code"], "derived_created")
+                result = self.apply(client, current_query, replay)
+                self.assertEqual((result["code"], result["writes"]), ("derived_conflict", 0))
+
+    def test_marker_full_hash_commits_to_merged_payload_and_v1_is_never_rewritten(self):
+        client = PrepFake()
+        _, prior_id, prior_query = machine_round(client, ordinal=1)
+        prior = PrepEvidence(pressure_points=("Inherited",))
+        prep.apply(client, ENV, PARENT, prior_query, prior, True, RunContext.start(60))
+        current_query = RoundQuery(True, "2026-10-02", ordinal=3)
+        create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
+        current = PrepEvidence(pressure_points=("Current",))
+        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")
+        _, payload = notion.derived_blocks(client, "created-3")
+        current_hash, full_hash = notion.text(payload[0]).removeprefix(prep.DERIVED_PREFIX).split(";")
+        self.assertEqual(current_hash, prep.digest(prep.normalize(current)))
+        merged = prep.normalize(PrepEvidence(pressure_points=("Current", "Inherited")))
+        self.assertEqual(full_hash, prep.digest(merged))
+        before = copy.deepcopy(client.blocks["created-3"])
+        client.blocks["created-3"][5] = block("v7-interview-derived:1;" + full_hash)
+        result = self.apply(client, current_query, current)
+        self.assertEqual((result["code"], result["writes"]), ("derived_conflict", 0))
+        self.assertEqual(client.blocks["created-3"][5], block("v7-interview-derived:1;" + full_hash))
+
+    def test_replay_never_carries_or_reads_previous_round_and_ignores_later_changes(self):
+        client = PrepFake()
+        _, previous_id, previous_query = machine_round(client, ordinal=1)
+        current_query = RoundQuery(True, "2026-10-02", ordinal=3)
+        create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
+        current = PrepEvidence(pressure_points=("Current",))
+        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")
+        client.blocks[previous_id].append(block("changed previous derived"))
+        calls = len(client.calls)
+        with patch("lifeos.interview.prep._carry", side_effect=AssertionError("carry on replay")), \
+             patch("lifeos.interview.notion.protected_snapshot", side_effect=AssertionError("snapshot on replay")):
+            self.assertEqual(self.apply(client, current_query, current)["code"], "derived_match")
+            self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
+        self.assertFalse(any(method == "GET" and path == f"/blocks/{previous_id}/children?page_size=100"
+                             for method, path in client.calls[calls:]))
+
+    def test_payload_tampering_fails_full_hash_commitment(self):
+        client = PrepFake()
+        _, round_id, query = machine_round(client)
+        evidence = PrepEvidence(focus=("Original",))
+        self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
+        heading, payload = notion.derived_blocks(client, round_id)
+        item_index = next(i for i, block_value in enumerate(client.blocks[round_id])
+                          if block_value.get("type") == "bulleted_list_item")
+        client.blocks[round_id][item_index] = block("Tampered", "bulleted_list_item")
+        result = self.apply(client, query, evidence)
+        self.assertEqual((result["code"], result["writes"]), ("derived_conflict", 0))
 
     def test_any_error_after_the_append_is_a_readback_failure_and_stops(self):
         for error in (ValueError("x"), TypeError("x"), KeyError("x"), AttributeError("x")):
