@@ -461,7 +461,7 @@ jobs:
         name: Jira card (Daily Report; counts only; the page is written only when live)
         if: ${{ inputs.jira == 'card' || inputs.jira == 'report' }}
         env:
-          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           JIRA_CARD_PROJECTS: ${{ secrets.JIRA_CARD_PROJECTS }}
           JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}

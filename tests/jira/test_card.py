@@ -9,7 +9,7 @@ from lifeos.jira.card import CardError
 
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 7, 9, 0, tzinfo=TZ)
-ENV = {"JIRA_BOARDS": "AAA:11", "JIRA_CARD_BLOCK_ID": "card-1", "NOTION_API_TOKEN": "x", "JIRA_SITE_URL": "https://example.invalid"}
+ENV = {"JIRA_BOARDS": "AAA:11", "JIRA_CARD_BLOCK_ID": "card-1", "NOTION_JIRA_TOKEN": "x", "JIRA_SITE_URL": "https://example.invalid"}
 
 
 def issue(key, status="To Do", priority="Medium", due=None, parent=None, category="new", summary="Private summary"):

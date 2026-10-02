@@ -226,7 +226,7 @@ def card_projects(environ):
 
 
 def _client(environ):
-    return Client({"NOTION_API_TOKEN": environ.get("NOTION_API_TOKEN", ""), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
