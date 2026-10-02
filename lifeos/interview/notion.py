@@ -1,4 +1,4 @@
-"""Read-only Notion evidence and reusable protected read-back primitives."""
+"""Notion evidence and reusable protected read-back primitives."""
 import hashlib
 import json
 import os
@@ -10,6 +10,14 @@ from .models import Child, Ownership, Parent, Scan
 MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
 PROTECTED = ("Live Notes", "Raw Notes")
 MAX_CALLS, MAX_DEPTH = 40, 4
+
+
+def same_notion_id(a, b):
+    """Notion references may use compact, dashed, or uppercase UUID spelling."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    left, right = a.replace("-", "").lower(), b.replace("-", "").lower()
+    return bool(left) and bool(right) and left == right
 
 
 def environment(environ):
@@ -78,16 +86,30 @@ def parent_scan(client, root, context=None):
         if depth > MAX_DEPTH:
             raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         current = active
-        for block in children(client, page_id, budget, context):
+        blocks = children(client, page_id, budget, context)
+        containers = [b for b in blocks if b.get("type") == "child_page"
+                      and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
+        if same_notion_id(page_id, root) and len(containers) > 1:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        for block in blocks:
             kind = block.get("type", "")
             title = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
-            if title in ("Active Opportunities", "Retired Opportunities"):
+            if kind == "child_page" and title in ("Active Opportunities", "Retired Opportunities"):
+                if title == "Active Opportunities":
+                    if not same_notion_id(page_id, root):
+                        continue
+                    container = client.call("GET", f"/pages/{block['id']}")
+                    if not same_notion_id((container.get("parent") or {}).get("page_id"), root) or container.get("archived") or container.get("in_trash"):
+                        raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                # A container scopes its descendants, never its following root siblings.
+                walk(block["id"], title == "Active Opportunities", depth + 1)
+            elif title in ("Active Opportunities", "Retired Opportunities") and (kind.startswith("heading") or kind == "toggle"):
                 current = title == "Active Opportunities"
-                if block.get("has_children") or kind == "child_page":
+                if block.get("has_children"):
                     walk(block["id"], current, depth + 1)
             elif kind == "child_page":
                 if current is None:
-                    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                    continue
                 found.append(Parent(block["id"], title, current))
             elif block.get("has_children") and kind in ("toggle", "column", "column_list"):
                 walk(block["id"], current, depth + 1)
@@ -112,7 +134,7 @@ def child_scan(client, parent_id, context=None):
             if len(found) >= MAX_CALLS:
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             child = explicit_child(client, block["id"])
-            if child is None or child.parent_id != parent_id:
+            if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(child)
         return Scan(tuple(found), True)
@@ -125,11 +147,16 @@ def explicit_child(client, page_id):
     if page.get("archived") or page.get("in_trash"):
         return None
     parent = page.get("parent") or {}
-    props = page.get("properties") or {}
-    when = ((props.get("Interview Date") or {}).get("date") or {}).get("start")
-    who = text({"type": "x", "x": {"rich_text": (props.get("Interviewer") or {}).get("rich_text", [])}})
-    ordinal = (props.get("Ordinal") or {}).get("number")
-    return Child(page_id, parent.get("page_id", ""), when, who or None, ordinal)
+    from .create import parse_identity
+    blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=2")["results"]
+    first = text(blocks[0]) if blocks else ""
+    machine = first == MARKERS["round"]
+    if not machine:
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None)
+    data = parse_identity(text(blocks[1])) if len(blocks) > 1 and blocks[1].get("type") == "paragraph" else None
+    if data is None:
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False)
+    return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
 def protected_snapshot(client, page_id):
@@ -168,7 +195,7 @@ def readback(client, page_id, parent_id, kind, before=None):
         page = client.call("GET", f"/pages/{page_id}")
         if page.get("archived") or page.get("in_trash"):
             return "readback_page_gone"
-        if (page.get("parent") or {}).get("page_id") != parent_id:
+        if not same_notion_id((page.get("parent") or {}).get("page_id"), parent_id):
             return "readback_parent_mismatch"
         blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"]
         if not blocks or text(blocks[0]) != MARKERS.get(kind):
@@ -181,3 +208,63 @@ def readback(client, page_id, parent_id, kind, before=None):
         return "readback_page_gone" if str(error) == "NOTION_HTTP_404" else "readback_unreadable"
     except (KeyError, TypeError, ValueError):
         return "readback_unreadable"
+
+
+def active_target(client, root, context):
+    """Exactly one verified direct child page; legacy headings are not infrastructure."""
+    try:
+        blocks = children(client, root, [MAX_CALLS], context)
+        targets = [b["id"] for b in blocks if b.get("type") == "child_page"
+                   and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
+        if len(targets) != 1 or same_notion_id(targets[0], root):
+            return None
+        context.require_time()
+        page = client.call("GET", f"/pages/{targets[0]}")
+        titles = [p["title"] for p in page.get("properties", {}).values() if p.get("type") == "title"]
+        title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
+        parent = page.get("parent") or {}
+        valid = same_notion_id(parent.get("page_id"), root) and parent.get("type", "page_id") == "page_id"
+        return targets[0] if valid and title == "Active Opportunities" and not page.get("archived") and not page.get("in_trash") else None
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
+        return None
+
+
+def insert_page(client, parent_id, title, blocks):
+    from lifeos.platform.notion_client import rich_text
+    return client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
+                      "properties": {"title": {"type": "title", "title": rich_text(title)}}, "children": blocks})
+
+
+def active_shape(client, root, context):
+    """GET-only probe of direct insertion infrastructure and untouched legacy headings."""
+    out = {"active_heading_count": 0, "active_container_count": 0,
+           "active_container_parent_verified": False, "insertion_supported": False,
+           "code": "active_shape_incomplete"}
+    budget = [MAX_CALLS]
+    def headings(blocks, depth):
+        if depth > MAX_DEPTH:
+            raise DeadlineExceeded("bounded shape exhausted")
+        for block in blocks:
+            kind = block.get("type", "")
+            if kind.startswith("heading") and text(block) == "Active Opportunities":
+                out["active_heading_count"] += 1
+            elif block.get("has_children") and kind in ("column_list", "column", "toggle"):
+                headings(children(client, block["id"], budget, context), depth + 1)
+    try:
+        blocks = children(client, root, budget, context)
+        out["active_container_count"] = sum(b.get("type") == "child_page" and
+            (b.get("child_page") or {}).get("title") == "Active Opportunities" for b in blocks)
+        headings(blocks, 0)
+        if out["active_container_count"] > 1:
+            out["code"] = "active_shape_ambiguous"
+        elif out["active_container_count"] == 1:
+            valid = active_target(client, root, context) is not None
+            out["active_container_parent_verified"] = out["insertion_supported"] = valid
+            out["code"] = "active_shape_supported" if valid else "active_shape_incomplete"
+    except DeadlineExceeded:
+        out["code"] = "active_shape_incomplete"
+    except NotionError as error:
+        out["code"] = "active_shape_incomplete" if str(error) == "INTERVIEW_SCAN_INCOMPLETE" else "active_shape_unreadable"
+    except (KeyError, TypeError, ValueError):
+        out["code"] = "active_shape_incomplete"
+    return out

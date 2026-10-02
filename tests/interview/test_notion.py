@@ -98,3 +98,32 @@ class NotionTests(unittest.TestCase):
         client.more = True
         self.assertFalse(notion.parent_scan(client, "root").complete)
         self.assertFalse(notion.child_scan(client, "p").complete)
+
+
+class NotionIdTests(unittest.TestCase):
+    def test_format_equality_and_missing_values(self):
+        dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"
+        compact = dashed.replace("-", "")
+        for left, right, expected in (
+            (dashed, compact, True), (dashed.upper(), compact, True),
+            (dashed, "fedcbafe-dcba-4abc-8def-abcdefabcdef", False),
+            (None, compact, False), (compact, None, False), ("", "", False),
+            ("---", "", False), (None, None, False), (1, 1, False),
+        ):
+            with self.subTest(left=left, right=right):
+                self.assertEqual(notion.same_notion_id(left, right), expected)
+
+    def test_readback_and_child_resolution_use_canonical_parent_ids(self):
+        from lifeos.interview.identity import resolve_child
+        from lifeos.interview.models import Child, Resolution, RoundQuery, Scan, State
+        dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"
+        compact = dashed.replace("-", "")
+        client = Fake()
+        client.pages["p"]["parent"]["page_id"] = dashed
+        self.assertEqual(notion.readback(client, "p", compact, "opportunity"), "readback_ok")
+        child = Child(dashed, dashed)
+        parent = Resolution(State.MATCH, "parent_match", compact.upper())
+        result = resolve_child(parent, RoundQuery(True, explicit_child_page_id=compact), Scan((child,), True), child)
+        self.assertEqual(result.code, "child_match")
+        result = resolve_child(parent, RoundQuery(True, explicit_child_page_id=compact), Scan((child,), True), Child(dashed, "different"))
+        self.assertEqual(result.code, "child_wrong_parent")
