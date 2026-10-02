@@ -238,6 +238,29 @@ class RolloverTests(unittest.TestCase):
         self.assertIn("closed", client.log)            # the healthy project still rolled
 
 
+class ScheduledRolloverTests(unittest.TestCase):
+    """Scheduled runs act only once the sprint has ended and it is Monday 6 AM local; every other hour is a quiet no-op."""
+
+    def go(self, now, client=None, live=True):
+        client = client or FakeJira(week(), issues=[("AAA-1", 1, "To Do"), ("AAA-2", 1, "Done")])
+        return rollover.run(1, live, environ=ENV, client=client, now=now, sleep=lambda s: None, auto=True), client
+
+    def test_mid_week_and_sunday_night_do_nothing_and_do_not_fail(self):
+        for now in (at(2, 12), datetime(2026, 10, 4, 23, 59, tzinfo=TZ), datetime(2026, 10, 5, 5, 59, tzinfo=TZ)):
+            out, client = self.go(now)
+            self.assertEqual((out["not_due"], out["writes"], client.log), (1, 0, []))
+
+    def test_monday_morning_rolls_over_once_and_the_next_hour_is_quiet(self):
+        out, client = self.go(datetime(2026, 10, 5, 6, 7, tzinfo=TZ))
+        self.assertEqual((out["created"], out["carried"], out["closed"], out["started"]), (1, 1, 1, 1))
+        again, _ = self.go(datetime(2026, 10, 5, 7, 7, tzinfo=TZ), client)
+        self.assertEqual((again["not_due"], again["writes"]), (1, 0))
+
+    def test_scheduled_dry_run_writes_nothing(self):
+        out, client = self.go(datetime(2026, 10, 5, 6, 7, tzinfo=TZ), live=False)
+        self.assertEqual((out["would_create"], client.log), (1, []))
+
+
 class SharedBoardTests(unittest.TestCase):
     """A board whose filter spans projects lists the other project's sprint too; cross-assigned work rides along."""
     ENV2 = {"JIRA_BOARDS": "AAA:11,BBB:22:readonly"}
@@ -288,7 +311,7 @@ class SnapshotTests(unittest.TestCase):
         client = self.Board(week([sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))]))
         snap = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
         self.assertEqual((snap["schema"], len(snap["current_tasks"]), len(snap["next_tasks"]), len(snap["overdue"]),
-                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (4, 2, 2, 2, 1, 1, 1))
+                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (5, 2, 2, 2, 1, 1, 1))
         self.assertEqual(snap["current_sprint"]["id"], 1)
         self.assertEqual(snap["next_sprint"]["id"], 2)
         counts = snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
@@ -367,17 +390,17 @@ class WorkflowTests(unittest.TestCase):
         self.assertRegex(self.text, r'jira:\n(?:.*\n)*?\s+default: "none"')
         auto = "github.event_name != 'workflow_dispatch' || inputs.tick"
         self.assertIn(auto, job.split("runs-on")[0])
-        for step_id, nxt in (("jsnap", "jcard"), ("jcard", "jprobe")):
+        for step_id, nxt in (("jrollauto", "jsnap"), ("jsnap", "jcard"), ("jcard", "jprobe")):
             step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]
             self.assertIn(auto, step.split("run:")[0], step_id)
         for step_id, nxt in (("jprobe", "jroll"), ("jroll", "Jira warning")):
-            step = job[job.index(f"id: {step_id}"):job.index(nxt)]
+            step = job[job.index(f"id: {step_id}\n"):job.index(nxt if nxt != "jroll" else "id: jroll\n")]
             self.assertNotIn(auto, step, step_id)
 
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 4)
+        self.assertEqual(job.count("continue-on-error: true"), 5)
         self.assertIn("::warning", job)
 
     def test_other_credentials_are_blank_and_database_secrets_reach_only_the_snapshot_step(self):
@@ -387,8 +410,8 @@ class WorkflowTests(unittest.TestCase):
                      "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "HIRING_PIPELINE_PAGE_ID"):
             self.assertIn(f'{name}: ""', head, name)
         self.assertNotIn("secrets.LIFEOS_ACQ", head)
-        snap = steps[steps.index("id: jsnap"):steps.index("id: jroll")]
-        roll = steps[steps.index("id: jroll"):steps.index("Jira warning")]
+        snap = steps[steps.index("id: jsnap"):steps.index("id: jcard")]
+        roll = steps[steps.index("id: jroll\n"):steps.index("Jira warning")]
         self.assertNotIn("NOTION_JIRA_TOKEN", steps[steps.index("id: jsnap"):steps.index("id: jcard")])
         self.assertIn("secrets.LIFEOS_ACQ_DB_PASSWORD", snap)
         self.assertNotIn("secrets.", roll)

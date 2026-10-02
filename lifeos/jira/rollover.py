@@ -3,7 +3,7 @@ sprint before its end, never closes it before the carry-forward is verified, and
 Output is counts and fixed codes only: sprint names, issue keys and summaries are private."""
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, time as clock, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform.jira import JiraError
@@ -11,6 +11,7 @@ from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
 UNFINISHED_FIELDS = "summary,status,issuetype"
+AUTO_AFTER_HOUR = 6                      # scheduled rollover waits for Monday 6 AM local, like V1; manual runs only need the sprint to have ended
 
 
 def _when(value):
@@ -60,13 +61,17 @@ def _state(client, sprint_id, expected, code):
         raise JiraError(code)
 
 
-def plan(client, project, board_id, now, tz, keys=()):
+def plan(client, project, board_id, now, tz, keys=(), auto=False):
     if str(client.board(board_id).get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
     active = owned(client.sprints(board_id, "active"), project, keys)
     future = owned(client.sprints(board_id, "future"), project, keys)
     sprint, catchup = resolve_current(active, future, now, tz)
     sprint_id = int(sprint["id"])
+    if auto:                                                  # scheduled: do nothing until the sprint has ended and it is Monday morning
+        end = _when(sprint.get("endDate"))
+        if not end or now < datetime.combine(end.astimezone(tz).date() + timedelta(days=1), clock(AUTO_AFTER_HOUR), tzinfo=tz):
+            return {"not_due": True}
     # every unfinished item in the sprint moves, whatever its project: cross-assigned work must not be stranded in a closed sprint
     unfinished = [i["key"] for i in client.sprint_issues(sprint_id, "statusCategory != Done", UNFINISHED_FIELDS) if i.get("key")]
     end_local, start, end = target_week(sprint, tz)
@@ -105,9 +110,11 @@ def execute(client, project, board_id, p, now, sleep=time.sleep, keys=()):
     return {"created": created, "carried": len(p["unfinished"])}
 
 
-def run_project(client, project, board_id, live, now, tz, sleep, keys=()):
+def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=False):
     for attempt in range(2):
-        p = plan(client, project, board_id, now, tz, keys)
+        p = plan(client, project, board_id, now, tz, keys, auto)
+        if p.get("not_due"):
+            return {"not_due": 1}
         if not live:
             return {"reuse": int(p["target_id"] is not None), "would_create": int(p["target_id"] is None),
                     "would_carry": len(p["unfinished"]), "catchup": int(p["catchup"])}
@@ -120,14 +127,14 @@ def run_project(client, project, board_id, live, now, tz, sleep, keys=()):
             raise
 
 
-def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep):
+def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep, auto=False):
     from lifeos.platform.jira import Jira
     configured = boards(environ)
     client = client or Jira.from_env(environ)
     tz = ZoneInfo(LOCAL_TZ)
     now = now or datetime.now(tz)
     total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0,
-             "catchup": 0, "skipped_readonly": 0, "created": 0, "carried": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
+             "catchup": 0, "not_due": 0, "skipped_readonly": 0, "created": 0, "carried": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
     keys = [entry[0] for entry in configured]
     for position, (project, board_id, _, readonly) in enumerate(configured, 1):
         if readonly:
@@ -135,7 +142,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
             total["ok"] += 1
             continue
         try:
-            result = run_project(client, project, board_id, live, now, tz, sleep, keys)
+            result = run_project(client, project, board_id, live, now, tz, sleep, keys, auto)
         except JiraError as error:
             total["failed"] += 1
             code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name

@@ -11,7 +11,7 @@ from . import store
 
 LOCAL_TZ = "America/Chicago"
 FIELDS = "summary,status,issuetype,priority,duedate,parent,project,assignee"
-SCHEMA_V = 4
+SCHEMA_V = 5
 SECTIONS = ("current_tasks", "next_tasks", "overdue", "blocked", "triage", "done")
 
 
@@ -24,6 +24,7 @@ def compact(issue):
             "priority": (fields.get("priority") or {}).get("name") or "Unspecified", "due": fields.get("duedate"),
             "parent": (fields.get("parent") or {}).get("key"),
             "parent_summary": ((fields.get("parent") or {}).get("fields") or {}).get("summary") or "",
+            "parent_type": (((fields.get("parent") or {}).get("fields") or {}).get("issuetype") or {}).get("name") or "",
             "project": ((fields.get("project") or {}).get("key")) or str(issue.get("key") or "").rsplit("-", 1)[0],
             "assignee": (fields.get("assignee") or {}).get("displayName")}
 
