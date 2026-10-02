@@ -11,7 +11,7 @@ from . import store
 
 LOCAL_TZ = "America/Chicago"
 FIELDS = "summary,status,issuetype,priority,duedate,parent,project,assignee"
-SCHEMA_V = 3
+SCHEMA_V = 4
 SECTIONS = ("current_tasks", "next_tasks", "overdue", "blocked", "triage", "done")
 
 
@@ -37,7 +37,18 @@ def _by_start(sprints):
     return sorted(sprints, key=lambda s: (s.get("startDate") or "9999", int(s.get("id") or 0)))
 
 
-def project_snapshot(client, project, board_id, triage_all, now, keys=()):
+def gtv_work(client, board_id, epic):
+    """Unfinished work under the GTV epic: its Tasks, plus those Tasks' Sub-tasks (leaves are chosen at render time)."""
+    tasks = [compact(i) for i in client.board_issues(board_id, f"parent = {epic} AND statusCategory != Done ORDER BY Rank ASC", FIELDS)]
+    keys = [t["key"] for t in tasks]
+    subs = []
+    for start in range(0, len(keys), 50):
+        chunk = ",".join(keys[start:start + 50])
+        subs += [compact(i) for i in client.board_issues(board_id, f"parent in ({chunk}) AND statusCategory != Done ORDER BY Rank ASC", FIELDS)]
+    return tasks + subs
+
+
+def project_snapshot(client, project, board_id, triage_all, now, keys=(), gtv_epic=None):
     board = client.board(board_id)
     if str(board.get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
@@ -58,6 +69,7 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=()):
         return issues(f"sprint = {sprint['id']} AND issuetype != Epic AND statusCategory != Done")   # Tasks and Sub-tasks, whole sprint
 
     triage_type = "issuetype != Epic" if triage_all else "issuetype = Task"
+    gtv = gtv_work(client, board_id, gtv_epic) if gtv_epic and gtv_epic.split("-")[0] == project else None   # None = not configured here
     done = issues(f"issuetype != Epic AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
     return {"schema": SCHEMA_V, "project": project, "taken_at": now.isoformat(), "timezone": LOCAL_TZ,
             "board": {"id": board_id, "name": board.get("name")},
@@ -66,7 +78,7 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=()):
             "overdue": issues(f'project = {project} AND issuetype != Epic AND statusCategory != Done AND duedate < "{today}"'),
             "blocked": issues(f"project = {project} AND issuetype != Epic AND status = blocked"),
             "triage": issues(f"project = {project} AND sprint is EMPTY AND {triage_type} AND statusCategory != Done"),
-            "done": done}
+            "done": done, "gtv": gtv}
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
@@ -81,7 +93,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     keys = [entry[0] for entry in configured]
     for position, (project, board_id, triage_all, _) in enumerate(configured, 1):
         try:
-            snap = project_snapshot(client, project, board_id, triage_all, now, keys)
+            snap = project_snapshot(client, project, board_id, triage_all, now, keys, (environ.get("JIRA_GTV_EPIC") or "").strip() or None)
         except JiraError as error:
             total["failed"] += 1
             code = (str(error) if str(error).startswith("JIRA_") else "JIRA_ERROR") + f"@{position}"   # board position, never its name

@@ -433,6 +433,7 @@ jobs:
       JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
       JIRA_BOARDS: ${{ secrets.JIRA_BOARDS }}
+      JIRA_GTV_EPIC: ${{ secrets.JIRA_GTV_EPIC }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -465,6 +466,7 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           JIRA_CARD_PROJECTS: ${{ secrets.JIRA_CARD_PROJECTS }}
           JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_GTV_CONTEXT_URL: ${{ secrets.JIRA_GTV_CONTEXT_URL }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}

@@ -108,6 +108,41 @@ class BucketTests(unittest.TestCase):
         self.assertIn("Show This Week items", json.dumps(body))
 
 
+class GtvTests(unittest.TestCase):
+    def gtv(self, *items):
+        return snapshot(gtv=list(items))
+
+    def test_priority_then_due_then_rank_and_blocked_never_chosen(self):
+        snap = self.gtv(issue("AAA-50", status="Blocked", priority="Highest"), issue("AAA-51"), issue("AAA-52", priority="High"),
+                        issue("AAA-53", priority="High", due="2026-10-09"))
+        self.assertEqual(card.gtv_action(snap, None)["key"], "AAA-53")           # High beats Medium; earlier due beats none
+        self.assertEqual(card.gtv_action(snap, "AAA-51")["key"], "AAA-51")       # sticky until done or blocked
+        self.assertEqual(card.gtv_action(snap, "AAA-50")["key"], "AAA-53")       # a blocked sticky is dropped
+
+    def test_leaves_only_and_done_work_is_ignored(self):
+        snap = self.gtv(issue("AAA-60"), issue("AAA-61", parent="AAA-60"), issue("AAA-62", category="done"))
+        self.assertEqual(card.gtv_action(snap, None)["key"], "AAA-61")
+
+    def test_no_valid_action_renders_needs_jira_and_unconfigured_renders_nothing(self):
+        body, _ = card.render([self.gtv()], date(2026, 10, 7), NOW, None)
+        self.assertIn("Needs Jira", json.dumps(body))
+        body, counts = card.render([snapshot(gtv=None)], date(2026, 10, 7), NOW, None)
+        self.assertNotIn("Global Talent Visa", json.dumps(body))
+        self.assertEqual(counts["gtv"], 0)
+
+    def test_the_card_carries_the_gtv_line_and_reuses_the_sticky_choice_from_the_previous_card(self):
+        snaps = {"AAA": self.gtv(issue("AAA-70", priority="High"), issue("AAA-71"))}
+        previous = {"id": "g", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "GTV Action \u00b7 AAA-71 \u2014 Private summary"}]}}
+        status = {"id": "s", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "V7 \u00b7 updated 6:00 AM CT"}]}}
+        client = FakeNotion([heading(), status, previous])
+        out = card.run(1, True, environ=dict(ENV, JIRA_GTV_CONTEXT_URL="https://example.invalid/ctx"), client=client, now=NOW, connect=conn(snaps))
+        self.assertEqual(out["gtv"], 1)
+        text = json.dumps([k for k in client.kids])
+        self.assertIn("GTV Action", text)
+        self.assertIn("AAA-71", text)                                            # not AAA-70: the earlier pick stays until done
+        self.assertNotIn("AAA-70", text)
+
+
 class WriteTests(unittest.TestCase):
     def tearDown(self):
         while _patchers:

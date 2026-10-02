@@ -4,6 +4,7 @@ report refresh cannot be broken by Jira being down) and is rendered with V1's bu
 This Week, Done. A snapshot older than STALE_HOURS is never shown as current: only the status line changes, to STALE.
 Output is counts and fixed codes only."""
 import os
+import re
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -123,6 +124,37 @@ def _none():
     return [_bullet([_text("None")])]
 
 
+KEY_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+")
+PRIORITY_ORDER = {"highest": 0, "high": 1}
+
+
+def gtv_action(snap, sticky):
+    """Exactly one unfinished, unblocked GTV action, sticky until it is done or blocked. Leaves only (a Task with open Sub-tasks
+    yields its Sub-tasks). Otherwise: Jira priority, then earliest due date, then Jira rank order."""
+    work = [i for i in snap.get("gtv") or [] if i["category"] != "done"]
+    parents = {i["parent"] for i in work if i.get("parent")}
+    leaves = [i for i in work if i["key"] not in parents and not _blocked(i)]
+    for issue in leaves:
+        if issue["key"] == sticky:
+            return issue
+    leaves.sort(key=lambda i: (PRIORITY_ORDER.get(i["priority"].lower(), 2), i.get("due") or "9999"))
+    return leaves[0] if leaves else None
+
+
+def gtv_blocks(snap, sticky, site, context_url):
+    """-> (blocks, chosen key). Only for a snapshot that has a GTV epic configured (gtv is a list, possibly empty)."""
+    action = gtv_action(snap, sticky)
+    parts = [_text("GTV Action \u00b7 ", bold=True)]
+    if action:
+        parts += _line(action, site, show_due=True)
+    else:
+        parts.append(_text("Create Jira \u2014 define the next GTV action \u00b7 Needs Jira"))
+    if context_url:
+        parts += [_text(" \u00b7 "), _text("GTV Notion Context", context_url)]
+    return [_heading("\U0001F1EC\U0001F1E7 Global Talent Visa"),
+            {"object": "block", "type": "paragraph", "paragraph": {"rich_text": parts}}], (action or {}).get("key")
+
+
 def status_line(now, stale_at=None):
     stamp = now.strftime("%-I:%M %p CT")
     if stale_at:
@@ -130,13 +162,17 @@ def status_line(now, stale_at=None):
     return f"{STATUS_PREFIX}updated {stamp}"
 
 
-def render(snaps, today, now, site):
+def render(snaps, today, now, site, sticky=None, context_url=None):
     """Notion blocks for the card body (the 'JIRA Execution' heading is not part of it) and the per-section counts."""
-    counts = {"overdue_blocked": 0, "today": 0, "this_week": 0, "done": 0}
+    counts = {"overdue_blocked": 0, "today": 0, "this_week": 0, "done": 0, "gtv": 0}
     body = []
     for snap in snaps:
+        if snap.get("gtv") is not None:
+            gtv, chosen = gtv_blocks(snap, sticky, site, context_url)
+            body += gtv
+            counts["gtv"] += int(chosen is not None)
         b = buckets(snap, today)
-        for name in counts:
+        for name in b:
             counts[name] += len(b[name])
         if len(snaps) > 1:
             body.append({"object": "block", "type": "heading_3", "heading_3": {"rich_text": [_text(snap["project"])]}})
@@ -255,7 +291,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             client.call("PATCH", f"/blocks/{status['id']}", {"paragraph": {"rich_text": rich_text(status_line(now, taken))}})
             result["written"] = 1
         return result
-    body, counts = render(snaps, now.date(), now, site_url(environ))
+    sticky = next((m.group(0) for b in existing[1:] if _plain(b).startswith("GTV Action") for m in [KEY_RE.search(_plain(b))] if m), None)
+    body, counts = render(snaps, now.date(), now, site_url(environ), sticky, (environ.get("JIRA_GTV_CONTEXT_URL") or "").strip() or None)
     result.update({k: v for k, v in counts.items()}, blocks=len(body))
     if not live:
         return result

@@ -288,7 +288,7 @@ class SnapshotTests(unittest.TestCase):
         client = self.Board(week([sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))]))
         snap = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
         self.assertEqual((snap["schema"], len(snap["current_tasks"]), len(snap["next_tasks"]), len(snap["overdue"]),
-                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (3, 2, 2, 2, 1, 1, 1))
+                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (4, 2, 2, 2, 1, 1, 1))
         self.assertEqual(snap["current_sprint"]["id"], 1)
         self.assertEqual(snap["next_sprint"]["id"], 2)
         counts = snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
@@ -296,6 +296,15 @@ class SnapshotTests(unittest.TestCase):
         for private in ("Private summary", "C-1", "AAA"):
             self.assertNotIn(private, text)
         self.assertEqual((counts["projects"], counts["ok"], counts["saved"], counts["current"], counts["blocked"]), (1, 1, 0, 2, 1))
+
+    def test_gtv_work_is_collected_only_for_the_epics_own_project(self):
+        client = self.Board(week())
+        mine = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7), (), "AAA-9")
+        other = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7), (), "ZZZ-9")
+        none = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
+        self.assertEqual(len(mine["gtv"]), 4)            # tasks under the epic plus their sub-tasks
+        self.assertIsNone(other["gtv"])
+        self.assertIsNone(none["gtv"])
 
     def test_dry_run_never_touches_the_database_and_live_saves_one_row_per_project(self):
         client = self.Board(week())
@@ -377,7 +386,7 @@ class WorkflowTests(unittest.TestCase):
         roll = steps[steps.index("id: jroll"):steps.index("Jira warning")]
         self.assertIn("secrets.LIFEOS_ACQ_DB_PASSWORD", snap)
         self.assertNotIn("secrets.", roll)
-        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_EMAIL"])
+        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_EMAIL", "JIRA_GTV_EPIC"])
 
     def test_no_jira_value_appears_anywhere_in_tracked_workflow_or_code(self):
         self.assertNotRegex(self.text, r"atlassian\.net|api\.atlassian\.com")
