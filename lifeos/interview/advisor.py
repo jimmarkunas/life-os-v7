@@ -259,6 +259,7 @@ class PreInterviewRisk:
     do_not_do: str
     evidence_refs: tuple[str, ...]
     certainty_target: str
+    personal_pattern: bool = False
 
 
 @dataclass(frozen=True)
@@ -274,16 +275,14 @@ def _validate_forecast(bundle, forecast):
     sources = {source.canonical_ref(): source for source in bundle.sources}
     evidence = {item.ref.canonical(): item for item in bundle.evidence}
     hypotheses = set()
-    personal_pattern = re.compile(
-        r"\b(?:jim|i|me|my|mine|myself|you|your|yours|candidate|interviewee|prior|previous|historical)\b", re.I)
-    accepted_kinds = {SourceKind.CANDIDATE_PROFILE, SourceKind.GUIDANCE, SourceKind.ACCEPTED_SIGNAL,
-                      SourceKind.PRIOR_DERIVED}
+    personal_grounding_kinds = {SourceKind.CANDIDATE_PROFILE, SourceKind.GUIDANCE, SourceKind.ACCEPTED_SIGNAL}
     for risk in forecast.risks:
         for value, limit in ((risk.hypothesis, 300), (risk.why_plausible, 500),
                              (risk.if_confirmed, 500), (risk.do_not_do, 300)):
             _fail(isinstance(value, str) and value.strip() == value and bool(value) and len(value) <= limit,
                   "advisor_draft_invalid")
         _fail(isinstance(risk.confidence, ForecastConfidence), "advisor_draft_invalid")
+        _fail(type(risk.personal_pattern) is bool, "advisor_draft_invalid")
         identity = risk.hypothesis.casefold()
         _fail(identity not in hypotheses, "advisor_draft_invalid")
         hypotheses.add(identity)
@@ -305,10 +304,9 @@ def _validate_forecast(bundle, forecast):
         _fail(all(ref in evidence for ref in risk.evidence_refs),
               "advisor_evidence_missing")
         _fail(risk.certainty_target in ("opportunity", "candidate", "company"), "advisor_draft_invalid")
-        narrative = " ".join((risk.hypothesis, risk.why_plausible, *risk.watch_for,
-                              risk.if_confirmed, risk.do_not_do))
-        if personal_pattern.search(narrative):
-            _fail(any(sources[ref].kind in accepted_kinds for ref in risk.source_refs), "advisor_ref_missing")
+        if risk.personal_pattern:
+            _fail(any(sources[ref].kind in personal_grounding_kinds for ref in risk.source_refs),
+                  "advisor_ref_missing")
 
 
 def render_forecast(bundle: AdvisorInputBundle, forecast: PreInterviewForecast) -> str:

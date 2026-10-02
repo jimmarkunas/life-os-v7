@@ -371,13 +371,48 @@ class PreInterviewForecastTests(unittest.TestCase):
         self.assertNotIn("E-SYN-202@1", rendered)
 
     def test_personal_pattern_requires_accepted_bundle_grounding(self):
-        personal = risk("I may over-explain before confirming the decision criteria.")
+        personal = risk("I may over-explain before confirming the decision criteria.", personal_pattern=True)
         value = forecast(personal, risk("Second."), risk("Third."))
         with self.assertRaises(AdvisorContractError):
             render_forecast(bundle(), value)
         grounded = replace(personal, source_refs=("PROFILE-SYN-001@1",))
         self.assertIn("I may over-explain", render_forecast(bundle(), forecast(
             grounded, risk("Second."), risk("Third."))))
+
+    def test_you_or_your_role_language_does_not_infer_a_personal_pattern(self):
+        ordinary = risk("Your stakeholders may need more time to align.",
+                        why_plausible="The role has several independent teams.")
+        self.assertFalse(ordinary.personal_pattern)
+        self.assertIn("Your stakeholders", render_forecast(bundle(), forecast(
+            ordinary, risk("Second."), risk("Third."))))
+
+    def test_personal_pattern_requires_profile_guidance_or_accepted_signal(self):
+        personal = risk("An over-explanation pattern may recur.", personal_pattern=True)
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third.")))
+        for source_ref in ("PROFILE-SYN-001@1", "GUIDE-SYN-001@1", "SIGNAL-SYN-001@1"):
+            with self.subTest(source_ref=source_ref):
+                grounded = replace(personal, source_refs=(source_ref,))
+                self.assertIn("An over-explanation pattern may recur", render_forecast(
+                    bundle(), forecast(grounded, risk("Second."), risk("Third."))))
+
+    def test_prior_derived_does_not_ground_a_personal_pattern(self):
+        prior = AdvisorSource("PRIOR-SYN-001", SourceKind.PRIOR_DERIVED, "Synthetic derived coaching.")
+        value = bundle(src=sources() + (prior,))
+        personal = risk("A familiar pattern may recur.", source_refs=("PRIOR-SYN-001@1",),
+                        personal_pattern=True)
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(value, forecast(personal, risk("Second."), risk("Third.")))
+
+    def test_personal_pattern_requires_an_actual_bool_and_does_not_change_rendering(self):
+        personal = risk("A pattern may recur.", personal_pattern=True,
+                        source_refs=("PROFILE-SYN-001@1",))
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), forecast(replace(personal, personal_pattern=1),
+                                               risk("Second."), risk("Third.")))
+        ordinary = replace(personal, personal_pattern=False, source_refs=("JD-SYN-001@1",))
+        self.assertEqual(render_forecast(bundle(), forecast(ordinary, risk("Second."), risk("Third."))),
+                         render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third."))))
 
     def test_renderer_resolves_canonical_evidence_and_hides_all_refs(self):
         text = "Canonical synthetic evidence, never model supplied prose."
