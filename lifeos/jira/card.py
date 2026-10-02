@@ -95,7 +95,8 @@ def _rows(issues, site):
     for issue in issues:
         parent = issue.get("parent")
         if parent and parent not in groups:
-            groups[parent] = {"summary": issue.get("parent_summary") or parent, "kids": []}
+            groups[parent] = {"summary": issue.get("parent_summary") or parent, "kids": [],
+                              "label": "Epic \u00b7 " if issue.get("parent_type") == "Epic" else ""}
             rows.append(("group", parent))
         if parent:
             groups[parent]["kids"].append(issue)
@@ -107,7 +108,7 @@ def _rows(issues, site):
             out.append(_bullet(_line(value, site)))
         else:
             group = groups[value]
-            out.append(_bullet([_text(f"{value} — {group['summary']}", f"{site}/browse/{value}" if site else None, bold=True)],
+            out.append(_bullet([_text(f"{group['label']}{value} — {group['summary']}", f"{site}/browse/{value}" if site else None, bold=True)],
                                [_bullet(_line(kid, site)) for kid in group["kids"]]))
     return out
 
