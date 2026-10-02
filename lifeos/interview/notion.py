@@ -1,4 +1,4 @@
-"""Read-only Notion evidence and reusable protected read-back primitives."""
+"""Notion evidence and reusable protected read-back primitives."""
 import hashlib
 import json
 import os
@@ -125,11 +125,16 @@ def explicit_child(client, page_id):
     if page.get("archived") or page.get("in_trash"):
         return None
     parent = page.get("parent") or {}
-    props = page.get("properties") or {}
-    when = ((props.get("Interview Date") or {}).get("date") or {}).get("start")
-    who = text({"type": "x", "x": {"rich_text": (props.get("Interviewer") or {}).get("rich_text", [])}})
-    ordinal = (props.get("Ordinal") or {}).get("number")
-    return Child(page_id, parent.get("page_id", ""), when, who or None, ordinal)
+    from .create import parse_identity
+    blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=2")["results"]
+    first = text(blocks[0]) if blocks else ""
+    machine = first == MARKERS["round"]
+    if not machine:
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None)
+    data = parse_identity(text(blocks[1])) if len(blocks) > 1 and blocks[1].get("type") == "paragraph" else None
+    if data is None:
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False)
+    return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
 def protected_snapshot(client, page_id):
@@ -181,3 +186,36 @@ def readback(client, page_id, parent_id, kind, before=None):
         return "readback_page_gone" if str(error) == "NOTION_HTTP_404" else "readback_unreadable"
     except (KeyError, TypeError, ValueError):
         return "readback_unreadable"
+
+
+def active_target(client, root, context):
+    """Only a uniquely named page container is an insert surface; headings never qualify."""
+    targets, budget = [], [MAX_CALLS]
+    def walk(page_id, depth):
+        if depth > MAX_DEPTH:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        for block in children(client, page_id, budget, context):
+            kind = block.get("type", "")
+            title = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
+            if title == "Active Opportunities":
+                targets.append(block["id"] if kind == "child_page" else None)
+            if title in ("Active Opportunities", "Retired Opportunities") and (kind == "child_page" or block.get("has_children")):
+                walk(block["id"], depth + 1)
+            elif block.get("has_children") and kind in ("toggle", "column", "column_list"):
+                walk(block["id"], depth + 1)
+    try:
+        walk(root, 0)
+        if len(targets) != 1 or targets[0] is None:
+            return None
+        page = client.call("GET", f"/pages/{targets[0]}")
+        titles = [p["title"] for p in page.get("properties", {}).values() if p.get("type") == "title"]
+        title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
+        return targets[0] if title == "Active Opportunities" and not page.get("archived") and not page.get("in_trash") else None
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
+        return None
+
+
+def insert_page(client, parent_id, title, blocks):
+    from lifeos.platform.notion_client import rich_text
+    return client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
+                      "properties": {"title": {"type": "title", "title": rich_text(title)}}, "children": blocks})

@@ -1,14 +1,14 @@
-"""Bounded counts-only read-only Interview stages. B1 has no mutation path."""
+"""Counts-only Interview probe and bounded B2 evidence execution."""
 import os
 from lifeos.platform.runtime import RunContext, DeadlineExceeded
 from lifeos.platform.notion_client import NotionError
 from . import notion
-from .identity import resolve_parent, resolve_child, creation_eligibility
+from .identity import resolve_parent
 from .models import Ownership, ParentQuery, State
 from lifeos.platform.names import split_title
 
 
-def run(limit, live, environ=os.environ, client=None, evidence=(), context=None):
+def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False):
     context = context or RunContext.start(60)
     counts = {key: 0 for key in ("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked",
                                 "human_pages", "machine_pages", "writes_planned", "writes")}
@@ -69,22 +69,28 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None)
                     reason("ownership_unknown")
                 else:
                     counts["machine_pages" if owner == Ownership.MACHINE else "human_pages"] += 1
+        from .create import apply
+        deferred = set()
         for index, (parent_query, round_query) in enumerate(evidence):
             if index >= max(0, limit):
                 counts["blocked"] += 1
                 reason("pipeline_incomplete")
                 break
-            context.require_time()
-            parent = resolve_parent(parent_query, scan)
-            if parent.state != State.MATCH:
-                result = parent
-            else:
-                children = notion.child_scan(client, parent.page_id, context)
-                explicit = notion.explicit_child(client, round_query.explicit_child_page_id) if round_query.explicit_child_page_id else None
-                result = resolve_child(parent, round_query, children, explicit)
-                reason(creation_eligibility(target, parent, owners.get(parent.page_id, Ownership.UNKNOWN), result, children, round_query))
-            counts[{State.MATCH: "matched", State.NOT_FOUND: "not_found", State.BLOCKED: "blocked"}[result.state]] += 1
-            reason(result.code)
+            if _probe:
+                break
+            result = apply(client, environ, parent_query, round_query, live, context, deferred)
+            for key, value in result.items():
+                if key != "code":
+                    counts[key] = counts.get(key, 0) + value
+            reason(result["code"])
+            if result["code"] == "child_match":
+                counts["matched"] += 1
+            elif result["code"] in ("create_allowed", "parent_create_allowed"):
+                counts["not_found"] += 1
+            elif result["code"] not in ("parent_created", "round_created", "parent_exists"):
+                counts["blocked"] += 1
+            if result["readback_failed"] or result["code"] == "write_failed":
+                break
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         counts["blocked"] += 1
@@ -93,4 +99,4 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None)
 
 
 def probe(limit, live, **kwargs):
-    return run(limit, live, **kwargs)
+    return run(limit, False, _probe=True, **kwargs)

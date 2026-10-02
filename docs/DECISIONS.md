@@ -229,6 +229,21 @@ target check → ownership/human-state guard → protected snapshot → write �
 protected comparison. Ordinary probes never fingerprint protected content. Existing human and
 unknown pages remain NO WRITE. B2 consumes B1 creation eligibility; B1 never executes it.
 
+## D40 — Interview B2 machine creation is bounded and parent-first (Jim, 2026-10-01)
+Existing HUMAN/UNKNOWN opportunities and rounds remain NO WRITE. Accepted confirmed interview
+evidence may create a MACHINE opportunity only with a valid Hiring Pipeline target, complete
+enumeration, deterministic identity, zero ACTIVE matches, and a unique verified Active Opportunities
+page insertion surface. Inserting a new child page is the only permitted mutation of that human
+container: existing blocks are never edited, moved, normalized, or deleted.
+Rounds are created only beneath MACHINE opportunities. Parent and round creation use separate
+passes, at most one page mutation per evidence item per run; every creation is marker-first with
+authoritative readback and refreshed unique identity verification. Replay creates zero duplicates.
+Live Notes and Raw Notes start empty and their human content is never written. Ambiguous,
+incomplete, unreadable, HUMAN, UNKNOWN, and malformed states fail closed with zero writes.
+MACHINE round identity is a versioned canonical machine identity paragraph immediately after the
+ownership marker, outside protected notes; it is authoritative for identity and replay. Titles are
+presentation only. Human/legacy rounds are never automatically retrofitted.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run

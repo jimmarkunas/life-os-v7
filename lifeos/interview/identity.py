@@ -46,7 +46,11 @@ def resolve_child(parent, query, scan, explicit=None):
         candidates = [c for c in candidates if c.page_id == query.explicit_child_page_id]
         if explicit is not None and not candidates:
             return Resolution(State.BLOCKED, "child_scan_incomplete")
+        if any(c.identity_valid is False for c in candidates):
+            return Resolution(State.BLOCKED, "round_identity_incomplete")
     else:
+        if any(c.identity_valid is False for c in candidates):
+            return Resolution(State.BLOCKED, "round_identity_incomplete")
         if query.interview_date is not None:
             if not valid_date(query.interview_date):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")

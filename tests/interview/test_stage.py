@@ -27,7 +27,7 @@ class StageTests(unittest.TestCase):
                            evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))])
         self.assertEqual(result["why"]["create_allowed"], 1)
         self.assertEqual(result["not_found"], 1)
-        self.assertEqual(result["writes_planned"], 0)
+        self.assertEqual(result["writes_planned"], 1)
         self.assertEqual(result["writes"], 0)
         self.assertTrue(all(method == "GET" for method, path in client.calls))
 
