@@ -262,5 +262,5 @@ class InterviewJobIsIsolated(unittest.TestCase):
         block = self.block()
         self.assertIn("github.event_name == 'workflow_dispatch'", block)
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
-        self.assertEqual(block.count("continue-on-error: true"), 2)            # the two steps
+        self.assertEqual(block.count("continue-on-error: true"), 3)            # the three steps
         self.assertIn("::warning", block)

@@ -14,6 +14,10 @@ on:
         description: "Interview OS stage (dry run unless Actually move mail is ticked); a failure is a warning and never fails the Jobs run"
         type: boolean
         default: false
+      interview_acceptance:
+        description: "Interview OS private acceptance (manual only): one case from the INTERVIEW_ACCEPTANCE_JSON secret; dry run unless Actually move mail is ticked"
+        type: boolean
+        default: false
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
         type: boolean
@@ -340,7 +344,7 @@ jobs:
     # Interview OS runs in its OWN job (D38/handoff): dispatch-only until promoted, no Jobs secrets, and its failure never fails the Jobs run
     # (the stale-pipeline alert and the gate are keyed on run success). Step-level continue-on-error + a warning, not job-level.
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe) }}
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe || inputs.interview_acceptance) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:                                   # least privilege: blank every secret this job does not use (workflow-level env is inherited)
@@ -382,8 +386,15 @@ jobs:
         name: Interview stage (live only when Actually move mail is ticked)
         if: ${{ inputs.interview }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - id: iacc
+        continue-on-error: true
+        name: Interview private acceptance (manual dispatch only; case comes from the secret)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
+        env:
+          INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_JSON }}
+        run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
       - name: Interview warning (does not fail the run)
-        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure') }}
+        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
   report:
