@@ -48,6 +48,8 @@ def _api(path, method="GET", body=None):
 
 
 def _issue(is_stale):
+    """-> "opened" | "closed" | None (the change that was made, so the caller can push once)."""
+    opened = None
     try:
         open_issues = _api(f"issues?state=open&labels={LABEL}&per_page=5")
         if is_stale and not open_issues:
@@ -55,14 +57,17 @@ def _issue(is_stale):
                 _api("labels", "POST", {"name": LABEL, "color": "b60205"})
             except Exception:
                 pass                                               # label already exists
+            opened = "opened"
             _api("issues", "POST", {"title": ISSUE_TITLE, "labels": [LABEL],
                                     "body": "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
                                             "or a stage is failing. Open the Actions tab. This issue closes itself when a run succeeds."})
         elif not is_stale:
             for issue in open_issues:
                 _api(f"issues/{issue['number']}", "PATCH", {"state": "closed", "state_reason": "completed"})
+                opened = "closed"
     except Exception as error:                                     # alerting must never stop the pipeline
         print(f"gate: issue update skipped ({type(error).__name__})")
+    return opened
 
 
 def watch():
@@ -70,8 +75,13 @@ def watch():
     would stay silent. This opens or closes the same issue from outside the pipeline. Never touches job data."""
     runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
     is_stale = stale(runs, dt.datetime.now(dt.timezone.utc), 0)
-    _issue(is_stale)
-    print(f"watchdog: stale={is_stale}")
+    change = _issue(is_stale)
+    if change:                                                     # phone push once, when the issue opens or closes
+        from lifeos.platform import alerts                          # noqa: PLC0415
+        alerts.ntfy(os.environ.get("NTFY_TOPIC", ""), "V7 pipeline stalled" if change == "opened" else "V7 pipeline recovered",
+                    "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab." if change == "opened" else "A run succeeded.",
+                    alerts.PAGE if change == "opened" else alerts.INFO)
+    print(f"watchdog: stale={is_stale} change={change}")
     return 0
 
 
