@@ -112,7 +112,7 @@ class PrepTests(unittest.TestCase):
                                pressure_points=("Current risk", "Shared risk"), questions=("Current question",))
         result = self.apply(client, current_query, current)
         self.assertEqual(result["code"], "derived_created")
-        _, heading, payload = notion.derived_blocks(client, "created-3")
+        heading, payload = notion.derived_blocks(client, "created-3")
         rendered = [notion.text(b) for b in payload]
         self.assertIn("Current risk", rendered)
         self.assertIn("Old risk", rendered)
@@ -146,7 +146,7 @@ class PrepTests(unittest.TestCase):
         current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
         result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
         self.assertEqual(result["code"], "derived_created")
-        _, _, payload = notion.derived_blocks(client, current_id)
+        _, payload = notion.derived_blocks(client, current_id)
         values = [notion.text(b) for b in payload]
         self.assertIn("Latest Earlier", values)
         self.assertNotIn("Same", values)
@@ -166,7 +166,7 @@ class PrepTests(unittest.TestCase):
         current_query = RoundQuery(True, "2026-10-04", interviewer="Current", explicit_child_page_id=current_id)
         result = prep.apply(client, ENV, PARENT, current_query, PrepEvidence(focus=("Current",)), True, RunContext.start(60))
         self.assertEqual(result["code"], "derived_created")
-        _, _, payload = notion.derived_blocks(client, current_id)
+        _, payload = notion.derived_blocks(client, current_id)
         values = [notion.text(b) for b in payload]
         self.assertNotIn("A", values)
         self.assertNotIn("B", values)
@@ -206,7 +206,7 @@ class PrepTests(unittest.TestCase):
                 marker_block[kind] = marker_block.pop("paragraph")
                 marker_block[kind]["rich_text"][0]["text"]["content"] = text
                 client.blocks[page_id] = client.blocks[page_id][:5] + [marker_block] + prep.render(normalized)[1:]
-                state, _ = prep._read_derived(client, page_id)
+                state, _, _ = prep._read_derived(client, page_id)
                 self.assertEqual(state, expected)
 
     def test_current_priority_truncates_only_inherited_items(self):
@@ -293,6 +293,80 @@ class PrepTests(unittest.TestCase):
             result = self.apply(client, query, PrepEvidence(focus=("A",)))
         self.assertEqual((result["code"], result["writes"]), ("readback_protected_missing", 0))
         append.assert_not_called()
+
+    def test_replay_stays_a_noop_when_earlier_rounds_change_afterwards(self):
+        client = PrepFake()
+        _, previous_id, previous_query = machine_round(client, ordinal=1)
+        current_query = RoundQuery(True, "2026-10-02", ordinal=3)
+        create.apply(client, ENV, PARENT, current_query, True, RunContext.start(60), set())
+        current = PrepEvidence(pressure_points=("Current risk",))
+        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_created")       # nothing to inherit yet
+        old = PrepEvidence(pressure_points=("Old risk",), questions=("Old question",))
+        prep.apply(client, ENV, PARENT, previous_query, old, True, RunContext.start(60))              # earlier round prepared later
+        calls = len(client.calls)
+        self.assertEqual(self.apply(client, current_query, current)["code"], "derived_match")
+        self.assertNotIn(("GET", f"/blocks/{previous_id}/children?page_size=100"), client.calls[calls:])   # never reads its Derived
+        self.assertEqual(self.apply(client, current_query, PrepEvidence(pressure_points=("Other",)))["code"], "derived_conflict")
+
+    def test_inherited_items_written_earlier_still_match_but_extra_current_content_conflicts(self):
+        existing = {"focus": ["F"], "strongest_evidence": [], "pressure_points": ["A", "Inherited"], "questions": []}
+        current = {"focus": ("F",), "strongest_evidence": (), "pressure_points": ("A",), "questions": ()}
+        self.assertTrue(prep._consistent(existing, current))
+        self.assertFalse(prep._consistent({**existing, "focus": ["F", "Extra"]}, current))
+        self.assertFalse(prep._consistent({**existing, "pressure_points": ["Inherited", "A"]}, current))
+        self.assertFalse(prep._consistent({**existing, "pressure_points": []}, current))
+
+    def test_any_error_after_the_append_is_a_readback_failure_and_stops(self):
+        for error in (ValueError("x"), TypeError("x"), KeyError("x"), AttributeError("x")):
+            client = PrepFake()
+            _, _, query = machine_round(client)
+            real = notion.explicit_child
+            def fail_after_append(c, page_id, _client=client, _error=error):
+                if any(method == "PATCH" for method, _ in _client.calls):
+                    raise _error
+                return real(c, page_id)
+            with patch("lifeos.interview.notion.explicit_child", side_effect=fail_after_append):
+                result = self.apply(client, query, PrepEvidence(focus=("A",)))
+            self.assertEqual((result["code"], result["writes"]), ("derived_readback_failed", 1))
+        before_write = PrepFake()
+        _, _, query = machine_round(before_write)
+        with patch("lifeos.interview.prep.normalize", side_effect=ValueError("x")):
+            self.assertEqual(self.apply(before_write, query, PrepEvidence(focus=("A",)))["code"], "prep_invalid")
+
+
+class DerivedScanTests(unittest.TestCase):
+    class Pages:
+        def __init__(self, pages):
+            self.pages, self.calls = pages, 0
+
+        def call(self, method, path, body=None):
+            index = 0 if "start_cursor" not in path else int(path.split("start_cursor=")[1])
+            self.calls += 1
+            more = index + 1 < len(self.pages)
+            return {"results": self.pages[index], "has_more": more, "next_cursor": str(index + 1) if more else None}
+
+    def heading(self, label, kind="heading_2"):
+        return {"type": kind, kind: {"rich_text": [{"plain_text": label, "text": {"content": label}}]}}
+
+    def bullet(self, label):
+        return {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"plain_text": label, "text": {"content": label}}]}}
+
+    def test_large_notes_do_not_exhaust_the_scan_and_are_dropped_unread(self):
+        notes = [[self.bullet("private note") for _ in range(100)] for _ in range(60)]    # 60 pages, beyond the 40-call scan budget
+        client = self.Pages([[self.heading("Live Notes")]] + notes + [[self.heading("Derived"), self.bullet("x")]])
+        heading, payload = notion.derived_blocks(client, "p")
+        self.assertEqual((notion.text(heading), [notion.text(b) for b in payload]), ("Derived", ["x"]))
+
+    def test_scan_still_fails_closed_past_its_own_budget_and_on_duplicate_headings(self):
+        endless = self.Pages([[self.bullet("n")]] * (notion.DERIVED_MAX_CALLS + 5) + [[self.heading("Derived")]])
+        with self.assertRaises(NotionError):
+            notion.derived_blocks(endless, "p")
+        twice = self.Pages([[self.heading("Derived"), self.heading("Raw Notes"), self.heading("Derived")]])
+        with self.assertRaises(NotionError):
+            notion.derived_blocks(twice, "p")
+        none = self.Pages([[self.heading("Live Notes")]])
+        with self.assertRaises(NotionError):
+            notion.derived_blocks(none, "p")
 
 
 if __name__ == "__main__":
