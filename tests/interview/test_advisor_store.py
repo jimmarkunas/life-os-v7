@@ -38,10 +38,12 @@ class FakeNotion:
     def __init__(self, pages):
         self.pages = {p["id"]: p for p in pages}
         self.methods = []
+        self.paths = []
         self.posts = 0
 
     def call(self, method, path, body=None):
         self.methods.append(method)
+        self.paths.append(path)
         if method == "GET" and path.startswith("/pages/"):
             return self.pages[path.split("/")[-1]]
         if method == "GET" and path.startswith("/blocks/"):
@@ -85,7 +87,7 @@ def build_tree():
                 "advisor_prompt_version": "prompt-v1"}
     pages = [page("LIFE OS — Interview Advisor", "workspace", [block("paragraph", "Root instructions")], "root")]
     names = ("Corpus Manifest", "Straight Line Doctrine", "Game Theory Doctrine", "Candidate Evidence Bank",
-             "Candidate Profile", "Advisor Inputs", "Advisor Previews")
+             "Candidate Profile", "Advisor Inputs", "Advisor Queue", "Advisor Previews")
     pages[0]["blocks"] += [block("child_page", "", n) for n in names]
     contents = {
         "Corpus Manifest": marked("manifest", [block("paragraph", canon(manifest))]),
@@ -95,6 +97,7 @@ def build_tree():
             block("paragraph", canon(evidence_record)), block("paragraph", canon(old_record))]),
         "Candidate Profile": source_body("PROFILE-SYN-001", 1, "candidate_profile"),
         "Advisor Inputs": marked("inputs", [block("child_page", "", "Guidance"), block("child_page", "", "Accepted Signals")]),
+        "Advisor Queue": marked("queue"),
         "Advisor Previews": marked("previews")}
     for n in names:
         pages.append(page(n, "root", contents[n]))
@@ -153,7 +156,10 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(tuple(x.source_id for x in snapshot.guidance), ("G-SYN-001",))
         self.assertEqual(tuple(x.source_id for x in snapshot.accepted_signals), ("S-SYN-001",))
         self.assertEqual(snapshot.previews_page_id, "advisor-previews")
+        self.assertEqual(snapshot.queue_page_id, "advisor-queue")
         self.assertTrue(all(method == "GET" for method in client.methods))
+        self.assertIn("/blocks/advisor-queue/children?page_size=1", client.paths)
+        self.assertNotIn("/blocks/advisor-queue/children?page_size=100", client.paths)
 
     def test_missing_config_root_title_archive_trash_and_shape_fail_closed(self):
         for pages, root, env in ((build_tree(), "", {}), (build_tree(), "missing", {})):
@@ -172,6 +178,8 @@ class StoreTests(unittest.TestCase):
         p = build_tree(); p[6]["blocks"] = marked("inputs", [block("child_page", "", "Guidance")]); cases.append(p)
         p = build_tree(); p[6]["blocks"].append(block("child_page", "", "Other")); cases.append(p)
         p = build_tree(); p[1]["blocks"][0] = block("paragraph", "v7-interview-advisor:1;kind=oops"); cases.append(p)
+        p = build_tree(); p[0]["blocks"] = [b for b in p[0]["blocks"] if not (b.get("type") == "child_page" and b["child_page"]["title"] == "Advisor Queue")]; cases.append(p)
+        p = build_tree(); p[7]["blocks"][0] = block("paragraph", "v7-interview-advisor:1;kind=not_queue"); cases.append(p)
         for pages in cases:
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_store(FakeNotion(pages), "root")
@@ -246,6 +254,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(title, "Advisor Preview 0123456789abcdef0123456789abcdef")
         self.assertNotIn("Synthetic Co", title); self.assertNotIn("Synthetic Role", title); self.assertNotIn("Interviewer", title)
         self.assertTrue(blocks[0]["paragraph"]["rich_text"][0]["text"]["content"].endswith(body_hash))
+        self.assertIn("refs: SL-SYN-001@1,PROFILE-SYN-001@1", body)
         self.assertEqual(body_hash, hashlib.sha256(body.encode()).hexdigest())
         self.assertNotIn("reasoning", body.lower())
         self.assertNotEqual(body_hash, store.render_preview("0123456789abcdef0123456789abcdef", b,

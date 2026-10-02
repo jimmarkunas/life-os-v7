@@ -267,7 +267,11 @@ Runtime private material will live outside the public repository. Raw private co
 ## D43 — Advisor private store is bounded; previews are immutable and insert-only
 Interview Advisor runtime doctrine, candidate profile, evidence, Guidance and Accepted Signals live under one explicitly configured private Notion root shared with the Interview integration. The runtime never searches the workspace globally and never treats arbitrary Notion content as Advisor input. The store is fail-closed: exact root identity, exact required child surfaces, source markers, version metadata and corpus hashes must validate before a current bundle may be assembled.
 
-Advisor generation writes only an immutable MACHINE preview beneath the dedicated Advisor Previews container. A preview commits to the exact AdvisorInputBundle digest and to the complete rendered preview body. Preview creation is insert-only and performs authoritative read-back. It does not write Hiring Pipeline, B3 Derived, Live Notes or Raw Notes. Approval and B3 commit remain separate future actions.
+The private root also reserves one dedicated Advisor Queue container for the ChatGPT-native Advisor handoff. INT-ADV-2 defines only the container identity; queue item semantics are deferred to INT-ADV-3.
+
+Advisor Preview creation is deterministic, immutable and insert-only beneath the dedicated Advisor Previews container. A preview commits to the exact AdvisorInputBundle digest and to the complete rendered preview body. Preview creation performs authoritative read-back and never writes Hiring Pipeline, B3 Derived, Live Notes or Raw Notes. Approval and B3 commit remain separate future actions.
+
+The v1 Advisor does not require or authorize a paid model/API provider. ChatGPT-native reasoning is external to this deterministic store/preview boundary.
 
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.

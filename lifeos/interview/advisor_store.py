@@ -11,9 +11,9 @@ from lifeos.platform.notion_client import Client
 
 _ROOT = "LIFE OS — Interview Advisor"
 _NAMES = ("Corpus Manifest", "Straight Line Doctrine", "Game Theory Doctrine",
-          "Candidate Evidence Bank", "Candidate Profile", "Advisor Inputs", "Advisor Previews")
+          "Candidate Evidence Bank", "Candidate Profile", "Advisor Inputs", "Advisor Queue", "Advisor Previews")
 _MARKERS = dict(zip(_NAMES, ("manifest", "straight_line_doctrine", "game_theory_doctrine",
-                              "evidence_bank", "candidate_profile", "inputs", "previews")))
+                              "evidence_bank", "candidate_profile", "inputs", "queue", "previews")))
 _CHILDREN = {"Advisor Inputs": ("Guidance", "Accepted Signals")}
 _RX = re.compile(r"^[0-9a-f]{32}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -94,6 +94,20 @@ def _marked(client, page_id, kind):
     if any(b.get("type") == "paragraph" and _plain(b).startswith("v7-interview-advisor:1;kind=") for b in blocks[1:]):
         raise AdvisorStoreError("advisor_store_incomplete")
     return blocks
+
+
+def _first_marker(client, page_id, kind):
+    """Read only the marker block; Queue contents belong to the later queue contract."""
+    try:
+        data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
+        blocks = data["results"]
+        expected = f"v7-interview-advisor:1;kind={kind}"
+        _need(isinstance(blocks, list) and blocks and blocks[0].get("type") == "paragraph"
+              and _plain(blocks[0]) == expected, "advisor_store_incomplete")
+    except AdvisorStoreError:
+        raise
+    except Exception:
+        raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
 def _direct_pages(client, parent_id, allowed):
@@ -195,6 +209,7 @@ class AdvisorStoreSnapshot:
     evidence: tuple[advisor.CandidateEvidence, ...] = field(repr=False)
     guidance: tuple[advisor.AdvisorSource, ...] = field(repr=False)
     accepted_signals: tuple[advisor.AdvisorSource, ...] = field(repr=False)
+    queue_page_id: str = field(repr=False)
     previews_page_id: str = field(repr=False)
 
 
@@ -206,6 +221,9 @@ def read_store(client, root_page_id=None, environ=os.environ):
         _page(client, root_page_id, _ROOT)
         pages = _direct_pages(client, root_page_id, _NAMES)
         for name, page_id in pages.items():
+            if name == "Advisor Queue":
+                _first_marker(client, page_id, "queue")
+                continue
             _marked(client, page_id, _MARKERS[name])
         sub = _direct_pages(client, pages["Advisor Inputs"], _CHILDREN["Advisor Inputs"])
         for name, page_id in sub.items():
@@ -228,7 +246,8 @@ def read_store(client, root_page_id=None, environ=os.environ):
         guidance = _records(client, sub["Guidance"], "guidance")
         signals = _records(client, sub["Accepted Signals"], "accepted_signals", True)
         evidence = tuple(item for item in bank if item.active)
-        return AdvisorStoreSnapshot(manifest, sl, gt, profile, evidence, guidance, signals, pages["Advisor Previews"])
+        return AdvisorStoreSnapshot(manifest, sl, gt, profile, evidence, guidance, signals,
+                                    pages["Advisor Queue"], pages["Advisor Previews"])
     except AdvisorStoreError:
         raise
     except Exception:
@@ -265,7 +284,7 @@ def _human_lines(draft, prep):
     for title, field in _FINDINGS:
         lines.append("## " + title)
         for item in getattr(draft, field):
-            lines.extend(("- " + item.text, "Refs: " + ", ".join(item.source_refs)))
+            lines.extend(("- " + item.text, "refs: " + ",".join(item.source_refs)))
     lines.append("## Compiled PrepEvidence")
     for title, field in _PREP:
         lines.append("### " + title)
@@ -275,8 +294,8 @@ def _human_lines(draft, prep):
 
 def render_preview(generation_id, bundle, draft, prep=None):
     _need(isinstance(generation_id, str) and _RX.fullmatch(generation_id), "advisor_preview_invalid")
-    digest = advisor.bundle_digest(bundle)
     compiled = advisor.compile_prep(bundle, draft)
+    digest = advisor.bundle_digest(bundle)
     _need(prep is None or prep == compiled, "advisor_preview_invalid")
     lines = _human_lines(draft, compiled)
     body = "\n".join(lines)
@@ -339,7 +358,7 @@ def _parse_preview_body(blocks):
                     current_items += 1
                     pending_refs = True
                 else:
-                    refs = text[6:].split(", ") if text.startswith("Refs: ") else []
+                    refs = text[6:].split(",") if text.startswith("refs: ") else []
                     _need(pending_refs and bool(refs) and all(re.fullmatch(r"[A-Za-z0-9._-]+@[1-9][0-9]*", ref) for ref in refs),
                           "advisor_preview_invalid")
                     pending_refs = False
