@@ -362,12 +362,17 @@ class WorkflowTests(unittest.TestCase):
         block = self.text[self.text.index("  workflow_dispatch:\n    inputs:\n"):self.text.index("\nenv:\n")]
         self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
 
-    def test_job_is_dispatch_only_with_one_choice_input_defaulting_to_none(self):
+    def test_scheduled_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
         job = self.job()
-        self.assertIn("github.event_name == 'workflow_dispatch'", job.split("runs-on")[0])
         self.assertRegex(self.text, r'jira:\n(?:.*\n)*?\s+default: "none"')
-        self.assertIn("inputs.jira != 'none'", job)
-        self.assertNotIn("schedule", job.split("steps:")[0])
+        auto = "github.event_name != 'workflow_dispatch' || inputs.tick"
+        self.assertIn(auto, job.split("runs-on")[0])
+        for step_id, nxt in (("jsnap", "jcard"), ("jcard", "jprobe")):
+            step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]
+            self.assertIn(auto, step.split("run:")[0], step_id)
+        for step_id, nxt in (("jprobe", "jroll"), ("jroll", "Jira warning")):
+            step = job[job.index(f"id: {step_id}"):job.index(nxt)]
+            self.assertNotIn(auto, step, step_id)
 
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
@@ -384,6 +389,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("secrets.LIFEOS_ACQ", head)
         snap = steps[steps.index("id: jsnap"):steps.index("id: jroll")]
         roll = steps[steps.index("id: jroll"):steps.index("Jira warning")]
+        self.assertNotIn("NOTION_JIRA_TOKEN", steps[steps.index("id: jsnap"):steps.index("id: jcard")])
         self.assertIn("secrets.LIFEOS_ACQ_DB_PASSWORD", snap)
         self.assertNotIn("secrets.", roll)
         self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_EMAIL", "JIRA_GTV_EPIC"])
