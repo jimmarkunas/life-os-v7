@@ -306,11 +306,15 @@ class WorkflowTests(unittest.TestCase):
         start = self.text.index("\n  jira:\n")
         return self.text[start:self.text.index("\n  report:\n")]
 
-    def test_job_is_dispatch_only_with_both_inputs_defaulting_false(self):
+    def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
+        block = self.text[self.text.index("  workflow_dispatch:\n    inputs:\n"):self.text.index("\nenv:\n")]
+        self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
+
+    def test_job_is_dispatch_only_with_one_choice_input_defaulting_to_none(self):
         job = self.job()
         self.assertIn("github.event_name == 'workflow_dispatch'", job.split("runs-on")[0])
-        self.assertRegex(self.text, r"jira_snapshot:\n(?:.*\n)*?\s+default: false")
-        self.assertRegex(self.text, r"jira_rollover:\n(?:.*\n)*?\s+default: false")
+        self.assertRegex(self.text, r'jira:\n(?:.*\n)*?\s+default: "none"')
+        self.assertIn("inputs.jira != 'none'", job)
         self.assertNotIn("schedule", job.split("steps:")[0])
 
     def test_failures_are_warnings_and_never_fail_the_run(self):

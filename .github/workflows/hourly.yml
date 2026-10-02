@@ -18,14 +18,11 @@ on:
         description: "Interview OS private acceptance (manual only): one case from the INTERVIEW_ACCEPTANCE_JSON secret; dry run unless Actually move mail is ticked"
         type: boolean
         default: false
-      jira_snapshot:
-        description: "Jira read-only snapshot of the managed boards (counts only; saves to the private database only when Actually move mail is ticked)"
-        type: boolean
-        default: false
-      jira_rollover:
-        description: "Jira weekly sprint rollover: DRY RUN unless Actually move mail is ticked; refuses to close a sprint before its end"
-        type: boolean
-        default: false
+      jira:
+        description: "Jira (read-only dry run unless Actually move mail is ticked): snapshot = save the board snapshot to the private database; rollover = weekly sprint rollover, never before the sprint ends"
+        type: choice
+        options: ["none", "snapshot", "rollover", "both"]
+        default: "none"
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
         type: boolean
@@ -409,7 +406,7 @@ jobs:
     # Jira runs in its OWN job, like Interview: dispatch-only until promoted, only the Jira secrets (the database secrets are
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.jira_snapshot || inputs.jira_rollover) }}
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.jira != 'none' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -448,7 +445,7 @@ jobs:
       - id: jsnap
         continue-on-error: true
         name: Jira snapshot (counts only; saved to the private database only when live)
-        if: ${{ inputs.jira_snapshot }}
+        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' }}
         env:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
@@ -462,7 +459,7 @@ jobs:
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live; never before the sprint ends)
-        if: ${{ inputs.jira_rollover }}
+        if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
