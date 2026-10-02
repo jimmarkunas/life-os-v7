@@ -94,3 +94,25 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     if total["failed"]:
         raise JiraError(f"JIRA_SNAPSHOT_FAILED:{total['failed']}of{total['projects']}:" + ",".join(sorted(total["why"])))
     return total
+
+
+def probe(limit, live, environ=os.environ, client=None):
+    """Read-only layout check, counts only: per board (by position) how many active/future sprints it lists, and for each
+    active sprint how many issues each configured project (by position) has in it, plus whether its name starts with a key."""
+    from lifeos.platform.jira import Jira
+    configured = boards(environ)
+    client = client or Jira.from_env(environ)
+    out = {"boards": len(configured), "layout": {}}
+    for position, (project, board_id, _) in enumerate(configured, 1):
+        entry = {"scrum": int(str(client.board(board_id).get("type", "")).lower() == "scrum"),
+                 "active": 0, "future": len(client.sprints(board_id, "future")), "sprints": []}
+        active = client.sprints(board_id, "active")
+        entry["active"] = len(active)
+        for sprint in active:
+            counts = {str(i): len(client.sprint_issues(int(sprint["id"]), f"project = {key}", "summary"))
+                      for i, (key, _, _) in enumerate(configured, 1)}
+            name = str(sprint.get("name") or "")
+            entry["sprints"].append({"issues_by_project": counts,
+                                     "name_has_key": [i for i, (key, _, _) in enumerate(configured, 1) if name.startswith(key)]})
+        out["layout"][str(position)] = entry
+    return out

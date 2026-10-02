@@ -295,6 +295,20 @@ class SnapshotTests(unittest.TestCase):
             snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
         self.assertEqual(str(error.exception), "JIRA_SNAPSHOT_FAILED:1of1:JIRA_BOARD_NOT_SCRUM@1")
 
+    def test_probe_reports_layout_by_position_without_names(self):
+        class Shared(self.Board):
+            def sprint_issues(self, sprint_id, jql, fields):
+                return [{"key": "X-1"}] * (2 if "project = AAA" in jql else 1)
+        client = Shared(week([sprint(2, "active", datetime(2026, 9, 28, tzinfo=TZ), datetime(2026, 10, 4, tzinfo=TZ), "BBB Sprint")]))
+        out = snapshot.probe(1, False, environ={**ENV, "JIRA_BOARDS": "AAA:11,BBB:22"}, client=client)
+        entry = out["layout"]["1"]
+        self.assertEqual((entry["scrum"], entry["active"], len(entry["sprints"])), (1, 2, 2))
+        self.assertEqual(entry["sprints"][1]["name_has_key"], [2])
+        self.assertEqual(entry["sprints"][0]["issues_by_project"], {"1": 2, "2": 1})
+        text = json.dumps(out)
+        for private in ("AAA", "BBB", "X-1", "Synthetic"):
+            self.assertNotIn(private, text)
+
     def test_store_schema_is_one_row_per_project(self):
         self.assertIn("project_key VARCHAR(16) NOT NULL PRIMARY KEY", store.SCHEMA[0])
 
@@ -320,7 +334,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 2)
+        self.assertEqual(job.count("continue-on-error: true"), 3)
         self.assertIn("::warning", job)
 
     def test_other_credentials_are_blank_and_database_secrets_reach_only_the_snapshot_step(self):

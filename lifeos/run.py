@@ -74,6 +74,11 @@ def _jira_snapshot(limit, live):
     return snapshot.run(limit, live)
 
 
+def _jira_probe(limit, live):
+    from lifeos.jira import snapshot
+    return snapshot.probe(limit, live)
+
+
 def _jira_rollover(limit, live):
     from lifeos.jira import rollover
     return rollover.run(limit, live)
@@ -136,6 +141,7 @@ STAGES = {
     "interview": _interview,
     "jira-snapshot": _jira_snapshot,
     "jira-rollover": _jira_rollover,
+    "jira-probe": _jira_probe,
     "interview-acceptance": _interview_acceptance,
     "openjobs": _openjobs,
     "sponsors": _sponsors,

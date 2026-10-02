@@ -21,7 +21,7 @@ on:
       jira:
         description: "Jira (read-only dry run unless Actually move mail is ticked): snapshot = save the board snapshot to the private database; rollover = weekly sprint rollover, never before the sprint ends"
         type: choice
-        options: ["none", "snapshot", "rollover", "both"]
+        options: ["none", "snapshot", "rollover", "both", "probe"]
         default: "none"
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
@@ -456,13 +456,18 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
         run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - id: jprobe
+        continue-on-error: true
+        name: Jira layout probe (read-only; counts only)
+        if: ${{ inputs.jira == 'probe' }}
+        run: python -m lifeos.run jira-probe
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live; never before the sprint ends)
         if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
   report:
