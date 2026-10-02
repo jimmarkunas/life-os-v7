@@ -219,3 +219,79 @@ def insert_page(client, parent_id, title, blocks):
     from lifeos.platform.notion_client import rich_text
     return client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
                       "properties": {"title": {"type": "title", "title": rich_text(title)}}, "children": blocks})
+
+
+def active_shape(client, root, context):
+    """GET-only structural proof. Returns public-safe counts and fixed structural codes only."""
+    out = {"active_heading_count": 0, "active_heading_parent_type": "unknown", "active_page_count": 0,
+           "active_pages_same_parent": False, "active_pages_parent_verified": False,
+           "insertion_supported": False, "code": "active_shape_incomplete"}
+    budget, headings, active, retired = [MAX_CALLS], [], [], []
+    def walk(block_id, parent_type, page_id, depth, section=None):
+        if depth > MAX_DEPTH:
+            raise DeadlineExceeded("bounded shape exhausted")
+        current = section
+        for block in children(client, block_id, budget, context):
+            kind = block.get("type", "")
+            label = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
+            if kind.startswith("heading"):
+                # End the section at every heading; sibling order alone proves no insertion parent.
+                current = label if label in ("Active Opportunities", "Retired Opportunities") else None
+                if label == "Active Opportunities":
+                    headings.append((parent_type, page_id))
+                elif label == "Retired Opportunities":
+                    retired.append(page_id)
+            elif kind == "child_page":
+                if label in ("Active Opportunities", "Retired Opportunities"):
+                    walk(block["id"], "page", block["id"], depth + 1)
+                elif current == "Active Opportunities":
+                    active.append((block["id"], page_id))
+                elif current == "Retired Opportunities":
+                    retired.append(page_id)
+            elif block.get("has_children") and kind in ("column_list", "column", "toggle"):
+                walk(block["id"], kind, page_id, depth + 1, current)
+    try:
+        walk(root, "page", root, 0)
+        out["active_heading_count"], out["active_page_count"] = len(headings), len(active)
+        if len(headings) != 1:
+            out["code"] = "active_shape_ambiguous" if headings else "active_shape_incomplete"
+            return out
+        out["active_heading_parent_type"] = headings[0][0]
+        if not active:
+            return out
+        parents = []
+        for page_id, enclosing in active:
+            context.require_time()
+            page = client.call("GET", f"/pages/{page_id}")
+            if page.get("archived") or page.get("in_trash"):
+                return out
+            parent = page.get("parent") or {}
+            kind = parent.get("type")
+            if kind not in ("page_id", "block_id") or not parent.get(kind):
+                return out
+            parents.append((kind, parent[kind], enclosing))
+        out["active_pages_same_parent"] = len({(kind, key) for kind, key, _ in parents}) == 1
+        if not out["active_pages_same_parent"]:
+            out["code"] = "active_shape_ambiguous"
+            return out
+        kind, insertion, enclosing = parents[0]
+        if kind != "page_id" or insertion == root:
+            out["code"] = "active_shape_not_page_parent"
+            return out
+        if any(parent != insertion for _, _, parent in parents) or headings[0][1] != insertion or insertion in retired:
+            out["code"] = "active_shape_ambiguous"
+            return out
+        context.require_time()
+        page = client.call("GET", f"/pages/{insertion}")
+        titles = [p["title"] for p in page.get("properties", {}).values() if p.get("type") == "title"]
+        label = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
+        out["active_pages_parent_verified"] = label == "Active Opportunities" and not page.get("archived") and not page.get("in_trash")
+        out["insertion_supported"] = out["active_pages_parent_verified"]
+        out["code"] = "active_shape_supported" if out["insertion_supported"] else "active_shape_not_page_parent"
+    except DeadlineExceeded:
+        out["code"] = "active_shape_incomplete"
+    except NotionError as error:
+        out["code"] = "active_shape_incomplete" if str(error) == "INTERVIEW_SCAN_INCOMPLETE" else "active_shape_unreadable"
+    except (KeyError, TypeError, ValueError):
+        out["code"] = "active_shape_incomplete"
+    return out

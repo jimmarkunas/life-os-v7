@@ -50,6 +50,24 @@ class WritableFake(Fake):
         return {"id": page_id}
 
 
+class ColumnFake(WritableFake):
+    """Actual visual shape; Notion metadata independently specifies block/page ancestry."""
+    def __init__(self, parent_type="block_id", enclosing="root"):
+        super().__init__()
+        self.blocks["root"] = [{"id": "columns", "type": "column_list", "has_children": True}]
+        self.blocks["columns"] = [{"id": "left", "type": "column", "has_children": True}, {"id": "right", "type": "column", "has_children": True}]
+        self.blocks["left"] = [block("Active Opportunities", "heading_2"), {"id": "opportunity", "type": "child_page", "child_page": {"title": "Synthetic — Manager"}}]
+        self.blocks["right"] = [block("Retired Opportunities", "heading_2"), {"id": "retired", "type": "child_page", "child_page": {"title": "Retired — Manager"}}]
+        self.pages["opportunity"] = page("Synthetic — Manager")
+        self.pages["opportunity"]["parent"] = {"type": parent_type, parent_type: "left" if parent_type == "block_id" else enclosing}
+        self.pages["retired"] = page("Retired — Manager")
+        if enclosing != "root":
+            self.blocks["root"] = [{"id": enclosing, "type": "child_page", "child_page": {"title": "Active Opportunities"}}]
+            self.blocks[enclosing] = [{"id": "columns", "type": "column_list", "has_children": True}]
+            self.pages[enclosing] = page("Active Opportunities")
+            self.blocks["right"] = []
+
+
 def machine_parent(client):
     result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
     assert result["parents_created"] == 1
@@ -196,3 +214,66 @@ class CreationTests(unittest.TestCase):
         self.assertEqual(len(client.posts), 1)
         for private in ("New Example", "Program Manager", "Interview 1", "created-1", "human notes", "v7-interview-identity"):
             self.assertNotIn(private, json.dumps(result))
+
+
+class ActiveShapeTests(unittest.TestCase):
+    def probe(self, client):
+        from lifeos.platform.runtime import RunContext
+        return notion.active_shape(client, "root", RunContext.start(60))
+
+    def test_legal_dedicated_page_parent_supported(self):
+        client = ColumnFake("page_id", "active")
+        result = self.probe(client)
+        self.assertEqual(result["code"], "active_shape_supported")
+        self.assertEqual(result["active_heading_count"], 1)
+        self.assertEqual(result["active_heading_parent_type"], "column")
+        self.assertTrue(result["active_pages_same_parent"])
+        self.assertTrue(result["active_pages_parent_verified"])
+
+    def test_missing_duplicate_and_different_parent(self):
+        for mode, code in (("missing", "active_shape_incomplete"), ("duplicate", "active_shape_ambiguous"), ("different", "active_shape_ambiguous")):
+            with self.subTest(mode=mode):
+                client = ColumnFake()
+                if mode == "missing": client.blocks["left"][0] = block("Other Heading", "heading_2")
+                if mode == "duplicate": client.blocks["right"].insert(0, block("Active Opportunities", "heading_2"))
+                if mode == "different":
+                    client.blocks["left"].append({"id": "another", "type": "child_page", "child_page": {"title": "Synthetic Other — Manager"}})
+                    client.pages["another"] = page()
+                    client.pages["another"]["parent"] = {"type": "block_id", "block_id": "elsewhere"}
+                self.assertEqual(self.probe(client)["code"], code)
+
+    def test_unreadable_parent_metadata(self):
+        client = ColumnFake()
+        client.fail.add("/pages/opportunity")
+        self.assertEqual(self.probe(client)["code"], "active_shape_unreadable")
+
+    def test_column_block_and_root_page_parents_unsupported(self):
+        for kind in ("block_id", "page_id"):
+            with self.subTest(kind=kind):
+                client = ColumnFake(kind)
+                result = self.probe(client)
+                self.assertEqual(result["code"], "active_shape_not_page_parent")
+                self.assertFalse(result["insertion_supported"])
+                result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+                self.assertIn("active_target_incomplete", result["why"])
+                self.assertEqual(client.posts, [])
+
+    def test_retired_not_evidence_and_probe_public_get_only(self):
+        client = ColumnFake()
+        client.fail.add("/pages/retired")
+        result = stage.probe(10, True, environ=ENV, client=client)
+        self.assertEqual(result["active_page_count"], 1)
+        self.assertIn("active_shape_not_page_parent", result["why"])
+        self.assertTrue(all(method == "GET" for method, _ in client.calls))
+        self.assertNotIn(("GET", "/pages/retired"), client.calls)
+        serialized = json.dumps(result)
+        for private in ("Synthetic", "Manager", "root", "left", "opportunity", "http"):
+            self.assertNotIn(private, serialized)
+
+    def test_incomplete_enumeration_and_retired_crossover(self):
+        client = ColumnFake()
+        client.more = True
+        self.assertEqual(self.probe(client)["code"], "active_shape_incomplete")
+        client = ColumnFake("page_id", "active")
+        client.blocks["right"] = [block("Retired Opportunities", "heading_2")]
+        self.assertEqual(self.probe(client)["code"], "active_shape_ambiguous")

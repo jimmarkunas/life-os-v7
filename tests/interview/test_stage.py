@@ -19,7 +19,8 @@ class StageTests(unittest.TestCase):
         serialized = json.dumps(result)
         for private in ("Example", "Program Manager", "private human notes", "synthetic", "root", "http"):
             self.assertNotIn(private, serialized)
-        self.assertTrue(all(type(v) is int for k, v in result.items() if k != "why"))
+        self.assertTrue(all(type(v) in (int, bool) for k, v in result.items() if k not in ("why", "active_heading_parent_type")))
+        self.assertIn(result["active_heading_parent_type"], ("unknown", "page", "column", "column_list", "toggle"))
 
     def test_dry_run_creation_is_only_eligibility(self):
         client = Fake()

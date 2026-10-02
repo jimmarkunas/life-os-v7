@@ -28,6 +28,10 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             counts["blocked"] += 1
             reason(target)
             return counts
+        if _probe:
+            shape = notion.active_shape(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
+            reason(shape.pop("code"))
+            counts.update(shape)
         scan = notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
         counts["observed"] = len(scan.items)
         if not scan.complete:
