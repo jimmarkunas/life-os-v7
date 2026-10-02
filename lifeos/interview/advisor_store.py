@@ -7,13 +7,16 @@ import re
 
 from . import advisor, notion
 from .models import PrepEvidence
-from lifeos.platform.notion_client import Client
+from lifeos.platform.notion_client import Client, NotionError
 
 _ROOT = "LIFE OS — Interview Advisor"
 _NAMES = ("Corpus Manifest", "Straight Line Doctrine", "Game Theory Doctrine",
           "Candidate Evidence Bank", "Candidate Profile", "Advisor Inputs", "Advisor Queue", "Advisor Previews")
 _MARKERS = dict(zip(_NAMES, ("manifest", "straight_line_doctrine", "game_theory_doctrine",
                               "evidence_bank", "candidate_profile", "inputs", "queue", "previews")))
+_SRC, _BANK = "v7-interview-advisor-source:1;", "v7-interview-advisor-bank:1;"
+_META = {"Straight Line Doctrine": _SRC, "Game Theory Doctrine": _SRC, "Candidate Profile": _SRC,
+         "Candidate Evidence Bank": _BANK}
 _CHILDREN = {"Advisor Inputs": ("Guidance", "Accepted Signals")}
 _RX = re.compile(r"^[0-9a-f]{32}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -24,7 +27,7 @@ class AdvisorStoreError(ValueError):
     def __init__(self, code=_CODE):
         self.code = code if code in {"advisor_store_invalid", "advisor_store_incomplete", "advisor_store_hash_mismatch",
                                     "advisor_store_unreadable", "advisor_preview_invalid", "advisor_preview_conflict",
-                                    "advisor_preview_readback_failed"} else _CODE
+                                    "advisor_preview_readback_failed", "advisor_preview_write_failed"} else _CODE
         super().__init__(self.code)
 
     def __str__(self):
@@ -86,13 +89,26 @@ def _blocks(client, page_id):
         raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
-def _marked(client, page_id, kind):
+_TEXT_BLOCKS = ("paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item",
+                "quote", "callout", "toggle", "to_do", "code")
+
+
+def _marker_like(block):
+    """Any text that looks like an Advisor marker or metadata line, whatever its version, spelling or block type."""
+    kind = block.get("type")
+    return kind in _TEXT_BLOCKS and _plain(block).strip().lower().startswith("v7-interview-advisor")
+
+
+def _marked(client, page_id, kind, metadata_prefix=None):
+    """First block is the exact marker; the only other marker-like text allowed is the one exact metadata block."""
     blocks = _blocks(client, page_id)
     marker = f"v7-interview-advisor:1;kind={kind}"
     _need(bool(blocks) and blocks[0].get("type") == "paragraph" and _plain(blocks[0]) == marker,
           "advisor_store_incomplete")
-    if any(b.get("type") == "paragraph" and _plain(b).startswith("v7-interview-advisor:1;kind=") for b in blocks[1:]):
-        raise AdvisorStoreError("advisor_store_incomplete")
+    for index, block in enumerate(blocks[1:], start=1):
+        if _marker_like(block):
+            _need(index == 1 and metadata_prefix is not None and block.get("type") == "paragraph"
+                  and _plain(block).startswith(metadata_prefix), "advisor_store_incomplete")
     return blocks
 
 
@@ -112,6 +128,7 @@ def _first_marker(client, page_id, kind):
 
 def _direct_pages(client, parent_id, allowed):
     blocks = _blocks(client, parent_id)
+    _need(not any(b.get("type") == "child_database" for b in blocks), "advisor_store_incomplete")
     pages = [b for b in blocks if b.get("type") == "child_page"]
     titles = [(b.get("child_page") or {}).get("title") for b in pages]
     _need(all(isinstance(t, str) and t in allowed for t in titles), "advisor_store_incomplete")
@@ -141,11 +158,9 @@ def _metadata(block, prefix, keys):
 
 
 def _source(client, page_id, kind, expected_marker):
-    blocks = _marked(client, page_id, expected_marker)
+    blocks = _marked(client, page_id, expected_marker, _SRC)
     _need(len(blocks) >= 3, "advisor_store_incomplete")
     meta = _metadata(blocks[1], "v7-interview-advisor-source:1;", ("source_id", "version"))
-    _need(not any(b.get("type") == "paragraph" and _plain(b).startswith("v7-interview-advisor-source:")
-                  for b in blocks[2:]), "advisor_store_invalid")
     _need(isinstance(meta["source_id"], str) and type(meta["version"]) is int and meta["version"] > 0,
           "advisor_store_invalid")
     text = "\n".join(_body_text(b) for b in blocks[2:])
@@ -157,7 +172,7 @@ def _source(client, page_id, kind, expected_marker):
 
 
 def _bank(client, page_id):
-    blocks = _marked(client, page_id, "evidence_bank")
+    blocks = _marked(client, page_id, "evidence_bank", _BANK)
     _need(len(blocks) >= 3, "advisor_store_incomplete")
     meta = _metadata(blocks[1], "v7-interview-advisor-bank:1;", ("version",))
     _need(type(meta["version"]) is int and meta["version"] > 0, "advisor_store_invalid")
@@ -213,10 +228,10 @@ class AdvisorStoreSnapshot:
     previews_page_id: str = field(repr=False)
 
 
-def read_store(client, root_page_id=None, environ=os.environ):
-    """Read only the explicitly configured root and its exact required descendants."""
-    root_page_id = (root_page_id or environ.get("INTERVIEW_ADVISOR_ROOT_PAGE_ID") or "").strip()
-    _need(isinstance(root_page_id, str) and bool(root_page_id.strip()), "advisor_store_invalid")
+def read_store(client, environ=os.environ):
+    """Read only the root configured by INTERVIEW_ADVISOR_ROOT_PAGE_ID and its exact required descendants."""
+    root_page_id = (environ.get("INTERVIEW_ADVISOR_ROOT_PAGE_ID") or "").strip()
+    _need(bool(root_page_id), "advisor_store_invalid")
     try:
         _page(client, root_page_id, _ROOT)
         pages = _direct_pages(client, root_page_id, _NAMES)
@@ -224,7 +239,7 @@ def read_store(client, root_page_id=None, environ=os.environ):
             if name == "Advisor Queue":
                 _first_marker(client, page_id, "queue")
                 continue
-            _marked(client, page_id, _MARKERS[name])
+            _marked(client, page_id, _MARKERS[name], _META.get(name))
         sub = _direct_pages(client, pages["Advisor Inputs"], _CHILDREN["Advisor Inputs"])
         for name, page_id in sub.items():
             _marked(client, page_id, "guidance" if name == "Guidance" else "accepted_signals")
@@ -410,7 +425,13 @@ def read_preview(client, preview_page_id, expected_previews_parent_id, expected_
         raise AdvisorStoreError("advisor_preview_invalid") from None
 
 
+_DEFINITE = ("NOTION_HTTP_400", "NOTION_HTTP_401", "NOTION_HTTP_403", "NOTION_HTTP_404", "NOTION_HTTP_409", "NOTION_HTTP_429")
+
+
 def create_preview(client, previews_page_id, generation_id, bundle, draft):
+    """Insert one preview. A client without a one-attempt transport is refused before anything is read or written."""
+    post = getattr(client, "call_once", None)
+    _need(callable(post), "advisor_preview_invalid")
     title, digest, body_hash, body, blocks, prep = render_preview(generation_id, bundle, draft)
     _page(client, previews_page_id, "Advisor Previews")
     _marked(client, previews_page_id, "previews")
@@ -419,9 +440,12 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
     _need(not matches, "advisor_preview_conflict")
     # Once POST begins, never retry: a transport error may follow a committed insert.
     try:
-        post = getattr(client, "call_once", client.call)
         page = post("POST", "/pages", {"parent": {"type": "page_id", "page_id": previews_page_id},
             "properties": {"title": {"title": _rich(title)}}, "children": blocks})
+    except NotionError as error:
+        # Only a response that proves Notion rejected the request means nothing was created; everything else is uncertain.
+        raise AdvisorStoreError("advisor_preview_write_failed" if str(error) in _DEFINITE
+                                else "advisor_preview_readback_failed") from None
     except Exception:
         raise AdvisorStoreError("advisor_preview_readback_failed") from None
     try:

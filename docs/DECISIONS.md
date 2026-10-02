@@ -267,9 +267,11 @@ Runtime private material will live outside the public repository. Raw private co
 ## D43 — Advisor private store is bounded; previews are immutable and insert-only
 Interview Advisor runtime doctrine, candidate profile, evidence, Guidance and Accepted Signals live under one explicitly configured private Notion root shared with the Interview integration. The runtime never searches the workspace globally and never treats arbitrary Notion content as Advisor input. The store is fail-closed: exact root identity, exact required child surfaces, source markers, version metadata and corpus hashes must validate before a current bundle may be assembled.
 
+The root comes only from INTERVIEW_ADVISOR_ROOT_PAGE_ID. The text namespace starting `v7-interview-advisor` is reserved: only each page's exact first-block marker and its one exact metadata line may use it, in any block type, and an unexpected child database under a controlled parent fails closed.
+
 The private root also reserves one dedicated Advisor Queue container for the ChatGPT-native Advisor handoff. INT-ADV-2 defines only the container identity; queue item semantics are deferred to INT-ADV-3.
 
-Advisor Preview creation is deterministic, immutable and insert-only beneath the dedicated Advisor Previews container. A preview commits to the exact AdvisorInputBundle digest and to the complete rendered preview body. Preview creation performs authoritative read-back and never writes Hiring Pipeline, B3 Derived, Live Notes or Raw Notes. Approval and B3 commit remain separate future actions.
+Advisor Preview creation is deterministic, immutable and insert-only beneath the dedicated Advisor Previews container. A preview commits to the exact AdvisorInputBundle digest and to the complete rendered preview body. Preview creation requires the one-attempt Notion transport and refuses to run without it; only a response that proves rejection (HTTP 400, 401, 403, 404, 409 or 429) is reported as a write failure, and every other failure after the POST begins is reported as an uncertain read-back failure and never retried. Preview creation performs authoritative read-back and never writes Hiring Pipeline, B3 Derived, Live Notes or Raw Notes. Approval and B3 commit remain separate future actions.
 
 The v1 Advisor does not require or authorize a paid model/API provider. ChatGPT-native reasoning is external to this deterministic store/preview boundary.
 

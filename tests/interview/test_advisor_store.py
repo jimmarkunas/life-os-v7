@@ -12,6 +12,9 @@ from lifeos.interview.models import PrepEvidence
 from lifeos.platform.notion_client import Client, NotionError
 
 
+ROOT_ENV = {"INTERVIEW_ADVISOR_ROOT_PAGE_ID": "root"}
+
+
 def canon(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -40,6 +43,9 @@ class FakeNotion:
         self.methods = []
         self.paths = []
         self.posts = 0
+
+    def call_once(self, method, path, body=None):
+        return self.call(method, path, body)
 
     def call(self, method, path, body=None):
         self.methods.append(method)
@@ -146,11 +152,11 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(store.AdvisorStoreError):
             store.make_client({"NOTION_API_TOKEN": "jobs-token"})
         with self.assertRaises(store.AdvisorStoreError):
-            store.read_store(FakeNotion(build_tree()), None, {})
+            store.read_store(FakeNotion(build_tree()), {})
 
     def test_exact_root_shape_markers_and_historical_filtering(self):
         client = FakeNotion(build_tree())
-        snapshot = store.read_store(client, "root")
+        snapshot = store.read_store(client, ROOT_ENV)
         self.assertEqual(snapshot.straight_line.kind, SourceKind.STRAIGHT_LINE_DOCTRINE)
         self.assertEqual(tuple(x.ref.canonical() for x in snapshot.evidence), ("E-SYN-001@1",))
         self.assertEqual(tuple(x.source_id for x in snapshot.guidance), ("G-SYN-001",))
@@ -164,13 +170,13 @@ class StoreTests(unittest.TestCase):
     def test_missing_config_root_title_archive_trash_and_shape_fail_closed(self):
         for pages, root, env in ((build_tree(), "", {}), (build_tree(), "missing", {})):
             with self.assertRaises(store.AdvisorStoreError):
-                store.read_store(FakeNotion(pages), root, env)
+                store.read_store(FakeNotion(pages), env)
         for mutate in (lambda p: p[0]["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "Wrong"}),
                        lambda p: p[0].__setitem__("archived", True), lambda p: p[0].__setitem__("in_trash", True),
                        lambda p: p[0]["blocks"].pop(), lambda p: p[0]["blocks"].append(block("child_page", "", "Extra"))):
             pages = build_tree(); mutate(pages)
             with self.assertRaises(store.AdvisorStoreError):
-                store.read_store(FakeNotion(pages), "root")
+                store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_duplicate_child_missing_nested_child_and_bad_marker_fail(self):
         cases = []
@@ -182,17 +188,17 @@ class StoreTests(unittest.TestCase):
         p = build_tree(); p[7]["blocks"][0] = block("paragraph", "v7-interview-advisor:1;kind=not_queue"); cases.append(p)
         for pages in cases:
             with self.assertRaises(store.AdvisorStoreError):
-                store.read_store(FakeNotion(pages), "root")
+                store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_manifest_and_source_hash_mismatch_fail(self):
         pages = build_tree(); pages[3]["blocks"][1] = block("paragraph", canon({"source_id": "GT-SYN-001", "version": 2}))
         with self.assertRaises(store.AdvisorStoreError):
-            store.read_store(FakeNotion(pages), "root")
+            store.read_store(FakeNotion(pages), ROOT_ENV)
         for index in (2, 3, 5, 4):
             pages = build_tree()
             pages[index]["blocks"][-1] = block("paragraph", "Changed content")
             with self.assertRaises(store.AdvisorStoreError):
-                store.read_store(FakeNotion(pages), "root")
+                store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_source_metadata_body_blocks_and_manifest_metadata_fail_closed(self):
         mutations = []
@@ -205,7 +211,7 @@ class StoreTests(unittest.TestCase):
         for pages in mutations:
             with self.subTest(page=len(pages)):
                 with self.assertRaises(store.AdvisorStoreError):
-                    store.read_store(FakeNotion(pages), "root")
+                    store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_bank_duplicates_schema_version_hash_and_signal_cap_fail_closed(self):
         mutations = []
@@ -219,7 +225,7 @@ class StoreTests(unittest.TestCase):
         mutations.append(p)
         for pages in mutations:
             with self.assertRaises(store.AdvisorStoreError):
-                store.read_store(FakeNotion(pages), "root")
+                store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_single_attempt_transport_does_not_retry_rate_limited_post(self):
         error = urllib.error.HTTPError("https://api.notion.com", 429, "rate", {}, None)
@@ -233,20 +239,20 @@ class StoreTests(unittest.TestCase):
     def test_bad_evidence_guidance_and_signal_fail_closed(self):
         pages = build_tree(); pages[4]["blocks"][-1] = block("paragraph", "not-json")
         with self.assertRaises(store.AdvisorStoreError):
-            store.read_store(FakeNotion(pages), "root")
+            store.read_store(FakeNotion(pages), ROOT_ENV)
         pages = build_tree()
         for i in range(3):
             pages[-2]["blocks"].append(block("paragraph", canon({"source_id": f"G-{i}", "version": 1, "text": "more", "active": True})))
         with self.assertRaises(store.AdvisorStoreError):
-            store.read_store(FakeNotion(pages), "root")
+            store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_source_render_and_evidence_hash_cover_order_and_inactive_records(self):
         pages = build_tree(); client = FakeNotion(pages)
-        snapshot = store.read_store(client, "root")
+        snapshot = store.read_store(client, ROOT_ENV)
         self.assertEqual(snapshot.straight_line.text, "Synthetic canonical source.\n## Context\n- Synthetic fact")
         pages = build_tree(); pages[4]["blocks"].pop()
         with self.assertRaises(store.AdvisorStoreError):
-            store.read_store(FakeNotion(pages), "root")
+            store.read_store(FakeNotion(pages), ROOT_ENV)
 
     def test_preview_render_hashes_complete_body_and_title_is_identity_safe(self):
         b, d = bundle(), draft()
@@ -369,10 +375,70 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "advisor_preview_readback_failed")
         self.assertEqual(client.posts, 1)
 
+    def _page(self, pages, title):
+        return next(p for p in pages if p["properties"]["Name"]["title"][0]["plain_text"] == title)
+
+    def test_root_comes_only_from_the_environment_variable(self):
+        with self.assertRaises(TypeError):
+            store.read_store(FakeNotion(build_tree()), "root", ROOT_ENV)
+        with self.assertRaises(store.AdvisorStoreError):
+            store.read_store(FakeNotion(build_tree()), {"INTERVIEW_ADVISOR_ROOT_PAGE_ID": "  "})
+        self.assertIsNotNone(store.read_store(FakeNotion(build_tree()), ROOT_ENV))
+
+    def test_any_marker_like_text_outside_the_exact_marker_and_metadata_fails_closed(self):
+        variants = ("v7-interview-advisor:2;kind=queue", "V7-Interview-Advisor:1;kind=x", "  v7-interview-advisor-source:2;{}",
+                    "v7-interview-advisor-bank:1;{}", "v7-interview-advisor-preview:1;x", "v7-interview-advisor")
+        for title in ("Straight Line Doctrine", "Game Theory Doctrine", "Candidate Profile", "Candidate Evidence Bank",
+                      "Guidance", "Accepted Signals", "Corpus Manifest", "Advisor Inputs", "Advisor Previews"):
+            for kind in ("paragraph", "heading_2", "bulleted_list_item"):
+                for text in variants:
+                    pages = build_tree()
+                    self._page(pages, title)["blocks"].append(block(kind, text))
+                    with self.subTest(title=title, kind=kind, text=text), self.assertRaises(store.AdvisorStoreError):
+                        store.read_store(FakeNotion(pages), ROOT_ENV)
+        # a second copy of the one allowed metadata line is also rejected
+        pages = build_tree()
+        sl = self._page(pages, "Straight Line Doctrine")
+        sl["blocks"].insert(2, sl["blocks"][1])
+        with self.assertRaises(store.AdvisorStoreError):
+            store.read_store(FakeNotion(pages), ROOT_ENV)
+
+    def test_unexpected_child_database_under_a_controlled_parent_fails_closed(self):
+        for title in ("LIFE OS — Interview Advisor", "Advisor Inputs"):
+            pages = build_tree()
+            database = {"id": "db-1", "type": "child_database", "has_children": False, "child_database": {"title": "Advisor Queue"}}
+            self._page(pages, title)["blocks"].append(database)
+            with self.subTest(title=title), self.assertRaises(store.AdvisorStoreError):
+                store.read_store(FakeNotion(pages), ROOT_ENV)
+
+    def test_preview_create_requires_the_one_attempt_transport_and_touches_nothing_without_it(self):
+        class NoOneAttempt(FakeNotion):
+            call_once = None
+        client = NoOneAttempt(build_tree())
+        with self.assertRaises(store.AdvisorStoreError) as error:
+            store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+        self.assertEqual(error.exception.code, "advisor_preview_invalid")
+        self.assertEqual((client.methods, client.posts), ([], 0))
+
+    def test_only_a_definite_rejection_is_a_write_failure_everything_else_is_uncertain(self):
+        cases = (("NOTION_HTTP_400", "advisor_preview_write_failed"), ("NOTION_HTTP_404", "advisor_preview_write_failed"),
+                 ("NOTION_HTTP_429", "advisor_preview_write_failed"), ("NOTION_HTTP_500", "advisor_preview_readback_failed"),
+                 ("NOTION_HTTP_502", "advisor_preview_readback_failed"), ("NOTION_NETWORK", "advisor_preview_readback_failed"))
+        for notion_code, expected in cases:
+            class Rejected(FakeNotion):
+                def call_once(self, method, path, body=None, _code=notion_code):
+                    self.posts += 1
+                    raise NotionError(_code)
+            client = Rejected(build_tree())
+            with self.subTest(code=notion_code), self.assertRaises(store.AdvisorStoreError) as error:
+                store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
+            self.assertEqual((error.exception.code, client.posts), (expected, 1))
+            self.assertNotIn("PATCH", client.methods)
+
     def test_fixed_private_errors_and_no_provider_or_logging(self):
         secret = "Synthetic Secret Candidate Detail"
         with self.assertRaises(store.AdvisorStoreError) as error:
-            store.read_store(FakeNotion(build_tree()), "private-root-id")
+            store.read_store(FakeNotion(build_tree()), {"INTERVIEW_ADVISOR_ROOT_PAGE_ID": "private-root-id"})
         self.assertNotIn(secret, str(error.exception)); self.assertNotIn("private-root-id", str(error.exception))
         source = Path(store.__file__).read_text()
         self.assertNotIn("logging.", source); self.assertNotIn("openai", source.lower())
