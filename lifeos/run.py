@@ -74,6 +74,11 @@ def _jira_snapshot(limit, live):
     return snapshot.run(limit, live)
 
 
+def _jira_card(limit, live):
+    from lifeos.jira import card
+    return card.run(limit, live)
+
+
 def _jira_probe(limit, live):
     from lifeos.jira import snapshot
     return snapshot.probe(limit, live)
@@ -142,6 +147,7 @@ STAGES = {
     "jira-snapshot": _jira_snapshot,
     "jira-rollover": _jira_rollover,
     "jira-probe": _jira_probe,
+    "jira-card": _jira_card,
     "interview-acceptance": _interview_acceptance,
     "openjobs": _openjobs,
     "sponsors": _sponsors,
