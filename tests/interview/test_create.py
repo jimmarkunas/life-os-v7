@@ -19,6 +19,13 @@ class WritableFake(Fake):
         self.blocks["root"] = [{"id": "active", "type": "child_page", "child_page": {"title": "Active Opportunities"}}]
         self.pages["active"] = page("Active Opportunities")
         self.blocks["active"] = []
+        self.blocks["root"].insert(0, {"id": "columns", "type": "column_list", "has_children": True})
+        self.blocks["columns"] = [{"id": "left", "type": "column", "has_children": True}, {"id": "right", "type": "column", "has_children": True}]
+        self.blocks["left"] = [block("Active Opportunities", "heading_2"), {"id": "human", "type": "child_page", "child_page": {"title": "Legacy — Manager"}}]
+        self.blocks["right"] = [block("Retired Opportunities", "heading_2")]
+        self.pages["human"] = page("Legacy — Manager")
+        self.pages["human"]["parent"] = {"type": "block_id", "block_id": "left"}
+        self.blocks["human"] = [block("human notes")]
         self.posts = []
         self.post_error = False
         self.bad_readback = False
@@ -217,63 +224,67 @@ class CreationTests(unittest.TestCase):
 
 
 class ActiveShapeTests(unittest.TestCase):
-    def probe(self, client):
+    def context(self):
         from lifeos.platform.runtime import RunContext
-        return notion.active_shape(client, "root", RunContext.start(60))
+        return RunContext.start(60)
 
-    def test_legal_dedicated_page_parent_supported(self):
-        client = ColumnFake("page_id", "active")
-        result = self.probe(client)
-        self.assertEqual(result["code"], "active_shape_supported")
-        self.assertEqual(result["active_heading_count"], 1)
-        self.assertEqual(result["active_heading_parent_type"], "column")
-        self.assertTrue(result["active_pages_same_parent"])
-        self.assertTrue(result["active_pages_parent_verified"])
+    def test_heading_and_direct_container_coexist(self):
+        client = WritableFake()
+        result = notion.active_shape(client, "root", self.context())
+        self.assertEqual(result, {"active_heading_count": 1, "active_container_count": 1,
+            "active_container_parent_verified": True, "insertion_supported": True, "code": "active_shape_supported"})
+        self.assertEqual(notion.active_target(client, "root", self.context()), "active")
+        result = stage.probe(10, True, environ=ENV, client=client)
+        self.assertTrue(result["insertion_supported"])
+        self.assertEqual(result["writes"], 0)
+        self.assertTrue(all(method == "GET" for method, _ in client.calls))
+        for private in ("Legacy", "Manager", "root", "left", "http"):
+            self.assertNotIn(private, json.dumps(result))
 
-    def test_missing_duplicate_and_different_parent(self):
-        for mode, code in (("missing", "active_shape_incomplete"), ("duplicate", "active_shape_ambiguous"), ("different", "active_shape_ambiguous")):
+    def test_invalid_containers_fail_closed(self):
+        for mode in ("missing", "duplicate", "nested", "archived", "trash", "wrong_parent", "unreadable", "retired"):
             with self.subTest(mode=mode):
-                client = ColumnFake()
-                if mode == "missing": client.blocks["left"][0] = block("Other Heading", "heading_2")
-                if mode == "duplicate": client.blocks["right"].insert(0, block("Active Opportunities", "heading_2"))
-                if mode == "different":
-                    client.blocks["left"].append({"id": "another", "type": "child_page", "child_page": {"title": "Synthetic Other — Manager"}})
-                    client.pages["another"] = page()
-                    client.pages["another"]["parent"] = {"type": "block_id", "block_id": "elsewhere"}
-                self.assertEqual(self.probe(client)["code"], code)
-
-    def test_unreadable_parent_metadata(self):
-        client = ColumnFake()
-        client.fail.add("/pages/opportunity")
-        self.assertEqual(self.probe(client)["code"], "active_shape_unreadable")
-
-    def test_column_block_and_root_page_parents_unsupported(self):
-        for kind in ("block_id", "page_id"):
-            with self.subTest(kind=kind):
-                client = ColumnFake(kind)
-                result = self.probe(client)
-                self.assertEqual(result["code"], "active_shape_not_page_parent")
-                self.assertFalse(result["insertion_supported"])
+                client = WritableFake()
+                if mode == "missing": client.blocks["root"].pop()
+                if mode == "duplicate": client.blocks["root"].append(copy.deepcopy(client.blocks["root"][-1]))
+                if mode == "nested": client.blocks["left"].append(client.blocks["root"].pop())
+                if mode == "archived": client.pages["active"]["archived"] = True
+                if mode == "trash": client.pages["active"]["in_trash"] = True
+                if mode == "wrong_parent": client.pages["active"]["parent"] = {"type": "page_id", "page_id": "elsewhere"}
+                if mode == "unreadable": client.fail.add("/pages/active")
+                if mode == "retired": client.blocks["root"][-1]["child_page"]["title"] = "Retired Opportunities"
+                self.assertIsNone(notion.active_target(client, "root", self.context()))
+                shape = notion.active_shape(client, "root", self.context())
+                self.assertFalse(shape["insertion_supported"])
                 result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
                 self.assertIn("active_target_incomplete", result["why"])
                 self.assertEqual(client.posts, [])
 
-    def test_retired_not_evidence_and_probe_public_get_only(self):
-        client = ColumnFake()
-        client.fail.add("/pages/retired")
-        result = stage.probe(10, True, environ=ENV, client=client)
-        self.assertEqual(result["active_page_count"], 1)
-        self.assertIn("active_shape_not_page_parent", result["why"])
-        self.assertTrue(all(method == "GET" for method, _ in client.calls))
-        self.assertNotIn(("GET", "/pages/retired"), client.calls)
-        serialized = json.dumps(result)
-        for private in ("Synthetic", "Manager", "root", "left", "opportunity", "http"):
-            self.assertNotIn(private, serialized)
+    def test_combined_active_universe_excludes_container_and_retired(self):
+        from lifeos.interview.identity import resolve_parent
+        client = WritableFake()
+        parent_id = machine_parent(client)
+        client.blocks["right"].append({"id": "retired", "type": "child_page", "child_page": {"title": "Retired — Manager"}})
+        scan = notion.parent_scan(client, "root", self.context())
+        self.assertTrue(scan.complete)
+        self.assertEqual(resolve_parent(ParentQuery("Legacy", "Manager"), scan).page_id, "human")
+        self.assertEqual(resolve_parent(PARENT, scan).page_id, parent_id)
+        self.assertNotIn("active", [p.page_id for p in scan.items])
+        self.assertEqual(resolve_parent(ParentQuery("Retired", "Manager"), scan).state, State.NOT_FOUND)
+        result = stage.run(10, True, environ=ENV, client=client, evidence=[(ParentQuery("Legacy", "Manager"), ROUND)])
+        self.assertIn("human_page", result["why"])
+        self.assertEqual(len(client.posts), 1)
+        self.assertEqual(client.posts[0]["parent"]["page_id"], "active")
 
-    def test_incomplete_enumeration_and_retired_crossover(self):
-        client = ColumnFake()
-        client.more = True
-        self.assertEqual(self.probe(client)["code"], "active_shape_incomplete")
-        client = ColumnFake("page_id", "active")
-        client.blocks["right"] = [block("Retired Opportunities", "heading_2")]
-        self.assertEqual(self.probe(client)["code"], "active_shape_ambiguous")
+    def test_dry_new_pursuit_and_replay_preserve_legacy(self):
+        client = WritableFake()
+        before = copy.deepcopy([client.blocks["left"], client.blocks["right"], client.blocks["human"]])
+        result = stage.run(10, False, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        self.assertIn("parent_create_allowed", result["why"])
+        self.assertEqual((result["writes_planned"], result["writes"]), (1, 0))
+        machine_parent(client)
+        stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        self.assertEqual(result["writes"], 0)
+        self.assertEqual(len(client.posts), 2)
+        self.assertEqual(before, [client.blocks["left"], client.blocks["right"], client.blocks["human"]])

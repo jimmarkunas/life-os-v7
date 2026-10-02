@@ -244,6 +244,12 @@ MACHINE round identity is a versioned canonical machine identity paragraph immed
 ownership marker, outside protected notes; it is authoritative for identity and replay. Titles are
 presentation only. Human/legacy rounds are never automatically retrofitted.
 
+B2's insertion surface is exactly one verified child page named Active Opportunities directly
+beneath Hiring Pipeline. The existing HUMAN Active heading/column coexists untouched. The
+container is infrastructure, not an opportunity; legacy HUMAN Active pages remain in the same
+identity universe for duplicate/ambiguity protection. MACHINE opportunities are created only
+beneath the dedicated container, never directly under Hiring Pipeline.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
