@@ -44,6 +44,7 @@ class Child:
     interview_date: str | None = None
     interviewer: str | None = None
     ordinal: int | None = None
+    identity_valid: bool | None = None
 
 
 @dataclass(frozen=True)

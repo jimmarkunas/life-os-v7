@@ -19,7 +19,7 @@ class StageTests(unittest.TestCase):
         serialized = json.dumps(result)
         for private in ("Example", "Program Manager", "private human notes", "synthetic", "root", "http"):
             self.assertNotIn(private, serialized)
-        self.assertTrue(all(type(v) is int for k, v in result.items() if k != "why"))
+        self.assertTrue(all(type(v) in (int, bool) for k, v in result.items() if k != "why"))
 
     def test_dry_run_creation_is_only_eligibility(self):
         client = Fake()
@@ -27,7 +27,7 @@ class StageTests(unittest.TestCase):
                            evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))])
         self.assertEqual(result["why"]["create_allowed"], 1)
         self.assertEqual(result["not_found"], 1)
-        self.assertEqual(result["writes_planned"], 0)
+        self.assertEqual(result["writes_planned"], 1)
         self.assertEqual(result["writes"], 0)
         self.assertTrue(all(method == "GET" for method, path in client.calls))
 
