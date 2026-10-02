@@ -212,5 +212,39 @@ def source_pages(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "
     return out
 
 
+def _rows(html_readers, source, text):
+    """How many rows the source's own reader finds in `text`, or the error class when it refuses the page."""
+    if not text:
+        return None
+    try:
+        return len(html_readers.READERS[source["kind"]](text, source, None))
+    except (ValueError, KeyError, TypeError, AttributeError) as error:
+        return type(error).__name__
+
+
+def egress_options(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "su-truvi-holdings-ltd")):
+    """For each stubborn sponsor, which route reaches its careers page from the runner? Per route: status, bytes, anchors, job markers, and what the
+    sponsor's own reader makes of it (rows, or the error class). Counts and flags only."""
+    from lifeos.platform import egress                                                       # noqa: PLC0415
+    from lifeos.sources.web import html_readers                                              # noqa: PLC0415
+    routes = {"honest_ua": egress.honest, "reader_proxy": egress.reader_proxy, "wayback": egress.wayback}
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["id"] not in ids:
+            continue
+        results = {}
+        for name, route in routes.items():
+            try:
+                got = route(source["url"])
+            except Exception as error:                                                       # noqa: BLE001 - a probe route must never stop the probe
+                results[name] = {"error": type(error).__name__}
+                continue
+            text = got.html or ""
+            results[name] = {"status": got.status, "error": got.error, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)),
+                             "job_markup": len(re.findall(r"JobPosting|rjjobportal", text)), "rows": _rows(html_readers, source, text)}
+        out[source["id"]] = results
+    return out
+
+
 def run(limit, live):
-    return {"source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}

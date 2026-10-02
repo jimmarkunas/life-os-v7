@@ -317,7 +317,8 @@
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://www.futuristictechnologies.co.uk/careers/"
+   "url": "https://www.futuristictechnologies.co.uk/careers/",
+   "announced_ua": true
   },
   {
    "id": "su-revolut-ltd",
@@ -420,7 +421,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "ready",
+   "status": "fallback",
    "url": "https://careers.ottocar.co.uk/jobs"
   },
   {
@@ -490,7 +491,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "ready",
+   "status": "fallback",
    "url": "https://truvi.com/careers/"
   }
  ]
