@@ -63,6 +63,11 @@ def _interview(limit, live):
     return stage.run(limit, live)
 
 
+def _interview_acceptance(limit, live):
+    from lifeos.interview import acceptance
+    return acceptance.run(limit, live)
+
+
 def _openjobs(limit, live):
     from lifeos.sources import openjobs                                                         # noqa: PLC0415
     return openjobs.run(limit, live)
@@ -118,6 +123,7 @@ STAGES = {
     "alerts": _alerts,
     "interview-probe": _interview_probe,
     "interview": _interview,
+    "interview-acceptance": _interview_acceptance,
     "openjobs": _openjobs,
     "sponsors": _sponsors,
     "probe": _probe,
