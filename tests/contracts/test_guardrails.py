@@ -174,7 +174,10 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(scheduled, ["hourly.yml"])
+        self.assertEqual(sorted(scheduled), ["hourly.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline
+        watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
+        self.assertNotIn("lifeos.run", watchdog)
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN"])
         self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 3)   # D30: three triggers, one gate
 
     def test_machine_input_universes_are_frozen(self):

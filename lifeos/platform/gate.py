@@ -65,7 +65,19 @@ def _issue(is_stale):
         print(f"gate: issue update skipped ({type(error).__name__})")
 
 
+def watch():
+    """Independent watchdog (its own workflow): the gate only runs when an hourly run starts, so a total stall (no GitHub schedule, no timer tick)
+    would stay silent. This opens or closes the same issue from outside the pipeline. Never touches job data."""
+    runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
+    is_stale = stale(runs, dt.datetime.now(dt.timezone.utc), 0)
+    _issue(is_stale)
+    print(f"watchdog: stale={is_stale}")
+    return 0
+
+
 def main():
+    if "--watch" in sys.argv:
+        return watch()
     if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
         print("gate: not a scheduled run or a timer tick -> run")
         return 0

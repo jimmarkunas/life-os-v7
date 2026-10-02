@@ -1,0 +1,20 @@
+name: watchdog
+on:
+  schedule:
+    - cron: "17 * * * *"         # outside the pipeline: opens the pipeline-stale issue when no hourly run has succeeded for 2.5 hours (D52)
+    - cron: "47 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  issues: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stale-pipeline check (counts only; no secrets, no job data)
+        run: python3 -m lifeos.platform.gate --watch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
