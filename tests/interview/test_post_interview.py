@@ -93,11 +93,25 @@ class PostInterviewContractTests(unittest.TestCase):
         self.assertIn("DIRECTV synthetic orchestration result.", render_post_interview_review(value, 4, (), review()))
 
     def test_unused_evidence_refs_are_unique_bounded_and_resolved(self):
-        for refs in ((), ("E-SYN-001@1", "E-SYN-001@1"), tuple("E-SYN-001@1" for _ in range(6)),
+        for refs in (("E-SYN-001@1", "E-SYN-001@1"), tuple("E-SYN-001@1" for _ in range(6)),
                      ("E-MISSING@1",)):
             with self.subTest(refs=refs), self.assertRaises(advisor.AdvisorContractError):
                 validate_post_interview_review(input_bundle(), 4, (),
                     replace(review(), stronger_unused_evidence_refs=refs))
+
+    def test_empty_stronger_unused_evidence_validates_and_renders_heading_only(self):
+        value = input_bundle()
+        empty = replace(review(), stronger_unused_evidence_refs=())
+        validate_post_interview_review(value, 4, (), empty)
+        rendered = render_post_interview_review(value, 4, (), empty)
+        self.assertIn("# Stronger Unused Evidence\n\n# Commitments", rendered)
+
+    def test_one_through_five_valid_unused_evidence_refs_pass(self):
+        value = replace(input_bundle(), evidence=tuple(advisor.CandidateEvidence(
+            advisor.EvidenceRef(f"E-SYN-{number:03d}", 1), f"Synthetic evidence {number}.", "CP-SYN@1")
+            for number in range(1, 6)))
+        refs = tuple(f"E-SYN-{number:03d}@1" for number in range(1, 6))
+        validate_post_interview_review(value, 4, (), replace(review(), stronger_unused_evidence_refs=refs))
 
     def test_follow_up_and_exact_next_action_each_require_grounding(self):
         follow = replace(review(), recommended_follow_up=replace(review().recommended_follow_up,

@@ -91,7 +91,7 @@ def validate_post_interview_review(bundle, transcript_line_count, accepted_note_
             _require(item.assessment is None or isinstance(item.assessment, ReviewAssessment))
             _grounded(item.transcript_lines, item.note_refs, transcript_line_count, set(accepted_note_refs))
     refs = review.stronger_unused_evidence_refs
-    _require(isinstance(refs, tuple) and 1 <= len(refs) <= 5 and all(isinstance(ref, str) for ref in refs))
+    _require(isinstance(refs, tuple) and 0 <= len(refs) <= 5 and all(isinstance(ref, str) for ref in refs))
     _require(len(refs) == len(set(refs)))
     evidence = {item.ref.canonical(): item for item in bundle.evidence}
     _require(all(ref in evidence for ref in refs), "advisor_evidence_missing")
