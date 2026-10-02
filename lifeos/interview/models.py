@@ -31,6 +31,14 @@ class RoundQuery:
 
 
 @dataclass(frozen=True)
+class PrepEvidence:
+    focus: tuple[str, ...] = ()
+    strongest_evidence: tuple[str, ...] = ()
+    pressure_points: tuple[str, ...] = ()
+    questions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Parent:
     page_id: str
     title: str

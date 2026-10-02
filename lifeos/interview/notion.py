@@ -190,6 +190,47 @@ def protected_snapshot(client, page_id):
     return hashlib.sha256(json.dumps([order, regions], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def append_children(client, page_id, heading_id, blocks):
+    return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
+
+
+DERIVED_MAX_CALLS = 100
+
+
+def derived_blocks(client, page_id):
+    """(heading, payload): the one Derived heading and the blocks it bounds.
+    Notion cannot page from a heading, so the API returns the whole top-level list; blocks before the heading are
+    dropped as each page arrives and only headings are compared by text. A separate call budget keeps large human
+    notes from exhausting the scan budget; running out still fails closed."""
+    heading, payload, ended, cursor, seen = None, [], False, None, set()
+    for _ in range(DERIVED_MAX_CALLS):
+        path = f"/blocks/{page_id}/children?page_size=100"
+        data = client.call("GET", path + (f"&start_cursor={quote(cursor, safe='')}" if cursor else ""))
+        if not isinstance(data.get("results"), list) or type(data.get("has_more")) is not bool:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        for block in data["results"]:
+            kind = block.get("type")
+            major = kind in ("heading_1", "heading_2")
+            if major and text(block) == "Derived":
+                if heading is not None:
+                    raise NotionError("INTERVIEW_DERIVED_MISSING")
+                heading = block
+            elif heading is not None and not ended:
+                if major:
+                    ended = True
+                else:
+                    payload.append(block)
+        if not data["has_more"]:
+            if heading is None:
+                raise NotionError("INTERVIEW_DERIVED_MISSING")
+            return heading, payload
+        cursor = data.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        seen.add(cursor)
+    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+
+
 def readback(client, page_id, parent_id, kind, before=None):
     try:
         page = client.call("GET", f"/pages/{page_id}")
