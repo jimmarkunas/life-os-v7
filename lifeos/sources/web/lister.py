@@ -12,7 +12,7 @@ from urllib.parse import quote, urlsplit
 
 from lifeos.jobs import jd
 from lifeos.sources.web import html_readers
-from lifeos.platform import impersonate, limits
+from lifeos.platform import egress, impersonate, limits
 from lifeos.platform.http import fetch
 
 COMPLETE, FAILED = "COMPLETE", "FAILED"
@@ -272,7 +272,9 @@ def _first_party_html(source, fetcher):
         if got.status != 200:
             raise ValueError(f"http_{got.status}")
         return got.html
-    if source.get("impersonate"):                       # a site that refuses plain requests (Revolut): Chrome TLS fingerprint, warm-up, retries
+    if source.get("announced_ua"):                      # a site that refuses a browser-looking agent but serves an announced bot (Futuristic; V1's way)
+        page = egress.honest(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
+    elif source.get("impersonate"):                       # a site that refuses plain requests (Revolut): Chrome TLS fingerprint, warm-up, retries
         page = impersonate.fetch(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
