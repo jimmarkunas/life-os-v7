@@ -288,7 +288,7 @@ class SnapshotTests(unittest.TestCase):
         client = self.Board(week([sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))]))
         snap = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
         self.assertEqual((snap["schema"], len(snap["current_tasks"]), len(snap["next_tasks"]), len(snap["overdue"]),
-                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (2, 2, 2, 2, 1, 1, 1))
+                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (3, 2, 2, 2, 1, 1, 1))
         self.assertEqual(snap["current_sprint"]["id"], 1)
         self.assertEqual(snap["next_sprint"]["id"], 2)
         counts = snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
@@ -363,7 +363,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 3)
+        self.assertEqual(job.count("continue-on-error: true"), 4)
         self.assertIn("::warning", job)
 
     def test_other_credentials_are_blank_and_database_secrets_reach_only_the_snapshot_step(self):

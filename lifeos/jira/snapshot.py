@@ -11,7 +11,7 @@ from . import store
 
 LOCAL_TZ = "America/Chicago"
 FIELDS = "summary,status,issuetype,priority,duedate,parent,project,assignee"
-SCHEMA_V = 2
+SCHEMA_V = 3
 SECTIONS = ("current_tasks", "next_tasks", "overdue", "blocked", "triage", "done")
 
 
@@ -23,6 +23,7 @@ def compact(issue):
             "type": (fields.get("issuetype") or {}).get("name") or "Unknown",
             "priority": (fields.get("priority") or {}).get("name") or "Unspecified", "due": fields.get("duedate"),
             "parent": (fields.get("parent") or {}).get("key"),
+            "parent_summary": ((fields.get("parent") or {}).get("fields") or {}).get("summary") or "",
             "project": ((fields.get("project") or {}).get("key")) or str(issue.get("key") or "").rsplit("-", 1)[0],
             "assignee": (fields.get("assignee") or {}).get("displayName")}
 
@@ -54,7 +55,7 @@ def project_snapshot(client, project, board_id, triage_all, now, keys=()):
     def tasks(sprint):
         if not sprint or sprint.get("id") is None:
             return []
-        return issues(f"sprint = {sprint['id']} AND issuetype = Task AND statusCategory != Done")   # whole sprint: cross-assigned work shows
+        return issues(f"sprint = {sprint['id']} AND issuetype != Epic AND statusCategory != Done")   # Tasks and Sub-tasks, whole sprint
 
     triage_type = "issuetype != Epic" if triage_all else "issuetype = Task"
     done = issues(f"issuetype != Epic AND sprint = {active[0]['id']} AND statusCategory = Done") if active else []
