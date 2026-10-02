@@ -316,7 +316,7 @@
    "kind": "futuristic_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "ready",
+   "status": "fallback",
    "url": "https://www.futuristictechnologies.co.uk/careers/"
   },
   {
@@ -420,7 +420,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "ready",
+   "status": "fallback",
    "url": "https://careers.ottocar.co.uk/jobs"
   },
   {
@@ -490,7 +490,7 @@
    "kind": "static_complete_html",
    "enabled": true,
    "completeness": "fallback_partial",
-   "status": "ready",
+   "status": "fallback",
    "url": "https://truvi.com/careers/"
   }
  ]
