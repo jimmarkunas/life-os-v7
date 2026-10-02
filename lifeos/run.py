@@ -54,14 +54,13 @@ def _alerts(limit, live):
 
 
 def _interview_probe(limit, live):
-    from lifeos import probe                                                                    # noqa: PLC0415
-    return {"interview_access": probe.interview_access()}
+    from lifeos.interview import stage
+    return stage.probe(limit, live)
 
 
 def _interview(limit, live):
-    """Placeholder until INT-7.1B1 lands lifeos.interview.stage: proves the wiring and the Interview token, writes nothing."""
-    from lifeos import probe                                                                    # noqa: PLC0415
-    return {"stage": "placeholder", "writes": 0, "interview_access": probe.interview_access()}
+    from lifeos.interview import stage
+    return stage.run(limit, live)
 
 
 def _openjobs(limit, live):
