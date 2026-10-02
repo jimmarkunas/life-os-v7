@@ -42,3 +42,6 @@ The token lives only at the timer service. Never put it in the repo.
 1. Install the free **ntfy** app (iPhone or Android) and subscribe to your private topic name (Subscribe to topic; leave the server as ntfy.sh).
 2. In GitHub: Settings > Secrets and variables > Actions > New repository secret: name `NTFY_TOPIC`, value = the same topic name. The name is the password: use a long random one and never commit it.
 3. Test: Actions > watchdog > Run workflow > tick **Send a test push**. Your phone should buzz within seconds.
+
+## Jira (D54)
+Add these four as Actions **secrets** (never variables: this repo is public): `JIRA_BASE_URL` (your Atlassian site address, https://...), `JIRA_EMAIL`, `JIRA_API_TOKEN` (a Jira API token for that account), and `JIRA_BOARDS` (comma-separated `PROJECTKEY:boardid`; add `:all` after a board id to triage every non-Epic item, e.g. `AAA:5,BBB:38:all`). Then run the workflow by hand with `jira_snapshot` or `jira_rollover` ticked and **Actually move mail** unticked: both are read-only dry runs and print counts only.

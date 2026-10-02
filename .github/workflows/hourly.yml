@@ -18,6 +18,14 @@ on:
         description: "Interview OS private acceptance (manual only): one case from the INTERVIEW_ACCEPTANCE_JSON secret; dry run unless Actually move mail is ticked"
         type: boolean
         default: false
+      jira_snapshot:
+        description: "Jira read-only snapshot of the managed boards (counts only; saves to the private database only when Actually move mail is ticked)"
+        type: boolean
+        default: false
+      jira_rollover:
+        description: "Jira weekly sprint rollover: DRY RUN unless Actually move mail is ticked; refuses to close a sprint before its end"
+        type: boolean
+        default: false
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
         type: boolean
@@ -396,6 +404,69 @@ jobs:
       - name: Interview warning (does not fail the run)
         if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
+
+  jira:
+    # Jira runs in its OWN job, like Interview: dispatch-only until promoted, only the Jira secrets (the database secrets are
+    # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.jira_snapshot || inputs.jira_rollover) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      JIRA_BOARDS: ${{ secrets.JIRA_BOARDS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - id: jsnap
+        continue-on-error: true
+        name: Jira snapshot (counts only; saved to the private database only when live)
+        if: ${{ inputs.jira_snapshot }}
+        env:
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - id: jroll
+        continue-on-error: true
+        name: Jira sprint rollover (dry run unless live; never before the sprint ends)
+        if: ${{ inputs.jira_rollover }}
+        run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
+      - name: Jira warning (does not fail the run)
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jroll.outcome == 'failure') }}
+        run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
