@@ -249,6 +249,8 @@ beneath Hiring Pipeline. The existing HUMAN Active heading/column coexists untou
 container is infrastructure, not an opportunity; legacy HUMAN Active pages remain in the same
 identity universe for duplicate/ambiguity protection. MACHINE opportunities are created only
 beneath the dedicated container, never directly under Hiring Pipeline.
+Pages outside recognized Active/Retired regions are preserved but excluded from Interview identity
+resolution and do not make enumeration incomplete.
 
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.

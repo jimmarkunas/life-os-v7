@@ -78,16 +78,30 @@ def parent_scan(client, root, context=None):
         if depth > MAX_DEPTH:
             raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         current = active
-        for block in children(client, page_id, budget, context):
+        blocks = children(client, page_id, budget, context)
+        containers = [b for b in blocks if b.get("type") == "child_page"
+                      and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
+        if page_id == root and len(containers) > 1:
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        for block in blocks:
             kind = block.get("type", "")
             title = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
-            if title in ("Active Opportunities", "Retired Opportunities"):
+            if kind == "child_page" and title in ("Active Opportunities", "Retired Opportunities"):
+                if title == "Active Opportunities":
+                    if page_id != root:
+                        continue
+                    container = client.call("GET", f"/pages/{block['id']}")
+                    if (container.get("parent") or {}).get("page_id") != root or container.get("archived") or container.get("in_trash"):
+                        raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                # A container scopes its descendants, never its following root siblings.
+                walk(block["id"], title == "Active Opportunities", depth + 1)
+            elif title in ("Active Opportunities", "Retired Opportunities") and (kind.startswith("heading") or kind == "toggle"):
                 current = title == "Active Opportunities"
-                if block.get("has_children") or kind == "child_page":
+                if block.get("has_children"):
                     walk(block["id"], current, depth + 1)
             elif kind == "child_page":
                 if current is None:
-                    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                    continue
                 found.append(Parent(block["id"], title, current))
             elif block.get("has_children") and kind in ("toggle", "column", "column_list"):
                 walk(block["id"], current, depth + 1)

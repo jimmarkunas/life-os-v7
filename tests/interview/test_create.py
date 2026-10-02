@@ -133,7 +133,7 @@ class CreationTests(unittest.TestCase):
         self.assertEqual(len(client.posts), 2)
 
     def test_parent_fail_closed_gates(self):
-        for mode, code in (("target", "target_unreadable"), ("scan", "pipeline_incomplete"), ("invalid", "identity_invalid"), ("ambiguous", "parent_ambiguous"), ("malformed", "identity_invalid"), ("unconfirmed", "pursuit_unconfirmed"), ("missing", "active_target_incomplete"), ("duplicate", "active_target_incomplete"), ("heading", "active_target_incomplete")):
+        for mode, code in (("target", "target_unreadable"), ("scan", "pipeline_incomplete"), ("invalid", "identity_invalid"), ("ambiguous", "parent_ambiguous"), ("malformed", "identity_invalid"), ("unconfirmed", "pursuit_unconfirmed"), ("missing", "active_target_incomplete"), ("duplicate", "pipeline_incomplete"), ("heading", "active_target_incomplete")):
             with self.subTest(mode=mode):
                 client = WritableFake()
                 parent, query = PARENT, ROUND
@@ -257,7 +257,7 @@ class ActiveShapeTests(unittest.TestCase):
                 shape = notion.active_shape(client, "root", self.context())
                 self.assertFalse(shape["insertion_supported"])
                 result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
-                self.assertIn("active_target_incomplete", result["why"])
+                self.assertTrue({"active_target_incomplete", "pipeline_incomplete"}.intersection(result["why"]))
                 self.assertEqual(client.posts, [])
 
     def test_combined_active_universe_excludes_container_and_retired(self):
@@ -288,3 +288,51 @@ class ActiveShapeTests(unittest.TestCase):
         self.assertEqual(result["writes"], 0)
         self.assertEqual(len(client.posts), 2)
         self.assertEqual(before, [client.blocks["left"], client.blocks["right"], client.blocks["human"]])
+
+
+class RecognizedRegionTests(unittest.TestCase):
+    def test_orphans_before_and_after_container_are_ignored_untouched(self):
+        from lifeos.interview.identity import resolve_parent
+        client = WritableFake()
+        orphan = {"id": "orphan", "type": "child_page", "child_page": {"title": "Unscoped legacy content"}}
+        client.blocks["root"].insert(0, copy.deepcopy(orphan))
+        client.blocks["root"].append(copy.deepcopy(orphan))
+        client.fail.add("/pages/orphan")
+        before = copy.deepcopy(client.blocks["root"])
+        result = stage.probe(10, True, environ=ENV, client=client)
+        self.assertEqual(result["observed"], 1)
+        self.assertEqual(result["valid_parents"], 1)
+        self.assertEqual(result["why"].get("identity_invalid", 0), 0)
+        self.assertEqual(result["why"].get("pipeline_incomplete", 0), 0)
+        self.assertTrue(result["insertion_supported"])
+        self.assertEqual(result["writes"], 0)
+        self.assertEqual(result["writes_planned"], 0)
+        self.assertEqual(client.blocks["root"], before)
+        self.assertFalse(any("orphan" in path for _, path in client.calls))
+        scan = notion.parent_scan(client, "root")
+        self.assertTrue(scan.complete)
+        self.assertEqual(resolve_parent(ParentQuery("Legacy", "Manager"), scan).page_id, "human")
+        result = stage.run(10, False, environ=ENV, client=client, evidence=[(ParentQuery("Legacy", "Manager"), ROUND)])
+        self.assertIn("human_page", result["why"])
+        self.assertEqual(client.posts, [])
+
+    def test_recognized_read_pagination_depth_and_metadata_fail_closed(self):
+        for mode in ("legacy", "machine", "retired", "pagination", "depth", "response", "parent", "duplicate"):
+            with self.subTest(mode=mode):
+                client = WritableFake()
+                if mode == "legacy": client.fail.add("/blocks/left/children?page_size=100")
+                if mode == "machine": client.fail.add("/blocks/active/children?page_size=100")
+                if mode == "retired": client.fail.add("/blocks/right/children?page_size=100")
+                if mode == "pagination": client.more = True
+                if mode == "parent": client.pages["active"]["parent"] = {"page_id": "wrong"}
+                if mode == "duplicate": client.blocks["root"].append(copy.deepcopy(client.blocks["root"][-1]))
+                if mode == "response":
+                    original = client.call
+                    def invalid(method, path, body=None):
+                        return {"results": None, "has_more": False} if path == "/blocks/active/children?page_size=100" else original(method, path, body)
+                    client.call = invalid
+                if mode == "depth":
+                    for i in range(7):
+                        key = "left" if i == 0 else f"deep-{i}"
+                        client.blocks[key] = [{"id": f"deep-{i+1}", "type": "toggle", "has_children": True, "toggle": {"rich_text": []}}]
+                self.assertFalse(notion.parent_scan(client, "root").complete)
