@@ -180,6 +180,13 @@ class AdvisorInputBundle:
         evidence_refs = [e.ref.canonical() for e in self.evidence]
         _fail(len(source_keys) == len(set(source_keys)), "advisor_source_invalid")
         _fail(len(evidence_refs) == len(set(evidence_refs)), "advisor_evidence_invalid")
+        _fail(bool(self.evidence) and all(item.active for item in self.evidence), "advisor_evidence_invalid")
+        _fail(all(source.active for source in self.sources), "advisor_source_invalid")
+        required = {SourceKind.JOB_DESCRIPTION, SourceKind.CANDIDATE_PROFILE,
+                    SourceKind.STRAIGHT_LINE_DOCTRINE, SourceKind.GAME_THEORY_DOCTRINE}
+        _fail(required.issubset({source.kind for source in self.sources}), "advisor_source_invalid")
+        _fail(not set(source.canonical_ref() for source in self.sources).intersection(evidence_refs),
+              "advisor_input_invalid")
         _fail(sum(s.kind == SourceKind.GUIDANCE and s.active for s in self.sources) <= 3,
               "advisor_source_invalid")
         signal_counts = {}
@@ -244,6 +251,11 @@ def _validate_draft(bundle, draft):
     source_refs = {source.canonical_ref() for source in bundle.sources}
     evidence_refs = {item.ref.canonical() for item in bundle.evidence}
     all_refs = source_refs | evidence_refs
+    straight_line_refs = {source.canonical_ref() for source in bundle.sources
+                          if source.kind == SourceKind.STRAIGHT_LINE_DOCTRINE}
+    game_theory_refs = {source.canonical_ref() for source in bundle.sources
+                        if source.kind == SourceKind.GAME_THEORY_DOCTRINE}
+    contextual_refs = all_refs - straight_line_refs - game_theory_refs
     for section in _PRIVATE_SECTIONS:
         items = getattr(draft, section)
         _fail(isinstance(items, tuple) and len(items) <= 8 and all(isinstance(x, GroundedAdvice) for x in items),
@@ -253,6 +265,12 @@ def _validate_draft(bundle, draft):
         for item in items:
             _fail(len(item.text) <= 600, "advisor_draft_invalid")
             _fail(all(ref in all_refs for ref in item.source_refs), "advisor_ref_missing")
+            if section == "straight_line":
+                _fail(any(ref in straight_line_refs for ref in item.source_refs)
+                      and any(ref in contextual_refs for ref in item.source_refs), "advisor_ref_missing")
+            if section == "game_theory":
+                _fail(any(ref in game_theory_refs for ref in item.source_refs)
+                      and any(ref in contextual_refs for ref in item.source_refs), "advisor_ref_missing")
     for section in _CONCLUSION_SECTIONS:
         items = getattr(draft, section)
         _fail(isinstance(items, tuple) and len(items) <= 5 and all(isinstance(x, GroundedAdvice) for x in items),

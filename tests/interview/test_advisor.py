@@ -26,6 +26,7 @@ def candidate(ref="E-SYN-001@1", text="Led a synthetic migration across five mar
 def sources():
     return (
         AdvisorSource("JD-SYN-001", SourceKind.JOB_DESCRIPTION, "Synthetic role description."),
+        AdvisorSource("PROFILE-SYN-001", SourceKind.CANDIDATE_PROFILE, "Synthetic profile source."),
         AdvisorSource("GUIDE-SYN-001", SourceKind.GUIDANCE, "Keep the response concise."),
         AdvisorSource("SIGNAL-SYN-001", SourceKind.ACCEPTED_SIGNAL, "The panel values clear tradeoffs.", source_round="ROUND-SYN-001"),
         AdvisorSource("SL-SYN-001", SourceKind.STRAIGHT_LINE_DOCTRINE, "Synthetic doctrine source."),
@@ -46,8 +47,8 @@ def advice(text="Synthetic finding", ref="JD-SYN-001@1"):
 
 def draft(**changes):
     base = AdvisorDraft(
-        straight_line=(advice("Establish the decision threshold."),),
-        game_theory=(advice("Clarify who decides and what they value.", "GT-SYN-001@1"),),
+        straight_line=(GroundedAdvice("Establish the decision threshold.", ("SL-SYN-001@1", "JD-SYN-001@1")),),
+        game_theory=(GroundedAdvice("Clarify who decides and what they value.", ("GT-SYN-001@1", "JD-SYN-001@1")),),
         decision_criteria=(), objections=(), close_strategy=(),
         focus=(advice("Confirm the role's success measure."),),
         strongest_evidence_refs=("E-SYN-001@1",),
@@ -70,7 +71,9 @@ class EvidenceContractTests(unittest.TestCase):
 
     def test_evidence_bank_constraints_and_frozen_values(self):
         item = candidate(active=False)
-        self.assertFalse(bundle(evidence=(item,)).evidence[0].active)
+        self.assertFalse(item.active)
+        with self.assertRaises(AdvisorContractError):
+            bundle(evidence=(item,))
         with self.assertRaises(FrozenInstanceError):
             item.active = True
         for args in ((EvidenceRef.parse("E-SYN-001@1"), " ", "PROFILE-SYN-001"),
@@ -90,6 +93,8 @@ class SourceAndManifestTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 SourceKind(forbidden)
         self.assertTrue(all(isinstance(item, AdvisorSource) for item in sources()))
+        historical_source = AdvisorSource("OLD-SYN-001", SourceKind.COMPANY, "Historical source.", active=False)
+        self.assertFalse(historical_source.active)
 
     def test_source_identity_text_and_version_constraints(self):
         with self.assertRaises(AdvisorContractError):
@@ -114,6 +119,39 @@ class SourceAndManifestTests(unittest.TestCase):
             AdvisorSource("S-SYN-LONG", SourceKind.ACCEPTED_SIGNAL, "x" * 301, source_round="ROUND-SYN-1")
         with self.assertRaises(AdvisorContractError):
             AdvisorSource("S-SYN-NO-ROUND", SourceKind.ACCEPTED_SIGNAL, "Signal")
+
+    def test_current_bundle_requires_core_sources_and_active_inputs(self):
+        required = (SourceKind.JOB_DESCRIPTION, SourceKind.CANDIDATE_PROFILE,
+                    SourceKind.STRAIGHT_LINE_DOCTRINE, SourceKind.GAME_THEORY_DOCTRINE)
+        valid = bundle()
+        self.assertTrue(all(any(source.kind == kind and source.active for source in valid.sources) for kind in required))
+        self.assertTrue(valid.evidence and all(item.active for item in valid.evidence))
+        for missing in required:
+            with self.subTest(missing=missing), self.assertRaises(AdvisorContractError) as error:
+                bundle(src=tuple(source for source in sources() if source.kind != missing))
+            self.assertEqual(str(error.exception), "advisor_source_invalid")
+        with self.assertRaises(AdvisorContractError) as empty_evidence:
+            bundle(evidence=())
+        self.assertEqual(str(empty_evidence.exception), "advisor_evidence_invalid")
+        for kind in (SourceKind.JOB_DESCRIPTION, SourceKind.GUIDANCE, SourceKind.ACCEPTED_SIGNAL):
+            inactive = tuple(replace(source, active=False) if source.kind == kind else source for source in sources())
+            with self.subTest(inactive=kind), self.assertRaises(AdvisorContractError) as error:
+                bundle(src=inactive)
+            self.assertEqual(str(error.exception), "advisor_source_invalid")
+        with self.assertRaises(AdvisorContractError) as inactive_evidence:
+            bundle(evidence=(candidate(active=False),))
+        self.assertEqual(str(inactive_evidence.exception), "advisor_evidence_invalid")
+
+    def test_source_and_evidence_reference_namespaces_must_not_collide(self):
+        collision = AdvisorSource("E-SYN-001", SourceKind.COMPANY, "Synthetic company source.")
+        with self.assertRaises(AdvisorContractError) as error:
+            bundle(src=sources() + (collision,))
+        self.assertEqual(str(error.exception), "advisor_input_invalid")
+
+    def test_distinct_source_and_evidence_refs_remain_usable(self):
+        result = compile_prep(bundle(), draft(focus=(GroundedAdvice("Evidence grounded focus", (
+            "SL-SYN-001@1", "E-SYN-001@1")),)))
+        self.assertEqual(result.focus, ("Evidence grounded focus",))
 
     def test_manifest_hashes_and_versions_are_required(self):
         bundle()
@@ -193,6 +231,26 @@ class ModelAndCompilerTests(unittest.TestCase):
             with self.subTest(text=text, refs=refs), self.assertRaises(AdvisorContractError):
                 GroundedAdvice(text, refs)
 
+    def test_each_framework_finding_requires_matching_doctrine_and_context(self):
+        valid_sl = GroundedAdvice("Apply framework to this interview.", ("SL-SYN-001@1", "JD-SYN-001@1"))
+        valid_gt = GroundedAdvice("Apply strategy to this interview.", ("GT-SYN-001@1", "JD-SYN-001@1"))
+        self.assertIsInstance(compile_prep(bundle(), draft(straight_line=(valid_sl,))), PrepEvidence)
+        self.assertIsInstance(compile_prep(bundle(), draft(game_theory=(valid_gt,))), PrepEvidence)
+        invalid = (
+            ("straight_line", GroundedAdvice("Context only.", ("JD-SYN-001@1",))),
+            ("straight_line", GroundedAdvice("Doctrine only.", ("SL-SYN-001@1",))),
+            ("straight_line", GroundedAdvice("Wrong doctrine.", ("GT-SYN-001@1", "JD-SYN-001@1"))),
+            ("game_theory", GroundedAdvice("Context only.", ("JD-SYN-001@1",))),
+            ("game_theory", GroundedAdvice("Doctrine only.", ("GT-SYN-001@1",))),
+            ("game_theory", GroundedAdvice("Wrong doctrine.", ("SL-SYN-001@1", "JD-SYN-001@1"))),
+        )
+        for section, item in invalid:
+            with self.subTest(section=section, refs=item.source_refs), self.assertRaises(AdvisorContractError):
+                compile_prep(bundle(), draft(**{section: (item,)}))
+        candidate_context = GroundedAdvice("Evidence contextualized through Straight Line.",
+                                          ("SL-SYN-001@1", "E-SYN-001@1"))
+        self.assertIsInstance(compile_prep(bundle(), draft(straight_line=(candidate_context,))), PrepEvidence)
+
     def test_evidence_resolution_is_exact_active_version_and_never_model_prose(self):
         evidence = (candidate("E-SYN-001@1", "Immutable canonical text"),
                     candidate("E-SYN-001@2", "New immutable canonical text"))
@@ -202,8 +260,8 @@ class ModelAndCompilerTests(unittest.TestCase):
             compile_prep(bundle(), draft(strongest_evidence_refs=("E-SYN-009@1",)))
         self.assertEqual(str(missing.exception), "advisor_evidence_missing")
         with self.assertRaises(AdvisorContractError) as inactive:
-            compile_prep(bundle(evidence=(candidate(active=False),)), draft())
-        self.assertEqual(str(inactive.exception), "advisor_evidence_inactive")
+            bundle(evidence=(candidate(active=False),))
+        self.assertEqual(str(inactive.exception), "advisor_evidence_invalid")
         with self.assertRaises(AdvisorContractError) as too_large:
             compile_prep(bundle(evidence=(candidate(text="x" * 490),)), draft())
         self.assertEqual(str(too_large.exception), "advisor_compile_too_large")
