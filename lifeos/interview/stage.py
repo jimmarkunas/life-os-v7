@@ -8,10 +8,10 @@ from .models import Ownership, ParentQuery, State
 from lifeos.platform.names import split_title
 
 
-def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False):
+def run(limit, live, environ=os.environ, client=None, evidence=(), context=None, _probe=False, prep_evidence=()):
     context = context or RunContext.start(60)
     counts = {key: 0 for key in ("observed", "valid_parents", "with_rounds", "matched", "not_found", "blocked",
-                                "human_pages", "machine_pages", "writes_planned", "writes")}
+        "human_pages", "machine_pages", "writes_planned", "writes", "derived_created", "derived_match")}
     counts["why"] = {}
 
     def reason(code):
@@ -95,6 +95,17 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
                 counts["blocked"] += 1
             if result["readback_failed"] or result["code"] == "write_failed":
                 break
+        from .prep import apply as apply_prep
+        for index, (parent_query, round_query, prep) in enumerate(prep_evidence):
+            if index >= max(0, limit):
+                reason("pipeline_incomplete")
+                break
+            result = apply_prep(client, environ, parent_query, round_query, prep, live, context)
+            counts["writes_planned"] += result["writes_planned"]
+            counts["writes"] += result["writes"]
+            counts["derived_created"] += int(result["code"] == "derived_created")
+            counts["derived_match"] += int(result["code"] == "derived_match")
+            reason(result["code"])
         return counts
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         counts["blocked"] += 1

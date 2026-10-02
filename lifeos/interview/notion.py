@@ -190,6 +190,23 @@ def protected_snapshot(client, page_id):
     return hashlib.sha256(json.dumps([order, regions], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def append_children(client, page_id, heading_id, blocks):
+    return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
+
+
+def derived_blocks(client, page_id):
+    """Return only blocks bounded by the round's Derived heading."""
+    blocks = children(client, page_id, [MAX_CALLS])
+    headings = [i for i, b in enumerate(blocks) if b.get("type") in ("heading_1", "heading_2") and text(b) == "Derived"]
+    if len(headings) != 1:
+        raise NotionError("INTERVIEW_DERIVED_MISSING")
+    heading = blocks[headings[0]]
+    end = next((i for i in range(headings[0] + 1, len(blocks))
+                if blocks[i].get("type") in ("heading_1", "heading_2")), len(blocks))
+    payload = blocks[headings[0] + 1:end]
+    return blocks, heading, payload
+
+
 def readback(client, page_id, parent_id, kind, before=None):
     try:
         page = client.call("GET", f"/pages/{page_id}")

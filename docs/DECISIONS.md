@@ -252,6 +252,9 @@ beneath the dedicated container, never directly under Hiring Pipeline.
 Pages outside recognized Active/Retired regions are preserved but excluded from Interview identity
 resolution and do not make enumeration incomplete.
 
+## D41 — Interview B3 Derived is deterministic, bounded, and machine-owned (Jim, 2026-10-02)
+Derived contains machine-generated content only and never inferred facts. B3 accepts explicitly accepted private evidence in caller-supplied priority order; it does not read or summarize Live Notes or Raw Notes, and never writes either protected region. Only MACHINE rounds may receive Derived content; HUMAN and UNKNOWN rounds remain NO WRITE. B3 appends once: exact evidence replay is a no-op, while different evidence or unexpected existing Derived content fails closed. Future model use remains behind the Interview-owned adapter rule in D39.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
