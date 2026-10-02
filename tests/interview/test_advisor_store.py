@@ -268,6 +268,41 @@ class StoreTests(unittest.TestCase):
             __import__("dataclasses").replace(b, role="Other Role"), d)[4][0])
         self.assertEqual(prep, store.render_preview("0123456789abcdef0123456789abcdef", b, d)[5])
 
+    def test_preview_parser_never_carries_pending_refs_across_private_section_headings(self):
+        _, _, _, _, blocks, _ = store.render_preview("0123456789abcdef0123456789abcdef", bundle(), draft())
+        body = blocks[1:]
+        headings = [i for i, b in enumerate(body) if b["type"] == "heading_2"]
+        transitions = []
+        for left, right in zip(headings, headings[1:]):
+            prior = body[left]["heading_2"]["rich_text"][0]["text"]["content"]
+            following = body[right]["heading_2"]["rich_text"][0]["text"]["content"]
+            if (prior, following) in (("Decision Criteria", "Objections"),
+                                      ("Objections", "Close Strategy"),
+                                      ("Close Strategy", "Compiled PrepEvidence"),
+                                      ("Straight Line", "Game Theory"),
+                                      ("Game Theory", "Decision Criteria")):
+                transitions.append((left, right, prior, following))
+        self.assertEqual(len(transitions), 5)
+        bullet = block("bulleted_list_item", "Unreferenced synthetic finding")
+        refs = block("paragraph", "refs: JD-SYN-001@1")
+        for left, right, prior, following in transitions:
+            malformed = body[:right] + [bullet, body[right], refs] + body[right + 1:]
+            with self.subTest(section=prior, following=following), self.assertRaises(store.AdvisorStoreError):
+                store._parse_preview_body(malformed)
+
+    def test_preview_parser_accepts_optional_findings_and_empty_optional_sections(self):
+        _, _, _, _, blocks, prep = store.render_preview("0123456789abcdef0123456789abcdef", bundle(), draft())
+        body = blocks[1:]
+        transition = next(i for i, item in enumerate(body) if item["type"] == "heading_2"
+                          and item["heading_2"]["rich_text"][0]["text"]["content"] == "Objections")
+        valid = body[:transition] + [block("bulleted_list_item", "Optional synthetic finding"),
+            block("paragraph", "refs: JD-SYN-001@1"), body[transition]] + body[transition + 1:]
+        _, parsed = store._parse_preview_body(valid)
+        self.assertEqual(parsed, prep)
+        # The untouched generated draft also proves every optional private section may be empty.
+        _, empty_parsed = store._parse_preview_body(body)
+        self.assertEqual(empty_parsed, prep)
+
     def test_preview_create_readback_post_only_conflict_and_no_retry(self):
         b, d = bundle(), draft(); client = FakeNotion(build_tree())
         verified = store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", b, d)

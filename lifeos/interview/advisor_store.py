@@ -333,6 +333,7 @@ def _parse_preview_body(blocks):
         kind = block.get("type")
         text = _plain(block)
         if kind in ("heading_2", "heading_3"):
+            _need(not pending_refs, "advisor_preview_invalid")
             line = ("## " if kind == "heading_2" else "### ") + text
             lines.append(line)
             if kind == "heading_2":
