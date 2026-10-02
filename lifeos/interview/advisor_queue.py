@@ -201,7 +201,10 @@ def _queue(client, budget, queue_page_id):
     root_id = (container.get("parent") or {}).get("page_id")
     _need(isinstance(root_id, str) and bool(root_id), "advisor_queue_invalid")
     _page(client, budget, root_id, "LIFE OS — Interview Advisor")
-    first = _call(client, budget, "GET", f"/blocks/{queue_page_id}/children?page_size=1")["results"]
+    first_data = _call(client, budget, "GET", f"/blocks/{queue_page_id}/children?page_size=1")
+    _need(isinstance(first_data, dict) and isinstance(first_data.get("results"), list),
+          "advisor_queue_incomplete")
+    first = first_data["results"]
     _need(isinstance(first, list) and first and first[0].get("type") == "paragraph"
           and _plain(first[0]) == _QUEUE_MARKER, "advisor_queue_invalid")
     blocks = _children(client, budget, queue_page_id)
@@ -241,8 +244,8 @@ def _read_request(client, budget, page_id, expected_parent=None):
 
 
 def _reserved(text):
-    low = text.lower()
-    return "v7-interview-advisor-request" in low or "v7-interview-advisor-response" in low
+    normalized = text.strip().lower()
+    return normalized.startswith(("v7-interview-advisor-request", "v7-interview-advisor-response"))
 
 
 def _request_blocks(request):
@@ -375,8 +378,15 @@ def scan_queue(client, queue_page_id):
     budget = [_CALLS]
     blocks = _queue(client, budget, queue_page_id)
     items = []
+    seen_request_ids = set()
     for block in blocks[1:]:
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
+        title = (block.get("child_page") or {}).get("title", "")
+        title_match = _REQUEST.fullmatch(title)
+        _need(title_match is not None, "advisor_queue_invalid")
+        request_id = title_match.group(1)
+        _need(request_id not in seen_request_ids, "advisor_queue_conflict")
+        seen_request_ids.add(request_id)
         request, extras = _request_for_scan(client, budget, queue_page_id, block)
         child_pages = [b for b in extras if b.get("type") == "child_page"]
         malformed = len(child_pages) != len(extras) or len(child_pages) > 1

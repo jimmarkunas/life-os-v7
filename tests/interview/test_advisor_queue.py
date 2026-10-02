@@ -59,6 +59,7 @@ class FakeNotion:
         self.posts, self.methods, self.paths = 0, [], []
         self.post_error = None
         self.pagination_incomplete = False
+        self.first_page_envelope = None
 
     def call_once(self, method, path, body=None):
         return self.call(method, path, body)
@@ -71,6 +72,8 @@ class FakeNotion:
             page_id = path.split("/")[2]
             blocks = self.pages[page_id]["blocks"]
             if path.endswith("page_size=1"):
+                if page_id == "queue" and self.first_page_envelope is not None:
+                    return self.first_page_envelope
                 return {"results": blocks[:1], "has_more": len(blocks) > 1, "next_cursor": "next" if len(blocks) > 1 else None}
             if "start_cursor" in path:
                 return {"results": [], "has_more": False, "next_cursor": None}
@@ -156,6 +159,65 @@ class AdvisorQueueTests(unittest.TestCase):
         replay = queue.ensure_request(client, "queue", bundle())
         self.assertEqual(first, replay); self.assertEqual(client.posts, 1)
         self.assertEqual(client.methods.count("POST"), 1); self.assertNotIn("PATCH", client.methods)
+
+    def test_request_json_may_contain_quoted_reserved_marker_text(self):
+        original = bundle()
+        sources = (replace(original.sources[0], text='Role mentions "v7-interview-advisor-request" as an example.'),) + original.sources[1:]
+        candidate = replace(original, sources=sources)
+        client = FakeNotion()
+        request = queue.ensure_request(client, "queue", candidate)
+        read, trailing = queue._read_request(client, [40], request.page_id, "queue")
+        self.assertEqual(read.bundle, candidate)
+        self.assertEqual(trailing, [])
+
+    def test_response_json_may_contain_quoted_reserved_marker_text(self):
+        client = FakeNotion(); request = queue.ensure_request(client, "queue", bundle())
+        advised = replace(draft(), focus=(advisor.GroundedAdvice(
+            'Discuss the quoted text "v7-interview-advisor-response" if asked.', ("JD-SYN@1",)),))
+        client.pages["response"] = response_page(request, advised)
+        parsed = queue.read_response(client, request, "response")
+        self.assertEqual(parsed.draft.focus[0].text, advised.focus[0].text)
+
+    def test_raw_reserved_prefix_block_fails_closed(self):
+        client = FakeNotion(); request = queue.ensure_request(client, "queue", bundle())
+        client.pages[request.page_id]["blocks"].append(block("paragraph", "  V7-INTERVIEW-ADVISOR-RESPONSE:raw"))
+        items = queue.scan_queue(client, "queue")
+        self.assertEqual(items[0].state, queue.QueueState.AMBIGUOUS)
+
+    def test_scan_queue_duplicate_request_title_is_conflict(self):
+        client = FakeNotion(); request = queue.ensure_request(client, "queue", bundle())
+        duplicate = block("child_page", title=f"Advisor Request {request.request_id}")
+        duplicate["id"] = "duplicate-page"
+        client.pages["queue"]["blocks"].append(duplicate)
+        with self.assertRaises(queue.AdvisorQueueError) as error:
+            queue.scan_queue(client, "queue")
+        self.assertEqual(error.exception.code, "advisor_queue_conflict")
+
+    def test_scan_queue_duplicate_id_with_different_full_hash_is_conflict(self):
+        client = FakeNotion(); original = bundle(); request = queue.ensure_request(client, "queue", original)
+        collision = replace(original, role="Distinct collision fixture")
+        full_hash = request.request_id + "f" * 32
+        self.assertNotEqual(full_hash, request.bundle_hash)
+        second_page_id = "duplicate-hash-page"
+        second_marker = f"v7-interview-advisor-request:1;{request.request_id};{full_hash}"
+        client.pages[second_page_id] = page(f"Advisor Request {request.request_id}", "queue",
+            [block("paragraph", second_marker), block("paragraph", queue.serialize_bundle(collision))], second_page_id)
+        duplicate = block("child_page", title=f"Advisor Request {request.request_id}")
+        duplicate["id"] = second_page_id
+        client.pages["queue"]["blocks"].append(duplicate)
+        with self.assertRaises(queue.AdvisorQueueError) as error:
+            queue.scan_queue(client, "queue")
+        self.assertEqual(error.exception.code, "advisor_queue_conflict")
+
+    def test_scan_queue_rejects_malformed_page_size_one_envelopes_safely(self):
+        for envelope in ({"has_more": False}, {"results": "private synthetic payload", "has_more": False}):
+            client = FakeNotion(); client.first_page_envelope = envelope
+            with self.subTest(envelope=envelope), self.assertRaises(queue.AdvisorQueueError) as error:
+                queue.scan_queue(client, "queue")
+            self.assertEqual(error.exception.code, "advisor_queue_incomplete")
+            self.assertNotIn("private", str(error.exception))
+            self.assertNotIn("KeyError", repr(error.exception))
+            self.assertNotIn("TypeError", repr(error.exception))
 
     def test_existing_duplicate_or_unexpected_queue_children_fail_closed(self):
         client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
