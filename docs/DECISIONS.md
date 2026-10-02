@@ -218,6 +218,17 @@ Notion keeps a trashed page for 30 days. A page with no Hostinger row or no stor
 are ported and trimmed from V2. Counts-only logs remain the primary control; redaction guards exception text and any diagnostic. The resolve stage's batch deadline is runtime's first consumer; Interview OS is the next.
 `docs/INTERVIEW_HANDOFF.md` is the shared contract for the Interview track: ownership, hard rules, build order, the one open decision (how Derived content is produced).
 
+## D39 — Interview Derived starts deterministic only (Jim, 2026-10-01)
+INT-7.1B1 introduces deterministic identity and protection contracts only: no local or API model,
+prep generation, production page creation, adoption, or mutation. Derived content may later use
+extraction/templates. Any future approved model remains behind an Interview-owned adapter and
+never becomes a platform dependency. Interview owns D39–D49.
+
+Protected Live Notes and Raw Notes are never normalized or modified. Future mutation order:
+target check → ownership/human-state guard → protected snapshot → write → direct read-back →
+protected comparison. Ordinary probes never fingerprint protected content. Existing human and
+unknown pages remain NO WRITE. B2 consumes B1 creation eligibility; B1 never executes it.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
