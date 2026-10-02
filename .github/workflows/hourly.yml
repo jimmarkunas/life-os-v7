@@ -403,10 +403,10 @@ jobs:
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
   jira:
-    # Jira runs in its OWN job, like Interview: dispatch-only until promoted, only the Jira secrets (the database secrets are
+    # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.jira != 'none' }}
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick || inputs.jira != 'none') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -446,7 +446,7 @@ jobs:
       - id: jsnap
         continue-on-error: true
         name: Jira snapshot (counts only; saved to the private database only when live)
-        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' }}
+        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || github.event_name != 'workflow_dispatch' || inputs.tick }}
         env:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
@@ -460,7 +460,7 @@ jobs:
       - id: jcard
         continue-on-error: true
         name: Jira card (Daily Report; counts only; the page is written only when live)
-        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' }}
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || github.event_name != 'workflow_dispatch' || inputs.tick }}
         env:
           NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
