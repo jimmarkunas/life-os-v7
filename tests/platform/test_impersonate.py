@@ -19,8 +19,12 @@ class Session:
         return self.script.pop(0) if self.script else Resp(403)
 
 
-def factory(script, log):
-    return lambda: Session(script, log)
+def factory(script, log, browsers=None):
+    def make(name="chrome"):
+        if browsers is not None:
+            browsers.append(name)
+        return Session(script, log)
+    return make
 
 
 class Impersonate(unittest.TestCase):
@@ -33,7 +37,7 @@ class Impersonate(unittest.TestCase):
     def test_retries_then_reports_the_last_status(self):
         log = []
         got = impersonate.fetch("https://a.example/c", must_contain="x", session_factory=factory([], log), sleep=lambda s: None)
-        self.assertEqual((got.status, got.html, len(log)), (403, "", 3))
+        self.assertEqual((got.status, got.html, len(log)), (403, "", 4))
 
     def test_a_200_without_the_marker_is_not_accepted(self):
         got = impersonate.fetch("https://a.example/c", must_contain="__NEXT_DATA__", rounds=1, session_factory=factory([Resp(200, "blocked page")], []))
@@ -65,3 +69,10 @@ class AnnouncedAgent(unittest.TestCase):
         with mock.patch.object(egress, "honest", return_value=page) as honest:
             got = lister.list_source(source, plain)
         self.assertEqual((got.status, [j["title"] for j in got.jobs], honest.call_count), ("COMPLETE", ["Data Engineer"], 1))
+
+
+class Fingerprints(unittest.TestCase):
+    def test_each_round_uses_a_different_browser_fingerprint(self):
+        seen = []
+        impersonate.fetch("https://a.example/c", must_contain="x", session_factory=factory([], [], seen), sleep=lambda s: None)
+        self.assertEqual(seen, ["chrome", "safari", "edge", "firefox"])
