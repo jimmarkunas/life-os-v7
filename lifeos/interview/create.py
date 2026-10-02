@@ -75,7 +75,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("active_target_incomplete")
             kind, code = "opportunity", "parent_create_allowed"
         else:
-            if parent.page_id in deferred:
+            if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
                 return finish("parent_exists")
             owner = notion.ownership(client, parent.page_id, "opportunity")
             if owner != Ownership.MACHINE:
@@ -121,7 +121,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             refreshed = resolve_child(parent, query, notion.child_scan(client, insertion, context))
             if notion.protected_snapshot(client, insertion) != before:
                 return finish("readback_protected_changed")
-        if refreshed.state != State.MATCH or refreshed.page_id != page_id:
+        if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, page_id):
             return finish("readback_identity_mismatch")
         if kind == "opportunity":
             deferred.add(page_id)

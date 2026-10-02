@@ -12,6 +12,14 @@ PROTECTED = ("Live Notes", "Raw Notes")
 MAX_CALLS, MAX_DEPTH = 40, 4
 
 
+def same_notion_id(a, b):
+    """Notion references may use compact, dashed, or uppercase UUID spelling."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    left, right = a.replace("-", "").lower(), b.replace("-", "").lower()
+    return bool(left) and bool(right) and left == right
+
+
 def environment(environ):
     return {"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(),
             "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "interview-unused"}
@@ -81,17 +89,17 @@ def parent_scan(client, root, context=None):
         blocks = children(client, page_id, budget, context)
         containers = [b for b in blocks if b.get("type") == "child_page"
                       and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
-        if page_id == root and len(containers) > 1:
+        if same_notion_id(page_id, root) and len(containers) > 1:
             raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
         for block in blocks:
             kind = block.get("type", "")
             title = (block.get("child_page") or {}).get("title", "") if kind == "child_page" else text(block)
             if kind == "child_page" and title in ("Active Opportunities", "Retired Opportunities"):
                 if title == "Active Opportunities":
-                    if page_id != root:
+                    if not same_notion_id(page_id, root):
                         continue
                     container = client.call("GET", f"/pages/{block['id']}")
-                    if (container.get("parent") or {}).get("page_id") != root or container.get("archived") or container.get("in_trash"):
+                    if not same_notion_id((container.get("parent") or {}).get("page_id"), root) or container.get("archived") or container.get("in_trash"):
                         raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
                 # A container scopes its descendants, never its following root siblings.
                 walk(block["id"], title == "Active Opportunities", depth + 1)
@@ -126,7 +134,7 @@ def child_scan(client, parent_id, context=None):
             if len(found) >= MAX_CALLS:
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             child = explicit_child(client, block["id"])
-            if child is None or child.parent_id != parent_id:
+            if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(child)
         return Scan(tuple(found), True)
@@ -187,7 +195,7 @@ def readback(client, page_id, parent_id, kind, before=None):
         page = client.call("GET", f"/pages/{page_id}")
         if page.get("archived") or page.get("in_trash"):
             return "readback_page_gone"
-        if (page.get("parent") or {}).get("page_id") != parent_id:
+        if not same_notion_id((page.get("parent") or {}).get("page_id"), parent_id):
             return "readback_parent_mismatch"
         blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"]
         if not blocks or text(blocks[0]) != MARKERS.get(kind):
@@ -208,14 +216,14 @@ def active_target(client, root, context):
         blocks = children(client, root, [MAX_CALLS], context)
         targets = [b["id"] for b in blocks if b.get("type") == "child_page"
                    and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
-        if len(targets) != 1 or targets[0] == root:
+        if len(targets) != 1 or same_notion_id(targets[0], root):
             return None
         context.require_time()
         page = client.call("GET", f"/pages/{targets[0]}")
         titles = [p["title"] for p in page.get("properties", {}).values() if p.get("type") == "title"]
         title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
         parent = page.get("parent") or {}
-        valid = parent.get("page_id") == root and parent.get("type", "page_id") == "page_id"
+        valid = same_notion_id(parent.get("page_id"), root) and parent.get("type", "page_id") == "page_id"
         return targets[0] if valid and title == "Active Opportunities" and not page.get("archived") and not page.get("in_trash") else None
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return None

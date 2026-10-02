@@ -336,3 +336,29 @@ class RecognizedRegionTests(unittest.TestCase):
                         key = "left" if i == 0 else f"deep-{i}"
                         client.blocks[key] = [{"id": f"deep-{i+1}", "type": "toggle", "has_children": True, "toggle": {"rich_text": []}}]
                 self.assertFalse(notion.parent_scan(client, "root").complete)
+
+
+class ConfiguredUuidTests(unittest.TestCase):
+    def test_compact_root_dashed_api_parent_allows_target_scan_and_probe(self):
+        from lifeos.platform.runtime import RunContext
+        compact = "abcdefabcdef4abc8defabcdefabcdef"
+        dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"
+        client = WritableFake()
+        client.pages[compact] = client.pages.pop("root")
+        client.blocks[compact] = client.blocks.pop("root")
+        client.pages["active"]["parent"] = {"type": "page_id", "page_id": dashed.upper()}
+        self.assertEqual(notion.active_target(client, compact, RunContext.start(60)), "active")
+        scan = notion.parent_scan(client, compact, RunContext.start(60))
+        self.assertTrue(scan.complete)
+        self.assertEqual([parent.page_id for parent in scan.items], ["human"])
+        env = {**ENV, "HIRING_PIPELINE_PAGE_ID": compact}
+        result = stage.probe(10, False, environ=env, client=client)
+        self.assertTrue(result["active_container_parent_verified"])
+        self.assertTrue(result["insertion_supported"])
+        self.assertEqual(result["why"].get("pipeline_incomplete", 0), 0)
+        self.assertEqual(result["writes"], 0)
+        for invalid in ("fedcbafedcba4abc8defabcdefabcdef", "not-a-uuid", None, "", "---"):
+            with self.subTest(parent_id=invalid):
+                client.pages["active"]["parent"]["page_id"] = invalid
+                self.assertIsNone(notion.active_target(client, compact, RunContext.start(60)))
+                self.assertFalse(notion.parent_scan(client, compact, RunContext.start(60)).complete)

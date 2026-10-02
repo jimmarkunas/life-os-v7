@@ -2,6 +2,7 @@
 from datetime import date
 from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from .models import Ownership, Resolution, State
+from .notion import same_notion_id
 
 
 def valid_date(value):
@@ -39,11 +40,11 @@ def resolve_child(parent, query, scan, explicit=None):
         return Resolution(State.BLOCKED, parent.code)
     if not scan.complete:
         return Resolution(State.BLOCKED, "child_scan_incomplete")
-    candidates = [child for child in scan.items if child.parent_id == parent.page_id]
+    candidates = [child for child in scan.items if same_notion_id(child.parent_id, parent.page_id)]
     if query.explicit_child_page_id:
-        if explicit is not None and explicit.parent_id != parent.page_id:
+        if explicit is not None and not same_notion_id(explicit.parent_id, parent.page_id):
             return Resolution(State.BLOCKED, "child_wrong_parent")
-        candidates = [c for c in candidates if c.page_id == query.explicit_child_page_id]
+        candidates = [c for c in candidates if same_notion_id(c.page_id, query.explicit_child_page_id)]
         if explicit is not None and not candidates:
             return Resolution(State.BLOCKED, "child_scan_incomplete")
         if any(c.identity_valid is False for c in candidates):
