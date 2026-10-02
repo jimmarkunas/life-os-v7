@@ -171,8 +171,6 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
             return finish("human_page" if notion.ownership(client, child.page_id, "round") == Ownership.HUMAN else "ownership_unknown")
         identity = next((item for item in children.items if notion.same_notion_id(item.page_id, child.page_id)), None)
         if not identity or identity.identity_valid is not True: return finish("round_identity_incomplete")
-        before = notion.protected_snapshot(client, child.page_id)
-        if before is None: return finish("readback_protected_missing")
         state, marker_hash = _read_derived(client, child.page_id)
         if state == "conflict": return finish("derived_conflict")
         inherited = _carry(client, children, identity, context)
@@ -183,6 +181,8 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         if not live: return finish("derived_allowed")
         context.require_time()
         _, heading, _ = notion.derived_blocks(client, child.page_id)
+        before = notion.protected_snapshot(client, child.page_id)
+        if before is None: return finish("readback_protected_missing")
         notion.append_children(client, child.page_id, heading["id"], render(merged))
         out["writes"] = 1
         after_state, after_hash = _read_derived(client, child.page_id)

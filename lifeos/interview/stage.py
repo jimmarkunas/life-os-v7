@@ -99,6 +99,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         for index, (parent_query, round_query, prep) in enumerate(prep_evidence):
             if index >= max(0, limit):
                 reason("pipeline_incomplete")
+                counts["blocked"] += 1
                 break
             result = apply_prep(client, environ, parent_query, round_query, prep, live, context)
             counts["writes_planned"] += result["writes_planned"]

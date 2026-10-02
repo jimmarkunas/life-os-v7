@@ -252,6 +252,48 @@ class PrepTests(unittest.TestCase):
                 else:
                     self.assertEqual((result["blocked"], result["derived_match"], result["writes"]), (0, 2, 0))
 
+    def test_b3_stage_limit_exhaustion_blocks_and_does_not_attempt_extra_item(self):
+        client = PrepFake()
+        machine_parent(client)
+        outcome = {"writes_planned": 0, "writes": 0, "code": "derived_allowed"}
+        with patch("lifeos.interview.prep.apply", return_value=outcome) as apply_prep:
+            result = stage.run(1, False, environ=ENV, client=client,
+                prep_evidence=[(PARENT, ROUND, PrepEvidence(focus=("A",)))] * 2)
+        self.assertEqual(apply_prep.call_count, 1)
+        self.assertEqual((result["why"]["pipeline_incomplete"], result["blocked"]), (1, 1))
+
+    def test_protected_snapshot_only_wraps_live_append(self):
+        evidence = PrepEvidence(focus=("A",))
+        client = PrepFake()
+        _, round_id, query = machine_round(client)
+        with patch("lifeos.interview.notion.protected_snapshot", side_effect=AssertionError("dry snapshot")):
+            self.assertEqual(self.apply(client, query, evidence, False)["code"], "derived_allowed")
+        original = notion.protected_snapshot
+        events = []
+        def snapshot(*args):
+            events.append("snapshot")
+            return original(*args)
+        append = notion.append_children
+        def write(*args):
+            events.append("append")
+            return append(*args)
+        with patch("lifeos.interview.notion.protected_snapshot", side_effect=snapshot):
+            with patch("lifeos.interview.notion.append_children", side_effect=write):
+                self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
+        self.assertEqual(events, ["snapshot", "append", "snapshot"])
+        with patch("lifeos.interview.notion.protected_snapshot", side_effect=AssertionError("replay snapshot")):
+            self.assertEqual(self.apply(client, query, evidence)["code"], "derived_match")
+            self.assertEqual(self.apply(client, query, PrepEvidence(focus=("Different",)))["code"], "derived_conflict")
+
+    def test_missing_live_protected_snapshot_prevents_append(self):
+        client = PrepFake()
+        _, _, query = machine_round(client)
+        with patch("lifeos.interview.notion.protected_snapshot", return_value=None), \
+             patch("lifeos.interview.notion.append_children") as append:
+            result = self.apply(client, query, PrepEvidence(focus=("A",)))
+        self.assertEqual((result["code"], result["writes"]), ("readback_protected_missing", 0))
+        append.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
