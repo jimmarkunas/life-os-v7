@@ -316,8 +316,9 @@
    "kind": "futuristic_html",
    "enabled": true,
    "completeness": "job_list_full",
-   "status": "fallback",
-   "url": "https://www.futuristictechnologies.co.uk/careers/"
+   "status": "ready",
+   "url": "https://www.futuristictechnologies.co.uk/careers/",
+   "announced_ua": true
   },
   {
    "id": "su-revolut-ltd",

@@ -182,7 +182,7 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_machine_input_universes_are_frozen(self):
         """A change to a source registry must be deliberate: update these numbers in the same commit."""
-        for lane, total, ready, digest_head in (("US Remote", None, None, None), ("Scale-Up", 48, 35, None)):
+        for lane, total, ready, digest_head in (("US Remote", None, None, None), ("Scale-Up", 48, 36, None)):
             rows = registry.load(registry.PATHS[lane])
             if total:
                 self.assertEqual(len(rows), total, lane)

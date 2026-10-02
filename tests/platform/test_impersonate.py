@@ -54,3 +54,14 @@ class Impersonate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnnouncedAgent(unittest.TestCase):
+    def test_lister_uses_the_announced_bot_agent_only_for_flagged_sources(self):
+        from lifeos.platform import egress
+        source = {"id": "su-x", "kind": "static_complete_html", "url": "https://a.example/careers/", "company": "A", "announced_ua": True}
+        plain = mock.Mock(side_effect=AssertionError("plain fetch must not be used"))
+        page = impersonate.Fetched("u", 200, '<a href="/careers/data-engineer">Data Engineer</a>', 0)
+        with mock.patch.object(egress, "honest", return_value=page) as honest:
+            got = lister.list_source(source, plain)
+        self.assertEqual((got.status, [j["title"] for j in got.jobs], honest.call_count), ("COMPLETE", ["Data Engineer"], 1))
