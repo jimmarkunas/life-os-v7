@@ -4,6 +4,11 @@ on:
     - cron: "17 * * * *"         # outside the pipeline: opens the pipeline-stale issue when no hourly run has succeeded for 2.5 hours (D52)
     - cron: "47 * * * *"
   workflow_dispatch:
+    inputs:
+      test_push:
+        description: "Send a test push to the phone (proves NTFY_TOPIC and the ntfy app)"
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -18,4 +23,9 @@ jobs:
         run: python3 -m lifeos.platform.gate --watch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      - name: Test push (dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_push }}
+        run: python3 -m lifeos.platform.alerts push --severity info --title "V7 test push" --body "If you can read this on your phone, alerts work."
+        env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
