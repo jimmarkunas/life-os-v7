@@ -151,8 +151,8 @@ class ClientTests(unittest.TestCase):
                 client.pages("/p")
 
     def test_boards_config_is_strict(self):
-        self.assertEqual(boards({"JIRA_BOARDS": "AAA:11, BBB:22:all"}), (("AAA", 11, False), ("BBB", 22, True)))
-        for bad in ("", "AAA", "AAA:x", "AAA:1:wide", "AAA:1,AAA:2", "A-A:1"):
+        self.assertEqual(boards({"JIRA_BOARDS": "AAA:11, BBB:22:all"}), (("AAA", 11, False, False), ("BBB", 22, True, False)))
+        for bad in ("", "AAA", "AAA:x", "AAA:1:wide", "AAA:1:all:all", "AAA:1,AAA:2", "A-A:1"):
             with self.assertRaises(JiraError):
                 boards({"JIRA_BOARDS": bad})
 
@@ -238,6 +238,35 @@ class RolloverTests(unittest.TestCase):
         self.assertIn("closed", client.log)            # the healthy project still rolled
 
 
+class SharedBoardTests(unittest.TestCase):
+    """A board whose filter spans projects lists the other project's sprint too; cross-assigned work rides along."""
+    ENV2 = {"JIRA_BOARDS": "AAA:11,BBB:22:readonly"}
+
+    def shared(self):
+        mine = sprint(1, "active", datetime(2026, 9, 28, tzinfo=TZ), datetime(2026, 10, 4, 23, 59, 59, tzinfo=TZ), "AAA Sprint")
+        theirs = sprint(7, "active", datetime(2026, 9, 28, tzinfo=TZ), datetime(2026, 10, 4, 23, 59, 59, tzinfo=TZ), "BBB Sprint")
+        return FakeJira([mine, theirs], issues=[("AAA-1", 1, "To Do"), ("BBB-9", 1, "To Do"), ("BBB-2", 7, "To Do")])
+
+    def test_own_sprint_is_chosen_and_cross_assigned_items_are_carried(self):
+        client = self.shared()
+        env = {"JIRA_BOARDS": "AAA:11,BBB:22:readonly"}
+        out = rollover.run(1, True, environ=env, client=client, now=datetime(2026, 10, 5, 0, 5, tzinfo=TZ))
+        self.assertEqual((out["carried"], out["skipped_readonly"], out["closed"]), (2, 1, 1))
+        self.assertEqual(client.sprints_by_id[7]["state"], "active")          # the other project's sprint is untouched
+        self.assertEqual(client.members[7], {"BBB-2": "To Do"})
+        self.assertEqual(client.sprints_by_id[1]["state"], "closed")
+
+    def test_readonly_boards_are_never_rolled_over(self):
+        client = self.shared()
+        out = rollover.run(1, True, environ={"JIRA_BOARDS": "BBB:22:readonly"}, client=client, now=datetime(2026, 10, 5, 0, 5, tzinfo=TZ))
+        self.assertEqual((out["skipped_readonly"], out["writes"], client.log), (1, 0, []))
+
+    def test_unlabelled_extra_sprint_still_fails_closed(self):
+        client = FakeJira(week([sprint(5, "active", at(0), at(6), "Other")]))
+        with self.assertRaises(JiraError):
+            run(client, False, at(7, 8))
+
+
 class SnapshotTests(unittest.TestCase):
     class Board(FakeJira):
         def board_issues(self, board_id, jql, fields):
@@ -259,7 +288,7 @@ class SnapshotTests(unittest.TestCase):
         client = self.Board(week([sprint(2, "future", at(5), datetime(2026, 10, 11, 23, 59, 59, tzinfo=TZ))]))
         snap = snapshot.project_snapshot(client, "AAA", 11, False, at(5, 7))
         self.assertEqual((snap["schema"], len(snap["current_tasks"]), len(snap["next_tasks"]), len(snap["overdue"]),
-                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (1, 2, 2, 2, 1, 1, 1))
+                          len(snap["blocked"]), len(snap["triage"]), len(snap["done"])), (2, 2, 2, 2, 1, 1, 1))
         self.assertEqual(snap["current_sprint"]["id"], 1)
         self.assertEqual(snap["next_sprint"]["id"], 2)
         counts = snapshot.run(1, False, environ=ENV, client=client, now=at(5, 7))
