@@ -108,6 +108,15 @@ class BucketTests(unittest.TestCase):
         self.assertIn("Show This Week items", json.dumps(body))
 
 
+class EpicHeaderTests(unittest.TestCase):
+    def test_epic_parents_are_labelled_and_task_parents_are_not(self):
+        leaf = dict(issue("AAA-80", parent="AAA-1"), parent_type="Epic", parent_summary="Health")
+        sub = dict(issue("AAA-81", parent="AAA-2"), parent_type="Task", parent_summary="Work package")
+        text = json.dumps(card._rows([leaf, sub], None))
+        self.assertIn("Epic \\u00b7 AAA-1", text)
+        self.assertNotIn("Epic \\u00b7 AAA-2", text)
+
+
 class GtvTests(unittest.TestCase):
     def gtv(self, *items):
         return snapshot(gtv=list(items))

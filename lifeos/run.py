@@ -74,6 +74,11 @@ def _jira_snapshot(limit, live):
     return snapshot.run(limit, live)
 
 
+def _jira_rollover_scheduled(limit, live):
+    from lifeos.jira import rollover
+    return rollover.run(limit, live, auto=True)
+
+
 def _jira_card(limit, live):
     from lifeos.jira import card
     return card.run(limit, live)
@@ -148,6 +153,7 @@ STAGES = {
     "jira-rollover": _jira_rollover,
     "jira-probe": _jira_probe,
     "jira-card": _jira_card,
+    "jira-rollover-scheduled": _jira_rollover_scheduled,
     "interview-acceptance": _interview_acceptance,
     "openjobs": _openjobs,
     "sponsors": _sponsors,

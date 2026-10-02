@@ -443,6 +443,11 @@ jobs:
           cache-dependency-path: requirements*.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - id: jrollauto
+        continue-on-error: true
+        name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.tick }}
+        run: python -m lifeos.run jira-rollover-scheduled $([ "$LIVE" = "true" ] && echo --live)
       - id: jsnap
         continue-on-error: true
         name: Jira snapshot (counts only; saved to the private database only when live)
@@ -487,7 +492,7 @@ jobs:
         if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
   report:
