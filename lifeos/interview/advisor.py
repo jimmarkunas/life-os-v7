@@ -242,6 +242,89 @@ class AdvisorModel(Protocol):
     def advise(self, bundle: AdvisorInputBundle) -> AdvisorDraft: ...
 
 
+class ForecastConfidence(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+@dataclass(frozen=True)
+class PreInterviewRisk:
+    hypothesis: str
+    confidence: ForecastConfidence
+    why_plausible: str
+    source_refs: tuple[str, ...]
+    watch_for: tuple[str, ...]
+    if_confirmed: str
+    do_not_do: str
+    evidence_refs: tuple[str, ...]
+    certainty_target: str
+    personal_pattern: bool = False
+
+
+@dataclass(frozen=True)
+class PreInterviewForecast:
+    risks: tuple[PreInterviewRisk, ...]
+
+
+def _validate_forecast(bundle, forecast):
+    _fail(isinstance(bundle, AdvisorInputBundle) and isinstance(forecast, PreInterviewForecast),
+          "advisor_draft_invalid")
+    _fail(isinstance(forecast.risks, tuple) and 3 <= len(forecast.risks) <= 7
+          and all(isinstance(risk, PreInterviewRisk) for risk in forecast.risks), "advisor_draft_invalid")
+    sources = {source.canonical_ref(): source for source in bundle.sources}
+    evidence = {item.ref.canonical(): item for item in bundle.evidence}
+    hypotheses = set()
+    personal_grounding_kinds = {SourceKind.CANDIDATE_PROFILE, SourceKind.GUIDANCE, SourceKind.ACCEPTED_SIGNAL}
+    for risk in forecast.risks:
+        for value, limit in ((risk.hypothesis, 300), (risk.why_plausible, 500),
+                             (risk.if_confirmed, 500), (risk.do_not_do, 300)):
+            _fail(isinstance(value, str) and value.strip() == value and bool(value) and len(value) <= limit,
+                  "advisor_draft_invalid")
+        _fail(isinstance(risk.confidence, ForecastConfidence), "advisor_draft_invalid")
+        _fail(type(risk.personal_pattern) is bool, "advisor_draft_invalid")
+        identity = risk.hypothesis.casefold()
+        _fail(identity not in hypotheses, "advisor_draft_invalid")
+        hypotheses.add(identity)
+        _fail(isinstance(risk.watch_for, tuple) and 1 <= len(risk.watch_for) <= 5,
+              "advisor_draft_invalid")
+        watch_items = set()
+        for item in risk.watch_for:
+            _fail(isinstance(item, str) and item.strip() == item and bool(item) and len(item) <= 200,
+                  "advisor_draft_invalid")
+            _fail(item.casefold() not in watch_items, "advisor_draft_invalid")
+            watch_items.add(item.casefold())
+        _fail(isinstance(risk.source_refs, tuple) and bool(risk.source_refs)
+              and all(isinstance(ref, str) for ref in risk.source_refs), "advisor_draft_invalid")
+        _fail(len(risk.source_refs) == len(set(risk.source_refs)), "advisor_draft_invalid")
+        _fail(all(ref in sources for ref in risk.source_refs), "advisor_ref_missing")
+        _fail(isinstance(risk.evidence_refs, tuple)
+              and all(isinstance(ref, str) for ref in risk.evidence_refs), "advisor_draft_invalid")
+        _fail(len(risk.evidence_refs) == len(set(risk.evidence_refs)), "advisor_draft_invalid")
+        _fail(all(ref in evidence for ref in risk.evidence_refs),
+              "advisor_evidence_missing")
+        _fail(risk.certainty_target in ("opportunity", "candidate", "company"), "advisor_draft_invalid")
+        if risk.personal_pattern:
+            _fail(any(sources[ref].kind in personal_grounding_kinds for ref in risk.source_refs),
+                  "advisor_ref_missing")
+
+
+def render_forecast(bundle: AdvisorInputBundle, forecast: PreInterviewForecast) -> str:
+    """Validate and render a deterministic pre-interview failure-mode forecast."""
+    _validate_forecast(bundle, forecast)
+    evidence = {item.ref.canonical(): item.canonical_text for item in bundle.evidence}
+    sections = ["## Pre-Mortem — How This Interview Could Go Wrong"]
+    for risk in forecast.risks:
+        evidence_lines = [f"- {evidence[ref]}" for ref in risk.evidence_refs] or ["- None selected"]
+        sections.append("\n".join((f"### {risk.hypothesis}", f"**Confidence:** {risk.confidence.value.upper()}",
+                         f"**Why this is plausible:** {risk.why_plausible}",
+                         "**Watch for:**\n" + "\n".join(f"- {item}" for item in risk.watch_for),
+                         f"**If confirmed:** {risk.if_confirmed}", f"**Do not:** {risk.do_not_do}",
+                         "**Evidence to deploy:**\n" + "\n".join(evidence_lines),
+                         f"**Certainty target:** {risk.certainty_target.title()}")))
+    return "\n\n".join(sections)
+
+
 _PRIVATE_SECTIONS = ("straight_line", "game_theory", "decision_criteria", "objections", "close_strategy")
 _CONCLUSION_SECTIONS = ("focus", "pressure_points", "questions")
 
