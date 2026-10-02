@@ -249,7 +249,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
     def block(self):
         text = (ROOT / ".github/workflows/hourly.yml").read_text()
         start = text.index("\n  interview:\n")
-        return text[start:text.index("\n  report:\n")]
+        return text[start:text.index("\n  jira:\n")]
 
     def test_no_jobs_secret_reaches_the_interview_job(self):
         block = self.block()

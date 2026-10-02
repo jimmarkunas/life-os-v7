@@ -9,6 +9,7 @@ import json
 import sys
 
 from lifeos.platform.db import StoreError
+from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
 
 
@@ -68,6 +69,21 @@ def _interview_acceptance(limit, live):
     return acceptance.run(limit, live)
 
 
+def _jira_snapshot(limit, live):
+    from lifeos.jira import snapshot
+    return snapshot.run(limit, live)
+
+
+def _jira_probe(limit, live):
+    from lifeos.jira import snapshot
+    return snapshot.probe(limit, live)
+
+
+def _jira_rollover(limit, live):
+    from lifeos.jira import rollover
+    return rollover.run(limit, live)
+
+
 def _openjobs(limit, live):
     from lifeos.sources import openjobs                                                         # noqa: PLC0415
     return openjobs.run(limit, live)
@@ -123,6 +139,9 @@ STAGES = {
     "alerts": _alerts,
     "interview-probe": _interview_probe,
     "interview": _interview,
+    "jira-snapshot": _jira_snapshot,
+    "jira-rollover": _jira_rollover,
+    "jira-probe": _jira_probe,
     "interview-acceptance": _interview_acceptance,
     "openjobs": _openjobs,
     "sponsors": _sponsors,
@@ -144,7 +163,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         counts = STAGES[args.stage](args.limit, args.live)
-    except (StoreError, NotionError) as error:
+    except (StoreError, NotionError, JiraError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
