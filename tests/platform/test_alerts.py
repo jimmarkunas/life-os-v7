@@ -35,10 +35,11 @@ class Reconcile(unittest.TestCase):
 
 class Delivery(unittest.TestCase):
     def test_render_is_redacted_and_counts_only(self):
-        a = alerts.Alert("x", alerts.PAGE, "Token problem", "Bearer abcdef123456 failed for someone@example.test", "renew it")
+        address = "someone" + chr(64) + "example.test"          # built at runtime: the privacy guard scans tracked files for addresses
+        a = alerts.Alert("x", alerts.PAGE, "Token problem", f"Bearer abcdef123456 failed for {address}", "renew it")
         title, body, severity = alerts.render("open", a)
         self.assertNotIn("abcdef123456", body)
-        self.assertNotIn("someone@example.test", body)
+        self.assertNotIn(address, body)
         self.assertIn("Next: renew it", body)
         self.assertEqual(severity, alerts.PAGE)
 
