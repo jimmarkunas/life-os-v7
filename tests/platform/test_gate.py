@@ -43,3 +43,16 @@ class Tick(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Watchdog(unittest.TestCase):
+    def test_watch_raises_the_alert_when_nothing_has_succeeded(self):
+        calls = []
+        old = (gate._api, gate._issue)
+        gate._api = lambda path, *a, **k: {"workflow_runs": [{"id": 1, "conclusion": "cancelled", "updated_at": "2026-10-01T00:00:00Z"}]}
+        gate._issue = lambda is_stale: calls.append(is_stale)
+        try:
+            self.assertEqual(gate.watch(), 0)
+        finally:
+            gate._api, gate._issue = old
+        self.assertEqual(calls, [True])

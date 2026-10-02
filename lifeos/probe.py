@@ -164,5 +164,53 @@ def discover(search=None, sources=None):
     return out
 
 
+def lane_funnel():
+    """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
+    from lifeos.jobs import store                                                            # noqa: PLC0415
+    with store.connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT lane, status, COUNT(*) FROM v7_jobs GROUP BY lane, status")
+        by_status = {f"{lane}/{status}": n for lane, status, n in cursor.fetchall()}
+        cursor.execute("SELECT f.lane, f.admission, f.admission_reason, COUNT(*) FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id "
+                       "WHERE j.lane = 'Scale-Up' GROUP BY f.lane, f.admission, f.admission_reason")
+        reasons = {}
+        for lane, admission, reason, n in cursor.fetchall():
+            key = f"{lane}/{admission}/{re.sub(r'[0-9]+', '#', reason or '')[:48]}"
+            reasons[key] = reasons.get(key, 0) + n
+    return {"by_lane_status": by_status, "scale_up_fit": reasons}
+
+
+def scale_up_listing(fetcher=fetch, only=None):
+    """Per ready Scale-Up sponsor: listing status, failure reason and job count from the runner's own network (counts only, no text)."""
+    from lifeos.sources.web import lister                                                    # noqa: PLC0415
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["status"] != "ready" or (only and source["id"] not in only):
+            continue
+        listing = lister.list_source(source, fetcher)
+        out[source["id"]] = f"{listing.status}:{listing.reason or ''}:{len(listing.jobs)}"
+    return out
+
+
+def source_pages(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited", "su-truvi-holdings-ltd"), plain=fetch):
+    """Shape of a sponsor's page, plain versus Chrome-impersonated (counts and flags only): status, size, anchors, JobPosting JSON-LD,
+    __NEXT_DATA__, and the hostnames of outbound links that look like a job board."""
+    from lifeos.platform import impersonate                                                  # noqa: PLC0415
+    from urllib.parse import urlsplit                                                        # noqa: PLC0415
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["id"] not in ids:
+            continue
+        shapes = {}
+        for how, got in (("plain", plain(source["url"], timeout=20, max_hops=3, max_bytes=3_000_000)),
+                         ("chrome", impersonate.fetch(source["url"], warm_url=source.get("warm_url"), rounds=1))):
+            text = got.html or ""
+            hosts = sorted({(urlsplit(h).hostname or "").removeprefix("www.") for h in re.findall(r'href=["\'](https?://[^"\']+)', text, re.I)
+                            if re.search(r"greenhouse|lever|ashby|workable|teamtailor|bamboohr|recruitee|personio|breezy|join\.com|pinpoint|smartrecruiters|rippling|jobs", h, re.I)})[:6]
+            shapes[how] = {"status": got.status, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)), "jsonld_job": len(re.findall(r"JobPosting", text)),
+                           "next_data": "__NEXT_DATA__" in text, "job_hosts": hosts, "final": (urlsplit(got.final_url).path or "/")[:40]}
+        out[source["id"]] = shapes
+    return out
+
+
 def run(limit, live):
-    return {"discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
