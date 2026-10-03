@@ -7,6 +7,7 @@ fixed unresolved_reason so the next run retries. Logs: counts only.
 import hashlib
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from lifeos.platform import limits, runtime
 from lifeos.jobs import quality, store
@@ -69,6 +70,21 @@ def why(result):
     return str(result.get("outcome") or "unknown").split(":")[0]
 
 
+def note_refusal(counts, result, top=10):
+    """Where refused landings come from, for diagnosis: the host and the NAMES of the query parameters (never paths or values)."""
+    url = result.get("url")
+    if result.get("outcome") != "landed" or not url or not quality.link_problem(url):
+        return
+    parts = urlsplit(url)
+    refused = counts.setdefault("refused", {"hosts": {}, "query_keys": {}})
+    host = (parts.hostname or "?").lower().removeprefix("www.")
+    refused["hosts"][host] = refused["hosts"].get(host, 0) + 1
+    for key in {q.split("=")[0] for q in parts.query.split("&") if q}:
+        refused["query_keys"][key[:30]] = refused["query_keys"].get(key[:30], 0) + 1
+    for name in refused:
+        refused[name] = dict(sorted(refused[name].items(), key=lambda kv: -kv[1])[:top])
+
+
 BATCH_ROWS = 50
 DEADLINE_MINUTES = 28          # stop starting batches well before the 40-minute job limit; unfinished rows stay NEW
 
@@ -129,6 +145,8 @@ def run(source, limit, live, resolver):
         for result in results:
             key = result["outcome"] if result.get("outcome") != "landed" else "landed:" + str(result.get("kind"))
             counts["kind"][key] = counts["kind"].get(key, 0) + 1
+            counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1       # what a live run would do with each, by the same test
+            note_refusal(counts, result)
         counts["dry_run"] = True
         return counts
     with store.connect() as connection:
@@ -136,6 +154,7 @@ def run(source, limit, live, resolver):
             verdict = apply_result(connection, job_id, result)
             counts[verdict] += 1
             counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1          # why the pending ones are pending, counts only
+            note_refusal(counts, result)
             if verdict == "resolved":
                 counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
     return counts

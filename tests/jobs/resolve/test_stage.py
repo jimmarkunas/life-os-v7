@@ -59,5 +59,17 @@ class WhyTests(unittest.TestCase):
         self.assertEqual(counts["resolved"], 1)
 
 
+    def test_a_dry_run_applies_the_same_test_and_names_where_refusals_come_from(self):
+        from unittest import mock
+        results = [{"outcome": "landed", "url": "https://www.acme.example/careers?gh_jid=123&utm=x", "kind": "employer"},
+                   {"outcome": "landed", "url": "https://www.acme.example/careers?gh_jid=456", "kind": "employer"},
+                   {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"}]
+        with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
+                mock.patch.object(stage, "pick", lambda c, s, l: [(i, "https://x.example/%d" % i) for i in range(3)]):
+            counts = stage.run("jobright", 10, False, lambda urls: results)
+        self.assertEqual(counts["why"], {"bad_link_listing_url": 2, "landed:ats": 1})
+        self.assertEqual(counts["refused"], {"hosts": {"acme.example": 2}, "query_keys": {"gh_jid": 2, "utm": 1}})   # names only, never values or paths
+
+
 if __name__ == "__main__":
     unittest.main()
