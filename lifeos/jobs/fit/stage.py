@@ -41,6 +41,15 @@ def score_rows(rows, profile, today, semantic=None, register=None):
     return out
 
 
+def requeue_floor(cursor):
+    """D84, one time: jobs excluded only for Fit under the old floor (reason text 'Fit N below 72', score 60 and up) go back to READY so the new
+    floor and the Review band judge them. The new decision text never says 'below 72', so a job is requeued at most once."""
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_floor', j.updated_at=%s"
+                   " WHERE j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL"
+                   " AND f.admission_reason LIKE 'Fit % below 72' AND f.score >= 60", (_now(),))
+    return int(cursor.rowcount or 0)
+
+
 def run(limit, live, environ=os.environ):
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
@@ -58,6 +67,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
+            counts["requeued"] = requeue_floor(cursor) if live else 0
             cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else OPEN), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)

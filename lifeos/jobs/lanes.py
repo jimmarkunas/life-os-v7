@@ -9,6 +9,7 @@ from datetime import date
 import re
 
 FIT_FLOOR = 68
+REVIEW_FLOOR = 60                       # D84: Fit 60-67 is Review (near miss); below 60 is excluded
 POSITIVE, NEGATIVE, UNRESOLVED = "POSITIVE", "NEGATIVE", "UNRESOLVED"
 ADMIT, REVIEW, EXCLUDE, DISABLED = "ADMIT", "REVIEW", "EXCLUDE", "DISABLED"
 PRECEDENCE = ("Scale-Up", "Skilled Worker", "US Remote")      # the visible lane when a job is eligible for several
@@ -71,8 +72,8 @@ def qualify(policy, facts, today):
         return Decision(REVIEW, "market unresolved")
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
-    if facts.fit is not None and facts.fit < FIT_FLOOR:
-        return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}")
+    if facts.fit is not None and facts.fit < REVIEW_FLOOR:
+        return Decision(EXCLUDE, f"Fit {facts.fit} below {REVIEW_FLOOR}")
     if policy.work_mode == "remote_only":
         if facts.work_mode == "unknown":
             return Decision(REVIEW, "work mode unresolved")
@@ -102,6 +103,8 @@ def qualify(policy, facts, today):
             return Decision(REVIEW, "geography unresolved")
     if facts.fit is None:
         return Decision(REVIEW, "Fit unscorable")
+    if facts.fit < FIT_FLOOR:
+        return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}")
     return Decision(ADMIT)
 
 
@@ -147,7 +150,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l5"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l6"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
