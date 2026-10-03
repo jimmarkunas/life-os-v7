@@ -13,7 +13,7 @@ and its lifecycle are shared. A lane adds only opportunity policy, as data (`lif
 | New-admission age | 14 days (unknown date = Review) | 30 days (unknown date does not suppress) | 14 days (unknown date = Review) |
 | Route evidence | none | Scale-up, positive required | Skilled Worker, positive required |
 | Market | US | UK | UK (unknown market = Review) |
-| Geography evidence | none | positive required | London positive; named non-target place negative; UK-remote / unplaced = Review |
+| Geography evidence | none | London required (stated place not London = exclude, no place = Review) | London positive; named non-target place negative; UK-remote / unplaced = Review |
 | Status | active | active, scheduled (Jim 2026-10-01, D32) | active (Phase 2, Jim 2026-10-01); depends on the sponsor register being loaded |
 
 Decisions (Jim, 2026-10-01): US Remote keeps 14 days (the Notion canon says 7). Scale-Up gets a 30-day age gate (the earlier canon had

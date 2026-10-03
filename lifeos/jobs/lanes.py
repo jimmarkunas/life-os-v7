@@ -26,6 +26,7 @@ class LanePolicy:
     unknown_date_blocks: bool = True     # a missing posting date goes to REVIEW (False: it does not suppress)
     route: str | None = None             # required route evidence ("Scale-up", "Skilled Worker")
     geography_required: bool = False
+    london_only: bool = False            # D96: the job must be in London; a stated place that is not London is EXCLUDE (an empty location stays Review)
     enabled: bool = True
     market_required: bool = False        # an unknown market is REVIEW (the UK lanes: never assume a job is in the UK)
     bucket: str = "Curated"              # Curated | Target (sourcing priority only; never a different Fit floor)
@@ -36,7 +37,7 @@ POLICIES = {
     # Scale-Up: the liberal lane. Any work mode, no pay floor, route + geography evidence required, 30-day age gate
     # (Jim, 2026-10-01; the earlier canon had no age gate). A missing posting date does not suppress it.
     "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, route="Scale-up",
-                           geography_required=True, bucket="Target"),
+                           geography_required=True, london_only=True, bucket="Target"),
     # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
     # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 68 like every lane.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
@@ -55,6 +56,7 @@ class Facts:
     closed: bool = False                 # definitive removal / closure evidence
     route: dict = field(default_factory=dict)   # {"Scale-up": POSITIVE, ...}
     geography: str = UNRESOLVED
+    located: bool = False                # the job states a place at all
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ def qualify(policy, facts, today):
         if state != POSITIVE:
             return Decision(REVIEW, f"{policy.route} route unresolved")
     if policy.geography_required:
+        if policy.london_only and facts.geography != POSITIVE and facts.located:
+            return Decision(EXCLUDE, "not in London")
         if facts.geography == NEGATIVE:
             return Decision(EXCLUDE, "geography does not qualify")
         if facts.geography != POSITIVE:
@@ -150,7 +154,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l8"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l9"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -223,7 +227,7 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location))
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()))
 
 
 def decide_all(row_lane, facts, today, exclusion=None):
