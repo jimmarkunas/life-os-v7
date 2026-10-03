@@ -9,7 +9,7 @@ and its lifecycle are shared. A lane adds only opportunity policy, as data (`lif
 | Fit floor | 68 | 68 | 68 |
 | Market | US | UK | UK |
 | Work mode | remote only (unknown = Review) | any | any |
-| Explicit pay floor | $80,000 (missing pay allowed) | none | £65,000 (missing pay allowed) |
+| Explicit pay floor (hard exclusion, reason `explicit pay below $75,000` / `£40,000` / `£65,000`) | $75,000 (missing pay allowed) | £40,000 (missing pay allowed) | £65,000 (missing pay allowed) |
 | New-admission age | 14 days (unknown date = Review) | 30 days (unknown date does not suppress) | 14 days (unknown date = Review) |
 | Route evidence | none | Scale-up, positive required | Skilled Worker, positive required |
 | Market | US | UK | UK (unknown market = Review) |

@@ -76,6 +76,19 @@ HEADINGS = (
 DEFAULT_EXCLUSIONS = (
     {"id": "clinical", "reason": "clinical", "terms": ["clinical"]},
     {"id": "healthcare", "reason": "healthcare", "terms": ["healthcare", "health care", "health-care"]},
+    # D89: a different profession in the TITLE (or a hospital as the employer) is never a Fit, whatever generic requirements the posting lists.
+    {"id": "hr_function", "reason": "HR / people function", "where": "title", "patterns": [
+        r"\bhuman resources\b", r"\bHR\b", r"\bTA\b", r"talent acquisition", r"\brecruit\w*", r"talent partner", r"people operations",
+        r"people experience", r"people partner", r"people (?:&|and) culture", r"employee benefits", r"\bpayroll\b", r"total rewards"]},
+    {"id": "care_hospitality", "reason": "care / hospitality / trades role", "where": "title", "patterns": [
+        r"\bnurser(?:y|ies)\b", r"child ?care", r"back[- ]?up care", r"\bhousekeep\w*", r"\bchef\b", r"\bcook\b", r"\bkitchen\b",
+        r"\bnanny\b", r"\bteacher\b", r"\bteaching assistant\b", r"\bjanitor\b", r"\bcustodian\b", r"\bcleaner\b", r"\bdriver\b",
+        r"\bwarehouse\b", r"\bbarista\b", r"\bcashier\b", r"\bwaiter\b|\bwaitress\b", r"\bhospitality\b", r"\bpractitioner\b"]},
+    {"id": "medical_role", "reason": "medical / clinical role", "where": "title", "patterns": [
+        r"\bsurgical\b", r"\bsurgery\b", r"\bpatient\w*", r"\bnursing\b", r"\bnurse\b", r"\bphysician\b", r"\bhospital\b",
+        r"\bdental\b", r"\bpharmac\w+", r"\btherapist\b", r"\bradiolog\w+", r"\bmedical (?:assistant|director|records)\b"]},
+    {"id": "healthcare_employer", "reason": "hospital / clinic employer", "where": "company", "patterns": [
+        r"\bclinic\b", r"\bhospitals?\b", r"health system", r"medical center", r"\bhealthcare\b", r"health care"]},
     {"id": "clearance", "reason": "security clearance", "strict": True, "patterns": [
         r"(?:active|current|valid|secret|top secret|ts/sci|dod|government|security|public trust)\s+(?:security\s+)?clearance",
         r"clearance\s+(?:is\s+)?(?:required|needed|mandatory)", r"\bts\s*/\s*sci\b", r"must\s+(?:be able to\s+)?obtain\s+a?\s*clearance"]},

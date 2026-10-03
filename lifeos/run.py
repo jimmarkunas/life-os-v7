@@ -39,13 +39,14 @@ def _lensa(limit, live):
     from lifeos.platform import limits
     from lifeos.jobs import store
     requeued = 0
-    if live:
-        with store.connect() as connection:
-            store.ensure_schema(connection)
-            with connection.cursor() as cursor:
+    with store.connect() as connection:
+        store.ensure_schema(connection)
+        with connection.cursor() as cursor:
+            if live:
                 requeued = lensa.requeue_held(cursor)             # the one-time catch-up for D80; finds nothing after it has run
+            screened = lensa.screen(cursor, live)                 # D88: settle what the other producers already settled, before any search is spent
     counts = stage.run_rows("lensa", limit, live, lensa.make_resolver(), deadline_minutes=limits.LENSA_DEADLINE_MINUTES)
-    return {**counts, "requeued": requeued}
+    return {**counts, "requeued": requeued, **screened}
 
 
 def _linkedin(limit, live):

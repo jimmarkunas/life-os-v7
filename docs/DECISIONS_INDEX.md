@@ -88,3 +88,6 @@ This index is checked by a test: add a line here with every new decision.
 - D84 — Fit 60-67 is Review, below 60 is excluded; one-time requeue of old-floor exclusions (2026-10-03, Jim)
 - D85 — Bills Paid processor is wired manual-only first (2026-10-03, Jim)
 - D86 — Bills Paid runs on every tick; a second tick on the same day is Review (2026-10-03, Jim)
+- D87 — Hard exclusions: pay floors $75,000 / £40,000, work mode, age; reasons are stored (2026-10-03, Jim)
+- D88 — Lensa: settle what other producers already settled before any search is spent (2026-10-03, Jim)
+- D89 — Fit is gated by profession, not only by requirements (2026-10-03, Jim)

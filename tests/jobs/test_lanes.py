@@ -28,8 +28,9 @@ class UsRemote(unittest.TestCase):
         self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(work_mode="unknown"), TODAY).status, REVIEW)      # never guessed
-        self.assertEqual(qualify(US, us(pay_min=70_000, pay_currency="$"), TODAY).status, EXCLUDE)
-        self.assertEqual(qualify(US, us(pay_min=80_000, pay_currency="$"), TODAY).status, ADMIT)
+        self.assertEqual(qualify(US, us(pay_min=74_999, pay_currency="$"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(pay_min=75_000, pay_currency="$"), TODAY).status, ADMIT)
+        self.assertEqual(qualify(US, us(pay_min=70_000, pay_currency="$"), TODAY).reason, "explicit pay below $75,000")   # the documented reason
         self.assertEqual(qualify(US, us(pay_min=None), TODAY).status, ADMIT)               # missing pay is allowed
 
     def test_freshness_is_14_days_and_unknown_is_review(self):
@@ -40,7 +41,9 @@ class UsRemote(unittest.TestCase):
 
 class ScaleUp(unittest.TestCase):
     def test_the_liberal_lane(self):
-        for case in (uk(pay_min=40_000, pay_currency="£"),      # low pay is not an exclusion
+        self.assertEqual(qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).status, EXCLUDE)       # D87: Scale-Up has a £40,000 floor
+        self.assertEqual(qualify(SCALE, uk(pay_min=39_999, pay_currency="£"), TODAY).reason, "explicit pay below £40,000")
+        for case in (uk(pay_min=40_000, pay_currency="£"),      # at the floor is fine
                      uk(pay_min=None),                           # missing pay
                      uk(work_mode="hybrid"), uk(work_mode="onsite"), uk(work_mode="remote"),
                      uk(posted=ago(29)), uk(posted=ago(30)),
