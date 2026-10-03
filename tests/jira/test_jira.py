@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from lifeos.jira import rollover, snapshot, store
 from lifeos.jira.boards import boards
 from lifeos.platform.jira import Jira, JiraError
+from tests.kit.http import Response, http_error  # noqa: F401
 
 TZ = ZoneInfo("America/Chicago")
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,19 +24,6 @@ def at(day, hour=0):
 def sprint(sid, state, start, end, name="Synthetic Sprint"):
     return {"id": sid, "state": state, "name": name, "startDate": start.isoformat(), "endDate": end.isoformat()}
 
-
-class Response:
-    def __init__(self, body=b"{}"):
-        self.body = body
-
-    def read(self):
-        return self.body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
 
 
 class FakeJira:

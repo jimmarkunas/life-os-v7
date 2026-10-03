@@ -11,10 +11,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from lifeos.platform import rest
+
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.events"
-TRANSIENT = (429, 500, 502, 503, 504)
 MAX_PAGES = 40
 
 
@@ -85,26 +86,9 @@ class GoogleCalendar:
         url = f"{API}/calendars/{self._calendar}{path}" + ("?" + urllib.parse.urlencode(params, doseq=True) if params else "")
         data = None if body is None else json.dumps(body).encode()
         attempts = 4 if method in ("GET", "PUT", "DELETE") else 2          # insert/patch retried once: both are safe to repeat here
-        for attempt in range(attempts):
-            request = urllib.request.Request(url, data=data, method=method, headers={
-                "Authorization": "Bearer " + self._access(), "Content-Type": "application/json", "User-Agent": "life-os-v7"})
-            try:
-                with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                    raw = response.read()
-                    return json.loads(raw) if raw else {}
-            except urllib.error.HTTPError as error:
-                if error.code in TRANSIENT and attempt < attempts - 1:
-                    self._sleep(2 ** (attempt + 1))
-                    continue
-                raise GcalError(f"GCAL_HTTP_{error.code}") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if attempt < attempts - 1:
-                    self._sleep(2 ** (attempt + 1))
-                    continue
-                raise GcalError("GCAL_NETWORK") from None
-            except ValueError:
-                raise GcalError("GCAL_BAD_RESPONSE") from None
-        raise GcalError("GCAL_NETWORK")
+        build = lambda: urllib.request.Request(url, data=data, method=method, headers={
+            "Authorization": "Bearer " + self._access(), "Content-Type": "application/json", "User-Agent": "life-os-v7"})
+        return rest.call(build, GcalError, "GCAL", self._sleep, self._timeout, attempts=attempts, bad_json="BAD_RESPONSE")
 
     def list_events(self, time_min, time_max, private_property=None):
         """Every non-cancelled single event in the window (optionally only those carrying a private extended property k=v)."""

@@ -8,7 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-TRANSIENT = (429, 500, 502, 503, 504)
+from lifeos.platform import rest
+
 MAX_PAGES = 40
 PAGE_SIZE = 50
 REQUIRED = ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN")
@@ -40,26 +41,8 @@ class Jira:
         headers = {"Authorization": self._auth, "Accept": "application/json", "User-Agent": "life-os-v7"}
         if data is not None:
             headers["Content-Type"] = "application/json"
-        attempts = 4 if retry else 1
-        for attempt in range(attempts):
-            try:
-                request = urllib.request.Request(url, data=data, headers=headers, method=method)
-                with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                    raw = response.read()
-                return json.loads(raw) if raw else {}
-            except urllib.error.HTTPError as error:
-                if error.code in TRANSIENT and attempt < attempts - 1:
-                    self._sleep(2 ** (attempt + 1))
-                    continue
-                raise JiraError(f"JIRA_HTTP_{error.code}") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if attempt < attempts - 1:
-                    self._sleep(2 ** (attempt + 1))
-                    continue
-                raise JiraError("JIRA_NETWORK") from None
-            except ValueError:
-                raise JiraError("JIRA_BAD_JSON") from None
-        raise JiraError("JIRA_NETWORK")
+        build = lambda: urllib.request.Request(url, data=data, headers=headers, method=method)
+        return rest.call(build, JiraError, "JIRA", self._sleep, self._timeout, attempts=4 if retry else 1)
 
     def get(self, path, params=None):
         return self.request("GET", path, params)

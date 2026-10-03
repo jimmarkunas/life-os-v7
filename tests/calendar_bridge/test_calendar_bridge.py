@@ -10,6 +10,7 @@ from lifeos.calendar_bridge import sync
 from lifeos.calendar_bridge.sync import BridgeError
 from lifeos.platform import gcal
 from lifeos.platform.gcal import GcalError, GoogleCalendar
+from tests.kit.http import Response, http_error  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
@@ -169,14 +170,6 @@ class SyncTests(unittest.TestCase):
         with self.assertRaises(BridgeError):
             sync.run(1, False, environ={}, connect=connect, outlook_factory=FakeOutlook([]), gcal=FakeGcal(), now=NOW)
 
-
-class Response:
-    def __init__(self, body):
-        self.body = json.dumps(body).encode()
-
-    def read(self): return self.body
-    def __enter__(self): return self
-    def __exit__(self, *e): return False
 
 
 class GcalClientTests(unittest.TestCase):

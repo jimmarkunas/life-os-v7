@@ -8,11 +8,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from lifeos.platform import rest
+
 AUTHORITY = "https://login.microsoftonline.com/common/oauth2/v2.0"      # personal Microsoft accounts and work/school tenants
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = "offline_access Mail.Read Calendars.Read"                       # read-only sign-in
 SCOPES_WRITE = "offline_access Mail.ReadWrite Calendars.Read"            # adds moving mail into a folder (a separate, explicit sign-in)
-TRANSIENT = (429, 500, 502, 503, 504)
 MAX_PAGES = 100
 PAGE_SIZE = 100
 EVENT_FIELDS = "id,iCalUId,subject,start,end,isAllDay,isCancelled,showAs,responseStatus,location,webLink,type,seriesMasterId"
@@ -102,34 +103,14 @@ class Outlook:
         elif not url.startswith(GRAPH + "/"):
             raise OutlookError("OUTLOOK_BAD_LINK")                    # never follow a link off Graph with our token
         data = None if body is None else json.dumps(body).encode()
-        for attempt in range(4):
+        def build():
             headers = {"Authorization": "Bearer " + self._access(), "Accept": "application/json", "User-Agent": "life-os-v7",
                        "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else "")}
             if data is not None:
                 headers["Content-Type"] = "application/json"
-            request = urllib.request.Request(url, data=data, headers=headers, method=method)
-            try:
-                with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                    return json.loads(response.read() or b"{}")
-            except urllib.error.HTTPError as error:
-                if error.code in TRANSIENT and attempt < 3:
-                    try:
-                        wait = min(float(error.headers.get("Retry-After") or 0), 30) if error.headers else 0
-                    except (TypeError, ValueError):
-                        wait = 0
-                    self._sleep(wait or 2 ** (attempt + 1))
-                    continue
-                if error.code == 401:
-                    raise OutlookError("OUTLOOK_UNAUTHORIZED") from None
-                raise OutlookError(f"OUTLOOK_HTTP_{error.code}") from None
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if attempt < 3:
-                    self._sleep(2 ** (attempt + 1))
-                    continue
-                raise OutlookError("OUTLOOK_NETWORK") from None
-            except ValueError:
-                raise OutlookError("OUTLOOK_BAD_RESPONSE") from None
-        raise OutlookError("OUTLOOK_NETWORK")
+            return urllib.request.Request(url, data=data, headers=headers, method=method)
+        return rest.call(build, OutlookError, "OUTLOOK", self._sleep, self._timeout, bad_json="BAD_RESPONSE",
+                         codes={401: "OUTLOOK_UNAUTHORIZED"}, honor_retry_after=True)
 
     def folder_id(self, name, create=False):
         """The id of a top-level mail folder by name; created when asked and missing. None when missing and not creating."""
