@@ -129,7 +129,10 @@ class OutlookNewsletterTests(unittest.TestCase):
                     msg("c1", "updates" + chr(64) + "courses.reed.co.uk"), msg("p1", "abc@user.dice.com"),
                     msg("p2", "human@recruiter.dice.com")]
         html = {
-            "d1": '<a href="https://www.dice.com/job-detail/EX123"><span>Platform Analyst</span><span>Example Systems</span><span>Location: Remote</span></a>',
+            "d1": ('<p>Job alert</p><table><tr><td style="font-size:20px;font-weight:bold"><p>'
+                   '<a href="https://elinks.dice.com/a/sc/EX123">Platform Analyst</a></p></td></tr>'
+                   '<tr><td><p><strong>Example Systems</strong></p><p>Remote</p></td></tr>'
+                   '<tr><td><p>Posted: 10-05-2026</p></td></tr></table>'),
             "r1": '<a href="https://www.reed.co.uk/jobs/data-specialist/12345678"><span>Data Specialist</span><span>Example Group</span><span>Location: Remote</span></a>',
         }
         out, db, client, saved = go(messages, html, client=FakeClient(messages, html))
@@ -141,9 +144,23 @@ class OutlookNewsletterTests(unittest.TestCase):
 
     def test_malformed_alert_card_is_skipped_and_remains_unseen(self):
         messages = [msg("d1", "dice@connect.dice.com")]
-        html = {"d1": '<a href="https://www.dice.com/job-detail/EX999"><span>View job</span></a>'}
+        html = {"d1": ('<p>Job alert</p><table><tr><td style="font-size:20px;font-weight:bold"><p>'
+                        '<a href="https://elinks.dice.com/a/sc/EX999">Platform Analyst</a></p></td></tr></table>')}
         out, db, _, saved = go(messages, html)
         self.assertEqual((out["cards"], out["skipped"], out["no_cards"], out["marked_seen"], saved), (0, 1, 1, 0, []))
+        self.assertEqual(db.seen, {})
+
+    def test_alert_wording_without_cards_remains_unseen(self):
+        messages = [msg("d2", "dice@connect.dice.com")]
+        html = {"d2": "<p>New matches in your job alert</p>"}
+        out, db, _, saved = go(messages, html)
+        self.assertEqual((out["no_cards"], out["non_job_mail"], out["marked_seen"], saved), (1, 0, 0, []))
+        self.assertEqual(db.seen, {})
+
+    def test_reed_jobs_sender_without_cards_remains_unseen(self):
+        messages = [msg("r2", "no-reply@jobs.reed.co.uk")]
+        out, db, _, saved = go(messages, {"r2": "<p>Service notice</p>"})
+        self.assertEqual((out["no_cards"], out["non_job_mail"], out["marked_seen"], saved), (1, 0, 0, []))
         self.assertEqual(db.seen, {})
 
     def test_dry_run_moves_saves_and_remembers_nothing(self):

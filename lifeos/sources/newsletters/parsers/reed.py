@@ -12,7 +12,7 @@ def looks_like_jobs(html):
     return bool(JOB.search(html or ""))
 
 
-def parse_counted(html):
+def parse_counted(html, received_epoch=None):
     """Return (cards, skipped); only complete linked job cards are emitted."""
     cards, seen, skipped = [], set(), 0
     for anchor in _anchors.collect(html, JOB):

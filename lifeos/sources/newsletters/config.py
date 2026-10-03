@@ -14,9 +14,8 @@ SENDER_RULES = (
     ("lensa", re.compile(r"@([a-z0-9-]+\.)*lensa\.com$")),
     ("jobright", re.compile(r"@([a-z0-9-]+\.)*jobright\.ai$")),
     ("linkedin-alerts", re.compile(r"^(jobalerts-noreply|jobs-noreply)@linkedin\.com$")),
-    ("dice", re.compile(r"^dice@connect\.dice\.com$")),
-    ("reed", re.compile(r"^[a-z0-9.-]+@jobs\.reed\.co\.uk$")),
-    # Dice Private Email is deliberately absent: recruiter mail is human outreach.
+    # Outlook-only Dice/Reed rules live with the Outlook source. Dice Private Email
+    # is deliberately absent: recruiter mail is human outreach.
 )
 
 # Gmail does the sender matching server-side: one search per rule, no per-message fetches.
