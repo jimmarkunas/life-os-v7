@@ -46,6 +46,17 @@ def resolve_rows(rows, budget=None):
     return [page_fallback(row, result) for row, result in zip(rows, results)]
 
 
+def requeue_held(cursor):
+    """One-time catch-up for D79: LinkedIn jobs parked on HOLD by a definite `no_match_*` (the employer link stayed hidden) go back to NEW so they get the
+    flagged LinkedIn posting. Only rows with a real LinkedIn job id, because only those always land. Their new reason, `requeued_linkedin`, is not
+    `no_match_*`, so nothing requeues them twice; a later failure writes its own reason. Idempotent: once the pile is gone it finds nothing."""
+    cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source='linkedin-alerts' AND status='HOLD' AND unresolved_reason LIKE 'no_match%%'", ())
+    ids = [row[0] for row in cursor.fetchall() if li_apply.is_linkedin(row[1]) and li_apply.job_id(row[1])]
+    for job_id in ids:
+        cursor.execute("UPDATE v7_jobs SET status='NEW', resolve_attempts=0, unresolved_reason='requeued_linkedin', updated_at=UTC_TIMESTAMP() WHERE id=%s", (job_id,))
+    return len(ids)
+
+
 def page_fallback(row, result):
     """D3 rank 4: when the employer link stays hidden (no ATS board, no search hit), the LinkedIn posting is the apply link, flagged `aggregator`.
     Its title, description and liveness are read from the guest page by Enrich, so identity and open/closed are still proven. Only a definite

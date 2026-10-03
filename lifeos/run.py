@@ -43,8 +43,16 @@ def _lensa(limit, live):
 def _linkedin(limit, live):
     from lifeos.jobs.resolve.aggregators import linkedin
     from lifeos.jobs.resolve import stage
+    from lifeos.jobs import store
+    requeued = 0
+    if live:
+        with store.connect() as connection:
+            store.ensure_schema(connection)
+            with connection.cursor() as cursor:
+                requeued = linkedin.requeue_held(cursor)               # the one-time catch-up for D79; finds nothing once it has run
     budget = {"left": linkedin.SEARCH_LIMIT}
-    return stage.run_rows("linkedin-alerts", limit, live, functools.partial(linkedin.resolve_rows, budget=budget))
+    counts = stage.run_rows("linkedin-alerts", limit, live, functools.partial(linkedin.resolve_rows, budget=budget))
+    return {**counts, "requeued": requeued}
 
 
 def _outlook_auth(limit, live):
