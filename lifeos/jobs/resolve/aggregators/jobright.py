@@ -81,17 +81,21 @@ DATA_JS = """(keys) => { const out = [];
 
 STATE_JS = """() => { const out = new Set();
   const want = /expir|clos|status|active|publish|poste?d|live|valid|open|stale|remov/i;
-  const walk = (o, d) => { if (!o || d > 12 || out.size > 40) return;
+  const work = /work.?(model|type|place|mode|arrangement)|remote|on.?site|hybrid|workplace/i;
+  const walk = (o, d) => { if (!o || d > 12 || out.size > 60) return;
     if (Array.isArray(o)) { o.slice(0, 3).forEach(x => walk(x, d + 1)); return; }
     if (typeof o === 'object') for (const [k, v] of Object.entries(o)) {
-      if (want.test(k) && typeof v !== 'object') out.add(typeof v === 'boolean' ? k + '=' + v : k + ':' + typeof v); else walk(v, d + 1); } };
+      if ((want.test(k) || work.test(k)) && typeof v !== 'object') {
+        const shown = typeof v === 'boolean' || (work.test(k) && typeof v === 'string' && /^[A-Za-z _-]{2,20}$/.test(v));
+        out.add(shown ? k + '=' + v : k + ':' + typeof v); } else walk(v, d + 1); } };
   const el = document.getElementById('__NEXT_DATA__');
   if (el) { try { walk(JSON.parse(el.textContent), 0); } catch (e) {} }
   return Array.from(out); }"""
 
 
 async def page_state_keys(page):
-    """Diagnostic only: NAMES of the job page's own liveness-like fields (a boolean shows its value; everything else shows only its type). No titles, text or urls.
+    """Diagnostic only: NAMES of the job page's own liveness-like and work-model-like fields (a boolean shows its value, a work-model field its short word such as Remote / Hybrid;
+    everything else shows only its type). No titles, text or urls.
     Tells us whether Jobright says if a job is still open, so its description could stand in for an unreadable employer page."""
     try:
         return [str(k)[:40] for k in (await page.evaluate(STATE_JS))][:40]
