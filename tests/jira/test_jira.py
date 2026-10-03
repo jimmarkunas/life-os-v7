@@ -379,7 +379,7 @@ class WorkflowTests(unittest.TestCase):
 
     def job(self):
         start = self.text.index("\n  jira:\n")
-        return self.text[start:self.text.index("\n  report:\n")]
+        return self.text[start:self.text.index("\n  calendar:\n")]
 
     def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
         block = self.text[self.text.index("  workflow_dispatch:\n    inputs:\n"):self.text.index("\nenv:\n")]
