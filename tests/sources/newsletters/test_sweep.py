@@ -15,6 +15,9 @@ RESULTS = {
 class SweepTests(unittest.TestCase):
     def test_classify(self):
         self.assertEqual(config.classify("Lensa <aggregated@lensa.com>"), "lensa")
+        self.assertEqual(config.classify("dice@connect.dice.com"), "dice")
+        self.assertEqual(config.classify("no-reply@jobs.reed.co.uk"), "reed")
+        self.assertIsNone(config.classify("updates" + chr(64) + "courses.reed.co.uk"))
         self.assertIsNone(config.classify("noreply@lensa.com.evil.example"))
         self.assertIsNone(config.classify("invitations@linkedin.com"))
         self.assertIsNone(config.classify("abc-123-xyz@user.dice.com"))   # synthetic recruiter relay
