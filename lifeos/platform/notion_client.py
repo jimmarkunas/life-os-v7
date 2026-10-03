@@ -45,6 +45,23 @@ class Client:
             raise NotionError("NOTION_SOURCE_INVALID")
         return self.call("POST", f"/data_sources/{source}/query", body or {"page_size": limits.NOTION_PAGE_SIZE})
 
+    @staticmethod
+    def _page_id(page_id):
+        value = str(page_id or "").replace("-", "")
+        if len(value) != 32 or any(ch not in "0123456789abcdefABCDEF" for ch in value):
+            raise NotionError("NOTION_PAGE_ID_INVALID")
+        return value
+
+    def get_page(self, page_id):
+        """Read one exact page through the paced Notion client."""
+        return self.call("GET", f"/pages/{self._page_id(page_id)}")
+
+    def update_page_properties(self, page_id, properties):
+        """Issue one non-retried page-property write; callers must read back before any retry."""
+        if not isinstance(properties, dict) or not properties:
+            raise NotionError("NOTION_PROPERTIES_INVALID")
+        return self.call_once("PATCH", f"/pages/{self._page_id(page_id)}", {"properties": properties})
+
     def _call(self, method, path, body, attempts):
         for attempt in range(attempts):
             wait = limits.NOTION_GAP_SECONDS - (self._clock() - self._last)

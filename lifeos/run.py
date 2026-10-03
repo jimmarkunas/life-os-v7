@@ -76,6 +76,7 @@ STAGES = {
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
+    "bills-paid": lazy("lifeos.bills.paid"),
     "jira-rollover": lazy("lifeos.jira.rollover"),
     "jira-rollover-scheduled": lazy("lifeos.jira.rollover", auto=True),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
