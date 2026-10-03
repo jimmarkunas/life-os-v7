@@ -7,14 +7,12 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import db
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform.notion_client import NotionError
+from lifeos.platform.snapshot_store import Store
 
 LOCAL_TZ = "America/Chicago"
 TZ = ZoneInfo(LOCAL_TZ)
 SCHEMA_V = 1
-SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_agenda_snapshot (
-    snapshot_id TINYINT NOT NULL PRIMARY KEY, taken_at DATETIME NOT NULL,
-    schema_v SMALLINT NOT NULL, payload MEDIUMTEXT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
+STORE = Store("v7_agenda_snapshot")
 
 
 class AgendaError(NotionError):
@@ -143,21 +141,12 @@ def build(calendar, now=None):
 
 
 def save(connection, snapshot):
-    taken = datetime.fromisoformat(snapshot["taken_at"]).replace(tzinfo=None)
-    with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_agenda_snapshot (snapshot_id, taken_at, schema_v, payload) VALUES (1,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE taken_at=VALUES(taken_at), schema_v=VALUES(schema_v), payload=VALUES(payload)",
-                       (taken, snapshot["schema"], json.dumps(snapshot, ensure_ascii=False)))
+    STORE.save(connection, 1, snapshot)
 
 
 def load(connection):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT payload FROM v7_agenda_snapshot WHERE snapshot_id=1")
-        row = cursor.fetchone()
-    if not row:
-        return None
     try:
-        return json.loads(row[0])
+        return STORE.load(connection, 1)
     except (TypeError, ValueError):
         raise AgendaError("AGENDA_SNAPSHOT_INVALID") from None
 
@@ -173,12 +162,7 @@ def run(limit, live, environ=os.environ, calendar=None, now=None, connect=None):
     if live:
         try:
             with (connect or db.connect)() as connection:
-                with connection.cursor() as cursor:
-                    for statement in SCHEMA:
-                        cursor.execute(statement)
-                save(connection, snapshot)
-                if load(connection) != snapshot:
-                    raise AgendaError("AGENDA_READBACK_MISMATCH")
+                STORE.save_verified(connection, 1, snapshot, lambda code: AgendaError("AGENDA_" + code))
             counts["saved"] = 1
         except AgendaError:
             raise
