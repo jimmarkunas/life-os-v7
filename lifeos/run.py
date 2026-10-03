@@ -90,7 +90,7 @@ def _jira_card(limit, live):
 
 def _outlook_auth(limit, live):
     from lifeos.outlook import stage
-    return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true")
+    return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true", write=os.environ.get("OUTLOOK_WRITE") == "true")
 
 
 def _outlook_probe(limit, live):

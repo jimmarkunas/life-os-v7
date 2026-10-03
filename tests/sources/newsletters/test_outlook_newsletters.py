@@ -7,7 +7,7 @@ from lifeos.platform.outlook import OutlookError
 from lifeos.sources.newsletters import ingest, outlook
 
 NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
-ENV = {"OUTLOOK_CLIENT_ID": "cid"}
+ENV = {"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_NEWSLETTER_ACCOUNTS": "personal"}
 
 
 class Card:
@@ -22,15 +22,36 @@ def msg(mid, sender, received="2026-10-07T10:00:00Z"):
 
 
 class FakeClient:
-    def __init__(self, messages, html=None):
-        self.messages_, self.html, self.fetched = messages, html or {}, []
+    """An Outlook mailbox with an Inbox and (once created) a J Newsletters folder; records every move."""
+
+    def __init__(self, messages, html=None, deny_write=False, move_ok=True):
+        self.inbox, self.folder, self.html, self.fetched = list(messages), None, html or {}, []
+        self.deny_write, self.move_ok, self.moves = deny_write, move_ok, []
 
     def __call__(self, client_id, token, save):
         return self
 
     def messages(self, folder, since, limit=5000):
-        assert folder == "inbox"
-        return self.messages_
+        if folder == "inbox":
+            return list(self.inbox)
+        return list(self.folder or [])
+
+    def folder_id(self, name, create=False):
+        assert name == "J Newsletters"
+        if self.folder is None and create:
+            if self.deny_write:
+                raise OutlookError("OUTLOOK_HTTP_403")
+            self.folder = []
+        return "folder-1" if self.folder is not None else None
+
+    def move(self, mid, folder_id):
+        self.moves.append(mid)
+        if not self.move_ok:
+            return False
+        item = next(m for m in self.inbox if m["id"] == mid)
+        self.inbox.remove(item)
+        self.folder.append(item)
+        return True
 
     def message_html(self, mid):
         self.fetched.append(mid)
@@ -62,9 +83,9 @@ class Cur:
     def fetchall(self): return self.out
 
 
-def go(messages, html, db=None, live=True, parsers=None, looks=None):
+def go(messages, html, db=None, live=True, parsers=None, looks=None, client=None):
     db = db or Db()
-    client = FakeClient(messages, html)
+    client = client or FakeClient(messages, html)
     saved = []
     with patch.object(outlook.outlook_tokens, "ensure_schema"), patch.object(outlook.outlook_tokens, "load", return_value="R"), \
             patch.object(outlook.jobs_store, "ensure_schema"), patch.object(outlook.ingest, "backfill_provider"), \
@@ -84,19 +105,46 @@ class OutlookNewsletterTests(unittest.TestCase):
         self.assertEqual(a, outlook.message_key("AAMk" + "x" * 150))
         self.assertNotEqual(a, outlook.message_key("AAMk" + "y" * 150))
 
-    def test_supported_job_mail_is_saved_then_remembered_and_other_mail_is_ignored(self):
-        messages = [msg("m1", "jobalert@lensa.com"), msg("m2", "someone@example.com")]
-        out, db, client, saved = go(messages, {"m1": "card"})
-        self.assertEqual((out["listed"], out["unsupported_sender"], out["messages"], out["cards"], out["new_jobs"], out["marked_seen"]),
-                         (2, 1, 1, 1, 1, 1))
-        self.assertEqual(saved[0][0], "lensa")
-        self.assertEqual(client.fetched, ["m1"])                 # unrelated mail is never even opened
-        again, _, client2, saved2 = go(messages, {"m1": "card"}, db=db)
-        self.assertEqual((again["already_seen"], again["new_jobs"], saved2, client2.fetched), (1, 0, [], []))
+    def test_rules_cover_the_gmail_senders_plus_file_only_dice_and_reed_but_never_dice_private_email(self):
+        self.assertEqual(outlook.rule_of("jobalert@lensa.com"), ("lensa", True))
+        self.assertEqual(outlook.rule_of("dice@connect.dice.com"), ("dice", False))
+        self.assertEqual(outlook.rule_of("no-reply@jobs.reed.co.uk"), ("reed", False))
+        for human in ("abc-def-ghi@user.dice.com", "kosi@recruiter.dice.com", "someone@example.com"):
+            self.assertEqual(outlook.rule_of(human), (None, False))
 
-    def test_dry_run_saves_and_remembers_nothing(self):
-        out, db, _, saved = go([msg("m1", "jobalert@lensa.com")], {"m1": "card"}, live=False)
-        self.assertEqual((out["cards"], out["new_jobs"], out["marked_seen"], saved, db.seen), (1, 0, 0, [], {}))
+    def test_job_alert_mail_is_filed_in_the_folder_saved_and_remembered_other_mail_is_left_alone(self):
+        messages = [msg("m1", "jobalert@lensa.com"), msg("m2", "someone@example.com")]
+        client = FakeClient(messages, {"m1": "card"})
+        out, db, client, saved = go(messages, {"m1": "card"}, client=client)
+        self.assertEqual((out["moved"], out["move_failed"], client.moves, [m["id"] for m in client.inbox]), (1, 0, ["m1"], ["m2"]))
+        self.assertEqual((out["messages"], out["cards"], out["new_jobs"], out["marked_seen"], out["unsupported_sender"]), (1, 1, 1, 1, 1))
+        self.assertEqual(client.fetched, ["m1"])                 # unrelated mail is never opened
+        again, _, client2, saved2 = go(None, {"m1": "card"}, db=db, client=client)
+        self.assertEqual((again["already_seen"], again["new_jobs"], again["moved"], saved2), (1, 0, 0, []))
+
+    def test_dice_and_reed_alerts_are_filed_but_wait_for_a_parser(self):
+        client = FakeClient([msg("d1", "dice@connect.dice.com"), msg("r1", "no-reply@jobs.reed.co.uk"), msg("p1", "abc@user.dice.com")])
+        out, _, client, saved = go(None, {}, client=client)
+        self.assertEqual((out["moved"], out["no_parser"], saved, client.fetched), (2, 2, [], []))
+        self.assertEqual([m["id"] for m in client.inbox], ["p1"])                # the relayed recruiter stays where it is
+
+    def test_dry_run_moves_saves_and_remembers_nothing(self):
+        client = FakeClient([msg("m1", "jobalert@lensa.com")], {"m1": "card"})
+        out, db, client, saved = go(None, {}, live=False, client=client)
+        self.assertEqual((out["would_move"], out["moved"], client.moves, out["new_jobs"], out["marked_seen"], saved, db.seen),
+                         (1, 0, [], 0, 0, [], {}))
+        self.assertEqual(out["cards"], 1)
+
+    def test_a_read_only_sign_in_keeps_ingesting_from_the_inbox_and_moves_nothing(self):
+        client = FakeClient([msg("m1", "jobalert@lensa.com")], {"m1": "card"}, deny_write=True)
+        out, db, client, saved = go(None, {}, client=client)
+        self.assertEqual((out["write_denied"], out["moved"], out["new_jobs"], out["marked_seen"]), (1, 0, 1, 1))
+        self.assertEqual([m["id"] for m in client.inbox], ["m1"])
+
+    def test_a_move_that_cannot_be_read_back_is_counted_and_the_mail_is_still_ingested_from_where_it_is(self):
+        client = FakeClient([msg("m1", "jobalert@lensa.com")], {"m1": "card"}, move_ok=False)
+        out, _, client, _ = go(None, {}, client=client)
+        self.assertEqual((out["moved"], out["move_failed"], out["new_jobs"]), (0, 1, 1))
 
     def test_a_parser_gap_stays_unseen_and_a_non_job_mail_is_closed(self):
         out, db, _, _ = go([msg("m1", "jobalert@lensa.com"), msg("m2", "jobalert@lensa.com")], {"m1": "jobs here", "m2": "reset your password"})
@@ -116,7 +164,7 @@ class OutlookNewsletterTests(unittest.TestCase):
                             outlook_factory=FakeClient([]), now=NOW)
         self.assertEqual(str(error.exception), "OUTLOOK_NEWSLETTERS_FAILED:2of2:OUTLOOK_NOT_SIGNED_IN@1,OUTLOOK_NOT_SIGNED_IN@2")
         out, _, _, _ = go([msg("m1", "jobalert@lensa.com")], {"m1": "card"})
-        for private in ("lensa.com", "m1", "x/1"):
+        for private in ("lensa.com", "m1", "x/1", "J Newsletters"):
             self.assertNotIn(private, json.dumps(out))
         with self.assertRaises(OutlookError):
             outlook.run(1, False, environ={}, connect=lambda: Db(), outlook_factory=FakeClient([]), now=NOW)

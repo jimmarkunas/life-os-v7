@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "auth = sign one mailbox in (prints a short code to enter at the Microsoft page; needs the Save box); probe = read-only check, counts only; newsletters = read job-alert mail into Jobs OS (counts only; saves only with the Save box)"
+        description: "auth = sign one mailbox in read-only (prints a short code to enter at the Microsoft page; needs the Save box); auth-write = sign in again with permission to move newsletters into a folder; probe = read-only check, counts only; newsletters = read job-alert mail into Jobs OS (counts only; saves only with the Save box)"
         type: choice
-        options: ["probe", "auth", "newsletters"]
+        options: ["probe", "auth", "auth-write", "newsletters"]
         default: "probe"
       account:
         description: "Which mailbox (used by auth)"
@@ -35,6 +35,7 @@ jobs:
       OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
       OUTLOOK_ACCOUNT: ${{ inputs.account }}
       OUTLOOK_REPLACE: ${{ inputs.replace }}
+      OUTLOOK_WRITE: ${{ inputs.action == 'auth-write' }}
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
       LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
       LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -53,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Outlook sign-in (live only)
-        if: ${{ inputs.action == 'auth' }}
+        if: ${{ inputs.action == 'auth' || inputs.action == 'auth-write' }}
         run: python -u -m lifeos.run outlook-auth $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Outlook newsletters (counts only; saves jobs only when the Save box is ticked)
         if: ${{ inputs.action == 'newsletters' }}
