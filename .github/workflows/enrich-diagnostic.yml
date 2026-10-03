@@ -28,8 +28,8 @@ jobs:
           from lifeos.platform.db import connect
 
           start, end = "2026-10-03 07:02:00", "2026-10-03 07:02:12"
-          provider = "CASE WHEN LOWER(COALESCE(provider,'')) LIKE '%jobright%' THEN 'jobright' WHEN LOWER(COALESCE(provider,'')) LIKE '%linkedin%' THEN 'linkedin' WHEN LOWER(COALESCE(provider,'')) LIKE '%lensa%' THEN 'lensa' WHEN LOWER(COALESCE(provider,'')) LIKE '%dice%' THEN 'dice' WHEN LOWER(COALESCE(provider,'')) LIKE '%web%' THEN 'web' ELSE 'other' END"
-          source = "CASE WHEN LOWER(COALESCE(source,'')) LIKE '%jobright%' THEN 'jobright' WHEN LOWER(COALESCE(source,'')) LIKE '%linkedin%' THEN 'linkedin' WHEN LOWER(COALESCE(source,'')) LIKE '%lensa%' THEN 'lensa' WHEN LOWER(COALESCE(source,'')) LIKE '%dice%' THEN 'dice' WHEN LOWER(COALESCE(source,'')) LIKE '%web%' THEN 'web' ELSE 'other' END"
+          provider = "CASE WHEN LOWER(COALESCE(provider,'')) LIKE '%%jobright%%' THEN 'jobright' WHEN LOWER(COALESCE(provider,'')) LIKE '%%linkedin%%' THEN 'linkedin' WHEN LOWER(COALESCE(provider,'')) LIKE '%%lensa%%' THEN 'lensa' WHEN LOWER(COALESCE(provider,'')) LIKE '%%dice%%' THEN 'dice' WHEN LOWER(COALESCE(provider,'')) LIKE '%%web%%' THEN 'web' ELSE 'other' END"
+          source = "CASE WHEN LOWER(COALESCE(source,'')) LIKE '%%jobright%%' THEN 'jobright' WHEN LOWER(COALESCE(source,'')) LIKE '%%linkedin%%' THEN 'linkedin' WHEN LOWER(COALESCE(source,'')) LIKE '%%lensa%%' THEN 'lensa' WHEN LOWER(COALESCE(source,'')) LIKE '%%dice%%' THEN 'dice' WHEN LOWER(COALESCE(source,'')) LIKE '%%web%%' THEN 'web' ELSE 'other' END"
           reason = "CASE WHEN unresolved_reason IN ('link_mismatch','title_mismatch') THEN 'link_mismatch' WHEN unresolved_reason IN ('listing_url','root','no_job_id') THEN unresolved_reason WHEN unresolved_reason IN ('jd_listing','jd_template','workable_no_account') THEN unresolved_reason ELSE 'other' END"
           with connect() as connection:
               with connection.cursor() as cursor:
