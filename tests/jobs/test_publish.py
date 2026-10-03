@@ -82,3 +82,13 @@ class VisibleLaneLabel(unittest.TestCase):
         props = publish.properties(row)
         self.assertEqual(props["Visible Lane"]["select"]["name"], "Scale-up")          # not a new "Scale-Up" option
         self.assertEqual(props["Eligible Lanes"]["multi_select"], [{"name": "Scale-Up"}])  # Eligible Lanes' own option is "Scale-Up"
+
+
+class SameOpeningTests(unittest.TestCase):
+    def test_a_published_page_with_the_same_company_and_title_makes_a_duplicate_and_generic_titles_are_never_merged(self):
+        from tests.kit.db import FakeCursor
+        cursor = FakeCursor(script={"SELECT id FROM v7_jobs WHERE status='PUBLISHED'": (7,)})
+        self.assertEqual(publish.same_opening(cursor, 9, "ServiceNow", "Director, TA Infrastructure"), 7)
+        self.assertIsNone(publish.same_opening(cursor, 9, "Adobe", "Product Manager"))             # two words: generic
+        self.assertIsNone(publish.same_opening(cursor, 9, "", "Director, TA Infrastructure"))
+        self.assertEqual(len(cursor.sql), 1)

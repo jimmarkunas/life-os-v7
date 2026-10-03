@@ -28,6 +28,40 @@ def _add(table, *keys, n):
     table[keys[-1]] = table.get(keys[-1], 0) + int(n)
 
 
+STAGE = {"NEW": "found", "RESOLVED": "linked", "READY": "read", "PUBLISHED": "published", "EXCLUDED_FIT": "scored_out", "EXCLUDED_STALE": "too_old",
+         "CLOSED": "closed", "DUPLICATE": "duplicate", "HOLD": "stuck", "EXCLUDED_UNRESOLVED": "stuck"}
+CANARY_PER_SOURCE = 3
+
+
+def verdict(counts):
+    """flowing | silent | found_none_published | stuck_at_link | stuck_at_read, from one source's 24h status counts."""
+    found = sum(counts.values())
+    if not found:
+        return "silent"
+    if counts.get("PUBLISHED"):
+        return "flowing"
+    open_ = counts.get("NEW", 0) + counts.get("HOLD", 0)
+    if counts.get("NEW", 0) + counts.get("HOLD", 0) >= found * 0.5 and open_:
+        return "stuck_at_link"
+    if counts.get("RESOLVED", 0) >= found * 0.5:
+        return "stuck_at_read"
+    return "found_none_published"
+
+
+def canary(rows, status_24h):
+    """Per source: a verdict for the last 24 hours and the trace of its newest jobs (fixed codes only): the step each reached, why it stopped,
+    attempts, how its link was proven, Fit admission and score band, age in hours. A provider that breaks shows as a verdict other than flowing."""
+    per = {}
+    for source, st, reason, resolve_n, enrich_n, kind, proof, admission, score, age in rows:
+        traces = per.setdefault(source, [])
+        if len(traces) < CANARY_PER_SOURCE:
+            traces.append({"stage": STAGE.get(st, st), "status": st, "reason": reason_code(reason), "resolve_attempts": int(resolve_n or 0),
+                           "enrich_attempts": int(enrich_n or 0), "link": kind or None, "proof": proof or None,
+                           "fit": f"{admission}:{band(score)}" if admission else None, "age_h": int(age or 0)})
+    sources = set(per) | set(status_24h)
+    return {src: {"verdict": verdict(status_24h.get(src, {})), "newest": per.get(src, [])} for src in sorted(sources)}
+
+
 def run(limit, live, now=None):
     from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
     now = now or _now()
@@ -53,4 +87,9 @@ def run(limit, live, now=None):
             for source, found, published in cursor.fetchall():
                 out["freshness_hours"][source] = {"since_found": None if found is None else int(found),
                                                   "since_published": None if published is None else int(published)}
+            cursor.execute("SELECT COALESCE(j.source, 'unknown'), j.status, COALESCE(j.unresolved_reason, ''), j.resolve_attempts, j.enrich_attempts,"
+                           " COALESCE(j.apply_kind, ''), COALESCE(j.link_proof, ''), f.admission, f.score, TIMESTAMPDIFF(HOUR, j.first_seen, %s)"
+                           " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s ORDER BY j.first_seen DESC LIMIT 3000",
+                           (now, now - timedelta(hours=48)))
+            out["canary"] = canary(cursor.fetchall(), out["windows"]["24h"]["status"])
     return out

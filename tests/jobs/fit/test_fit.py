@@ -265,3 +265,13 @@ class ProfessionGate(unittest.TestCase):
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX (Remote)", "Project Manager", ""), "remote")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote")
         self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")      # acquisition filters never guess
+
+
+class EducationGate(unittest.TestCase):
+    def test_education_titles_and_school_employers_are_hard_exclusions(self):
+        for title in ("Senior Manager of Ellucian Student Delivery Excellence & Enablement |Remote", "Director, Admissions Operations", "K-12 Program Manager"):
+            hard, _ = exclusions.check(title, "Acme", GOOD)
+            self.assertEqual(hard["id"], "education_role", title)
+        hard, _ = exclusions.check("Program Manager", "Kido Schools UK Limited", GOOD)
+        self.assertEqual(hard["id"], "school_employer")
+        self.assertIsNone(exclusions.check("Senior Technical Program Manager", "Acme", GOOD)[0])
