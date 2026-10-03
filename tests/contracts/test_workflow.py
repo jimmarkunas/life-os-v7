@@ -97,3 +97,43 @@ class IsolatedJobTests(unittest.TestCase):
         from pathlib import Path
         for path in (Path(__file__).resolve().parents[2] / ".github/workflows").glob("*.yml"):
             self.assertNotIn("setup-python", path.read_text(), path.name)
+
+
+DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER"}
+DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
+    "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
+                  "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN"},
+    "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"},
+    "bills": DB | {"NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN"},
+    "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
+    "amazon": {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN",
+               "NOTION_AMAZON_DATA_SOURCE_ID", "NOTION_AMAZON_TOKEN"},
+}
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class DomainsWorkflowTests(unittest.TestCase):
+    """domains.yml holds the single-provider jobs. It declares no secrets at the top, so isolation is structural: a job sees only what its own
+    steps pass it, and never the Jobs pipeline's secrets."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "domains.yml"
+        cls.doc = yaml.safe_load(path.read_text())
+
+    def test_no_secret_is_declared_at_the_top(self):
+        self.assertEqual([k for k, v in (self.doc.get("env") or {}).items() if "secrets." in str(v)], [])
+
+    def test_each_job_sees_only_its_own_secrets(self):
+        self.assertEqual(set(self.doc["jobs"]), set(DOMAIN_SECRETS))
+        for name, job in self.doc["jobs"].items():
+            used = {k for k, v in (job.get("env") or {}).items() if "secrets." in str(v)}
+            for step in job["steps"]:
+                used |= {k for k, v in (step.get("env") or {}).items() if "secrets." in str(v)}
+            self.assertLessEqual(used, DOMAIN_SECRETS[name], f"{name}: {sorted(used - DOMAIN_SECRETS[name])}")
+
+    def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
+        for name, job in self.doc["jobs"].items():
+            work = [s for s in job["steps"] if s.get("id")]
+            self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
