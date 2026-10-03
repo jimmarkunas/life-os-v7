@@ -176,3 +176,29 @@ class ReviewBand(unittest.TestCase):
             self.assertEqual(qualify(policy, facts(fit=60), TODAY).status, REVIEW)
             self.assertEqual(qualify(policy, facts(fit=67), TODAY).status, REVIEW)
             self.assertEqual(qualify(policy, facts(fit=68), TODAY).status, ADMIT)
+
+
+class LondonAndRemote(unittest.TestCase):
+    """D96: Scale-Up needs London, not remote; US Remote needs remote."""
+
+    def facts(self, location, mode, fit=80):
+        return lanes.Facts(fit=fit, market="UK", work_mode=mode, posted=ago(2), route={"Scale-up": POSITIVE},
+                           geography=lanes.geography_status(location), located=bool(location.strip()))
+
+    def test_remote_never_disqualifies_a_london_scale_up_job(self):
+        for location, mode in (("London", "onsite"), ("London (hybrid)", "hybrid"), ("London (Remote)", "remote"), ("Remote - London, UK", "remote"),
+                               ("Barcelona · office · Spain | London · office · United Kingdom | Madrid · office · Spain", "onsite")):
+            self.assertEqual(qualify(SCALE, self.facts(location, mode), TODAY).status, ADMIT, location)
+
+    def test_a_scale_up_job_outside_london_is_excluded_whether_or_not_it_is_remote(self):
+        for location, mode in (("Manchester", "onsite"), ("Remote - UK", "remote"), ("Edinburgh, Scotland", "hybrid"), ("Leeds (Remote)", "remote")):
+            decision = qualify(SCALE, self.facts(location, mode), TODAY)
+            self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not in London"), location)
+
+    def test_a_scale_up_job_with_no_place_stays_review(self):
+        self.assertEqual(qualify(SCALE, self.facts("", "unknown"), TODAY).status, REVIEW)
+
+    def test_a_us_job_must_still_be_remote(self):
+        self.assertEqual(qualify(US, us(work_mode="remote"), TODAY).status, ADMIT)
+        self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).reason, "not remote")
+        self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).reason, "not remote")

@@ -97,3 +97,4 @@ This index is checked by a test: add a line here with every new decision.
 - D93 — Jobright work-model probe (2026-10-03, Jim)
 - D94 — A policy change applies itself; runs are driven by Claude, not by checkboxes (2026-10-03, Jim)
 - D95 — Scale-Up junk: sales, language and junior titles (2026-10-03, Jim)
+- D96 — Scale-Up: London is required, remote is not; US Remote: remote is required (2026-10-03, Jim)
