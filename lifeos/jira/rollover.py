@@ -11,7 +11,7 @@ from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
 UNFINISHED_FIELDS = "summary,status,issuetype"
-AUTO_AFTER_HOUR = 6                      # scheduled rollover waits for Monday 6 AM local, like V1; manual runs only need the sprint to have ended
+AUTO_AFTER_HOUR = 0                      # scheduled rollover runs on the first hourly tick after midnight Monday local; manual runs only need the sprint to have ended
 
 
 def _when(value):
@@ -42,7 +42,7 @@ def target_week(sprint, tz):
     start = datetime.combine(end_local.date() + timedelta(days=1), datetime.min.time(), tzinfo=tz)
     if start.weekday() != 0:
         raise JiraError("JIRA_NOT_MONDAY")
-    return end_local, start, start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+    return end_local, start, start + timedelta(days=6, hours=23, minutes=30)
 
 
 def sprint_name(project, start, end):

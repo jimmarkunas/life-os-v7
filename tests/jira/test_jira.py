@@ -239,25 +239,25 @@ class RolloverTests(unittest.TestCase):
 
 
 class ScheduledRolloverTests(unittest.TestCase):
-    """Scheduled runs act only once the sprint has ended and it is Monday 6 AM local; every other hour is a quiet no-op."""
+    """Scheduled runs act only once the sprint has ended and it is Monday 00:00 local; every other hour is a quiet no-op."""
 
     def go(self, now, client=None, live=True):
         client = client or FakeJira(week(), issues=[("AAA-1", 1, "To Do"), ("AAA-2", 1, "Done")])
         return rollover.run(1, live, environ=ENV, client=client, now=now, sleep=lambda s: None, auto=True), client
 
     def test_mid_week_and_sunday_night_do_nothing_and_do_not_fail(self):
-        for now in (at(2, 12), datetime(2026, 10, 4, 23, 59, tzinfo=TZ), datetime(2026, 10, 5, 5, 59, tzinfo=TZ)):
+        for now in (at(2, 12), datetime(2026, 10, 4, 23, 59, tzinfo=TZ)):
             out, client = self.go(now)
             self.assertEqual((out["not_due"], out["writes"], client.log), (1, 0, []))
 
     def test_monday_morning_rolls_over_once_and_the_next_hour_is_quiet(self):
-        out, client = self.go(datetime(2026, 10, 5, 6, 7, tzinfo=TZ))
+        out, client = self.go(datetime(2026, 10, 5, 0, 7, tzinfo=TZ))
         self.assertEqual((out["created"], out["carried"], out["closed"], out["started"]), (1, 1, 1, 1))
         again, _ = self.go(datetime(2026, 10, 5, 7, 7, tzinfo=TZ), client)
         self.assertEqual((again["not_due"], again["writes"]), (1, 0))
 
     def test_scheduled_dry_run_writes_nothing(self):
-        out, client = self.go(datetime(2026, 10, 5, 6, 7, tzinfo=TZ), live=False)
+        out, client = self.go(datetime(2026, 10, 5, 0, 7, tzinfo=TZ), live=False)
         self.assertEqual((out["would_create"], client.log), (1, []))
 
 
