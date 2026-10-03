@@ -40,6 +40,7 @@ jobs:
         env:
           NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}

@@ -30,7 +30,8 @@ def _plain(block):
 
 
 def _owned(blocks):
-    return bool(blocks) and blocks[0].get("type") == "heading_4" and _plain(blocks[0]).strip() == CARD_TITLE
+    return (bool(blocks) and blocks[0].get("type") in ("heading_3", "heading_4")
+            and _plain(blocks[0]).strip() == CARD_TITLE)
 
 
 def _children(client, block_id):
@@ -63,42 +64,40 @@ def _tree(client, block):
     return node
 
 
-def _page_regions(client, page_id):
-    regions, digests = [], {}
-    owned_trees = {}
-    for root in _children(client, page_id):
-        if root.get("type") != "callout":
-            continue
-        tree = _tree(client, root)
-        children = tree.get("agenda_children") or []
-        heading = children[0] if children else {}
-        name = _plain(heading).strip() if heading.get("type") == "heading_4" else ""
-        if not name:
-            continue
-        regions.append((name, root["id"]))
-        if name in router.OWNERS:
-            owned_trees.setdefault(name, []).append(tree)
-    for name, trees in owned_trees.items():
-        encoded = json.dumps(trees, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        digests[name] = hashlib.sha256(encoded.encode()).hexdigest()
-    return regions, digests
+def _region_digest(client, block_id):
+    meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or meta.get("id") != block_id:
+        raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
+    tree = _tree(client, meta)
+    encoded = json.dumps(tree, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _protected(client, jira_id):
+    try:
+        digest = _region_digest(client, jira_id)
+    except CardError:
+        raise
+    except Exception:
+        raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE") from None
+    state = {router.JIRA_REGION: digest}
+    if not router.protected_intact(MODULE, state, state):
+        raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
+    return state
+
+
+def _require_protected_intact(client, jira_id, before):
+    after = _protected(client, jira_id)
+    if not router.protected_intact(MODULE, before, after):
+        raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
 
 
 def _target(client, block_id):
+    # The configured ID is the single authority for this region (D58: one owner per region);
+    # scanning the Daily Report tree would be costly and is intentionally unnecessary.
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout":
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or meta.get("id") != block_id:
         raise CardError("AGENDA_CARD_NOT_OWNED")
-    parent = meta.get("parent") or {}
-    page_id = parent.get("page_id") if parent.get("type") == "page_id" else None
-    if not isinstance(page_id, str) or not page_id:
-        raise CardError("AGENDA_CARD_NOT_OWNED")
-    regions, protected = _page_regions(client, page_id)
-    try:
-        resolved = router.resolve_target(regions, MODULE)
-    except router.RouterError:
-        raise CardError("AGENDA_CARD_NOT_OWNED") from None
-    if resolved != block_id:
-        raise CardError("AGENDA_CARD_ID_MISMATCH")
     blocks = _children(client, block_id)
     if not _owned(blocks):
         raise CardError("AGENDA_CARD_NOT_OWNED")
@@ -106,7 +105,7 @@ def _target(client, block_id):
         router.check_write(MODULE, [CARD_TITLE])
     except router.RouterError:
         raise CardError("AGENDA_CARD_NOT_OWNED") from None
-    return page_id, blocks, protected
+    return blocks
 
 
 def _text(content, url=None):
@@ -221,10 +220,14 @@ def _client(environ):
                    "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def _append(client, block_id, blocks):
+def _append(client, block_id, blocks, after_chunk=None):
     for start in range(0, len(blocks), 100):
         chunk = blocks[start:start + 100]
-        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": chunk})
+        try:
+            result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": chunk})
+        finally:
+            if after_chunk:
+                after_chunk()
         if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) != len(chunk):
             raise CardError("AGENDA_CARD_APPEND_MISMATCH")
 
@@ -252,7 +255,7 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     stale = now - taken > timedelta(hours=STALE_HOURS)
     blocks, counts = render(saved, stale, now)
     client = client or _client(environ)
-    page_id, existing, before = _target(client, block_id)
+    existing = _target(client, block_id)
     status = _status(saved, stale)
     if stale:
         status_block = next((block for block in existing[1:] if block.get("type") == "paragraph"
@@ -260,33 +263,37 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         if status_block is None:
             raise CardError("AGENDA_CARD_STALE_NO_BASELINE")
         if live:
+            jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
+            if not jira_id:
+                raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
+            before = _protected(client, jira_id)
             try:
                 router.check_write(MODULE, [CARD_TITLE])
             except router.RouterError:
                 raise CardError("AGENDA_CARD_NOT_OWNED") from None
             client.call("PATCH", f"/blocks/{quote(status_block['id'], safe='')}",
                         {"paragraph": {"rich_text": rich_text(status)}})
+            _require_protected_intact(client, jira_id, before)
             after = _children(client, block_id)
             if not _owned(after) or _plain(next((b for b in after if b.get("id") == status_block["id"]), {})) != status:
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
             if hashlib.sha256(json.dumps(existing[2:], sort_keys=True).encode()).hexdigest() != hashlib.sha256(json.dumps(after[2:], sort_keys=True).encode()).hexdigest():
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
-            _, after_protected = _page_regions(client, page_id)
-            if not router.protected_intact(MODULE, before, after_protected):
-                raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
+            _require_protected_intact(client, jira_id, before)
             counts["blocks_written"] = 1
         return counts
     if not live:
         return counts
     new_blocks = blocks
+    jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
+    if not jira_id:
+        raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
+    before = _protected(client, jira_id)
     try:
         router.check_write(MODULE, [CARD_TITLE])
     except router.RouterError:
         raise CardError("AGENDA_CARD_NOT_OWNED") from None
-    _append(client, block_id, new_blocks)                 # add first; old content remains if this fails
-    _, after_add = _page_regions(client, page_id)
-    if not router.protected_intact(MODULE, before, after_add):
-        raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
+    _append(client, block_id, new_blocks, lambda: _require_protected_intact(client, jira_id, before))
     for old in existing[1:]:
         try:
             router.check_write(MODULE, [CARD_TITLE])
@@ -295,12 +302,15 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         try:
             client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
         except NotionError as error:
-            if str(error) != "NOTION_HTTP_404":
+            if str(error) == "NOTION_HTTP_404":
+                pass
+            else:
                 raise
+        finally:
+            _require_protected_intact(client, jira_id, before)
     after = _children(client, block_id)                    # read back the configured Calendar region
-    _, after_protected = _page_regions(client, page_id)
-    if (not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[1]) != status
-            or not router.protected_intact(MODULE, before, after_protected)):
+    _require_protected_intact(client, jira_id, before)
+    if not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[1]) != status:
         raise CardError("AGENDA_CARD_VERIFY_FAILED")
     counts["blocks_written"] = len(new_blocks)
     return counts

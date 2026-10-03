@@ -275,6 +275,15 @@ Advisor Preview creation is deterministic, immutable and insert-only beneath the
 
 The v1 Advisor does not require or authorize a paid model/API provider. ChatGPT-native reasoning is external to this deterministic store/preview boundary.
 
+## D44 — Advisor Queue is an immutable request/response handoff; state is derived
+The Advisor Queue is append-only. LIFE OS is the sole v1 writer of Advisor Request pages. A request freezes one exact validated AdvisorInputBundle; its request ID is the first 32 lowercase hexadecimal characters of that bundle's bundle_digest. The request payload is the complete deterministic bundle snapshot, not references to mutable current store state.
+
+The future ChatGPT-native Advisor is the sole v1 writer of Advisor Response pages. A response is a child of exactly one request and contains only the structured AdvisorDraft handoff. ChatGPT copies the request ID and bundle hash supplied by the request; it is never asked to calculate a cryptographic hash. The response is untrusted until LIFE OS parses it, validates every source/evidence reference against the frozen request bundle, and successfully runs compile_prep().
+
+Queue state is derived from immutable structure, never stored or updated: a valid request with no response is READY; exactly one valid response is RESPONDED; malformed, unexpected or multiple response children are AMBIGUOUS. PREVIEWED is derived only when an existing VerifiedPreview has generation_id equal to the request ID, the same bundle hash, and PrepEvidence equal to the validated response compilation.
+
+INT-ADV-3 does not schedule ChatGPT, modify workflow/run.py, create live Notion content, write responses, commit B3, or authorize any paid model/API.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
@@ -344,3 +353,7 @@ V7 accepts only the three allowlisted Amazon lifecycle senders with exactly one 
 
 ## D68 — A rejected link costs an attempt, and the rejection is counted by reason (2026-10-03)
 Enrich takes a RESOLVED job back to NEW when the page at its link is not that job (a listing, a template, a different title). That rejection did not count as an attempt, so a resolver that kept returning the same wrong link made the job bounce NEW, RESOLVED, NEW every hour without end (the 07:00 run rejected 43 of 48). A rejection now adds one resolve attempt, and at the resolver cap the job parks on HOLD (visible, not retried). The enrich line also reports `mismatch`: counts by reason, by producer (lensa, linkedin, jobright, dice), by site family, and how many were rejected for the same reason last time. Counts only: no title, company or URL.
+## D67 — One snapshot store; Bills "stale due" uses the contract's supported cycles (2026-10-03)
+`platform/snapshot_store.py` owns the private snapshot table (schema, replace, read-back); Jira, Bills and Agenda use it instead of three copies, and the Bills/Agenda test fakes became one shape. Bills' bucket is renamed from "overdue" to `stale_due`, V1's name for an Active, unpaid, recurring bill whose Due Date has passed, because most of those rows are bills that were paid but never rolled forward, not late bills. Recurring means exactly the contract's nine cycles (Weekly, Bi-Weekly, Monthly, 45 Days, 60 Days, 90 Days, Quarterly, 180 Days, Yearly); "4 Years", Lifetime, One Time, any cycle added later and a missing cycle are never processed or counted automatically.
+## D66 — Calendar callout uses its configured ID and protects JIRA (2026-10-03)
+The configured `CALENDAR_CARD_BLOCK_ID` is the single authority for the Calendar region, following D58's one-owner-per-region rule; V7 does not scan the Daily Report tree. The target may be nested and must be a callout whose first child is an exact `Calendar` heading_3 or heading_4. V7 keeps that heading and replaces only subsequent children. Before writing, and after each append/delete and at completion, it reads the full configured JIRA callout tree by `JIRA_CARD_BLOCK_ID` and requires it unchanged. The ID is an Actions secret value, not a credential.
