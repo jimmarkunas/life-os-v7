@@ -330,6 +330,9 @@ The Dice resolver attempts read-only HTTPS GETs through `platform.http.fetch`, w
 ## D63 — Bills are read as a complete private snapshot
 The Bills OS reads every Bill Tracker data-source page through the official Notion API, including evaluated formula values, and saves a single complete snapshot to the private database only when live. A failed or incomplete Notion read cannot replace the previous snapshot. Due-state is calculated from the saved snapshot using the America/Chicago date; the hourly Bills job is isolated and non-blocking, and manual runs use the separate `bills` workflow. Notion access and real Bill Tracker property shapes remain unverified until the read-only workflow is configured and run.
 
+## D64 — V7 owns the Calendar Daily Report callout
+The Agenda OS reads the main Google Calendar through the read-only service account, saves the complete Chicago today/tomorrow window privately, and renders only from that snapshot. The Calendar callout uses the existing Daily Report integration, is guarded by router ownership and protected-region read-back, and is refreshed on scheduled/tick runs; manual runs use the separate `agenda` workflow. A stale snapshot changes only the status line. ChatGPT must not write the V7-owned Calendar callout.
+
 ## D59 — Manual runs never block a tick (2026-10-03)
 The hourly workflow now sets `run-name` to `tick` for scheduled and timer runs and `manual` for everything else; the gate counts only `tick` runs when deciding to skip. A manual run used to cancel the next hourly tick (it started within 50 minutes). Manual and tick runs may now overlap in time; the workflow's concurrency group queues them. The first tick after this change may not be skipped by an older run, which was titled `hourly`.
 

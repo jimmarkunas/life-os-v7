@@ -17,6 +17,10 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(router.JIRA_REGION, card.CARD_TITLE)                # the two cannot drift apart
         self.assertEqual(router.OWNERS[router.JIRA_REGION], "v7-jira")
 
+    def test_calendar_region_has_one_v7_owner(self):
+        self.assertEqual(router.CALENDAR_REGION, "Calendar")
+        self.assertEqual(router.OWNERS[router.CALENDAR_REGION], "v7-calendar")
+
     def test_modules_are_independent_and_one_degraded_module_blocks_none(self):
         ran = []
 
