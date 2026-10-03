@@ -350,3 +350,6 @@ Consolidation with no behaviour change. `platform/rest.py` is the single retry/b
 
 ## D65 — Amazon order mail is filed only after canonical Notion read-back (2026-10-03)
 V7 accepts only the three allowlisted Amazon lifecycle senders with exactly one order ID in the message body, reconciles their events monotonically into the existing Amazon Orders data source, and files each accepted Gmail message only after the persisted row reads back equal. Conflicts update only Status and Needs Review; unsupported or ambiguous messages remain in the Inbox. Amazon Orders uses the existing Gmail `gmail.modify` grant and a separate database-scoped Notion integration; scheduled/tick and manual runs report counts only.
+
+## D66 — Calendar callout uses its configured ID and protects JIRA (2026-10-03)
+The configured `CALENDAR_CARD_BLOCK_ID` is the single authority for the Calendar region, following D58's one-owner-per-region rule; V7 does not scan the Daily Report tree. The target may be nested and must be a callout whose first child is an exact `Calendar` heading_3 or heading_4. V7 keeps that heading and replaces only subsequent children. Before writing, and after each append/delete and at completion, it reads the full configured JIRA callout tree by `JIRA_CARD_BLOCK_ID` and requires it unchanged. The ID is an Actions secret value, not a credential.

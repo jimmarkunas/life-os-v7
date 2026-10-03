@@ -54,12 +54,15 @@ class DataSourcePages:
 
 
 class AgendaRegions:
-    """Synthetic Daily Report page with isolated Calendar and protected callouts."""
+    """Nested Calendar target and independently readable protected JIRA callout."""
 
-    def __init__(self, calendar_title="Calendar", extra_calendar=False):
+    def __init__(self, calendar_title="Calendar", heading_type="heading_3", extra_calendar=False,
+                 calendar_type="callout", change_jira_on=None):
         self.page_id, self.log, self.serial = "page-example", [], 0
-        self.roots, self.children = [], {}
-        self._add_region("calendar-callout", calendar_title, [self._paragraph("Old event content")])
+        self.roots, self.children, self.metas = [], {}, {}
+        self.change_jira_on = change_jira_on
+        self._add_region("calendar-callout", calendar_title, [self._paragraph("Foreign writer content")],
+                         heading_type=heading_type, block_type=calendar_type)
         if extra_calendar:
             self._add_region("calendar-callout-duplicate", "Calendar", [])
         self._add_region("jira-callout", "JIRA Execution", [self._paragraph("Protected JIRA content")])
@@ -73,35 +76,37 @@ class AgendaRegions:
         self.serial += 1
         return self._text_block(f"paragraph-{self.serial}", "paragraph", text)
 
-    def _add_region(self, block_id, heading, body):
-        root = {"id": block_id, "type": "callout", "has_children": True,
-                "parent": {"type": "page_id", "page_id": self.page_id}, "callout": {}}
+    def _add_region(self, block_id, heading, body, heading_type="heading_4", block_type="callout"):
+        root = {"id": block_id, "type": block_type, "has_children": True,
+                "parent": {"type": "block_id", "block_id": "column-parent"}, block_type: {}}
         self.roots.append(root)
-        self.children[block_id] = [self._text_block(f"heading-{block_id}", "heading_4", heading), *body]
+        self.metas[block_id] = root
+        self.children[block_id] = [self._text_block(f"heading-{block_id}", heading_type, heading), *body]
 
     def call(self, method, path, body=None):
         self.log.append((method, path))
         clean = path.split("?", 1)[0]
-        if method == "GET" and clean == f"/blocks/{self.page_id}/children":
-            return {"results": [dict(block) for block in self.roots], "has_more": False}
         if method == "GET" and clean.startswith("/blocks/") and clean.endswith("/children"):
             block_id = clean.split("/")[2]
-            return {"results": [dict(block) for block in self.children.get(block_id, [])], "has_more": False}
+            return {"results": [self._api_copy(block) for block in self.children.get(block_id, [])], "has_more": False}
         if method == "GET" and clean.startswith("/blocks/"):
             block_id = clean.rsplit("/", 1)[1]
-            root = next((block for block in self.roots if block["id"] == block_id), None)
+            root = self.metas.get(block_id)
             if root:
-                return dict(root)
+                return self._api_copy(root)
             for blocks in self.children.values():
                 block = next((item for item in blocks if item["id"] == block_id), None)
                 if block:
-                    return dict(block)
+                    return self._api_copy(block)
             from lifeos.platform.notion_client import NotionError
             raise NotionError("NOTION_HTTP_404")
         if method == "DELETE":
             block_id = clean.rsplit("/", 1)[1]
             for key, blocks in self.children.items():
                 self.children[key] = [block for block in blocks if block["id"] != block_id]
+            if self.change_jira_on == "DELETE":
+                self.children["jira-callout"].append(self._paragraph("Changed protected content"))
+                self.change_jira_on = None
             return {}
         if method == "PATCH" and clean.startswith("/blocks/"):
             block_id = clean.rsplit("/", 1)[1]
@@ -124,4 +129,21 @@ class AgendaRegions:
             made.append({"id": new_id, "type": kind, "has_children": False,
                          kind: {"rich_text": [{"plain_text": plain, "text": {"content": plain}}]}})
         self.children.setdefault(block_id, []).extend(made)
+        if self.change_jira_on == "APPEND":
+            self.children["jira-callout"].append(self._paragraph("Changed protected content"))
+            self.change_jira_on = None
         return {"results": made}
+
+    def full_tree(self, block_id):
+        root = dict(self.metas[block_id])
+        root["agenda_children"] = [dict(child) for child in self.children[block_id]]
+        return root
+
+    @staticmethod
+    def _api_copy(block):
+        copied = dict(block)
+        kind = block.get("type")
+        if kind:
+            copied[kind] = dict(block.get(kind) or {})
+            copied[kind]["rich_text"] = [dict(part) for part in (block.get(kind) or {}).get("rich_text", [])]
+        return copied
