@@ -41,6 +41,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(domains["jobs"]["agenda"]["needs"], "jira")                   # both write the Daily Report page: never at once
         self.assertIn("always()", domains["jobs"]["agenda"]["if"])                     # but a failed Jira job does not stop the Calendar card
 
+    def test_bills_paid_is_manual_only_and_never_runs_on_a_tick(self):
+        from pathlib import Path
+        domains = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())
+        step = next(s for s in domains["jobs"]["bills"]["steps"] if s.get("id") == "bpaid")
+        self.assertIn("workflow_dispatch", step["if"])
+        self.assertIn("inputs.bills_paid", step["if"])
+        self.assertNotIn("workflow_run", step["if"])
+        self.assertIs(domains[True]["workflow_dispatch"]["inputs"]["bills_paid"]["default"], False)
+
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]
