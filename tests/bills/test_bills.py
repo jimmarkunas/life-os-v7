@@ -243,6 +243,16 @@ class PaidProcessorTests(unittest.TestCase):
         self.assertEqual(client.requests[1][1]["start_cursor"], "cursor-example")
         self.assertEqual(client.writes, [])
 
+    def test_one_malformed_row_is_skipped_and_counted_and_the_rest_still_process(self):
+        good = paid_page()
+        odd = paid_page(page_id="33333333-3333-4333-8333-333333333333")
+        del odd["properties"]["Status"]
+        client = PaidBillTracker(good, odd)
+        counts, _ = self.run_paid(client)
+        self.assertEqual((counts["invalid"], counts["advanced"]), (1, 1))
+        self.assertFalse(client.pages[good["id"]]["properties"]["Paid"]["checkbox"])
+        self.assertTrue(client.pages[odd["id"]]["properties"]["Paid"]["checkbox"])
+
     def test_wrong_source_and_incomplete_error_are_fixed_codes(self):
         page = paid_page()
         page["parent"]["data_source_id"] = "22222222-2222-4222-8222-222222222222"
