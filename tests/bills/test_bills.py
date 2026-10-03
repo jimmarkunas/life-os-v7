@@ -306,6 +306,24 @@ class PaidProcessorTests(unittest.TestCase):
                 paid.run(40, True, client=client, now=self.now, connect=lambda: database)
                 self.assertEqual(len(client.writes), writes)
 
+    def test_paid_ticked_again_on_the_same_day_is_review_not_a_second_advance(self):
+        page = paid_page()
+        client = PaidBillTracker(page)
+        database = BillsPaidDB(client.event_log)
+        self.run_paid(client, database)
+        writes = len(client.writes)
+        props = client.pages[page["id"]]["properties"]
+        due = props["Due Date"]["date"]["start"]
+        props["Paid"]["checkbox"] = True                      # an accidental second tick, same day
+        counts = paid.run(40, True, client=client, now=self.now, connect=lambda: database)
+        self.assertEqual((counts["review"], counts["advanced"], counts["failed"]), (1, 0, 0))
+        self.assertEqual(len(client.writes), writes)
+        self.assertEqual(props["Due Date"]["date"]["start"], due)
+        self.assertTrue(props["Paid"]["checkbox"])            # left checked for a person
+        from datetime import timedelta
+        counts = paid.run(40, True, client=client, now=self.now + timedelta(days=1), connect=lambda: database)
+        self.assertEqual(counts["advanced"], 1)               # the next day a tick is a new payment
+
     def test_per_run_cap_leaves_extra_commands_checked(self):
         pages = [paid_page(page_id=f"00000000-0000-4000-8000-{i:012d}") for i in range(1, 23)]
         client = PaidBillTracker(*pages)
