@@ -92,7 +92,8 @@ class DiceResolverTests(unittest.TestCase):
             counts = dice.run(10000, False)
         args, kwargs = run_rows.call_args
         self.assertEqual((args[0], args[1], args[2]), ("dice", limits.DICE_PER_RUN, False))
-        self.assertEqual(kwargs["deadline_minutes"], stage.DEADLINE_MINUTES)
+        self.assertEqual(kwargs["deadline_minutes"], limits.DICE_DEADLINE_MINUTES)
+        self.assertLessEqual(limits.DICE_DEADLINE_MINUTES, 3)                    # Dice is low value: never a long job
         self.assertEqual(counts, {"picked": 0, "resolved": 0, "closed": 0, "duplicate": 0, "pending": 0, "rate_limited": 0})
 
     def test_gap_is_shared_between_batches(self):

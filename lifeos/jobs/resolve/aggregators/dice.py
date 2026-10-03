@@ -23,7 +23,7 @@ def resolve(url):
     if source.scheme != "https" or source.hostname != TRACKING_HOST or not TRACKING_PATH.match(source.path):
         return {"outcome": "not_a_job_page"}
 
-    page = http.fetch(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=8)
+    page = http.fetch(url, timeout=limits.DICE_TIMEOUT_SECONDS, max_hops=limits.DICE_MAX_HOPS)
     if page.status == 429:
         return {"outcome": "rate_limited"}
     if page.status == 0:
@@ -81,7 +81,7 @@ def make_resolver():
 def run(limit, live):
     """Bound and execute the resolver through Jobs OS's shared batched deadline."""
     bounded = min(max(0, limit), limits.DICE_PER_RUN)
-    counts = stage.run_rows("dice", bounded, live, make_resolver(), batch=10,
-                            deadline_minutes=stage.DEADLINE_MINUTES)
+    counts = stage.run_rows("dice", bounded, live, make_resolver(), batch=5,
+                            deadline_minutes=limits.DICE_DEADLINE_MINUTES)
     counts["rate_limited"] = counts["why"].get("rate_limited", 0)
     return {key: counts[key] for key in ("picked", "resolved", "closed", "duplicate", "pending", "rate_limited")}
