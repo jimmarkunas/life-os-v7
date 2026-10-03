@@ -155,6 +155,8 @@ jobs:
           TICK: ${{ inputs.tick }}
         run: python3 -m lifeos.platform.gate
       - uses: ./.github/actions/python
+      - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
+        run: pip install pyyaml || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
