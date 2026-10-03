@@ -77,6 +77,7 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 1. Create a callout headed exactly **Calendar** on the Daily Report page.
 2. Copy its block ID into the Actions secret `CALENDAR_CARD_BLOCK_ID`; the card reuses the existing `NOTION_JIRA_TOKEN` Daily Report integration.
 3. Stop the ChatGPT task from writing the **Calendar** callout; V7 is its sole owner, following the JIRA Execution ownership rule.
+4. Add the existing JIRA Execution callout block ID as the Actions secret `JIRA_CARD_BLOCK_ID`; V7 checks it remains unchanged when refreshing Calendar.
 
 ### Amazon Orders
 

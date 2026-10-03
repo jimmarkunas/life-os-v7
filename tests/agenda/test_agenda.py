@@ -110,33 +110,61 @@ class AgendaCardTests(unittest.TestCase):
         self.assertEqual([card._plain(block) for block in fresh[1:]], [card._plain(block) for block in stale[1:]])
         self.assertEqual(counts["status"], "stale")
 
-    def test_card_adds_then_removes_then_reads_back_and_preserves_jira_region(self):
+    def test_nested_card_accepts_heading_three_and_four_and_replaces_foreign_content(self):
         event = snapshot.compact(timed("one", "Example fresh"), NOW.date(), NOW.date().replace(day=9))
         database = AgendaSnapshotDB(saved_snapshot([event]))
-        notion = AgendaRegions()
-        before_jira = [card._plain(block) for block in notion.children["jira-callout"]]
-        counts = card.run(1, True, environ={"CALENDAR_CARD_BLOCK_ID": "calendar-callout"}, client=notion,
-                          now=NOW, connect=lambda: database)
-        ops = [kind for kind, _ in notion.log]
-        append_at, delete_at = ops.index("APPEND"), ops.index("DELETE")
-        final_read = max(i for i, (kind, path) in enumerate(notion.log)
-                         if kind == "GET" and path.startswith("/blocks/calendar-callout/children"))
-        self.assertLess(append_at, delete_at)
-        self.assertLess(delete_at, final_read)
-        self.assertEqual([card._plain(block) for block in notion.children["jira-callout"]], before_jira)
-        self.assertEqual(counts["status"], "fresh")
-        self.assertGreater(counts["blocks_written"], 0)
+        for heading_type in ("heading_3", "heading_4"):
+            with self.subTest(heading_type=heading_type):
+                notion = AgendaRegions(heading_type=heading_type, extra_calendar=True)
+                before_heading = dict(notion.children["calendar-callout"][0])
+                before_jira = notion.full_tree("jira-callout")
+                counts = card.run(1, True, environ=self._env(), client=notion,
+                                  now=NOW, connect=lambda: database)
+                ops = [kind for kind, _ in notion.log]
+                append_at, delete_at = ops.index("APPEND"), ops.index("DELETE")
+                final_read = max(i for i, (kind, path) in enumerate(notion.log)
+                                 if kind == "GET" and path.startswith("/blocks/calendar-callout/children"))
+                self.assertLess(append_at, delete_at)
+                self.assertLess(delete_at, final_read)
+                self.assertEqual(notion.children["calendar-callout"][0], before_heading)
+                self.assertNotIn("Foreign writer content", [card._plain(block) for block in notion.children["calendar-callout"]])
+                self.assertEqual(notion.full_tree("jira-callout"), before_jira)
+                self.assertEqual(counts["status"], "fresh")
+                self.assertGreater(counts["blocks_written"], 0)
+                self.assertFalse(any(path == f"/blocks/{notion.page_id}/children" for _, path in notion.log))
 
-    def test_wrong_heading_block_id_and_duplicate_owner_refuse_writes(self):
+    @staticmethod
+    def _env():
+        return {"CALENDAR_CARD_BLOCK_ID": "calendar-callout", "JIRA_CARD_BLOCK_ID": "jira-callout"}
+
+    def test_invalid_target_shape_refuses_writes(self):
         database = AgendaSnapshotDB(saved_snapshot([]))
         for notion, configured in ((AgendaRegions(calendar_title="Other"), "calendar-callout"),
                                    (AgendaRegions(), "jira-callout"),
-                                   (AgendaRegions(extra_calendar=True), "calendar-callout")):
+                                   (AgendaRegions(calendar_type="paragraph"), "calendar-callout"),
+                                   (AgendaRegions(calendar_title="Calendar", heading_type="paragraph"), "calendar-callout")):
             before = len(notion.log)
             with self.assertRaises(Exception):
-                card.run(1, True, environ={"CALENDAR_CARD_BLOCK_ID": configured}, client=notion,
+                card.run(1, True, environ={**self._env(), "CALENDAR_CARD_BLOCK_ID": configured}, client=notion,
                          now=NOW, connect=lambda: database)
             self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log[before:]))
+
+    def test_missing_or_unreadable_jira_id_refuses_before_writes(self):
+        database = AgendaSnapshotDB(saved_snapshot([]))
+        for env in ({"CALENDAR_CARD_BLOCK_ID": "calendar-callout"},
+                    {"CALENDAR_CARD_BLOCK_ID": "calendar-callout", "JIRA_CARD_BLOCK_ID": "missing"}):
+            notion = AgendaRegions()
+            with self.assertRaises(card.CardError):
+                card.run(1, True, environ=env, client=notion, now=NOW, connect=lambda: database)
+            self.assertFalse(any(kind in ("APPEND", "DELETE", "PATCH") for kind, _ in notion.log))
+
+    def test_jira_change_mid_write_is_reported_before_deletes(self):
+        database = AgendaSnapshotDB(saved_snapshot([]))
+        notion = AgendaRegions(change_jira_on="APPEND")
+        with self.assertRaises(card.CardError) as caught:
+            card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: database)
+        self.assertEqual(str(caught.exception), "AGENDA_PROTECTED_REGION_CHANGED")
+        self.assertFalse(any(kind == "DELETE" for kind, _ in notion.log))
 
     def test_missing_callout_is_reported_without_read_or_write(self):
         counts = card.run(1, True, environ={}, client=None, connect=lambda: self.fail("no database"))
@@ -149,7 +177,7 @@ class AgendaCardTests(unittest.TestCase):
         notion = AgendaRegions()
         notion.children["calendar-callout"][1] = notion._paragraph("Updated 04:00 CT")
         notion.children["calendar-callout"].append(notion._paragraph("Example previous event"))
-        counts = card.run(1, True, environ={"CALENDAR_CARD_BLOCK_ID": "calendar-callout"}, client=notion,
+        counts = card.run(1, True, environ=self._env(), client=notion,
                           now=NOW, connect=lambda: database)
         self.assertEqual(counts["status"], "stale")
         self.assertEqual(counts["blocks_written"], 1)
