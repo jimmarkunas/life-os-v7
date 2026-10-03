@@ -63,6 +63,8 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(names, ["LinkedIn", "Easy Apply"])
         plain = publish.properties({**row, "apply_kind": "ats"})["Source Types"]["multi_select"]
         self.assertEqual([o["name"] for o in plain], ["LinkedIn"])
+        agg = publish.properties({**row, "apply_kind": "aggregator"})["Source Types"]["multi_select"]
+        self.assertEqual([o["name"] for o in agg], ["LinkedIn", "Aggregator Link"])                # D3 rank 4: flagged, never passed off as the employer's link
 
     def test_url_key_ignores_query_case_and_trailing_slash(self):
         self.assertEqual(identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
