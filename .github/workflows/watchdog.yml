@@ -15,10 +15,10 @@ permissions:
   issues: write
 jobs:
   watch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Stale-pipeline check (counts only; no job data; the only secret is the push topic)
         run: python3 -m lifeos.platform.gate --watch
         env:
