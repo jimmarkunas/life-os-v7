@@ -70,3 +70,4 @@ This index is checked by a test: add a line here with every new decision.
 - D67 — One snapshot store; Bills "stale due" uses the contract's supported cycles (2026-10-03)
 - D66 — Calendar callout uses its configured ID and protects JIRA (2026-10-03)
 - D44 — Advisor Queue is an immutable request/response handoff; state is derived
+- D69 — Domain jobs move to their own workflow, in two stages (2026-10-03)
