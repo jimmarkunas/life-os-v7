@@ -1,4 +1,5 @@
 name: hourly
+run-name: ${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # the gate counts only "tick" runs, so a manual run never blocks the next tick
 on:
   schedule:
     - cron: "7 * * * *"          # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
@@ -148,7 +149,7 @@ jobs:
       extract: ${{ steps.extract.outcome }}
     steps:
       - uses: actions/checkout@v5
-      - name: Gate - skip a scheduled run when a run started in the last 50 minutes; flag a stale pipeline
+      - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count); flag a stale pipeline
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
