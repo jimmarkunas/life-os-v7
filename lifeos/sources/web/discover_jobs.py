@@ -71,6 +71,28 @@ def candidates(company, results):
     return out
 
 
+def direct_link(url, company):
+    """A search result that is itself a single-job page on the sponsor's own domain, or on an ATS, needs no second search: it IS the employer's posting
+    (D3 ranks 1 and 2). Aggregators and recruiters are not: the first token of the sponsor's name must be in the host. Enrich still reads the page and
+    refuses a form, a list or a title that does not match."""
+    kind = classify.apply_kind(url)
+    if quality.link_problem(url):
+        return None
+    if kind == "ats":
+        return {"outcome": "landed", "via": "discover_direct", "kind": "ats", "url": url}
+    tokens = _tokens(company)
+    compact = re.sub(r"[^a-z0-9]", "", classify.host(url))
+    if kind == "employer" and tokens and len(tokens[0]) >= 4 and tokens[0] in compact:
+        return {"outcome": "landed", "via": "discover_direct", "kind": "employer", "url": url}
+    return None
+
+
+def _resolve(rows, budget):
+    """Direct links first; whatever is left goes through the ATS board match and the one employer search (shared with LinkedIn and Lensa)."""
+    results = [direct_link(row[1], row[2]) or {"outcome": "external_hidden"} for row in rows]
+    return linkedin.match_rows(rows, results, budget=budget)
+
+
 def _admit(cursor, source, job, now):
     key, is_new = intake.add_job(cursor, {"url": job["url"], "status": "NEW", "title": job["title"], "company": source["company"], "location": job["location"],
                                           "salary": None, "source": SOURCE, "provider": "Public Web", "lane": "Scale-Up", "age_days": None, "received": now,
@@ -106,6 +128,5 @@ def run(limit, live, search=None, sources=None):
             for source, job in found:
                 counts["added"] += _admit(cursor, source, job, now)
     budget = {"left": RESOLVE_SEARCHES}
-    counts["resolve"] = stage.run_rows(SOURCE, 60, True,
-                                       lambda rows: linkedin.match_rows(rows, [{"outcome": "external_hidden"} for _ in rows], budget=budget))
+    counts["resolve"] = stage.run_rows(SOURCE, 60, True, lambda rows: _resolve(rows, budget))
     return counts

@@ -33,7 +33,7 @@ class HoldExpiryTests(unittest.TestCase):
 
     def test_dry_run_counts_what_is_due_and_writes_nothing(self):
         out, seen = self.go(False)
-        self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"lensa": 9}, "saved": False})
+        self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"lensa": 9}, "by_source_reason": {"lensa": {"jd_thin": 9}}, "saved": False})
         self.assertFalse([s for s, _ in seen if s.startswith("UPDATE")])
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):

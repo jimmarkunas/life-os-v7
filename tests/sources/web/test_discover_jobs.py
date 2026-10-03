@@ -56,6 +56,28 @@ class Run(unittest.TestCase):
         counts = dj.run(12, False, search=boom, sources=[SPONSOR])
         self.assertEqual((counts["search_errors"], counts["searched"]), (1, 0))
 
+    def test_a_result_on_the_sponsors_own_domain_or_an_ats_is_the_final_link(self):
+        got = dj.direct_link("https://careers.sixfold.example/jobs/product-manager-4412", "Sixfold Bioscience Limited")
+        self.assertEqual((got["outcome"], got["via"], got["kind"]), ("landed", "discover_direct", "employer"))
+        got = dj.direct_link("https://job-boards.greenhouse.io/sixfold/jobs/4412", "Sixfold Bioscience Limited")
+        self.assertEqual((got["kind"], got["via"]), ("ats", "discover_direct"))
+
+    def test_aggregators_recruiters_and_unsound_links_need_the_second_search(self):
+        for url in ("https://uk.indeed.com/viewjob?jk=abc123def456", "https://www.glassdoor.co.uk/job-listing/product-manager-sixfold-JV_1234.htm",
+                    "https://recruiter.example/jobs/product-manager-4412", "https://careers.sixfold.example/", "https://sixfold.example/careers/search"):
+            self.assertIsNone(dj.direct_link(url, "Sixfold Bioscience Limited"), url)
+
+    def test_a_short_or_generic_first_word_is_not_trusted_in_a_host(self):
+        self.assertIsNone(dj.direct_link("https://ta-recruitment.example/jobs/product-manager-4412", "TA Digital Limited"))
+
+    def test_only_unresolved_rows_are_searched(self):
+        rows = [(1, "https://careers.sixfold.example/jobs/product-manager-4412", "Sixfold Bioscience Limited", "Product Manager", ""),
+                (2, "https://uk.indeed.com/viewjob?jk=abc123def456", "Sixfold Bioscience Limited", "Product Manager", "")]
+        seen = []
+        with mock.patch.object(dj.linkedin, "match_rows", side_effect=lambda r, results, budget=None: seen.extend(x["outcome"] for x in results) or results):
+            out = dj._resolve(rows, {"left": 5})
+        self.assertEqual((out[0]["outcome"], seen), ("landed", ["landed", "external_hidden"]))
+
 
 if __name__ == "__main__":
     unittest.main()
