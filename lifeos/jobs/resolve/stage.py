@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 
 from lifeos.platform import limits, runtime
-from lifeos.jobs import store
+from lifeos.jobs import quality, store
 
 
 def _now():
@@ -41,6 +41,9 @@ def apply_result(connection, job_id, result):
     now = _now()
     url, kind = result.get("url"), result.get("kind")
     with connection.cursor() as cursor:
+        if result.get("outcome") == "landed" and url and kind and quality.link_problem(url):
+            result = {"outcome": "bad_link_" + quality.link_problem(url)}        # not a single-vacancy link: pending, never RESOLVED (Enrich would reject it)
+            url = kind = None
         if result.get("outcome") == "landed" and url and kind:
             cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (url, job_id))
             if cursor.fetchone():

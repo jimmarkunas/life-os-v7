@@ -36,3 +36,10 @@ class JdTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LinkProblemTests(unittest.TestCase):
+    def test_link_problem_matches_what_enrich_rejects_first(self):
+        self.assertEqual(quality.link_problem("https://apply.workable.com/j/ABCDEF"), "workable_no_account")
+        self.assertEqual(quality.link_problem("https://careers.acme.example/"), "root")
+        self.assertIsNone(quality.link_problem("https://job-boards.greenhouse.io/x/jobs/12345"))

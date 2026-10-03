@@ -29,3 +29,16 @@ class ApplyResultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LinkProofTests(unittest.TestCase):
+    """A landed link that cannot be one vacancy is never RESOLVED: Enrich would reject it and send the job round again."""
+
+    def test_a_listing_or_root_link_is_pending_not_resolved(self):
+        for url in ("https://careers.acme.example/", "https://careers.acme.example/jobs/search", "https://apply.workable.com/j/ABCDEF/"):
+            out = stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": url, "kind": "employer"})
+            self.assertEqual(out, "pending", url)
+
+    def test_a_single_vacancy_link_still_resolves(self):
+        out = stage.apply_result(FakeConn(), 1, {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats"})
+        self.assertEqual(out, "resolved")
