@@ -61,6 +61,14 @@ def apply_result(connection, job_id, result):
         return "pending"
 
 
+def why(result):
+    """The fixed reason a result is counted under: what landed, or why it did not (detail after the first colon is dropped)."""
+    if result.get("outcome") == "landed":
+        problem = result.get("url") and quality.link_problem(result["url"])
+        return "bad_link_" + problem if problem else "landed:" + str(result.get("kind"))
+    return str(result.get("outcome") or "unknown").split(":")[0]
+
+
 BATCH_ROWS = 50
 DEADLINE_MINUTES = 28          # stop starting batches well before the 40-minute job limit; unfinished rows stay NEW
 
@@ -113,7 +121,7 @@ def run(source, limit, live, resolver):
     with store.connect() as connection:
         store.ensure_schema(connection)
         rows = pick(connection, source, limit)
-    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "kind": {}}
+    counts = {"picked": len(rows), "resolved": 0, "duplicate": 0, "pending": 0, "kind": {}, "why": {}}
     if not rows:
         return counts
     results = resolver([url for _, url in rows])
@@ -127,6 +135,7 @@ def run(source, limit, live, resolver):
         for (job_id, _), result in zip(rows, results):
             verdict = apply_result(connection, job_id, result)
             counts[verdict] += 1
+            counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1          # why the pending ones are pending, counts only
             if verdict == "resolved":
                 counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
     return counts
