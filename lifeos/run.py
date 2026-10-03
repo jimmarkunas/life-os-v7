@@ -11,6 +11,7 @@ import sys
 from lifeos.platform.db import StoreError
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
+from lifeos.platform.outlook import OutlookError
 
 
 def _jobright(limit, live):
@@ -84,6 +85,16 @@ def _jira_card(limit, live):
     return card.run(limit, live)
 
 
+def _outlook_auth(limit, live):
+    from lifeos.outlook import stage
+    return stage.auth(limit, live)
+
+
+def _outlook_probe(limit, live):
+    from lifeos.outlook import stage
+    return stage.probe(limit, live)
+
+
 def _jira_probe(limit, live):
     from lifeos.jira import snapshot
     return snapshot.probe(limit, live)
@@ -152,6 +163,8 @@ STAGES = {
     "jira-snapshot": _jira_snapshot,
     "jira-rollover": _jira_rollover,
     "jira-probe": _jira_probe,
+    "outlook-auth": _outlook_auth,
+    "outlook-probe": _outlook_probe,
     "jira-card": _jira_card,
     "jira-rollover-scheduled": _jira_rollover_scheduled,
     "interview-acceptance": _interview_acceptance,
@@ -175,7 +188,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         counts = STAGES[args.stage](args.limit, args.live)
-    except (StoreError, NotionError, JiraError) as error:
+    except (StoreError, NotionError, JiraError, OutlookError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
