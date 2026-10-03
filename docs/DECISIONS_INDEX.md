@@ -87,3 +87,4 @@ This index is checked by a test: add a line here with every new decision.
 - D83 — One unreadable page never stops Enrich (2026-10-03, Jim)
 - D84 — Fit 60-67 is Review, below 60 is excluded; one-time requeue of old-floor exclusions (2026-10-03, Jim)
 - D85 — Bills Paid processor is wired manual-only first (2026-10-03, Jim)
+- D86 — Bills Paid runs on every tick; a second tick on the same day is Review (2026-10-03, Jim)
