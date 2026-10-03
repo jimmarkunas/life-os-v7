@@ -1,8 +1,9 @@
 """Lensa rows -> final apply link. Lensa pages are blocked from the runner, so nothing here touches Lensa: the card's
 company / title / location are matched against the employer's public ATS boards, then the free Search API."""
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from lifeos.platform import limits, tinyfish_search
+from lifeos.jobs import lanes
 from lifeos.jobs.resolve import ats_match
 from lifeos.jobs.resolve.aggregators import linkedin
 
@@ -17,6 +18,49 @@ def make_resolver():
     def resolve_rows(rows):
         return linkedin.match_rows(rows, [{"outcome": "external_hidden"} for _ in rows], budget=budget)
     return resolve_rows
+
+
+SEEN_ELSEWHERE = ("RESOLVED", "READY", "PUBLISHED", "EXCLUDED_FIT", "EXCLUDED_STALE", "CLOSED")    # another producer already carried this opening to a result
+SCREEN_WINDOW_DAYS = 60
+
+
+def _opening(company, title):
+    forms = ats_match.title_variants(title)
+    return (ats_match.norm(company), forms[-1]) if forms and ats_match.norm(company) else None
+
+
+def screen(cursor, live, now=None):
+    """D88: spend no search on a Lensa job we can already settle. (1) The posted pay is explicit, in dollars and under the US floor: EXCLUDED_FIT
+    (`screen_pay`). (2) The same company and title (aggregator noise removed, three words or more) is already a result from another producer in the last
+    60 days (a board, Jobright, LinkedIn): DUPLICATE of it (`dup_other_source`), because the other copy is resolved, published, or excluded on the same posting.
+    A job whose other copy is still NEW or on HOLD is not screened. Counts only."""
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    counts = {"screened_pay": 0, "screened_dup": 0}
+    floor = lanes.POLICIES["US Remote"]
+    cursor.execute("SELECT id, company, title, salary_text FROM v7_jobs WHERE source='lensa' AND status='NEW'")
+    new = cursor.fetchall()
+    cursor.execute("SELECT id, company, title FROM v7_jobs WHERE source<>'lensa' AND status IN %s AND first_seen >= %s",
+                   (SEEN_ELSEWHERE, now - timedelta(days=SCREEN_WINDOW_DAYS)))
+    elsewhere = {}
+    for job_id, company, title in cursor.fetchall():
+        key = _opening(company, title)
+        if key and len(key[1].split()) >= 3:
+            elsewhere.setdefault(key, job_id)
+    for job_id, company, title, salary in new:
+        pay, currency = lanes.parse_pay(salary)
+        if pay is not None and currency == floor.currency and pay < floor.pay_floor:
+            counts["screened_pay"] += 1
+            if live:
+                cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason='screen_pay', updated_at=%s WHERE id=%s", (now, job_id))
+            continue
+        key = _opening(company, title)
+        other = elsewhere.get(key) if key and len(key[1].split()) >= 3 else None
+        if other:
+            counts["screened_dup"] += 1
+            if live:
+                cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='dup_other_source', updated_at=%s WHERE id=%s",
+                               (other, now, job_id))
+    return counts
 
 
 def requeue_held(cursor, cutoff=TITLE_FIX_AT):
