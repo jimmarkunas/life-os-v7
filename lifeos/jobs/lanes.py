@@ -32,10 +32,10 @@ class LanePolicy:
 
 
 POLICIES = {
-    "US Remote": LanePolicy("US Remote", "US", "$", work_mode="remote_only", pay_floor=80_000, max_age_days=14),
+    "US Remote": LanePolicy("US Remote", "US", "$", work_mode="remote_only", pay_floor=75_000, max_age_days=14),
     # Scale-Up: the liberal lane. Any work mode, no pay floor, route + geography evidence required, 30-day age gate
     # (Jim, 2026-10-01; the earlier canon had no age gate). A missing posting date does not suppress it.
-    "Scale-Up": LanePolicy("Scale-Up", "UK", "£", max_age_days=30, unknown_date_blocks=False, route="Scale-up",
+    "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, route="Scale-up",
                            geography_required=True, bucket="Target"),
     # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
     # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 68 like every lane.
@@ -150,7 +150,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l6"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l7"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):

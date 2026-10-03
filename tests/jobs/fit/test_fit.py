@@ -178,7 +178,7 @@ class Stage(unittest.TestCase):
         onsite = stage.score_rows([base + ("Austin, TX (Hybrid)", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual(onsite[3].status, "EXCLUDE")
         low = stage.score_rows([base + ("Remote", "$60K/yr", None, date(2026, 9, 30))], PROFILE, TODAY)[0]
-        self.assertEqual(low[3].status, "EXCLUDE")                   # explicit pay below $80K
+        self.assertEqual(low[3].status, "EXCLUDE")                   # explicit pay below $75K
         stale = stage.score_rows([base + ("Remote", None, date(2026, 8, 1), date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual(stale[3].status, "EXCLUDE")                 # employer Posting Date beats First Surfaced
         gated = stage.score_rows([(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
