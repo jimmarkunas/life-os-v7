@@ -71,3 +71,9 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 2. Add the integration token as the Actions secret `NOTION_BILLS_TOKEN`.
 3. Add the Bill Tracker data source ID as the Actions secret `NOTION_BILLS_DATA_SOURCE_ID`.
 4. Run the **bills** workflow with **Save snapshot** unticked first; it reads every page and prints counts only. Tick it to save the complete snapshot to the private database.
+
+### Calendar callout
+
+1. Create a callout headed exactly **Calendar** on the Daily Report page.
+2. Copy its block ID into the Actions secret `CALENDAR_CARD_BLOCK_ID`; the card reuses the existing `NOTION_JIRA_TOKEN` Daily Report integration.
+3. Stop the ChatGPT task from writing the **Calendar** callout; V7 is its sole owner, following the JIRA Execution ownership rule.

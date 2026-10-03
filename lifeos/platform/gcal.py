@@ -92,16 +92,23 @@ class GoogleCalendar:
 
     def list_events(self, time_min, time_max, private_property=None):
         """Every non-cancelled single event in the window (optionally only those carrying a private extended property k=v)."""
-        params = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "maxResults": 250, "showDeleted": "false"}
+        params = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime",
+                  "maxResults": 250, "showDeleted": "false"}
         if private_property:
             params["privateExtendedProperty"] = private_property
         out = []
         for _ in range(MAX_PAGES):
             page = self.request("GET", "/events", params)
-            out += page.get("items") or []
+            if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+                raise GcalError("GCAL_LISTING_INCOMPLETE")
+            if any(not isinstance(item, dict) for item in page["items"]):
+                raise GcalError("GCAL_LISTING_INCOMPLETE")
+            out += page["items"]
             token = page.get("nextPageToken")
             if not token:
                 return out
+            if not isinstance(token, str):
+                raise GcalError("GCAL_LISTING_INCOMPLETE")
             params = {**params, "pageToken": token}
         raise GcalError("GCAL_LISTING_INCOMPLETE")
 

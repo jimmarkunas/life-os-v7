@@ -80,6 +80,8 @@ STAGES = {
     "jira-rollover-scheduled": lazy("lifeos.jira.rollover", auto=True),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
+    "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
+    "agenda-card": lazy("lifeos.agenda.card"),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
