@@ -82,7 +82,7 @@ def why(result):
     return str(result.get("outcome") or "unknown").split(":")[0]
 
 
-def note_page_keys(counts, result, top=25):
+def note_page_keys(counts, result, top=40):
     """Counts of the liveness-like field names a resolver saw on the aggregator's own page (diagnostic; names only)."""
     keys = result.get("page_keys")
     if not keys:
