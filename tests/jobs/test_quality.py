@@ -60,3 +60,11 @@ class QueryIdTests(unittest.TestCase):
 
     def test_link_problem_follows(self):
         self.assertIsNone(quality.link_problem("https://acme.example/careers?gh_jid=4567890"))
+
+    def test_host_specific_id_parameters(self):
+        for url in ("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567890", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=4567890",
+                    "https://acme.eightfold.ai/careers?pid=123456789&domain=acme.example"):
+            self.assertIsNone(quality.url_problem(url), url)
+        for url in ("https://acme.example/careers?token=4567890", "https://acme.example/careers?pid=123456789",       # the same names elsewhere prove nothing
+                    "https://boards.greenhouse.io/embed/job_app?for=acme", "https://boards.greenhouse.io/embed/job_board?for=acme"):
+            self.assertIsNotNone(quality.url_problem(url), url)
