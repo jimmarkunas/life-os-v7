@@ -80,6 +80,9 @@ DEFAULT_EXCLUSIONS = (
     {"id": "hr_function", "reason": "HR / people function", "where": "title", "patterns": [
         r"\bhuman resources\b", r"\bHR\b", r"\bTA\b", r"talent acquisition", r"\brecruit\w*", r"talent partner", r"people operations",
         r"people experience", r"people partner", r"people (?:&|and) culture", r"employee benefits", r"\bpayroll\b", r"total rewards"]},
+    {"id": "legal_compliance", "reason": "legal / compliance / risk role", "where": "title", "patterns": [
+        r"\blegal\b", r"\bcounsel\b", r"\bparalegal\b", r"\bcompliance (?:officer|analyst|manager|specialist)\b", r"\bAML\b", r"\bKYC\b",
+        r"\brisk (?:analyst|officer)\b", r"employee relations", r"\bresearch scientist\b", r"\bthreat intelligence\b", r"\bmedia planner\b"]},
     {"id": "care_hospitality", "reason": "care / hospitality / trades role", "where": "title", "patterns": [
         r"\bnurser(?:y|ies)\b", r"child ?care", r"back[- ]?up care", r"\bhousekeep\w*", r"\bchef\b", r"\bcook\b", r"\bkitchen\b",
         r"\bnanny\b", r"\bteacher\b", r"\bteaching assistant\b", r"\bjanitor\b", r"\bcustodian\b", r"\bcleaner\b", r"\bdriver\b",

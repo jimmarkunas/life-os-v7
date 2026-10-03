@@ -101,3 +101,4 @@ This index is checked by a test: add a line here with every new decision.
 - D97 — Fit review: a private page that says what became of every job of a company (2026-10-03, Jim)
 - D98 — Scale-Up: a UK-wide remote role counts as London-eligible (2026-10-03, Jim)
 - D99 — Can the runner read Glassdoor? A probe, before any crawler (2026-10-03, Jim)
+- D100 — Two doubts on a weak fit is a miss, not a Review (2026-10-03, Jim)
