@@ -13,6 +13,7 @@ SCOPES = "offline_access Mail.Read Calendars.Read"                       # read-
 TRANSIENT = (429, 500, 502, 503, 504)
 MAX_PAGES = 100
 PAGE_SIZE = 100
+EVENT_FIELDS = "id,iCalUId,subject,start,end,isAllDay,isCancelled,showAs,responseStatus,location,webLink,type,seriesMasterId"
 MESSAGE_FIELDS = "id,internetMessageId,receivedDateTime,isRead,from,subject,hasAttachments,parentFolderId,conversationId"
 
 
@@ -89,7 +90,7 @@ class Outlook:
                     self._save(self._refresh)
         return self._token
 
-    def get(self, url, params=None):
+    def get(self, url, params=None, prefer=""):
         """GET a Graph path (or a full @odata.nextLink). Immutable ids are requested on every call."""
         if url.startswith("/"):
             url = GRAPH + url + ("?" + urllib.parse.urlencode(params) if params else "")
@@ -97,7 +98,7 @@ class Outlook:
             raise OutlookError("OUTLOOK_BAD_LINK")                    # never follow a link off Graph with our token
         for attempt in range(4):
             request = urllib.request.Request(url, headers={"Authorization": "Bearer " + self._access(), "Accept": "application/json",
-                                                           "Prefer": 'IdType="ImmutableId"', "User-Agent": "life-os-v7"})
+                                                           "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else ""), "User-Agent": "life-os-v7"})
             try:
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     return json.loads(response.read() or b"{}")
@@ -134,6 +135,23 @@ class Outlook:
             link = reply.get("@odata.nextLink")
             if not link:
                 return out[:limit]
+            if len(out) >= limit:
+                raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+            url = link
+        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
+    def events(self, start, end, limit=2000):
+        """Every calendar event overlapping [start, end) (ISO 8601, UTC), recurring series expanded into occurrences, times in UTC.
+        Like the mail listing, an incomplete enumeration raises."""
+        params = {"startDateTime": start, "endDateTime": end, "$top": 100, "$select": EVENT_FIELDS,
+                  "$orderby": "start/dateTime"}
+        out, url = [], "/me/calendarView"
+        for page in range(MAX_PAGES):
+            reply = self.get(url, params if page == 0 else None, prefer='outlook.timezone="UTC"')
+            out += reply.get("value") or []
+            link = reply.get("@odata.nextLink")
+            if not link:
+                return out
             if len(out) >= limit:
                 raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
             url = link

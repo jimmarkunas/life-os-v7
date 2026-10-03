@@ -9,9 +9,11 @@ import json
 import os
 import sys
 
+from lifeos.calendar_bridge.sync import BridgeError
 from lifeos.platform.db import StoreError
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
+from lifeos.platform.gcal import GcalError
 from lifeos.platform.outlook import OutlookError
 
 
@@ -96,6 +98,11 @@ def _outlook_probe(limit, live):
     return stage.probe(limit, live)
 
 
+def _calendar_sync(limit, live):
+    from lifeos.calendar_bridge import sync
+    return sync.run(limit, live)
+
+
 def _jira_probe(limit, live):
     from lifeos.jira import snapshot
     return snapshot.probe(limit, live)
@@ -166,6 +173,7 @@ STAGES = {
     "jira-probe": _jira_probe,
     "outlook-auth": _outlook_auth,
     "outlook-probe": _outlook_probe,
+    "calendar-sync": _calendar_sync,
     "jira-card": _jira_card,
     "jira-rollover-scheduled": _jira_rollover_scheduled,
     "interview-acceptance": _interview_acceptance,
@@ -189,7 +197,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         counts = STAGES[args.stage](args.limit, args.live)
-    except (StoreError, NotionError, JiraError, OutlookError) as error:
+    except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
