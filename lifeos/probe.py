@@ -246,5 +246,50 @@ def egress_options(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited",
     return out
 
 
+GLASSDOOR_URLS = ("https://www.glassdoor.co.uk/Jobs/Revolut-London-Jobs-EI_IE1176471_IL.8,14_IC2671300.htm",          # an employer's London listing (Jim's methodology URL shape)
+                  "https://www.glassdoor.co.uk/Job/london-program-manager-jobs-SRCH_IL.0,6_IC2671300_KO7,22.htm",
+                  "https://www.glassdoor.com/Job/remote-program-manager-jobs-SRCH_KO0,23.htm")
+BLOCK_MARKERS = ("just a moment", "verify you are human", "captcha", "cf-chl", "access denied", "enable javascript")
+
+
+def _glassdoor_facts(text, status):
+    low = (text or "").lower()
+    return {"status": status, "bytes": len(text or ""), "job_markup": len(re.findall(r"JobPosting|jobListing|job-listing|data-test=\"job", text or "")),
+            "job_links": len(re.findall(r"/job-listing/", text or "")), "blocked": [m for m in BLOCK_MARKERS if m in low]}
+
+
+def glassdoor(plain=fetch, reader=None, tinyfish_fetch=None):
+    """D99: can the runner read a Glassdoor search page at all, and by which route? Per route and URL: status, bytes, job markup and link counts, and which
+    bot-wall phrases appear. Counts and flags only; nothing is stored. Decides whether a crawl is possible or the alert-email path (JFM-197) is the only one."""
+    from lifeos.platform import egress, tinyfish                                            # noqa: PLC0415
+    reader = reader or egress.reader_proxy
+    tinyfish_fetch = tinyfish_fetch or tinyfish.fetch_many
+    out = {}
+    for n, url in enumerate(GLASSDOOR_URLS, 1):
+        routes = {}
+        try:
+            got = plain(url, timeout=20, max_hops=3)
+            routes["plain"] = _glassdoor_facts(got.html, got.status)
+        except Exception as error:                                                           # noqa: BLE001 - a probe route must never stop the probe
+            routes["plain"] = {"error": type(error).__name__}
+        try:
+            got = reader(url)
+            routes["reader_proxy"] = _glassdoor_facts(got.html, got.status)
+        except Exception as error:                                                           # noqa: BLE001
+            routes["reader_proxy"] = {"error": type(error).__name__}
+        try:
+            results, errors = tinyfish_fetch([url], fmt="html", links=True)
+            item = results.get(url) or next(iter(results.values()), None) or {}
+            text = item.get("html") or item.get("content") or item.get("text") or ""
+            facts = _glassdoor_facts(text, item.get("status") or (200 if text else 0))
+            facts["fetch_errors"] = len(errors)
+            facts["links"] = len(item.get("links") or [])
+            routes["tinyfish_fetch"] = facts
+        except Exception as error:                                                           # noqa: BLE001
+            routes["tinyfish_fetch"] = {"error": type(error).__name__}
+        out[f"page{n}"] = routes
+    return out
+
+
 def run(limit, live):
-    return {"egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
