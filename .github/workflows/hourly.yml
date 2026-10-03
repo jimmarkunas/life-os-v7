@@ -303,6 +303,11 @@ jobs:
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
         run: python -m lifeos.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
+      - id: holds
+        continue-on-error: true
+        name: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
+        run: python -m lifeos.run expire-holds $([ "$LIVE" = "true" ] && echo --live)
       - id: finalize
         continue-on-error: true
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
@@ -333,7 +338,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi

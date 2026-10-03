@@ -71,3 +71,4 @@ This index is checked by a test: add a line here with every new decision.
 - D66 — Calendar callout uses its configured ID and protects JIRA (2026-10-03)
 - D44 — Advisor Queue is an immutable request/response handoff; state is derived
 - D69 — Domain jobs move to their own workflow, in two stages (2026-10-03)
+- D70 — HOLD jobs are excluded after seven days (2026-10-03, Jim)

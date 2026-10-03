@@ -94,6 +94,7 @@ STAGES = {
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
     "audit": lazy("lifeos.jobs.audit", floor=2000),
     "publish": lazy("lifeos.jobs.publish"),
+    "expire-holds": lazy("lifeos.jobs.hold"),
     "sync-seen": _sync_seen,
     "purge": _purge,
 }
