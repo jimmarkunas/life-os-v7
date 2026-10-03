@@ -1,0 +1,29 @@
+name: amazon-orders
+# Manual Gmail -> Notion Amazon Orders pass. Dry run by default.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Persist orders and archive accepted mail (unticked = dry run, counts only)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-amazon-orders
+  cancel-in-progress: false
+jobs:
+  amazon:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Amazon Orders (Gmail to Notion; archive only after read-back)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
+        run: python -m lifeos.run amazon-orders $([ "${{ inputs.live }}" = "true" ] && echo --live)

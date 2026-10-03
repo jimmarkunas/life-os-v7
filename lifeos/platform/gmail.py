@@ -1,5 +1,7 @@
-"""Minimal Gmail REST client (stdlib only). One small surface: list, sender, relabel."""
+"""Minimal Gmail REST client (stdlib only): bounded listing, message reads and explicit label changes."""
 import base64
+from datetime import datetime, timezone
+from html.parser import HTMLParser
 import json
 import os
 import re
@@ -10,6 +12,7 @@ import urllib.request
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+MAX_LIST_PAGES = 100
 
 
 RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError"}
@@ -95,6 +98,78 @@ class Gmail:
                 break
         return ids[:limit]
 
+    def list_ids_complete(self, query, limit):
+        """Return the complete matching ID set, or fail when it exceeds the caller's bound."""
+        if not isinstance(limit, int) or limit < 1:
+            raise GmailError("GMAIL_LIST_LIMIT_INVALID")
+        ids, token, seen_tokens, seen_ids = [], None, set(), set()
+        for _ in range(MAX_LIST_PAGES):
+            params = {"q": query, "maxResults": min(500, limit + 1 - len(ids))}
+            if token:
+                if token in seen_tokens:
+                    raise GmailError("GMAIL_LISTING_INCOMPLETE")
+                seen_tokens.add(token)
+                params["pageToken"] = token
+            page = self._request("GET", f"{API}/messages?" + urllib.parse.urlencode(params))
+            if not isinstance(page, dict):
+                raise GmailError("GMAIL_LISTING_INCOMPLETE")
+            messages = page.get("messages", [])
+            if not isinstance(messages, list) or any(not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"] for item in messages):
+                raise GmailError("GMAIL_LISTING_INCOMPLETE")
+            for item in messages:
+                if item["id"] in seen_ids:
+                    raise GmailError("GMAIL_LISTING_INCOMPLETE")
+                seen_ids.add(item["id"])
+                ids.append(item["id"])
+                if len(ids) > limit:
+                    raise GmailError("GMAIL_LIST_LIMIT_EXCEEDED")
+            token = page.get("nextPageToken")
+            if token is None or token == "":
+                return ids
+            if not isinstance(token, str):
+                raise GmailError("GMAIL_LISTING_INCOMPLETE")
+        raise GmailError("GMAIL_LISTING_INCOMPLETE")
+
+    def message_record(self, message_id):
+        """Read source fields and labels; decoded content stays in memory and errors never include message data."""
+        full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=full")
+        if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        headers = full["payload"].get("headers") or []
+        if not isinstance(headers, list) or any(not isinstance(header, dict) for header in headers):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values = {}
+        for header in headers:
+            name, value = header.get("name"), header.get("value")
+            if isinstance(name, str) and isinstance(value, str):
+                values.setdefault(name.lower(), value)
+        raw_date = full.get("internalDate")
+        try:
+            received = datetime.fromtimestamp(int(raw_date) / 1000, timezone.utc).isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
+        labels = full.get("labelIds") or []
+        if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        return {"id": str(message_id), "sender": values.get("from", ""), "subject": values.get("subject", ""),
+                "received_at": received, "body_text": _find_text(full["payload"]), "label_ids": labels}
+
+    def message_labels(self, message_id):
+        path = f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=minimal"
+        result = self._request("GET", path)
+        labels = result.get("labelIds") if isinstance(result, dict) else None
+        if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+            raise GmailError("GMAIL_LABEL_READBACK_INCOMPLETE")
+        return labels
+
+    def apply_amazon(self, message_id, amazon_label_id):
+        """Archive one accepted message under the existing Amazon label; never create labels or delete mail."""
+        if not isinstance(amazon_label_id, str) or not amazon_label_id or amazon_label_id == "INBOX":
+            raise GmailError("GMAIL_AMAZON_LABEL_INVALID")
+        message = urllib.parse.quote(str(message_id), safe="")
+        return self._request("POST", f"{API}/messages/{message}/modify",
+                             body={"addLabelIds": [amazon_label_id], "removeLabelIds": ["INBOX"]})
+
     def sender(self, message_id):
         url = f"{API}/messages/{message_id}?format=metadata&metadataHeaders=From"
         for header in self._request("GET", url).get("payload", {}).get("headers", []):
@@ -124,3 +199,57 @@ def _find_html(part):
         if found:
             return found
     return ""
+
+
+class _TextFromHtml(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.pieces, self.hidden = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in ("script", "style"):
+            self.hidden += 1
+        elif tag.lower() in ("br", "p", "div", "li", "tr") and self.hidden == 0:
+            self.pieces.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag.lower() in ("script", "style") and self.hidden:
+            self.hidden -= 1
+        elif tag.lower() in ("p", "div", "li", "tr") and self.hidden == 0:
+            self.pieces.append("\n")
+
+    def handle_data(self, data):
+        if self.hidden == 0:
+            self.pieces.append(data)
+
+
+def _find_text(part):
+    """Prefer a text/plain alternative and fall back to readable HTML text."""
+    plain, html = [], []
+
+    def visit(node):
+        if not isinstance(node, dict):
+            return
+        mime = node.get("mimeType")
+        data = (node.get("body") or {}).get("data")
+        if mime in ("text/plain", "text/html") and data:
+            try:
+                decoded = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
+            except (ValueError, TypeError):
+                raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
+            (plain if mime == "text/plain" else html).append(decoded)
+        for child in node.get("parts") or []:
+            visit(child)
+
+    visit(part)
+    if plain:
+        return "\n".join(plain)
+    if not html:
+        return ""
+    parser = _TextFromHtml()
+    try:
+        parser.feed("\n".join(html))
+        parser.close()
+    except Exception:
+        raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
+    return " ".join(" ".join(parser.pieces).split())

@@ -77,3 +77,10 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 1. Create a callout headed exactly **Calendar** on the Daily Report page.
 2. Copy its block ID into the Actions secret `CALENDAR_CARD_BLOCK_ID`; the card reuses the existing `NOTION_JIRA_TOKEN` Daily Report integration.
 3. Stop the ChatGPT task from writing the **Calendar** callout; V7 is its sole owner, following the JIRA Execution ownership rule.
+
+### Amazon Orders
+
+1. Create a separate Notion integration with Read, Update and Insert content access, and share only the existing Amazon Orders data source with it.
+2. Add its token as the Actions secret `NOTION_AMAZON_TOKEN`.
+3. Add the existing Amazon Orders data source ID as the Actions secret `NOTION_AMAZON_DATA_SOURCE_ID`.
+4. The Amazon Orders stage uses the existing Gmail OAuth secrets; the documented `gmail.modify` scope permits adding the existing Amazon label and removing INBOX.

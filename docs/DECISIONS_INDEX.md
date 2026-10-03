@@ -65,3 +65,4 @@ This index is checked by a test: add a line here with every new decision.
 - D64 — V7 owns the Calendar Daily Report callout
 - D59 — Manual runs never block a tick (2026-10-03)
 - D60 — One HTTP retry helper, one stage registry, shared test fakes, one Python setup (2026-10-03)
+- D65 — Amazon order mail is filed only after canonical Notion read-back (2026-10-03)
