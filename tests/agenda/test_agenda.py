@@ -235,3 +235,34 @@ class HyphenatedIdTests(unittest.TestCase):
         with self.assertRaises(card.CardError) as error:
             card._target(self.Client("00000000-0000-0000-0000-000000000000"), self.PLAIN)
         self.assertEqual(str(error.exception), "AGENDA_CARD_NOT_OWNED")
+
+
+class ProtectedRegionDigestTests(unittest.TestCase):
+    """The Jira region must compare equal when only metadata moved, differ when its content moved, and say where (names only)."""
+
+    JIRA = "aaaaaaaa-0000-0000-0000-000000000001"
+
+    class Client:
+        def __init__(self, edited, text="Example task"):
+            self.edited, self.text = edited, text
+
+        def call(self, method, path, body=None):
+            if path.endswith("/children?page_size=100"):
+                para = {"object": "block", "id": "c1", "type": "paragraph", "has_children": False, "last_edited_time": self.edited,
+                        "paragraph": {"rich_text": [{"plain_text": self.text}]}}
+                return {"results": [para], "has_more": False}
+            return {"object": "block", "id": ProtectedRegionDigestTests.JIRA, "type": "callout", "has_children": True,
+                    "last_edited_time": self.edited, "last_edited_by": {"id": self.edited}}
+
+    def digest(self, edited, text="Example task"):
+        return card._region_digest(self.Client(edited, text), self.JIRA.replace("-", ""))
+
+    def test_edit_time_alone_is_not_a_change(self):
+        self.assertEqual(self.digest("2026-10-03T16:40:00Z"), self.digest("2026-10-03T16:41:00Z"))
+
+    def test_a_content_change_differs_and_is_located_by_position_not_content(self):
+        before, after = self.digest("t1"), self.digest("t1", text="Different task")
+        self.assertNotEqual(before, after)
+        located = card._changed(before, after)
+        self.assertEqual((located["fields"], located["children"]), ([], [0]))
+        self.assertNotIn("Different", json.dumps(located))
