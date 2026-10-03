@@ -76,3 +76,4 @@ This index is checked by a test: add a line here with every new decision.
 - D72 — Stage 2: the domain jobs run from domains.yml after each tick (2026-10-03)
 - D73 — The Calendar card waits for the Jira card (2026-10-03)
 - D74 — The Jobright resolve line says why jobs stay pending (2026-10-03)
+- D75 — A job id in the query string counts as a job id (2026-10-03, Jim)

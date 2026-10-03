@@ -43,3 +43,20 @@ class LinkProblemTests(unittest.TestCase):
         self.assertEqual(quality.link_problem("https://apply.workable.com/j/ABCDEF"), "workable_no_account")
         self.assertEqual(quality.link_problem("https://careers.acme.example/"), "root")
         self.assertIsNone(quality.link_problem("https://job-boards.greenhouse.io/x/jobs/12345"))
+
+
+class QueryIdTests(unittest.TestCase):
+    """A vacancy whose id lives in the query is one vacancy; a listing that merely has a parameter is not."""
+
+    def test_an_id_parameter_makes_a_generic_or_root_page_a_vacancy(self):
+        for url in ("https://acme.example/careers?gh_jid=4567890", "https://acme.example/?gh_jid=4567890",
+                    "https://acme.example/jobs/openings?jid=99812&utm_source=x", "https://acme.example/careers/apply?job_id=R-1234"):
+            self.assertIsNone(quality.url_problem(url), url)
+
+    def test_a_parameter_without_an_id_or_with_a_search_still_refuses(self):
+        for url in ("https://acme.example/careers?gh_jid=", "https://acme.example/careers?gh_jid=abc", "https://acme.example/careers?utm=123456",
+                    "https://acme.example/careers?q=engineer&gh_jid=123456", "https://acme.example/careers?id=1", "https://acme.example/careers?page=2"):
+            self.assertIsNotNone(quality.url_problem(url), url)
+
+    def test_link_problem_follows(self):
+        self.assertIsNone(quality.link_problem("https://acme.example/careers?gh_jid=4567890"))

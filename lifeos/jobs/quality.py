@@ -23,16 +23,27 @@ def canonical_job_url(url):
     return url
 
 
+JOB_ID_PARAMS = {"gh_jid", "jid", "job_id", "jobid", "jobref", "job_ref", "job", "ashby_jid", "lever_jid", "req", "req_id", "reqid", "requisition",
+                 "requisition_id", "posting", "posting_id", "vacancy", "vacancy_id", "opening", "opening_id", "position_id", "positionid", "id"}
+
+
+def _id_in_query(query):
+    """True when a query parameter that names a job carries an id (a digit, at least three characters): /careers?gh_jid=123 is one vacancy."""
+    return any(key.lower() in JOB_ID_PARAMS and any(len(v) >= 3 and re.search(r"\d", v) for v in values) for key, values in query.items())
+
+
 def url_problem(url):
     """None for a plausible single-job URL, else a fixed code."""
     parts = urlsplit(url or "")
     segs = [s for s in parts.path.split("/") if s]
     query = parse_qs(parts.query)
+    if any(k in query for k in ("p", "page", "q", "keyword", "keywords", "query", "search")):
+        return "listing_url"
+    if _id_in_query(query):
+        return None                                  # the id may live in the query (Greenhouse embeds on an employer's own /careers page)
     if not segs:
         return "root"
     if segs[-1].lower() in GENERIC_LAST or "search" in (s.lower() for s in segs):
-        return "listing_url"
-    if any(k in query for k in ("p", "page", "q", "keyword", "keywords", "query", "search")):
         return "listing_url"
     last = segs[-1]
     has_id = bool(re.search(r"\d", "".join(segs))) or bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}", last))
