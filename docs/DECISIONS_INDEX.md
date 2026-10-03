@@ -78,3 +78,4 @@ This index is checked by a test: add a line here with every new decision.
 - D74 — The Jobright resolve line says why jobs stay pending (2026-10-03)
 - D75 — A job id in the query string counts as a job id (2026-10-03, Jim)
 - D76 — An ambiguous link shape is proven by the page's title, not refused by its URL (2026-10-03, Jim)
+- D77 — Scale-Up: a search result that is the employer's own posting is the final link (2026-10-03, Jim)
