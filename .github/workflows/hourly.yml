@@ -138,7 +138,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prep:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -147,13 +147,13 @@ jobs:
     outputs:
       extract: ${{ steps.extract.outcome }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Gate - skip a scheduled run when a run started in the last 50 minutes; flag a stale pipeline
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
         run: python3 -m lifeos.platform.gate
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -179,11 +179,11 @@ jobs:
   jobright:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -201,11 +201,11 @@ jobs:
   linkedin:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -220,11 +220,11 @@ jobs:
   lensa:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -244,13 +244,13 @@ jobs:
   finish:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -350,7 +350,7 @@ jobs:
     # (the stale-pipeline alert and the gate are keyed on run success). Step-level continue-on-error + a warning, not job-level.
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe || inputs.interview_acceptance) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:                                   # least privilege: blank every secret this job does not use (workflow-level env is inherited)
       NOTION_API_TOKEN: ""
@@ -373,8 +373,8 @@ jobs:
       OPEN_JOBS_CONTACT: ""
       NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -407,7 +407,7 @@ jobs:
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick || inputs.jira != 'none') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       NOTION_API_TOKEN: ""
@@ -435,8 +435,8 @@ jobs:
       JIRA_BOARDS: ${{ secrets.JIRA_BOARDS }}
       JIRA_GTV_EPIC: ${{ secrets.JIRA_GTV_EPIC }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -498,10 +498,10 @@ jobs:
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
