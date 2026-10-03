@@ -10,7 +10,7 @@ import time
 import sys
 
 from lifeos.sources.newsletters import config
-from lifeos.jobs import intake, store
+from lifeos.jobs import identity, intake, store
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters.parsers import dice, jobright, lensa, linkedin, reed
 
@@ -58,16 +58,20 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
     new = repeat = 0
     with connection.cursor() as cursor:
         for card in cards:
-            key, is_new = intake.add_job(cursor, {
+            job = {
                 "url": card.url, "status": status_for(card, mail_age), "title": card.title, "company": card.company,
                 "location": card.location_text, "salary": card.salary_text, "source": rule, "provider": PROVIDERS[rule],
                 "lane": LANE, "age_days": known_age(card, mail_age), "received": received,
-                "provider_score": card.provider_score}, now)
+                "provider_score": card.provider_score}
+            if rule == "dice":
+                job["identity_url"] = "dice-alert:" + identity.norm(card.company) + "|" + identity.norm(card.title)
+            key, is_new = intake.add_job(cursor, job, now)
             new += is_new
             repeat += not is_new
             cursor.execute(
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
-                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s", (rule, key, message_id, now, key))
+                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s",
+                (rule, identity.url_hash(card.url), message_id, now, key))
     return new, repeat
 
 

@@ -5,24 +5,29 @@ from datetime import datetime, timezone
 from lifeos.sources.newsletters.parsers import dice, reed
 
 
-DICE = '''<p>New matches in your job alert</p><table>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/example1">Platform Analyst</a></p></td>
-<td><a href="https://elinks.dice.com/s/c/image1"><img src="https://example.com/image"></a></td></tr>
+DICE = '''<p>New matches in your job alert</p><table><tr><td><table>
+<tr><td><a href="https://elinks.dice.com/s/c/image1"><img src="https://example.com/image"></a></td></tr>
+</table></td></tr>
+<tr><td style="font-size:0px;padding:0 0 0 0"><div style="font-size:20px;font-weight:bold;color:#006699"><p><a href="https://elinks.dice.com/a/sc/example1">Platform Analyst</a></p></div></td></tr>
 <tr><td><p><strong>Example Systems</strong></p><p>Remote, example.com</p></td></tr>
-<tr><td><p>Posted: 10-05-2026</p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/example2">Platform Analyst</a></p></td></tr>
+<tr></tr><tr><td><p>Posted: 10-05-2026</p></td></tr>
+<tr><td><table><tr><td><a href="https://elinks.dice.com/s/c/image2"><img src="https://example.com/image"></a></td></tr></table></td></tr>
+<tr><td style="font-size:0px;padding:0 0 0 0"><div style="font-size:20px;font-weight:bold;color:#006699"><p><a href="https://elinks.dice.com/a/sc/example2">Platform Analyst</a></p></div></td></tr>
 <tr><td><p><strong>Example Systems</strong></p><p>Remote, example.com</p></td></tr>
-<tr><td><p>Posted: 10-05-2026</p></td></tr>
+<tr></tr><tr><td><p>Posted: 10-05-2026</p></td></tr>
 </table>'''
-DICE_DECOYS = '''<p>Job alert</p><table>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d1">Log In</a></p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d2">View All Jobs</a></p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d3">Manage your daily job alert &gt;</a></p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d4">Dice Knowledge Center (FAQs)</a></p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d5">Unsubscribe</a></p></td></tr>
-<tr><td style="font-size:20px;font-weight:bold"><p><a href="https://elinks.dice.com/a/sc/d6">Terms &amp; Conditions</a></p></td></tr>
-<tr><td><a href="https://elinks.dice.com/s/c/image"><img src="https://example.com/image"></a></td></tr>
-</table>'''
+DICE_DECOYS = '''<p>Job alert</p>
+<a href="https://elinks.dice.com/a/sc/d1">Log In</a>
+<a href="https://elinks.dice.com/a/sc/d2">View All Jobs</a>
+<a href="https://elinks.dice.com/a/sc/d3">Manage your daily job alert &gt;</a>
+<a href="https://elinks.dice.com/a/sc/d4">Dice Knowledge Center (FAQs)</a>
+<a href="https://elinks.dice.com/a/sc/d5">Unsubscribe</a>
+<a href="https://elinks.dice.com/a/sc/d6">Terms &amp; Conditions</a>
+<a href="https://elinks.dice.com/s/c/image"><img src="https://example.com/image"></a>'''
+DICE_DAY2 = '''<table><tr><td style="font-size:0px;padding:0"><div style="font-size:20px;font-weight:bold;color:#006699"><p>
+<a href="https://elinks.dice.com/a/sc/nextday">Platform Analyst</a></p></div></td></tr>
+<tr><td><p><strong>Example Systems</strong></p><p>Remote, example.com</p></td></tr><tr></tr>
+<tr><td><p>Posted: 10-06-2026</p></td></tr></table>'''
 REED = ('<a href="https://www.reed.co.uk/jobs/data-specialist/12345678"><span>Data Specialist</span>'
         '<span>Example Group</span><span>Location: Remote</span><span>Salary: £50,000</span></a>')
 
