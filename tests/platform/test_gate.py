@@ -6,8 +6,8 @@ from lifeos.platform import gate
 NOW = dt.datetime(2026, 10, 1, 17, 7, tzinfo=dt.timezone.utc)
 
 
-def run(rid, started, conclusion="success", updated=None):
-    return {"id": rid, "run_started_at": started, "created_at": started, "conclusion": conclusion, "updated_at": updated or started}
+def run(rid, started, conclusion="success", updated=None, title="tick"):
+    return {"id": rid, "display_title": title, "run_started_at": started, "created_at": started, "conclusion": conclusion, "updated_at": updated or started}
 
 
 class Gate(unittest.TestCase):
@@ -19,6 +19,9 @@ class Gate(unittest.TestCase):
 
     def test_cancelled_runs_and_itself_do_not_count(self):
         self.assertEqual(gate.decide([run(9, "2026-10-01T17:07:00Z", None), run(2, "2026-10-01T16:57:00Z", "cancelled")], NOW, 9), "run")
+
+    def test_manual_runs_never_block_a_tick(self):
+        self.assertEqual(gate.decide([run(1, "2026-10-01T17:00:00Z", title="manual"), run(2, "2026-10-01T16:50:00Z", title="hourly")], NOW, 9), "run")
 
     def test_a_dropped_slot_is_covered_by_the_next(self):
         later = NOW + dt.timedelta(minutes=20)

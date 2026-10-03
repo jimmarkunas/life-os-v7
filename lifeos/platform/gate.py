@@ -1,7 +1,7 @@
 """Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate
 keeps the effective cadence at about one run per hour. Counts only; no job data. Stdlib only.
 
-decide(): run when the newest earlier run (not cancelled) started at least MIN_GAP_MINUTES ago, else skip.
+decide(): run when the newest earlier TICK run (title "tick": scheduled or timer, never a manual run; not cancelled) started at least MIN_GAP_MINUTES ago, else skip.
 stale(): the newest successful run finished more than STALE_MINUTES ago -> the pipeline needs a human."""
 import datetime as dt
 import json
@@ -9,6 +9,7 @@ import os
 import sys
 import urllib.request
 
+TICK_TITLE = "tick"           # the workflow's run-name for scheduled and timer runs; manual runs are "manual" and never block a tick
 MIN_GAP_MINUTES = 50          # three crons (:07 :27 :47) -> at most one run per ~hour; a dropped slot is covered by the next
 STALE_MINUTES = 150           # no successful run for this long -> open (or update) one GitHub issue
 ISSUE_TITLE = "V7 pipeline: no successful run for over 2.5 hours"
@@ -20,9 +21,9 @@ def _t(value):
 
 
 def decide(runs, now, current_id, gap=MIN_GAP_MINUTES):
-    """-> 'run' | 'skip'. Earlier runs that were cancelled (including skipped ones) do not count as work."""
+    """-> 'run' | 'skip'. Cancelled (including skipped) runs and manual runs do not count."""
     for run in runs:
-        if run["id"] == current_id or run.get("conclusion") == "cancelled":
+        if run["id"] == current_id or run.get("conclusion") == "cancelled" or run.get("display_title") != TICK_TITLE:
             continue
         started = _t(run.get("run_started_at") or run.get("created_at"))
         if started and (now - started) < dt.timedelta(minutes=gap):
