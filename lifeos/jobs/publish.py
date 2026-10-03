@@ -56,7 +56,7 @@ def properties(row):
         "Company": {"rich_text": rich_text(row["company"] or "")},
         "Apply URL": {"url": row["url"]},
         "Source Provider": {"rich_text": rich_text(provider)},
-        "Source Types": {"multi_select": [{"name": provider}] + ([{"name": "Easy Apply"}] if row.get("apply_kind") == "easy_apply" else [])},
+        "Source Types": {"multi_select": [{"name": provider}] + [{"name": flag} for kind, flag in (("easy_apply", "Easy Apply"), ("aggregator", "Aggregator Link")) if row.get("apply_kind") == kind]},
         "Stable Job Key": {"rich_text": rich_text(row["key"])},
         "First Surfaced": {"date": {"start": row["first_seen"].isoformat()}},
         "Freshness Status": {"select": {"name": "Fresh"}},

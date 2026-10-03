@@ -78,6 +78,21 @@ class Run(unittest.TestCase):
             out = dj._resolve(rows, {"left": 5})
         self.assertEqual((out[0]["outcome"], seen), ("landed", ["landed", "external_hidden"]))
 
+    def test_held_jobs_whose_own_url_is_now_a_direct_link_go_back_to_new_once(self):
+        row = (7, "https://careers.sixfold.example/jobs/product-manager-4412", "Sixfold Bioscience Limited")
+        full = []
+        conn = FakeConn(script={"SELECT id": row}, handler=lambda sql, args, cur: full.append(sql))
+        self.assertEqual(dj.requeue_held(conn.cursor()), 1)
+        sql = [(w, a) for w, a in conn.cur.sql]
+        self.assertEqual(sql[0][0], "SELECT id,")
+        update = [a for w, a in sql if w == "UPDATE v7_jobs"][0]
+        self.assertIn(7, update)
+        self.assertIn("'requeued_direct'", full[-1])             # a reason that is not no_match_*: Enrich rejecting it later never requeues it again
+
+    def test_a_held_aggregator_result_is_not_requeued(self):
+        conn = FakeConn(script={"SELECT id": (8, "https://uk.indeed.com/viewjob?jk=abc123def456", "Sixfold Bioscience Limited")})
+        self.assertEqual(dj.requeue_held(conn.cursor()), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
