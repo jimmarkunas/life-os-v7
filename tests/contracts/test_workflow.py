@@ -38,6 +38,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("completed", domains[True]["workflow_run"]["types"])
         self.assertIn("!= 'cancelled'", domains["jobs"]["agenda"]["if"])               # a tick the gate cancelled starts nothing
         self.assertIn("display_title == 'tick'", domains["jobs"]["agenda"]["if"])      # nor does a manual hourly run
+        self.assertEqual(domains["jobs"]["agenda"]["needs"], "jira")                   # both write the Daily Report page: never at once
+        self.assertIn("always()", domains["jobs"]["agenda"]["if"])                     # but a failed Jira job does not stop the Calendar card
 
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
         from pathlib import Path
