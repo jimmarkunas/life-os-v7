@@ -119,3 +119,24 @@ class NotionClientBillsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DisplayFieldTests(unittest.TestCase):
+    def page(self, **extra):
+        props = {"Name": {"type": "title", "title": [{"plain_text": "Example Bill"}]},
+                 "Status": {"type": "select", "select": {"name": "Active"}},
+                 "Cycle": {"type": "select", "select": {"name": "Monthly"}},
+                 "Paid": {"type": "checkbox", "checkbox": False},
+                 "Due Date": {"type": "date", "date": {"start": "2026-10-01"}},
+                 "Next Due": {"type": "formula", "formula": {"type": "date", "date": {"start": "2026-11-01"}}}}
+        props.update(extra)
+        return {"id": "p1", "properties": props}
+
+    def test_an_unfamiliar_display_field_shape_is_none_not_a_failed_snapshot(self):
+        row = snapshot.compact(self.page(**{"Costs per Cycle": {"type": "rollup", "rollup": {}}}))
+        self.assertIsNone(row["Costs per Cycle"])
+        self.assertIsNone(row["Last Paid"])                                   # missing display property
+
+    def test_an_unfamiliar_critical_field_still_fails_closed(self):
+        with self.assertRaises(snapshot.BillsError):
+            snapshot.compact(self.page(Cycle={"type": "rollup", "rollup": {}}))

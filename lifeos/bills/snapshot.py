@@ -9,8 +9,8 @@ from lifeos.platform.notion_client import Client, NotionError
 
 LOCAL_TZ = "America/Chicago"
 SCHEMA_V = 1
-FIELDS = ("Name", "Status", "Cycle", "Paid", "Due Date", "Next Due", "Last Paid",
-          "Costs per Cycle", "Last Observed Amount")
+CRITICAL = ("Name", "Status", "Cycle", "Paid", "Due Date", "Next Due")      # these drive the due-state: a surprise here fails closed
+FIELDS = CRITICAL + ("Last Paid", "Costs per Cycle", "Last Observed Amount")  # display-only: an unfamiliar shape (rollup, currency) is None, as in V1
 SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_bills_snapshot (
     snapshot_id TINYINT NOT NULL PRIMARY KEY, taken_at DATETIME NOT NULL,
     schema_v SMALLINT NOT NULL, payload MEDIUMTEXT NOT NULL
@@ -30,6 +30,15 @@ def _plain(items):
 
 
 def _property(properties, name):
+    try:
+        return _strict(properties, name)
+    except BillsError:
+        if name in CRITICAL:
+            raise
+        return None
+
+
+def _strict(properties, name):
     prop = properties.get(name)
     if not isinstance(prop, dict):
         raise BillsError("BILLS_PROPERTY_MISSING")
