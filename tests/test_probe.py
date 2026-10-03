@@ -82,6 +82,7 @@ class GlassdoorProbeTests(unittest.TestCase):
             return {urls[0]: {"html": page.html, "links": ["a", "b"]}}, []
 
         out = probe.glassdoor(plain=lambda url, **kw: blocked, reader=boom, tinyfish_fetch=tinyfish)
+        self.assertEqual(sorted(out), ["page1", "page2", "page3"])                          # employer London page, UK search, US remote search
         first = out["page1"]
         self.assertEqual(first["plain"]["status"], 403)
         self.assertEqual(first["plain"]["blocked"], ["just a moment", "verify you are human"])

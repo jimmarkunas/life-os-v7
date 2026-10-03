@@ -246,7 +246,8 @@ def egress_options(ids=("su-futuristic-technologies-ltd", "su-otto-car-limited",
     return out
 
 
-GLASSDOOR_URLS = ("https://www.glassdoor.co.uk/Job/london-program-manager-jobs-SRCH_IL.0,6_IC2671300_KO7,22.htm",
+GLASSDOOR_URLS = ("https://www.glassdoor.co.uk/Jobs/Revolut-London-Jobs-EI_IE1176471_IL.8,14_IC2671300.htm",          # an employer's London listing (Jim's methodology URL shape)
+                  "https://www.glassdoor.co.uk/Job/london-program-manager-jobs-SRCH_IL.0,6_IC2671300_KO7,22.htm",
                   "https://www.glassdoor.com/Job/remote-program-manager-jobs-SRCH_KO0,23.htm")
 BLOCK_MARKERS = ("just a moment", "verify you are human", "captcha", "cf-chl", "access denied", "enable javascript")
 
