@@ -53,6 +53,71 @@ class DataSourcePages:
         return page
 
 
+class PaidBillTracker:
+    """Mutable synthetic Bill Tracker rows; records property writes and recalculates Next Due."""
+
+    SOURCE = "11111111-1111-4111-8111-111111111111"
+
+    def __init__(self, *pages, responses=None, event_log=None, recalculate_formula=True,
+                 fail_read_after_update=False):
+        self.pages = {page["id"]: page for page in pages}
+        self.responses = list(responses) if responses is not None else None
+        self.event_log = event_log if event_log is not None else []
+        self.recalculate_formula = recalculate_formula
+        self.writes = []
+        self.source = self.SOURCE
+        self.requests = []
+        self.fail_read_after_update = fail_read_after_update
+        self.updated = False
+
+    def query_data_source(self, source_id=None, body=None):
+        self.requests.append((source_id, dict(body or {})))
+        self.event_log.append(("query", source_id or self.source))
+        if self.responses is not None:
+            if not self.responses:
+                raise AssertionError("unexpected extra Notion query")
+            response = self.responses.pop(0)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+        return {"results": [self.pages[key] for key in self.pages], "has_more": False}
+
+    def get_page(self, page_id):
+        self.event_log.append(("read", page_id))
+        if self.fail_read_after_update and self.updated:
+            self.fail_read_after_update = False
+            from lifeos.platform.notion_client import NotionError
+            raise NotionError("NOTION_NETWORK")
+        if page_id not in self.pages:
+            from lifeos.platform.notion_client import NotionError
+            raise NotionError("NOTION_HTTP_404")
+        import copy
+        return copy.deepcopy(self.pages[page_id])
+
+    def update_page_properties(self, page_id, properties):
+        allowed = {"Last Paid", "Due Date", "Status", "Paid"}
+        if not set(properties).issubset(allowed):
+            raise AssertionError("unexpected Bill Tracker property")
+        self.event_log.append(("update", tuple(properties)))
+        self.writes.append(tuple(properties))
+        self.updated = True
+        page = self.pages[page_id]
+        for name, value in properties.items():
+            prop = page["properties"][name]
+            kind = prop["type"]
+            prop[kind] = value[kind]
+        if "Due Date" in properties and self.recalculate_formula:
+            from datetime import date, timedelta
+            due = date.fromisoformat(page["properties"]["Due Date"]["date"]["start"])
+            cycle = page["properties"]["Cycle"]["select"]["name"]
+            days = {"Weekly": 7, "Bi-Weekly": 14, "Monthly": 30, "Quarterly": 91,
+                    "Yearly": 365}.get(cycle, 30)
+            next_due = due + timedelta(days=days)
+            page["properties"]["Next Due"]["formula"] = {
+                "type": "date", "date": {"start": next_due.isoformat()}}
+        return {"id": page_id}
+
+
 class AgendaRegions:
     """Nested Calendar target and independently readable protected JIRA callout."""
 
