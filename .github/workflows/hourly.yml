@@ -75,14 +75,10 @@ on:
         description: "Shape probe (counts only): Open Jobs feed, Teamtailor boards, Dice job pages. Writes nothing"
         type: boolean
         default: false
-      review_company:
-        description: "Fit review: a private Notion page listing every job of this company or source and why it was or was not published (text, 3+ letters; writes only when live)"
+      report:
+        description: "Report (read-only; never moves mail): type funnel for the per-provider funnel and canary (counts only), or a company or source name (3+ letters) for a private Notion page of every job of it and why it was or was not published (that page is written only when live)"
         type: string
         default: ""
-      funnel:
-        description: "Pipeline funnel report (counts only, read-only): per provider status, Fit by score band and lane reason, hours since last found and last published"
-        type: boolean
-        default: false
       fit:
         description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
         type: boolean
@@ -319,14 +315,14 @@ jobs:
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; a private Notion page, counts only in the log)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.review_company != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' }}
         env:
-          REVIEW_COMPANY: ${{ inputs.review_company }}
+          REVIEW_COMPANY: ${{ inputs.report }}
         run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
       - id: funnel
         continue-on-error: true
         name: Funnel report (dispatch only, read-only, counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.funnel }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'funnel' }}
         run: python -m lifeos.run funnel
       - id: probe
         continue-on-error: true
