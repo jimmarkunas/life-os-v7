@@ -14,6 +14,10 @@ on:
         type: choice
         options: ["personal", "work"]
         default: "personal"
+      replace:
+        description: "auth only: allow this label to switch to a different mailbox (normally refused, to stop a mix-up)"
+        type: boolean
+        default: false
       live:
         description: "Save the sign-in (auth only; probe never writes)"
         type: boolean
@@ -30,6 +34,7 @@ jobs:
     env:
       OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
       OUTLOOK_ACCOUNT: ${{ inputs.account }}
+      OUTLOOK_REPLACE: ${{ inputs.replace }}
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
       LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
       LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
