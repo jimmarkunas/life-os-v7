@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest import mock
 
@@ -121,3 +122,28 @@ class DiceEasyApply(unittest.TestCase):
             plain = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer")
         self.assertEqual((got["outcome"], got.get("apply_kind")), ("ready", "easy_apply"))
         self.assertNotIn("apply_kind", plain)
+
+
+class MismatchTests(unittest.TestCase):
+    """A rejected link must be counted by reason, producer and site, and must cost an attempt so it cannot bounce forever."""
+
+    def test_mismatch_report_counts_reason_producer_family_and_repeats_without_content(self):
+        results = [(1, {"outcome": "mismatch", "reason": "jd_listing"}), (2, {"outcome": "mismatch"}), (3, {"outcome": "ready"}),
+                   (4, {"outcome": "mismatch", "reason": "jd_listing"})]
+        urls = {1: "https://boards.example.com/a/1", 2: "https://jobs.example.com/b/2", 3: "https://x.example.com/3", 4: "https://boards.example.com/a/4"}
+        out = enrich.mismatch_report(results, urls, {1: "lensa", 2: "linkedin-alerts", 4: "lensa"}, {1: "jd_listing", 2: None, 4: None})
+        self.assertEqual(out["reasons"], {"jd_listing": 2, "title": 1})
+        self.assertEqual(out["by_source"], {"lensa": 2, "linkedin-alerts": 1})
+        self.assertEqual(out["repeat"], 1)
+        self.assertNotIn("example.com/a", json.dumps(out))
+
+    def test_a_mismatch_is_an_attempt_and_parks_on_hold_at_the_cap(self):
+        from lifeos.platform import limits
+        from tests.kit.db import FakeConn
+        seen = []
+        conn = FakeConn(handler=lambda sql, args, cursor: seen.append((sql, args)))
+        enrich.save(conn, 7, {"outcome": "mismatch", "reason": "jd_listing"})
+        sql, args = seen[-1]
+        self.assertIn("resolve_attempts=resolve_attempts+1", sql)
+        self.assertIn("IF(resolve_attempts+1>=%s, 'HOLD', 'NEW')", sql)
+        self.assertEqual((args[0], args[1], args[3]), (limits.RESOLVE_MAX_ATTEMPTS, "jd_listing", 7))

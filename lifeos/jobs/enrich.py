@@ -166,8 +166,9 @@ def save(connection, job_id, result):
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
         elif outcome == "mismatch":                      # wrong link: take it back, never publish it
-            cursor.execute("UPDATE v7_jobs SET status='NEW', final_apply_url=NULL, apply_kind=NULL, "
-                           "unresolved_reason=%s, updated_at=%s WHERE id=%s", ((result.get("reason") or "link_mismatch")[:100], now, job_id))
+            cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, "
+                           "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",   # an attempt: a link that keeps failing parks on HOLD, never loops
+                           (limits.RESOLVE_MAX_ATTEMPTS, (result.get("reason") or "link_mismatch")[:100], now, job_id))
         else:
             cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, enrich_attempts=enrich_attempts+1, "
                            "status=IF(enrich_attempts>=%s,'HOLD',status), updated_at=%s WHERE id=%s",
@@ -198,15 +199,32 @@ def blocked_report(results, urls):
     return {"reasons": reasons, "families": families, "by_source": sources}
 
 
+def mismatch_report(results, urls, source_of, previous):
+    """Counts only: why links are rejected, which producer and site family they came from, and how many were already rejected last time
+    (a repeat means the same wrong link keeps coming back). Never a title, company or URL."""
+    reasons, sources, families, repeat = {}, {}, {}, 0
+    for job_id, result in results:
+        if result["outcome"] != "mismatch":
+            continue
+        reason = result.get("reason") or "title"
+        reasons[reason] = reasons.get(reason, 0) + 1
+        sources[source_of.get(job_id) or "unknown"] = sources.get(source_of.get(job_id) or "unknown", 0) + 1
+        family = host_family(urls.get(job_id))
+        families[family] = families.get(family, 0) + 1
+        repeat += previous.get(job_id) == (result.get("reason") or "link_mismatch")
+    return {"reasons": reasons, "by_source": sources, "families": families, "repeat": repeat}
+
+
 def run(limit, live):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane FROM v7_jobs WHERE status='RESOLVED' "
+            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
             fetched = [tuple(r) for r in cursor.fetchall()]
     rows = [r[:5] for r in fetched]
     lane_of = {r[0]: r[5] for r in fetched}
+    source_of = {r[0]: r[6] for r in fetched}
     counts = {"picked": len(rows), "outcome": {}, "source": {}}
     results = []
     for job_id, url, title, kind, _prev in rows:
@@ -227,6 +245,7 @@ def run(limit, live):
     _fallback(results, rows, counts, lane_of)
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
+    counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
     if live and results:
         with store.connect() as connection:
             for job_id, result in results:
