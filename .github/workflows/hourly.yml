@@ -154,13 +154,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
         run: python3 -m lifeos.platform.gate
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
@@ -184,13 +178,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
@@ -206,13 +194,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
@@ -225,13 +207,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
@@ -251,13 +227,7 @@ jobs:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - name: Semantic layer (optional, shadow) - local embedding model, cached
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         uses: actions/cache@v4
@@ -375,13 +345,7 @@ jobs:
       NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: iprobe
         continue-on-error: true
         name: Interview shape probe (counts only, writes nothing)
@@ -437,13 +401,7 @@ jobs:
       JIRA_GTV_EPIC: ${{ secrets.JIRA_GTV_EPIC }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: jrollauto
         continue-on-error: true
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
@@ -526,13 +484,7 @@ jobs:
       HIRING_PIPELINE_PAGE_ID: ""
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
       - id: outnews
         continue-on-error: true
         name: Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)

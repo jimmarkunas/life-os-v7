@@ -9,26 +9,11 @@ from unittest.mock import patch
 from lifeos.outlook import stage, store
 from lifeos.platform import outlook
 from lifeos.platform.outlook import Outlook, OutlookError
+from tests.kit.http import Response, http_error  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class Response:
-    def __init__(self, body):
-        self.body = json.dumps(body).encode()
-
-    def read(self):
-        return self.body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-
-def http_error(request, code, body=b"secret body text", headers=None):
-    return urllib.error.HTTPError(request.full_url, code, "msg", headers or {}, __import__("io").BytesIO(body))
 
 
 class Router:
