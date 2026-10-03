@@ -84,6 +84,12 @@ DEFAULT_EXCLUSIONS = (
         r"\bnurser(?:y|ies)\b", r"child ?care", r"back[- ]?up care", r"\bhousekeep\w*", r"\bchef\b", r"\bcook\b", r"\bkitchen\b",
         r"\bnanny\b", r"\bteacher\b", r"\bteaching assistant\b", r"\bjanitor\b", r"\bcustodian\b", r"\bcleaner\b", r"\bdriver\b",
         r"\bwarehouse\b", r"\bbarista\b", r"\bcashier\b", r"\bwaiter\b|\bwaitress\b", r"\bhospitality\b", r"\bpractitioner\b"]},
+    {"id": "sales_role", "reason": "sales / account / customer-facing role", "where": "title", "patterns": [
+        r"(?<!pre )(?<!pre-)\bsales\b", r"\baccount (?:executive|manager|director)\b", r"\bbusiness development\b", r"\bBDR\b", r"\bSDR\b",
+        r"\bcustomer success\b", r"\bcustomer support\b", r"\bcollections?\b"]},
+    {"id": "language_requirement", "reason": "a language other than English is required", "where": "title", "patterns": [
+        r"\b(?:spanish|german|french|italian|portuguese|polish|greek|dutch|arabic|mandarin|cantonese|japanese|korean|swedish|danish|norwegian|finnish|"
+        r"turkish|russian|hindi|czech|hungarian|romanian|hebrew)[- ](?:speaking|speaker|language|fluent)"]},
     {"id": "education_role", "reason": "education role", "where": "title", "patterns": [
         r"\bstudents?\b", r"\bcurriculum\b", r"\bfaculty\b", r"\bk-?12\b", r"\bhigher ed\w*", r"\bellucian\b", r"\benrol?lment\b",
         r"\badmissions?\b", r"\bprofessor\b", r"\bacademic\b", r"\binstructor\b", r"\btutor\b"]},
