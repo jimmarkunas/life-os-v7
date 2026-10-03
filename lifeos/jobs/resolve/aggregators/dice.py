@@ -62,7 +62,7 @@ def make_resolver():
         results = []
         for row in rows:
             if stopped[0]:
-                results.append({"outcome": stopped[0]})
+                results.append({"outcome": "deferred"})          # not tried, so not an attempt: a block must not park the rest on HOLD
                 continue
             if last_request[0] is not None:
                 remaining = limits.DICE_GAP_SECONDS - (time.monotonic() - last_request[0])

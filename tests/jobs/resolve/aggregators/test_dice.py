@@ -52,7 +52,7 @@ class DiceResolverTests(unittest.TestCase):
         opener = ScriptedOpener(Response(b"", status=429))
         with mock.patch.object(dice.http, "_OPENER", opener), mock.patch.object(dice.time, "sleep"):
             results = dice.make_resolver()([(1, TRACK1), (2, TRACK2), (3, TRACK1)])
-        self.assertEqual([r["outcome"] for r in results], ["rate_limited"] * 3)
+        self.assertEqual([r["outcome"] for r in results], ["rate_limited", "deferred", "deferred"])   # untried rows are not attempts
         self.assertEqual(len(opener.urls), 1)
 
     def test_network_error_stays_pending_and_never_closes_or_duplicates(self):
