@@ -249,7 +249,7 @@ class InterviewJobIsIsolated(unittest.TestCase):
     def block(self):
         text = (ROOT / ".github/workflows/hourly.yml").read_text()
         start = text.index("\n  interview:\n")
-        return text[start:text.index("\n  report:\n")]
+        return text[start:text.index("\n  jira:\n")]
 
     def test_no_jobs_secret_reaches_the_interview_job(self):
         block = self.block()
@@ -264,3 +264,15 @@ class InterviewJobIsIsolated(unittest.TestCase):
         self.assertNotIn("\n    continue-on-error:", block)                    # a job-level continue-on-error would hide the result from the report job
         self.assertEqual(block.count("continue-on-error: true"), 3)            # the three steps
         self.assertIn("::warning", block)
+
+
+class DecisionIndexTests(unittest.TestCase):
+    """The decision index is what agents read instead of the 47 KB log; it must list every decision."""
+
+    def test_every_decision_heading_is_in_the_index(self):
+        from pathlib import Path
+        docs = Path(__file__).resolve().parents[2] / "docs"
+        heads = [line[3:].strip() for line in (docs / "DECISIONS.md").read_text().splitlines() if line.startswith("## D")]
+        index = (docs / "DECISIONS_INDEX.md").read_text()
+        missing = [h for h in heads if "- " + h not in index]
+        self.assertEqual(missing, [])

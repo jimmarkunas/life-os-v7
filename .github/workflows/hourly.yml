@@ -1,4 +1,5 @@
 name: hourly
+run-name: ${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # the gate counts only "tick" runs, so a manual run never blocks the next tick
 on:
   schedule:
     - cron: "7 * * * *"          # three triggers an hour: GitHub drops and delays scheduled runs, so the gate (lifeos.platform.gate)
@@ -18,6 +19,11 @@ on:
         description: "Interview OS private acceptance (manual only): one case from the INTERVIEW_ACCEPTANCE_JSON secret; dry run unless Actually move mail is ticked"
         type: boolean
         default: false
+      jira:
+        description: "Jira (read-only dry run unless Actually move mail is ticked): snapshot = save the board snapshot to the private database; card = write the saved snapshot into the Daily Report Jira card; report = snapshot then card; rollover = weekly sprint rollover, never before the sprint ends"
+        type: choice
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
+        default: "none"
       discover:
         description: "Scale-Up discovery: web search for jobs at sponsors with no job board; unresolved leads are never published (saves only when live)"
         type: boolean
@@ -133,7 +139,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prep:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -142,19 +148,15 @@ jobs:
     outputs:
       extract: ${{ steps.extract.outcome }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Gate - skip a scheduled run when a run started in the last 50 minutes; flag a stale pipeline
+      - uses: actions/checkout@v5
+      - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count); flag a stale pipeline
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
         run: python3 -m lifeos.platform.gate
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: ./.github/actions/python
+      - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
+        run: pip install pyyaml || echo "pyyaml unavailable; the workflow contract tests will skip"
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
@@ -174,17 +176,11 @@ jobs:
   jobright:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
@@ -196,17 +192,11 @@ jobs:
   linkedin:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
@@ -215,17 +205,11 @@ jobs:
   lensa:
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
@@ -236,22 +220,36 @@ jobs:
         if: ${{ always() && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
         run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
+  dice:
+    # Dice is low value: a small bounded batch (15 links, 3-minute deadline). The step is capped at 4 minutes and a failure or timeout is a
+    # warning that never fails the Jobs run or pages anyone.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: dice
+        continue-on-error: true
+        timeout-minutes: 4
+        name: Step 5 - resolve Dice job alert links
+        if: ${{ env.PIPELINE == 'true' }}
+        run: python -m lifeos.run resolve-dice --limit 15 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Dice warning (does not fail the run)
+        if: ${{ always() && steps.dice.outcome == 'failure' }}
+        run: echo "::warning title=Dice::the Dice link resolver failed or timed out; the Jobs pipeline is unaffected"
+
   finish:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
       - name: Semantic layer (optional, shadow) - local embedding model, cached
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         uses: actions/cache@v4
@@ -345,7 +343,7 @@ jobs:
     # (the stale-pipeline alert and the gate are keyed on run success). Step-level continue-on-error + a warning, not job-level.
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && (inputs.interview || inputs.interview_probe || inputs.interview_acceptance) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:                                   # least privilege: blank every secret this job does not use (workflow-level env is inherited)
       NOTION_API_TOKEN: ""
@@ -368,14 +366,8 @@ jobs:
       OPEN_JOBS_CONTACT: ""
       NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements*.txt
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
       - id: iprobe
         continue-on-error: true
         name: Interview shape probe (counts only, writes nothing)
@@ -397,22 +389,348 @@ jobs:
         if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
+  jira:
+    # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
+    # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick || inputs.jira != 'none') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      JIRA_BOARDS: ${{ secrets.JIRA_BOARDS }}
+      JIRA_GTV_EPIC: ${{ secrets.JIRA_GTV_EPIC }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: jrollauto
+        continue-on-error: true
+        name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.tick }}
+        run: python -m lifeos.run jira-rollover-scheduled $([ "$LIVE" = "true" ] && echo --live)
+      - id: jsnap
+        continue-on-error: true
+        name: Jira snapshot (counts only; saved to the private database only when live)
+        if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || github.event_name != 'workflow_dispatch' || inputs.tick }}
+        env:
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - id: jcard
+        continue-on-error: true
+        name: Jira card (Daily Report; counts only; the page is written only when live)
+        if: ${{ inputs.jira == 'card' || inputs.jira == 'report' || github.event_name != 'workflow_dispatch' || inputs.tick }}
+        env:
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          JIRA_CARD_PROJECTS: ${{ secrets.JIRA_CARD_PROJECTS }}
+          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_GTV_CONTEXT_URL: ${{ secrets.JIRA_GTV_CONTEXT_URL }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
+      - id: jprobe
+        continue-on-error: true
+        name: Jira layout probe (read-only; counts only)
+        if: ${{ inputs.jira == 'probe' }}
+        run: python -m lifeos.run jira-probe
+      - id: jroll
+        continue-on-error: true
+        name: Jira sprint rollover (dry run unless live; never before the sprint ends)
+        if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
+        run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
+      - name: Jira warning (does not fail the run)
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
+
+  outlook:
+    # Outlook (read-only) on every scheduled or tick run: job newsletters into Jobs OS, and meeting invites into your Google calendar. Its own
+    # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
+    # them, and a failure is a warning that never fails the Jobs run.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: outnews
+        continue-on-error: true
+        name: Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)
+        env:
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run outlook-newsletters $([ "$LIVE" = "true" ] && echo --live)
+      - id: calsync
+        continue-on-error: true
+        name: Calendar sync (Outlook invites to Google; counts only; writes only when live)
+        env:
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ secrets.GCAL_SERVICE_ACCOUNT_JSON }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run calendar-sync $([ "$LIVE" = "true" ] && echo --live)
+      - name: Outlook warning (does not fail the run)
+        if: ${{ always() && (steps.outnews.outcome == 'failure' || steps.calsync.outcome == 'failure') }}
+        run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
+
   report:
-    needs: [prep, jobright, linkedin, lensa, finish]
+    needs: [prep, jobright, linkedin, lensa, dice, finish]
     if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
             python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed. Open the Actions tab."
             echo "FAILED LANES:$failed"; exit 1
           fi
+
+  bills:
+    # Bills reads its own Notion source and saves only to the private snapshot database.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      NOTION_BILLS_TOKEN: ""
+      NOTION_BILLS_DATA_SOURCE_ID: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bsnap
+        continue-on-error: true
+        name: Bills snapshot (read-only; private snapshot saved only when live)
+        env:
+          NOTION_BILLS_TOKEN: ${{ secrets.NOTION_BILLS_TOKEN }}
+          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - name: Bills warning (does not fail the Jobs run)
+        if: ${{ always() && steps.bsnap.outcome == 'failure' }}
+        run: echo "::warning title=Bills::the Bill Tracker snapshot failed; the Jobs pipeline is unaffected"
+
+  agenda:
+    # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: asnap
+        continue-on-error: true
+        name: Agenda snapshot (read-only Google Calendar; private save only when live)
+        env:
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ secrets.GCAL_SERVICE_ACCOUNT_JSON }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run agenda-snapshot --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: acard
+        continue-on-error: true
+        name: Agenda card (saved snapshot only; writes only when live)
+        env:
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run agenda-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Agenda warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
+        run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
+
+
+  amazon:
+    # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
+      NOTION_BILLS_TOKEN: ""
+      NOTION_BILLS_DATA_SOURCE_ID: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: amazon
+        continue-on-error: true
+        name: Amazon Orders (Gmail to Notion; archive only after read-back)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
+        run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
+      - name: Amazon Orders warning (does not fail the Jobs run)
+        if: ${{ always() && steps.amazon.outcome == 'failure' }}
+        run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"

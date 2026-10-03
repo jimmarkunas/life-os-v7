@@ -42,3 +42,55 @@ class FakeConn:
 
     def __exit__(self, *exc):
         return False
+
+
+class BillsSnapshotDB:
+    """Private snapshot database fake with one atomically replaced JSON payload."""
+
+    def __init__(self, payload=None):
+        import json
+        self.payload = json.dumps(payload) if payload is not None else None
+        self.sql = []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, args=()):
+        self.sql.append(sql)
+        if sql.startswith("INSERT INTO v7_bills_snapshot"):
+            self.payload = args[2]
+
+    def fetchone(self):
+        return (self.payload,) if self.payload is not None else None
+
+
+class AgendaSnapshotDB:
+    """Private Agenda snapshot row with an atomic JSON replacement for tests."""
+
+    def __init__(self, snapshot=None):
+        import json
+        self.payload = json.dumps(snapshot) if snapshot is not None else None
+        self.sql = []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, args=()):
+        self.sql.append(sql)
+        if sql.startswith("INSERT INTO v7_bills_snapshot") or sql.startswith("INSERT INTO v7_agenda_snapshot"):
+            self.payload = args[2]
+
+    def fetchone(self):
+        return (self.payload,) if self.payload is not None else None

@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 from lifeos.interview import advisor
 from lifeos.interview.advisor import (AdvisorContractError, AdvisorDraft, AdvisorInputBundle, AdvisorManifest,
-    AdvisorModel, AdvisorSource, CandidateEvidence, EvidenceRef, GroundedAdvice, SourceKind, bundle_digest, compile_prep)
+    AdvisorModel, AdvisorSource, CandidateEvidence, EvidenceRef, ForecastConfidence, GroundedAdvice,
+    PreInterviewForecast, PreInterviewRisk, SourceKind, bundle_digest, compile_prep, render_forecast)
 from lifeos.interview.models import PrepEvidence
 
 
@@ -56,6 +57,24 @@ def draft(**changes):
         questions=(advice("What would change the decision?"),),
     )
     return replace(base, **changes)
+
+
+def risk(hypothesis="Stakeholders may be hard to coordinate.", **changes):
+    values = dict(hypothesis=hypothesis, confidence=ForecastConfidence.MEDIUM,
+                  why_plausible="The accepted role context spans several teams.",
+                  source_refs=("JD-SYN-001@1",),
+                  watch_for=("Approvals take time", "People are in different time zones"),
+                  if_confirmed="Use async intake, batched decisions, and explicit owners and dates.",
+                  do_not_do="Do not add more stakeholder meetings.", evidence_refs=(),
+                  certainty_target="opportunity")
+    values.update(changes)
+    return PreInterviewRisk(**values)
+
+
+def forecast(*risks):
+    return PreInterviewForecast(tuple(risks or (
+        risk(), risk("The interviewer may need concise tradeoffs."),
+        risk("Ownership may be unclear across teams."))))
 
 
 class EvidenceContractTests(unittest.TestCase):
@@ -301,6 +320,133 @@ class ModelAndCompilerTests(unittest.TestCase):
         self.assertNotIn("lifeos.interview.notion", source)
         self.assertNotIn("urlopen", source)
         self.assertNotIn("sleep(", source)
+
+
+class PreInterviewForecastTests(unittest.TestCase):
+    def test_valid_three_risk_forecast_renders_in_supplied_order(self):
+        value = forecast(risk("First synthetic risk."), risk("Second synthetic risk."),
+                         risk("Third synthetic risk."))
+        rendered = render_forecast(bundle(), value)
+        self.assertLess(rendered.index("### First synthetic risk."), rendered.index("### Second synthetic risk."))
+        self.assertLess(rendered.index("### Second synthetic risk."), rendered.index("### Third synthetic risk."))
+        self.assertIn("**Confidence:** MEDIUM", rendered)
+
+    def test_risk_count_bounds_fail_closed(self):
+        for risks in ((risk(), risk("Second risk.")), tuple(risk(f"Risk {i}.") for i in range(8))):
+            with self.subTest(count=len(risks)), self.assertRaises(AdvisorContractError):
+                render_forecast(bundle(), PreInterviewForecast(risks))
+
+    def test_unresolved_source_and_evidence_refs_fail_closed(self):
+        for value in (forecast(risk(source_refs=("MISSING@1",)), risk("Second."), risk("Third.")),
+                      forecast(risk(evidence_refs=("E-MISSING@1",)), risk("Second."), risk("Third."))):
+            with self.assertRaises(AdvisorContractError):
+                render_forecast(bundle(), value)
+
+    def test_text_bounds_trim_duplicates_and_watch_limits_fail_closed(self):
+        invalid_risks = (
+            risk(hypothesis=" padded "), risk(hypothesis="H" * 301),
+            risk(why_plausible="W" * 501), risk(watch_for=("W" * 201,)),
+            risk(watch_for=("same", "same")), risk(watch_for=()),
+            risk(if_confirmed="I" * 501), risk(do_not_do="D" * 301),
+            risk(source_refs=("JD-SYN-001@1", "JD-SYN-001@1")),
+            risk(evidence_refs=("E-SYN-001@1", "E-SYN-001@1")),
+            risk(certainty_target="interviewer"),
+        )
+        for invalid in invalid_risks:
+            with self.subTest(invalid=invalid), self.assertRaises(AdvisorContractError):
+                render_forecast(bundle(), forecast(invalid, risk("Second."), risk("Third.")))
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), forecast(risk("Repeated."), risk(" repeated "), risk("Third.")))
+
+    def test_any_valid_evidence_bank_entry_can_be_selected(self):
+        entries = (candidate("E-SYN-101@3", "American Apparel synthetic campaign result."),
+                   candidate("E-SYN-202@1", "Unilever synthetic vendor recovery."))
+        value = bundle(evidence=entries)
+        rendered = render_forecast(value, forecast(
+            risk(evidence_refs=("E-SYN-101@3",)),
+            risk("Second risk.", evidence_refs=("E-SYN-202@1",)), risk("Third risk.")))
+        self.assertIn("American Apparel synthetic campaign result.", rendered)
+        self.assertIn("Unilever synthetic vendor recovery.", rendered)
+        self.assertNotIn("E-SYN-101@3", rendered)
+        self.assertNotIn("E-SYN-202@1", rendered)
+
+    def test_personal_pattern_requires_accepted_bundle_grounding(self):
+        personal = risk("I may over-explain before confirming the decision criteria.", personal_pattern=True)
+        value = forecast(personal, risk("Second."), risk("Third."))
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), value)
+        grounded = replace(personal, source_refs=("PROFILE-SYN-001@1",))
+        self.assertIn("I may over-explain", render_forecast(bundle(), forecast(
+            grounded, risk("Second."), risk("Third."))))
+
+    def test_you_or_your_role_language_does_not_infer_a_personal_pattern(self):
+        ordinary = risk("Your stakeholders may need more time to align.",
+                        why_plausible="The role has several independent teams.")
+        self.assertFalse(ordinary.personal_pattern)
+        self.assertIn("Your stakeholders", render_forecast(bundle(), forecast(
+            ordinary, risk("Second."), risk("Third."))))
+
+    def test_personal_pattern_requires_profile_guidance_or_accepted_signal(self):
+        personal = risk("An over-explanation pattern may recur.", personal_pattern=True)
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third.")))
+        for source_ref in ("PROFILE-SYN-001@1", "GUIDE-SYN-001@1", "SIGNAL-SYN-001@1"):
+            with self.subTest(source_ref=source_ref):
+                grounded = replace(personal, source_refs=(source_ref,))
+                self.assertIn("An over-explanation pattern may recur", render_forecast(
+                    bundle(), forecast(grounded, risk("Second."), risk("Third."))))
+
+    def test_prior_derived_does_not_ground_a_personal_pattern(self):
+        prior = AdvisorSource("PRIOR-SYN-001", SourceKind.PRIOR_DERIVED, "Synthetic derived coaching.")
+        value = bundle(src=sources() + (prior,))
+        personal = risk("A familiar pattern may recur.", source_refs=("PRIOR-SYN-001@1",),
+                        personal_pattern=True)
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(value, forecast(personal, risk("Second."), risk("Third.")))
+
+    def test_personal_pattern_requires_an_actual_bool_and_does_not_change_rendering(self):
+        personal = risk("A pattern may recur.", personal_pattern=True,
+                        source_refs=("PROFILE-SYN-001@1",))
+        with self.assertRaises(AdvisorContractError):
+            render_forecast(bundle(), forecast(replace(personal, personal_pattern=1),
+                                               risk("Second."), risk("Third.")))
+        ordinary = replace(personal, personal_pattern=False, source_refs=("JD-SYN-001@1",))
+        self.assertEqual(render_forecast(bundle(), forecast(ordinary, risk("Second."), risk("Third."))),
+                         render_forecast(bundle(), forecast(personal, risk("Second."), risk("Third."))))
+
+    def test_renderer_resolves_canonical_evidence_and_hides_all_refs(self):
+        text = "Canonical synthetic evidence, never model supplied prose."
+        rendered = render_forecast(bundle(evidence=(candidate(text=text),)), forecast(
+            risk(evidence_refs=("E-SYN-001@1",)), risk("Second."), risk("Third.")))
+        self.assertIn(text, rendered)
+        for internal in ("E-SYN-001@1", "JD-SYN-001@1", "PROFILE-SYN-001@1"):
+            self.assertNotIn(internal, rendered)
+
+    def test_orchestration_and_stakeholder_scarcity_examples_render(self):
+        orchestration = risk("The role may require orchestration across vendors and teams.",
+            why_plausible="The accepted role context describes independent cross-functional owners.",
+            watch_for=("No single owner", "Vendor handoffs are unclear"),
+            if_confirmed="Name one accountable owner, map dependencies, and batch decisions.",
+            do_not_do="Do not add meetings without a decision owner.", certainty_target="company")
+        scarcity = risk("Internal stakeholders may be too busy for a meeting-heavy PM model.",
+            why_plausible="Role topology suggests cross-functional stakeholders with independent priorities.",
+            watch_for=("Hard to get time", "Approvals take forever", "Different time zones", "People are slammed"),
+            if_confirmed="Pivot to async intake, batched decisions, explicit owners and dates, and minimal synchronous burden.",
+            do_not_do="Do not propose more stakeholder meetings.", certainty_target="opportunity")
+        rendered = render_forecast(bundle(), forecast(orchestration, scarcity, risk("Third risk.")))
+        self.assertIn("Vendor handoffs are unclear", rendered)
+        self.assertIn("**Certainty target:** Company", rendered)
+        self.assertIn("People are slammed", rendered)
+        self.assertIn("minimal synchronous burden", rendered)
+        self.assertIn("**Do not:** Do not propose more stakeholder meetings.", rendered)
+
+    def test_forecast_adds_no_provider_notion_workflow_or_transcript_surface(self):
+        source = Path(advisor.__file__).read_text().lower()
+        self.assertNotIn("transcript", source)
+        self.assertNotIn("lifeos.interview.notion", source)
+        self.assertNotIn("openai", source)
+        self.assertNotIn("anthropic", source)
+        self.assertNotIn("workflow", source)
 
 
 if __name__ == "__main__":

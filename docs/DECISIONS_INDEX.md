@@ -1,0 +1,68 @@
+# Decision index
+
+One line per decision in `docs/DECISIONS.md`. Do not read that file whole: find the number here, then `grep -n "^## D<n> " -A6 docs/DECISIONS.md`.
+This index is checked by a test: add a line here with every new decision.
+
+- D1 - No unresolved jobs (HARD, 2026-09-30)
+- D2 - No tiered publishing (HARD, 2026-09-30)
+- D3 - Final apply link ranking (DECIDED)
+- D4 - Posting date / job age ranking (DECIDED, 2026-09-30)
+- D5 - Freshness window (DECIDED)
+- D6 - Reposted jobs (PROPOSED)
+- D7 - Privacy (HARD)
+- D8 - Notion (DECIDED)
+- D9 - Provider match scores (DECIDED)
+- D10 - Browser tooling (DECIDED, 2026-09-30; scope narrowed by D12)
+- D11 - TinyFish spending guard (HARD, 2026-09-30)
+- D12 - Browser is ONLY for the link chain (HARD, 2026-09-30)
+- D13 - Paid browser budget (RETIRED - code removed; the free Chromium in the runner and free Search/Fetch cover it)
+- D14 - Logins (HARD, 2026-09-30)
+- D6 advice - reposts (still PROPOSED until Jim answers)
+- D15 - Provider limits are canon (DECIDED)
+- D16 - Private evidence stays out of the public repo (DECIDED)
+- D17 - Ownership boundaries (DECIDED)
+- D18 - Shared test layer (DECIDED)
+- D19 - Fit is deterministic; no LLM in the chain (DECIDED)
+- D20 - One lane policy, data not code (DECIDED, 2026-10-01)
+- D21 - Retention follows the canon; Applied is never retired by Jobs yet (DECIDED, 2026-10-01)
+- D22 — Newsletter closure, Ledger read-back, market detection, shape probes
+- D23 — Open Jobs as a tail consumer; Teamtailor via RSS; Dice
+- D24 — Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff
+- D12 amendment (Jim, 2026-10-01; wording tightened after TL review): rendered-fetch fallback
+- D25 — One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)
+- D26 — Freshness has one authority; destructive Ledger operations ask the human-state guard
+- D27 — What the first live-shaped dry runs taught (run 85, 2026-10-01)
+- D28 — Lifecycle removed, Job Ledger target verified, guardrails as contract tests
+- D29 — Finalization is an allowlist; ambiguous repost identity is not auto-linked
+- D30 — Scheduled triggers are unreliable, so there are three per hour and a gate (2026-10-01)
+- D31 — An outside timer may TICK the same workflow; GitHub Actions still does all the work (Jim, 2026-10-01)
+- D32 — Scale-Up web acquisition is scheduled; the unused v7_runs table is retired (Jim, 2026-10-01)
+- D33 — The 17 Scale-Up sponsors with their own careers page are readable (Jim, 2026-10-01)
+- D34 — The remaining 12 Scale-Up sponsors: discovery first (Jim, 2026-10-01)
+- D35 — Lensa: one search per job and a 15-minute cap (Jim, 2026-10-01)
+- D36 — Discovery for the Scale-Up sponsors with no job board (Jim, 2026-10-01)
+- D37 — Published pages whose lane decision is EXCLUDE are trashed (Jim, 2026-10-01)
+- D38 — Shared runtime and redaction primitives; Interview handoff (Jim, 2026-10-01)
+- D39 — Interview Derived starts deterministic only (Jim, 2026-10-01)
+- D40 — Interview B2 machine creation is bounded and parent-first (Jim, 2026-10-01)
+- D41 — Interview B3 Derived is deterministic, bounded, and machine-owned (Jim, 2026-10-02)
+- D42 — Interview Advisor is source-grounded, model-mediated, preview-first
+- D43 — Advisor private store is bounded; previews are immutable and insert-only
+- D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
+- D51 — Revolut is fetched as Chrome (2026-10-01; verified on the runner: 363 jobs, was blocked)
+- D52 — A watchdog outside the pipeline raises the stale-pipeline alert (2026-10-02)
+- D53 — One alerts layer in the platform, with a phone push (2026-10-02)
+- D54 — Provider independence; Jira is read and rolled by V7 directly (2026-10-02)
+- D51 amendment — Futuristic needs the announced-bot header; Otto Car and Truvi move to fallback (2026-10-02)
+- D55 — Outlook is read by V7 directly through Microsoft Graph (2026-10-02)
+- D56 — Outlook invites are added to the person's own Google calendar, one way (2026-10-03)
+- D58 — The ChatGPT hourly task is a router of independent modules; Daily Report regions have exactly one owner (2026-10-03)
+- D57 — Outlook job newsletters feed Jobs OS and are filed into a J Newsletters folder (2026-10-03)
+- D61 — Dice and Reed Outlook alerts fail closed on parser misses (2026-10-03)
+- D62 — Dice tracking redirects use anonymous bounded resolution and fail closed
+- D63 — Bills are read as a complete private snapshot
+
+- D64 — V7 owns the Calendar Daily Report callout
+- D59 — Manual runs never block a tick (2026-10-03)
+- D60 — One HTTP retry helper, one stage registry, shared test fakes, one Python setup (2026-10-03)
+- D65 — Amazon order mail is filed only after canonical Notion read-back (2026-10-03)
