@@ -6,6 +6,7 @@ Errors from a stage are fixed codes only. Output is one counts-only line (public
 import argparse
 import functools
 import json
+import os
 import sys
 
 from lifeos.platform.db import StoreError
@@ -87,7 +88,7 @@ def _jira_card(limit, live):
 
 def _outlook_auth(limit, live):
     from lifeos.outlook import stage
-    return stage.auth(limit, live)
+    return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true")
 
 
 def _outlook_probe(limit, live):
