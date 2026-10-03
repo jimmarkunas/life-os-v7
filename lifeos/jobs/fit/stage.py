@@ -1,7 +1,7 @@
 """The `fit` stage: score every job that has a full description and no current score. Counts only in the log.
 
 Reads and writes are separate short connections; scoring is pure CPU between them. A job is re-scored when the model
-version, the private profile or the description changes. Each job is then judged by its lane policy (lifeos.jobs.lanes: Fit 72, work mode, explicit pay, age; a Newsletter job is judged
+version, the private profile or the description changes. Each job is then judged by its lane policy (lifeos.jobs.lanes: Fit 68, work mode, explicit pay, age; a Newsletter job is judged
 as US Remote) and the decision is stored. With V7_FIT_GATE=true an EXCLUDE READY job becomes EXCLUDED_FIT (never published) and
 only ADMIT / REVIEW publish; without it everything is recorded in shadow mode and publishing is unchanged.
 """

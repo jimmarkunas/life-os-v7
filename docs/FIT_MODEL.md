@@ -9,7 +9,7 @@ the secret is a derived projection stamped with a hash, and a changed profile re
    provider score, freshness (tested). Title-only or requirement-free postings are UNSCORABLE, not 0.
 2. **Gates** (`exclusions.py`): hard exclusions (clinical, healthcare, security clearance, federal/DoD, plus private rules).
    A gated job keeps its real Fit score; decision is No-Go and the line says `Excluded: <reason>`.
-Decision: **Go at 72 or higher** and no gate; otherwise No-Go.
+Decision: **Go at 68 or higher** and no gate; otherwise No-Go.
 
 ## Arithmetic (V3, ported from V2 `fit_arithmetic`)
 Dimensions: Role/Seniority 29 (title evidence is a separate channel, 29/4 of it), Functional 29, Technical/Platform 21,
