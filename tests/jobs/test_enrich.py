@@ -216,3 +216,21 @@ class OneBadPageTests(unittest.TestCase):
             counts = enrich.run(10, False)
         self.assertEqual(len(seen), 2)
         self.assertEqual(counts["outcome"], {"blocked": 1, "closed": 1})
+
+
+class EmployerFromThePageTests(unittest.TestCase):
+    HTML = ('<html><title>Senior Program Manager</title><script type="application/ld+json">{"@type":"JobPosting","title":"Senior Program Manager",'
+            '"hiringOrganization":{"@type":"Organization","name":"Acme Robotics, Inc."},"datePosted":"%s","description":"%s"}</script></html>')
+
+    def test_the_posting_names_its_employer_and_a_board_host_is_replaced_only_when_it_looks_like_one(self):
+        import re
+        from datetime import date
+        text = "<p>Responsibilities: lead delivery of the program and own stakeholder communication. Requirements: 8+ years of program management experience, strong skills.</p>" * 4
+        page = self.HTML % (date.today().isoformat(), text.replace('"', "'"))
+        result = enrich.parse_html("https://x.example/jobs/1", "Senior Program Manager", page)
+        self.assertEqual(result["outcome"], "ready")
+        self.assertEqual(result["company"], "Acme Robotics, Inc.")
+        for board in ("Edtech Com", "Showbizjobs Com", "Nomadjob Com", "Foundationccc Wd1 Myworkdayjobs Com", "Edtechjobs Io"):
+            self.assertTrue(re.search(enrich.BOARD_HOST_COMPANY, board, re.I), board)
+        for real in ("Stripe", "Acme Robotics, Inc.", "ServiceNow", "Community Health"):
+            self.assertFalse(re.search(enrich.BOARD_HOST_COMPANY, real, re.I), real)

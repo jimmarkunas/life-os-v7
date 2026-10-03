@@ -130,3 +130,11 @@ class FeedTests(unittest.TestCase):
 
     def test_company_from_slug(self):
         self.assertEqual(oj.company_from("acme-labs"), "Acme Labs")
+
+
+class CompanyNameTests(unittest.TestCase):
+    def test_a_workday_tenant_is_the_employer_and_a_job_board_keeps_its_host_words_for_enrich(self):
+        self.assertEqual(oj.company_from("foundationccc.wd1.myworkdayjobs.com"), "Foundationccc")
+        self.assertEqual(oj.company_from("cohesity.wd5.myworkdayjobs.com"), "Cohesity")
+        self.assertEqual(oj.company_from("edtech.com"), "Edtech Com")
+        self.assertEqual(oj.company_from("acme-labs"), "Acme Labs")

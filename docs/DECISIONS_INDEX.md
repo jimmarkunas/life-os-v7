@@ -92,3 +92,4 @@ This index is checked by a test: add a line here with every new decision.
 - D88 — Lensa: settle what other producers already settled before any search is spent (2026-10-03, Jim)
 - D89 — Fit is gated by profession, not only by requirements (2026-10-03, Jim)
 - D90 — One page per opening; education is not this profile; the canary (2026-10-03, Jim)
+- D91 — Open Jobs company names (2026-10-03, Jim)

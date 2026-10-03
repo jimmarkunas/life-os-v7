@@ -30,6 +30,16 @@ def job_posting(html):
     return None
 
 
+def hiring_organization(posting):
+    """The employer named by the posting's hiringOrganization (a name or an object with a name), cleaned, else None."""
+    org = (posting or {}).get("hiringOrganization")
+    if isinstance(org, list):
+        org = org[0] if org else None
+    name = org.get("name") if isinstance(org, dict) else org
+    name = " ".join(str(name or "").split())
+    return name[:200] if 2 <= len(name) else None
+
+
 def posted_date(posting):
     """datePosted as a date (YYYY-MM-DD or ISO datetime), else None."""
     value = str((posting or {}).get("datePosted") or "").strip()
