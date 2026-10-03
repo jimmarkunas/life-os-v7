@@ -59,5 +59,6 @@ This index is checked by a test: add a line here with every new decision.
 - D58 — The ChatGPT hourly task is a router of independent modules; Daily Report regions have exactly one owner (2026-10-03)
 - D57 — Outlook job newsletters feed Jobs OS and are filed into a J Newsletters folder (2026-10-03)
 - D61 — Dice and Reed Outlook alerts fail closed on parser misses (2026-10-03)
+- D62 — Dice tracking redirects use anonymous bounded resolution and fail closed
 - D59 — Manual runs never block a tick (2026-10-03)
 - D60 — One HTTP retry helper, one stage registry, shared test fakes, one Python setup (2026-10-03)

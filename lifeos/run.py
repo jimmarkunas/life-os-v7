@@ -66,6 +66,7 @@ STAGES = {
     "resolve-jobright": _jobright,
     "resolve-linkedin": _linkedin,
     "resolve-lensa": _lensa,
+    "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
     "web": lazy("lifeos.sources.web.run"),
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
     "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),

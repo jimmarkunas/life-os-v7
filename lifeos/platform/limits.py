@@ -29,6 +29,8 @@ NOTION_PER_RUN = 60                      # ours: pages created per run
 # LinkedIn (public guest pages only; never logged in)
 LINKEDIN_GUEST_GAP_SECONDS = 1.2         # ours; stop the stage on the first HTTP 429
 LINKEDIN_PER_RUN = 150
+DICE_GAP_SECONDS = 1.0                   # polite spacing between anonymous tracking-link requests
+DICE_PER_RUN = 40                        # bounded before the shared resolver deadline
 
 # Jobright (logged in with saved secrets)
 JOBRIGHT_PER_RUN = 40                    # one login per run
