@@ -9,7 +9,7 @@ Side tracks: A. Dice/Reed parsers (Codex, running)  B. Recruiter mail (TL, promp
 
 ```
 Repository: jimmarkunas/life-os-v7 (public). Branch from main. Open a PR, do not merge.
-Read docs/DECISIONS.md (D54-D58) first. V1 (jimmarkunas/life-os-automation) and V2
+Read AGENTS.md first. V1 (jimmarkunas/life-os-automation) and V2
 (jimmarkunas/life-os-v2) are read-only references: extract the smallest proven mechanic only.
 Rules: V7 must work with ChatGPT unavailable. platform/ imports nothing; OS packages import
 only platform; sources may import any OS. Credentials: other secrets blanked, secrets only on
