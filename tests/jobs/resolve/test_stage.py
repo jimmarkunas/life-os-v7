@@ -71,5 +71,38 @@ class WhyTests(unittest.TestCase):
         self.assertEqual(counts["refused"], {"hosts": {"acme.example": 2}, "query_keys": {"ref": 2, "utm": 1}})   # names only, never values or paths
 
 
+class ProvenanceTests(unittest.TestCase):
+    """An ambiguous link shape is accepted only when it was read off the job's own page; Enrich then proves it by title."""
+    URL = "https://careers-acme.icims.com/jobs/intro"
+
+    def _apply(self, **extra):
+        conn = FakeConn()
+        return stage.apply_result(conn, 1, {"outcome": "landed", "url": self.URL, "kind": "employer", **extra}), conn
+
+    def test_a_direct_link_with_an_ambiguous_shape_is_resolved_and_marked_unproven(self):
+        out, conn = self._apply(via="original_post")
+        self.assertEqual(out, "resolved")
+        update = [a for sql, a in conn.cur.sql if sql == "UPDATE v7_jobs"][-1]
+        self.assertIn("unproven", update)
+
+    def test_the_same_link_without_provenance_is_still_refused(self):
+        self.assertEqual(self._apply()[0], "pending")
+        self.assertEqual(self._apply(via="clicked")[0], "pending")
+
+    def test_a_bare_root_is_refused_whatever_its_provenance(self):
+        conn = FakeConn()
+        out = stage.apply_result(conn, 1, {"outcome": "landed", "url": "https://careers-acme.icims.com/", "kind": "employer", "via": "original_post"})
+        self.assertEqual(out, "pending")
+
+    def test_a_sound_link_carries_no_proof_mark(self):
+        conn = FakeConn()
+        stage.apply_result(conn, 1, {"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats", "via": "original_post"})
+        update = [a for sql, a in conn.cur.sql if sql == "UPDATE v7_jobs"][-1]
+        self.assertNotIn("unproven", update)
+
+    def test_why_names_it(self):
+        self.assertEqual(stage.why({"outcome": "landed", "url": self.URL, "kind": "employer", "via": "original_post"}), "landed_unproven")
+
+
 if __name__ == "__main__":
     unittest.main()

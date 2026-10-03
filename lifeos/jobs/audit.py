@@ -20,10 +20,10 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def judge(url, full_text):
-    """None when the row is sound, else a fixed reason code."""
+def judge(url, full_text, proven=False):
+    """None when the row is sound, else a fixed reason code. proven: Enrich proved the page by title, so an ambiguous link shape is no longer a reason."""
     problem = quality.url_problem(url)
-    if problem:
+    if problem and not (proven and problem in quality.AMBIGUOUS):
         return "audit_url_" + problem
     problem = quality.jd_problem(full_text)
     return "audit_jd_" + problem if problem else None
@@ -45,8 +45,10 @@ def run(limit, live, environ=os.environ):
                                " JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL"
                                " AND f.admission='EXCLUDE' ORDER BY j.id LIMIT %s", (limit,))
                 excluded = cursor.fetchall()
+            cursor.execute("SELECT id FROM v7_jobs WHERE link_proof='title' AND status IN ('READY','PUBLISHED')")
+            proven = {r[0] for r in cursor.fetchall()}
     counts["checked"] = len(rows)
-    bad = [(r, judge(r[2], r[4])) for r in rows]
+    bad = [(r, judge(r[2], r[4], r[0] in proven)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
     already = {r[0] for r, _ in bad}
     bad += [(r, "excluded_fit") for r in excluded if r[0] not in already]
