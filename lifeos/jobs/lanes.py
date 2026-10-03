@@ -66,6 +66,15 @@ class Decision:
 
 
 def qualify(policy, facts, today):
+    """D100: Review is for ONE open question on a job that otherwise clearly fits. A near-miss Fit (60-67) with any other evidence also unresolved
+    (work mode, posting date, route, geography) is not Review, it is EXCLUDE: two doubts on a weak fit is a miss, not a question for Jim."""
+    decision = _qualify(policy, facts, today)
+    if decision.status == REVIEW and facts.fit is not None and facts.fit < FIT_FLOOR and not (decision.reason or "").startswith("Fit "):
+        return Decision(EXCLUDE, f"Fit {facts.fit} below {FIT_FLOOR} and {decision.reason}")
+    return decision
+
+
+def _qualify(policy, facts, today):
     if not policy.enabled:
         return Decision(DISABLED, "lane disabled")
     if facts.market and facts.market != policy.market:
@@ -154,7 +163,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l10"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l11"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):

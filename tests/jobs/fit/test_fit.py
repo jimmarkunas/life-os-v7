@@ -313,3 +313,13 @@ class ScaleUpJunk(unittest.TestCase):
     def test_junior_and_graduate_titles_are_capped_below_the_review_band(self):
         for title in ("Junior Product Designer", "Systems Associate (Graduate/Entry-level opportunity)", "Content Operations Associate"):
             self.assertLessEqual(evaluate(title, "Acme", GOOD, PROFILE, TODAY).score, 55, title)
+
+
+class LegalComplianceTitles(unittest.TestCase):
+    def test_titles_from_the_adobe_flood_and_the_methodology_list_are_excluded_and_program_titles_are_not(self):
+        for title in ("Senior Manager, Legal Operations", "Senior Manager, Employee Relations", "Research Scientist (Applied) - IV", "AML Analyst",
+                      "Threat Intelligence / Reverse Engineering Investigator", "Senior Media Planner", "Compliance Officer"):
+            hard, _ = exclusions.check(title, "Acme", GOOD)
+            self.assertEqual(hard["id"], "legal_compliance", title)
+        for title in ("Sr Technology Compliance Product Owner", "Program Lead, e-Invoicing", "Senior Product Manager, AI Brand Visibility"):
+            self.assertIsNone(exclusions.check(title, "Acme", GOOD)[0], title)
