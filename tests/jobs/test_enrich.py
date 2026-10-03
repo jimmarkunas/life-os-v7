@@ -147,3 +147,47 @@ class MismatchTests(unittest.TestCase):
         self.assertIn("resolve_attempts=resolve_attempts+1", sql)
         self.assertIn("IF(resolve_attempts+1>=%s, 'HOLD', 'NEW')", sql)
         self.assertEqual((args[0], args[1], args[3]), (limits.RESOLVE_MAX_ATTEMPTS, "jd_listing", 7))
+
+
+class TitleProofTests(unittest.TestCase):
+    """A link whose shape cannot vouch for it (resolver accepted it on provenance) must be proven by the page's own title."""
+    AMBIGUOUS_URL = "https://careers-acme.icims.com/jobs/intro"          # no id anywhere: no_job_id
+
+    def _read(self, html, proof="unproven", url=None):
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
+            return enrich.read_page(url or self.AMBIGUOUS_URL, "Senior Data Engineer", None, proof)
+
+    def _page(self, page_title, body="x"):
+        today = enrich._now().date().isoformat()
+        return (f"<html><head><title>{page_title}</title><script type='application/ld+json'>"
+                '{"@type":"JobPosting","title":"%s","datePosted":"%s","description":"%s"}'
+                "</script></head><body>%s</body></html>") % (page_title, today, LONG.replace('"', "'"), body)
+
+    def test_the_right_title_proves_it_and_marks_the_job(self):
+        result = self._read(self._page("Senior Data Engineer"))
+        self.assertEqual((result["outcome"], result.get("proof")), ("ready", "title"))
+
+    def test_a_portal_page_whose_body_lists_the_title_is_not_proof(self):
+        body = "Open roles: Senior Data Engineer, Account Manager, Nurse, Welder, Driver"
+        result = self._read(self._page("Careers at Acme", body))
+        self.assertEqual(result["outcome"], "mismatch")
+
+    def test_a_login_wall_is_not_proof(self):
+        self.assertNotEqual(self._read("<html><head><title>Sign in</title></head><body>Please sign in to continue</body></html>")["outcome"], "ready")
+
+    def test_without_provenance_the_shape_still_refuses_before_any_fetch(self):
+        with mock.patch.object(enrich, "fetch", side_effect=AssertionError("must not fetch")):
+            self.assertEqual(enrich.read_page(self.AMBIGUOUS_URL, "Senior Data Engineer", None, None), {"outcome": "mismatch", "reason": "no_job_id"})
+
+    def test_a_bare_root_is_refused_even_with_provenance(self):
+        with mock.patch.object(enrich, "fetch", side_effect=AssertionError("must not fetch")):
+            self.assertEqual(enrich.read_page("https://careers-acme.icims.com/", "Senior Data Engineer", None, "unproven")["reason"], "root")
+
+    def test_a_sound_link_is_not_made_strict(self):
+        result = self._read(self._page("Software Engineer Data Platform Senior"), proof="unproven", url="https://careers.example.com/j/1")
+        self.assertNotIn("proof", result)                                  # shape is fine: the ordinary lenient check applies
+
+    def test_the_rendered_fallback_keeps_the_strict_proof(self):
+        self.assertTrue(enrich._strict(1, {1: (self.AMBIGUOUS_URL, "T")}, {1}))
+        self.assertFalse(enrich._strict(2, {2: (self.AMBIGUOUS_URL, "T")}, {1}))
+        self.assertFalse(enrich._strict(1, {1: ("https://careers.example.com/j/1", "T")}, {1}))

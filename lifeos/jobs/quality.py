@@ -59,6 +59,8 @@ def url_problem(url):
     return None if (has_id or slug) else "no_job_id"
 
 
+AMBIGUOUS = ("listing_url", "no_job_id")        # shape cannot say: a vacancy or a portal page. Only the page itself can (title proof). A root never qualifies.
+
 WORKABLE_NO_ACCOUNT = re.compile(r"^https?://apply\.workable\.com/j/[^/]+/?$", re.I)
 
 

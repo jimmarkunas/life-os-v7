@@ -116,6 +116,7 @@ COLUMNS = (
     ("v7_jobs", "provider_score", "SMALLINT NULL", None),
     ("v7_jobs", "posted_date", "DATE NULL", None),
     ("v7_jobs", "posted_source", "VARCHAR(16) NULL", None),
+    ("v7_jobs", "link_proof", "VARCHAR(16) NULL", None),          # NULL: the link shape is sound. unproven: ambiguous shape awaiting its title proof. title: proven by the page
     ("v7_jobs", "resolve_attempts", "SMALLINT NOT NULL DEFAULT 0", None),
     ("v7_jobs", "seen_count", "INT NOT NULL DEFAULT 1", None),
     ("v7_jobs", "repost_of", "BIGINT NULL", None),

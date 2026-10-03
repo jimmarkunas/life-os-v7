@@ -37,12 +37,22 @@ def pick_rows(connection, source, limit):
         return [tuple(row) for row in cursor.fetchall()]
 
 
+DIRECT_LINK = ("original_post", "page_data")     # the link was read off the job's own page (Jobright's "Original Job Post"), not reached by clicking around
+
+
+def unproven(result):
+    """True for a landing whose shape is ambiguous but whose provenance is direct: it may be RESOLVED, and Enrich must then prove it by the page title."""
+    url = result.get("url")
+    return bool(result.get("outcome") == "landed" and url and result.get("via") in DIRECT_LINK and quality.link_problem(url) in quality.AMBIGUOUS)
+
+
 def apply_result(connection, job_id, result):
     """Write one outcome. Returns 'resolved' | 'duplicate' | 'pending'."""
     now = _now()
     url, kind = result.get("url"), result.get("kind")
+    proof = "unproven" if unproven(result) else None
     with connection.cursor() as cursor:
-        if result.get("outcome") == "landed" and url and kind and quality.link_problem(url):
+        if result.get("outcome") == "landed" and url and kind and quality.link_problem(url) and not proof:
             result = {"outcome": "bad_link_" + quality.link_problem(url)}        # not a single-vacancy link: pending, never RESOLVED (Enrich would reject it)
             url = kind = None
         if result.get("outcome") == "landed" and url and kind:
@@ -51,8 +61,8 @@ def apply_result(connection, job_id, result):
                 cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, "
                                "updated_at=%s WHERE id=%s", ("dup_of_final_url", now, job_id))
                 return "duplicate"
-            cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind=%s, "
-                           "unresolved_reason=NULL, updated_at=%s WHERE id=%s", (url, kind, now, job_id))
+            cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind=%s, link_proof=%s, "
+                           "unresolved_reason=NULL, updated_at=%s WHERE id=%s", (url, kind, proof, now, job_id))
             return "resolved"
         reason = (result.get("outcome") or "unknown")[:100]
         bump = 0 if reason in ("deferred", "rate_limited") else 1        # not tried yet = not an attempt
@@ -66,6 +76,8 @@ def why(result):
     """The fixed reason a result is counted under: what landed, or why it did not (detail after the first colon is dropped)."""
     if result.get("outcome") == "landed":
         problem = result.get("url") and quality.link_problem(result["url"])
+        if problem and unproven(result):
+            return "landed_unproven"                                        # accepted on provenance; Enrich proves it by title
         return "bad_link_" + problem if problem else "landed:" + str(result.get("kind"))
     return str(result.get("outcome") or "unknown").split(":")[0]
 
@@ -73,7 +85,7 @@ def why(result):
 def note_refusal(counts, result, top=10):
     """Where refused landings come from, for diagnosis: the host and the NAMES of the query parameters (never paths or values)."""
     url = result.get("url")
-    if result.get("outcome") != "landed" or not url or not quality.link_problem(url):
+    if result.get("outcome") != "landed" or not url or not quality.link_problem(url) or unproven(result):
         return
     parts = urlsplit(url)
     refused = counts.setdefault("refused", {"hosts": {}, "query_keys": {}})

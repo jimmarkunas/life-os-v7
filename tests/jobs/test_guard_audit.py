@@ -38,3 +38,13 @@ class AuditNeverDestroysAPursuit(unittest.TestCase):
         from lifeos.jobs import audit
         source = inspect.getsource(audit.run)
         self.assertLess(source.index("guard.protection"), source.index('"in_trash"'))     # no trash call can precede the check
+
+
+class ProvenLinkTests(unittest.TestCase):
+    def test_a_title_proven_job_is_not_demoted_for_an_ambiguous_link_shape(self):
+        from lifeos.jobs import audit
+        text = "Responsibilities: build pipelines and own data quality across the platform. You will need experience with SQL and Python skills. " * 6
+        url = "https://careers-acme.icims.com/jobs/intro"
+        self.assertEqual(audit.judge(url, text), "audit_url_no_job_id")
+        self.assertIsNone(audit.judge(url, text, proven=True))
+        self.assertEqual(audit.judge("https://careers-acme.icims.com/", text, proven=True), "audit_url_root")      # a root is never excused
