@@ -69,27 +69,27 @@ class BillSnapshotTests(unittest.TestCase):
         database = BillsSnapshotDB()
         counts = snapshot.run(1, True, client=client,
                               now=datetime(2026, 4, 3, 0, 30, tzinfo=timezone.utc), connect=lambda: database)
-        self.assertEqual(counts, {"rows": 1, "active": 1, "paid": 0, "overdue": 1,
+        self.assertEqual(counts, {"rows": 1, "active": 1, "paid": 0, "stale_due": 1,
                                   "due_today": 1, "due_7d": 0, "saved": 1})
         self.assertEqual(snapshot.load(database)["rows"][0]["Next Due"], "2026-04-02")
         dry_counts = snapshot.run(1, False, client=DataSourcePages({"results": [page()], "has_more": False}),
                                   now=datetime(2026, 4, 2, tzinfo=timezone.utc))
-        self.assertEqual(set(dry_counts), {"rows", "active", "paid", "overdue", "due_today", "due_7d", "saved"})
+        self.assertEqual(set(dry_counts), {"rows", "active", "paid", "stale_due", "due_today", "due_7d", "saved"})
         self.assertNotIn("Example Cable", repr(dry_counts))
         self.assertNotIn("12.34", repr(dry_counts))
 
 
 class BillStateTests(unittest.TestCase):
-    def test_overdue_definition_and_every_exclusion(self):
+    def test_stale_due_definition_and_every_exclusion(self):
         overdue = {"Status": "Active", "Paid": False, "Cycle": "Monthly", "Due Date": "2026-04-01"}
         excluded = [
             {**overdue, "Paid": True}, {**overdue, "Status": "Inactive"},
             {**overdue, "Cycle": "Lifetime"}, {**overdue, "Cycle": "One Time"},
-            {**overdue, "Cycle": None}, {**overdue, "Due Date": None},
+            {**overdue, "Cycle": None}, {**overdue, "Due Date": None}, {**overdue, "Cycle": "4 Years"}, {**overdue, "Cycle": "Not A Cycle"},
             {**overdue, "Due Date": "2026-04-02"},
         ]
         buckets = state.classify([overdue, *excluded], TODAY)
-        self.assertEqual(buckets["overdue"], [overdue])
+        self.assertEqual(buckets["stale_due"], [overdue])
         self.assertEqual(len(buckets["paid"]), 1)
 
     def test_due_today_and_next_seven_days_use_chicago_date(self):

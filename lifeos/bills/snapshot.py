@@ -6,15 +6,13 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import db
 from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.snapshot_store import Store
 
 LOCAL_TZ = "America/Chicago"
 SCHEMA_V = 1
 CRITICAL = ("Name", "Status", "Cycle", "Paid", "Due Date", "Next Due")      # these drive the due-state: a surprise here fails closed
 FIELDS = CRITICAL + ("Last Paid", "Costs per Cycle", "Last Observed Amount")  # display-only: an unfamiliar shape (rollup, currency) is None, as in V1
-SCHEMA = ("""CREATE TABLE IF NOT EXISTS v7_bills_snapshot (
-    snapshot_id TINYINT NOT NULL PRIMARY KEY, taken_at DATETIME NOT NULL,
-    schema_v SMALLINT NOT NULL, payload MEDIUMTEXT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",)
+STORE = Store("v7_bills_snapshot")
 
 
 class BillsError(NotionError):
@@ -110,18 +108,11 @@ def _query_all(client):
 
 
 def save(connection, snapshot):
-    taken = datetime.fromisoformat(snapshot["taken_at"]).replace(tzinfo=None)
-    with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_bills_snapshot (snapshot_id, taken_at, schema_v, payload) VALUES (1,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE taken_at=VALUES(taken_at), schema_v=VALUES(schema_v), payload=VALUES(payload)",
-                       (taken, snapshot["schema"], json.dumps(snapshot, ensure_ascii=False)))
+    STORE.save(connection, 1, snapshot)
 
 
 def load(connection):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT payload FROM v7_bills_snapshot WHERE snapshot_id=1")
-        row = cursor.fetchone()
-    return json.loads(row[0]) if row else None
+    return STORE.load(connection, 1)
 
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
@@ -133,17 +124,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     from . import state
     buckets = state.classify(rows, now.date())
     counts = {"rows": len(rows), "active": sum(row["Status"] == "Active" for row in rows),
-              "paid": len(buckets["paid"]), "overdue": len(buckets["overdue"]),
+              "paid": len(buckets["paid"]), "stale_due": len(buckets["stale_due"]),
               "due_today": len(buckets["due_today"]), "due_7d": len(buckets["due_next_7_days"]), "saved": 0}
     if live:
         try:
             with (connect or db.connect)() as connection:
-                with connection.cursor() as cursor:
-                    for statement in SCHEMA:
-                        cursor.execute(statement)
-                save(connection, snapshot)
-                if load(connection) != snapshot:
-                    raise BillsError("BILLS_READBACK_MISMATCH")
+                STORE.save_verified(connection, 1, snapshot, lambda code: BillsError("BILLS_" + code))
         except BillsError:
             raise
         except Exception:

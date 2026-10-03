@@ -1,31 +1,17 @@
-"""Private storage for the Jira snapshot: one row per project, replaced each run (the database is private; this repo is not)."""
-import json
-from datetime import datetime
+"""Private storage for the Jira snapshot: one row per project (see platform/snapshot_store)."""
+from lifeos.platform.snapshot_store import Store
 
-SCHEMA = (
-    """CREATE TABLE IF NOT EXISTS v7_jira_snapshot (
-        project_key VARCHAR(16) NOT NULL PRIMARY KEY,
-        taken_at DATETIME NOT NULL, schema_v SMALLINT NOT NULL, payload MEDIUMTEXT NOT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-)
+_STORE = Store("v7_jira_snapshot", "project_key", "VARCHAR(16)")
+SCHEMA = _STORE.schema
 
 
 def ensure_schema(connection):
-    with connection.cursor() as cursor:
-        for statement in SCHEMA:
-            cursor.execute(statement)
+    _STORE.ensure(connection)
 
 
 def save(connection, snapshot):
-    taken = datetime.fromisoformat(snapshot["taken_at"]).replace(tzinfo=None)
-    with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO v7_jira_snapshot (project_key, taken_at, schema_v, payload) VALUES (%s,%s,%s,%s) "
-                       "ON DUPLICATE KEY UPDATE taken_at=VALUES(taken_at), schema_v=VALUES(schema_v), payload=VALUES(payload)",
-                       (snapshot["project"], taken, snapshot["schema"], json.dumps(snapshot, ensure_ascii=False)))
+    _STORE.save(connection, snapshot["project"], snapshot)
 
 
 def load(connection, project):
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT payload FROM v7_jira_snapshot WHERE project_key=%s", (project,))
-        row = cursor.fetchone()
-    return json.loads(row[0]) if row else None
+    return _STORE.load(connection, project)

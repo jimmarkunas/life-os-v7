@@ -64,7 +64,7 @@ class BillsSnapshotDB:
     def execute(self, sql, args=()):
         self.sql.append(sql)
         if sql.startswith("INSERT INTO v7_bills_snapshot"):
-            self.payload = args[2]
+            self.payload = args[-1]
 
     def fetchone(self):
         return (self.payload,) if self.payload is not None else None
@@ -90,7 +90,7 @@ class AgendaSnapshotDB:
     def execute(self, sql, args=()):
         self.sql.append(sql)
         if sql.startswith("INSERT INTO v7_bills_snapshot") or sql.startswith("INSERT INTO v7_agenda_snapshot"):
-            self.payload = args[2]
+            self.payload = args[-1]
 
     def fetchone(self):
         return (self.payload,) if self.payload is not None else None
