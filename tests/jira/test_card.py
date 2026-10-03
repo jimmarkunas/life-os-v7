@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.jira import card
 from lifeos.jira.card import CardError
+from tests.kit.notion import FakeBlocks
 
 TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 7, 9, 0, tzinfo=TZ)
@@ -26,40 +27,6 @@ def snapshot(taken=NOW, **over):
     snap.update(over)
     return snap
 
-
-class FakeNotion:
-    def __init__(self, kids):
-        self.kids, self.log, self.n = list(kids), [], 100
-
-    def call(self, method, path, body=None):
-        self.log.append(method)
-        if method == "GET":
-            return {"results": [dict(k) for k in self.kids], "has_more": False}
-        if method == "DELETE":
-            bid = path.rsplit("/", 1)[1]
-            self.kids = [k for k in self.kids if k["id"] != bid]
-            return {}
-        if method == "PATCH" and path.startswith("/blocks/") and "children" not in path:
-            for k in self.kids:
-                if k["id"] == path.rsplit("/", 1)[1]:
-                    k["paragraph"] = body["paragraph"]
-            return {}
-        raise AssertionError(path)
-
-    def call_once(self, method, path, body=None):
-        self.log.append("APPEND")
-        if path != "/blocks/card-1/children":
-            return {"results": [self._made(b) for b in body["children"]]}
-        made = []
-        for b in body["children"]:
-            made.append(self._made(b))
-            self.kids.append(made[-1])
-        return {"results": made}
-
-    def _made(self, b):
-        self.n += 1
-        t = b["type"]
-        return {"id": f"b{self.n}", "type": t, t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]}}
 
 
 def heading(text="JIRA Execution"):
@@ -143,7 +110,7 @@ class GtvTests(unittest.TestCase):
         snaps = {"AAA": self.gtv(issue("AAA-70", priority="High"), issue("AAA-71"))}
         previous = {"id": "g", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "GTV Action \u00b7 AAA-71 \u2014 Private summary"}]}}
         status = {"id": "s", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "V7 \u00b7 updated 6:00 AM CT"}]}}
-        client = FakeNotion([heading(), status, previous])
+        client = FakeBlocks([heading(), status, previous])
         out = card.run(1, True, environ=dict(ENV, JIRA_GTV_CONTEXT_URL="https://example.invalid/ctx"), client=client, now=NOW, connect=conn(snaps))
         self.assertEqual(out["gtv"], 1)
         text = json.dumps([k for k in client.kids])
@@ -159,7 +126,7 @@ class WriteTests(unittest.TestCase):
 
     def run_card(self, kids, live=True, snaps=None, now=NOW):
         snaps = snaps if snaps is not None else {"AAA": snapshot()}
-        client = FakeNotion(kids)
+        client = FakeBlocks(kids)
         out = card.run(1, live, environ=ENV, client=client, now=now, connect=conn(snaps))
         return out, client
 
@@ -177,7 +144,7 @@ class WriteTests(unittest.TestCase):
         self.assertLess(client.log.index("APPEND"), client.log.index("DELETE"))      # add first, remove after
 
     def test_a_block_that_does_not_open_with_the_heading_is_never_touched(self):
-        client = FakeNotion([old(1)])
+        client = FakeBlocks([old(1)])
         with self.assertRaises(CardError) as ctx:
             card.run(1, True, environ=ENV, client=client, now=NOW, connect=conn({"AAA": snapshot()}))
         self.assertEqual(str(ctx.exception), "JIRA_CARD_NOT_OWNED")
@@ -200,7 +167,7 @@ class WriteTests(unittest.TestCase):
 
     def test_config_codes(self):
         with self.assertRaises(CardError):
-            card.run(1, False, environ={"JIRA_BOARDS": "AAA:1"}, client=FakeNotion([]), now=NOW)
+            card.run(1, False, environ={"JIRA_BOARDS": "AAA:1"}, client=FakeBlocks([]), now=NOW)
         self.assertEqual(card.card_projects({"JIRA_BOARDS": "AAA:1,BBB:2"}), ["AAA"])
         with self.assertRaises(CardError):
             card.card_projects({"JIRA_BOARDS": "AAA:1", "JIRA_CARD_PROJECTS": "ZZZ"})
