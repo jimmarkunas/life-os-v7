@@ -79,6 +79,26 @@ DATA_JS = """(keys) => { const out = [];
   return out; }"""
 
 
+STATE_JS = """() => { const out = new Set();
+  const want = /expir|clos|status|active|publish|poste?d|live|valid|open|stale|remov/i;
+  const walk = (o, d) => { if (!o || d > 12 || out.size > 40) return;
+    if (Array.isArray(o)) { o.slice(0, 3).forEach(x => walk(x, d + 1)); return; }
+    if (typeof o === 'object') for (const [k, v] of Object.entries(o)) {
+      if (want.test(k) && typeof v !== 'object') out.add(typeof v === 'boolean' ? k + '=' + v : k + ':' + typeof v); else walk(v, d + 1); } };
+  const el = document.getElementById('__NEXT_DATA__');
+  if (el) { try { walk(JSON.parse(el.textContent), 0); } catch (e) {} }
+  return Array.from(out); }"""
+
+
+async def page_state_keys(page):
+    """Diagnostic only: NAMES of the job page's own liveness-like fields (a boolean shows its value; everything else shows only its type). No titles, text or urls.
+    Tells us whether Jobright says if a job is still open, so its description could stand in for an unreadable employer page."""
+    try:
+        return [str(k)[:40] for k in (await page.evaluate(STATE_JS))][:40]
+    except Exception:                                           # noqa: BLE001
+        return []
+
+
 def strip_tracking(url):
     """Drop Jobright's own tracking parameter (jr_id) from an employer URL."""
     parts = urlsplit(url)
@@ -116,7 +136,7 @@ async def follow(context, page, job_url, wait_ms=12000):
         found, via = await page_data_link(page), "page_data"
     if found:
         kind, final = outcome_for(strip_tracking(found), False)
-        return {"outcome": "landed", "via": via, "kind": kind, "url": final}
+        return {"outcome": "landed", "via": via, "kind": kind, "url": final, "page_keys": await page_state_keys(page)}
     try:
         await page.locator(APPLY_XPATH).first.wait_for(timeout=wait_ms)
     except Exception:                                           # noqa: BLE001
