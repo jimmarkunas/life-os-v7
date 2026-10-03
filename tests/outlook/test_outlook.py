@@ -135,8 +135,10 @@ class ClientTests(unittest.TestCase):
 
 
 class FakeDb:
+    """Just enough of the token table: rows are {account: [refresh_token, fingerprint]}."""
+
     def __init__(self, rows=None):
-        self.rows, self.sql = dict(rows or {}), []
+        self.rows = {k: list(v) if isinstance(v, (list, tuple)) else [v, None] for k, v in (rows or {}).items()}
 
     def connect(self):
         db = self
@@ -146,49 +148,97 @@ class FakeDb:
             def __exit__(self, *e): return False
 
             def execute(self, sql, args=None):
-                db.sql.append(sql.split()[0])
-                self.args, self.q = args, sql
+                self.out = []
+                if "information_schema" in sql:
+                    self.out = [(1,)]
+                elif sql.startswith("INSERT"):
+                    account, token, _, fp = args
+                    old = db.rows.get(account, [None, None])
+                    db.rows[account] = [token, fp if fp is not None else old[1]]
+                elif sql.startswith("SELECT refresh_token"):
+                    self.out = [(db.rows[args[0]][0],)] if args[0] in db.rows else []
+                elif sql.startswith("SELECT fingerprint"):
+                    self.out = [(db.rows[args[0]][1],)] if args[0] in db.rows else []
+                elif "WHERE fingerprint" in sql:
+                    self.out = [(k,) for k, v in db.rows.items() if v[1] == args[0]]
+                elif sql.startswith("SELECT account"):
+                    self.out = [(k,) for k in sorted(db.rows)]
 
             def fetchone(self):
-                return (db.rows[self.args[0]],) if self.args[0] in db.rows else None
+                return self.out[0] if self.out else None
 
             def fetchall(self):
-                return [(k,) for k in sorted(db.rows)]
+                return self.out
 
         class Conn:
             def cursor(self): return Cursor()
-
             def __enter__(self): return self
             def __exit__(self, *e): return False
 
-        # emulate INSERT ... ON DUPLICATE by hooking execute
-        conn = Conn()
-        orig = Cursor.execute
+        return Conn()
 
-        def execute(self, sql, args=None):
-            orig(self, sql, args)
-            if sql.startswith("INSERT"):
-                db.rows[args[0]] = args[1]
 
-        Cursor.execute = execute
-        return conn
+class Mailbox:
+    """Stands in for the Graph client during sign-in: each refresh token belongs to one mailbox."""
+
+    def __init__(self, ids):
+        self.ids = ids
+
+    def __call__(self, client_id, token):
+        mailbox_id = self.ids[token]
+
+        class One:
+            def get(self, path, params=None):
+                return {"id": mailbox_id}
+
+        return One()
 
 
 class StageTests(unittest.TestCase):
     ENV = {"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "personal"}
 
+    def sign_in(self, db, token, env=None, replace=False, ids=None):
+        said = []
+        with patch.object(stage, "device_start", return_value={"device_code": "D", "user_code": "ABCD-1234",
+                                                               "verification_uri": "https://example.invalid/device"}), \
+                patch.object(stage, "device_wait", return_value={"refresh_token": token}):
+            out = stage.auth(1, True, environ=env or self.ENV, connect=db.connect, say=said.append, replace=replace,
+                             client_factory=Mailbox(ids or {"SECRET-REFRESH": "inbox-1", "OTHER": "inbox-2"}))
+        return out, said
+
     def test_auth_dry_run_saves_nothing_and_live_saves_the_token_without_printing_it(self):
         db = FakeDb()
         out = stage.auth(1, False, environ=self.ENV, connect=db.connect)
         self.assertEqual((out["signed_in"], db.rows), (0, {}))
-        said = []
-        with patch.object(stage, "device_start", return_value={"device_code": "D", "user_code": "ABCD-1234",
-                                                               "verification_uri": "https://example.invalid/device"}), \
-                patch.object(stage, "device_wait", return_value={"refresh_token": "SECRET-REFRESH"}):
-            out = stage.auth(1, True, environ=self.ENV, connect=db.connect, say=said.append)
-        self.assertEqual((out["signed_in"], db.rows), (1, {"personal": "SECRET-REFRESH"}))
+        out, said = self.sign_in(db, "SECRET-REFRESH")
+        self.assertEqual(out["signed_in"], 1)
+        self.assertEqual(db.rows["personal"][0], "SECRET-REFRESH")
         self.assertTrue(any("ABCD-1234" in line for line in said))
         self.assertFalse(any("SECRET-REFRESH" in line for line in said))
+
+    def test_a_second_mailbox_cannot_silently_replace_the_first_and_one_mailbox_cannot_hold_two_labels(self):
+        db = FakeDb()
+        self.sign_in(db, "SECRET-REFRESH")
+        with self.assertRaises(OutlookError) as error:                       # same label, different mailbox
+            self.sign_in(db, "OTHER")
+        self.assertEqual(str(error.exception), "OUTLOOK_LABEL_HOLDS_A_DIFFERENT_MAILBOX")
+        self.assertEqual(db.rows["personal"][0], "SECRET-REFRESH")
+        with self.assertRaises(OutlookError) as error:                       # same mailbox, different label
+            self.sign_in(db, "SECRET-REFRESH", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})
+        self.assertEqual(str(error.exception), "OUTLOOK_MAILBOX_ALREADY_SIGNED_IN_AS_OTHER_LABEL")
+        self.sign_in(db, "OTHER", env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})   # a different mailbox on a free label
+        self.assertEqual(sorted(db.rows), ["personal", "work"])
+        self.sign_in(db, "OTHER", replace=True, env={"OUTLOOK_CLIENT_ID": "cid", "OUTLOOK_ACCOUNT": "work"})   # same mailbox again is fine
+
+    def test_an_unfingerprinted_legacy_row_may_be_replaced_and_a_rotated_token_keeps_the_fingerprint(self):
+        db = FakeDb({"personal": ["OLD", None]})
+        self.sign_in(db, "SECRET-REFRESH")
+        self.assertEqual(db.rows["personal"][0], "SECRET-REFRESH")
+        fp = db.rows["personal"][1]
+        self.assertTrue(fp)
+        from lifeos.outlook import store as s
+        s.save(db.connect(), "personal", "ROTATED")
+        self.assertEqual(db.rows["personal"], ["ROTATED", fp])
 
     def test_config_must_name_a_known_label_and_a_client_id(self):
         for env in ({"OUTLOOK_CLIENT_ID": "c", "OUTLOOK_ACCOUNT": "not-a-known-label"}, {"OUTLOOK_ACCOUNT": "personal"}):
@@ -196,7 +246,7 @@ class StageTests(unittest.TestCase):
                 stage.auth(1, True, environ=env, connect=FakeDb().connect)
 
     def test_probe_reports_counts_by_position_and_fails_if_any_account_fails_or_none_exist(self):
-        db = FakeDb({"personal": "R1", "work": "R2"})
+        db = FakeDb({"personal": ["R1", "f1"], "work": ["R2", "f2"]})
 
         class Ok:
             def __init__(self, cid, token, save): self.token = token
