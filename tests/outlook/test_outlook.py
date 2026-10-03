@@ -221,6 +221,10 @@ class StageTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     text = (ROOT / ".github/workflows/outlook.yml").read_text()
 
+    def test_the_sign_in_code_is_visible_while_the_run_waits(self):
+        self.assertIn("python -u -m lifeos.run outlook-auth", self.text)         # unbuffered: the code must not wait for process exit
+        self.assertIn("print(line, flush=True)", (ROOT / "lifeos/outlook/stage.py").read_text())
+
     def test_manual_only_and_only_the_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", self.text))),

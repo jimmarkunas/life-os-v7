@@ -49,7 +49,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Outlook sign-in (live only)
         if: ${{ inputs.action == 'auth' }}
-        run: python -m lifeos.run outlook-auth $([ "${{ inputs.live }}" = "true" ] && echo --live)
+        run: python -u -m lifeos.run outlook-auth $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Outlook probe (read-only; counts only)
         if: ${{ inputs.action == 'probe' }}
         run: python -m lifeos.run outlook-probe

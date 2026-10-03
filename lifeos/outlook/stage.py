@@ -29,7 +29,7 @@ def _connect():
     return db.connect()
 
 
-def auth(limit, live, environ=os.environ, connect=None, sleep=time.sleep, clock=time.monotonic, say=print):
+def auth(limit, live, environ=os.environ, connect=None, sleep=time.sleep, clock=time.monotonic, say=lambda line: print(line, flush=True)):
     """Needs `live`: signing in is the one thing that must be saved, so a dry run only checks the configuration."""
     label, client_id = _label(environ), _client_id(environ)
     if not live:
