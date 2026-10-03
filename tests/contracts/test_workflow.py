@@ -41,10 +41,21 @@ class IsolatedJobTests(unittest.TestCase):
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
         self.assertGreater(len(shared), 10)
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}                  # the Interview job reads the Hiring Pipeline page by id
-        for name in ("interview", "jira", "outlook"):
+        for name in ("interview", "jira", "outlook", "bills"):
             env = doc["jobs"][name].get("env") or {}
             leaked = sorted(k for k in shared if k not in needs.get(name, ()) and env.get(k) not in ("",))
             self.assertEqual(leaked, [], f"{name} inherits {leaked}")
+
+    def test_bills_receives_only_its_notion_and_database_credentials(self):
+        import yaml
+        from pathlib import Path
+        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
+        job = doc["jobs"]["bills"]
+        step = next(step for step in job["steps"] if step.get("id") == "bsnap")
+        self.assertEqual(set(step.get("env", {})), {
+            "NOTION_BILLS_TOKEN", "NOTION_BILLS_DATA_SOURCE_ID", "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+            "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_PORT",
+            "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_KNOWN_HOSTS", "LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_USER"})
 
     def test_python_setup_is_declared_once(self):
         from pathlib import Path

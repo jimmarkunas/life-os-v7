@@ -64,3 +64,10 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 2. In Google Calendar open your calendar's settings, **Share with specific people**, add the service account's email with **Make changes to events**, and copy the **Calendar ID** (Integrate calendar; for your main calendar it is your own address).
 3. Add Actions secrets `GCAL_SERVICE_ACCOUNT_JSON` (the whole key file) and `GCAL_CALENDAR_ID`.
 4. Run the **calendar** workflow with **live** unticked first (counts only), then ticked. `CALENDAR_ACCOUNTS` (optional, comma-separated labels, default `personal`) chooses which signed-in mailboxes to add.
+
+### Bills snapshot (read-only Notion)
+
+1. Create a separate Notion integration with read-only access and share only the Bill Tracker data source with it.
+2. Add the integration token as the Actions secret `NOTION_BILLS_TOKEN`.
+3. Add the Bill Tracker data source ID as the Actions secret `NOTION_BILLS_DATA_SOURCE_ID`.
+4. Run the **bills** workflow with **Save snapshot** unticked first; it reads every page and prints counts only. Tick it to save the complete snapshot to the private database.

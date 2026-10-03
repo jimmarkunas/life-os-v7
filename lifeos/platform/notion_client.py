@@ -22,9 +22,10 @@ def rich_text(content):
 
 
 class Client:
-    def __init__(self, environ=os.environ, clock=time.monotonic, sleep=time.sleep):
-        self.token = (environ.get("NOTION_API_TOKEN") or "").strip()
-        self.source = (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip().replace("collection://", "")
+    def __init__(self, environ=os.environ, clock=time.monotonic, sleep=time.sleep,
+                 token_name="NOTION_API_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID"):
+        self.token = (environ.get(token_name) or "").strip()
+        self.source = (environ.get(source_name) or "").strip().replace("collection://", "")
         if not self.token or not self.source:
             raise NotionError("NOTION_CONFIG_MISSING")
         self._clock, self._sleep, self._last = clock, sleep, 0.0
@@ -36,6 +37,13 @@ class Client:
     def call_once(self, method, path, body=None):
         """Perform one request without retrying an operation with uncertain write outcome."""
         return self._call(method, path, body, 1)
+
+    def query_data_source(self, source_id=None, body=None):
+        """Read one data-source page through the shared pacing and retry path."""
+        source = (source_id or self.source).strip().replace("collection://", "")
+        if not source or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-" for ch in source):
+            raise NotionError("NOTION_SOURCE_INVALID")
+        return self.call("POST", f"/data_sources/{source}/query", body or {"page_size": limits.NOTION_PAGE_SIZE})
 
     def _call(self, method, path, body, attempts):
         for attempt in range(attempts):

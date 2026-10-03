@@ -327,6 +327,9 @@ Outlook Dice alerts use only non-decoy text links on `elinks.dice.com/a/sc/`; im
 ## D62 — Dice tracking redirects use anonymous bounded resolution and fail closed
 The Dice resolver attempts read-only HTTPS GETs through `platform.http.fetch`, with no login or cookies. Only a final `dice.com` or `www.dice.com` job-detail path is accepted and normalized; errors stay pending, while a 429 stops further requests for the run. Pacing is one second per request, capped at 40 per run, using the shared resolver deadline. The scheduled/tick workflow runs it without adding a dispatch input; manual runs use `python -m lifeos.run resolve-dice`. GitHub runner access to a real tracking link remains unverified and needs a dry run.
 
+## D63 — Bills are read as a complete private snapshot
+The Bills OS reads every Bill Tracker data-source page through the official Notion API, including evaluated formula values, and saves a single complete snapshot to the private database only when live. A failed or incomplete Notion read cannot replace the previous snapshot. Due-state is calculated from the saved snapshot using the America/Chicago date; the hourly Bills job is isolated and non-blocking, and manual runs use the separate `bills` workflow. Notion access and real Bill Tracker property shapes remain unverified until the read-only workflow is configured and run.
+
 ## D59 — Manual runs never block a tick (2026-10-03)
 The hourly workflow now sets `run-name` to `tick` for scheduled and timer runs and `manual` for everything else; the gate counts only `tick` runs when deciding to skip. A manual run used to cancel the next hourly tick (it started within 50 minutes). Manual and tick runs may now overlap in time; the workflow's concurrency group queues them. The first tick after this change may not be skipped by an older run, which was titled `hourly`.
 

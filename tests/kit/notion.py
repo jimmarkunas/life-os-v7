@@ -35,3 +35,19 @@ class FakeBlocks:
         self.n += 1
         t = b["type"]
         return {"id": f"b{self.n}", "type": t, t: {"rich_text": [{"plain_text": r["text"]["content"]} for r in b[t]["rich_text"]]}}
+
+
+class DataSourcePages:
+    """Scripted synthetic Notion data-source pages for complete-read and failure tests."""
+
+    def __init__(self, *pages):
+        self.pages, self.requests = list(pages), []
+
+    def query_data_source(self, source_id=None, body=None):
+        self.requests.append((source_id, dict(body or {})))
+        if not self.pages:
+            raise AssertionError("unexpected extra Notion query")
+        page = self.pages.pop(0)
+        if isinstance(page, BaseException):
+            raise page
+        return page

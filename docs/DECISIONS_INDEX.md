@@ -60,5 +60,6 @@ This index is checked by a test: add a line here with every new decision.
 - D57 — Outlook job newsletters feed Jobs OS and are filed into a J Newsletters folder (2026-10-03)
 - D61 — Dice and Reed Outlook alerts fail closed on parser misses (2026-10-03)
 - D62 — Dice tracking redirects use anonymous bounded resolution and fail closed
+- D63 — Bills are read as a complete private snapshot
 - D59 — Manual runs never block a tick (2026-10-03)
 - D60 — One HTTP retry helper, one stage registry, shared test fakes, one Python setup (2026-10-03)
