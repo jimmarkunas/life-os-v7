@@ -2,8 +2,11 @@ name: domains
 run-name: ${{ github.event_name == 'workflow_run' && 'domains (after tick)' || 'domains (manual)' }}
 # The V7 domain jobs: Jira, Outlook (newsletters + calendar sync), Bills, Agenda (Calendar card) and Amazon Orders. Each reads or writes ONE provider and none
 # touches the Jobs pipeline, so they live apart from hourly.yml: this workflow declares NO secrets at the top, so a job can only see what its own steps pass it
-# (isolation by construction, not by blanking). Failures are warnings. Stage 1 (now): manual only. Stage 2 adds the workflow_run trigger after hourly.
+# (isolation by construction, not by blanking). Failures are warnings. Runs by itself a few minutes after every hourly TICK (not after a manual hourly run or one the gate cancelled), and by hand with the inputs below.
 on:
+  workflow_run:
+    workflows: ["hourly"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       all:

@@ -271,24 +271,24 @@ class WorkflowTests(unittest.TestCase):
 
 
 class HourlyJobTests(unittest.TestCase):
-    text = (ROOT / ".github/workflows/hourly.yml").read_text()
+    text = (ROOT / ".github/workflows/domains.yml").read_text()
 
     def job(self):
-        return self.text[self.text.index("\n  outlook:\n"):self.text.index("\n  report:\n")]
+        return self.text[self.text.index("\n  outlook:\n"):self.text.index("\n  bills:\n")]
 
-    def test_runs_on_scheduled_and_tick_runs_only_and_never_fails_the_jobs_run(self):
+    def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
-        self.assertIn("github.event_name != 'workflow_dispatch' || inputs.tick", job.split("runs-on")[0])
+        self.assertIn("github.event_name == 'workflow_run'", job.split("runs-on")[0])
         self.assertEqual(job.count("continue-on-error: true"), 2)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
 
-    def test_other_credentials_are_blank_and_only_the_one_step_gets_the_calendar_outlook_and_database_secrets(self):
+    def test_only_the_outlook_steps_get_the_calendar_outlook_and_database_secrets(self):
         job = self.job()
         head, steps = job.split("    steps:")
-        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
-            self.assertIn(f'{name}: ""', head, name)
         self.assertNotIn("secrets.", head)
+        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
+            self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", steps))),
                          sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
