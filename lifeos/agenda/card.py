@@ -64,9 +64,14 @@ def _tree(client, block):
     return node
 
 
+def _same_id(left, right):
+    """Notion answers with hyphenated ids; a block link (and so the secret) carries them without. Same id either way."""
+    return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
+
+
 def _region_digest(client, block_id):
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout" or meta.get("id") != block_id:
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
         raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
     tree = _tree(client, meta)
     encoded = json.dumps(tree, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -96,7 +101,7 @@ def _target(client, block_id):
     # The configured ID is the single authority for this region (D58: one owner per region);
     # scanning the Daily Report tree would be costly and is intentionally unnecessary.
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
-    if not isinstance(meta, dict) or meta.get("type") != "callout" or meta.get("id") != block_id:
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
         raise CardError("AGENDA_CARD_NOT_OWNED")
     blocks = _children(client, block_id)
     if not _owned(blocks):

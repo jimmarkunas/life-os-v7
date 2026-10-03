@@ -208,3 +208,30 @@ class RealCalendarShapeTests(unittest.TestCase):
     def test_an_event_that_ends_before_it_starts_is_still_invalid(self):
         with self.assertRaises(snapshot.AgendaError):
             self.compact(timed("b1", "x", start="2026-03-08T11:00:00-05:00", end="2026-03-08T10:00:00-05:00"))
+
+
+class HyphenatedIdTests(unittest.TestCase):
+    """The API returns ids with hyphens; the secret (copied from a block link) has none. The card must still find its block."""
+
+    HYPHENATED = "fc809376-99e6-45a2-ac96-257d093d8e7c"
+    PLAIN = "fc80937699e645a2ac96257d093d8e7c"
+
+    class Client:
+        def __init__(self, hyphenated):
+            self.hyphenated = hyphenated
+
+        def call(self, method, path, body=None):
+            if path.endswith("/children?page_size=100"):
+                heading = {"object": "block", "id": "h1", "type": "heading_3", "has_children": False,
+                           "heading_3": {"rich_text": [{"plain_text": "Calendar"}]}}
+                return {"results": [heading], "has_more": False}
+            return {"object": "block", "id": self.hyphenated, "type": "callout", "has_children": True}
+
+    def test_a_plain_secret_matches_the_hyphenated_api_id(self):
+        blocks = card._target(self.Client(self.HYPHENATED), self.PLAIN)
+        self.assertEqual(len(blocks), 1)
+
+    def test_a_different_block_is_still_refused(self):
+        with self.assertRaises(card.CardError) as error:
+            card._target(self.Client("00000000-0000-0000-0000-000000000000"), self.PLAIN)
+        self.assertEqual(str(error.exception), "AGENDA_CARD_NOT_OWNED")
