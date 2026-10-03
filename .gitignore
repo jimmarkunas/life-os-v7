@@ -3,3 +3,6 @@ __pycache__/
 .env
 secrets.env
 *.log
+.venv/
+venv/
+.DS_Store
