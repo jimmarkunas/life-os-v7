@@ -207,3 +207,13 @@ class ProfileLoading(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RequeueFloorTests(unittest.TestCase):
+    def test_one_statement_for_old_floor_exclusions_only(self):
+        from lifeos.jobs.fit import stage
+        from tests.kit.db import FakeConn
+        conn = FakeConn()
+        conn.cur.rowcount = 7
+        self.assertEqual(stage.requeue_floor(conn.cursor()), 7)
+        self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_jobs"])

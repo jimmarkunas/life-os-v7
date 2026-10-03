@@ -85,3 +85,4 @@ This index is checked by a test: add a line here with every new decision.
 - D81 — Fit floor 68; below the floor is Review, not Excluded (2026-10-03, Jim)
 - D82 — Pipeline funnel report (2026-10-03, Jim)
 - D83 — One unreadable page never stops Enrich (2026-10-03, Jim)
+- D84 — Fit 60-67 is Review, below 60 is excluded; one-time requeue of old-floor exclusions (2026-10-03, Jim)

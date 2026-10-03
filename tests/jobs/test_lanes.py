@@ -164,3 +164,12 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(lanes.qualify(lanes.POLICIES["US Remote"], facts, date(2026, 10, 1)).status, lanes.EXCLUDE)
         facts = lanes.facts_for(80, "Program Manager", "Remote", "remote", None, date(2026, 10, 1), date(2026, 10, 1))
         self.assertEqual(lanes.qualify(lanes.POLICIES["US Remote"], facts, date(2026, 10, 1)).status, lanes.ADMIT)
+
+
+class ReviewBand(unittest.TestCase):
+    def test_60_to_67_is_review_and_below_60_is_excluded(self):
+        for policy, facts in ((US, us), (SCALE, uk)):
+            self.assertEqual(qualify(policy, facts(fit=59), TODAY).status, EXCLUDE)
+            self.assertEqual(qualify(policy, facts(fit=60), TODAY).status, REVIEW)
+            self.assertEqual(qualify(policy, facts(fit=67), TODAY).status, REVIEW)
+            self.assertEqual(qualify(policy, facts(fit=68), TODAY).status, ADMIT)
