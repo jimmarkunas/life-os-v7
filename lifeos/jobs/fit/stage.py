@@ -19,7 +19,8 @@ PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.
         " WHERE j.status IN (%s) AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
-ALL = OPEN + ("'PUBLISHED'", "'EXCLUDED_FIT'")          # FIT_ALL=true: also re-score jobs already published (calibration)
+AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also re-scores published jobs whose score is stale (model, policy, profile or description changed); the audit then clears the ones now excluded
+ALL = AUTO + ("'EXCLUDED_FIT'",)                         # FIT_ALL=true (by hand): also re-score excluded jobs (calibration)
 
 
 def _now():
@@ -68,7 +69,7 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
-            cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else OPEN), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
+            cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
     scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here
