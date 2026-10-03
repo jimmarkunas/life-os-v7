@@ -221,17 +221,24 @@ jobs:
         run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
   dice:
+    # Dice is low value: a small bounded batch (15 links, 3-minute deadline). The step is capped at 4 minutes and a failure or timeout is a
+    # warning that never fails the Jobs run or pages anyone.
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: dice
+        continue-on-error: true
+        timeout-minutes: 4
         name: Step 5 - resolve Dice job alert links
         if: ${{ env.PIPELINE == 'true' }}
-        run: python -m lifeos.run resolve-dice --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run resolve-dice --limit 15 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Dice warning (does not fail the run)
+        if: ${{ always() && steps.dice.outcome == 'failure' }}
+        run: echo "::warning title=Dice::the Dice link resolver failed or timed out; the Jobs pipeline is unaffected"
 
   finish:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
