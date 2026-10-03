@@ -571,6 +571,11 @@ jobs:
       NOTION_BILLS_DATA_SOURCE_ID: ""
       JOBRIGHT_EMAIL: ""
       JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
       LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
       LIFEOS_ACQ_DB_PASSWORD: ""
       LIFEOS_ACQ_SSH_HOST: ""
@@ -603,3 +608,71 @@ jobs:
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && steps.bsnap.outcome == 'failure' }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot failed; the Jobs pipeline is unaffected"
+
+  agenda:
+    # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: asnap
+        continue-on-error: true
+        name: Agenda snapshot (read-only Google Calendar; private save only when live)
+        env:
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ secrets.GCAL_SERVICE_ACCOUNT_JSON }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run agenda-snapshot --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: acard
+        continue-on-error: true
+        name: Agenda card (saved snapshot only; writes only when live)
+        env:
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run agenda-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Agenda warning (does not fail the Jobs run)
+        if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
+        run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
