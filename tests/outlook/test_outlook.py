@@ -191,7 +191,7 @@ class StageTests(unittest.TestCase):
         self.assertFalse(any("SECRET-REFRESH" in line for line in said))
 
     def test_config_must_name_a_known_label_and_a_client_id(self):
-        for env in ({"OUTLOOK_CLIENT_ID": "c", "OUTLOOK_ACCOUNT": "someone@example.invalid"}, {"OUTLOOK_ACCOUNT": "personal"}):
+        for env in ({"OUTLOOK_CLIENT_ID": "c", "OUTLOOK_ACCOUNT": "not-a-known-label"}, {"OUTLOOK_ACCOUNT": "personal"}):
             with self.assertRaises(OutlookError):
                 stage.auth(1, True, environ=env, connect=FakeDb().connect)
 
@@ -220,6 +220,10 @@ class StageTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     text = (ROOT / ".github/workflows/outlook.yml").read_text()
+
+    def test_the_sign_in_code_is_visible_while_the_run_waits(self):
+        self.assertIn("python -u -m lifeos.run outlook-auth", self.text)         # unbuffered: the code must not wait for process exit
+        self.assertIn("print(line, flush=True)", (ROOT / "lifeos/outlook/stage.py").read_text())
 
     def test_manual_only_and_only_the_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
