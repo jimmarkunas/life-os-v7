@@ -203,3 +203,22 @@ class LondonAndRemote(unittest.TestCase):
         self.assertEqual(qualify(US, us(work_mode="remote"), TODAY).status, ADMIT)
         self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).reason, "not remote")
         self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).reason, "not remote")
+
+
+class TwoDoubts(unittest.TestCase):
+    """D100: the 6 PM tick published 40 Adobe near-miss jobs with an unknown work mode as Review. One doubt is a question; two doubts on a weak fit is a miss."""
+
+    def test_a_near_miss_fit_with_another_unresolved_fact_is_excluded(self):
+        decision = qualify(US, us(fit=66, work_mode="unknown"), TODAY)
+        self.assertEqual(decision.status, EXCLUDE)
+        self.assertEqual(decision.reason, "Fit 66 below 68 and work mode unresolved")
+        self.assertEqual(qualify(US, us(fit=63, posted=None), TODAY).status, EXCLUDE)               # posting date unresolved
+
+    def test_one_doubt_is_still_review(self):
+        self.assertEqual(qualify(US, us(fit=66), TODAY).status, REVIEW)                                  # near-miss alone
+        self.assertEqual(qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, REVIEW)             # clear fit, unknown mode
+        self.assertEqual(qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW)
+
+    def test_nothing_else_changes(self):
+        self.assertEqual(qualify(US, us(fit=59, work_mode="unknown"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=80), TODAY).status, ADMIT)
