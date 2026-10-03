@@ -40,6 +40,18 @@ def url_problem(url):
     return None if (has_id or slug) else "no_job_id"
 
 
+WORKABLE_NO_ACCOUNT = re.compile(r"^https?://apply\.workable\.com/j/[^/]+/?$", re.I)
+
+
+def link_problem(url):
+    """None for a link that can be a single vacancy, else a fixed code. The same test Enrich opens with, so a link that would be rejected
+    there is never marked RESOLVED here (it would only bounce NEW -> RESOLVED -> NEW)."""
+    url = canonical_job_url(url)
+    if WORKABLE_NO_ACCOUNT.match(url or ""):
+        return "workable_no_account"
+    return url_problem(url)
+
+
 def jd_problem(text):
     """None for a real description, else 'template' | 'listing' | 'thin'."""
     text = text or ""

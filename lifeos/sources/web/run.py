@@ -175,7 +175,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     states = repo.states({s["id"] for s in sources})
     due = pick_due(sources, states, now, min(limit, limits.WEB_BOARDS_PER_RUN))
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
-              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}}
+              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": []}
     with ThreadPoolExecutor(max_workers=limits.ATS_WORKERS) as pool:               # different hosts: no shared limit
         listings = list(pool.map(lister_fn, due))
     budget = limits.WEB_INGEST_PER_RUN
@@ -187,6 +187,10 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         if outcome.status == "FAILED":
             counts["failed"] += 1
             counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
+            kind = str(source.get("kind") or "unknown")
+            counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1          # the board's ATS family
+            if len(counts["failed_ids"]) < 10:
+                counts["failed_ids"].append(source["id"])                                 # a public registry id (the source list is committed), never a job
         else:
             counts["complete"] += 1
             budget -= len(outcome.admit)

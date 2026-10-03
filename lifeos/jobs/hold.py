@@ -22,9 +22,14 @@ def run(limit, live, now=None):
             due, no_reason = (int(x or 0) for x in cursor.fetchone())
             cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='HOLD'")
             holding = int(cursor.fetchone()[0] or 0)
+            cursor.execute("SELECT COALESCE(unresolved_reason, 'none'), COALESCE(source, 'unknown'), COUNT(*) FROM v7_jobs WHERE status='HOLD' GROUP BY 1, 2")
+            by_reason, by_source = {}, {}
+            for reason, source, n in cursor.fetchall():                 # fixed reason codes and producer names, counts only
+                by_reason[reason] = by_reason.get(reason, 0) + int(n)
+                by_source[source] = by_source.get(source, 0) + int(n)
             excluded = 0
             if live and due:
                 cursor.execute("UPDATE v7_jobs SET status=%s, unresolved_reason=%s, updated_at=%s WHERE status='HOLD' AND updated_at < %s",
                                (EXCLUDED, REASON, now, cutoff))
                 excluded = int(cursor.rowcount or 0)
-    return {"on_hold": holding, "due": due, "excluded": excluded, "saved": bool(live)}
+    return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "saved": bool(live)}

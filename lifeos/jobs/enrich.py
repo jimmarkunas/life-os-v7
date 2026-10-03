@@ -76,10 +76,9 @@ def _title_ok(want, *found):
 
 def read_page(url, title, lane=None):
     """Facts for one final URL. Never raises; fixed outcome codes."""
-    if re.match(r"^https?://apply\.workable\.com/j/[^/]+/?$", url or "", re.I):
-        return {"outcome": "mismatch", "reason": "workable_no_account"}     # re-resolve: the matcher now keeps the account
-    if quality.url_problem(url):
-        return {"outcome": "mismatch", "reason": quality.url_problem(url)}
+    problem = quality.link_problem(url)
+    if problem:
+        return {"outcome": "mismatch", "reason": problem}                    # workable_no_account: re-resolve, the matcher now keeps the account
     api = ats_detail.read(url) or _api_job(url)
     if api and api.get("closed"):
         return {"outcome": "closed"}

@@ -72,3 +72,4 @@ This index is checked by a test: add a line here with every new decision.
 - D44 — Advisor Queue is an immutable request/response handoff; state is derived
 - D69 — Domain jobs move to their own workflow, in two stages (2026-10-03)
 - D70 — HOLD jobs are excluded after seven days (2026-10-03, Jim)
+- D71 — A link that cannot be one vacancy is never RESOLVED; holds and board failures say where (2026-10-03)
