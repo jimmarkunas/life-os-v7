@@ -24,7 +24,7 @@ def _good(result, company, title, need_host):
     page_title = ats_match.norm(result.get("title") or "")
     text = ats_match.norm(" ".join([result.get("title") or "", result.get("snippet") or ""]))
     tokens = _company_tokens(company)
-    if not tokens or ats_match.norm(title) not in page_title:    # the page TITLE must carry the job title
+    if not tokens or not any(v in page_title for v in ats_match.title_variants(title)):    # the page TITLE must carry the job title (as written, or without the aggregator's Remote/location noise)
         return False
     hay = ats_match.norm(host + " " + result["url"]) + " " + text
     if not all(t in hay for t in tokens[:2]):
@@ -39,7 +39,7 @@ def find(company, title):
     try:
         # ONE search per job (it used to be two, ATS domains then any site: live runs showed the any-site hits dominate and the second call doubled the time and the budget).
         # Each result is judged by the rule for its own kind: an ATS-domain page needs the job title and company; an employer page also needs the company in its host.
-        for result in tinyfish_search.search(f"{company} {title} careers apply")[:8]:
+        for result in tinyfish_search.search(f"{company} {ats_match.title_variants(title)[-1]} careers apply")[:8]:        # the cleanest form: "(Fully Remote)" only dilutes the query
             on_ats = any(domain in classify.host(result["url"]) for domain in ATS_DOMAINS)
             if _good(result, company, title, need_host=not on_ats):
                 return ("hit", classify.apply_kind(result["url"]), result["url"])

@@ -81,3 +81,4 @@ This index is checked by a test: add a line here with every new decision.
 - D77 — Scale-Up: a search result that is the employer's own posting is the final link (2026-10-03, Jim)
 - D78 — Jobright page state probe: can its description stand in for an unreadable employer page? (2026-10-03, Jim)
 - D79 — A hidden employer link on LinkedIn: publish the LinkedIn posting, flagged (2026-10-03, Jim)
+- D80 — Lensa and LinkedIn titles are matched without aggregator noise (2026-10-03, Jim)
