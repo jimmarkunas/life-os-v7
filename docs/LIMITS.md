@@ -10,6 +10,7 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 | TinyFish Agent | $0.016/step | forbidden | |
 | Notion API | ~3 req/s average | 2.5/s (0.4 s gap), 60 pages/run | free official API only; 100 child blocks per call; 2,000 chars per rich_text |
 | LinkedIn guest pages | unpublished | 1 request per 1.2 s, 150/run, stop on first 429 | never logged in |
+| Dice tracking redirects | unpublished | 1 request per second, 40/run, stop on first 429 | anonymous GET only; runner access not yet verified |
 | Jobright | unpublished | one login per run, 40 jobs/run, 1.5 s pause | saved secrets; free tier blocks the Apply click, so read the "Original Job Post" link |
 | Public ATS board APIs | unpublished | 8 workers, 10 s timeout | Greenhouse, Lever, Ashby, SmartRecruiters, Workable; no auth |
 | Gmail REST | 250 quota units/s/user | 10 req/s | list/get = 5 units, batchModify = 50 |

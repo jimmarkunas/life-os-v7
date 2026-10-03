@@ -218,6 +218,19 @@ jobs:
         if: ${{ always() && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
         run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
+  dice:
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: dice
+        name: Step 5 - resolve Dice job alert links
+        if: ${{ env.PIPELINE == 'true' }}
+        run: python -m lifeos.run resolve-dice --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+
   finish:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' }}
@@ -520,7 +533,7 @@ jobs:
         run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
 
   report:
-    needs: [prep, jobright, linkedin, lensa, finish]
+    needs: [prep, jobright, linkedin, lensa, dice, finish]
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -531,7 +544,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
