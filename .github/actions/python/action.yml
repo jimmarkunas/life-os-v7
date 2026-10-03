@@ -1,0 +1,13 @@
+name: Python and dependencies
+description: Python 3.12 with the pip cache, then the pinned requirements (the one place this is declared).
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: requirements*.txt
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r requirements.txt
