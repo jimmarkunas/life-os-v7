@@ -46,7 +46,7 @@ def requeue_floor(cursor):
     floor and the Review band judge them. The new decision text never says 'below 72', so a job is requeued at most once."""
     cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_floor', j.updated_at=%s"
                    " WHERE j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL"
-                   " AND f.admission_reason LIKE 'Fit % below 72' AND f.score >= 60", (_now(),))
+                   " AND f.admission_reason LIKE 'Fit %% below 72' AND f.score >= 60", (_now(),))
     return int(cursor.rowcount or 0)
 
 

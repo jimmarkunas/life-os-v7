@@ -217,6 +217,12 @@ class RequeueFloorTests(unittest.TestCase):
         conn.cur.rowcount = 7
         self.assertEqual(stage.requeue_floor(conn.cursor()), 7)
         self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_jobs"])
+        import inspect
+        source = inspect.getsource(stage.requeue_floor)
+        sql = source[source.index('"UPDATE'):source.index('(_now(),))')]
+        import re
+        literal = "".join(re.findall(r'"([^"]*)"', sql))
+        literal % ("2026-10-03",)                             # the driver formats the statement: a bare % in the LIKE pattern raises here (the 5 PM tick crashed on it)
 
 
 class ProfessionGate(unittest.TestCase):
