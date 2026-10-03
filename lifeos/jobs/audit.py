@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import guard, hiring_pipeline, ledger, quality, store
-from lifeos.jobs.identity import url_key
+from lifeos.jobs.identity import norm, url_key
 from lifeos.platform import notion_client
 
 
@@ -47,11 +47,24 @@ def run(limit, live, environ=os.environ):
                 excluded = cursor.fetchall()
             cursor.execute("SELECT id FROM v7_jobs WHERE link_proof='title' AND status IN ('READY','PUBLISHED')")
             proven = {r[0] for r in cursor.fetchall()}
+            cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
+                           " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
+            pages = cursor.fetchall()
     counts["checked"] = len(rows)
     bad = [(r, judge(r[2], r[4], r[0] in proven)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
     already = {r[0] for r, _ in bad}
+    dupe_of = {}
     bad += [(r, "excluded_fit") for r in excluded if r[0] not in already]
+    first_page = {}
+    for r in pages:                                         # D90: one page per opening; the earliest stays, a later one with the same company and title goes
+        key = (norm(r[5]), norm(r[6]))
+        if len(key[1].split()) < 3:
+            continue
+        if key in first_page and r[0] not in already:
+            bad.append((r, "duplicate_page"))
+            dupe_of[r[0]] = first_page[key]
+        first_page.setdefault(key, r[0])
     counts["failed"] = len(bad)
     for _, why in bad:
         counts["by_reason"][why] = counts["by_reason"].get(why, 0) + 1
@@ -81,6 +94,12 @@ def run(limit, live, environ=os.environ):
             except notion_client.NotionError:
                 counts["trash_errors"] += 1
                 continue                                   # keep the row PUBLISHED so the next audit retries
+        if why == "duplicate_page":                        # the same opening under another location or link: keep the ledger hash so it is never published again
+            with store.connect() as connection, connection.cursor() as cursor:
+                cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, notion_page_id=NULL, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
+                               (dupe_of.get(job_id), _now(), job_id))
+            counts["duplicates_cleared"] = counts.get("duplicates_cleared", 0) + 1
+            continue
         if why == "excluded_fit":                          # keep the description and the ledger hash: it must never be published again
             with store.connect() as connection, connection.cursor() as cursor:
                 cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', notion_page_id=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s",

@@ -48,3 +48,44 @@ class ProvenLinkTests(unittest.TestCase):
         self.assertEqual(audit.judge(url, text), "audit_url_no_job_id")
         self.assertIsNone(audit.judge(url, text, proven=True))
         self.assertEqual(audit.judge("https://careers-acme.icims.com/", text, proven=True), "audit_url_root")      # a root is never excused
+
+
+class DuplicatePageTests(unittest.TestCase):
+    def test_later_pages_for_the_same_opening_are_counted_and_the_earliest_stays(self):
+        from unittest import mock
+        from lifeos.jobs import audit
+
+        pages = [(1, "PUBLISHED", "https://x.example/1", "p1", None, "ServiceNow", "Director, TA Infrastructure"),
+                 (2, "PUBLISHED", "https://x.example/2", "p2", None, "ServiceNow", "Director, TA Infrastructure"),
+                 (3, "PUBLISHED", "https://x.example/3", "p3", None, "ServiceNow", "Director, TA Infrastructure"),
+                 (4, "PUBLISHED", "https://x.example/4", "p4", None, "Adobe", "Product Manager"),
+                 (5, "PUBLISHED", "https://x.example/5", "p5", None, "Adobe", "Product Manager")]
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, args=()):
+                self.rows = pages if "notion_page_id IS NOT NULL ORDER BY id" in sql and "status='PUBLISHED'" in sql and "NULL, company" in sql else []
+
+            def fetchall(self):
+                return self.rows
+
+        class Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def cursor(self):
+                return Cur()
+
+        from lifeos.jobs import audit as a
+        with mock.patch.object(a.store, "connect", return_value=Conn()), mock.patch.object(a.store, "ensure_schema"):
+            counts = a.run(100, False, environ={})
+        self.assertEqual(counts["by_reason"], {"duplicate_page": 2})                  # ids 2 and 3; two-word titles are never merged
+        self.assertEqual(counts["failed"], 2)

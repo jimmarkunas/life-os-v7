@@ -84,6 +84,10 @@ DEFAULT_EXCLUSIONS = (
         r"\bnurser(?:y|ies)\b", r"child ?care", r"back[- ]?up care", r"\bhousekeep\w*", r"\bchef\b", r"\bcook\b", r"\bkitchen\b",
         r"\bnanny\b", r"\bteacher\b", r"\bteaching assistant\b", r"\bjanitor\b", r"\bcustodian\b", r"\bcleaner\b", r"\bdriver\b",
         r"\bwarehouse\b", r"\bbarista\b", r"\bcashier\b", r"\bwaiter\b|\bwaitress\b", r"\bhospitality\b", r"\bpractitioner\b"]},
+    {"id": "education_role", "reason": "education role", "where": "title", "patterns": [
+        r"\bstudents?\b", r"\bcurriculum\b", r"\bfaculty\b", r"\bk-?12\b", r"\bhigher ed\w*", r"\bellucian\b", r"\benrol?lment\b",
+        r"\badmissions?\b", r"\bprofessor\b", r"\bacademic\b", r"\binstructor\b", r"\btutor\b"]},
+    {"id": "school_employer", "reason": "school employer", "where": "company", "patterns": [r"\bschools?\b", r"\bacademy\b"]},
     {"id": "medical_role", "reason": "medical / clinical role", "where": "title", "patterns": [
         r"\bsurgical\b", r"\bsurgery\b", r"\bpatient\w*", r"\bnursing\b", r"\bnurse\b", r"\bphysician\b", r"\bhospital\b",
         r"\bdental\b", r"\bpharmac\w+", r"\btherapist\b", r"\bradiolog\w+", r"\bmedical (?:assistant|director|records)\b"]},
