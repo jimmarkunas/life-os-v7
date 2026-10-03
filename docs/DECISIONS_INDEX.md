@@ -93,3 +93,4 @@ This index is checked by a test: add a line here with every new decision.
 - D89 — Fit is gated by profession, not only by requirements (2026-10-03, Jim)
 - D90 — One page per opening; education is not this profile; the canary (2026-10-03, Jim)
 - D91 — Open Jobs company names (2026-10-03, Jim)
+- D92 — Database connection retries; work mode is read deeper in the Fit stage (2026-10-03, Jim)

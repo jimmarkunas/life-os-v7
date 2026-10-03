@@ -5,12 +5,15 @@ from pathlib import Path
 import socket
 import subprocess
 import tempfile
+import time
 
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
 # The database listens on the server's loopback only, reached through the tunnel: host/port are constants.
 FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
           "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")
 DB_REMOTE = "127.0.0.1:3306"
+TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_DB_CONNECT_FAILED")
+RETRY_WAITS = (0, 4, 12)         # seconds before attempt 1, 2, 3: a Hostinger network blip (D92) must not fail a whole stage; auth and host-key errors are never retried
 
 
 class StoreError(RuntimeError):
@@ -57,20 +60,29 @@ def connect():
                     "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={hosts}",
                     "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10"]
             exit_cmd = ["ssh", "-F", "/dev/null", "-S", control, "-O", "exit", "--", cfg["SSH_HOST"]]
-            try:
-                subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
-                                "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
-                                "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
-                               check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-            except Exception as error:
-                raise StoreError(_ssh_code(error)) from None
-            try:
-                import pymysql
-                connection = pymysql.connect(host="127.0.0.1", port=local_port, user=cfg["DB_USER"],
-                                             password=cfg["DB_PASSWORD"], database=cfg["DB_NAME"], charset="utf8mb4",
-                                             autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
-            except Exception:
-                raise StoreError("STORE_DB_CONNECT_FAILED") from None
+            for attempt, wait in enumerate(RETRY_WAITS):
+                time.sleep(wait)
+                try:
+                    try:
+                        subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
+                                        "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
+                                        "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
+                                       check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                    except Exception as error:
+                        raise StoreError(_ssh_code(error)) from None
+                    try:
+                        import pymysql
+                        connection = pymysql.connect(host="127.0.0.1", port=local_port, user=cfg["DB_USER"],
+                                                     password=cfg["DB_PASSWORD"], database=cfg["DB_NAME"], charset="utf8mb4",
+                                                     autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
+                    except Exception:
+                        raise StoreError("STORE_DB_CONNECT_FAILED") from None
+                    break
+                except StoreError as error:
+                    with suppress(Exception):
+                        subprocess.run(exit_cmd, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)    # a half-open tunnel must not block the next attempt
+                    if str(error) not in TRANSIENT or attempt == len(RETRY_WAITS) - 1:
+                        raise
             yield connection
         finally:
             with suppress(Exception):

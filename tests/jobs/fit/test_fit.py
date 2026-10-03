@@ -281,3 +281,13 @@ class EducationGate(unittest.TestCase):
         hard, _ = exclusions.check("Program Manager", "Kido Schools UK Limited", GOOD)
         self.assertEqual(hard["id"], "school_employer")
         self.assertIsNone(exclusions.check("Senior Technical Program Manager", "Acme", GOOD)[0])
+
+
+class WorkModeWindow(unittest.TestCase):
+    def test_an_explicit_statement_deep_in_the_description_counts_in_the_fit_stage_only(self):
+        from lifeos.jobs import lanes
+        text = "Overview of the company and the team. " * 80 + "This is a remote position open to candidates in the United States."
+        self.assertGreater(text.lower().index("this is a remote position"), 1500)
+        self.assertEqual(lanes.work_mode_for_fit("United States", "Program Manager", text), "remote")
+        self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", text), "unknown")
+        self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Program Manager", "Overview. " * 300 + "This is a hybrid position, three days a week in the office."), "hybrid")
