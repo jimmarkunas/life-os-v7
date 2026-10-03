@@ -75,19 +75,22 @@ def compact(event, today, tomorrow):
         if start.get("date") or end.get("date"):
             raise AgendaError("AGENDA_EVENT_INVALID")
         start_at, end_at = _instant(start), _instant(end)
-        if end_at <= start_at:
+        if end_at < start_at:                                     # zero-length events are legal in Google
             raise AgendaError("AGENDA_EVENT_INVALID")
         start_value, end_value = start_at.isoformat(), end_at.isoformat()
         for day in (today, tomorrow):
             day_start = datetime.combine(day, time.min, TZ)
             day_end = datetime.combine(day + timedelta(days=1), time.min, TZ)
-            if start_at < day_end and end_at > day_start:
+            if start_at < day_end and (end_at > day_start or (end_at == start_at and start_at >= day_start)):
                 days.append(day.isoformat())
     if not days:
         return None
     event_id, title = event.get("id"), event.get("summary")
-    if not isinstance(event_id, str) or not event_id or not isinstance(title, str) or not title.strip():
+    if not isinstance(event_id, str) or not event_id:
         raise AgendaError("AGENDA_EVENT_INVALID")
+    if title is not None and not isinstance(title, str):
+        raise AgendaError("AGENDA_EVENT_INVALID")
+    title = (title or "").strip() or "(no title)"             # untitled events are normal on a shared calendar
     extended = event.get("extendedProperties") or {}
     if not isinstance(extended, dict):
         raise AgendaError("AGENDA_EVENT_INVALID")

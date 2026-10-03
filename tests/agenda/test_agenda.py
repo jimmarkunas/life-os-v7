@@ -159,3 +159,24 @@ class AgendaCardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealCalendarShapeTests(unittest.TestCase):
+    """Shapes a real shared calendar produces that must not fail the whole snapshot."""
+
+    def compact(self, event):
+        return snapshot.compact(event, NOW.date(), NOW.date().replace(day=9))
+
+    def test_an_untitled_event_is_kept_as_no_title(self):
+        event = timed("u1", "x")
+        del event["summary"]
+        self.assertEqual(self.compact(event)["title"], "(no title)")
+        self.assertEqual(self.compact({**timed("u2", "x"), "summary": "   "})["title"], "(no title)")
+
+    def test_a_zero_length_event_is_kept_on_its_day(self):
+        item = self.compact(timed("z1", "Example reminder", start="2026-03-08T11:00:00-05:00", end="2026-03-08T11:00:00-05:00"))
+        self.assertEqual(item["days"], ["2026-03-08"])
+
+    def test_an_event_that_ends_before_it_starts_is_still_invalid(self):
+        with self.assertRaises(snapshot.AgendaError):
+            self.compact(timed("b1", "x", start="2026-03-08T11:00:00-05:00", end="2026-03-08T10:00:00-05:00"))
