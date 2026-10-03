@@ -60,8 +60,11 @@ def _compact_page(page, source):
     return row
 
 
+ROW_CODES = ("BILLS_PAGE_INVALID", "BILLS_PROPERTY_INVALID")     # a bad row is skipped and counted; a wrong source, pagination or duplicate stays fatal
+
+
 def _query(client, source):
-    rows, cursor, seen_cursor, seen_ids = [], None, set(), set()
+    rows, cursor, seen_cursor, seen_ids, invalid = [], None, set(), set(), 0
     try:
         while True:
             body = {"page_size": 100}
@@ -75,14 +78,23 @@ def _query(client, source):
             if not isinstance(items, list) or not isinstance(more, bool):
                 raise PaidError("BILLS_PAGE_INCOMPLETE")
             for item in items:
-                row = _compact_page(item, source)
+                try:
+                    row = _compact_page(item, source)
+                except snapshot.BillsError:
+                    invalid += 1
+                    continue
+                except PaidError as error:
+                    if str(error) not in ROW_CODES:
+                        raise
+                    invalid += 1
+                    continue
                 key = _page_key(row["page_id"])
                 if key in seen_ids:
                     raise PaidError("BILLS_DUPLICATE_PAGE_ID")
                 seen_ids.add(key)
                 rows.append(row)
             if not more:
-                return rows
+                return rows, invalid
             cursor = result.get("next_cursor")
             if not isinstance(cursor, str) or not cursor:
                 raise PaidError("BILLS_PAGE_INCOMPLETE")
@@ -307,14 +319,14 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     source = _source_id(client)
     if len(source) != 32 or any(ch not in "0123456789abcdef" for ch in source):
         raise PaidError("BILLS_SOURCE_INVALID")
-    rows = _query(client, source)                    # a partial answer is never interpreted as an empty queue
+    rows, invalid = _query(client, source)           # a partial answer is never interpreted as an empty queue; one malformed row never blocks the rest
     paid = [row for row in rows if row.get("Paid") is True]
     now = now or datetime.now(LOCAL_TZ)
     today = _today(now)
     cap = min(MAX_LIMIT, max(0, int(limit)))
     by_id = {row["page_id"]: row for row in rows}
     counts = {"paid_rows": len(paid), "advanced": 0, "one_time": 0, "review": 0,
-              "failed": 0, "resumed": 0, "skipped": 0, "writes": 0}
+              "failed": 0, "resumed": 0, "skipped": 0, "writes": 0, "invalid": invalid}
     if not live:
         counts["skipped"] = max(0, len(paid) - cap)
         for row in paid[:cap]:
