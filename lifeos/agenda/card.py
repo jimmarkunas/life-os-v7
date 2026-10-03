@@ -69,13 +69,44 @@ def _same_id(left, right):
     return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
 
 
+VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}          # metadata that changes without the content changing
+
+
+def _stable(node):
+    """The block tree minus metadata that changes on its own (edit times, signed file urls): what 'unchanged' means is the content."""
+    if isinstance(node, dict):
+        out = {k: _stable(v) for k, v in node.items() if k not in VOLATILE}
+        if out.get("type") == "file" or "expiry_time" in node:
+            out.pop("url", None)
+        return out
+    if isinstance(node, list):
+        return [_stable(v) for v in node]
+    return node
+
+
+def _hash(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
 def _region_digest(client, block_id):
+    """Comparable digest of a region: one hash per field of the callout and one per child block, so a change can be located (names only)."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not _same_id(meta.get("id"), block_id):
         raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
-    tree = _tree(client, meta)
-    encoded = json.dumps(tree, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    tree = _stable(_tree(client, meta))
+    children = tree.pop("agenda_children", [])
+    return {"fields": {key: _hash(value) for key, value in tree.items()},
+            "children": [[child.get("type"), _hash(child)] for child in children]}
+
+
+def _changed(before, after):
+    """Where two region digests differ, as field names and child positions only (never content)."""
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return {"digest": "missing"}
+    fields = sorted(k for k in set(before["fields"]) | set(after["fields"]) if before["fields"].get(k) != after["fields"].get(k))
+    kids = [i for i in range(max(len(before["children"]), len(after["children"])))
+            if (before["children"][i:i + 1] or [None]) != (after["children"][i:i + 1] or [None])]
+    return {"fields": fields, "children": kids, "child_count": [len(before["children"]), len(after["children"])]}
 
 
 def _protected(client, jira_id):
@@ -94,6 +125,7 @@ def _protected(client, jira_id):
 def _require_protected_intact(client, jira_id, before):
     after = _protected(client, jira_id)
     if not router.protected_intact(MODULE, before, after):
+        print("agenda: protected region changed", json.dumps(_changed(before.get(router.JIRA_REGION), after.get(router.JIRA_REGION))))
         raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
 
 
