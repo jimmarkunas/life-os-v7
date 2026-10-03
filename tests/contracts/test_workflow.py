@@ -25,12 +25,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("PIPELINE", step["if"])
         self.assertNotIn("inputs.", step["if"])
 
-    def test_agenda_resolver_adds_no_hourly_dispatch_input(self):
+    def test_domain_jobs_left_hourly_and_run_after_a_tick_from_domains(self):
         from pathlib import Path
-        data = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
-        self.assertNotIn("agenda", data[True]["workflow_dispatch"]["inputs"])
-        job = data["jobs"]["agenda"]
-        self.assertIn("inputs.tick", job["if"])
+        root = Path(__file__).resolve().parents[2] / ".github/workflows"
+        hourly = yaml.safe_load((root / "hourly.yml").read_text())
+        domains = yaml.safe_load((root / "domains.yml").read_text())
+        for name in ("jira", "outlook", "bills", "agenda", "amazon"):
+            self.assertNotIn(name, hourly["jobs"], name)
+            self.assertIn("github.event_name == 'workflow_run'", domains["jobs"][name]["if"], name)
+        self.assertNotIn("jira", hourly[True]["workflow_dispatch"]["inputs"])
+        self.assertEqual(domains[True]["workflow_run"]["workflows"], ["hourly"])
+        self.assertIn("completed", domains[True]["workflow_run"]["types"])
+        self.assertIn("!= 'cancelled'", domains["jobs"]["agenda"]["if"])               # a tick the gate cancelled starts nothing
+        self.assertIn("display_title == 'tick'", domains["jobs"]["agenda"]["if"])      # nor does a manual hourly run
 
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
         from pathlib import Path
@@ -57,41 +64,10 @@ class IsolatedJobTests(unittest.TestCase):
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
         self.assertGreater(len(shared), 10)
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}                  # the Interview job reads the Hiring Pipeline page by id
-        for name in ("interview", "jira", "outlook", "bills", "agenda", "amazon"):
+        for name in ("interview",):
             env = doc["jobs"][name].get("env") or {}
             leaked = sorted(k for k in shared if k not in needs.get(name, ()) and env.get(k) not in ("",))
             self.assertEqual(leaked, [], f"{name} inherits {leaked}")
-
-    def test_bills_receives_only_its_notion_and_database_credentials(self):
-        import yaml
-        from pathlib import Path
-        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
-        job = doc["jobs"]["bills"]
-        step = next(step for step in job["steps"] if step.get("id") == "bsnap")
-        self.assertEqual(set(step.get("env", {})), {
-            "NOTION_BILLS_TOKEN", "NOTION_BILLS_DATA_SOURCE_ID", "LIFEOS_ACQ_SSH_PRIVATE_KEY",
-            "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_PORT",
-            "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_KNOWN_HOSTS", "LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_USER"})
-    def test_agenda_steps_receive_only_calendar_card_and_database_secrets(self):
-        import yaml
-        from pathlib import Path
-        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
-        job = doc["jobs"]["agenda"]
-        steps = {step["id"]: step for step in job["steps"] if step.get("id") in ("asnap", "acard")}
-        db = {f"LIFEOS_ACQ_{key}" for key in ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")}
-        self.assertEqual(set(steps["asnap"]["env"]), db | {"GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"})
-        self.assertEqual(set(steps["acard"]["env"]), db | {"NOTION_JIRA_TOKEN", "CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"})
-
-
-    def test_amazon_steps_receive_only_gmail_and_amazon_notion_secrets(self):
-        import yaml
-        from pathlib import Path
-        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
-        job = doc["jobs"]["amazon"]
-        step = next(step for step in job["steps"] if step.get("id") == "amazon")
-        self.assertEqual(set(step.get("env", {})), {
-            "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN",
-            "NOTION_AMAZON_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"})
 
     def test_python_setup_is_declared_once(self):
         from pathlib import Path

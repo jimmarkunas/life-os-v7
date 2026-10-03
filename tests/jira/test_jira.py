@@ -364,19 +364,22 @@ class SnapshotTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     text = (ROOT / ".github/workflows/hourly.yml").read_text()
+    domains = (ROOT / ".github/workflows/domains.yml").read_text()
 
     def job(self):
-        start = self.text.index("\n  jira:\n")
-        return self.text[start:self.text.index("\n  outlook:\n")]
+        start = self.domains.index("\n  jira:\n")
+        return self.domains[start:self.domains.index("\n  outlook:\n")]
 
     def test_workflow_stays_within_githubs_25_dispatch_inputs(self):
-        block = self.text[self.text.index("  workflow_dispatch:\n    inputs:\n"):self.text.index("\nenv:\n")]
-        self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
+        for text in (self.text, self.domains):
+            block = text[text.index("  workflow_dispatch:\n    inputs:\n"):text.index("\nenv:\n")]
+            self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)       # no yaml dependency in CI
+        self.assertNotIn("\n      jira:\n", self.text)                                     # the Jira mode input moved with the job
 
-    def test_scheduled_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
+    def test_automatic_runs_refresh_snapshot_and_card_but_never_roll_over_or_probe(self):
         job = self.job()
-        self.assertRegex(self.text, r'jira:\n(?:.*\n)*?\s+default: "none"')
-        auto = "github.event_name != 'workflow_dispatch' || inputs.tick"
+        self.assertRegex(self.domains, r'jira:\n(?:.*\n)*?\s+default: "none"')
+        auto = "github.event_name == 'workflow_run'"                                         # after an hourly tick, never after a manual run
         self.assertIn(auto, job.split("runs-on")[0])
         for step_id, nxt in (("jrollauto", "jsnap"), ("jsnap", "jcard"), ("jcard", "jprobe")):
             step = job[job.index(f"id: {step_id}"):job.index(f"id: {nxt}")]
@@ -391,16 +394,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(job.count("continue-on-error: true"), 5)
         self.assertIn("::warning", job)
 
-    def test_other_credentials_are_blank_and_database_secrets_reach_only_the_snapshot_step(self):
+    def test_database_secrets_reach_only_the_snapshot_and_card_steps(self):
         job = self.job()
         head, steps = job.split("    steps:")
-        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON",
-                     "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "HIRING_PIPELINE_PAGE_ID"):
-            self.assertIn(f'{name}: ""', head, name)
         self.assertNotIn("secrets.LIFEOS_ACQ", head)
+        self.assertNotIn('NOTION_API_TOKEN', job)
         snap = steps[steps.index("id: jsnap"):steps.index("id: jcard")]
         roll = steps[steps.index("id: jroll\n"):steps.index("Jira warning")]
-        self.assertNotIn("NOTION_JIRA_TOKEN", steps[steps.index("id: jsnap"):steps.index("id: jcard")])
+        self.assertNotIn("NOTION_JIRA_TOKEN", snap)
         self.assertIn("secrets.LIFEOS_ACQ_DB_PASSWORD", snap)
         self.assertNotIn("secrets.", roll)
         self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_EMAIL", "JIRA_GTV_EPIC"])
