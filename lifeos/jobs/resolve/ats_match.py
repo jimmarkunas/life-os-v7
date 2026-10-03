@@ -117,11 +117,33 @@ def _location_ok(want, have):
     return bool(tokens & set(have.split())) or ("remote" in want and "remote" in have)
 
 
+_NOISE_PAREN = re.compile(r"\(\s*(?:fully\s+|100%\s+)?(?:remote|hybrid|work from home|wfh|us|usa|u\.s\.|united states|us only|remote\s*[-,]\s*(?:us|usa|united states))\s*\)", re.I)
+_REMOTE_WORD = re.compile(r"\b(?:fully\s+|100%\s+)?remote\b|\bwork from home\b", re.I)
+
+
+def title_variants(title):
+    """The title as written first, then the same role without the noise aggregators add: a `| Company | Location` tail, a `(Remote)`-style parenthetical
+    (only those: `(ICU)` changes the role and stays), and the word Remote. Exact-equality matching still decides, so this only removes words that never
+    change the role."""
+    raw = " ".join((title or "").split())
+    head = raw.split(" | ")[0]
+    unparenthesised = _NOISE_PAREN.sub(" ", head)
+    forms = [norm(raw), norm(head), norm(unparenthesised), norm(_REMOTE_WORD.sub(" ", unparenthesised))]
+    return [f for i, f in enumerate(dict.fromkeys(forms)) if f and (i == 0 or len(f.split()) >= 2)]
+
+
 def why(jobs, title, location):
     """('hit', job) | ('no_board',) | ('no_title',) | ('ambiguous',)."""
     if not jobs:
         return ("no_board",)
-    want = norm(title)
+    for want in title_variants(title):
+        verdict = _why_one(jobs, want, location)
+        if verdict[0] != "no_title":
+            return verdict
+    return ("no_title",)
+
+
+def _why_one(jobs, want, location):
     same = [j for j in jobs if norm(j[1]) == want]
     if not same:                                   # near-exact only (punctuation/level words aside), and unique
         close = [j for j in jobs if difflib.SequenceMatcher(None, norm(j[1]), want).ratio() >= 0.93]

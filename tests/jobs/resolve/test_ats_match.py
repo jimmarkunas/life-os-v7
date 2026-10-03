@@ -29,10 +29,6 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(ats_match.slug_candidates("Acme Data Corp, Inc."), ["acmedata", "acme-data", "acme"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class MoreBoardTests(unittest.TestCase):
     def _board(self, kind, payload):
         from unittest import mock
@@ -75,3 +71,37 @@ class RobustnessTests(unittest.TestCase):
         from unittest import mock
         with mock.patch.object(ats_match, "board", side_effect=RuntimeError("boom")):
             self.assertEqual(ats_match.boards_for("Acme Corp"), [])
+
+class TitleNoiseTests(unittest.TestCase):
+    """Lensa and LinkedIn decorate titles ("(Fully Remote)", "| Company | USA (Remote)"). Only noise that never changes the role is removed."""
+    jobs = [("greenhouse", "Product Manager", "https://boards.greenhouse.io/a/jobs/3", "Remote"),
+            ("greenhouse", "Senior Project Manager", "https://boards.greenhouse.io/a/jobs/4", "Remote"),
+            ("greenhouse", "Staff Nurse", "https://boards.greenhouse.io/a/jobs/5", "Boston"),
+            ("greenhouse", "Manager", "https://boards.greenhouse.io/a/jobs/7", "Remote"),
+            ("greenhouse", "Client Project Manager", "https://boards.greenhouse.io/a/jobs/6", "Remote")]
+
+    def test_remote_decoration_is_ignored(self):
+        for title in ("Product Manager (Fully Remote)", "Remote Product Manager", "Product Manager - Remote", "Product Manager (Remote)"):
+            self.assertEqual(ats_match.why(self.jobs, title, "")[0], "hit", title)
+
+    def test_a_company_and_location_tail_is_ignored(self):
+        self.assertEqual(ats_match.why(self.jobs, "Client Project Manager | FirstPoint Group | USA (Remote)", "")[0], "hit")
+
+    def test_a_parenthetical_that_changes_the_role_is_kept(self):
+        self.assertEqual(ats_match.why(self.jobs, "Staff Nurse (ICU)", "")[0], "no_title")        # not turned into the generic Staff Nurse posting
+        self.assertEqual(ats_match.why(self.jobs, "Staff Nurse (Remote)", "")[0], "hit")
+
+    def test_a_cleaned_title_of_one_word_is_never_trusted(self):
+        self.assertEqual(ats_match.why(self.jobs, "Remote Manager", "")[0], "no_title")          # would shrink to the bare word Manager
+
+    def test_a_different_level_still_does_not_match(self):
+        self.assertEqual(ats_match.why(self.jobs, "Staff Project Manager (Remote)", "")[0], "no_title")
+        self.assertEqual(ats_match.why(self.jobs, "Project Manager (Remote)", "")[0], "no_title")
+
+    def test_the_title_as_written_is_always_tried_first(self):
+        self.assertEqual(ats_match.title_variants("Product Manager")[0], "product manager")
+        self.assertEqual(ats_match.title_variants("PM")[0], "pm")
+
+
+if __name__ == "__main__":
+    unittest.main()

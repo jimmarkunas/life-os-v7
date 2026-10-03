@@ -30,10 +30,6 @@ class SearchMatchTests(unittest.TestCase):
         self.assertTrue(search_match._good(mine, "Acme Data", "Senior Data Engineer", True))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class OneSearchPerJob(unittest.TestCase):
     def test_one_call_and_both_kinds_of_hit_are_accepted(self):
         from unittest import mock
@@ -56,3 +52,18 @@ class OneSearchPerJob(unittest.TestCase):
         with mock.patch.object(search_match.tinyfish_search, "search", lambda q, d=None: calls.append(q) or []):
             self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("miss", "no_result"))
         self.assertEqual(len(calls), 1)
+
+    def test_a_decorated_aggregator_title_still_finds_the_employers_page(self):
+        page = {"url": "https://job-boards.greenhouse.io/acmedata/jobs/42", "title": "Senior Data Engineer - Acme Data", "snippet": ""}
+        self.assertTrue(search_match._good(page, "Acme Data", "Senior Data Engineer (Fully Remote)", False))
+        self.assertFalse(search_match._good(page, "Acme Data", "Staff Data Engineer (Fully Remote)", False))
+
+    def test_the_search_query_uses_the_title_without_remote_noise(self):
+        from unittest import mock
+        with mock.patch.object(search_match.tinyfish_search, "search", return_value=[]) as search:
+            search_match.find("Acme Data", "Senior Data Engineer (Fully Remote)")
+        self.assertEqual(search.call_args.args[0], "Acme Data senior data engineer careers apply")
+
+
+if __name__ == "__main__":
+    unittest.main()
