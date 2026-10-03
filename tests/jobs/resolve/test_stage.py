@@ -104,5 +104,21 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual(stage.why({"outcome": "landed", "url": self.URL, "kind": "employer", "via": "original_post"}), "landed_unproven")
 
 
+class PageKeysTests(unittest.TestCase):
+    def test_liveness_like_field_names_are_counted_across_results(self):
+        counts = {}
+        for keys in (["isExpired=false", "jobStatus:string"], ["isExpired=true", "jobStatus:string"], []):
+            stage.note_page_keys(counts, {"page_keys": keys})
+        self.assertEqual(counts["page_keys"], {"jobStatus:string": 2, "isExpired=false": 1, "isExpired=true": 1})
+
+    def test_a_dry_run_carries_them_into_the_log_counts(self):
+        from unittest import mock
+        results = [{"outcome": "landed", "url": "https://job-boards.greenhouse.io/x/jobs/12345", "kind": "ats", "page_keys": ["isExpired=false"]}]
+        with mock.patch.object(stage.store, "connect", FakeConn), mock.patch.object(stage.store, "ensure_schema", lambda c: None), \
+                mock.patch.object(stage, "pick", lambda c, s, l: [(1, "https://x.example/1")]):
+            counts = stage.run("jobright", 10, False, lambda urls: results)
+        self.assertEqual(counts["page_keys"], {"isExpired=false": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

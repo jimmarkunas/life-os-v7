@@ -82,6 +82,17 @@ def why(result):
     return str(result.get("outcome") or "unknown").split(":")[0]
 
 
+def note_page_keys(counts, result, top=25):
+    """Counts of the liveness-like field names a resolver saw on the aggregator's own page (diagnostic; names only)."""
+    keys = result.get("page_keys")
+    if not keys:
+        return
+    seen = counts.setdefault("page_keys", {})
+    for key in keys:
+        seen[key] = seen.get(key, 0) + 1
+    counts["page_keys"] = dict(sorted(seen.items(), key=lambda kv: -kv[1])[:top])
+
+
 def note_refusal(counts, result, top=10):
     """Where refused landings come from, for diagnosis: the host and the NAMES of the query parameters (never paths or values)."""
     url = result.get("url")
@@ -159,6 +170,7 @@ def run(source, limit, live, resolver):
             counts["kind"][key] = counts["kind"].get(key, 0) + 1
             counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1       # what a live run would do with each, by the same test
             note_refusal(counts, result)
+            note_page_keys(counts, result)
         counts["dry_run"] = True
         return counts
     with store.connect() as connection:
@@ -167,6 +179,7 @@ def run(source, limit, live, resolver):
             counts[verdict] += 1
             counts["why"][why(result)] = counts["why"].get(why(result), 0) + 1          # why the pending ones are pending, counts only
             note_refusal(counts, result)
+            note_page_keys(counts, result)
             if verdict == "resolved":
                 counts["kind"][result["kind"]] = counts["kind"].get(result["kind"], 0) + 1
     return counts
