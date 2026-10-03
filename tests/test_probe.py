@@ -66,3 +66,26 @@ class InterviewAccess(unittest.TestCase):
         self.assertEqual(seen[0]["NOTION_API_TOKEN"], "SECRETVALUE123")
         self.assertNotIn("jobs", seen[0].values())
         self.assertNotIn("SECRETVALUE123", str(out))
+
+
+class GlassdoorProbeTests(unittest.TestCase):
+    def test_reports_per_route_facts_only_and_never_stops_on_a_failing_route(self):
+        from lifeos.platform.http import Fetched
+
+        blocked = Fetched("u", 403, "<html>Just a moment... Verify you are human</html>")
+        page = Fetched("u", 200, '<a href="/job-listing/x-JV_1.htm">x</a><script>{"@type":"JobPosting"}</script>')
+
+        def boom(url):
+            raise OSError("down")
+
+        def tinyfish(urls, fmt="html", links=True):
+            return {urls[0]: {"html": page.html, "links": ["a", "b"]}}, []
+
+        out = probe.glassdoor(plain=lambda url, **kw: blocked, reader=boom, tinyfish_fetch=tinyfish)
+        self.assertEqual(sorted(out), ["page1", "page2", "page3"])                          # employer London page, UK search, US remote search
+        first = out["page1"]
+        self.assertEqual(first["plain"]["status"], 403)
+        self.assertEqual(first["plain"]["blocked"], ["just a moment", "verify you are human"])
+        self.assertEqual(first["reader_proxy"], {"error": "OSError"})
+        self.assertEqual((first["tinyfish_fetch"]["job_links"], first["tinyfish_fetch"]["links"], first["tinyfish_fetch"]["blocked"]), (1, 2, []))
+        self.assertNotIn("glassdoor.co.uk", repr(out))                                    # no url, title or company in the output
