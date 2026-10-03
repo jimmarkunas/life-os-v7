@@ -80,7 +80,7 @@ class IsolatedJobTests(unittest.TestCase):
         steps = {step["id"]: step for step in job["steps"] if step.get("id") in ("asnap", "acard")}
         db = {f"LIFEOS_ACQ_{key}" for key in ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")}
         self.assertEqual(set(steps["asnap"]["env"]), db | {"GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"})
-        self.assertEqual(set(steps["acard"]["env"]), db | {"NOTION_JIRA_TOKEN", "CALENDAR_CARD_BLOCK_ID"})
+        self.assertEqual(set(steps["acard"]["env"]), db | {"NOTION_JIRA_TOKEN", "CALENDAR_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID"})
 
 
     def test_amazon_steps_receive_only_gmail_and_amazon_notion_secrets(self):
