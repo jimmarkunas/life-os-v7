@@ -122,7 +122,11 @@ def parse_html(url, title, html, lane=None, strict=False):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
+    result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
+    org = jsonld.hiring_organization(posting) if posting else None
+    if org and result.get("outcome") in ("ready", "stale"):
+        result["company"] = org                              # D91: the employer as the page names it (replaces a job board's host stored as the company)
+    return result
 
 
 def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False):
@@ -144,6 +148,9 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
 
 
+BOARD_HOST_COMPANY = r"(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)"
+
+
 def save(connection, job_id, result):
     now, outcome = _now(), result["outcome"]
     with connection.cursor() as cursor:
@@ -159,6 +166,8 @@ def save(connection, job_id, result):
                  d["qualifications"], d["fingerprint"], now))
             if result.get("apply_kind"):
                 cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
+            if result.get("company"):                         # only a company that is really a board host (Com / Io / Net / Org / Co, wdN, myworkdayjobs)
+                cursor.execute("UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s", (result["company"][:200], job_id, BOARD_HOST_COMPANY))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
             cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
