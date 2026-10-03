@@ -52,7 +52,7 @@ V7 owns exactly one block on the Daily Report page: the **JIRA Execution** callo
 
 GTV action: add secret `JIRA_GTV_EPIC` (the GTV epic's ticket key, which must belong to the first card project) and optionally `JIRA_GTV_CONTEXT_URL` (the GTV Notion page, shown as a link). The card then shows one unfinished, unblocked action from work under that epic: it stays until done or blocked, otherwise Jira priority, then earliest due date, then Jira rank. With no valid ticket it shows "Create Jira \u2014 define the next GTV action \u00b7 Needs Jira".
 
-Scheduled rollover: every scheduled or tick run checks each non-`:readonly` board; once its sprint has ended and it is Monday 6 AM (America/Chicago) or later it carries unfinished work forward, closes the old sprint, starts the next and reads each step back. It writes only when the run is live. To stop V7 rolling a board over, add `:readonly` to that board's entry in `JIRA_BOARDS`.
+Scheduled rollover: every scheduled or tick run checks each non-`:readonly` board; once its sprint has ended and it is Monday midnight (America/Chicago) or later it carries unfinished work forward, closes the old sprint, starts the next and reads each step back. It writes only when the run is live. To stop V7 rolling a board over, add `:readonly` to that board's entry in `JIRA_BOARDS`.
 
 ### Outlook (Phase C)
 
