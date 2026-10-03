@@ -1,7 +1,7 @@
-"""Job newsletters that arrive in an Outlook mailbox: the same senders, parsers and Jobs OS intake as Gmail, read through the Phase C adapter.
+"""Job newsletters that arrive in an Outlook mailbox: shared parsers and Jobs OS intake, read through the Phase C adapter.
 Like Gmail's sweep, mail from a known job-alert sender is moved out of the Inbox into a `J Newsletters` folder (needs the write sign-in;
 nothing is ever deleted, human mail is never touched, every move is read back). A message is recorded as seen only AFTER its cards are
-safely saved; a parser gap (job links but no cards) stays unseen and is retried; senders with no parser yet (Dice, Reed) are filed but wait.
+safely saved; a parser gap stays unseen and is retried. Reed course mail is filed without opening its body.
 Without the write sign-in it still reads and ingests from the Inbox. Output is counts only.
 Usage: python -m lifeos.run outlook-newsletters [--live]"""
 import hashlib
@@ -20,9 +20,11 @@ SEEN_DDL = """CREATE TABLE IF NOT EXISTS v7_outlook_mail_seen (
 DEFAULT_ACCOUNTS = "personal,work"
 FOLDER = "J Newsletters"
 MAX_MOVES = 200                                      # per account per run: a safety cap, not a target
-# Filed into the folder like the others, but not parsed yet (V7 has no Dice or Reed parser). Dice Private Email (user.dice.com, the
-# relayed staffing recruiters) is human outreach and is deliberately NOT here.
-SWEEP_ONLY = (("dice", re.compile(r"^dice@connect\.dice\.com$")), ("reed", re.compile(r"^[a-z0-9.-]+@(jobs|courses)\.reed\.co\.uk$")))
+# Reed course mail is filed with newsletters but is not a job. Dice Private Email
+# (user.dice.com and recruiter.dice.com) is human outreach and is deliberately absent.
+SWEEP_ONLY = (("reed-course", re.compile(r"^[a-z0-9.-]+@courses\.reed\.co\.uk$")),)
+OUTLOOK_ALERT_RULES = (("dice", re.compile(r"^dice@connect\.dice\.com$")),
+                       ("reed", re.compile(r"^[a-z0-9.-]+@jobs\.reed\.co\.uk$")))
 
 
 def sender_of(message):
@@ -34,6 +36,9 @@ def rule_of(sender):
     rule = config.classify(sender)
     if rule:
         return rule, True
+    for name, pattern in OUTLOOK_ALERT_RULES:
+        if pattern.search(sender):
+            return name, True
     for name, pattern in SWEEP_ONLY:
         if pattern.search(sender):
             return name, False
@@ -92,7 +97,7 @@ def sweep(client, live, limit, now):
 
 
 def extract_account(client, account, connection, live, limit, now):
-    counts = dict.fromkeys(("listed", "already_seen", "unsupported_sender", "no_parser", "messages", "cards", "new_jobs", "repeat_links",
+    counts = dict.fromkeys(("listed", "already_seen", "unsupported_sender", "no_parser", "messages", "cards", "skipped", "new_jobs", "repeat_links",
                             "stale_mail", "non_job_mail", "no_cards", "marked_seen"), 0)
     moves, folder = sweep(client, live, limit, now)
     counts.update(moves)
@@ -125,9 +130,14 @@ def extract_account(client, account, connection, live, limit, now):
             marks.append((key, account, "stale"))
             continue
         html = client.message_html(message["id"])
-        cards = parser(html)
+        counted_parser = ingest.PARSERS_WITH_COUNTS.get(rule)
+        if counted_parser:
+            cards, skipped = counted_parser(html, received)
+            counts["skipped"] += skipped
+        else:
+            cards = parser(html)
         counts["cards"] += len(cards)
-        if not cards and not ingest.LOOKS_LIKE_JOBS[rule](html):
+        if not cards and rule != "reed" and not ingest.LOOKS_LIKE_JOBS[rule](html):
             counts["non_job_mail"] += 1
             marks.append((key, account, "non_job"))
             continue

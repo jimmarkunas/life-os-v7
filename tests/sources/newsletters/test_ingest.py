@@ -1,24 +1,29 @@
 import unittest
 
 from lifeos.sources.newsletters import ingest
-from lifeos.sources.newsletters.parsers import lensa
+from lifeos.sources.newsletters.parsers import dice, lensa
 from tests.kit.db import FakeConn
 from tests.kit.gmail import FakeGmail
+from tests.sources.newsletters.parsers.test_dice_reed import DICE, DICE_DAY2
 
 
 def store_double():
     """In-memory v7_jobs / v7_job_sources: a URL key is new once; no reposts in these fixtures."""
-    db = {"jobs": set(), "sources": 0}
+    db = {"jobs": set(), "sources": 0, "source_hashes": []}
 
     def handler(sql, args, cursor):
         if sql.startswith("INSERT IGNORE INTO v7_jobs"):
             cursor.rowcount = 0 if args[0] in db["jobs"] else 1
             db["jobs"].add(args[0])
-        elif sql.startswith(("SELECT id FROM v7_jobs", "UPDATE v7_jobs")):
-            cursor.rowcount = 0
-        else:
+        elif sql.startswith("INSERT IGNORE INTO v7_job_sources"):
             cursor.rowcount = 1
             db["sources"] += 1
+            db["source_hashes"].append(args[1])
+        elif sql.startswith(("SELECT", "UPDATE v7_jobs")):
+            cursor.rowcount = 0
+            cursor.row = None
+        else:
+            cursor.rowcount = 1
     return FakeConn(handler=handler), db
 
 
@@ -33,6 +38,15 @@ MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
 
 
 class ExtractTests(unittest.TestCase):
+    def test_dice_tracking_urls_dedupe_by_company_and_title_across_alerts(self):
+        conn, db = store_double()
+        first, second = dice.parse(DICE)[0], dice.parse(DICE_DAY2)[0]
+        first_counts = ingest.save_cards(conn, "dice", "m1", [first], NOW)
+        second_counts = ingest.save_cards(conn, "dice", "m2", [second], NOW)
+        self.assertEqual((first_counts, second_counts), ((1, 0), (0, 1)))
+        self.assertEqual((len(db["jobs"]), db["sources"]), (1, 2))
+        self.assertNotEqual(db["source_hashes"][0], db["source_hashes"][1])
+
     def test_dry_run_counts_and_writes_nothing(self):
         gmail = FakeGmail(messages=MESSAGES)
         counts = ingest.extract(gmail, live=False, limit=10)

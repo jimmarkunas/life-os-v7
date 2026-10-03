@@ -105,10 +105,12 @@ class OutlookNewsletterTests(unittest.TestCase):
         self.assertEqual(a, outlook.message_key("AAMk" + "x" * 150))
         self.assertNotEqual(a, outlook.message_key("AAMk" + "y" * 150))
 
-    def test_rules_cover_the_gmail_senders_plus_file_only_dice_and_reed_but_never_dice_private_email(self):
+    def test_rules_cover_alert_senders_and_courses_but_never_dice_private_email(self):
         self.assertEqual(outlook.rule_of("jobalert@lensa.com"), ("lensa", True))
-        self.assertEqual(outlook.rule_of("dice@connect.dice.com"), ("dice", False))
-        self.assertEqual(outlook.rule_of("no-reply@jobs.reed.co.uk"), ("reed", False))
+        self.assertEqual(outlook.rule_of("dice@connect.dice.com"), ("dice", True))
+        self.assertEqual(outlook.rule_of("no-reply@jobs.reed.co.uk"), ("reed", True))
+        course_sender = "updates" + chr(64) + "courses.reed.co.uk"
+        self.assertEqual(outlook.rule_of(course_sender), ("reed-course", False))
         for human in ("abc-def-ghi@user.dice.com", "kosi@recruiter.dice.com", "someone@example.com"):
             self.assertEqual(outlook.rule_of(human), (None, False))
 
@@ -122,11 +124,44 @@ class OutlookNewsletterTests(unittest.TestCase):
         again, _, client2, saved2 = go(None, {"m1": "card"}, db=db, client=client)
         self.assertEqual((again["already_seen"], again["new_jobs"], again["moved"], saved2), (1, 0, 0, []))
 
-    def test_dice_and_reed_alerts_are_filed_but_wait_for_a_parser(self):
-        client = FakeClient([msg("d1", "dice@connect.dice.com"), msg("r1", "no-reply@jobs.reed.co.uk"), msg("p1", "abc@user.dice.com")])
-        out, _, client, saved = go(None, {}, client=client)
-        self.assertEqual((out["moved"], out["no_parser"], saved, client.fetched), (2, 2, [], []))
-        self.assertEqual([m["id"] for m in client.inbox], ["p1"])                # the relayed recruiter stays where it is
+    def test_dice_and_reed_job_alerts_are_ingested_but_courses_and_private_mail_are_not(self):
+        messages = [msg("d1", "dice@connect.dice.com"), msg("r1", "no-reply@jobs.reed.co.uk"),
+                    msg("c1", "updates" + chr(64) + "courses.reed.co.uk"), msg("p1", "abc@user.dice.com"),
+                    msg("p2", "human@recruiter.dice.com")]
+        html = {
+            "d1": ('<p>Job alert</p><table><tr><td style="font-size:20px;font-weight:bold"><p>'
+                   '<a href="https://elinks.dice.com/a/sc/EX123">Platform Analyst</a></p></td></tr>'
+                   '<tr><td><p><strong>Example Systems</strong></p><p>Remote</p></td></tr>'
+                   '<tr><td><p>Posted: 10-05-2026</p></td></tr></table>'),
+            "r1": '<a href="https://www.reed.co.uk/jobs/data-specialist/12345678"><span>Data Specialist</span><span>Example Group</span><span>Location: Remote</span></a>',
+        }
+        out, db, client, saved = go(messages, html, client=FakeClient(messages, html))
+        self.assertEqual((out["moved"], out["no_parser"], out["new_jobs"], out["skipped"]), (3, 1, 2, 0))
+        self.assertEqual([row[0] for row in saved], ["dice", "reed"])
+        self.assertEqual(set(client.fetched), {"d1", "r1"})
+        self.assertEqual(len(db.seen), 2)
+        self.assertEqual([m["id"] for m in client.inbox], ["p1", "p2"])
+
+    def test_malformed_alert_card_is_skipped_and_remains_unseen(self):
+        messages = [msg("d1", "dice@connect.dice.com")]
+        html = {"d1": ('<p>Job alert</p><table><tr><td style="font-size:20px;font-weight:bold"><p>'
+                        '<a href="https://elinks.dice.com/a/sc/EX999">Platform Analyst</a></p></td></tr></table>')}
+        out, db, _, saved = go(messages, html)
+        self.assertEqual((out["cards"], out["skipped"], out["no_cards"], out["marked_seen"], saved), (0, 1, 1, 0, []))
+        self.assertEqual(db.seen, {})
+
+    def test_alert_wording_without_cards_remains_unseen(self):
+        messages = [msg("d2", "dice@connect.dice.com")]
+        html = {"d2": "<p>New matches in your job alert</p>"}
+        out, db, _, saved = go(messages, html)
+        self.assertEqual((out["no_cards"], out["non_job_mail"], out["marked_seen"], saved), (1, 0, 0, []))
+        self.assertEqual(db.seen, {})
+
+    def test_reed_jobs_sender_without_cards_remains_unseen(self):
+        messages = [msg("r2", "no-reply@jobs.reed.co.uk")]
+        out, db, _, saved = go(messages, {"r2": "<p>Service notice</p>"})
+        self.assertEqual((out["no_cards"], out["non_job_mail"], out["marked_seen"], saved), (1, 0, 0, []))
+        self.assertEqual(db.seen, {})
 
     def test_dry_run_moves_saves_and_remembers_nothing(self):
         client = FakeClient([msg("m1", "jobalert@lensa.com")], {"m1": "card"})
