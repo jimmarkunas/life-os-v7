@@ -15,6 +15,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch", data[True])
         self.assertIn("live", data[True]["workflow_dispatch"]["inputs"])
 
+    def test_dice_resolver_is_pipeline_only_and_adds_no_dispatch_input(self):
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
+        data = yaml.safe_load(path.read_text())
+        self.assertNotIn("resolve_dice", data[True]["workflow_dispatch"]["inputs"])
+        job = data["jobs"]["dice"]
+        step = next(step for step in job["steps"] if step.get("id") == "dice")
+        self.assertIn("PIPELINE", step["if"])
+        self.assertNotIn("inputs.", step["if"])
+
 
 if __name__ == "__main__":
     unittest.main()
