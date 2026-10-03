@@ -27,9 +27,17 @@ JOB_ID_PARAMS = {"gh_jid", "jid", "job_id", "jobid", "jobref", "job_ref", "job",
                  "requisition_id", "posting", "posting_id", "vacancy", "vacancy_id", "opening", "opening_id", "position_id", "positionid", "id"}
 
 
-def _id_in_query(query):
+HOST_ID_PARAMS = {"greenhouse.io": {"token"},                     # boards.greenhouse.io/embed/job_app?for=<board>&token=<job id>: Enrich reads this form
+                  "eightfold.ai": {"pid"}}                        # <company>.eightfold.ai/careers?pid=<position id>
+
+
+def _id_in_query(query, host=""):
     """True when a query parameter that names a job carries an id (a digit, at least three characters): /careers?gh_jid=123 is one vacancy."""
-    return any(key.lower() in JOB_ID_PARAMS and any(len(v) >= 3 and re.search(r"\d", v) for v in values) for key, values in query.items())
+    names = set(JOB_ID_PARAMS)
+    for suffix, extra in HOST_ID_PARAMS.items():
+        if host == suffix or host.endswith("." + suffix):
+            names |= extra
+    return any(key.lower() in names and any(len(v) >= 3 and re.search(r"\d", v) for v in values) for key, values in query.items())
 
 
 def url_problem(url):
@@ -39,7 +47,7 @@ def url_problem(url):
     query = parse_qs(parts.query)
     if any(k in query for k in ("p", "page", "q", "keyword", "keywords", "query", "search")):
         return "listing_url"
-    if _id_in_query(query):
+    if _id_in_query(query, (parts.hostname or "").lower()):
         return None                                  # the id may live in the query (Greenhouse embeds on an employer's own /careers page)
     if not segs:
         return "root"
