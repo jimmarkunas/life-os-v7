@@ -58,7 +58,7 @@ class ScaleUp(unittest.TestCase):
         self.assertEqual(qualify(SCALE, uk(geography=NEGATIVE), TODAY).status, EXCLUDE)
 
     def test_fit_and_closure(self):
-        self.assertEqual(qualify(SCALE, uk(fit=70), TODAY).status, EXCLUDE)       # perfect route cannot rescue Fit
+        self.assertEqual(qualify(SCALE, uk(fit=67), TODAY).status, REVIEW)       # perfect route cannot rescue Fit; below the floor is Review (D81)
         self.assertEqual(qualify(SCALE, uk(closed=True), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(SCALE, uk(fit=None), TODAY).status, REVIEW)       # unscorable is review, not 0
 
@@ -102,12 +102,12 @@ class Routing(unittest.TestCase):
 class CrossLane(unittest.TestCase):
     def test_one_fit_floor_for_every_lane(self):
         for policy, facts in ((US, us), (SCALE, uk)):
-            self.assertEqual(qualify(policy, facts(fit=71), TODAY).status, EXCLUDE)
-            self.assertEqual(qualify(policy, facts(fit=72), TODAY).status, ADMIT)
+            self.assertEqual(qualify(policy, facts(fit=67), TODAY).status, REVIEW)
+            self.assertEqual(qualify(policy, facts(fit=68), TODAY).status, ADMIT)
 
     def test_target_does_not_lower_fit(self):
         self.assertEqual(SCALE.bucket, "Target")
-        self.assertEqual(qualify(SCALE, uk(fit=71), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(SCALE, uk(fit=67), TODAY).status, REVIEW)
 
     def test_pay_in_the_wrong_currency_is_not_compared(self):
         self.assertEqual(qualify(US, us(pay_min=50_000, pay_currency="£"), TODAY).status, ADMIT)
