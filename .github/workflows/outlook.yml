@@ -57,6 +57,8 @@ jobs:
         run: python -u -m lifeos.run outlook-auth $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Outlook newsletters (counts only; saves jobs only when the Save box is ticked)
         if: ${{ inputs.action == 'newsletters' }}
+        env:
+          OUTLOOK_NEWSLETTER_ACCOUNTS: ${{ inputs.account }}
         run: python -u -m lifeos.run outlook-newsletters $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Outlook probe (read-only; counts only)
         if: ${{ inputs.action == 'probe' }}
