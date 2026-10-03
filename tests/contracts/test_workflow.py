@@ -32,6 +32,14 @@ class WorkflowTests(unittest.TestCase):
         job = data["jobs"]["agenda"]
         self.assertIn("inputs.tick", job["if"])
 
+    def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        hourly = yaml.safe_load((root / ".github/workflows/hourly.yml").read_text())
+        manual = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
+        self.assertNotIn("amazon", hourly[True]["workflow_dispatch"]["inputs"])
+        self.assertIs(manual[True]["workflow_dispatch"]["inputs"]["live"]["default"], False)
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -49,7 +57,7 @@ class IsolatedJobTests(unittest.TestCase):
         shared = {k: v for k, v in (doc.get("env") or {}).items() if "secrets." in str(v)}
         self.assertGreater(len(shared), 10)
         needs = {"interview": {"HIRING_PIPELINE_PAGE_ID"}}                  # the Interview job reads the Hiring Pipeline page by id
-        for name in ("interview", "jira", "outlook", "bills", "agenda"):
+        for name in ("interview", "jira", "outlook", "bills", "agenda", "amazon"):
             env = doc["jobs"][name].get("env") or {}
             leaked = sorted(k for k in shared if k not in needs.get(name, ()) and env.get(k) not in ("",))
             self.assertEqual(leaked, [], f"{name} inherits {leaked}")
@@ -73,6 +81,17 @@ class IsolatedJobTests(unittest.TestCase):
         db = {f"LIFEOS_ACQ_{key}" for key in ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")}
         self.assertEqual(set(steps["asnap"]["env"]), db | {"GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"})
         self.assertEqual(set(steps["acard"]["env"]), db | {"NOTION_JIRA_TOKEN", "CALENDAR_CARD_BLOCK_ID"})
+
+
+    def test_amazon_steps_receive_only_gmail_and_amazon_notion_secrets(self):
+        import yaml
+        from pathlib import Path
+        doc = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text())
+        job = doc["jobs"]["amazon"]
+        step = next(step for step in job["steps"] if step.get("id") == "amazon")
+        self.assertEqual(set(step.get("env", {})), {
+            "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN",
+            "NOTION_AMAZON_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"})
 
     def test_python_setup_is_declared_once(self):
         from pathlib import Path
