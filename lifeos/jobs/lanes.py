@@ -133,10 +133,10 @@ def parse_pay(text):
     return best if best else (None, None)
 
 
-def detect_work_mode(location, title="", text=""):
-    """remote | hybrid | onsite | unknown. The location and title decide; the description only confirms explicit statements."""
+def detect_work_mode(location, title="", text="", window=1500):
+    """remote | hybrid | onsite | unknown. The location and title decide; the description only confirms explicit statements (in its first `window` characters)."""
     head = f"{location or ''} {title or ''}".lower()
-    body = (text or "")[:1500].lower()
+    body = (text or "")[:window].lower()
     if re.search(r"\bhybrid\b", head) or re.search(r"\bhybrid (?:role|work|schedule|position)\b|\bdays? (?:a|per) week in (?:the )?office", body):
         return "hybrid"
     if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head):
@@ -206,13 +206,14 @@ def join_routes(stored, **extra):
     return ";".join(f"{k}:{v}" for k, v in merged.items())
 
 
+FIT_WINDOW = 6000        # D92: the Fit stage reads the whole top of the description for an explicit work-mode statement, not only the first 1,500 characters
 _CITY_STATE = re.compile(r"^\s*[A-Za-z][A-Za-z .'-]*,\s*[A-Z]{2}\b")
 
 
 def work_mode_for_fit(location, title, text):
     """detect_work_mode, then (Fit stage only, D89): a named US city and state with no remote, hybrid or office cue anywhere is an office job.
     Acquisition filters keep the plain detector, which never guesses."""
-    mode = detect_work_mode(location, title, text)
+    mode = detect_work_mode(location, title, text, window=FIT_WINDOW)
     return "onsite" if mode == "unknown" and _CITY_STATE.match(location or "") else mode
 
 
