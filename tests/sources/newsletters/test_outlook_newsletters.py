@@ -1,0 +1,126 @@
+import json
+import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
+
+from lifeos.platform.outlook import OutlookError
+from lifeos.sources.newsletters import ingest, outlook
+
+NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+ENV = {"OUTLOOK_CLIENT_ID": "cid"}
+
+
+class Card:
+    def __init__(self, url):
+        self.url, self.title, self.company, self.location_text, self.salary_text = url, "t", "c", "l", ""
+        self.age_days = 0
+        self.provider_score = None
+
+
+def msg(mid, sender, received="2026-10-07T10:00:00Z"):
+    return {"id": mid, "receivedDateTime": received, "from": {"emailAddress": {"address": sender}}}
+
+
+class FakeClient:
+    def __init__(self, messages, html=None):
+        self.messages_, self.html, self.fetched = messages, html or {}, []
+
+    def __call__(self, client_id, token, save):
+        return self
+
+    def messages(self, folder, since, limit=5000):
+        assert folder == "inbox"
+        return self.messages_
+
+    def message_html(self, mid):
+        self.fetched.append(mid)
+        return self.html.get(mid, "<html></html>")
+
+
+class Db:
+    """Context manager that is also its own connection; the seen table is a dict keyed by msg_key."""
+
+    def __init__(self, seen=()):
+        self.seen, self.cards = {k: "saved" for k in seen}, []
+
+    def __enter__(self): return self
+    def __exit__(self, *e): return False
+    def cursor(self): return Cur(self)
+
+
+class Cur:
+    def __init__(self, db): self.db, self.out = db, []
+    def __enter__(self): return self
+    def __exit__(self, *e): return False
+
+    def execute(self, sql, args=None):
+        if sql.startswith("SELECT msg_key"):
+            self.out = [(k,) for k in args if k in self.db.seen]
+        elif sql.startswith("INSERT IGNORE INTO v7_outlook_mail_seen"):
+            self.db.seen.setdefault(args[0], args[3])
+
+    def fetchall(self): return self.out
+
+
+def go(messages, html, db=None, live=True, parsers=None, looks=None):
+    db = db or Db()
+    client = FakeClient(messages, html)
+    saved = []
+    with patch.object(outlook.outlook_tokens, "ensure_schema"), patch.object(outlook.outlook_tokens, "load", return_value="R"), \
+            patch.object(outlook.jobs_store, "ensure_schema"), patch.object(outlook.ingest, "backfill_provider"), \
+            patch.object(outlook.ingest, "save_cards", side_effect=lambda conn, rule, key, cards, received: (saved.append((rule, key)), (len(cards), 0))[1]), \
+            patch.dict(ingest.PARSERS, parsers or {"lensa": lambda h: [Card("https://x/1")] if "card" in h else [],
+                                                   "jobright": lambda h: [], "linkedin-alerts": lambda h: []}), \
+            patch.dict(ingest.LOOKS_LIKE_JOBS, looks or {"lensa": lambda h: "jobs" in h, "jobright": lambda h: False,
+                                                         "linkedin-alerts": lambda h: False}):
+        out = outlook.run(100, live, environ=ENV, connect=lambda: db, outlook_factory=client, now=NOW)
+    return out, db, client, saved
+
+
+class OutlookNewsletterTests(unittest.TestCase):
+    def test_keys_are_short_stable_and_distinct(self):
+        a = outlook.message_key("AAMk" + "x" * 150)
+        self.assertEqual(len(a), 40)
+        self.assertEqual(a, outlook.message_key("AAMk" + "x" * 150))
+        self.assertNotEqual(a, outlook.message_key("AAMk" + "y" * 150))
+
+    def test_supported_job_mail_is_saved_then_remembered_and_other_mail_is_ignored(self):
+        messages = [msg("m1", "jobalert@lensa.com"), msg("m2", "someone@example.com")]
+        out, db, client, saved = go(messages, {"m1": "card"})
+        self.assertEqual((out["listed"], out["unsupported_sender"], out["messages"], out["cards"], out["new_jobs"], out["marked_seen"]),
+                         (2, 1, 1, 1, 1, 1))
+        self.assertEqual(saved[0][0], "lensa")
+        self.assertEqual(client.fetched, ["m1"])                 # unrelated mail is never even opened
+        again, _, client2, saved2 = go(messages, {"m1": "card"}, db=db)
+        self.assertEqual((again["already_seen"], again["new_jobs"], saved2, client2.fetched), (1, 0, [], []))
+
+    def test_dry_run_saves_and_remembers_nothing(self):
+        out, db, _, saved = go([msg("m1", "jobalert@lensa.com")], {"m1": "card"}, live=False)
+        self.assertEqual((out["cards"], out["new_jobs"], out["marked_seen"], saved, db.seen), (1, 0, 0, [], {}))
+
+    def test_a_parser_gap_stays_unseen_and_a_non_job_mail_is_closed(self):
+        out, db, _, _ = go([msg("m1", "jobalert@lensa.com"), msg("m2", "jobalert@lensa.com")], {"m1": "jobs here", "m2": "reset your password"})
+        self.assertEqual((out["no_cards"], out["non_job_mail"], out["marked_seen"]), (1, 1, 1))
+        self.assertNotIn(outlook.message_key("m1"), db.seen)       # retried next run
+        self.assertEqual(db.seen[outlook.message_key("m2")], "non_job")
+
+    def test_mail_older_than_the_window_is_closed_without_being_opened(self):
+        out, db, client, _ = go([msg("old", "jobalert@lensa.com", received="2025-01-01T00:00:00Z")], {})
+        self.assertEqual((out["stale_mail"], client.fetched, db.seen[outlook.message_key("old")]), (1, [], "stale"))
+
+    def test_failures_are_fixed_codes_by_position_and_output_is_counts_only(self):
+        with patch.object(outlook.outlook_tokens, "ensure_schema"), patch.object(outlook.outlook_tokens, "load", return_value=None), \
+                patch.object(outlook.jobs_store, "ensure_schema"), patch.object(outlook.ingest, "backfill_provider"):
+            with self.assertRaises(OutlookError) as error:
+                outlook.run(1, True, environ=dict(ENV, OUTLOOK_NEWSLETTER_ACCOUNTS="personal,work"), connect=lambda: Db(),
+                            outlook_factory=FakeClient([]), now=NOW)
+        self.assertEqual(str(error.exception), "OUTLOOK_NEWSLETTERS_FAILED:2of2:OUTLOOK_NOT_SIGNED_IN@1,OUTLOOK_NOT_SIGNED_IN@2")
+        out, _, _, _ = go([msg("m1", "jobalert@lensa.com")], {"m1": "card"})
+        for private in ("lensa.com", "m1", "x/1"):
+            self.assertNotIn(private, json.dumps(out))
+        with self.assertRaises(OutlookError):
+            outlook.run(1, False, environ={}, connect=lambda: Db(), outlook_factory=FakeClient([]), now=NOW)
+
+
+if __name__ == "__main__":
+    unittest.main()

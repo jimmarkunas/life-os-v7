@@ -156,3 +156,10 @@ class Outlook:
                 raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
             url = link
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
+    def message_html(self, message_id):
+        """The HTML body of one message (content stays in memory only)."""
+        reply = self.get(f"/me/messages/{urllib.parse.quote(message_id, safe='')}", {"$select": "id,body"},
+                         prefer='outlook.body-content-type="html"')
+        body = reply.get("body") or {}
+        return body.get("content") or "" if str(body.get("contentType", "")).lower() == "html" else ""

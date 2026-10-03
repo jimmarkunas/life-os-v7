@@ -495,9 +495,10 @@ jobs:
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
-  calendar:
-    # Outlook invites -> your Google calendar, every scheduled or tick run. Its own job like Jira and Interview: every other credential is
-    # blanked, the mailbox/calendar/database secrets reach the one step, and a failure is a warning that never fails the Jobs run.
+  outlook:
+    # Outlook (read-only) on every scheduled or tick run: job newsletters into Jobs OS, and meeting invites into your Google calendar. Its own
+    # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
+    # them, and a failure is a warning that never fails the Jobs run.
     needs: prep
     if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
     runs-on: ubuntu-24.04
@@ -531,6 +532,20 @@ jobs:
           cache-dependency-path: requirements*.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - id: outnews
+        continue-on-error: true
+        name: Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)
+        env:
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run outlook-newsletters $([ "$LIVE" = "true" ] && echo --live)
       - id: calsync
         continue-on-error: true
         name: Calendar sync (Outlook invites to Google; counts only; writes only when live)
@@ -547,9 +562,9 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
         run: python -m lifeos.run calendar-sync $([ "$LIVE" = "true" ] && echo --live)
-      - name: Calendar warning (does not fail the run)
-        if: ${{ always() && steps.calsync.outcome == 'failure' }}
-        run: echo "::warning title=Calendar::the Outlook to Google calendar sync failed; the Jobs pipeline is unaffected"
+      - name: Outlook warning (does not fail the run)
+        if: ${{ always() && (steps.outnews.outcome == 'failure' || steps.calsync.outcome == 'failure') }}
+        run: echo "::warning title=Outlook::an Outlook step failed; the Jobs pipeline is unaffected"
 
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
