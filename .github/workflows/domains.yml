@@ -173,7 +173,9 @@ jobs:
 
   agenda:
     # Read the main Google Calendar and refresh its isolated Daily Report callout; failures are warnings only.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
+    # Waits for the jira job: both write the same page, and the Calendar card verifies the Jira region is intact.
+    needs: jira
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
