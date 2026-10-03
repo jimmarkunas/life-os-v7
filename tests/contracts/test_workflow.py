@@ -30,6 +30,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@unittest.skipIf(yaml is None, "PyYAML not installed")
 class IsolatedJobTests(unittest.TestCase):
     """Interview, Jira and Outlook run with every workflow-level secret blanked unless the job redeclares it; a new workflow-level secret
     must be blanked in each of them or this fails (the isolation pattern is declared three times, so it is checked, not trusted)."""
