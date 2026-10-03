@@ -134,6 +134,62 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "OUTLOOK_SIGNIN_AUTHORIZATION_DECLINED")
 
 
+class WriteTests(unittest.TestCase):
+    def test_the_write_sign_in_asks_for_the_write_scope_and_refresh_never_narrows_it(self):
+        sent = []
+        with patch.object(outlook, "_post_form", side_effect=lambda url, form: (sent.append(form), {"device_code": "D", "access_token": "A"})[1]):
+            outlook.device_start("cid")
+            outlook.device_start("cid", write=True)
+            outlook.refresh("cid", "R")
+        self.assertIn("Mail.Read ", sent[0]["scope"] + " ")
+        self.assertNotIn("Mail.ReadWrite", sent[0]["scope"])
+        self.assertIn("Mail.ReadWrite", sent[1]["scope"])
+        self.assertNotIn("scope", sent[2])                                       # a refresh keeps whatever the sign-in was granted
+
+    def test_folder_lookup_create_and_a_move_that_is_read_back(self):
+        calls = []
+
+        def fake(request, timeout=0):
+            url, method = request.full_url, request.get_method()
+            calls.append((method, url.split("graph.microsoft.com/v1.0")[-1].split("?")[0], request.data))
+            if "oauth2" in url:
+                return Response({"access_token": "A"})
+            if method == "GET" and url.endswith("/me/mailFolders") or "mailFolders?" in url:
+                return Response({"value": []})
+            if method == "POST" and url.endswith("/me/mailFolders"):
+                return Response({"id": "F1"})
+            if method == "POST" and url.endswith("/move"):
+                return Response({"id": "m"})
+            if method == "GET" and "/me/messages/" in url:
+                return Response({"id": "m", "parentFolderId": "F1"})
+            raise AssertionError(url)
+
+        client = Outlook("cid", "R", sleep=lambda s: None)
+        with patch("urllib.request.urlopen", side_effect=fake):
+            self.assertIsNone(client.folder_id("J Newsletters"))
+            self.assertEqual(client.folder_id("J Newsletters", create=True), "F1")
+            self.assertTrue(client.move("AAMk/+=id", "F1"))
+        self.assertEqual([c[0] for c in calls if "oauth2" not in c[1]], ["GET", "GET", "POST", "POST", "GET"])
+        self.assertIn("AAMk%2F%2B%3Did", calls[-2][1])                          # ids are URL-quoted
+        self.assertEqual(json.loads(calls[-2][2]), {"destinationId": "F1"})
+
+    def test_a_denied_write_is_a_fixed_code_and_never_leaks(self):
+        def denied(request, timeout=0):
+            if "oauth2" in request.full_url:
+                return Response({"access_token": "A"})
+            raise urllib.error.HTTPError(request.full_url, 403, "secret body", {}, None)
+
+        with patch("urllib.request.urlopen", side_effect=denied):
+            with self.assertRaises(OutlookError) as error:
+                Outlook("cid", "R", sleep=lambda s: None).move("m", "F1")
+        self.assertEqual(str(error.exception), "OUTLOOK_HTTP_403")
+
+    def test_nothing_in_the_adapter_deletes_or_sends(self):
+        source = (ROOT / "lifeos/platform/outlook.py").read_text()
+        for forbidden in ('"DELETE"', "'DELETE'", "/send", "sendMail", "/forward", "permanentDelete"):
+            self.assertNotIn(forbidden, source)
+
+
 class FakeDb:
     """Just enough of the token table: rows are {account: [refresh_token, fingerprint]}."""
 

@@ -1,6 +1,7 @@
 """Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code
 sign-in once, then silent refresh), immutable message ids, bounded full enumeration. Every error is a fixed code: never a URL, a token,
-an address or a response body. Reads retry transient failures; nothing here writes to a mailbox."""
+an address or a response body. Reads retry transient failures. Writes are limited to creating one mail folder and moving a message into
+it (both safe to repeat); nothing here ever deletes, sends or edits mail."""
 import json
 import time
 import urllib.error
@@ -9,7 +10,8 @@ import urllib.request
 
 AUTHORITY = "https://login.microsoftonline.com/common/oauth2/v2.0"      # personal Microsoft accounts and work/school tenants
 GRAPH = "https://graph.microsoft.com/v1.0"
-SCOPES = "offline_access Mail.Read Calendars.Read"                       # read-only; cleanup later needs its own consent
+SCOPES = "offline_access Mail.Read Calendars.Read"                       # read-only sign-in
+SCOPES_WRITE = "offline_access Mail.ReadWrite Calendars.Read"            # adds moving mail into a folder (a separate, explicit sign-in)
 TRANSIENT = (429, 500, 502, 503, 504)
 MAX_PAGES = 100
 PAGE_SIZE = 100
@@ -38,8 +40,8 @@ def _post_form(url, form, timeout=30):
         raise OutlookError("OUTLOOK_NETWORK") from None
 
 
-def device_start(client_id):
-    reply = _post_form(f"{AUTHORITY}/devicecode", {"client_id": client_id, "scope": SCOPES})
+def device_start(client_id, write=False):
+    reply = _post_form(f"{AUTHORITY}/devicecode", {"client_id": client_id, "scope": SCOPES_WRITE if write else SCOPES})
     if "device_code" not in reply:
         raise OutlookError("OUTLOOK_DEVICE_START_FAILED")
     return reply
@@ -65,7 +67,7 @@ def device_wait(client_id, started, sleep=time.sleep, clock=time.monotonic):
 
 def refresh(client_id, refresh_token):
     reply = _post_form(f"{AUTHORITY}/token", {"client_id": client_id, "refresh_token": refresh_token,
-                                               "grant_type": "refresh_token", "scope": SCOPES})
+                                               "grant_type": "refresh_token"})     # no scope: keep whatever this sign-in was granted
     if "access_token" not in reply:
         raise OutlookError("OUTLOOK_REFRESH_" + str(reply.get("error", "failed")).upper())
     return reply
@@ -92,13 +94,20 @@ class Outlook:
 
     def get(self, url, params=None, prefer=""):
         """GET a Graph path (or a full @odata.nextLink). Immutable ids are requested on every call."""
+        return self._request("GET", url, params, None, prefer)
+
+    def _request(self, method, url, params=None, body=None, prefer=""):
         if url.startswith("/"):
             url = GRAPH + url + ("?" + urllib.parse.urlencode(params) if params else "")
         elif not url.startswith(GRAPH + "/"):
             raise OutlookError("OUTLOOK_BAD_LINK")                    # never follow a link off Graph with our token
+        data = None if body is None else json.dumps(body).encode()
         for attempt in range(4):
-            request = urllib.request.Request(url, headers={"Authorization": "Bearer " + self._access(), "Accept": "application/json",
-                                                           "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else ""), "User-Agent": "life-os-v7"})
+            headers = {"Authorization": "Bearer " + self._access(), "Accept": "application/json", "User-Agent": "life-os-v7",
+                       "Prefer": 'IdType="ImmutableId"' + (", " + prefer if prefer else "")}
+            if data is not None:
+                headers["Content-Type"] = "application/json"
+            request = urllib.request.Request(url, data=data, headers=headers, method=method)
             try:
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     return json.loads(response.read() or b"{}")
@@ -121,6 +130,23 @@ class Outlook:
             except ValueError:
                 raise OutlookError("OUTLOOK_BAD_RESPONSE") from None
         raise OutlookError("OUTLOOK_NETWORK")
+
+    def folder_id(self, name, create=False):
+        """The id of a top-level mail folder by name; created when asked and missing. None when missing and not creating."""
+        quoted = name.replace("'", "''")
+        found = self.get("/me/mailFolders", {"$filter": f"displayName eq '{quoted}'", "$select": "id,displayName", "$top": 10})
+        for folder in found.get("value") or []:
+            if folder.get("displayName") == name and folder.get("id"):
+                return folder["id"]
+        if not create:
+            return None
+        return self._request("POST", "/me/mailFolders", None, {"displayName": name})["id"]
+
+    def move(self, message_id, folder_id):
+        """Move one message into a folder (repeating it is harmless) and read it back: True only if it is now in that folder."""
+        quoted = urllib.parse.quote(message_id, safe="")
+        self._request("POST", f"/me/messages/{quoted}/move", None, {"destinationId": folder_id})
+        return self.get(f"/me/messages/{quoted}", {"$select": "id,parentFolderId"}).get("parentFolderId") == folder_id
 
     def messages(self, folder="inbox", since=None, limit=5000):
         """Every message in a folder received at or after `since` (ISO 8601), newest first, following every page. A listing that
@@ -156,3 +182,10 @@ class Outlook:
                 raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
             url = link
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
+    def message_html(self, message_id):
+        """The HTML body of one message (content stays in memory only)."""
+        reply = self.get(f"/me/messages/{urllib.parse.quote(message_id, safe='')}", {"$select": "id,body"},
+                         prefer='outlook.body-content-type="html"')
+        body = reply.get("body") or {}
+        return body.get("content") or "" if str(body.get("contentType", "")).lower() == "html" else ""

@@ -1,4 +1,4 @@
-"""Outlook stages. `auth` signs one mailbox in once (device code; the token goes straight into the private database, never into
+"""Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into the private database, never into
 a secret or a log). `probe` is a read-only health check that prints counts only. Imports only the platform."""
 import hashlib
 import os
@@ -38,12 +38,12 @@ def fingerprint(factory, client_id, refresh_token):
     return hashlib.sha256(inbox.encode()).hexdigest()
 
 
-def auth(limit, live, environ=os.environ, connect=None, client_factory=None, replace=False, sleep=time.sleep, clock=time.monotonic, say=lambda line: print(line, flush=True)):
+def auth(limit, live, environ=os.environ, connect=None, client_factory=None, replace=False, write=False, sleep=time.sleep, clock=time.monotonic, say=lambda line: print(line, flush=True)):
     """Needs `live`: signing in is the one thing that must be saved, so a dry run only checks the configuration."""
     label, client_id = _label(environ), _client_id(environ)
     if not live:
         return {"account": 1, "signed_in": 0}
-    started = device_start(client_id)
+    started = device_start(client_id, write)
     # The sign-in code is single-use, short-lived and useless without the account's own password; it is the one thing printed.
     say(f"OUTLOOK SIGN-IN: open {started.get('verification_uri')} and enter code {started.get('user_code')}")
     reply = device_wait(client_id, started, sleep=sleep, clock=clock)
