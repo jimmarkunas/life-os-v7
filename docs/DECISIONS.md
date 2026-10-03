@@ -396,3 +396,6 @@ A real Lensa alert shows why 478 Lensa jobs (341 `no_match_no_board`, 137 `no_ma
 
 ## D81 — Fit floor 68; below the floor is Review, not Excluded (2026-10-03, Jim)
 Jim wants every job he is plausibly qualified for on the board. The shared Fit floor (Go threshold and lane floor) moves from 72 to 68, and a job scored below 68 is `REVIEW` ("Fit N below 68"), not `EXCLUDE`, so it publishes as Passed / Review instead of becoming EXCLUDED_FIT. Hard exclusions in the Fit model, a closed vacancy, market mismatch, not remote, explicit pay below the lane floor and posting age still exclude. `POLICY_VERSION` is `l5`, so stored decisions are re-evaluated on the next fit run.
+
+## D82 — Pipeline funnel report (2026-10-03, Jim)
+`python -m lifeos.run funnel` (Hourly dispatch input `funnel`, never on the tick) is a read-only, counts-only report for the last 24 hours and 7 days: per source the job count by status, the Fit admission by score band (`lt60`, `60_67`, `68_71`, `72_79`, `80_up`, `unscored`) and by lane reason (digits normalised), and the hours since a job was last found and last published for each source. It answers "which provider loses its jobs, and at which step" and whether Fit or the lane policy is the filter. No title, company or link is logged.

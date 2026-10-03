@@ -111,6 +111,7 @@ STAGES = {
     "audit": lazy("lifeos.jobs.audit", floor=2000),
     "publish": lazy("lifeos.jobs.publish"),
     "expire-holds": lazy("lifeos.jobs.hold"),
+    "funnel": lazy("lifeos.jobs.funnel"),
     "sync-seen": _sync_seen,
     "purge": _purge,
 }

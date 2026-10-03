@@ -75,6 +75,10 @@ on:
         description: "Shape probe (counts only): Open Jobs feed, Teamtailor boards, Dice job pages. Writes nothing"
         type: boolean
         default: false
+      funnel:
+        description: "Pipeline funnel report (counts only, read-only): per provider status, Fit by score band and lane reason, hours since last found and last published"
+        type: boolean
+        default: false
       fit:
         description: "Score jobs with the Fit model: counts only unless live (also reports the semantic shadow counts)"
         type: boolean
@@ -308,6 +312,11 @@ jobs:
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
         run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
+      - id: funnel
+        continue-on-error: true
+        name: Funnel report (dispatch only, read-only, counts only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.funnel }}
+        run: python -m lifeos.run funnel
       - id: probe
         continue-on-error: true
         name: Probe - source shapes (dispatch only, counts only)
