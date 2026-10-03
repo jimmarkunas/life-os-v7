@@ -1,4 +1,5 @@
 """Polite HTTP fetch with manual redirect following. Returns facts only; URLs are never logged (public repo)."""
+import http.client
 import urllib.error
 import urllib.request
 from urllib.parse import urljoin
@@ -43,6 +44,8 @@ def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None, data=N
                 current = urljoin(current, location)
                 continue
             return Fetched(current, error.code, "", hop, "http", codes)
+        except (http.client.InvalidURL, ValueError):                 # a redirect to a malformed address (a bot-protection page): a miss, never a crash
+            return Fetched(current, 0, "", hop, "bad_url", codes)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             return Fetched(current, 0, "", hop, "timeout" if "timed out" in str(error).lower() else "network", codes)
     return Fetched(current, 0, "", max_hops, "too_many_redirects", codes)

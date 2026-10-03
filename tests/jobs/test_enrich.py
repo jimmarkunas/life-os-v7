@@ -191,3 +191,28 @@ class TitleProofTests(unittest.TestCase):
         self.assertTrue(enrich._strict(1, {1: (self.AMBIGUOUS_URL, "T")}, {1}))
         self.assertFalse(enrich._strict(2, {2: (self.AMBIGUOUS_URL, "T")}, {1}))
         self.assertFalse(enrich._strict(1, {1: ("https://careers.example.com/j/1", "T")}, {1}))
+
+
+class OneBadPageTests(unittest.TestCase):
+    def test_a_page_that_raises_is_blocked_and_the_rest_of_the_batch_still_runs(self):
+        from tests.kit.db import FakeConn
+        rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None),
+                (2, "https://b.example.com/jobs/222222", "Senior Engineer", "ats", None, "US Remote", "web:b", None)]
+
+        def handler(sql, args, cursor):
+            if sql.startswith("SELECT id, final_apply_url"):
+                cursor.fetchall = lambda: rows
+
+        seen = []
+
+        def read(url, *a):
+            seen.append(url)
+            if "a.example" in url:
+                raise ValueError("boom")
+            return {"outcome": "closed"}
+
+        with mock.patch.object(enrich.store, "connect", return_value=FakeConn(handler=handler)), mock.patch.object(enrich.store, "ensure_schema"), \
+                mock.patch.object(enrich, "read_page", side_effect=read):
+            counts = enrich.run(10, False)
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(counts["outcome"], {"blocked": 1, "closed": 1})

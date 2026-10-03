@@ -399,3 +399,6 @@ Jim wants every job he is plausibly qualified for on the board. The shared Fit f
 
 ## D82 — Pipeline funnel report (2026-10-03, Jim)
 `python -m lifeos.run funnel` (Hourly dispatch input `funnel`, never on the tick) is a read-only, counts-only report for the last 24 hours and 7 days: per source the job count by status, the Fit admission by score band (`lt60`, `60_67`, `68_71`, `72_79`, `80_up`, `unscored`) and by lane reason (digits normalised), and the hours since a job was last found and last published for each source. It answers "which provider loses its jobs, and at which step" and whether Fit or the lane policy is the filter. No title, company or link is logged.
+
+## D83 — One unreadable page never stops Enrich (2026-10-03, Jim)
+The 4 PM CDT tick's Enrich step crashed on a job whose page redirected (a Radware bot-protection page) to an address with a space in it: `http.client.InvalidURL` was uncaught, so the whole step died, nothing after that job in the batch was read, and the same job would be picked first on every later tick. `fetch` now returns a miss (`bad_url`) for a malformed address, and Enrich catches any exception from one page, records it as `blocked` with a `read_<error>` reason, and carries on with the rest of the batch.
