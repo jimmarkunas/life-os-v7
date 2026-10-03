@@ -217,3 +217,51 @@ class RequeueFloorTests(unittest.TestCase):
         conn.cur.rowcount = 7
         self.assertEqual(stage.requeue_floor(conn.cursor()), 7)
         self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_jobs"])
+
+
+class ProfessionGate(unittest.TestCase):
+    """D89: the blatant misses from the 38-job review. A different profession is never a Fit, and generic requirements alone are not one."""
+
+    def hard(self, title, company="Acme"):
+        got, _ = exclusions.check(title, company, GOOD)
+        return got and got["id"]
+
+    def test_the_rows_jim_rejected_are_hard_exclusions(self):
+        self.assertEqual(self.hard("Director, TA Infrastructure"), "hr_function")
+        self.assertEqual(self.hard("Senior Manager, Strategy and Operations - People Experience [Remote]"), "hr_function")
+        self.assertEqual(self.hard("Senior Director, Back Up Care Program"), "care_hospitality")
+        self.assertEqual(self.hard("Nursery Housekeeper"), "care_hospitality")
+        self.assertEqual(self.hard("Nursery Chef - NEW LAUNCH!"), "care_hospitality")
+        self.assertEqual(self.hard("Senior Project Manager - Surgical Services Operations Support"), "medical_role")
+        self.assertEqual(self.hard("Senior Project Manager", "Mayo Clinic"), "healthcare_employer")
+
+    def test_legitimate_program_titles_are_not_caught(self):
+        for title in ("Technical Program Manager", "Senior Director, Technical Program Management", "Benefits Realization Manager",
+                      "Director, Platform Infrastructure", "Engagement Manager", "Partner Manager", "Senior Scrum Master"):
+            self.assertIsNone(self.hard(title), title)
+
+    def test_an_analyst_level_title_is_capped_below_the_review_band(self):
+        analyst = evaluate("Revenue Operations Analyst 3", "Acme", GOOD, PROFILE, TODAY)
+        manager = evaluate("Technical Program Manager", "Acme", GOOD, PROFILE, TODAY)
+        self.assertLessEqual(analyst.score, 55)
+        self.assertIn("analyst-level", analyst.why)
+        self.assertGreater(manager.score, 55)
+        self.assertGreater(evaluate("Associate Director, Technical Program Management", "Acme", GOOD, PROFILE, TODAY).score, 55)
+
+    def test_generic_requirements_with_no_matching_function_are_capped(self):
+        generic = ("About the role\nWe need an organised person to look after the daily running of the site.\n\nRequirements\n"
+                   "• Strong communication skills\n• Good organisational skills\n• Attention to detail and time management\n"
+                   "• Ability to collaborate and prioritise\n• Bachelor's degree preferred\n") + "We are a friendly team who value collaboration. " * 12
+        result = evaluate("Site Lead", "Acme", generic, PROFILE, TODAY)
+        self.assertLessEqual(result.score, 50)
+        self.assertEqual(result.decision, "No-Go")
+        self.assertIn("matches your functions", result.why)
+
+    def test_a_city_and_state_with_no_remote_cue_is_an_office_job_in_the_fit_stage_only(self):
+        from lifeos.jobs import lanes
+        self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "onsite")
+        self.assertEqual(lanes.work_mode_for_fit("Rochester, MN", "Project Manager", ""), "onsite")
+        self.assertEqual(lanes.work_mode_for_fit("United States", "Project Manager", ""), "unknown")
+        self.assertEqual(lanes.work_mode_for_fit("Austin, TX (Remote)", "Project Manager", ""), "remote")
+        self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote")
+        self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")      # acquisition filters never guess

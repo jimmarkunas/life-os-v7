@@ -150,7 +150,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l7"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l8"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -206,12 +206,22 @@ def join_routes(stored, **extra):
     return ";".join(f"{k}:{v}" for k, v in merged.items())
 
 
+_CITY_STATE = re.compile(r"^\s*[A-Za-z][A-Za-z .'-]*,\s*[A-Z]{2}\b")
+
+
+def work_mode_for_fit(location, title, text):
+    """detect_work_mode, then (Fit stage only, D89): a named US city and state with no remote, hybrid or office cue anywhere is an office job.
+    Acquisition filters keep the plain detector, which never guesses."""
+    mode = detect_work_mode(location, title, text)
+    return "onsite" if mode == "unknown" and _CITY_STATE.match(location or "") else mode
+
+
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
-    return Facts(fit=fit, market=market or market_of(location), work_mode=detect_work_mode(location, title, text), pay_min=pay_min,
+    return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location))
 
 
