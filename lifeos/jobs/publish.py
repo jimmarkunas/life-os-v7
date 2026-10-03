@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import meta, lanes, ledger, store
-from lifeos.jobs.identity import url_key
+from lifeos.jobs.identity import norm, url_key
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -24,6 +24,17 @@ def _now():
 
 def _block(kind, content):
     return {"object": "block", "type": kind, kind: {"rich_text": rich_text(content)}}
+
+
+def same_opening(cursor, job_id, company, title):
+    """D90: the id of a PUBLISHED job with the same company and title (three words or more, so a generic title is never merged), else None.
+    One opening posted under several locations or links is one page."""
+    if len(norm(title).split()) < 3 or not norm(company):
+        return None
+    cursor.execute("SELECT id FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
+                   " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) LIMIT 1", (job_id, company, title))
+    row = cursor.fetchone()
+    return row[0] if row else None
 
 
 def body_blocks(key, description):
@@ -156,6 +167,14 @@ def run(limit, live, environ=os.environ):
                     cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', unresolved_reason='in_ledger', "
                                    "updated_at=%s WHERE id=%s", (_now(), job_id))
             continue
+        if live:
+            with store.connect() as connection, connection.cursor() as cursor:
+                original = same_opening(cursor, job_id, company, title)
+                if original:
+                    cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
+                                   (original, _now(), job_id))
+                    counts["duplicate"] += 1
+                    continue
         if not live:
             counts["created"] += 1
             continue
