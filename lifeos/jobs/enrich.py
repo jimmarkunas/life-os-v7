@@ -238,7 +238,10 @@ def run(limit, live):
             from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
-        result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id))
+        try:
+            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id))
+        except Exception as error:                                   # noqa: BLE001 - one unreadable page must never stop the rest of the batch (D83)
+            result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
             result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
         result["final_url"] = url

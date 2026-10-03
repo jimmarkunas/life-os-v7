@@ -84,3 +84,4 @@ This index is checked by a test: add a line here with every new decision.
 - D80 — Lensa and LinkedIn titles are matched without aggregator noise (2026-10-03, Jim)
 - D81 — Fit floor 68; below the floor is Review, not Excluded (2026-10-03, Jim)
 - D82 — Pipeline funnel report (2026-10-03, Jim)
+- D83 — One unreadable page never stops Enrich (2026-10-03, Jim)
