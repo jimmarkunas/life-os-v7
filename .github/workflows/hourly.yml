@@ -683,3 +683,54 @@ jobs:
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Agenda::the Calendar snapshot or card failed; the Jobs pipeline is unaffected"
+
+
+  amazon:
+    # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
+    needs: prep
+    if: ${{ always() && needs.prep.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.tick) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GMAIL_OAUTH_CLIENT_ID: ""
+      GMAIL_OAUTH_CLIENT_SECRET: ""
+      GMAIL_OAUTH_REFRESH_TOKEN: ""
+      TINYFISH_API_KEY: ""
+      NOTION_API_TOKEN: ""
+      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""
+      JOBRIGHT_EMAIL: ""
+      JOBRIGHT_PASSWORD: ""
+      OUTLOOK_CLIENT_ID: ""
+      NOTION_JIRA_TOKEN: ""
+      GCAL_SERVICE_ACCOUNT_JSON: ""
+      GCAL_CALENDAR_ID: ""
+      CALENDAR_CARD_BLOCK_ID: ""
+      NOTION_BILLS_TOKEN: ""
+      NOTION_BILLS_DATA_SOURCE_ID: ""
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ""
+      LIFEOS_ACQ_DB_PASSWORD: ""
+      LIFEOS_ACQ_SSH_HOST: ""
+      LIFEOS_ACQ_SSH_PORT: ""
+      LIFEOS_ACQ_SSH_USER: ""
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ""
+      LIFEOS_ACQ_DB_NAME: ""
+      LIFEOS_ACQ_DB_USER: ""
+      FIT_PROFILE_JSON: ""
+      OPEN_JOBS_CONTACT: ""
+      HIRING_PIPELINE_PAGE_ID: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: amazon
+        continue-on-error: true
+        name: Amazon Orders (Gmail to Notion; archive only after read-back)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
+        run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
+      - name: Amazon Orders warning (does not fail the Jobs run)
+        if: ${{ always() && steps.amazon.outcome == 'failure' }}
+        run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
