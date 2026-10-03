@@ -1,12 +1,12 @@
 # Lanes: US Remote, UK Scale-Up, UK Skilled Worker
 
-One Jobs OS, three opportunity policies. Identity, professional Fit (floor **72**, `lifeos/jobs/fit`), dedupe, the canonical Job
+One Jobs OS, three opportunity policies. Identity, professional Fit (floor **68**, `lifeos/jobs/fit`), dedupe, the canonical Job
 and its lifecycle are shared. A lane adds only opportunity policy, as data (`lifeos/jobs/lanes.py`: `LanePolicy`,
 `qualify()`), never as a separate code path. Unresolved evidence is REVIEW, definitive negative evidence is EXCLUDE.
 
 | Policy | US Remote | UK Scale-Up | UK Skilled Worker |
 |---|---|---|---|
-| Fit floor | 72 | 72 | 72 |
+| Fit floor | 68 | 68 | 68 |
 | Market | US | UK | UK |
 | Work mode | remote only (unknown = Review) | any | any |
 | Explicit pay floor | $80,000 (missing pay allowed) | none | £65,000 (missing pay allowed) |

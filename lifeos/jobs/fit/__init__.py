@@ -4,4 +4,4 @@ The engine here is generic and public. Everything personal (evidence, correction
 is injected at run time as a profile (profile.py) and never committed (D16).
 """
 MODEL_VERSION = "2"
-GO_THRESHOLD = 72
+GO_THRESHOLD = 68

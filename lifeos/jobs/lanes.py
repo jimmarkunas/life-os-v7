@@ -1,6 +1,6 @@
 """Lane policy: one data-driven qualification for every acquisition lane (docs/LANES.md).
 
-Professional Fit is shared and lives in lifeos.jobs.fit (floor 72 for every lane). A lane only adds opportunity policy:
+Professional Fit is shared and lives in lifeos.jobs.fit (floor 68 for every lane; below it a job goes to Review, D81). A lane only adds opportunity policy:
 market, work mode, explicit pay, posting age, route and geography evidence. Unresolved evidence is REVIEW, never guessed;
 definitive negative evidence (and a closed vacancy) is EXCLUDE.
 """
@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date
 import re
 
-FIT_FLOOR = 72
+FIT_FLOOR = 68
 POSITIVE, NEGATIVE, UNRESOLVED = "POSITIVE", "NEGATIVE", "UNRESOLVED"
 ADMIT, REVIEW, EXCLUDE, DISABLED = "ADMIT", "REVIEW", "EXCLUDE", "DISABLED"
 PRECEDENCE = ("Scale-Up", "Skilled Worker", "US Remote")      # the visible lane when a job is eligible for several
@@ -37,7 +37,7 @@ POLICIES = {
     "Scale-Up": LanePolicy("Scale-Up", "UK", "£", max_age_days=30, unknown_date_blocks=False, route="Scale-up",
                            geography_required=True, bucket="Target"),
     # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
-    # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 72 like every lane.
+    # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 68 like every lane.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
                                  geography_required=True, market_required=True, bucket="Target"),
 }
@@ -72,7 +72,7 @@ def qualify(policy, facts, today):
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
     if facts.fit is not None and facts.fit < FIT_FLOOR:
-        return Decision(EXCLUDE, f"Fit {facts.fit} below {FIT_FLOOR}")
+        return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}")
     if policy.work_mode == "remote_only":
         if facts.work_mode == "unknown":
             return Decision(REVIEW, "work mode unresolved")
@@ -147,7 +147,7 @@ def detect_work_mode(location, title="", text=""):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l4"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l5"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
