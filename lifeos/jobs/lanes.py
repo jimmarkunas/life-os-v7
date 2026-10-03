@@ -154,11 +154,14 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l9"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l10"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
     return LANE_ALIAS.get(row_lane or "Newsletter", row_lane or "US Remote")
+
+
+_UK_REMOTE = re.compile(r"remote\W{0,6}(?:uk|u\.k\.|united kingdom|england|great britain|gb)\b|\b(?:uk|united kingdom|england|great britain)\W{0,6}remote")
 
 
 def geography_status(location):
@@ -166,8 +169,8 @@ def geography_status(location):
     text = (location or "").casefold()
     if not text:
         return UNRESOLVED
-    if "london" in text:
-        return POSITIVE
+    if "london" in text or _UK_REMOTE.search(text):
+        return POSITIVE                                  # D98: a UK-wide remote role (Remote: UK / United Kingdom / England) includes London
     if any(place in text for place in ("ontario", "canada", "manchester", "paris", "new york")):
         return NEGATIVE
     return UNRESOLVED
