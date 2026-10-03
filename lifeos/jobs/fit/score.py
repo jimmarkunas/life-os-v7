@@ -37,6 +37,7 @@ class Req:
     weight: Fraction = Fraction(1)
     strength: str = ""
     sim: float = 0.0
+    anchor: bool = False               # matched a profile capability or function (not a baseline phrase or a bare years/scope count)
 
 
 @dataclass
@@ -116,11 +117,11 @@ def _requirements(units, profile, year, semantic=None, changes=None):
     for term, optional in extract.platform_hits(units):
         row = profile.capability(norm(term))
         found.setdefault(row["id"] if row else term, Req("technical", term, row["class"] if row else "unsupported",
-                                                         Fraction(1, 2) if optional else Fraction(1), row["label"] if row else ""))
+                                                         Fraction(1, 2) if optional else Fraction(1), row["label"] if row else "", anchor=bool(row)))
     body = [u for u in units if u.section in ("required", "preferred", "duty")]
     for cap in profile.capabilities:
         if cap["bucket"] == "platform" and cap["id"] not in found and any(rx.search(u.norm) for u in body for rx in cap["rx"]):
-            found[cap["id"]] = Req("technical", cap["label"], cap["class"], Fraction(1), cap["label"])
+            found[cap["id"]] = Req("technical", cap["label"], cap["class"], Fraction(1), cap["label"], anchor=True)
     for name, optional in extract.candidates(units, _PLATFORM_KEYS):
         row = profile.capability(norm(name))
         found.setdefault(row["id"] if row else norm(name).strip(),
@@ -142,7 +143,7 @@ def _requirements(units, profile, year, semantic=None, changes=None):
         if extract.scope_hits([u]) and not _best(profile, u.norm) and u.section != "duty":
             continue                                              # team size / budget / reach: scored from scope below
         cls, strength = _classify(u, profile)
-        req = Req(_dimension(u, profile), _short(u.text), cls, _weight(u, year), strength)
+        req = Req(_dimension(u, profile), _short(u.text), cls, _weight(u, year), strength, anchor=bool(strength))
         reqs.append(req)
         if semantic is not None and cls == "unsupported":
             changes.append((req, u.text))
@@ -183,6 +184,12 @@ def _family(title, units, profile):
     body = [u for u in units if u.section in ("required", "duty")]
     hits = sum(1 for u in body if hit(u.text))
     return hits >= 3 and hits / max(len(body), 1) >= FAMILY_SHARE
+
+
+JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice)\b", re.I)
+SENIOR = re.compile(r"\b(?:director|vice president|vp|head|principal|manager)\b", re.I)
+JUNIOR_CAP = 55          # below the Review band: an analyst-level title is not this profile's level (D89)
+UNANCHORED_CAP = 50      # no title or requirement matched a profile function or capability: generic requirements alone are not a Fit (D89)
 
 
 @dataclass(frozen=True)
@@ -245,10 +252,20 @@ def evaluate(title, company, text, profile, today, semantic=None):
     bonus = title_cls == "direct" and any(rx.search(norm(title)) for rx in profile.specialization)
     capped = _family(title, units, profile)
     score, buckets = _arithmetic(reqs, title_cls, bonus, capped)
+    anchored = title_cls != "unsupported" or any(r.anchor for r in reqs)
+    junior = bool(JUNIOR.search(title or "")) and not SENIOR.search(title or "")
+    if score > UNANCHORED_CAP and not anchored:
+        score, capped_note = UNANCHORED_CAP, f"Capped at {UNANCHORED_CAP}: nothing in the title or requirements matches your functions or capabilities."
+    elif score > JUNIOR_CAP and junior:
+        score, capped_note = JUNIOR_CAP, f"Capped at {JUNIOR_CAP}: an analyst-level title is below this profile's level."
+    else:
+        capped_note = None
     decision = "No-Go" if gate or score < GO_THRESHOLD else "Go"
     weakest = min(buckets, key=buckets.get)
     if gate:
         why = f"Gate: {gate['reason']} ({gate['where']}); professional Fit is {score}%."
+    elif capped_note:
+        why = capped_note
     elif capped and score <= 40:
         why = "Capped at 40: the role's profession is a hard-family mismatch."
     elif decision == "No-Go":
