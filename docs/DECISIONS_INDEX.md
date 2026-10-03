@@ -74,3 +74,4 @@ This index is checked by a test: add a line here with every new decision.
 - D70 — HOLD jobs are excluded after seven days (2026-10-03, Jim)
 - D71 — A link that cannot be one vacancy is never RESOLVED; holds and board failures say where (2026-10-03)
 - D72 — Stage 2: the domain jobs run from domains.yml after each tick (2026-10-03)
+- D73 — The Calendar card waits for the Jira card (2026-10-03)
