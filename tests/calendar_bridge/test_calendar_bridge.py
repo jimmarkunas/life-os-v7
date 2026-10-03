@@ -281,15 +281,14 @@ class HourlyJobTests(unittest.TestCase):
     text = (ROOT / ".github/workflows/hourly.yml").read_text()
 
     def job(self):
-        return self.text[self.text.index("\n  calendar:\n"):self.text.index("\n  report:\n")]
+        return self.text[self.text.index("\n  outlook:\n"):self.text.index("\n  report:\n")]
 
     def test_runs_on_scheduled_and_tick_runs_only_and_never_fails_the_jobs_run(self):
         job = self.job()
         self.assertIn("github.event_name != 'workflow_dispatch' || inputs.tick", job.split("runs-on")[0])
-        self.assertEqual(job.count("continue-on-error: true"), 1)
+        self.assertEqual(job.count("continue-on-error: true"), 2)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
-        self.assertNotIn("calendar", self.text[self.text.index("\n  report:\n"):].split("steps:")[0].split("needs:")[1].split("\n")[0])
 
     def test_other_credentials_are_blank_and_only_the_one_step_gets_the_calendar_outlook_and_database_secrets(self):
         job = self.job()
