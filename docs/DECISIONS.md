@@ -275,6 +275,15 @@ Advisor Preview creation is deterministic, immutable and insert-only beneath the
 
 The v1 Advisor does not require or authorize a paid model/API provider. ChatGPT-native reasoning is external to this deterministic store/preview boundary.
 
+## D44 — Advisor Queue is an immutable request/response handoff; state is derived
+The Advisor Queue is append-only. LIFE OS is the sole v1 writer of Advisor Request pages. A request freezes one exact validated AdvisorInputBundle; its request ID is the first 32 lowercase hexadecimal characters of that bundle's bundle_digest. The request payload is the complete deterministic bundle snapshot, not references to mutable current store state.
+
+The future ChatGPT-native Advisor is the sole v1 writer of Advisor Response pages. A response is a child of exactly one request and contains only the structured AdvisorDraft handoff. ChatGPT copies the request ID and bundle hash supplied by the request; it is never asked to calculate a cryptographic hash. The response is untrusted until LIFE OS parses it, validates every source/evidence reference against the frozen request bundle, and successfully runs compile_prep().
+
+Queue state is derived from immutable structure, never stored or updated: a valid request with no response is READY; exactly one valid response is RESPONDED; malformed, unexpected or multiple response children are AMBIGUOUS. PREVIEWED is derived only when an existing VerifiedPreview has generation_id equal to the request ID, the same bundle hash, and PrepEvidence equal to the validated response compilation.
+
+INT-ADV-3 does not schedule ChatGPT, modify workflow/run.py, create live Notion content, write responses, commit B3, or authorize any paid model/API.
+
 ## D50 — One shared name normalizer; the Interview job is isolated in the workflow (2026-10-01)
 `lifeos/platform/names.py` now holds the normalizer and the company/role/title rules (moved from `jobs/fit/profile.py`, `jobs/names.py` and `jobs/hiring_pipeline.py`, behavior unchanged, old names re-exported); Interview OS is the second consumer.
 `hourly.yml` gains a dispatch-only `interview` job with only `NOTION_INTERVIEW_TOKEN` and `HIRING_PIPELINE_PAGE_ID` (every Jobs secret blanked, enforced by a contract test); its steps use `continue-on-error` and a warning so an Interview failure cannot fail the Jobs run
