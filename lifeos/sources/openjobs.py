@@ -122,6 +122,11 @@ def _day(value):
 
 
 def company_from(slug):
+    """The board slug as a name. A Workday tenant (`foundationccc.wd1.myworkdayjobs.com`) IS the employer, so only its first label is kept (D91). Any other
+    web address (`edtech.com`, `showbizjobs.com`) is a job board, not an employer: it keeps its host words (`Edtech Com`) so Enrich recognises it and
+    replaces it with the employer the job page names."""
+    if slug.lower().endswith("myworkdayjobs.com"):
+        slug = slug.split(".")[0]
     return " ".join(w.capitalize() for w in re.split(r"[-_.]+", slug) if w)[:200] or "Unknown"
 
 
@@ -227,13 +232,23 @@ class Repo:
             cursor.execute("UPDATE v7_feed SET status='DEGRADED', applied_at=%s WHERE feed_id=%s", (now, FEED_ID))
 
 
+def fix_workday_companies(cursor):
+    """Idempotent: rows stored before D91 as `Foundationccc Wd1 Myworkdayjobs Com` become `Foundationccc` (the tenant is the employer)."""
+    cursor.execute("UPDATE v7_jobs SET company=SUBSTRING_INDEX(company, ' ', 1) WHERE company REGEXP ' Wd[0-9]+ Myworkdayjobs Com$'")
+    return int(cursor.rowcount or 0)
+
+
 def run(limit, live, now=None, fetcher=fetch, repo=None):
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     repo = repo or Repo()
     if isinstance(repo, Repo):                          # the checkpoint table must exist before a dry run reads it (no rows written)
         with store.connect() as connection:
             store.ensure_schema(connection)
-    counts = {"generations": 0, "events": 0, "upserts": 0, "removes": 0, "admit": 0, "over_cap": 0, "removed_held": 0, "why": {}, "status": "OK"}
+    fixed = 0
+    if live and isinstance(repo, Repo):
+        with store.connect() as connection, connection.cursor() as cursor:
+            fixed = fix_workday_companies(cursor)
+    counts = {"fixed_companies": fixed, "generations": 0, "events": 0, "upserts": 0, "removes": 0, "admit": 0, "over_cap": 0, "removed_held": 0, "why": {}, "status": "OK"}
     try:
         head = manifest("latest.json", fetcher, fresh=True)
         checkpoint = repo.checkpoint()
