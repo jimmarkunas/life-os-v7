@@ -189,6 +189,9 @@ def _verify_source(client, page_id, source, entry, recurring, paid):
 
 
 def _process(client, connection, row, source, today, entry, counts, live):
+    if entry is not None and entry.get("step") == "complete" and entry.get("today") == today.isoformat():
+        counts["review"] += 1                       # D86: Paid ticked again on the day it was processed is not a second payment; left checked for a person
+        return
     is_new = entry is None or entry.get("step") == "complete"
     is_resume = not is_new
     cycle = row.get("Cycle")

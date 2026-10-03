@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       bills_paid:
-        description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); manual only until validated. Dry run (counts) unless Actually write is ticked"
+        description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); also runs on every tick and under Run every domain job. Dry run (counts) unless Actually write is ticked"
         type: boolean
         default: false
       jira:
@@ -148,13 +148,29 @@ jobs:
 
 
   bills:
-    # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85) is manual only: it never runs on a tick.
+    # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.bills_paid }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - id: bpaid
+        continue-on-error: true
+        name: Bills Paid processor (before the snapshot; writes Notion only when live; counts only)
+        if: ${{ github.event_name == 'workflow_run' || inputs.all || inputs.bills_paid }}
+        env:
+          NOTION_BILLS_TOKEN: ${{ secrets.NOTION_BILLS_TOKEN }}
+          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
       - id: bsnap
         continue-on-error: true
         name: Bills snapshot (read-only; private snapshot saved only when live)
@@ -170,22 +186,6 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
         run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
-      - id: bpaid
-        continue-on-error: true
-        name: Bills Paid processor (manual only; writes Notion only when Actually write is ticked; counts only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bills_paid }}
-        env:
-          NOTION_BILLS_TOKEN: ${{ secrets.NOTION_BILLS_TOKEN }}
-          NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-        run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure') }}
         run: echo "::warning title=Bills::the Bill Tracker snapshot failed; the Jobs pipeline is unaffected"
