@@ -1,0 +1,42 @@
+name: enrich-diagnostic
+on:
+  push:
+    branches: [codex/enrich-identity]
+    paths: [.github/workflows/enrich-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Read aggregate mismatch state for the latest run window
+        run: |
+          python - <<'PY'
+          import json
+          from lifeos.platform.db import connect
+
+          start, end = "2026-10-03 07:02:00", "2026-10-03 07:02:12"
+          provider = "CASE WHEN LOWER(COALESCE(provider,'')) LIKE '%jobright%' THEN 'jobright' WHEN LOWER(COALESCE(provider,'')) LIKE '%linkedin%' THEN 'linkedin' WHEN LOWER(COALESCE(provider,'')) LIKE '%lensa%' THEN 'lensa' WHEN LOWER(COALESCE(provider,'')) LIKE '%dice%' THEN 'dice' WHEN LOWER(COALESCE(provider,'')) LIKE '%web%' THEN 'web' ELSE 'other' END"
+          source = "CASE WHEN LOWER(COALESCE(source,'')) LIKE '%jobright%' THEN 'jobright' WHEN LOWER(COALESCE(source,'')) LIKE '%linkedin%' THEN 'linkedin' WHEN LOWER(COALESCE(source,'')) LIKE '%lensa%' THEN 'lensa' WHEN LOWER(COALESCE(source,'')) LIKE '%dice%' THEN 'dice' WHEN LOWER(COALESCE(source,'')) LIKE '%web%' THEN 'web' ELSE 'other' END"
+          reason = "CASE WHEN unresolved_reason IN ('link_mismatch','title_mismatch') THEN 'link_mismatch' WHEN unresolved_reason IN ('listing_url','root','no_job_id') THEN unresolved_reason WHEN unresolved_reason IN ('jd_listing','jd_template','workable_no_account') THEN unresolved_reason ELSE 'other' END"
+          with connect() as connection:
+              with connection.cursor() as cursor:
+                  cursor.execute(f"SELECT {provider}, {source}, {reason}, COUNT(*) FROM v7_jobs WHERE updated_at >= %s AND updated_at < %s AND status='NEW' GROUP BY 1,2,3", (start, end))
+                  rows = cursor.fetchall()
+                  cursor.execute("SELECT status, COUNT(*) FROM v7_jobs WHERE updated_at >= %s AND updated_at < %s GROUP BY status", (start, end))
+                  status = cursor.fetchall()
+          counts = {"window_rows": sum(row[3] for row in rows), "by_provider_source_reason": [list(row) for row in rows], "by_status": [list(row) for row in status], "destination_host_family": "unavailable_final_url_was_cleared"}
+          print("diagnostic_counts:", json.dumps(counts, sort_keys=True))
+          PY
