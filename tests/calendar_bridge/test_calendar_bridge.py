@@ -277,5 +277,30 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotRegex(path.read_text(), r"[\w.+-]+@[\w-]+\.[\w.]+")
 
 
+class HourlyJobTests(unittest.TestCase):
+    text = (ROOT / ".github/workflows/hourly.yml").read_text()
+
+    def job(self):
+        return self.text[self.text.index("\n  calendar:\n"):self.text.index("\n  report:\n")]
+
+    def test_runs_on_scheduled_and_tick_runs_only_and_never_fails_the_jobs_run(self):
+        job = self.job()
+        self.assertIn("github.event_name != 'workflow_dispatch' || inputs.tick", job.split("runs-on")[0])
+        self.assertEqual(job.count("continue-on-error: true"), 1)
+        self.assertNotIn("\n    continue-on-error:", job)
+        self.assertIn("::warning", job)
+        self.assertNotIn("calendar", self.text[self.text.index("\n  report:\n"):].split("steps:")[0].split("needs:")[1].split("\n")[0])
+
+    def test_other_credentials_are_blank_and_only_the_one_step_gets_the_calendar_outlook_and_database_secrets(self):
+        job = self.job()
+        head, steps = job.split("    steps:")
+        for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "FIT_PROFILE_JSON", "HIRING_PIPELINE_PAGE_ID"):
+            self.assertIn(f'{name}: ""', head, name)
+        self.assertNotIn("secrets.", head)
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", steps))),
+                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+
+
 if __name__ == "__main__":
     unittest.main()
