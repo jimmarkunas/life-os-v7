@@ -291,3 +291,25 @@ class WorkModeWindow(unittest.TestCase):
         self.assertEqual(lanes.work_mode_for_fit("United States", "Program Manager", text), "remote")
         self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", text), "unknown")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Program Manager", "Overview. " * 300 + "This is a hybrid position, three days a week in the office."), "hybrid")
+
+
+class ScaleUpJunk(unittest.TestCase):
+    """D95: the Scale-Up board held 13 jobs, 9 of them not this profile (five API Enterprise Sales Executives, junior and associate roles, nursery staff)."""
+
+    def hard(self, title, company="Revolut Ltd"):
+        got, _ = exclusions.check(title, company, GOOD)
+        return got and got["id"]
+
+    def test_sales_and_language_titles_are_hard_exclusions(self):
+        for title in ("API Enterprise Sales Executive", "API Enterprise Sales Executive (Spanish-Speaking)", "API Enterprise Sales Executive (German-Speaking)",
+                      "Senior Account Executive", "Business Development Manager", "Customer Success Manager II, Enterprise", "SDR, Fintech"):
+            self.assertIn(self.hard(title), ("sales_role", "language_requirement"), title)
+        self.assertEqual(self.hard("Technical Program Manager (Polish-Speaking)"), "language_requirement")
+
+    def test_pre_sales_solutions_and_program_titles_are_left_to_fit(self):
+        for title in ("Solutions Architect - Pre Sales", "Pre Sales and Client Implementation Manager", "Technical Program Manager", "Director of Delivery"):
+            self.assertIsNone(self.hard(title), title)
+
+    def test_junior_and_graduate_titles_are_capped_below_the_review_band(self):
+        for title in ("Junior Product Designer", "Systems Associate (Graduate/Entry-level opportunity)", "Content Operations Associate"):
+            self.assertLessEqual(evaluate(title, "Acme", GOOD, PROFILE, TODAY).score, 55, title)

@@ -186,7 +186,7 @@ def _family(title, units, profile):
     return hits >= 3 and hits / max(len(body), 1) >= FAMILY_SHARE
 
 
-JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice)\b", re.I)
+JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice|junior|graduate|entry[- ]level|early careers?)\b", re.I)
 SENIOR = re.compile(r"\b(?:director|vice president|vp|head|principal|manager)\b", re.I)
 JUNIOR_CAP = 55          # below the Review band: an analyst-level title is not this profile's level (D89)
 UNANCHORED_CAP = 50      # no title or requirement matched a profile function or capability: generic requirements alone are not a Fit (D89)
