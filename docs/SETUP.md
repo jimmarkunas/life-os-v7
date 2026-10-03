@@ -57,3 +57,10 @@ Scheduled rollover: every scheduled or tick run checks each non-`:readonly` boar
 ### Outlook (Phase C)
 
 Register one Azure app that signs in both mailboxes (steps are given one at a time in the PR conversation), then add the secret `OUTLOOK_CLIENT_ID` (the app's Application (client) ID). Sign each mailbox in once with the **outlook** workflow: action `auth`, account `personal` or `work`, **live** ticked. The run prints a short code and a Microsoft web address; open the address, enter the code, sign in. The refresh token is saved to the private database, not to a secret. Check with action `probe` (read-only; counts of recent and unread inbox messages per account, by position).
+
+### Outlook calendar to Google (Phase D)
+
+1. In Google Calendar create a new calendar (e.g. "Outlook") and share it with the service account's email with **Make changes to events**; copy its **Calendar ID** (calendar settings, Integrate calendar).
+2. In Google Cloud: enable the Google Calendar API, create a service account, create a JSON key.
+3. Add Actions secrets `GCAL_SERVICE_ACCOUNT_JSON` (the whole key file) and `GCAL_CALENDAR_ID`.
+4. Run the **calendar** workflow with **live** unticked first (counts only), then ticked. `CALENDAR_ACCOUNTS` (optional, comma-separated labels, default `personal`) chooses which signed-in mailboxes to mirror.
