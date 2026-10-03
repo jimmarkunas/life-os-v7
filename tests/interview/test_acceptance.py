@@ -109,7 +109,7 @@ class WorkflowWiring(unittest.TestCase):
 
     def job(self):
         start = self.text.index("\n  interview:\n")
-        return self.text[start:self.text.index("\n  jira:\n")]
+        return self.text[start:self.text.index("\n  report:\n")]
 
     def step(self):
         job = self.job()
