@@ -87,6 +87,16 @@ def direct_link(url, company):
     return None
 
 
+def requeue_held(cursor):
+    """Jobs parked on HOLD by the old two-step resolve (reason `no_match_*`) whose own URL is a direct link now (D77) go back to NEW once. A job that
+    fails Enrich afterwards carries a link reason, not `no_match_*`, so it is never requeued again."""
+    cursor.execute("SELECT id, source_url, company FROM v7_jobs WHERE source=%s AND status='HOLD' AND unresolved_reason LIKE 'no_match%%'", (SOURCE,))
+    ids = [row[0] for row in cursor.fetchall() if direct_link(row[1], row[2] or "")]
+    for job_id in ids:
+        cursor.execute("UPDATE v7_jobs SET status='NEW', resolve_attempts=0, unresolved_reason='requeued_direct', updated_at=%s WHERE id=%s", (_now(), job_id))
+    return len(ids)
+
+
 def _resolve(rows, budget):
     """Direct links first; whatever is left goes through the ATS board match and the one employer search (shared with LinkedIn and Lensa)."""
     results = [direct_link(row[1], row[2]) or {"outcome": "external_hidden"} for row in rows]
@@ -105,7 +115,7 @@ def _admit(cursor, source, job, now):
 def run(limit, live, search=None, sources=None):
     search = search or tinyfish_search.search
     sponsors = sources if sources is not None else [r for r in registry.load(registry.PATHS["Scale-Up"]) if r["enabled"] and r["status"] == "fallback"]
-    counts = {"sponsors": len(sponsors), "searched": 0, "candidates": 0, "added": 0, "search_errors": 0, "hosts": {}}
+    counts = {"sponsors": len(sponsors), "searched": 0, "candidates": 0, "added": 0, "search_errors": 0, "requeued": 0, "hosts": {}}
     found = []
     for source in sponsors[:limit]:
         try:
@@ -127,6 +137,7 @@ def run(limit, live, search=None, sources=None):
         with connection.cursor() as cursor:
             for source, job in found:
                 counts["added"] += _admit(cursor, source, job, now)
+            counts["requeued"] = requeue_held(cursor)
     budget = {"left": RESOLVE_SEARCHES}
     counts["resolve"] = stage.run_rows(SOURCE, 60, True, lambda rows: _resolve(rows, budget))
     return counts

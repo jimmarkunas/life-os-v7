@@ -42,7 +42,18 @@ def resolve_rows(rows, budget=None):
         if results[-1]["outcome"] == "rate_limited":
             results.extend({"outcome": "rate_limited"} for _ in rows[len(results):])
             break
-    return match_rows(rows, results, SEARCH_LIMIT, budget)
+    results = match_rows(rows, results, SEARCH_LIMIT, budget)
+    return [page_fallback(row, result) for row, result in zip(rows, results)]
+
+
+def page_fallback(row, result):
+    """D3 rank 4: when the employer link stays hidden (no ATS board, no search hit), the LinkedIn posting is the apply link, flagged `aggregator`.
+    Its title, description and liveness are read from the guest page by Enrich, so identity and open/closed are still proven. Only a definite
+    no-match falls back (a `deferred` result is retried), and only for a real LinkedIn job id."""
+    jid = li_apply.job_id(row[1])
+    if str(result.get("outcome", "")).startswith("no_match_") and jid and li_apply.is_linkedin(row[1]):
+        return {"outcome": "landed", "via": "linkedin_page", "kind": "aggregator", "url": "https://www.linkedin.com/jobs/view/" + jid}
+    return result
 
 
 def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
