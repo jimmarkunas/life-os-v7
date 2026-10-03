@@ -90,12 +90,17 @@ def _jira_card(limit, live):
 
 def _outlook_auth(limit, live):
     from lifeos.outlook import stage
-    return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true")
+    return stage.auth(limit, live, replace=os.environ.get("OUTLOOK_REPLACE") == "true", write=os.environ.get("OUTLOOK_WRITE") == "true")
 
 
 def _outlook_probe(limit, live):
     from lifeos.outlook import stage
     return stage.probe(limit, live)
+
+
+def _outlook_newsletters(limit, live):
+    from lifeos.sources.newsletters import outlook
+    return outlook.run(limit, live)
 
 
 def _calendar_sync(limit, live):
@@ -174,6 +179,7 @@ STAGES = {
     "outlook-auth": _outlook_auth,
     "outlook-probe": _outlook_probe,
     "calendar-sync": _calendar_sync,
+    "outlook-newsletters": _outlook_newsletters,
     "jira-card": _jira_card,
     "jira-rollover-scheduled": _jira_rollover_scheduled,
     "interview-acceptance": _interview_acceptance,
