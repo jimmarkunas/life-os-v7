@@ -187,11 +187,12 @@ class LondonAndRemote(unittest.TestCase):
 
     def test_remote_never_disqualifies_a_london_scale_up_job(self):
         for location, mode in (("London", "onsite"), ("London (hybrid)", "hybrid"), ("London (Remote)", "remote"), ("Remote - London, UK", "remote"),
+                               ("Remote: UK", "remote"), ("Remote - United Kingdom", "remote"), ("Remote: England", "remote"), ("UK Remote", "remote"),
                                ("Barcelona · office · Spain | London · office · United Kingdom | Madrid · office · Spain", "onsite")):
             self.assertEqual(qualify(SCALE, self.facts(location, mode), TODAY).status, ADMIT, location)
 
     def test_a_scale_up_job_outside_london_is_excluded_whether_or_not_it_is_remote(self):
-        for location, mode in (("Manchester", "onsite"), ("Remote - UK", "remote"), ("Edinburgh, Scotland", "hybrid"), ("Leeds (Remote)", "remote")):
+        for location, mode in (("Manchester", "onsite"), ("Remote - Ireland", "remote"), ("Edinburgh, Scotland", "hybrid"), ("Leeds (Remote)", "remote"), ("Remote - EMEA", "remote")):
             decision = qualify(SCALE, self.facts(location, mode), TODAY)
             self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not in London"), location)
 
