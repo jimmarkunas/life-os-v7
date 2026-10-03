@@ -67,17 +67,21 @@ def _parse_date(value):
         return None
 
 
-def _title_ok(want, *found):
-    """Lenient: most of the job-title words appear in the title / page text found at the final link."""
+def _title_ok(want, *found, strict=False):
+    """Lenient: most of the job-title words appear in the title / page text found at the final link.
+    Strict (a link whose shape could not vouch for it): the page's own TITLE must carry nearly all the words; body text does not count,
+    because a listing or portal page contains many job titles."""
     tokens = [t for t in ats_match.norm(want).split() if len(t) > 2]
-    hay = ats_match.norm(" ".join(f for f in found if f))
-    return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= 0.6
+    hay = ats_match.norm(" ".join(f for f in (found[:1] if strict else found) if f))
+    return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= (0.8 if strict else 0.6)
 
 
-def read_page(url, title, lane=None):
-    """Facts for one final URL. Never raises; fixed outcome codes."""
+def read_page(url, title, lane=None, proof=None):
+    """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an ambiguous link shape on its
+    provenance, so the page must prove identity by title (strict)."""
     problem = quality.link_problem(url)
-    if problem:
+    strict = bool(problem) and proof == "unproven" and problem in quality.AMBIGUOUS
+    if problem and not strict:
         return {"outcome": "mismatch", "reason": problem}                    # workable_no_account: re-resolve, the matcher now keeps the account
     api = ats_detail.read(url) or _api_job(url)
     if api and api.get("closed"):
@@ -93,14 +97,14 @@ def read_page(url, title, lane=None):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
-        result = parse_html(url, title, page.html, lane)
+        result = parse_html(url, title, page.html, lane, strict)
         if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
             result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
         return result
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane)
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
 
 
-def parse_html(url, title, html, lane=None):
+def parse_html(url, title, html, lane=None, strict=False):
     """Description / date / liveness / title-match from already-fetched page HTML (plain HTTP or TinyFish Fetch)."""
     posting = jsonld.job_posting(html)
     body_text = jd.html_to_text(html)
@@ -118,10 +122,10 @@ def parse_html(url, title, html, lane=None):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane)
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
 
 
-def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None):
+def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
@@ -129,15 +133,15 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
         return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
     if problem == "thin":
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
-    if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else ""):
+    if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict):
         return {"outcome": "mismatch"}
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
     max_age = lanes.POLICIES[lanes.lane_for(lane)].max_age_days            # the lane policy is the only freshness authority
     if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
-        return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind}
-    return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind}
+        return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
+    return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
 
 
 def save(connection, job_id, result):
@@ -158,14 +162,14 @@ def save(connection, job_id, result):
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
             cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
-                           "posted_age_days=COALESCE(%s, posted_age_days), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
+                           "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
                            ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted,
-                            "employer" if posted else None, result.get("final_url") or None, age, now, job_id))
+                            "employer" if posted else None, result.get("final_url") or None, age, result.get("proof"), now, job_id))
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
         elif outcome == "mismatch":                      # wrong link: take it back, never publish it
-            cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, "
+            cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, "
                            "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",   # an attempt: a link that keeps failing parks on HOLD, never loops
                            (limits.RESOLVE_MAX_ATTEMPTS, (result.get("reason") or "link_mismatch")[:100], now, job_id))
         else:
@@ -218,12 +222,13 @@ def run(limit, live):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source FROM v7_jobs WHERE status='RESOLVED' "
+            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
             fetched = [tuple(r) for r in cursor.fetchall()]
     rows = [r[:5] for r in fetched]
     lane_of = {r[0]: r[5] for r in fetched}
     source_of = {r[0]: r[6] for r in fetched}
+    proof_of = {r[0]: (r[7] if len(r) > 7 else None) for r in fetched}
     counts = {"picked": len(rows), "outcome": {}, "source": {}}
     results = []
     for job_id, url, title, kind, _prev in rows:
@@ -233,7 +238,7 @@ def run(limit, live):
             from lifeos.jobs.resolve.aggregators import li_apply                # noqa: PLC0415 - LinkedIn: the public guest page carries the JD
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
-        result = read_page(target, title, lane_of.get(job_id))
+        result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id))
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
             result["reason"] = TRIED_REASON                          # stays marked: the rendered fetch already tried it
         result["final_url"] = url
@@ -241,7 +246,7 @@ def run(limit, live):
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
-    _fallback(results, rows, counts, lane_of)
+    _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"})
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
@@ -253,7 +258,12 @@ def run(limit, live):
     return counts
 
 
-def _fallback(results, rows, counts, lane_of=None):
+def _strict(job_id, titles, unproven_ids):
+    """The rendered fallback keeps the strict title proof for a link accepted only on provenance."""
+    return job_id in unproven_ids and bool(quality.link_problem(titles[job_id][0]))
+
+
+def _fallback(results, rows, counts, lane_of=None, unproven_ids=()):
     """Rendered-fetch fallback (D12 amendment): ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS API gave no usable page.
     It reads JD, date and liveness evidence only: no clicking, signing in, searching, link traversal, or choosing another vacancy, and it never
     changes final_apply_url. Counted against the daily cap BEFORE sending."""
@@ -288,7 +298,8 @@ def _fallback(results, rows, counts, lane_of=None):
                     job_id = results[i][0]
                     desc = jd.describe(job["html"], is_html=True)
                     results[i] = (job_id, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
-                                                 _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id)))
+                                                 _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id),
+                                                 _strict(job_id, titles, unproven_ids)))
                     counts["outcome"]["blocked"] -= 1
                     counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
                     done += 1
@@ -297,7 +308,8 @@ def _fallback(results, rows, counts, lane_of=None):
                 results[i][1]["reason"] = TRIED_REASON
             if text:
                 job_id = results[i][0]
-                results[i] = (job_id, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id)))
+                results[i] = (job_id, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id),
+                                                    _strict(job_id, titles, unproven_ids)))
                 if results[i][1].get("reason") == "description_empty":
                     results[i][1]["reason"] = TRIED_REASON
                 counts["outcome"]["blocked"] -= 1
