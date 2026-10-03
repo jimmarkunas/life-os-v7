@@ -60,7 +60,7 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 
 ### Outlook calendar to Google (Phase D)
 
-1. In Google Calendar create a new calendar (e.g. "Outlook") and share it with the service account's email with **Make changes to events**; copy its **Calendar ID** (calendar settings, Integrate calendar).
-2. In Google Cloud: enable the Google Calendar API, create a service account, create a JSON key.
+1. In Google Cloud: enable the Google Calendar API, create a service account, create a JSON key.
+2. In Google Calendar open your calendar's settings, **Share with specific people**, add the service account's email with **Make changes to events**, and copy the **Calendar ID** (Integrate calendar; for your main calendar it is your own address).
 3. Add Actions secrets `GCAL_SERVICE_ACCOUNT_JSON` (the whole key file) and `GCAL_CALENDAR_ID`.
-4. Run the **calendar** workflow with **live** unticked first (counts only), then ticked. `CALENDAR_ACCOUNTS` (optional, comma-separated labels, default `personal`) chooses which signed-in mailboxes to mirror.
+4. Run the **calendar** workflow with **live** unticked first (counts only), then ticked. `CALENDAR_ACCOUNTS` (optional, comma-separated labels, default `personal`) chooses which signed-in mailboxes to add.

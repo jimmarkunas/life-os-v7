@@ -40,10 +40,11 @@ class FakeGcal:
         self.items = {e["id"]: e for e in existing}
         self.log = []
         self.conflict = set()
+        self.foreign = []                                     # events V7 did not write
 
-    def list_events(self, a, b, prop):
-        assert prop == "v7_src=outlook"
-        return list(self.items.values())
+    def list_events(self, a, b, prop=None):
+        assert prop is None                                   # everything in the window: V7's own copies and the person's events
+        return list(self.items.values()) + self.foreign
 
     def insert(self, body):
         self.log.append("insert")
@@ -146,13 +147,21 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")
         self.assertEqual(len(g.items), 8)
 
-    def test_events_google_did_not_get_from_v7_are_never_listed_for_deletion(self):
+    def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()
-        seen = []
-        original = g.list_events
-        g.list_events = lambda a, b, prop: (seen.append(prop), original(a, b, prop))[1]
-        go([ev("a")], g, live=False)
-        self.assertEqual(seen, ["v7_src=outlook"])
+        g.foreign = [{"id": "mine", "summary": "Dentist", "start": {"dateTime": "2026-10-08T09:00:00-05:00"}}]
+        out = go([ev("a")], g)
+        self.assertEqual((out["create"], out["delete"], out["update"]), (1, 0, 0))
+        self.assertNotIn("delete", g.log)
+
+    def test_an_invite_that_already_reached_google_another_way_is_not_copied_again(self):
+        g = FakeGcal()
+        g.foreign = [{"id": "from-gmail", "iCalUID": "dup", "start": {"dateTime": "2026-10-08T10:00:00-05:00"}},
+                     {"id": "all-day", "iCalUID": "day", "start": {"date": "2026-10-09"}}]
+        out = go([ev("dup"), ev("new"), ev("day", "2026-10-09T00:00:00.0000000", "2026-10-10T00:00:00.0000000", isAllDay=True),
+                  ev("dup", start="2026-10-15T15:00:00.0000000", end="2026-10-15T16:00:00.0000000")], g, live=False)
+        # 10:00-05:00 is 15:00Z: the first occurrence and the all-day event are already there; a later occurrence and "new" are not
+        self.assertEqual((out["already_in_google"], out["create"]), (2, 2))
 
     def test_missing_sign_in_or_config_fails_closed(self):
         with self.assertRaises(BridgeError):

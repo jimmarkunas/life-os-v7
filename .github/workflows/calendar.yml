@@ -1,11 +1,11 @@
 name: calendar
-# Outlook calendar -> a dedicated Google calendar (manual only). Separate from the hourly workflow (which is at GitHub's 25-input limit)
+# Outlook calendar -> your own Google calendar (manual only). Separate from the hourly workflow (which is at GitHub's 25-input limit)
 # and from the job-search secrets. A dry run (live unticked) reads both calendars and prints counts only; nothing is written.
 on:
   workflow_dispatch:
     inputs:
       live:
-        description: "Write to the Google calendar (unticked = dry run: counts only)"
+        description: "Add the events to your Google calendar (unticked = dry run: counts only)"
         type: boolean
         default: false
 permissions:
