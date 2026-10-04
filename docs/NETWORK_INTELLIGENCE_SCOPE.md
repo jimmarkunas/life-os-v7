@@ -1,7 +1,7 @@
 # Network Intelligence: scope and roadmap (scoping only, no code)
 
 Status: scoped for Jim's review. Nothing here is built, and this document changes no schema, secret, workflow or `docs/DECISIONS.md`.
-Settled by Jim: **a periodic re-export of the connections file is the accepted refresh mechanism**, replacing the brief's per-person live lookups. Still open: the private path for the seed file (section 12 recommends one) and the decisions in section 17.
+Settled by Jim: **a periodic re-export of the connections file is the accepted refresh mechanism**, replacing the brief's per-person live lookups. Also settled by Jim: the local-import seed path (section N). Assumed default, change on request: the trigger is `ADMIT` only. Still open: the decisions in section O.
 
 ## 0. The shape of it in one paragraph
 
@@ -176,14 +176,14 @@ Examples (synthetic):
 | Slice | Outcome | Likely files | Schema | Tests and UAT | Depends on | Risks | Size | PRs |
 |---|---|---|---|---|---|---|---|---|
 | **NET-1a Export inspector** | Jim runs a dry run on his own export locally and sees counts only: rows, blank URL, blank company, duplicate URL keys, distinct company keys, ambiguous identities. Proves the file's real shape before anything is stored. | `lifeos/network/{identity,parse}.py`, `run.py` line, `.gitignore` entry for export files, `docs/SETUP.md` | none | table-driven parser and identity tests (tracking parameters, case, trailing slash, same-name collision, blank fields), counts-only output test | nothing | The real export's columns may differ from the documented ones; that is exactly what this finds | S to M | 1 |
-| **NET-1b Private import** | The seed lands in Hostinger without duplicates; replay creates nothing. | `lifeos/network/{store,import_export}.py`, `platform/db.py` transaction helper, tests | `v7_network_people`, `v7_network_positions` | replay twice equals once; ambiguous people unmerged; dry run creates no tables; read-back equals written | NET-1a, Jim's table approval, seed path (section 12) | PII handling: logs counts only | M | 1 |
+| **NET-1b Private import** | The seed lands in Hostinger without duplicates; replay creates nothing. | `lifeos/network/{store,import_export}.py`, `platform/db.py` transaction helper, tests | `v7_network_people`, `v7_network_positions` | replay twice equals once; ambiguous people unmerged; dry run creates no tables; read-back equals written | NET-1a, Jim's table approval, seed path (section N) | PII handling: logs counts only | M | 1 |
 | **NET-2 Re-export diff** | A second export yields exactly the right change events and freshness. | `lifeos/network/{reconcile,freshness}.py`, `network-changes` counts report | `v7_network_events` | title change, company change, blank field, new person, absent person, conflicting rows; each yields the specified events exactly once | NET-1b | Export granularity: changes are only as fresh as the export cadence | M | 1 |
 | **NET-3 Job match (no surface yet)** | A dry-run stage reports, by count, how many admitted jobs have leads and how many leads each. | `lifeos/network/match.py`, `lifeos/sources/network_leads.py`, `run.py` line | none | the three examples above, tier order, five-lead cap, no weak fill | NET-2, decision 1 | A missing alias gives a miss, not a wrong match | M | 1 |
 | **NET-4 Surface** | Leads appear on the job page in one machine-owned block; unchanged leads cause no write. | marker-block writer generalized from `report_region`, one step in the `finish` job after publish (continue-on-error, not in the failure list) | none | owned block replaced, nothing else touched, read-back, hash skip, page-gone and Ledger-target guards | NET-3, decision 5 | A human editing inside the owned block loses the edit; documented | M | 1 |
 | **NET-5 History and change digest** | "Who moved recently" and "who has listed company X" answered from stored events, as counts first and a private page or region later. | `lifeos/network/queries.py`, a stage | none | query tests; region ownership decided before any report region | NET-2 | Region ownership is a product decision (roadmap decision 3) | M to L | 1 |
 | **NET-6 Relationship evidence (later)** | Accepted mail and calendar evidence of real contact. | later | later | later | core value proven | Easy to overreach into relationship scoring, which is out of scope | L | later |
 
-NET-0 from the brief is absorbed: with no live source to prove, its work is the NET-1a inspector plus the decisions in section 17.
+NET-0 from the brief is absorbed: with no live source to prove, its work is the NET-1a inspector plus the decisions in section O.
 
 ## J. Surfacing mechanics (NET-4 in detail)
 
@@ -222,7 +222,7 @@ No second scheduler, workflow family or workflow input. No graph database. No pr
 | 9 | None permitted at runtime. The re-export diff replaces it. |
 | 10 | Only forward accumulation, one export at a time. Retroactive history is not promised. |
 | 11 | MVP adapter: the export importer. Later: user-confirmed corrections and per-site public pages. |
-| 12 | Local import on Jim's machine (section 12). |
+| 12 | Local import on Jim's machine (section N). |
 | 13 | Profile-address identity; name-only collisions stay unmerged and are counted. |
 | 14 | The schema allows several current positions per person; the export can only show one, so concurrent roles wait for a richer source. |
 | 15 | Fresh to 45 days, aging to 120, stale beyond, always with the date. Defaults, tunable. |
@@ -246,8 +246,8 @@ Rejected: workflow inputs and artifacts (world-readable on a public repository),
 
 ## O. Decisions Jim must make
 
-1. Trigger on `ADMIT` only, or `ADMIT` and `REVIEW` (both publish).
-2. Approve the seed path in section N (local import), or choose the split-secret fallback.
+1. Trigger: assumed `ADMIT` only (the brief's intent and the cheaper default; `REVIEW` jobs also publish). Say so if `REVIEW` should count too.
+2. Settled by Jim: the seed path in section N (local import).
 3. Whether an observation relayed by hand from a chat-side lookup may ever be ingested (needs a private channel and a `USER_CONFIRMED` source). Recommended: not in the MVP.
 4. Confirm the glue lives in `lifeos/sources/` (recommended) rather than amending the D17 layering rule.
 5. Confirm Network Leads as an appended, machine-owned block on the job page, rather than a property or a separate page.
