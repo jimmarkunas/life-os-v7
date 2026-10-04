@@ -301,3 +301,13 @@ class LongLocations(unittest.TestCase):
         self.assertEqual(list(outcome.relocate), ["p1"])
         self.assertIn("London", outcome.relocate["p1"])
         self.assertGreater(len(offices), 200)
+
+
+class ForcedBoard(unittest.TestCase):
+    def test_a_named_company_is_due_now_whatever_its_state(self):
+        sources = [{"id": "su-revolut-ltd", "company": "Revolut Ltd"}, {"id": "su-plentific", "company": "Plentific"}]
+        states = {"su-revolut-ltd": {"due_at": datetime(2030, 1, 1), "failures": 0}, "su-plentific": {"due_at": datetime(2030, 1, 1), "failures": 0}}
+        self.assertEqual(list(run.unforced(states, sources, "revolut")), ["su-plentific"])
+        self.assertEqual(run.unforced(states, sources, "funnel"), states)
+        self.assertEqual(run.unforced(states, sources, "re"), states)
+        self.assertEqual(run.unforced(states, sources, None), states)

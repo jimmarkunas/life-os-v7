@@ -54,7 +54,7 @@ def requeue_floor(cursor):
 def run(limit, live, environ=os.environ):
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
-              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0}
+              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0}
     try:
         profile = fit_profile.load(environ)
     except fit_profile.ProfileError:
@@ -98,6 +98,10 @@ def run(limit, live, environ=os.environ):
                     (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
                      json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
                      decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
+                if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D106: an excluded job that now qualifies (a wrong place, a profile that now knows its evidence) comes back
+                    cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
+                                   " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
+                    counts["revived"] += cursor.rowcount
                 if gate and decision.status == lanes.EXCLUDE:
                     cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
