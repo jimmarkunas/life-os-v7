@@ -19,7 +19,7 @@ STALE_HOURS = 3
 TODAY_CAPACITY = 3
 WEEK_OPEN_LIMIT = 5                       # V1: up to 5 This Week rows stay expanded, more go behind a toggle
 CARD_TITLE = "JIRA Execution"
-STATUS_PREFIX = "V7 · "
+
 HIGH = {"high", "highest"}
 
 
@@ -156,11 +156,11 @@ def gtv_blocks(snap, sticky, site, context_url):
             {"object": "block", "type": "paragraph", "paragraph": {"rich_text": parts}}], (action or {}).get("key")
 
 
-def status_line(now, stale_at=None):
-    stamp = now.strftime("%-I:%M %p CT")
+def heading_text(now, stale_at=None):
+    """D121: the update time shares the heading, like Calendar: "JIRA Execution (Updated 2:10 PM CT)"."""
     if stale_at:
-        return f"{STATUS_PREFIX}STALE · last accepted {stale_at.strftime('%b %-d %-I:%M %p CT')}"
-    return f"{STATUS_PREFIX}updated {stamp}"
+        return f"{CARD_TITLE} (STALE · last accepted {stale_at.strftime('%b %-d %-I:%M %p')} CT)"
+    return f"{CARD_TITLE} (Updated {now.strftime('%-I:%M %p')} CT)"
 
 
 def render(snaps, today, now, site, sticky=None, context_url=None):
@@ -241,8 +241,12 @@ def _plain(block):
 
 
 def _owned(kids):
-    """The card is ours only while it opens with the 'JIRA Execution' heading: anything else is somebody else's block."""
-    return bool(kids) and kids[0].get("type") == "heading_4" and _plain(kids[0]).strip() == CARD_TITLE
+    """The card is ours only while it opens with the 'JIRA Execution' heading (exactly, or 'JIRA Execution (...)' once the update time shares it):
+    anything else is somebody else's block."""
+    if not (kids and kids[0].get("type") == "heading_4"):
+        return False
+    heading = _plain(kids[0]).strip()
+    return heading == CARD_TITLE or (heading.startswith(CARD_TITLE + " (") and heading.endswith(")"))
 
 
 def site_url(environ):
@@ -283,13 +287,13 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     existing = children(client, block_id)
     if not _owned(existing):
         raise CardError("JIRA_CARD_NOT_OWNED")
-    status = existing[1] if len(existing) > 1 and existing[1].get("type") == "paragraph" and _plain(existing[1]).startswith(STATUS_PREFIX) else None
     result = {"projects": len(projects), "stale": int(stale), "written": 0, "blocks": 0, "removed": 0}
+    heading_block = existing[0]
     if stale:
-        if status is None:
-            raise CardError("JIRA_CARD_STALE_NO_BASELINE")          # nothing of ours to mark; the old card is left untouched
+        if len(existing) < 2 or not _plain(heading_block).strip().startswith(CARD_TITLE + " ("):
+            raise CardError("JIRA_CARD_STALE_NO_BASELINE")          # V7 has not written this card yet: nothing of ours to mark, the old card is left untouched
         if live:
-            client.call("PATCH", f"/blocks/{status['id']}", {"paragraph": {"rich_text": rich_text(status_line(now, taken))}})
+            client.call("PATCH", f"/blocks/{heading_block['id']}", {"heading_4": {"rich_text": rich_text(heading_text(now, taken))}})   # only the heading text changes
             result["written"] = 1
         return result
     sticky = next((m.group(0) for b in existing[1:] if _plain(b).startswith("GTV Action") for m in [KEY_RE.search(_plain(b))] if m), None)
@@ -297,9 +301,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     result.update({k: v for k, v in counts.items()}, blocks=len(body))
     if not live:
         return result
-    top = [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [_text(status_line(now))]}}] + body
     old = existing[1:]
-    append_tree(client, block_id, top)                              # new content first: a failure here removes nothing
+    append_tree(client, block_id, body)                             # new content first: a failure here removes nothing
     for block in old:
         try:
             client.call("DELETE", f"/blocks/{block['id']}")
@@ -307,8 +310,10 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
         except NotionError as error:
             if str(error) != "NOTION_HTTP_404":
                 raise
+    heading = heading_text(now)
+    client.call("PATCH", f"/blocks/{heading_block['id']}", {"heading_4": {"rich_text": rich_text(heading)}})
     after = children(client, block_id)
-    if not _owned(after) or len(after) != 1 + len(top) or not _plain(after[1]).startswith(STATUS_PREFIX):
+    if not _owned(after) or len(after) != 1 + len(body) or after[0].get("id") != heading_block["id"] or _plain(after[0]).strip() != heading:
         raise CardError("JIRA_CARD_VERIFY_FAILED")
     result["written"] = 1
     return result

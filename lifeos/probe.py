@@ -334,5 +334,47 @@ def revolut(fetch_page=None):
     return out
 
 
+REVOLUT_QUERIES = ("Campaign Creative Lead", "Product Owner Crypto", "Product Owner Website", "Head of Product", "Operations Manager", "Partnerships Manager",
+                   "Product Designer", "Strategy Operations Manager", "Product Manager")
+
+
+def revolut_titles(search=None, fetch_many=None, fetch_page=None):
+    """Can a title search find Revolut roles the listing page does not carry, and can their text be read? Counts and key NAMES only: per query how many
+    revolut.com position pages the search returns and how many are NOT among the listing's ids; then, for a few unlisted ones, what a browser fetch returns."""
+    from lifeos.platform import impersonate, tinyfish, tinyfish_search                       # noqa: PLC0415
+    search, fetch_many = search or tinyfish_search.search, fetch_many or tinyfish.fetch_many
+    fetch_page = fetch_page or impersonate.fetch
+    source = next(s for s in registry.load(registry.PATHS["Scale-Up"]) if s["id"] == "su-revolut-ltd")
+    data = _next_data(fetch_page(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", "")).html)
+    positions = (data or {}).get("props", {}).get("pageProps", {}).get("positions") or []
+    listed = {str(p.get("id")) for p in positions if isinstance(p, dict)}
+    out, unlisted = {"listing_positions": len(listed), "queries": {}}, []
+    for query in REVOLUT_QUERIES:
+        try:
+            results = search(f"Revolut {query} careers", include_domains=["revolut.com"])
+        except Exception as error:                                                          # noqa: BLE001 - a fixed code, never a body
+            out["queries"][query] = {"error": str(error)[:60]}
+            continue
+        pages = [r["url"] for r in results if "/careers/position/" in r.get("url", "")]
+        new = [u for u in pages if not any(i and i in u for i in listed)]
+        unlisted += [u for u in new if u not in unlisted]
+        out["queries"][query] = {"results": len(results), "position_pages": len(pages), "unlisted": len(new),
+                                 "title_hit": sum(query.split()[0].casefold() in (r.get("title") or "").casefold() for r in results)}
+    out["unlisted_total"] = len(unlisted)
+    out["known_found"] = [any(part in u for u in unlisted) for part in ("c7078b70", "92db1b5f")]
+    sample = unlisted[:3] + [u for u in REVOLUT_DIRECT if u not in unlisted]
+    if sample:
+        try:
+            got, errors = fetch_many(sample[:10], fmt="html", links=False)
+        except Exception as error:                                                          # noqa: BLE001
+            got, errors = {}, [{"error": str(error)[:60]}]
+        out["fetch"] = [{"status": (item or {}).get("status"), "keys": sorted(item)[:12] if isinstance(item, dict) else None,
+                         "text_chars": max((len(v) for v in item.values() if isinstance(v, str)), default=0) if isinstance(item, dict) else 0,
+                         "jobposting_ld": sum("JobPosting" in b for b in JSONLD.findall(str((item or {}).get("html") or (item or {}).get("content") or "")))}
+                        for item in got.values()]
+        out["fetch_errors"] = len(errors)
+    return out
+
+
 def run(limit, live):
-    return {"revolut": revolut(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}

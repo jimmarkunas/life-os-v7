@@ -307,8 +307,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     heading_block = existing[0]
     heading_patch = {heading_block["type"]: {"rich_text": rich_text(heading)}}
     if stale:
-        if len(existing) < 2:
-            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")                 # nothing known-good to keep showing: do not write a STALE heading over an empty card
+        if len(existing) < 2 or not _plain(heading_block).strip().startswith(CARD_TITLE + " ("):
+            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")                 # V7 has not written this card yet: nothing known-good of ours to keep showing
         if live:
             jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
             if not jira_id:

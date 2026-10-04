@@ -130,6 +130,12 @@ class AgendaCardTests(unittest.TestCase):
         card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved))
         self.assertEqual(card._plain(notion.children["calendar-callout"][0]), heading)
 
+    def test_stale_never_claims_content_V7_did_not_write(self):
+        notion = AgendaRegions()                                                              # the heading is still plain "Calendar": ChatGPT's card
+        with self.assertRaises(card.CardError) as caught:
+            card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved_snapshot([], NOW.replace(hour=4))))
+        self.assertEqual(str(caught.exception), "AGENDA_CARD_STALE_NO_BASELINE")
+
     def test_a_heading_that_only_starts_with_calendar_is_not_the_card(self):
         for text in ("Calendar notes", "Calendars (Updated 1:00 PM CT)", "Calendar (Updated 1:00 PM CT) extra"):
             self.assertFalse(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
@@ -200,7 +206,7 @@ class AgendaCardTests(unittest.TestCase):
         saved = saved_snapshot([], NOW.replace(hour=4))
         database = AgendaSnapshotDB(saved)
         notion = AgendaRegions()
-        notion.children["calendar-callout"][1] = notion._paragraph("Updated 04:00 CT")
+        notion.children["calendar-callout"][0]["heading_3"]["rich_text"] = [{"plain_text": "Calendar (Updated 4:00 AM CT)"}]    # V7 wrote it before
         notion.children["calendar-callout"].append(notion._paragraph("Example previous event"))
         counts = card.run(1, True, environ=self._env(), client=notion,
                           now=NOW, connect=lambda: database)
