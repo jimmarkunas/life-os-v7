@@ -112,7 +112,8 @@ def _insert_after(client, block_id, after_id, blocks, after_write):
         result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": after_id})
     finally:
         after_write()
-    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) != len(blocks):
+    # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back is the proof.
+    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
         raise CardError("BILLS_CARD_APPEND_MISMATCH")
 
 

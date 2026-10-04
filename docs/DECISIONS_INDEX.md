@@ -121,3 +121,4 @@ This index is checked by a test: add a line here with every new decision.
 - D117 — The Bills card owns the summary line only; the Bills table stays Jim's (2026-10-04)
 - D118 — The Amazon card: canonical orders on the Daily Report (2026-10-04)
 - D119 — Calendar update time shares the heading; AM/PM everywhere (2026-10-04)
+- D120 — The first live insert-after run: Notion's reply lists more than the new blocks (2026-10-04)
