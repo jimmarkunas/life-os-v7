@@ -286,3 +286,18 @@ class Teamtailor(unittest.TestCase):
         self.assertEqual(self.read(200, "<html>").reason, "bad_xml")
         self.assertEqual(self.read(200, "<rss></rss>").reason, "bad_shape")
         self.assertEqual(self.read(200, '<!DOCTYPE x [<!ENTITY a "b">]><rss><channel/></rss>').reason, "bad_shape")
+
+
+class LongLocations(unittest.TestCase):
+    """D104: a stored place cut at 200 characters hid London from Revolut jobs; unchanged jobs whose listed place is longer are put right."""
+
+    def test_unchanged_jobs_with_a_long_place_are_relocated(self):
+        offices = " | ".join(f"Office {n} · office · Country {n}" for n in range(12)) + " | London · office · United Kingdom"
+        job = {"id": "p1", "title": "Product Owner (Technical)", "location": offices, "url": "https://x/p1", "posted": None, "content": None}
+        short = {"id": "p2", "title": "Program Manager", "location": "London", "url": "https://x/p2", "posted": None, "content": None}
+        listing = lister.Listing(lister.COMPLETE, [job, short])
+        previous = {j["id"]: (diff.material_hash(j), "INGESTED") for j in listing.jobs}
+        outcome = run.plan({"id": "s", "kind": "revolut_html"}, listing, previous, datetime(2026, 10, 4), 10)
+        self.assertEqual(list(outcome.relocate), ["p1"])
+        self.assertIn("London", outcome.relocate["p1"])
+        self.assertGreater(len(offices), 200)

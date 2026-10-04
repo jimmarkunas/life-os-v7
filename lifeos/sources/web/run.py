@@ -30,6 +30,7 @@ class Outcome:
     items: list = field(default_factory=list)        # (job, hash, ingest, suppress_reason, is_new) to upsert
     unchanged: list = field(default_factory=list)    # provider job ids to touch
     removed: list = field(default_factory=list)
+    relocate: dict = field(default_factory=dict)     # D104: provider job id -> full location, for unchanged jobs whose stored place was cut at 200 characters
     admit: list = field(default_factory=list)        # jobs to admit into Jobs OS now
     pending: int = 0
     due_at: datetime | None = None
@@ -57,9 +58,10 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
         return Outcome(source, now, "FAILED", listing.reason)
     new, changed, unchanged, removed = diff.classify({i: h for i, (h, _) in previous.items()}, listing.jobs, True)
     by_id = {j["id"]: j for j in listing.jobs}
+    relocate = {i: by_id[i]["location"] for i in unchanged if len(by_id[i].get("location") or "") > 200}
     backlog = [by_id[i] for i in unchanged if previous[i][1] == "PENDING"]       # seen before, not yet admitted
     out = Outcome(source, now, "COMPLETE", frontier=diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}),
-                  unchanged=[i for i in unchanged if previous[i][1] != "PENDING"], removed=removed)
+                  unchanged=[i for i in unchanged if previous[i][1] != "PENDING"], removed=removed, relocate=relocate)
     suppressed = {}
     for job, digest, is_new in [(j, h, True) for j, h in new] + [(j, h, False) for j, h in changed]:
         why = suppress.reason(job, now.date(), lane)
@@ -115,6 +117,10 @@ class SqlRepo:
                     if o.unchanged:
                         cursor.executemany("UPDATE v7_source_items SET last_seen=%s WHERE source_id=%s AND provider_job_id=%s",
                                            [(now, sid, i) for i in o.unchanged])
+                    if o.relocate:                                   # D104: one pass until every stored place carries all its offices
+                        cursor.executemany("UPDATE v7_jobs j JOIN v7_source_items i ON i.job_id = j.id SET j.location_text=%s"
+                                           " WHERE i.source_id=%s AND i.provider_job_id=%s AND CHAR_LENGTH(j.location_text) < %s",
+                                           [(loc[:2000], sid, i, min(len(loc), 2000)) for i, loc in o.relocate.items()])
                     if o.removed:
                         cursor.executemany("UPDATE v7_source_items SET state='REMOVED', last_seen=%s WHERE source_id=%s AND provider_job_id=%s",
                                            [(now, sid, i) for i in o.removed])

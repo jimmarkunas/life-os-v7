@@ -36,7 +36,7 @@ def blocks_for(rows):
     groups = {}
     for title, location, status, source, score, admission, reason, stop, link, detail in rows:
         why = (reason or stop or "").strip()
-        line = f"{title} | {(location or 'no place stated')[:100]} | " + (f"Fit {score}" if score is not None else "not scored") + (f" | {why}" if why else "") + f" | via {source or 'unknown'}" + (f" | {link[:140]}" if link and status in ("NEW", "HOLD", "RESOLVED") else "") + (f" | {detail[:420]}" if detail and score is not None and score >= 60 else "")
+        line = f"{title} | {(location or 'no place stated')[:260]} | " + (f"Fit {score}" if score is not None else "not scored") + (f" | {why}" if why else "") + f" | via {source or 'unknown'}" + (f" | {link[:140]}" if link and status in ("NEW", "HOLD", "RESOLVED") else "") + (f" | {detail[:420]}" if detail and score is not None else "")
         groups.setdefault(group_of(status, admission, why), []).append(line)
     blocks = []
     for name in sorted(groups, key=lambda g: (g != "On the board", g)):
