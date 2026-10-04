@@ -17,7 +17,8 @@ class FakeBlocks:
         if method == "PATCH" and path.startswith("/blocks/") and "children" not in path:
             for k in self.kids:
                 if k["id"] == path.rsplit("/", 1)[1]:
-                    k["paragraph"] = body["paragraph"]
+                    kind = next(iter(body))                      # paragraph or heading_N: the block keeps its type and takes the new rich text
+                    k[kind] = {"rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
             return {}
         raise AssertionError(path)
 
