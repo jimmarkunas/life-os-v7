@@ -111,3 +111,4 @@ This index is checked by a test: add a line here with every new decision.
 - D107 — The Fit version tag fit its column (2026-10-04)
 - D108 — Every Agenda event title opens the event in Google Calendar; the meeting is a separate Join link (2026-10-04)
 - D109 — Name the companies to score first (2026-10-04)
+- D110 — Board check: what the live board returns and what became of each job (2026-10-04)
