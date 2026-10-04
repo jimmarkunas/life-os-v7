@@ -56,6 +56,7 @@ class Result:
     shadow_changes: int = 0            # requirements the semantic layer would reclassify
     shadow_flip: bool = False          # would the Go / No-Go decision differ
     shadow_sims: list = field(default_factory=list)
+    pre_functional: int | None = None  # the score before the Functional cap (calibration: how many jobs the cap moves)
 
 
 def _half_up(x):
@@ -189,6 +190,7 @@ def _family(title, units, profile):
 JUNIOR = re.compile(r"\b(?:analyst|associate|assistant|intern|coordinator|clerk|trainee|apprentice|junior|graduate|entry[- ]level|early careers?)\b", re.I)
 SENIOR = re.compile(r"\b(?:director|vice president|vp|head|principal|manager)\b", re.I)
 JUNIOR_CAP = 55          # below the Review band: an analyst-level title is not this profile's level (D89)
+FUNCTIONAL_MARGIN = 25   # D103: Fit cannot exceed the Functional area's attainment by more than this: generic years / team size / scale cannot make up for the job itself
 UNANCHORED_CAP = 50      # no title or requirement matched a profile function or capability: generic requirements alone are not a Fit (D89)
 
 
@@ -260,6 +262,11 @@ def evaluate(title, company, text, profile, today, semantic=None):
         score, capped_note = JUNIOR_CAP, f"Capped at {JUNIOR_CAP}: an analyst-level title is below this profile's level."
     else:
         capped_note = None
+    result_pre = score
+    functional = buckets.get("functional")
+    if functional is not None and score > functional + FUNCTIONAL_MARGIN:
+        score = functional + FUNCTIONAL_MARGIN
+        capped_note = capped_note or f"Capped at {score}: the job's own function matches only {functional}% of what it asks (generic seniority and scale cannot make up for it)."
     decision = "No-Go" if gate or score < GO_THRESHOLD else "Go"
     weakest = min(buckets, key=buckets.get)
     if gate:
@@ -277,7 +284,7 @@ def evaluate(title, company, text, profile, today, semantic=None):
     result = Result(score, decision, _line(score, decision, flat, gate), why, exclusion=gate["id"] if gate else None,
                     confidence="high" if confident else "low", capped=capped,
                     buckets={NAMES[d]: v for d, v in buckets.items()},
-                    items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft)
+                    items=[[r.dim, r.label, r.cls, float(r.weight)] for r in flat][:80], soft=soft, pre_functional=result_pre)
     if semantic is not None:                       # shadow: the same posting with semantic matches applied; never used
         changes = []
         shadow_reqs = _requirements(units, profile, today.year, semantic, changes)

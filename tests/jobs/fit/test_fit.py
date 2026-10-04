@@ -323,3 +323,38 @@ class LegalComplianceTitles(unittest.TestCase):
             self.assertEqual(hard["id"], "legal_compliance", title)
         for title in ("Sr Technology Compliance Product Owner", "Program Lead, e-Invoicing", "Senior Product Manager, AI Brand Visibility"):
             self.assertIsNone(exclusions.check(title, "Acme", GOOD)[0], title)
+
+
+class FinanceDomainAndFunctionalCap(unittest.TestCase):
+    """D103: Chief Risk Officer at Fit 84, Operational Risk Manager 75, FinCrime Risk Manager 68-78 for a program manager. The domain is the job, and generic
+    seniority, team size and scale (which fill Role and Delivery) must not outvote the Functional area."""
+
+    def hard(self, title):
+        got, _ = exclusions.check(title, "Acme", GOOD)
+        return got and got["id"]
+
+    def test_financial_risk_fincrime_and_audit_titles_are_hard_exclusions(self):
+        for title in ("Chief Risk Officer", "Enterprise Risk Manager", "Operational Risk Manager (Outsourcing)", "FinCrime Risk Manager (Fraud)",
+                      "Financial Crime Compliance Governance Manager", "Regulatory Compliance Manager (Wealth & Trading)", "Head of Risk (Non-Retail)",
+                      "Credit Risk Director", "Treasury Manager", "Internal Audit Lead", "MLRO", "Sanctions Compliance Officer"):
+            self.assertIsNotNone(self.hard(title), title)
+
+    def test_program_and_product_titles_that_mention_risk_or_compliance_are_not_caught(self):
+        for title in ("Technical Program Manager", "Sr Technology Compliance Product Owner", "Program Risk Manager", "Project Risk Lead",
+                      "Senior Program Manager, Payments Platform", "Delivery Risk Manager", "Director, Platform Risk and Dependency Management"):
+            self.assertIsNone(self.hard(title), title)
+
+    def test_fit_cannot_exceed_the_functional_area_by_more_than_the_margin(self):
+        from unittest import mock
+        from lifeos.jobs.fit import score
+        buckets = {"role": 100, "functional": 33, "delivery": 100}
+        with mock.patch.object(score, "_arithmetic", return_value=(80, buckets)):
+            result = evaluate("Technical Program Manager", "Acme", GOOD, PROFILE, TODAY)
+        self.assertEqual((result.score, result.pre_functional), (33 + score.FUNCTIONAL_MARGIN, 80))
+        self.assertEqual(result.decision, "No-Go")
+        self.assertIn("function matches only 33%", result.why)
+
+    def test_a_job_whose_function_matches_is_not_capped(self):
+        result = evaluate("Technical Program Manager", "Acme", GOOD, PROFILE, TODAY)
+        self.assertEqual(result.score, result.pre_functional)
+        self.assertGreaterEqual(result.score, GO_THRESHOLD)
