@@ -394,3 +394,24 @@ class RevivedStatement(unittest.TestCase):
         literal % ("2026-10-04", 1)                              # the driver formats the statement
         for guard in ("status='EXCLUDED_FIT'", "unresolved_reason='lane_exclude'", "notion_page_id IS NULL"):
             self.assertIn(guard, literal)
+
+
+class FitTag(unittest.TestCase):
+    """D107: the tag was 17 characters in a CHAR(16) column, so no stored score ever matched and every run re-scored the same oldest 500 jobs."""
+
+    def test_the_tag_always_fits_the_column_and_changes_with_the_policy(self):
+        from unittest import mock
+        from lifeos.jobs import lanes
+        from lifeos.jobs.fit import stage
+        for semantic in (False, True):
+            for policy in ("l9", "l13", "l100"):
+                with mock.patch.object(lanes, "POLICY_VERSION", policy):
+                    tag = stage.fit_tag("0123456789abcdef", semantic)
+                self.assertLessEqual(len(tag), 16, (policy, semantic))
+        with mock.patch.object(lanes, "POLICY_VERSION", "l13"):
+            a = stage.fit_tag("0123456789abcdef", True)
+        with mock.patch.object(lanes, "POLICY_VERSION", "l14"):
+            b = stage.fit_tag("0123456789abcdef", True)
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(stage.fit_tag("0123456789abcdef", True), stage.fit_tag("0123456789abcdef", False))
+        self.assertNotEqual(stage.fit_tag("aaaaaaaaaaaaaaaa", True), stage.fit_tag("bbbbbbbbbbbbbbbb", True))

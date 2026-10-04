@@ -108,3 +108,4 @@ This index is checked by a test: add a line here with every new decision.
 - D104 — A stored place is no longer cut at 200 characters (2026-10-04)
 - D105 — Evidence can be added without replacing the profile (2026-10-04)
 - D106 — A named board is read now; an excluded job that now qualifies comes back (2026-10-04)
+- D107 — The Fit version tag fit its column (2026-10-04)

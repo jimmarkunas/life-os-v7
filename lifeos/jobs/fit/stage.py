@@ -23,6 +23,15 @@ AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also r
 ALL = AUTO + ("'EXCLUDED_FIT'",)                         # FIT_ALL=true (by hand): also re-score excluded jobs (calibration)
 
 
+PROFILE_TAG_WIDTH = 16                                   # v7_job_fit.profile_hash is CHAR(16)
+
+
+def fit_tag(profile_hash, matcher):
+    """What a stored score is compared with: the profile, the lane policy and the semantic layer. It must fit the column: a longer tag was cut on write, never
+    matched on read, and so every run re-scored the same oldest jobs and never reached the newer ones (D107). The tail is kept, so a policy change always shows."""
+    return (profile_hash[:12] + lanes.POLICY_VERSION + ("s1" if matcher else ""))[-PROFILE_TAG_WIDTH:]
+
+
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -64,7 +73,7 @@ def run(limit, live, environ=os.environ):
     embed = fit_semantic.load_embedder(environ)
     matcher = fit_semantic.Matcher(profile, embed) if embed else None      # shadow only: never changes a score
     counts["semantic"] = "on" if matcher else "off"
-    tag = profile.hash[:12] + lanes.POLICY_VERSION + ("s1" if matcher else "")  # a profile, lane-policy or semantic change re-scores
+    tag = fit_tag(profile.hash, bool(matcher))         # a profile, lane-policy or semantic change re-scores
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
