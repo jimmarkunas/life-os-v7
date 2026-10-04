@@ -60,7 +60,7 @@ def run(limit, live, environ=os.environ, reader=None, client=None, now=None):
     blocks = render(count, now, degraded)
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "attention", live)
+    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "attention", live, headless=True)
     counts = {"active": count, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed

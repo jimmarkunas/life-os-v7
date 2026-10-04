@@ -6,6 +6,7 @@ Jim's interactive views stay where they are); re-reads the callout; and proves t
 `fail(code)` builds the caller's own error type, so codes stay fixed and carry no content."""
 import hashlib
 import json
+import time
 from copy import deepcopy
 from urllib.parse import quote
 
@@ -102,13 +103,18 @@ def protected(client, ids, fail):
         raise fail("PROTECTED_REGION_UNAVAILABLE") from None
 
 
-def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live):
-    """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count)."""
+def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False):
+    """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count).
+    headless (D129): the callout has no heading of its own (it holds only Jim's interactive view, which shows its own title), so the configured block id is the ownership proof;
+    it must hold at least one non-text block and no heading, and the text goes in at the top, above that view."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
     existing = children(client, block_id, fail)
-    if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
+    if headless:
+        if not existing or any(b.get("type") in HEADINGS for b in existing) or all(b.get("type") in TEXT_KINDS for b in existing):
+            raise fail("CARD_NOT_OWNED")
+    elif not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
         raise fail("CARD_NOT_OWNED")
     try:
         router.check_write(module, [title])
@@ -116,8 +122,9 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
         raise fail("CARD_NOT_OWNED") from None
     if not live:
         return existing, 0
-    old_text = [b for b in existing[1:] if b.get("type") in TEXT_KINDS]
-    kept = [b["id"] for b in existing[1:] if b.get("type") not in TEXT_KINDS]           # tables, databases, pages and anything else stay, in order
+    body = existing if headless else existing[1:]
+    old_text = [b for b in body if b.get("type") in TEXT_KINDS]
+    kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
     before = protected(client, protected_ids, fail)
 
     def intact():
@@ -126,8 +133,11 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             print(f"{tag}: protected region changed", json.dumps({r: changed(before.get(r), after.get(r)) for r in before if before.get(r) != after.get(r)}))
             raise fail("PROTECTED_REGION_CHANGED")
 
+    if headless:
+        return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
     try:
-        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": existing[0]["id"]})
+        placement = {"after": existing[0]["id"]}
+        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
     finally:
         intact()
     # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
@@ -153,3 +163,44 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")
     return existing, removed
+
+
+def _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+    """D129: one paragraph at the top of a callout that holds only Jim's view. The existing paragraph is EDITED IN PLACE (one atomic write; an insert followed by a delete of the old
+    line read back stale on Notion), leftovers from earlier failed runs are removed, and the first run inserts the paragraph at the top. -> removed count."""
+    if len(blocks) != 1 or blocks[0].get("type") != "paragraph":
+        raise fail("CARD_NOT_OWNED")
+    rich = blocks[0]["paragraph"]["rich_text"]
+    removed = 0
+    try:
+        router.check_write(module, [title])
+    except router.RouterError:
+        raise fail("CARD_NOT_OWNED") from None
+    try:
+        if old_text:
+            keep = old_text[0]
+            client.call("PATCH", f"/blocks/{quote(keep['id'], safe='')}", {"paragraph": {"rich_text": rich}})
+        else:
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "position": {"type": "start"}})
+    finally:
+        intact()
+    for extra in old_text[1:]:
+        try:
+            client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
+            removed += 1
+        except NotionError as error:
+            if str(error) != "NOTION_HTTP_404":
+                raise
+        finally:
+            intact()
+    shape = None
+    for attempt in range(4):                                                              # authoritative read-back; a short wait first if Notion still shows the pre-write state
+        if attempt:
+            time.sleep(3)
+        after = children(client, block_id, fail)
+        intact()
+        shape = (len(after) == 1 + len(kept), bool(after) and plain(after[0]) == plain(blocks[0]) and after[0].get("type") == "paragraph",
+                 [b.get("id") for b in after[1:]] == kept)
+        if all(shape):
+            return removed
+    raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), 1 + len(kept)))
