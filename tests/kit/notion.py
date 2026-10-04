@@ -176,6 +176,11 @@ class AgendaRegions:
             return {}
         if method == "PATCH" and clean.startswith("/blocks/"):
             block_id = clean.rsplit("/", 1)[1]
+            root = self.metas.get(block_id)
+            if root and "callout" in (body or {}):                    # the callout's own text
+                rich = [{"plain_text": part["text"]["content"], **part} for part in body["callout"]["rich_text"]]
+                root["callout"] = {**root.get("callout", {}), "rich_text": rich}
+                return {}
             for blocks in self.children.values():
                 for block in blocks:
                     if block["id"] == block_id:
@@ -273,12 +278,11 @@ class AmazonRegions(BillsRegions):
 
 class AttentionRegions(AmazonRegions):
     """AmazonRegions plus the Attention callout as Jim keeps it: NO heading of its own, only the linked Attention view (a block that is not text and must survive every
-    write) and, to be replaced, one old status line above it (where the card puts it)."""
+    write) and, to be replaced, nothing else."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         root = {"id": "attention-callout", "type": "callout", "has_children": True, "parent": {"type": "block_id", "block_id": "column-parent"}, "callout": {}}
         self.roots.append(root)
         self.metas["attention-callout"] = root
-        self.children["attention-callout"] = [self._text_block("attention-status-old", "paragraph", "Old attention text"),
-                                              {"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}]
+        self.children["attention-callout"] = [{"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}]
