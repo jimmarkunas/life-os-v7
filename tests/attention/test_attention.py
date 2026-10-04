@@ -151,10 +151,7 @@ class FakeGmail:
 
 
 class FakeOutlook:
-    def folder_id(self, name, create=False):
-        return "F1"
-
-    def messages(self, folder, since, limit):
+    def messages_in_category(self, category, limit):
         return [{"id": "o1", "subject": "Security alert: password was changed", "from": {"emailAddress": {"address": "a@example.com"}}}]
 
 

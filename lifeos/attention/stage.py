@@ -1,4 +1,4 @@
-"""Attention (D127): Gmail label and Outlook folder Jim controls -> the canonical Notion Attention data source. Counts and fixed codes only.
+"""Attention (D127): Gmail label and Outlook category Jim controls -> the canonical Notion Attention data source. Counts and fixed codes only.
 
 Flow: read the current and prior week completely -> read each mailbox source completely -> admit by policy -> plan -> write -> read back.
 Fail closed: an unreadable Notion week, a schema mismatch or an incomplete listing writes nothing for what it touches; a failed source only skips that source
@@ -15,7 +15,7 @@ from lifeos.platform.outlook import Outlook, OutlookError
 
 SOURCE_ID = "5cab416c-b1df-43c2-abcc-b98df6656d41"          # the canonical Attention data source (the one the Daily Report view links)
 GMAIL_LABEL, GMAIL_QUERY = "LifeOS/Attention", "label:LifeOS-Attention"
-OUTLOOK_FOLDER = "LifeOS Attention"
+OUTLOOK_CATEGORY = "LifeOS Attention"          # an Outlook category: read-only for V7 (no folder to create), the message stays in the inbox
 SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date"}
 
 
@@ -110,23 +110,22 @@ def _gmail_proof(gmail, label, medium, labeled):
 
 
 def _outlook_source(client, account, limit, live):
-    folder = client.folder_id(OUTLOOK_FOLDER, create=live)
-    if folder is None:
-        return [], set(), None
     out = []
-    for message in client.messages(folder, None, limit):
+    for message in client.messages_in_category(OUTLOOK_CATEGORY, limit):
         sender = ((message.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         out.append({"sender": sender, "subject": message.get("subject") or "", "url": "https://outlook.office.com/mail/id/" + quote(message["id"], safe=""),
                     "medium": f"Outlook:{account}:{message['id']}"})
-    return out, {c["medium"] for c in out}, folder
+    return out, {c["medium"] for c in out}, OUTLOOK_CATEGORY
 
 
-def _outlook_proof(client, folder, medium, labeled):
+def _outlook_proof(client, category, medium, labeled):
+    """present / absent / unknown: absent only when the message is still readable and no longer carries the category."""
     if medium in labeled:
         return "present"
     try:
-        parent = client.get(f"/me/messages/{quote(medium.split(':', 2)[2], safe='')}", {"$select": "id,parentFolderId"}).get("parentFolderId")
-        return "absent" if folder and parent and parent != folder else "unknown"
+        found = client.get(f"/me/messages/{quote(medium.split(':', 2)[2], safe='')}", {"$select": "id,categories"})
+        categories = found.get("categories")
+        return "absent" if isinstance(categories, list) and category not in categories else "unknown"
     except OutlookError:
         return "unknown"
 
