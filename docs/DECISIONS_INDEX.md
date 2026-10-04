@@ -113,3 +113,4 @@ This index is checked by a test: add a line here with every new decision.
 - D109 — Name the companies to score first (2026-10-04)
 - D110 — Board check: what the live board returns and what became of each job (2026-10-04)
 - D111 — First-party boards: open means open; the guards stop blocking their jobs (2026-10-04)
+- D113 — Amazon ingress: the Inbox and the Amazon label are not processed boundaries (2026-10-04)
