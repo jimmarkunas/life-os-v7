@@ -73,7 +73,7 @@ def requeue_floor(cursor):
 
 
 def promote_kept(cursor):
-    """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored description and link, and whose stored Fit decision is ADMIT or REVIEW
+    """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
     becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
     -> counts: promoted, and (counts only) how many kept RESOLVED jobs lack a stored link, a description or a Review/Admit decision, or already have a page."""
     cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL"
@@ -87,7 +87,7 @@ def promote_kept(cursor):
         out["no_description"] += not text
         out["no_decision"] += admission not in (lanes.ADMIT, lanes.REVIEW)
         out["has_page"] += bool(page)
-        if link and text and not page and admission in (lanes.ADMIT, lanes.REVIEW):
+        if link and not page and admission in (lanes.ADMIT, lanes.REVIEW):
             cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
             out["promoted"] += 1
     return out

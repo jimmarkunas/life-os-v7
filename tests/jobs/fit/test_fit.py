@@ -488,7 +488,7 @@ class KeptPromotion(unittest.TestCase):
                 (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd", True, True, "REVIEW", False),
                 (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False),
                 (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False),
-                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, True, "REVIEW", False),
+                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, False, "REVIEW", False),
                 (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True)]
         updated = []
 
