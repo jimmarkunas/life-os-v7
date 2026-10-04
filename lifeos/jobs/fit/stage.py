@@ -72,6 +72,15 @@ def requeue_floor(cursor):
     return int(cursor.rowcount or 0)
 
 
+def _title_description(cursor, job_id, title):
+    """Publishing needs a stored description row. A kept role whose page cannot be read gets the title and a plain note, never invented content."""
+    from lifeos.jobs import jd                                                      # noqa: PLC0415
+    d = jd.describe(f"{title}\n{lanes.TITLE_ONLY_REASON}.", is_html=False)
+    cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
+                   " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
+                   (job_id, "title_only", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], _now()))
+
+
 def promote_kept(cursor):
     """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
     becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
@@ -88,6 +97,8 @@ def promote_kept(cursor):
         out["no_decision"] += admission not in (lanes.ADMIT, lanes.REVIEW)
         out["has_page"] += bool(page)
         if link and not page and admission in (lanes.ADMIT, lanes.REVIEW):
+            if not text:
+                _title_description(cursor, job_id, title)
             cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
             out["promoted"] += 1
     return out
