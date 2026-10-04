@@ -140,7 +140,8 @@ class WriteTests(unittest.TestCase):
         self.assertEqual((out["written"], out["removed"], out["overdue_blocked"], out["today"], out["this_week"], out["done"]),
                          (1, 2, 2, 2, 3, 1))
         self.assertEqual(client.kids[0]["id"], "h")
-        self.assertTrue(client.kids[1]["paragraph"]["rich_text"][0]["plain_text"].startswith("V7 · updated"))
+        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (Updated 9:00 AM CT)")   # the update time shares the heading
+        self.assertFalse(any(card._plain(k).startswith(("V7 ·", "Updated")) for k in client.kids[1:]))                   # no separate status line
         self.assertLess(client.log.index("APPEND"), client.log.index("DELETE"))      # add first, remove after
 
     def test_a_block_that_does_not_open_with_the_heading_is_never_touched(self):
@@ -150,12 +151,19 @@ class WriteTests(unittest.TestCase):
         self.assertEqual(str(ctx.exception), "JIRA_CARD_NOT_OWNED")
         self.assertEqual(client.log, ["GET"])
 
-    def test_stale_snapshot_only_marks_the_status_line(self):
-        status = {"id": "s", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "V7 · updated 6:00 AM CT"}]}}
-        out, client = self.run_card([heading(), status, old(1)], snaps={"AAA": snapshot(taken=datetime(2026, 10, 7, 4, 0, tzinfo=TZ))})
+    def test_stale_snapshot_only_marks_the_heading(self):
+        out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1), old(2)], snaps={"AAA": snapshot(taken=datetime(2026, 10, 7, 4, 0, tzinfo=TZ))})
         self.assertEqual((out["stale"], out["written"]), (1, 1))
-        self.assertIn("STALE", client.kids[1]["paragraph"]["rich_text"][0]["text"]["content"])
+        self.assertEqual(client.kids[0]["heading_4"]["rich_text"][0]["plain_text"], "JIRA Execution (STALE · last accepted Oct 7 4:00 AM CT)")
         self.assertEqual(len(client.kids), 3)                          # no content rewritten, no false zero
+
+    def test_the_combined_heading_is_still_ours_and_lookalikes_are_not(self):
+        self.assertTrue(card._owned([heading("JIRA Execution (Updated 2:10 PM CT)")]))
+        for text in ("JIRA Execution notes", "JIRA Executions (Updated 2:10 PM CT)", "JIRA Execution (Updated 2:10 PM CT) extra"):
+            self.assertFalse(card._owned([heading(text)]), text)
+        out, client = self.run_card([heading("JIRA Execution (Updated 6:00 AM CT)"), old(1)])        # last hour's combined heading
+        self.assertEqual(out["written"], 1)
+        self.assertEqual(client.kids[0]["id"], "h")                                                  # the same heading block, edited in place
 
     def test_stale_without_a_baseline_and_missing_snapshot_fail_closed(self):
         with self.assertRaises(CardError) as ctx:
