@@ -2,6 +2,8 @@
 
 Status: scoped for Jim's review. Nothing here is built or provisioned, and this document changes no schema, secret, workflow, test or `docs/DECISIONS.md`. It treats the Oracle VM as **a new deployment target for the OpenClaw boundary that the Platform Canon already describes**, not as "LIFE OS in the cloud".
 
+**Update, October 4, 2026 (Jim):** the Oracle setup is **stalled** because the account had to be upgraded; the VM is not yet created. Decision 2 below is therefore made in effect (the account is moving to Pay As You Go), and EDGE-0 cannot start until the upgrade completes and the VM can be launched. Two things are worth checking once the upgrade lands, both unverified: that the upgrade has fully taken effect (a freshly upgraded account can still show free-tier limits or launch errors for a while), and that the A1 shape is offered in the Chicago region (capacity). The Product Backlog row `OPENCLAW-0` now carries one line recording the edge VM as the gateway's always-on home, at Jim's request.
+
 Read first, as the brief asked: the Platform Canon, the Communications Intelligence canon (OpenClaw boundary), the Product Backlog, the Development Policy and Production Contract (only the scheduler and execution rules that touch this), Development Projects, and the current V7 repository.
 
 ## 0. In one paragraph
@@ -133,9 +135,9 @@ Any LIFE OS read, the Notion integration, any model, any other channel, any writ
 ## 9. Decisions Jim must make
 
 1. **Priority.** Start EDGE-0 now as non-overlapping infrastructure and hold EDGE-1 until you say "prioritize OPENCLAW-0" (recommended), or hold both until `J1C` is accepted.
-2. **Oracle account type.** Upgrade to Pay As You Go with a small budget alert, so the VM is not stopped for idleness or disabled if the free allowance changes (recommended; resources stay within the free allowances), or stay Always Free and accept the reclamation risk.
+2. **Oracle account type: upgrading (Jim, October 4).** Pay As You Go with a small budget alert, so the VM is not stopped for idleness or disabled if the free allowance changes; resources stay within the free allowances. The upgrade is what has stalled the setup.
 3. **Admin and deploy access.** Tailscale with port 22 closed (recommended, and what OpenClaw's own Oracle guide does), OCI Bastion, or pull-based deploys. Also: move the SSH key secret into a GitHub Environment with you as required reviewer before any workflow uses it (recommended).
 4. **Read path for EDGE-1.** A dedicated read-only Notion integration shared with the Daily Report page only (recommended), rather than any path into Hostinger.
 5. **First model.** None in EDGE-1; a local model on a Mac only in EDGE-4 (recommended).
 6. **Health.** A heartbeat checked by extending the existing alarm-only watchdog (a small amendment to D52), or an external monitor with V7 uninvolved.
-7. **Notion records.** I have not edited the Product Backlog. If you want, I add one line under `OPENCLAW-0` recording the edge VM as the always-on deployment target and this scope as the V7 integration plan.
+7. **Notion records: done.** One line was added to the `OPENCLAW-0` row of the Product Backlog (October 4, 2026), recording the edge VM, its stalled status and this scope.
