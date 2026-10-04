@@ -381,3 +381,16 @@ class ExtraProfileBlock(unittest.TestCase):
             load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": "{not json"})
         with self.assertRaises(ProfileError):
             load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": '{"capabilities": [{"id": "x", "class": "bogus", "terms": ["x"]}]}'})
+
+
+class RevivedStatement(unittest.TestCase):
+    def test_the_revive_statement_survives_driver_formatting_and_is_guarded(self):
+        import inspect, re
+        from lifeos.jobs.fit import stage
+        source = inspect.getsource(stage.run)
+        start = source.index('"UPDATE v7_jobs SET status=\'READY\', unresolved_reason=\'requeued_fit\'')
+        end = source.index("(_now(), job_id))", start)
+        literal = "".join(re.findall(r'"([^"]*)"', source[start:end]))
+        literal % ("2026-10-04", 1)                              # the driver formats the statement
+        for guard in ("status='EXCLUDED_FIT'", "unresolved_reason='lane_exclude'", "notion_page_id IS NULL"):
+            self.assertIn(guard, literal)
