@@ -7,8 +7,9 @@ OUTCOMES = (PASS, NO_ACTION, DEGRADED)
 # A Daily Report region is a callout whose first child heading names its owner. Nothing else is writable by any module.
 JIRA_REGION = "JIRA Execution"                          # V7 owns it exclusively (lifeos/jira/card.py): ChatGPT modules never touch it
 CALENDAR_REGION = "Calendar"                            # V7 owns it exclusively (lifeos/agenda/card.py)
+BILLS_REGION = "Bills: This Week"                       # V7 owns it exclusively (lifeos/bills/card.py)
 DCC_REGION = "ChatGPT · Daily Command Center"      # the one region the Daily Command Center module may write
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", DCC_REGION: "daily-command-center"}
+OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", DCC_REGION: "daily-command-center"}
 
 
 class RouterError(RuntimeError):

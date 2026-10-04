@@ -153,7 +153,9 @@ jobs:
 
   bills:
     # Bills reads its own Notion source and saves only to the private snapshot database. The Paid processor (D85, D86) runs first, so the snapshot sees the advanced dates; on a tick it follows V7_LIVE like every other domain job.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.bills_paid }}
+    # D116: the Bills card then renders the saved snapshot into the Daily Report's "Bills: This Week" callout. It waits for the jira and agenda jobs: all three write the same page, and the card verifies the Calendar and JIRA regions are intact.
+    needs: [jira, agenda]
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.bills_paid) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -190,9 +192,27 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
         run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
+      - id: bcard
+        continue-on-error: true
+        name: Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)
+        if: ${{ always() }}
+        env:
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run bills-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Bills warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure') }}
-        run: echo "::warning title=Bills::the Bill Tracker snapshot failed; the Jobs pipeline is unaffected"
+        if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
+        run: echo "::warning title=Bills::the Bill Tracker snapshot or card failed; the Jobs pipeline is unaffected"
 
 
   agenda:

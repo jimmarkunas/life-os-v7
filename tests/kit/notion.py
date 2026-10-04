@@ -212,3 +212,33 @@ class AgendaRegions:
             copied[kind] = dict(block.get(kind) or {})
             copied[kind]["rich_text"] = [dict(part) for part in (block.get(kind) or {}).get("rich_text", [])]
         return copied
+
+
+class BillsRegions(AgendaRegions):
+    """The production-shaped Daily Report: Calendar, JIRA and the ChatGPT region (protected) plus the Bills callout as it stood on 2026-10-04, a
+    heading, the frozen status paragraph with its Bill Tracker link and the linked 'View of Bills' database view."""
+
+    def __init__(self, view_title="View of Bills", extra_kid=None, change_on=None, change_region="calendar-callout"):
+        super().__init__()
+        self.change_on, self.change_region = change_on, change_region
+        status = self._text_block("bills-status-old", "paragraph", "STALE · last accepted 9/14 9:44 AM CT · 4 active recurring items were overdue")
+        status["paragraph"]["rich_text"].append({"plain_text": "Bill Tracker", "text": {"content": "Bill Tracker", "link": {"url": "https://example.com/tracker"}}})
+        view = {"id": "bills-view-old", "type": "child_database", "has_children": False, "child_database": {"title": view_title}}
+        kids = [status, view] + ([extra_kid] if extra_kid else [])
+        self._add_region("bills-callout", "Bills: This Week", kids, heading_type="heading_3")
+
+    def _poke(self, op):
+        if self.change_on == op:
+            self.children[self.change_region].append(self._paragraph("Changed protected content"))
+            self.change_on = None
+
+    def call(self, method, path, body=None):
+        result = super().call(method, path, body)
+        if method == "DELETE":
+            self._poke("DELETE")
+        return result
+
+    def call_once(self, method, path, body=None):
+        result = super().call_once(method, path, body)
+        self._poke("APPEND")
+        return result
