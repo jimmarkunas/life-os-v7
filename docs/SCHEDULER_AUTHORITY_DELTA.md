@@ -1,6 +1,6 @@
-# Scheduler authority: the conflict and a proposed fix (draft; nothing in `life-os-automation` is edited)
+# Scheduler authority: the conflict and the fix (approved and made; the contract edit is on a branch until Jim merges it)
 
-Status: drafted for Jim's go. Jim said "let's fix this". The contract that needs the fix lives in `life-os-automation` and is the live instruction file of the ChatGPT automation, so the edit waits for his explicit word (section 6). Nothing here changes code, a workflow, or `docs/DECISIONS.md`.
+Status: **approved by Jim and made on October 4, 2026.** The production contract (version 2.15.12) and the Development Policy note were edited in `life-os-automation` on the branch `claude/multi-carrier-delivery-tracking-lpaytv` (commit 2fa8eb6), docs only, no pull request. The edit takes effect for the ChatGPT automation only when Jim merges that branch. V7 recorded the same rule as decision D123. No code, workflow or test changed.
 
 ## 1. The conflict, in plain words
 
@@ -75,10 +75,13 @@ V7 needs a decision entry, not a code change: a consolidated record that D25's "
 
 No test changes. The existing pin already enforces the V7 half.
 
-## 6. What I need from Jim
+## 6. What was done, and what is left
 
-Say **"edit the contract"** and I will, in `life-os-automation` on the branch assigned to this task (docs only, no PR unless he asks): add the paragraph, make the three one-sentence changes, bump the version line, and show him the exact diff. V1's own guide requires an explicit governance instruction naming that repository, and the Development Policy rule I would be amending is locked to Jim alone, which is why I have not touched either. Until then, V7 keeps behaving as D25 and D58 say, and the contract's older wording stays as it is.
+**Done.**
+- `life-os-automation`, branch `claude/multi-carrier-delivery-tracking-lpaytv`: the "Scheduler scopes" section was added to the contract exactly as drafted in section 4; "sole scheduler" and "exactly one recurring production automation" were qualified as "within the ChatGPT scope"; the header version and the provenance footer became 2.15.12; the Development Policy's execution-constitution item 2 now says it governs `life-os-v2` and points to V7's decisions. The contract-related tests I could find (Interview canon, Amazon orders, Gmail acquisition) pass. The repository's own static check (`scripts/execution_constitution_check.py`) reports FAIL, and it did before my edit: it flags an artifact upload in that repository's `life-os-runtime.yml`, which is unrelated to scheduling.
+- V7: decision D123 and its index line, using the draft text in section 5. The decision-index test passes.
 
-Two choices inside that go, both with a default:
-- **Batch the other contract edits** (tracking numbers in private storage, Physical Mail, cockpit cadence) into the same change. Default: yes, as separate, clearly labelled hunks, so he can drop any.
-- **Notion side:** D25 notes the Notion canon page also needs updating. Default: leave it, and tell me which page, since I did not find a scheduler page to edit.
+**Left for Jim.**
+- **Merge the branch** when he is happy with the diff; until then the live contract still says the old thing. I did not open a pull request.
+- **Platform Canon (Notion).** I found the page, and it already carries a V7 amendment from October 1 ("for the V7 Jobs pipeline the recurring scheduler is GitHub Actions ... supersedes the Daily Runs and no-GitHub-cron lines above for V7 only"). It is narrower than the new rule (it names only the Jobs pipeline, while the domain jobs and the new V7 features also run on V7's tick). Widening that one phrase to "V7-owned work" would align it. I have not edited it.
+- **Not included, on purpose:** the other contract changes I had listed as optional (carrier tracking numbers in private storage, Physical Mail's unread-state rule and region ownership, the cockpit cadence). They were never drafted or decided, and the contract is the live instruction file of an unattended automation, so each needs its own decision and its own hunk.

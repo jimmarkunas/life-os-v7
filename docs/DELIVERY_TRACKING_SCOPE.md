@@ -275,11 +275,11 @@ No new scheduler, queue or watchdog. No scraping or browser automation. No TinyF
 
 ## 19. Decisions Jim must make
 
-Settled: USPS is in the carrier list; Jim holds active UPS and FedEx accounts; he receives few tracking numbers; the carrier research is delivered.
+Settled: USPS is in the carrier list; Jim holds active UPS and FedEx accounts; he receives few tracking numbers; the carrier research is delivered; **Jim accepts the UPS cache risk (decision 2, October 4, 2026)**; and he believes his UPS account is a shipper account (decision 3, to be confirmed in the UPS developer portal when D0 starts).
 
 1. **Which carriers, in what order.** Recommended: USPS, then FedEx, then UPS if you accept decision 2, then DHL only if it approves you. Skip DHL unless you have a company name to put on its form.
-2. **Accept the UPS terms risk?** UPS's agreement forbids building a database from UPS data and caps stored tracking data at nine months. The mitigation is a current-state cache purged 30 days after delivery. Recommended: yes, built last. If no, UPS packages show the number and a link only.
-3. **Is your UPS account a shipper account?** UPS's developer application is tied to one. Your login and a UPS shipping account number are the test; if you only have a free delivery-notification profile, you may need to add a shipper account (free to open, per the report; unconfirmed).
+2. **UPS terms risk: accepted by Jim.** UPS's agreement forbids building a database from UPS data and caps stored tracking data at nine months; the mitigation is a current-state cache purged 30 days after delivery, built last among the direct carriers.
+3. **Shipper account: Jim thinks so, unconfirmed.** UPS's developer application is tied to one. The test happens at D0: creating the application asks which shipper account to link; if his account is not one, UPS offers to create one (free to open per the report; unconfirmed). Nothing to do before then.
 4. **Free aggregator fallback.** Allow Ship24's free plan (10 shipments or 100 calls a month, no overage) as a fallback for a carrier with no direct access? It sends those tracking numbers to a third party. Recommended: not now; revisit if DHL is declined and DHL packages matter.
 5. **One region or two.** A new "Deliveries" callout next to Amazon (recommended for now, because the Amazon card went live recently), or merge both into one later.
 6. **Tracking numbers in private storage.** V1's production contract says never to persist "tracking tokens". Confirm that carrier tracking numbers in the private Hostinger database are allowed, and that the wording is clarified in the contract. That edit belongs to `life-os-automation` and needs Jim to name it as an explicit governance change.
@@ -315,7 +315,7 @@ Nothing is needed until slice D0 starts, and then only for the carriers you chos
 
 - **USPS** (first): create a USPS Business Account through the USPS Customer Onboarding Portal ("Log In/Create USPS Business Account"), create an app, and copy the consumer key and secret. Tracking is in the default product, so no extra approval is listed. Proposed secrets: `USPS_CLIENT_ID`, `USPS_CLIENT_SECRET`.
 - **FedEx**: create or sign in to a FedEx Developer Portal account, create a project (the portal asks for an organization and company name; use what you use for the account), associate your existing FedEx account number, and copy the production API key and secret. Proposed secrets: `FEDEX_CLIENT_ID`, `FEDEX_CLIENT_SECRET`.
-- **UPS** (only after decision 2 and 3): create an application at the UPS developer portal (MFA applies), linked to your shipper account, and copy the client ID and secret. Proposed secrets: `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET`.
+- **UPS** (accepted; done after USPS and FedEx): create an application at the UPS developer portal (MFA applies), linked to your shipper account, and copy the client ID and secret. Proposed secrets: `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET`.
 - **DHL** (only if you have a company name): request a Shipment Tracking (Unified) key; DHL reviews it by hand. Proposed secret: `DHL_API_KEY`.
 
 All of these would join one `deliveries` entry in `DOMAIN_SECRETS`, so no other job sees them. Never paste a secret into chat or a file in the repository; they go into the repository's secret store when D0 starts.
