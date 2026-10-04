@@ -32,6 +32,16 @@ def fit_tag(profile_hash, matcher):
     return (profile_hash[:12] + lanes.POLICY_VERSION + ("s1" if matcher else ""))[-PROFILE_TAG_WIDTH:]
 
 
+def only_clause(raw):
+    """D109: a dispatch may name companies (comma separated, 3+ letters each; the Hourly `report` input) whose stale jobs are scored first. -> (sql, params)."""
+    names = [n.strip() for n in (raw or "").split(",") if len(n.strip()) >= 3 and n.strip().lower() != "funnel"][:12]
+    if not names:
+        return "", ()
+    likes = ["%" + n.replace("%", "").replace("_", "") + "%" for n in names]
+    sql = " AND (" + " OR ".join("j.company LIKE %s OR j.source LIKE %s" for _ in likes) + ")"
+    return sql, tuple(p for like in likes for p in (like, like))
+
+
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -78,7 +88,9 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
-            cursor.execute(PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s"), (MODEL_VERSION, tag, limit))
+            extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
+            query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
+            cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
     scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here

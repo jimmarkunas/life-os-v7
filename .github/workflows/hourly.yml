@@ -294,6 +294,7 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         env:
           FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
+          FIT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true

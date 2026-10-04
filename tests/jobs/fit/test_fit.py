@@ -415,3 +415,22 @@ class FitTag(unittest.TestCase):
         self.assertNotEqual(a, b)
         self.assertNotEqual(stage.fit_tag("0123456789abcdef", True), stage.fit_tag("0123456789abcdef", False))
         self.assertNotEqual(stage.fit_tag("aaaaaaaaaaaaaaaa", True), stage.fit_tag("bbbbbbbbbbbbbbbb", True))
+
+
+class OnlyClause(unittest.TestCase):
+    def test_named_companies_become_a_bound_or_filter_and_funnel_or_short_names_are_ignored(self):
+        from lifeos.jobs.fit import stage
+        sql, params = stage.only_clause("revolut, wheely ,ab")
+        self.assertEqual(params, ("%revolut%", "%revolut%", "%wheely%", "%wheely%"))
+        self.assertEqual(sql.count("j.company LIKE"), 2)
+        sql % tuple("x" for _ in params)                              # survives driver formatting
+        self.assertEqual(stage.only_clause("funnel"), ("", ()))
+        self.assertEqual(stage.only_clause(""), ("", ()))
+        self.assertEqual(stage.only_clause(None), ("", ()))
+
+    def test_the_pick_statement_with_the_filter_has_one_placeholder_per_parameter(self):
+        from lifeos.jobs.fit import stage
+        extra_sql, extra_params = stage.only_clause("revolut")
+        query = (stage.PICK % (", ".join(stage.AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
+        self.assertEqual(query.count("%s"), 3 + len(extra_params))
+        self.assertLess(query.index("j.company LIKE"), query.index("ORDER BY"))
