@@ -82,6 +82,6 @@ No test changes. The existing pin already enforces the V7 half.
 - V7: decision D123 and its index line, using the draft text in section 5. The decision-index test passes.
 
 **Left for Jim.**
-- **Merge the branch** when he is happy with the diff; until then the live contract still says the old thing. I did not open a pull request.
+- **Merge the branch**, which Jim has put **on hold until Network Intelligence is settled** (ChatGPT will carry a new module that the same contract would describe). Until then the live contract still says the old thing. I did not open a pull request.
 - **Platform Canon (Notion).** I found the page, and it already carries a V7 amendment from October 1 ("for the V7 Jobs pipeline the recurring scheduler is GitHub Actions ... supersedes the Daily Runs and no-GitHub-cron lines above for V7 only"). It is narrower than the new rule (it names only the Jobs pipeline, while the domain jobs and the new V7 features also run on V7's tick). Widening that one phrase to "V7-owned work" would align it. I have not edited it.
 - **Not included, on purpose:** the other contract changes I had listed as optional (carrier tracking numbers in private storage, Physical Mail's unread-state rule and region ownership, the cockpit cadence). They were never drafted or decided, and the contract is the live instruction file of an unattended automation, so each needs its own decision and its own hunk.
