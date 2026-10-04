@@ -131,7 +131,7 @@ def _outlook_proof(client, category, medium, labeled):
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
-    counts = {"gmail": 0, "outlook": 0, "admitted": 0, "owned_elsewhere": 0, "admitted_other": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
+    counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "admitted_other": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
               "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
@@ -151,7 +151,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     except (GmailError, KeyError) as error:
         failed += 1
         counts["why"].append("gmail:" + str(error)[:90])
-    for account, client, connect_error in (outlook_clients if outlook_clients is not None else _outlook_clients(environ)):
+    outlook_list = list(outlook_clients if outlook_clients is not None else _outlook_clients(environ))
+    counts["outlook_accounts"] = len(outlook_list)                      # 0 means no Outlook account is signed in to V7 (or no client id): nothing to read
+    for account, client, connect_error in outlook_list:
         if connect_error:
             failed += 1
             continue
