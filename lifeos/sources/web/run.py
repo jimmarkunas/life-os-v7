@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 
-from lifeos.jobs import enrich, intake, store
+from lifeos.jobs import enrich, intake, quality, store
 from lifeos.platform import limits
 from lifeos.sources.web import diff, lister, registry, suppress
 
@@ -45,11 +45,14 @@ def pick_due(sources, states, now, limit):
 
 
 def unforced(states, sources, force):
-    """D104: a dispatch may name a company (3+ letters, the Hourly `report` input) whose board is read now whether or not it is due: the states of the sources that match are dropped."""
+    """D104/D111: a dispatch may name companies (comma separated, 3+ letters each, `board:` ignored; the Hourly `report` input) whose boards are read now whether or not they
+    are due: the states of the sources that match are dropped."""
     force = (force or "").strip().lower()
-    if len(force) < 3:
+    force = force[len("board:"):] if force.startswith("board:") else force
+    names = [n.strip() for n in force.split(",") if len(n.strip()) >= 3 and n.strip() != "funnel"]
+    if not names:
         return states
-    hit = {s["id"] for s in sources if force in s["id"].lower() or force in (s.get("company") or "").lower()}
+    hit = {s["id"] for s in sources if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)}
     return {k: v for k, v in states.items() if k not in hit}
 
 
@@ -168,8 +171,9 @@ class SqlRepo:
                 return None                                              # a 90-day tombstone kept it out
             job_id = found[0]
             if is_new:
-                cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
-                               (job["url"], source.get("route_evidence"), now, job_id))
+                proof = "unproven" if source.get("tier") == "employer" and quality.link_problem(job["url"]) in quality.AMBIGUOUS else None     # D111: the page proves it by title
+                cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, link_proof=%s, updated_at=%s WHERE id=%s",
+                               (job["url"], source.get("route_evidence"), proof, now, job_id))
             else:                                                       # D111: a job already stored whose listed title or place changed (the reader learned to split Stream's label) is put right,
                 title, place = job["title"][:300], (job["location"] or "")[:2000]      # judged again, and an exclusion that rested on the wrong place is lifted
                 cursor.execute("UPDATE v7_jobs SET title=%s, location_text=%s, status=IF(status='EXCLUDED_FIT' AND unresolved_reason='lane_exclude', 'READY', status),"

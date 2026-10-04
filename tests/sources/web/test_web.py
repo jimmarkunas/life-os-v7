@@ -313,6 +313,7 @@ class ForcedBoard(unittest.TestCase):
         self.assertEqual(run.unforced(states, sources, "funnel"), states)
         self.assertEqual(run.unforced(states, sources, "re"), states)
         self.assertEqual(run.unforced(states, sources, None), states)
+        self.assertEqual(list(run.unforced(states, sources, "board:revolut, plentific")), [])             # several companies, board: ignored
 
 
 class FirstPartyAgeInTheWebPass(unittest.TestCase):

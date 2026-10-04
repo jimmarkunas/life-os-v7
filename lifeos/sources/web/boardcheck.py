@@ -44,7 +44,7 @@ def blocks_for(company, jobs, today, stored_by_key):
     for job in jobs:
         group, detail = outcome(job, today, stored_by_key.get(identity.url_hash(job["url"])))
         posted = job["posted"].isoformat() if job.get("posted") else "no date"
-        groups.setdefault(group, []).append(f"{job['title']} | {(job['location'] or 'no place stated')[:160]} | {posted}" + (f" | {detail}" if detail else ""))
+        groups.setdefault(group, []).append(f"{job['title'][:120]} | {(job['location'] or 'no place stated')[:160]} | {posted}" + (f" | {detail}" if detail else "") + f" | {job['url'][:150]}")
     blocks = [_block("heading_1", f"{company} ({len(jobs)} on the board now)")]
     for name in sorted(groups):
         blocks.append(_block("heading_3", f"{name} ({len(groups[name])})"))

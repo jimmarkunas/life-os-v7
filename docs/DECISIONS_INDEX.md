@@ -112,3 +112,4 @@ This index is checked by a test: add a line here with every new decision.
 - D108 — Every Agenda event title opens the event in Google Calendar; the meeting is a separate Join link (2026-10-04)
 - D109 — Name the companies to score first (2026-10-04)
 - D110 — Board check: what the live board returns and what became of each job (2026-10-04)
+- D111 — First-party boards: open means open; the guards stop blocking their jobs (2026-10-04)

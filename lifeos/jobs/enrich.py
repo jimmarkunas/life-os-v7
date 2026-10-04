@@ -125,6 +125,9 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
+    where = jsonld.location(posting) if posting else None
+    if where and result.get("outcome") in ("ready", "stale"):
+        result["location"] = where                           # D111: a board that gave no place (Prepaid, Veramed, Bluestonex) is read off the job page's own data
     org = jsonld.hiring_organization(posting) if posting else None
     if org and result.get("outcome") in ("ready", "stale"):
         result["company"] = org                              # D91: the employer as the page names it (replaces a job board's host stored as the company)
@@ -170,6 +173,8 @@ def save(connection, job_id, result):
                 cursor.execute("UPDATE v7_jobs SET apply_kind=%s WHERE id=%s", (result["apply_kind"], job_id))
             if result.get("company"):                         # only a company that is really a board host (Com / Io / Net / Org / Co, wdN, myworkdayjobs)
                 cursor.execute("UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s", (result["company"][:200], job_id, BOARD_HOST_COMPANY))
+            if result.get("location"):
+                cursor.execute("UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')", (result["location"][:2000], job_id))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
             cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
@@ -195,13 +200,17 @@ def relink_first_party(cursor, now=None):
     Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
     now = now or _now()
     cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND resolve_attempts < %s AND "
-                   "((status='NEW' AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason='link_mismatch' OR unresolved_reason LIKE 'Fit %% below 72')) OR "
+                   "((status='NEW' AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
                    "(status='HOLD' AND unresolved_reason LIKE 'http_40%%' AND updated_at < %s)) LIMIT 500",
                    (limits.RESOLVE_MAX_ATTEMPTS, now - timedelta(days=1)))
-    ids = [(r[0], r[1]) for r in cursor.fetchall() if not quality.link_problem(r[1])]
-    for job_id, url in ids:
-        cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', unresolved_reason=NULL, enrich_attempts=0, updated_at=%s WHERE id=%s",
-                       (url, now, job_id))
+    ids = []
+    for job_id, url in cursor.fetchall():
+        problem = quality.link_problem(url)
+        if problem is None or problem in quality.AMBIGUOUS:                    # an ambiguous shape on an employer's own board is proved by the page title (D76), never by guessing
+            ids.append((job_id, url, "unproven" if problem else None))
+    for job_id, url, proof in ids:
+        cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', link_proof=%s, unresolved_reason=NULL, enrich_attempts=0, updated_at=%s WHERE id=%s",
+                       (url, proof, now, job_id))
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL", (now,))
     return len(ids) + int(cursor.rowcount or 0)           # D111: a job dropped as old that sits on its employer's own board is read again, and is no longer judged by age
