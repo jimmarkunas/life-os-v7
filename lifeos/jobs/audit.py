@@ -11,7 +11,7 @@ trashed (recoverable 30 days) under the same guard, the job becomes EXCLUDED_FIT
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import guard, hiring_pipeline, ledger, quality, store
+from lifeos.jobs import guard, hiring_pipeline, lanes, ledger, quality, store
 from lifeos.jobs.identity import norm, url_key
 from lifeos.platform import notion_client
 
@@ -52,6 +52,8 @@ def run(limit, live, environ=os.environ):
             proven = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:titlewatch:%",))
             watched = {r[0] for r in cursor.fetchall()}
+            cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
+            watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)
             cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
                            " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
             pages = cursor.fetchall()

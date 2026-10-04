@@ -51,6 +51,7 @@ POLICIES = {
 KEEP_LIST = (
     ("revolut", r"^product designer \(platform\)$"),
     ("revolut", r"^partnerships manager \(lifestyle\)$"),
+    ("revolut", r"^operations manager \(revenue\)$"),
 )
 
 
