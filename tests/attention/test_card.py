@@ -37,26 +37,43 @@ class Render(unittest.TestCase):
         self.assertEqual(len(card.active(rows)), 1)
 
 
+def own(regions):
+    return report_region.plain({"type": "callout", "callout": regions.metas["attention-callout"].get("callout") or {}})
+
+
 class Run(unittest.TestCase):
     def go(self, pages=(), live=True, env=None, regions=None):
         regions = regions or AttentionRegions()
         counts = card.run(0, live, environ={**ENV, **(env or {})}, reader=FakeNotion(pages), client=regions, now=NOW)
         return regions, counts
 
-    def test_live_write_replaces_only_the_text_keeps_the_view_and_every_other_region(self):
+    def test_live_write_sets_the_callouts_own_text_and_touches_nothing_else(self):
         regions = AttentionRegions()
         before = {k: regions.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout", "amazon-callout")}
+        children_before = [dict(k) for k in regions.children["attention-callout"]]
         regions, counts = self.go(regions=regions)
-        kids = regions.children["attention-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Updated 1:30 PM CT · No active exceptions.")       # the text sits above the view, no heading is added
-        self.assertEqual([k["id"] for k in kids][1:], ["attention-view"])                       # the linked view is never removed
-        self.assertNotIn("Old attention text", "\n".join(line(kids)))
+        self.assertEqual(own(regions), "Updated 1:30 PM CT · No active exceptions.")
+        self.assertEqual(regions.children["attention-callout"], children_before)                # the linked view is untouched and no child block is added
         self.assertEqual({k: regions.full_tree(k) for k in before}, before)
+        self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE")], [])
         self.assertEqual(counts["active"], 0)
+
+    def test_running_again_replaces_the_text_it_never_adds_a_second_line(self):
+        regions, _ = self.go()
+        regions, _ = self.go(pages=[page("a", "Card added")], regions=regions)
+        self.assertEqual(own(regions), "Updated 1:30 PM CT · 1 active exception")
+        self.assertEqual([k["id"] for k in regions.children["attention-callout"]], ["attention-view"])
 
     def test_counts_the_current_weeks_active_rows(self):
         _, counts = self.go([page("a", "Card added"), page("b", "Handled", done=True), page("c", "Mail", category="Physical Mail")])
         self.assertEqual(counts["active"], 1)
+
+    def test_visible_child_text_lines_from_earlier_runs_are_removed(self):
+        regions = AttentionRegions()
+        regions.children["attention-callout"].insert(0, regions._text_block("old-line", "paragraph", "Updated 9:00 AM CT · stale"))
+        regions, _ = self.go(regions=regions)
+        self.assertEqual([k["id"] for k in regions.children["attention-callout"]], ["attention-view"])
+        self.assertEqual(own(regions), "Updated 1:30 PM CT · No active exceptions.")
 
     def test_dry_run_and_missing_config_write_nothing(self):
         regions, _ = self.go(live=False)
@@ -65,37 +82,8 @@ class Run(unittest.TestCase):
 
     def test_failed_sync_flag_writes_the_degraded_line(self):
         regions, counts = self.go(env={"ATTENTION_SYNC_OUTCOME": "failure"})
-        self.assertTrue(report_region.plain(regions.children["attention-callout"][0]).startswith("DEGRADED"))
+        self.assertTrue(own(regions).startswith("DEGRADED"))
         self.assertEqual(counts["status"], "degraded")
-
-    def test_first_run_inserts_at_the_top_and_leftover_lines_are_removed_without_touching_the_view(self):
-        regions = AttentionRegions()
-        regions.children["attention-callout"] = [regions.children["attention-callout"][1]]                       # only the view
-        regions, _ = self.go(regions=regions)
-        self.assertEqual([k["id"] for k in regions.children["attention-callout"]][1:], ["attention-view"])
-        self.assertEqual(report_region.plain(regions.children["attention-callout"][0]), "Updated 1:30 PM CT · No active exceptions.")
-        regions = AttentionRegions()
-        regions.children["attention-callout"].insert(1, regions._text_block("leftover", "paragraph", "Updated 9:00 AM CT · stale"))
-        regions, _ = self.go(regions=regions)
-        self.assertEqual([report_region.plain(k) for k in regions.children["attention-callout"]][:1], ["Updated 1:30 PM CT · No active exceptions."])
-        self.assertEqual(len(regions.children["attention-callout"]), 2)
-
-    def test_an_existing_line_is_edited_in_place_not_replaced(self):
-        regions, _ = self.go()
-        self.assertEqual(regions.children["attention-callout"][0]["id"], "attention-status-old")
-        self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE")], [])
-
-    def test_a_leftover_line_that_only_the_fresh_read_shows_is_removed(self):
-        class Late(AttentionRegions):
-            def call(self, method, path, body=None):
-                result = super().call(method, path, body)
-                if method == "PATCH" and path.endswith("attention-status-old") and not getattr(self, "added", False):
-                    self.added = True                                   # a stale line appears after the in-place edit
-                    self.children["attention-callout"].insert(1, self._text_block("late", "paragraph", "Updated 9:00 AM CT · stale"))
-                return result
-        regions, _ = self.go(regions=Late())
-        self.assertEqual([report_region.plain(k) for k in regions.children["attention-callout"]][:1], ["Updated 1:30 PM CT · No active exceptions."])
-        self.assertEqual([k["id"] for k in regions.children["attention-callout"]][1:], ["attention-view"])
 
     def test_a_callout_with_a_heading_or_no_view_is_not_ours(self):
         for kids in ([{"id": "h", "type": "heading_3", "has_children": False, "heading_3": {"rich_text": [{"plain_text": "Bills: This Week"}]}}, {"id": "v", "type": "child_database", "has_children": False}],
