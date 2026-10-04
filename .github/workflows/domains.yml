@@ -331,6 +331,19 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
         run: python -m lifeos.run attention $([ "$LIVE" = "true" ] && echo --live)
+      - id: attncard
+        continue-on-error: true
+        name: Attention card (one text line above the interactive view; writes only when live; a failed sync is shown as DEGRADED)
+        if: ${{ always() }}
+        env:
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
+          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          ATTENTION_SYNC_OUTCOME: ${{ steps.attention.outcome }}
+        run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Attention warning (does not fail the Jobs run)
-        if: ${{ always() && steps.attention.outcome == 'failure' }}
+        if: ${{ always() && (steps.attention.outcome == 'failure' || steps.attncard.outcome == 'failure') }}
         run: echo "::warning title=Attention::the Attention stage failed or a source was unread; the Jobs pipeline is unaffected"

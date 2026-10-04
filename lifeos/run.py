@@ -105,6 +105,7 @@ STAGES = {
     "amazon-orders": lazy("lifeos.amazon.stage", floor=200),
     "amazon-card": lazy("lifeos.amazon.card"),
     "attention": lazy("lifeos.attention.stage", floor=200),
+    "attention-card": lazy("lifeos.attention.card"),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
