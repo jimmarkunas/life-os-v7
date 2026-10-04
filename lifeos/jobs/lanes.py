@@ -45,6 +45,19 @@ POLICIES = {
 }
 
 
+# D115: roles Jim chose to see whatever the model scores. (company substring, title regex), both case-insensitive. A listed role that no hard exclusion rule
+# hits and that clears every other lane test is never excluded for Fit: a score under 68 is Review ("Fit N below 68 (on Jim's keep list)"), so it reaches the
+# board for Jim to decide. The score itself is stored untouched.
+KEEP_LIST = (
+    ("revolut", r"^product designer \(platform\)$"),
+    ("revolut", r"^partnerships manager \(lifestyle\)$"),
+)
+
+
+def on_keep_list(company, title):
+    return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_LIST)
+
+
 @dataclass
 class Facts:
     fit: int | None                      # professional Fit, None = unscorable
@@ -57,6 +70,7 @@ class Facts:
     route: dict = field(default_factory=dict)   # {"Scale-up": POSITIVE, ...}
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
+    kept: bool = False                   # D115: on Jim's keep list
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
 
 
@@ -84,7 +98,7 @@ def _qualify(policy, facts, today):
         return Decision(REVIEW, "market unresolved")
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
-    if facts.fit is not None and facts.fit < REVIEW_FLOOR:
+    if facts.fit is not None and facts.fit < REVIEW_FLOOR and not facts.kept:
         return Decision(EXCLUDE, f"Fit {facts.fit} below {REVIEW_FLOOR}")
     if policy.work_mode == "remote_only":
         if facts.work_mode == "unknown":
@@ -118,7 +132,7 @@ def _qualify(policy, facts, today):
     if facts.fit is None:
         return Decision(REVIEW, "Fit unscorable")
     if facts.fit < FIT_FLOOR:
-        return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}")
+        return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}" + (" (on Jim's keep list)" if facts.kept else ""))
     return Decision(ADMIT)
 
 
@@ -243,13 +257,13 @@ def first_party_source(source):
     return bool(source) and source.startswith("web:") and source != "web:openjobs"
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False):
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party)
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept)
 
 
 def decide_all(row_lane, facts, today, exclusion=None):

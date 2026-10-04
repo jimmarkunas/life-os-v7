@@ -272,3 +272,28 @@ class FirstPartyAge(unittest.TestCase):
         self.assertTrue(lanes.first_party_source("web:greenhouse-acme"))
         for source in ("web:openjobs", "jobright", "lensa", "linkedin", "", None):
             self.assertFalse(lanes.first_party_source(source), source)
+
+
+class KeepListTests(unittest.TestCase):
+    """D115: a role on Jim's keep list is never excluded for Fit alone; it goes to Review."""
+
+    def facts(self, fit, kept):
+        return lanes.facts_for(fit, "Product Designer (Platform)", "London · office · United Kingdom", "x", None, None, date(2026, 10, 4),
+                               route="Scale-up:POSITIVE", first_party=True, kept=kept)
+
+    def test_fit_below_the_review_floor_is_review_when_kept_and_excluded_otherwise(self):
+        today = date(2026, 10, 4)
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(56, False), today)[0].status, lanes.EXCLUDE)
+        decision = lanes.decide("Scale-Up", self.facts(56, True), today)[0]
+        self.assertEqual(decision.status, lanes.REVIEW)
+        self.assertIn("keep list", decision.reason)
+
+    def test_keep_list_matches_only_the_named_roles(self):
+        self.assertTrue(lanes.on_keep_list("Revolut Ltd", "Product Designer (Platform)"))
+        self.assertTrue(lanes.on_keep_list("Revolut Ltd", "Partnerships Manager (Lifestyle)"))
+        self.assertFalse(lanes.on_keep_list("Revolut Ltd", "Product Designer (Mobile)"))
+        self.assertFalse(lanes.on_keep_list("Acme", "Product Designer (Platform)"))
+
+    def test_a_hard_exclusion_still_wins(self):
+        decision = lanes.decide("Scale-Up", self.facts(80, True), date(2026, 10, 4), exclusion="clinical")[0]
+        self.assertEqual(decision.status, lanes.EXCLUDE)

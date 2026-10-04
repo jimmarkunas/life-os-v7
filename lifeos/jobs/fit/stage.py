@@ -55,7 +55,8 @@ def score_rows(rows, profile, today, semantic=None, register=None):
         result = evaluate(title, company, text, profile, today, semantic)
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
-        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source))
+        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
+                                kept=lanes.on_keep_list(company, title))
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, result.exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out
