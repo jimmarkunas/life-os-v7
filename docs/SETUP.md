@@ -79,6 +79,12 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 3. Stop the ChatGPT task from writing the **Calendar** callout; V7 is its sole owner, following the JIRA Execution ownership rule.
 4. Add the existing JIRA Execution callout block ID as the Actions secret `JIRA_CARD_BLOCK_ID`; V7 checks it remains unchanged when refreshing Calendar.
 
+### Bills card (the "Bills: This Week" callout)
+
+1. The callout is the existing **Bills: This Week** callout on the Daily LIFE OS Report: its first child must be the heading "Bills: This Week". Copy the callout's block link (the callout itself, not the heading) and put its block ID into the Actions secret `BILLS_CARD_BLOCK_ID`. The card reuses `NOTION_JIRA_TOKEN`, `CALENDAR_CARD_BLOCK_ID` and `JIRA_CARD_BLOCK_ID`; no new integration.
+2. Stop any other writer from editing that callout; V7 is its sole owner. On the first live run the old linked "View of Bills" block inside the callout is removed (the Bill Tracker database itself is never touched).
+3. Until `BILLS_CARD_BLOCK_ID` exists the stage reports `not_configured` and changes nothing.
+
 ### Amazon Orders
 
 1. Create a separate Notion integration with Read, Update and Insert content access, and share only the existing Amazon Orders data source with it.
