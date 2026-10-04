@@ -1,9 +1,11 @@
-# Big features roadmap: six features, one sequence (scoping only, no code)
+# Big features roadmap: one sequence (scoping only, no code)
 
 Status: proposal for Jim's review. Nothing here is built, and this document changes no schema, secret, workflow or `docs/DECISIONS.md`.
-Scope: Recruiters and Human Outreach, Automated MegIBOW, Network Intelligence, Hiring Pipeline, Physical Mail, and Delivery tracking (the expansion of Amazon Orders). Delivery tracking has its own deep scope in `docs/DELIVERY_TRACKING_SCOPE.md`; this file covers the rest and, above all, what the six have in common.
+Scope: Recruiters and Human Outreach, Automated MegIBOW, Network Intelligence, Hiring Pipeline, Physical Mail, Delivery tracking (the expansion of Amazon Orders), the company operating cockpit, and the Communications and Meeting program. Delivery tracking and Network Intelligence have their own deep scopes in `docs/DELIVERY_TRACKING_SCOPE.md` and `docs/NETWORK_INTELLIGENCE_SCOPE.md`; this file covers the rest and, above all, what they have in common.
 
 Method: each feature handoff was checked against the current code on `main`, the claims that matter were re-verified directly, and the V1 and V2 repositories were read as references only. Real mailboxes were inspected by count and category only (`docs/PRIVACY.md`); no content is reproduced here.
+
+Settled since the first draft: USPS is added to the carrier list; Jim holds active UPS and FedEx accounts; he receives few tracking numbers; the MegIBOW definitions arrived in a new brief taken from the Notion product page; and the periodic re-export diff is approved as the Network Intelligence refresh. Two more briefs arrived and are covered below: the company operating cockpit (3.7) and a Communications and Meeting roadmap update (3.8).
 
 ## 1. Findings that apply to every feature
 
@@ -14,7 +16,7 @@ Method: each feature handoff was checked against the current code on `main`, the
 5. **Layering shapes where code can live.** OS packages import only `platform`; only `lifeos/sources/` may import across OS packages (`tests/contracts/test_boundaries.py`). So MegIBOW cannot import Interview or Jobs, Hiring Pipeline cannot import the Job Ledger or Interview readers, and anything that composes two OS packages sits in a `sources` adapter. Shared clients that two features need (for example carrier tracking) belong in `platform`.
 6. **Every schema change stops work for Jim's approval.** Section 5 lists every table and secret the six features would add, so the approvals can be given together.
 7. **`domains.yml`, not `hourly.yml`, is where new scheduled work goes.** It runs after each hourly tick, isolates secrets per job (enforced by `tests/contracts/test_workflow.py`, which needs an entry for each new job), and has room for more inputs. `hourly.yml` is at its 25-input limit.
-8. **Two naming collisions to resolve.** Roadmap item 5 "Accountability" is the Jira load dashboard (sprints, target 8, ceiling 10); it is a different product from MegIBOW, which is job-search activity. And the only Wednesday found in V1 or V2 in this context is the Jira accountability meeting, so the MegIBOW brief's "Wednesday 3 PM check" may be a conflation.
+8. **Naming and placement for MegIBOW.** Roadmap item 5 "Accountability" is the Jira load dashboard (sprints, target 8, ceiling 10), a different product from MegIBOW (job-search activity). But the newer MegIBOW brief places the MegIBOW table inside Jim's section of the weekly accountability dashboard, so item 5's surface is MegIBOW's host, and that surface is not built in V7 yet. The only Wednesday in V1 or V2 in this context is the Jira accountability meeting; the newer brief does not mention a Wednesday check, so treat it as unconfirmed.
 9. **A serial rule meets parallel briefs.** `docs/ROADMAP.md` says one PR per item and do not start the next until the last is merged. The MegIBOW and Network Intelligence briefs ask for parallel tracks. Section 6, decision 1.
 
 What the mailboxes showed, by count and category: Gmail held no direct mail from UPS, FedEx, DHL or USPS in 180 days, and the connected Outlook mailbox held none. The mail-forwarding vendor's "new mail" and "completed action" notices are in Gmail, but there is no tracking-number message from that vendor in 365 days of Gmail or in Outlook. A shipping-keyword search in Gmail returned about 200 threads in a year and the sample was mostly not shipping mail.
@@ -56,39 +58,46 @@ No standalone framework PRs: each primitive ships with the first feature slice t
 
 ### 3.2 Automated MegIBOW
 
-**V7 today.** Nothing: no code and no references. Calendar acquisition is partial: one shared Google calendar is read, Outlook reaches it through the bridge for the `personal` account only, the bridge copies no attendees, and a reschedule breaks logical identity. Gmail sent-mail acquisition is partial: a bounded sent query works, but there is no metadata-only reader, no recipients and no thread id, and no job-search label or filter exists. Classifier, dedupe, review path, weekly aggregation, freeze, warnings and reconcile command: missing. Persistence is partial (a JSON snapshot store without range queries). The dashboard renderer is missing; the "Jim's Copy" surface cannot be verified from the repository and has no V7 region, secret or table writer.
+**What is now settled.** The new brief, taken from the Notion product page (which governs if the two ever differ), supplies the definitions V1 and V2 could not:
+- Five measures, Jim only, Monday to Sunday: Outreach, Scheduled, Networking Calls, Recruiter Calls, Company Calls. Jim's accountability partner reviews the table with him and is never measured.
+- **Outreach:** a human-written, job-search-relevant message Jim sent from an approved mailbox that advances a relationship or process, counted by sent time. Inbound mail, automated mail, application confirmations, ordinary client mail and duplicates never count.
+- **Scheduled:** a new qualifying meeting counted once, when it is first formally booked. A reschedule never counts again, discussing availability does not count, and if the booking date cannot be proven the item goes to review.
+- **Completed calls are mutually exclusive, in this precedence:** Company Call (a target company's recruiter, hiring manager, employee, executive or interviewer, or a referral acting through the company), then Recruiter Call (an independent or agency recruiter), then Networking Call (a network, mentor, peer or alumni contact who is neither), then review.
+- A passed calendar event does not prove a call happened. Strong evidence of occurrence is required (an accepted, not-cancelled event with normal meeting context; a follow-up that treats it as done; interview or note evidence; or Jim's confirmation). Otherwise the item is "review: occurrence".
+- Every candidate ends COUNTED, EXCLUDED, REVIEW NEEDED or DEGRADED. Review items never count provisionally and missing evidence is never zero.
+- **Product:** the existing compact table stays the product: a total row and the five measures, eight weekly columns (current plus the prior seven) and a cumulative column, with deterministic warnings and one corrective suggestion each as a secondary layer. The warning thresholds and precedence live on the Notion page and must be read fresh before that slice.
+- **Placement:** Jim's section of the weekly accountability dashboard. No second canonical activity database.
 
-**What V1 and V2 prove.** Only two direct hits exist: V2's rebuild plan lists "Megibow activity dashboard" as phase 9, and V1's Jira snapshot carries a backlog task to automate it. None of the five definitions, the counts, the scheduled-to-completed rule, cancellation handling, the canonical surface name, the 8-week view or the Wednesday check appears in code or documents. **MEG-0 cannot be reconstructed from the repositories; it needs a short session with Jim.**
+**V7 today.** Nothing: no code and no references. Calendar acquisition is partial: one shared Google calendar is read, Outlook reaches it through the bridge for the `personal` account only, the bridge copies no attendees, and a reschedule breaks logical identity because the bridged id hashes the start time. Gmail sent-mail acquisition is partial: a bounded sent query works, but there is no metadata-only reader and no recipients or thread id. Classifier, dedupe, review path, weekly aggregation, closed-week handling, warnings and reconcile command are missing. Persistence is a JSON snapshot store without range queries. The host surface is not built (roadmap item 5).
 
-**Where the brief and the repo differ.** The brief assumes attendee and organizer evidence (not available), one logical event across reschedules (broken by the bridge), existing labels and filters (none), and typed columns (V7's convention is JSON payload per key). A `megibow` package cannot import Interview or Jobs, so classification context comes through a `sources` adapter.
+**What the new brief changes in the plan.**
+1. The definitions decision is closed, so MEG-0 shrinks from a session to a short confirmation of the open items below.
+2. Item 5 "Accountability" is a different product (Jira load), yet it is the host surface for MegIBOW's placement, and V7 does not build it yet. MegIBOW needs item 5 first, a region inside the existing dashboard page, or a standalone interim region.
+3. "No second canonical activity database" rules out my earlier suggestion of a weekly table as the record. Proposed resolution, to confirm: the Notion table is the record of completed weeks (automation never rewrites a closed week; Jim's and his partner's edits are the correction path), the current week is recomputed each run, and any derivative store holds only review-queue state and the contact classifications the brief allows reusing.
+4. Calendar evidence is thinner than the rules assume. Bridged events carry no attendees, so "external human participant" cannot be tested; the Outlook event read needs attendee and creation-time fields; and a bridged event's Google creation time reflects when the bridge copied it, not when Jim booked it, so Scheduled should use the source event's own creation time or fall to review.
+5. "Approved Jim mailbox" is plural, so Outlook sent mail is in scope, which needs a sent-items reader (the current listing carries no recipients).
 
-**Smallest first slice.** MEG-1a: Chicago Monday-to-Sunday and eight-week windows plus a Calendar-only dry-run census (timed, all-day, declined, cancelled, recurring, with-attendee, bridged, future, past counts; no classification). One PR, no schema: `lifeos/megibow/{week,calendar}.py`, a `megibow-census` stage, a manual workflow, tests and a calendar fake. Then MEG-1b: Gmail sent census with a metadata reader. The brief's MEG-1 as written is too large for one PR.
+**Smallest first slice.** MEG-1a stays: Monday to Sunday and eight-week windows plus a Calendar-only dry-run census with no classification. Add to its counts: events with an external attendee, with a usable creation time, bridged versus native, cancelled, declined, recurring, passed versus future. By count, that shows whether Scheduled and the call rules are computable from today's calendar data. One PR, no schema. MEG-1b: the sent-mail census (a Gmail metadata reader and Outlook sent items).
 
-**Approvals.** Later: a table (smallest is `v7_megibow_week` through the snapshot store, keyed by week start, JSON payload with observation hashes and refs, counts, OPEN or FROZEN and source status), a Notion token and surface, `DOMAIN_SECRETS` edits, a bridge change for a reschedule key (needs a one-time backfill), and an input or env var for `--week` reconcile.
+**Approvals later.** Possibly no storage at all if the Notion table holds closed weeks; otherwise a small derived table. A Notion surface and integration, `DOMAIN_SECRETS`, event-read field additions, and an input or environment variable for week reconcile.
 
-**Decisions for Jim.** (1) Confirm the five definitions and the canonical dashboard. (2) Is Scheduled counted in the week it is booked or the week it occurs? (3) The Outreach inclusion rule: a Jim-applied Gmail label, a recipient allowlist, or keywords; is Outlook sent mail in? (4) Is the work Outlook mailbox bridged? (5) Is the Wednesday check MegIBOW or the Jira meeting, and does it alert by push or only on the dashboard? (6) No-show, tentative, and "completed means the time has passed". (7) Approve the table and the Notion surface. (8) Approve the bridge change.
+**Decisions still open.** (1) Where closed weeks and accepted contact classifications live (recommended: closed weeks in the Notion table; classifications as Jim's explicit corrections recorded where he reviews). (2) The host surface: build item 5 first, add inside the existing dashboard page, or an interim standalone region. (3) Which Jim mailboxes are approved for Outreach, and whether the work Outlook mailbox is bridged. (4) Tentative responses, no-shows and declines, which the brief does not cover. (5) How Jim gives an explicit correction. (6) Whether the Wednesday check is part of version one (the new brief does not mention it).
 
-**Size.** MEG-0 S (a decision session), MEG-1a S, MEG-1b M, MEG-2 L, MEG-3 M, MEG-4 M, MEG-5 M, MEG-6 S.
+**Size.** MEG-0 S, MEG-1a S, MEG-1b M, MEG-2 L, MEG-3 M, MEG-4 M, MEG-5 M, MEG-6 S.
 
 ### 3.3 Network Intelligence
 
-**V7 today.** No `lifeos/network/` package, no people or contact code, no person identity logic. Reusable: Hostinger access (`platform/db.py`, tunnel with retry and fixed codes; autocommit, no transaction helper and no upsert helper), per-OS schema ownership with an `ensure_schema` pattern (stages call it even on dry runs, so a network stage must create tables only when live), `platform/names.py` company comparators (no key generator exists, and two company normalizers already coexist). The LinkedIn resolver is job-only and never logs in. "Admitted" exists as `v7_job_fit.admission` (ADMIT, REVIEW, EXCLUDE). The Ledger publisher creates each page once and later syncs patch properties only, so there is no body-append writer; the nearest is `report_region`'s owned-block insert with read-back.
+Fully scoped in `docs/NETWORK_INTELLIGENCE_SCOPE.md`. **Settled by Jim: a periodic re-export of the connections file is the accepted refresh.** That replaces the brief's per-person live lookups, which have no permitted runtime source: the "connected app" is a chat connector, V7 must run with chat unavailable (D54), and the browser and TinyFish paths are closed (D11, D12, D14).
 
-**Where the brief and the repo differ.**
-- The brief says Jobs consumes the network domain. `tests/contracts/test_boundaries.py` lets an OS package import `platform` only, so `jobs` cannot import `network`. The glue lives in `lifeos/sources/` or a stage in `run.py`, or D17 and that test are amended.
-- Producers live in `lifeos/sources/<name>` (D17), not `network/sources/`.
-- The status chain NEW, RESOLVED, ENRICHED, FIT, READY is not the real one. Real statuses are NEW, RESOLVED, READY, PUBLISHED and terminals. The exact trigger is a published job with a page id, a verified time and `admission = ADMIT`; REVIEW jobs also publish, so ADMIT-only versus ADMIT-plus-REVIEW is a decision.
-- **The "connected LinkedIn app" is a chat connector.** V7 must run with chat unavailable (D54) and GitHub Actions cannot reach a chat connector. V7 has no people-evidence adapter, so the brief's targeted live refresh has no permitted runtime source today.
-- TinyFish Fetch and Search are shared with Jobs under hard caps and limited to job pages (D11, D12 amendment). A people source needs its own decision.
-- The repository is public, so workflow inputs and artifacts are world-readable. The connections export cannot travel through them, and a secret holds at most 48 KB. How the seed file reaches Hostinger privately is an open design question.
+What the scope settles: the graph is two tables (people, positions) plus events later; identity is the normalized profile address and a name alone never merges two people; a position means "listed as of an export" and a superseded position does not claim employment ended; matching is stateless by equal company key with at most five leads and visible reasons and freshness; the trigger is a published job with `admission = ADMIT`; leads appear as one machine-owned block at the end of the Ledger page body with no new Notion property. Because `jobs` cannot import `network`, the glue lives in `lifeos/sources/`.
 
-**Smallest first slice.** NET-0 is needed first but is small and offline (fixtures only, no production mutation). It must prove: the real export's columns and counts through a local counts-only check; how the file reaches Hostinger privately; whether any runtime current-state source exists; and the hit rate of the company key on sample strings. Then NET-1: `lifeos/network/{identity,store,import_linkedin}.py`, a `network-import` stage, two tables (people and positions), dry run by default and `--live`, replay-safe, counts only. **If no live source exists, NET-2 becomes a re-export diff:** re-import a fresh export periodically and derive company-changed and title-changed events from the difference. It is free, deterministic and permitted, and it makes "living" mean a periodic refresh rather than per-person lookups. NET-4 attaches Network Leads as a marker-owned block appended to the Ledger page body (no new Notion property), from a step in the hourly `finish` job after publish, continue-on-error and non-fatal, because the Jobs Notion secrets exist only there. It needs a block-append-with-marker writer generalized from `report_region`.
+**Seed path (recommended): a local import on Jim's machine** through the same SSH-tunnel database module, with the eight existing database settings supplied from his password manager; the file never leaves his machine and output is counts only. Fallback: a split-secret import from a runner. Workflow inputs and artifacts are rejected because they are world-readable on a public repository.
 
-**Approvals.** Two tables in NET-1 and an events table in NET-2; none for NET-4 unless the marker scan proves insufficient; no change to `v7_jobs`. No secret if the import runs locally; a runner import needs a seed secret and a `DOMAIN_SECRETS` edit. One added step in `hourly.yml` `finish`, no input.
+**First slice:** NET-1a, a dry-run export inspector that Jim runs on his own file and that prints counts only (rows, blank fields, duplicate identities, ambiguous cases). No schema, no secret.
 
-**Decisions for Jim.** (1) Trigger on ADMIT only, or ADMIT and REVIEW. (2) The private path for the seed file: a local run, or split secrets. (3) Accept the re-export diff as the MVP refresh, or amend D12, D14 and the limits table for a people source; and whether chat-connector observations may ever be ingested, which needs a private channel. (4) Glue in `sources/`, or amend the D17 boundary. (5) Network Leads as an appended body block, a property, or a separate page. (6) Whether to store emails at all. (7) Erasure and retention policy for people.
+**Decisions still open:** trigger on ADMIT only or also REVIEW; approve the local-import seed path; whether hand-relayed chat-side observations may ever be ingested (recommended: not in the MVP); confirm the glue lives in `sources/`; confirm the appended-block surface; whether to store emails (recommended: no) and which fields show in Notion; erasure and retention; the tables, slice by slice.
 
-**Size.** NET-0 S, NET-1 M, NET-2 M (L if a live adapter is approved), NET-3 M, NET-4 M, NET-5 L, NET-6 L.
+**Size.** NET-1a S to M, NET-1b M, NET-2 M, NET-3 M, NET-4 M, NET-5 M to L, NET-6 L.
 
 ### 3.4 Hiring Pipeline
 
@@ -130,39 +139,82 @@ No standalone framework PRs: each primitive ships with the first feature slice t
 
 **Size.** Parser and chains M. Persistence and census M, plus approval. Card, router and job S to M. Tracking consume S once the example and engine exist. Contract delta S.
 
+**Update from Jim.** He receives few tracking numbers, so the forward-to-tracking stage (PR 2) is the lowest priority; PR 1, the open-chain tracker, is the valuable part. The next time a mail item is forwarded, noting where the number appears (an email, the portal, or nowhere) settles the open question. Until then, forwarded items sit in waiting-for-tracking and show the aged-item note after the chosen number of days.
+
 ### 3.6 Delivery tracking (Amazon Orders expansion)
 
-Fully scoped in `docs/DELIVERY_TRACKING_SCOPE.md`. In one line: carriers do not email Jim, so tracking numbers are discovered in merchant mail by a checksummed extractor and state comes from free carrier APIs polled to a terminal state; shipment state lives in domain-owned Hostinger tables; carrier clients live in `platform` so Physical Mail can reuse them. First slice: carrier access spike plus extractor and dry-run census, no schema.
+Fully scoped in `docs/DELIVERY_TRACKING_SCOPE.md`. In one line: carriers do not email Jim, so tracking numbers are discovered in merchant mail by a checksummed extractor and state comes from free carrier APIs polled to a terminal state; shipment state lives in domain-owned Hostinger tables; carrier clients live in `platform` so Physical Mail can reuse them.
+
+**Settled by Jim:** USPS is in; he holds active UPS and FedEx accounts, so production credentials are available for both; and tracking numbers arrive rarely. Because volume is low, the schema starts at two tables, and the first slice (carrier access spike plus extractor and dry-run census) doubles as the go/no-go: its count of real tracking numbers over about 90 days decides whether the store and card are worth building. First slice: no schema.
+
+### 3.7 Company operating cockpit
+
+**What it is.** A Notion page that already exists, with three presentation callouts (client delivery, business operations, product), to be filled from deterministic evidence across Jira, Calendar, Outlook and Notion, written by V7 with no language model at runtime. The handoff asks for implementation now; this session is scoping, so I assessed it rather than built it. The employer and client are deliberately not named here: `docs/PRIVACY.md` forbids it in this public repository, and callout titles will need a neutral or configured form for the same reason.
+
+**Verdict.** The runtime path is complete for a slice built from the saved Jira and Calendar snapshots. It is not complete for the handoff's literal "full-source branch at 6, 9, 12 and 6 Central, presentation-only between" Outlook acquisition. Those slots belong to the ChatGPT automation that the production contract names as its owner; V7's domain jobs run after every hourly tick, and no V7 job is told which slot it is. The two authorities also disagree: the production contract says one scheduler, while V7's D25 and D58 describe two independent ones. I did not pick a side. The handoff's own hard stop applies to that part only.
+
+**Where the handoff and the repo differ.**
+- A cockpit package cannot import `jira` or `agenda`; an adapter in `lifeos/sources/` is needed.
+- Public-repo rules forbid names and addresses in code and tests, the privacy test rejects the mailbox domains, and `router.OWNERS` is keyed by literal heading text.
+- The existing Notion card integration is shared with the Daily Report page only; the cockpit page needs an integration shared with it.
+- `report_region.replace_text` needs each callout's first child to be a heading equal to its title, and its sibling-protection digest accepts callouts only, so a page-children digest is needed to prove the title, intro and operating-model text unchanged. The page's real structure is unverified.
+- The Calendar snapshot covers only today and tomorrow and keeps no attendees. The Jira snapshot has no labels, flags or links; "blocked" means a status named blocked; the epic is only the immediate parent.
+- Outlook's message field set has no recipients, sent time or preview, and the platform has no HTML-to-text. Listing Sent Items works unchanged, and an optional fields argument is safer than editing the constant the newsletter stage shares.
+
+**What is credible without a language model.** Credible: sender and recipient classification against configured address and domain sets; Jira due, overdue and blocked rules; calendar title matches; health with DEGRADED handling; a fixed precedence for the single "needs Jim" item; and thread state (the last message in a conversation is from the client with no later reply in Sent Items, or the reverse). Not credible: extracting a promise or ask from email text (quoted replies, relative dates, negation), detecting that a promise was fulfilled, "promise with no Jira item" (a missing Jira key does not prove missing work, and fuzzy matching is forbidden), waiting-on-client from phrasing, disposition of client requests as product or client-specific, and open business decisions. Those need a human-owned marker in Jira or Notion.
+
+**Smallest first slice (one PR, no email at all).** The client-delivery callout only, from the saved Jira and agenda snapshots: health (RED when overdue or blocked, DEGRADED when a snapshot is stale or missing, GREEN only from fresh complete evidence), the active sprint as the milestone, the nearest due open item, and one "needs Jim" chosen by precedence among the classes Jira can supply. "Waiting on the client" is reported as not resolved. The other two callouts are untouched and protected by a page digest. Files: a small cockpit package, a `lifeos/sources/` adapter, a page digest in `report_region`, a router entry, one `run.py` line, one `domains.yml` job (`needs: [jira, agenda]`), a `DOMAIN_SECRETS` entry, fakes and tests, a decision entry, SETUP. Slice 2 is Outlook thread-state evidence. Text commitment extraction is not recommended.
+
+**Approvals.** Slice 1: no table, no workflow input; secrets for the callout block ids and one config secret (project keys, calendar keywords, titles); a Notion access decision. Slice 2: a snapshot table (a schema change) and secrets holding Jim's addresses and the client's domains, kept out of the repo. Jira lenses scoped by epic or label need a snapshot field addition and a schema-version bump. The handoff's contract delta belongs in `life-os-automation` and is not made from here.
+
+**Decisions for Jim.** (1) Cadence: acquire Outlook on every tick like the other domains (recommended), or enshrine four daily hours through a contract change. (2) Neutral callout titles or a runtime title config. (3) Share the existing Notion integration with the page, or add a new one. (4) Whether each callout opens with a child heading. (5) Which Jira project or epic is each lens, and whether a "waiting on client" status exists. (6) Which Notion pages or markers count as an approved decision. (7) Calendar: title keywords, or extend the snapshot with attendees. (8) Which account label holds the mailbox. (9) Scope only, or build slice 1 now.
+
+**Size.** Slice 1 M. Business and product callouts from Jira M (needs a snapshot bump). Slice 2 M to L, plus table approval. Text extraction L, not recommended. Reading Notion canon L, blocked on decision 6.
+
+### 3.8 Communications and Meeting program (Notion roadmap update)
+
+**What the brief is.** A roadmap and canon alignment package for the Notion Product Backlog, not V7 code: OpenClaw as a local-model and transport edge gateway; a Communications Attention Hub (channel-level attention and counts with deep links, not a cloned inbox); Telegram as the first two-way channel; People Identity as the cross-source foundation; content intelligence only for individually approved channels; Meeting Intelligence kept separate (a Granola bridge first, native capture with local Whisper later); and a Followup layer downstream.
+
+**What it means for V7.**
+1. **Runtime boundary.** V7 runs on GitHub Actions, so signals that exist only on Jim's Mac (Messages, FaceTime, WhatsApp, a local transcript cache, local speech-to-text) are out of its reach. An edge component must deliver them, and the brief assigns presentation to the ChatGPT Daily Command Center. How anything would cross into a V7-owned region without a V7 scheduler or datastore is unanswered, and only matters if V7 is to render it.
+2. **Keep Mail Alerts separate.** Physical Mail's region is a lifecycle tracker for open items, not a channel counter. The Attention Hub may list mail as a channel only through its own proven attention adapters.
+3. **Shared pieces.** The shared mail record (P1) is the natural input for any mail channel's Message Evidence. People Identity will later be the cross-source resolver, so Network Intelligence keeps its identity to profile addresses and its `person_key` stays linkable rather than becoming a second resolver.
+4. **Meeting evidence helps MegIBOW later.** Occurrence evidence for completed calls includes transcripts and meeting notes, which the meeting pipeline would supply. MegIBOW can ship first on calendar-only occurrence rules and gain that evidence later.
+
+**Notion update: dry run only, nothing applied.** A read-only pass found all ten backlog rows present (the backlog is an inline table, so every edit is a table-cell rewrite) and no new row needed. Proposed outcome edits: OPENCLAW-0, OPENCLAW-1, PEOPLE-1, COMM-INGEST-1, COMM-1 (reframed as the Communications Attention Hub), MEET-1A (add the separation from missed-call awareness) and TASK-1 (add that OpenClaw never owns the task store); none for MEET-1B, FOLLOW-1 or SEARCH-1. Two non-row additions: the boundary decision and a short local-model line. In the Communications canon: add the Attention Hub framing, add FaceTime and Discord sections (absent today), add the channel capability matrix, and resolve one real conflict: the canon gates COMM-1 on an accepted content-ingestion channel, while the brief says attention awareness must not wait on ingestion. The Platform canon and Interview OS need no edit. Also found: MegIBOW lives under a career-operations row whose page says "approved future roadmap, not yet promoted" while the row says P1; and there is no backlog row for the company cockpit.
+
+**Decisions before applying it.** (1) Is the brief's sequence a hard dependency chain or an intended priority order? A hard chain would hold Telegram behind People Identity, which Telegram does not need. (2) Do Gmail and Outlook stay the first proof channels, or become secondary? (3) The iMessage donor's ability to give counts without reading message bodies is unproven. (4) Where the local-model text lives, given the backlog's short-row rule. (5) Whether TASK-1 gains conversational-capture scope or only the OpenClaw caveat. (6) Whether "Discord" in SEARCH-1 means the company's team server. (7) Whether the cockpit gets a backlog row. A read-back is needed after any table edit.
 
 ## 4. Sequencing
 
-Ordering rules used: ready before blocked; slices that unblock others first; each step is a vertical slice a person can see working, never a framework PR; non-code decision and spike work runs alongside because it has the longest lead time.
+Ordering rules: ready before blocked; slices that unblock others first; each step is a vertical slice a person can see working, never a framework PR; evidence-gathering slices run early because they cost nothing and decide whether later work is worth doing.
 
-**Start now (no schema, no open product question blocks the slice)**
+**Start now (no schema, and no open product question blocks the slice)**
 
 | Step | Slice | Why now | Size |
 |---|---|---|---|
-| 1 | Delivery tracking D0 carrier access spike, then D1 extractor and dry-run census | Carrier access is the one unproven dependency and it unblocks Physical Mail's tracking stage | S then M |
-| 2 | MEG-0 decision session with Jim (definitions, canonical surface, Outreach rule) | The repositories cannot supply the definitions; every later MegIBOW slice waits on it | S (a conversation) |
-| 3 | NET-0 offline spike | Longest lead: needs the real export, a private path and a refresh-source decision, none of which need production code | S |
-| 4 | P2 alert active-set design | Small, and four features need it before any alert can ship | S |
+| 1 | Delivery tracking D0 access spike, then D1 extractor and dry-run census | Carrier access is the one unproven dependency. With few tracking numbers expected, the census count is also the go/no-go for building D2 | S then M |
+| 2 | NET-1a export inspector, run locally on Jim's own export | No schema and no secret; proves the file's real shape and settles the seed path in practice | S to M |
+| 3 | MEG-1a calendar census | Shows by count whether Scheduled and the call rules are computable from today's calendar data (attendees, creation times) | S |
+| 4 | P2 alert active-set design | Small, and every feature that wants an alert needs it | S |
 
-**Then the vertical slices that need Jim's approvals first**
+**Then the vertical slices that need Jim's answers or approvals first**
 
 | Step | Slice | Needs from Jim | Unblocks |
 |---|---|---|---|
-| 5 | Physical Mail PR 1 (open chains through waiting-for-tracking) | Table approval, the callout, anchor date | Replaces the unread-state model; PR 2 later |
-| 6 | Delivery tracking D2 (UPS end to end), then D3 carriers | Table approval, the callout, developer accounts, decisions 1 to 3 in the delivery scope | Physical Mail PR 2 |
-| 7 | Hiring Pipeline PR 1 (the no-mail slice) | Region owner, snapshot table, row format | The visible pipeline; PR 2 later |
-| 8 | Recruiters PR 1 | Scan breadth, qualification rule, a read-only check of the live Notion schema | P1 shared mail record for Outlook consumers |
-| 9 | MegIBOW MEG-1a (Calendar census), then MEG-1b | MEG-0 outcome | MEG-2 onward |
-| 10 | NET-1 seed import | NET-0 outcome, table approval | NET-2 re-export diff |
+| 5 | Physical Mail PR 1 (open chains through waiting-for-tracking) | Table approval, the callout, an anchor date | Replaces the unread-state model |
+| 6 | Hiring Pipeline PR 1 (no mail) | Region owner, snapshot table, row format | The visible pipeline |
+| 7 | Company cockpit slice 1 (client-delivery callout from saved snapshots) | Decisions 2 to 5 and 9 in section 3.7 | Slice 2 (Outlook thread state) |
+| 8 | Recruiters PR 1 | Scan breadth, qualification rule, a read-only check of the live Notion schema | P1 shared mail record |
+| 9 | NET-1b private import, then NET-2 | NET-1a outcome, table approval, the seed path | NET-3 to NET-4 |
+| 10 | MEG-1b, then MEG-2 | Storage, host surface and mailbox decisions in section 3.2 | MEG-3 onward |
+| 11 | Delivery tracking D2 and D3 | Only if the census justifies it; table approval and the callout | Physical Mail PR 2 |
 
-**Later, once their predecessors land:** Delivery tracking D4 (Outlook) and D5 to D7; Recruiters PR 2 and Hiring Pipeline PR 2 (mail evidence and the handoff between them); Physical Mail PR 2 (tracking); MegIBOW MEG-2 to MEG-6; NET-3 to NET-5.
+**Later, once their predecessors land:** Delivery D4 to D7; Recruiters PR 2 and Hiring Pipeline PR 2 (mail evidence and the handoff between them); Physical Mail PR 2 (tracking; lowest priority and blocked on a real example); MEG-3 to MEG-6; NET-3 to NET-5; cockpit slice 2. The Communications and Meeting program stays outside V7 until a design exists for crossing the Mac-to-GitHub boundary.
 
-**Why this order.** Delivery tracking goes first because it is the new request, needs no schema to start, and removes the blocker on Physical Mail. Physical Mail is next because it is small, fully specified and replaces behavior the owner has already said is wrong. Hiring Pipeline's no-mail slice gives the visible pipeline back without waiting for the mail classifier. Recruiters comes after the mail record is needed by more than one consumer. MegIBOW and Network Intelligence run as a second track because their first slices are independent and their open questions are product questions.
+**Why this order.** The first four steps cost no schema and answer real questions by count: whether delivery tracking is worth building at current volume, what the connections export actually contains, and whether MegIBOW's rules can be computed from the calendar. Physical Mail, the Hiring Pipeline and the cockpit then restore visible daily surfaces. Recruiters follows because more than one consumer then needs the shared mail record. MegIBOW and Network Intelligence form a second track because their first slices are independent and their open questions are product questions.
 
-**Shared-file hotspots** if two slices are open at once: `lifeos/run.py`, `.github/workflows/domains.yml`, `platform/router.py`, `tests/contracts/test_workflow.py`, and the protected-region tuple in each existing card. These are one-line additions, so conflicts are cheap, but they are the reason the roadmap rule says one PR at a time.
+**Shared-file hotspots** if two slices are open at once: `lifeos/run.py`, `.github/workflows/domains.yml`, `platform/router.py`, `tests/contracts/test_workflow.py`, `platform/report_region.py`, and the protected-region tuple in each existing card. They are small additions, so conflicts are cheap, but they are why the roadmap rule says one PR at a time.
 
 ## 5. Consolidated approvals
 
@@ -170,38 +222,44 @@ Each approval is asked when its slice starts, not all at once. This is the full 
 
 | Feature | New Hostinger tables | Notion or Daily Report | New secrets | Workflow and test edits | Other repository |
 |---|---|---|---|---|---|
-| Delivery tracking | `v7_shipments`, `v7_shipment_mail`, `v7_shipment_events`, `v7_carrier_calls` (added by slice) | A "Deliveries" callout Jim creates; router owner | Carrier credentials (UPS, FedEx, DHL, USPS), `DELIVERIES_CARD_BLOCK_ID` | `domains.yml` job, `DOMAIN_SECRETS` entry | Contract wording on tracking numbers |
+| Delivery tracking | `v7_shipments`, `v7_shipment_mail` (two to start) | A "Deliveries" callout Jim creates; router owner | UPS, FedEx and USPS credentials (DHL later), `DELIVERIES_CARD_BLOCK_ID` | `domains.yml` job, `DOMAIN_SECRETS` entry | Contract wording on tracking numbers |
 | Physical Mail | One snapshot table | A Mail Alerts callout; router owner | `MAIL_ALERTS_CARD_BLOCK_ID` | `domains.yml` job, `mail` entry, optional inputs | Production Contract delta |
 | Recruiters | None | Verify the live database schema; no change planned | `NOTION_RECRUITERS_TOKEN`, `NOTION_RECRUITERS_DATA_SOURCE_ID` | Manual `recruiters.yml`; contract test forbidding mail mutation | None |
 | Hiring Pipeline | A derived snapshot table, if carry-forward is stored | A callout; the router test that pins the region unowned changes | `HIRING_CARD_BLOCK_ID` | `domains.yml` job, `DOMAIN_SECRETS`, protected tuple in four existing cards | None |
-| MegIBOW | Later: weekly table through the snapshot store, then an accept table | A Notion surface and integration | A dashboard token and block id | `domains.yml` job, `DOMAIN_SECRETS`, an input or env var for week reconcile, a bridge change | None |
-| Network Intelligence | People and positions (NET-1), events (NET-2) | A marker block appended to the Ledger page body (no property) | A seed secret only if the import runs on a runner | One step in `hourly.yml` `finish`; no input | None |
+| MegIBOW | Possibly none (closed weeks in the Notion table); otherwise one small derived table | Host surface decision; a Notion integration if new | A dashboard block or page id and token | `domains.yml` job, `DOMAIN_SECRETS`, event-read field additions, an input or env var for week reconcile | None |
+| Network Intelligence | People and positions (NET-1b); events (NET-2) | A marker block on the Ledger page body (no property) | None if the import runs locally | One step in `hourly.yml` `finish`; a transaction helper in `platform/db.py` | None |
+| Company cockpit | Slice 1 none; slice 2 one snapshot table | The cockpit page shared with an integration; callout structure confirmed | Three block ids, a config secret, a token decision | `domains.yml` job with `needs: [jira, agenda]`, `DOMAIN_SECRETS`, a page digest in `report_region` | Contract delta in `life-os-automation` |
+| Communications and Meeting program | None in V7 | Notion roadmap edits only, pending Jim's go | None | None | None |
 
-`hourly.yml` gains no input in any feature. `domains.yml` has five inputs and room for more.
+`hourly.yml` gains no input in any feature, except one non-input step in `finish` for Network Intelligence. `domains.yml` has five inputs and room for more.
 
-## 6. Decisions Jim must make first
+## 6. Decisions Jim must make
+
+**Settled since the first draft:** USPS in; UPS and FedEx accounts available; Network Intelligence refresh by periodic re-export approved; MegIBOW definitions supplied.
 
 **Cross-cutting**
 
-1. **Serial or two tracks.** Keep the rule of one PR at a time, or allow a mail-and-state track and a job-search-intelligence track (MegIBOW and Network Intelligence) to run side by side. Recommended: two tracks, because their first slices touch disjoint code.
-2. **Which repository is active.** Confirm V7, and correct the statements in the V1 and V2 `CLAUDE.md` files. Both are Jim's edits in those repositories.
-3. **Region ownership.** For each of Hiring Pipeline, Mail Alerts, Deliveries and the Recruiters view, does V7 own and write the region, or does the ChatGPT Daily Command Center? Recommended: V7 owns the four regions its code produces; Recruiters stays a Notion-native linked view with V7 writing only rows.
-4. **Tracking numbers in private storage.** V1's production contract says never to persist "tracking tokens". Confirm carrier tracking numbers are allowed in the private database and have the wording clarified (a governance edit in `life-os-automation` that Jim must name explicitly).
-5. **Shared primitives.** Agree that P1 (mail record) is created by the first slice that needs both providers (Recruiters PR 1), and that P2 (alert active-set) is designed before any feature adds a detector.
+1. **Serial or two tracks.** Keep one PR at a time, or allow a mail-and-state track beside a job-search-intelligence track (MegIBOW and Network Intelligence). Recommended: two tracks, because their first slices touch disjoint code.
+2. **Which repository is active.** Confirm V7 and correct the statements in the V1 and V2 `CLAUDE.md` files (Jim's edits in those repositories).
+3. **Region ownership** (the plain version): the Daily Report is one Notion page made of boxes, and each box has exactly one writer. V7's code writes Jira, Calendar, Bills and Amazon, and ChatGPT's Daily Command Center writes its own box. The Hiring Pipeline and Mail Alerts boxes have no writer today. For each of Hiring Pipeline, Mail Alerts and Deliveries: should V7 fill it, or should it hand data to ChatGPT? V7-owned works when ChatGPT is down and is built from rules, with plainer wording than the prose ChatGPT wrote in V1; ChatGPT-owned reads better but goes stale when ChatGPT is down. Recommended: V7 fills the boxes its code produces. Recruiters stays a Notion-native linked view.
+4. **Scheduler authority.** The production contract says one scheduler (the ChatGPT automation); V7's D25 and D58 say two independent ones. Several slices (the cockpit's cadence especially) depend on which governs. Recommended: keep V7's own tick as the runtime and correct the contract wording.
+5. **Tracking numbers in private storage.** V1's contract says never to persist "tracking tokens". Confirm carrier tracking numbers are allowed in the private database and have the wording clarified (a governance edit in `life-os-automation` that Jim must name explicitly).
+6. **Shared primitives.** Agree that P1 (mail record) is created by the first slice that needs both providers (Recruiters PR 1), and that P2 (alert active-set) is designed before any feature adds a detector.
 
-**The five I would answer first**, because they unblock the most:
+**The five I need answered next**, because they unblock the most:
+- The Hiring Pipeline region owner (item 3 above).
+- MegIBOW storage and host surface (section 3.2, decisions 1 and 2).
+- Go or no-go on applying the Notion roadmap update, and whether its sequence is a hard chain or a priority order (section 3.8).
+- Network Intelligence: approve the local-import seed path and choose ADMIT only or ADMIT plus REVIEW.
+- Company cockpit: scope only, or build slice 1, plus decisions 2 to 5 in section 3.7.
 
-- Delivery tracking: add USPS, and whether FedEx is worth creating an account for.
-- Physical Mail: where Jim sees the forwarded tracking number today (one sanitized example settles it), and whether a portal read is allowed (recommended: no).
-- MegIBOW: a short session on the five definitions, the canonical surface and the Outreach rule, including whether the "Wednesday 3 PM" check is MegIBOW at all.
-- Hiring Pipeline: who owns the region.
-- Network Intelligence: accept the periodic re-export diff as the refresh, and settle the private path for the seed file.
-
-The remaining per-feature decisions are listed in each feature's section above and in `docs/DELIVERY_TRACKING_SCOPE.md`.
+Per-feature decisions are listed in each section above and in the two deep scopes.
 
 ## 7. What was not verified
 
 - Carrier developer pages were unreachable from this session's sandbox, so quotas and terms for UPS, FedEx, DHL and USPS come from search results and must be read on the live portals before any number is canonized (Delivery tracking slice D0).
 - Mailboxes were inspected by count and category only. No message content, address or tracking number was read into any file. Extractor accuracy on real mail is therefore unmeasured; the design validates it indirectly, because a carrier that recognizes an extracted number proves the extraction.
+- The MegIBOW definitions come from a brief taken from the Notion product page. The live page was not read by me; it governs if they differ and must be read fresh before the warning slice.
+- The Notion roadmap update was a read-only dry run by an agent. Nothing in Notion was changed, and the Notion structure of the cockpit page was not inspected.
 - Nothing was run live. V1 and V2 production behavior is taken from their documents and code, not from observed runs.
-- The per-feature inventories for Recruiters, MegIBOW, Hiring Pipeline, Network Intelligence and Physical Mail were produced by read-only code review. The claims this roadmap leans on (no classifier, no Recruiters secret, no MegIBOW code, no table writer, the unowned Hiring Pipeline region, the alert coupling) were re-checked directly.
+- Per-feature inventories were produced by read-only code review. The claims this roadmap leans on (no classifier, no Recruiters secret, no MegIBOW code, no table writer, the unowned Hiring Pipeline region, the alert coupling, the Jobs trigger state, the scheduler-slot ownership, the Hiring Pipeline claims) were re-checked directly. One agent's line citations did not fit the files; its claims were re-verified and held.

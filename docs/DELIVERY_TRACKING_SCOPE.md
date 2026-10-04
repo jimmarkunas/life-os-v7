@@ -3,6 +3,8 @@
 Status: proposal for Jim's review. Nothing here is built. No schema, secret, workflow or `DECISIONS.md` change is made by this document.
 Question answered: can Amazon Orders grow into "all deliveries" (FedEx, UPS, DHL and others) by reading Gmail and Outlook, capturing the tracking number, and following it to its conclusion?
 
+Settled by Jim since the first draft: **USPS is in scope; Jim holds active UPS and FedEx accounts** (so production credentials are available for both); and **he receives few tracking numbers**. Low volume changes two things below: the schema starts at two tables, and the first slice's dry-run count of real tracking numbers is the go/no-go for building the store and card (D2).
+
 ## 0. Answer in one paragraph
 
 Yes, and it fits V7 without a new scheduler, datastore engine or paid service. It is a different problem from Amazon Orders, though, and should not be built as an extension of `lifeos/amazon/`. Amazon works because three exact sender addresses carry one order id each, so a sender allowlist is a complete mailbox filter. "All deliveries" has no allowlist: tracking numbers arrive from any merchant, so the extractor (a pure function with checksums) becomes the precision gate, and the carrier's own API becomes the authority on state. The new pieces are (1) tracking-number extraction and validation, (2) carrier status clients for UPS, DHL, USPS and FedEx, (3) a small Hostinger state store with a due-time polling rule, and (4) a card region. Everything else reuses what Amazon and Bills already proved.
@@ -70,17 +72,17 @@ Primary carrier pages were not reachable from this session's sandbox, so the fac
 
 | Source | Viable | What it gives | Auth and cost | Verdict |
 |---|---|---|---|---|
-| UPS Tracking API | Yes | Status and scan events by number | OAuth 2.0 client credentials; free developer account | MVP |
-| DHL Shipment Tracking (Unified) | Yes | Express, Parcel, eCommerce, Freight status | API key header; free; reported initial quota 250 calls/day and one call per 5 seconds, upgrade on request | MVP |
-| USPS Tracking API v3 | Yes | USPS and USPS-handed-off status | OAuth 2.0; free developer account; reported default around 60 requests/hour per app | Recommend adding to scope (section 19, decision 1) |
-| FedEx Track API | Yes, with a prerequisite | Status and scan events | OAuth 2.0; free; production credentials reportedly require a FedEx account added to the developer organization | MVP if Jim has or accepts an account, otherwise deferred |
+| UPS Tracking API | Yes | Status and scan events by number | OAuth 2.0 client credentials; free developer account; Jim has an active UPS account | MVP |
+| DHL Shipment Tracking (Unified) | Yes | Express, Parcel, eCommerce, Freight status | API key header; free developer registration, no carrier account needed; reported initial quota 250 calls/day and one call per 5 seconds, upgrade on request | MVP, last adapter |
+| USPS Tracking API v3 | Yes | USPS and USPS-handed-off status | OAuth 2.0; free developer account; reported default around 60 requests/hour per app | MVP (added by Jim) |
+| FedEx Track API | Yes | Status and scan events | OAuth 2.0; free; production credentials reportedly require a FedEx account added to the developer organization, and Jim has an active account | MVP |
 | Amazon Logistics | No public API | none | none | Untrackable by API; keep Amazon's delivered mail |
 | Carrier notification emails | Viable in principle | state corroboration | none | Not built: zero such mail exists in either mailbox today |
 | Free tiers of aggregators (for example 17TRACK, AfterShip, Ship24) | Possible | many carriers behind one key | third-party account, free quota | Rejected for MVP; revisit only if a carrier gap matters |
 | Scraping carrier pages or a headless browser | Possible | | | Rejected: brittle, terms risk, contradicts the free-only stance (D11, D13) |
 | TinyFish | Possible | | paid wallet | Rejected (D11) |
 
-Quota arithmetic, to be re-checked in D0: with about five open shipments polled every three hours, that is roughly 40 calls a day across all carriers, well under every reported ceiling.
+Quota arithmetic, to be re-checked in D0: with about five open shipments polled every three hours, that is roughly 40 calls a day across all carriers, well under every reported ceiling. Jim reports few tracking numbers, so real volume will be lower still; a per-run cap and the stop-on-first-429 rule are enough at first, with no call-counter table.
 
 ## 6. Architecture and layering
 
@@ -171,12 +173,12 @@ V7's rule is that a schema change stops work and is reported to Jim. This is tha
 | C. New Hostinger tables, domain-owned (recommended) | Same approved datastore and pattern as Jobs and Jira; fits polling state and event history; Notion remains presentation only | Recommend |
 | D. `snapshot_store` single-row JSON | Fits "replace each run" snapshots, not per-shipment due times or dedupe | Reject |
 
-Recommended minimal schema (tables added by slice, not all at once):
+Recommended minimal schema. Because volume is low, **start with the first two tables only**; add the others when a real need appears (a carrier quota that needs counting, or history worth keeping):
 
 - `v7_shipments`: shipment key (hash of carrier and number, unique), carrier, tracking number, state, last carrier status code and time, expected delivery date, first seen, last polled, next poll, consecutive failures, terminal time, optional order reference (Amazon link), origin (Gmail, Outlook, Amazon, other feature), short display label.
-- `v7_shipment_events`: append-only carrier events, unique on (shipment, event hash), bounded retention after terminal.
+- `v7_shipment_events` (deferred): append-only carrier events, unique on (shipment, event hash), bounded retention after terminal.
 - `v7_shipment_mail`: seen table of (provider, message key) with outcome (ACCEPTED, NO_TRACKING, REVIEW). It stops bodies being refetched every tick and makes replay free.
-- `v7_carrier_calls`: (day, carrier, calls), the quota counter.
+- `v7_carrier_calls` (deferred): (day, carrier, calls), the quota counter.
 
 Tracking numbers live only in this private database. They are never logged, never in Git, and tests use only documented synthetic or carrier-published sample numbers.
 
@@ -198,16 +200,16 @@ The repository is public (`docs/PRIVACY.md`). No real tracking number, sender, s
 
 Physical Mail's forward-then-track stage has the same carrier-status requirement, and its handoff stops with `RUNTIME_PATH_INCOMPLETE_STOP` because no approved carrier source exists. `lifeos/platform/carriers/` is that source. Physical Mail should call it directly and keep its own derivative state; it should not build another tracker, and it does not need the Deliveries package.
 
-The handoff also assumes a "tracking number received" email from the forwarding vendor. No such message exists in either mailbox. The remaining possibilities are that the number is visible only inside the vendor's portal, or that it arrives from a sender or wording the searches did not match. Until Jim supplies one sanitized example or confirms it is portal-only, the tracking stage of Physical Mail cannot be built, and the deterministic open-chain stage can ship without it.
+The handoff also assumes a "tracking number received" email from the forwarding vendor. No such message exists in either mailbox. The remaining possibilities are that the number is visible only inside the vendor's portal, or that it arrives from a sender or wording the searches did not match. Until Jim supplies one sanitized example or confirms it is portal-only, the tracking stage of Physical Mail cannot be built, and the deterministic open-chain stage can ship without it. Jim reports receiving few tracking numbers, so this stage is the lowest priority; the next time a mail item is forwarded, noting where the number appears (an email, the portal, or nowhere) settles the question.
 
 ## 15. Roadmap (each slice has a product boundary of its own)
 
 | Slice | Outcome | Likely files | Schema | Tests | Depends on | Size | PRs |
 |---|---|---|---|---|---|---|---|
-| **D0 Access spike** | Credentials and egress proven for each carrier from the GitHub runner with no personal data: OAuth token fetch plus a documented sample number returns a structured status or a structured not-found. Live quotas and terms read from the portals. Sanitized response fixtures captured. | `lifeos/deliveries/probe.py` (counts only), `docs/SETUP.md` section, `docs/LIMITS.md` rows | none | probe against fakes | Jim creates developer accounts | S | 1 |
-| **D1 Extractor and census (dry run)** | Dry run reports, by carrier class, how many mailbox messages yielded accepted, review or no-tracking results. No writes. | `lifeos/deliveries/extract.py`, `numbers.py`, `census.py`, `lifeos/platform/carriers/numbers.py`, provider-neutral message record | none yet | table-driven extractor tests, check-digit tests, lookalike and conflict cases, replay | none | M | 1 |
-| **D2 UPS end to end** | A UPS package found in mail is tracked to delivered and appears in the Deliveries region. | `lifeos/platform/carriers/ups.py`, `lifeos/deliveries/{store,reconcile,stage,card}.py`, router entry, `domains.yml` job, `test_workflow.py` secrets entry, `run.py` lines | `v7_shipments`, `v7_shipment_mail`, `v7_shipment_events`, `v7_carrier_calls` | extraction through card with fakes; transition, terminal and degraded cases; budget and 429 stop | D0, D1, Jim's schema approval, Jim creates the callout | M | 1 |
-| **D3 DHL, USPS, FedEx adapters** | The other carriers join the same loop. | one small module per carrier | none | per-carrier response fixtures | D2 | S each | 1 to 3 |
+| **D0 Access spike** | Credentials (UPS, FedEx, USPS first; DHL last) and egress proven for each carrier from the GitHub runner with no personal data: OAuth token fetch plus a documented sample number returns a structured status or a structured not-found. Live quotas and terms read from the portals. Sanitized response fixtures captured. | `lifeos/deliveries/probe.py` (counts only), `docs/SETUP.md` section, `docs/LIMITS.md` rows | none | probe against fakes | Jim creates developer credentials for UPS, FedEx and USPS in their portals (he already holds the UPS and FedEx accounts) | S | 1 |
+| **D1 Extractor and census (dry run)** | Dry run reports, by carrier class, how many mailbox messages yielded accepted, review or no-tracking results over about 90 days. No writes. **The accepted count is the go/no-go for D2.** | `lifeos/deliveries/extract.py`, `numbers.py`, `census.py`, `lifeos/platform/carriers/numbers.py`, provider-neutral message record | none yet | table-driven extractor tests, check-digit tests, lookalike and conflict cases, replay | none | M | 1 |
+| **D2 UPS end to end** | A UPS package found in mail is tracked to delivered and appears in the Deliveries region. | `lifeos/platform/carriers/ups.py`, `lifeos/deliveries/{store,reconcile,stage,card}.py`, router entry, `domains.yml` job, `test_workflow.py` secrets entry, `run.py` lines | `v7_shipments`, `v7_shipment_mail` (events and call counter deferred) | extraction through card with fakes; transition, terminal and degraded cases; budget and 429 stop | D0, D1, Jim's schema approval, Jim creates the callout | M | 1 |
+| **D3 FedEx, USPS, DHL adapters** | The other carriers join the same loop, in that order. | one small module per carrier | none | per-carrier response fixtures | D2 | S each | 1 to 3 |
 | **D4 Outlook source** | Outlook mail (chosen accounts) feeds the same census; one shipment across both mailboxes. | Outlook all-folders listing and HTML-to-text moved into platform, account selection | none | cross-provider dedupe | D2 | M | 1 |
 | **D5 Amazon link** | Amazon shipments with carrier numbers show carrier-level state on the Amazon card; Amazon Logistics shown as untrackable. | link rule, card change | one nullable column on shipments (already allowed for) | no double listing | D2 and decision 3 | S | 1 |
 | **D6 Alerts and review policy** | Exception, credential-failure and stale detectors through the platform alerts layer. | `lifeos/deliveries/alerts.py` | none | detector and dedupe tests | D2 | S | 1 |
@@ -247,12 +249,12 @@ No new scheduler, queue or watchdog. No scraping or browser automation. No TinyF
 
 ## 19. Decisions Jim must make
 
-1. **Add USPS to the carrier list.** Recommended yes: it is the usual last mile for forwarded mail and for several parcel services.
-2. **FedEx.** Does Jim have, or accept creating, a FedEx account so production API credentials can be issued? If not, FedEx waits.
+1. **Settled: USPS is in the carrier list.**
+2. **Settled: Jim holds active UPS and FedEx accounts**, so production credentials can be issued for both.
 3. **One region or two.** A new "Deliveries" callout next to Amazon (recommended for now, because the Amazon card went live recently), or merge both into one later.
 4. **Tracking numbers in private storage.** V1's production contract says never to persist "tracking tokens". Confirm that carrier tracking numbers in the private Hostinger database are allowed, and that the wording is clarified in the contract. That edit belongs to `life-os-automation` and needs Jim to name it as an explicit governance change.
 5. **Which Outlook accounts feed Deliveries** (personal only, or also work).
-6. **Approve the Hostinger tables** in section 10 (a schema change under V7's rules).
+6. **Approve the Hostinger tables** in section 10 (a schema change under V7's rules): two tables to start, asked for only after the D1 census says D2 is worth building.
 7. **Closure thresholds.** Accept or change the proposed NOT_FOUND (about 7 days) and STALE (about 21 days) windows.
 
 ## 20. First build slice
@@ -262,7 +264,7 @@ FIRST BUILD SLICE:
 D0 access spike, then D1 extractor and dry-run census
 
 WHY FIRST:
-Carrier access is the single unproven dependency (free terms, credentials, egress from the runner), and the extractor is the precision gate that decides whether discovery works on real mail. Neither needs a schema change, and D0 also unblocks Physical Mail.
+Carrier access is the single unproven dependency (free terms, credentials, egress from the runner), and the extractor is the precision gate that decides whether discovery works on real mail. Neither needs a schema change, and D0 also unblocks Physical Mail. With few tracking numbers expected, the dry-run count also decides whether the store and card (D2) are worth building at all.
 
 EXPECTED FILES:
 lifeos/deliveries/probe.py, lifeos/platform/carriers/numbers.py, lifeos/deliveries/extract.py, tests/deliveries/*, docs/SETUP.md and docs/LIMITS.md additions
