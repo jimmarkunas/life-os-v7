@@ -189,7 +189,9 @@ def _event_block(event, marker=None):
         prefix = f"{start.strftime('%-I:%M %p')}–{end.strftime('%-I:%M %p')} — "
     if marker:
         prefix = f"{marker} · {prefix}"
-    parts = _text(prefix) + _text(event["title"], event.get("meeting_link"))
+    parts = _text(prefix) + _text(event["title"], event.get("calendar_link"))          # the title opens the event in Google Calendar, never the meeting
+    if event.get("meeting_link"):
+        parts += _text(" · ") + _text("Join", event["meeting_link"])                      # the conference (Teams / Meet) is its own small link
     if event.get("location"):
         parts += _text(f" · {event['location']}")
     return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": parts}}
@@ -218,7 +220,8 @@ def _snapshot_counts(snapshot, stale):
                 or not isinstance(event.get("all_day"), bool) or not isinstance(event.get("start"), str)
                 or not isinstance(event.get("end"), str)
                 or (event.get("location") is not None and not isinstance(event.get("location"), str))
-                or (event.get("meeting_link") is not None and not isinstance(event.get("meeting_link"), str))):
+                or (event.get("meeting_link") is not None and not isinstance(event.get("meeting_link"), str))
+                or (event.get("calendar_link") is not None and not isinstance(event.get("calendar_link"), str))):      # optional: snapshots saved before it existed stay valid
             raise CardError("AGENDA_SNAPSHOT_INVALID")
         try:
             if event["all_day"]:

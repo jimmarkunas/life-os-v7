@@ -104,8 +104,12 @@ def compact(event, today, tomorrow):
     location = event.get("location")
     if location is not None and not isinstance(location, str):
         raise AgendaError("AGENDA_EVENT_INVALID")
+    html_link = event.get("htmlLink")
+    if html_link is not None and not isinstance(html_link, str):
+        raise AgendaError("AGENDA_EVENT_INVALID")
+    calendar_link = html_link if html_link and html_link.startswith(("https://", "http://")) else None     # the event's own page in Google Calendar (the title's link)
     return {"id": event_id, "title": title, "start": start_value, "end": end_value, "all_day": all_day,
-            "location": location or None, "meeting_link": meeting or None,
+            "location": location or None, "meeting_link": meeting or None, "calendar_link": calendar_link,
             "source": "bridge" if private.get("v7_src") else "native", "days": days}
 
 
