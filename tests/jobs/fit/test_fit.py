@@ -484,11 +484,12 @@ class HealthcareNeedsRealWeight(unittest.TestCase):
 class KeptPromotion(unittest.TestCase):
     def test_only_kept_and_title_watch_jobs_are_promoted_from_resolved(self):
         from lifeos.jobs.fit import stage
-        from tests.kit.db import FakeConn
-        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd"),
-                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd"),
-                (3, "Otto Car", "Anything", "web:titlewatch:su-otto"),
-                (4, "Other", "Product Designer (Platform)", "lensa")]
+        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd", True, True, "REVIEW", False),
+                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd", True, True, "REVIEW", False),
+                (3, "Otto Car", "Anything", "web:titlewatch:su-otto", True, True, "REVIEW", False),
+                (4, "Other", "Product Designer (Platform)", "lensa", True, True, "REVIEW", False),
+                (5, "Revolut Ltd", "Operations Manager (Revenue)", "web:su-revolut-ltd", False, True, "REVIEW", False),
+                (6, "Revolut Ltd", "Partnerships Manager (Lifestyle)", "web:su-revolut-ltd", True, True, "REVIEW", True)]
         updated = []
 
         class Cur:
@@ -497,5 +498,6 @@ class KeptPromotion(unittest.TestCase):
                     updated.append(params[1])
             def fetchall(self):
                 return rows
-        self.assertEqual(stage.promote_kept(Cur()), 2)
+        out = stage.promote_kept(Cur())
         self.assertEqual(updated, [1, 3])
+        self.assertEqual((out["promoted"], out["kept_resolved"], out["no_link"], out["has_page"]), (2, 4, 1, 1))

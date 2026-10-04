@@ -74,13 +74,23 @@ def requeue_floor(cursor):
 
 def promote_kept(cursor):
     """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored description and link, and whose stored Fit decision is ADMIT or REVIEW
-    becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score. -> count."""
-    cursor.execute("SELECT j.id, j.company, j.title, j.source FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id"
-                   " WHERE j.status='RESOLVED' AND j.final_apply_url IS NOT NULL AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') LIMIT 200")
-    ids = [r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2]) or lanes.title_watch_source(r[3])]
-    for job_id in ids:
-        cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
-    return len(ids)
+    becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
+    -> counts: promoted, and (counts only) how many kept RESOLVED jobs lack a stored link, a description or a Review/Admit decision, or already have a page."""
+    cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL"
+                   " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status='RESOLVED' LIMIT 5000")
+    out = {"promoted": 0, "kept_resolved": 0, "no_link": 0, "no_description": 0, "no_decision": 0, "has_page": 0}
+    for job_id, company, title, source, link, text, admission, page in cursor.fetchall():
+        if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source)):
+            continue
+        out["kept_resolved"] += 1
+        out["no_link"] += not link
+        out["no_description"] += not text
+        out["no_decision"] += admission not in (lanes.ADMIT, lanes.REVIEW)
+        out["has_page"] += bool(page)
+        if link and text and not page and admission in (lanes.ADMIT, lanes.REVIEW):
+            cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
+            out["promoted"] += 1
+    return out
 
 
 def run(limit, live, environ=os.environ):
@@ -101,7 +111,7 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
-            counts["promoted"] = promote_kept(cursor) if live and gate else 0
+            counts.update(promote_kept(cursor) if live and gate else {"promoted": 0})
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
             query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
