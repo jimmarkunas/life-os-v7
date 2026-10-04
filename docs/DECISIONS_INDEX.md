@@ -116,3 +116,4 @@ This index is checked by a test: add a line here with every new decision.
 - D113 — Amazon ingress: the Inbox and the Amazon label are not processed boundaries (2026-10-04)
 - D112 — A role the 9/30 purge archived is not a duplicate of the Ledger (2026-10-04)
 - D114 — Jim's five exclusions, product-led fraud roles kept, application boilerplate is not a requirement (2026-10-04)
+- D115 — A keep-list: named roles reach the board as Review whatever they score (2026-10-04)
