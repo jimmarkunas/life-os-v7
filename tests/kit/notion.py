@@ -263,3 +263,12 @@ class AmazonRegions(BillsRegions):
         old = self._text_block("amazon-status-old", "paragraph", "DEGRADED · last accepted order state retained · unresolved Amazon exact-source recovery debt remains")
         kids = [old] + ([{"id": "amazon-table-old", "type": "table", "has_children": False, "table": {}}] if table else [])
         self._add_region("amazon-callout", "Amazon Orders", kids, heading_type="heading_3")
+
+
+class AttentionRegions(AmazonRegions):
+    """AmazonRegions plus the Attention callout: a heading, one old status line and the linked Attention view (a block that is not text and must survive every write)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        old = self._text_block("attention-status-old", "paragraph", "Old attention text")
+        self._add_region("attention-callout", "Attention", [old, {"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}], heading_type="heading_3")

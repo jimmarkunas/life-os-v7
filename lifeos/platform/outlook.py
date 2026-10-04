@@ -147,6 +147,23 @@ class Outlook:
             url = link
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
 
+    def messages_in_category(self, category, limit=5000):
+        """Every message in the mailbox that carries one Outlook category (read-only; the message stays where it is), following every page. An enumeration that
+        cannot be proven complete raises instead of returning a partial list."""
+        quoted = category.replace("'", "''")
+        params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:c eq '{quoted}')"}
+        out, url = [], "/me/messages"
+        for page in range(MAX_PAGES):
+            reply = self.get(url, params if page == 0 else None)
+            out += reply.get("value") or []
+            link = reply.get("@odata.nextLink")
+            if not link:
+                return out[:limit]
+            if len(out) >= limit:
+                raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+            url = link
+        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
     def events(self, start, end, limit=2000):
         """Every calendar event overlapping [start, end) (ISO 8601, UTC), recurring series expanded into occurrences, times in UTC.
         Like the mail listing, an incomplete enumeration raises."""

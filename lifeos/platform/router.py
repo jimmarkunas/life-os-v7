@@ -8,9 +8,10 @@ OUTCOMES = (PASS, NO_ACTION, DEGRADED)
 JIRA_REGION = "JIRA Execution"                          # V7 owns it exclusively (lifeos/jira/card.py): ChatGPT modules never touch it
 CALENDAR_REGION = "Calendar"                            # V7 owns it exclusively (lifeos/agenda/card.py)
 BILLS_REGION = "Bills: This Week"                       # V7 owns it exclusively (lifeos/bills/card.py)
+ATTENTION_REGION = "Attention"                           # V7 owns it exclusively (lifeos/attention/card.py): only the text above Jim's interactive Attention view
 AMAZON_REGION = "Amazon Orders"                         # V7 owns it exclusively (lifeos/amazon/card.py)
 DCC_REGION = "ChatGPT · Daily Command Center"      # the one region the Daily Command Center module may write
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", DCC_REGION: "daily-command-center"}
+OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center"}
 
 
 class RouterError(RuntimeError):
