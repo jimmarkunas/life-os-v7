@@ -36,14 +36,27 @@ def lines(blocks):
 
 
 class RenderTests(unittest.TestCase):
-    def test_window_is_today_through_today_plus_six_from_the_chicago_date_not_september(self):
-        rows = [row("Edge Day 6", "2026-10-10", "2026-10-10"), row("Past Edge Day 7", "2026-10-11", "2026-10-11"), row("Today Bill", "2026-10-04", "2026-10-04")]
+    def test_window_is_today_through_today_plus_seven_from_the_chicago_date_not_september(self):
+        """Jim's rule: the same boundary as the Bills view's native 'one week from now' filter. For 2026-10-04 that is Oct 4 through Oct 11."""
+        rows = [row("Today Bill", "2026-10-04", "2026-10-04"), row("Oct 10 Bill", "2026-10-10", "2026-10-10"), row("Oct 11 Bill", "2026-10-11", "2026-10-11"),
+                row("Oct 12 Bill", "2026-10-12", "2026-10-12")]
         overdue, due = card._window(rows, NOW.date())
-        self.assertEqual(sorted(r["Name"] for r in due), ["Edge Day 6", "Today Bill"])
+        self.assertEqual(sorted(r["Name"] for r in due), ["Oct 10 Bill", "Oct 11 Bill", "Today Bill"])
+        self.assertNotIn("Oct 12 Bill", [r["Name"] for r in due])
         self.assertEqual(overdue, [])
+        blocks, counts = card.render(saved(rows), now=NOW)
+        self.assertIn("3 due through one week from now", lines(blocks)[0])
+        self.assertEqual(counts["due_window"], 3)
+        self.assertNotIn("due_7d", counts)                                                     # the card's metric no longer claims seven days
         later_overdue, later_due = card._window(rows, date(2026, 12, 20))                      # another day: the window moves, nothing is stored
         self.assertEqual(later_due, [])
-        self.assertEqual(len(later_overdue), 3)
+        self.assertEqual(len(later_overdue), 4)
+
+    def test_the_summary_never_says_a_number_of_days_and_counts_overdue_once(self):
+        rows = STALE_FOUR + [row("Oct 11 Bill", "2026-10-11", "2026-10-11")]
+        head = lines(card.render(saved(rows), now=NOW)[0])[0]
+        self.assertEqual(head, "Updated 12:10 PM CT · 1 due through one week from now · $30 known · 4 overdue")
+        self.assertNotRegex(head, r"next \d+ days")
 
     def test_the_four_unpaid_september_rows_stay_overdue_and_are_not_advanced(self):
         before = copy.deepcopy(STALE_FOUR)
@@ -65,7 +78,7 @@ class RenderTests(unittest.TestCase):
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
         self.assertTrue(head.startswith("Updated 12:10 PM CT"))
-        self.assertIn("2 due in next 7 days", head)
+        self.assertIn("2 due through one week from now", head)
         self.assertIn("$75 known", head)
         self.assertIn("4 overdue", head)
         self.assertEqual(counts["status"], "fresh")
