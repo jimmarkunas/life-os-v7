@@ -159,7 +159,10 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     if headless:
         shape = (len(after) == len(blocks) + len(kept), [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks], [b.get("id") for b in after[len(blocks):]] == kept)
         if not all(shape):                                                                 # counts and yes/no only: which part of the read-back differed
-            raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(blocks) + len(kept)))
+            got, want = plain(after[0]) if after else "", plain(blocks[0]) if blocks else ""
+            common = next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), min(len(got), len(want)))
+            raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d:first=%s:len=%d/%d:same_prefix=%d" % (*shape, len(after), len(blocks) + len(kept),
+                                                                                                          after[0].get("type") if after else "none", len(got), len(want), common))
         return existing, removed
     if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
