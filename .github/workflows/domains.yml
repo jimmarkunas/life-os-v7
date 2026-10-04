@@ -264,7 +264,9 @@ jobs:
 
   amazon:
     # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.amazon }}
+    # D118: the Amazon card then renders the canonical orders into the Daily Report's "Amazon Orders" callout. It waits for the other page writers (jira, agenda, bills) because it verifies their regions are unchanged.
+    needs: [jira, agenda, bills]
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.amazon) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -280,6 +282,20 @@ jobs:
           NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
+      - id: acard
+        continue-on-error: true
+        name: Amazon card (reads the canonical orders; writes only when live; a failed sync is shown as DEGRADED)
+        if: ${{ always() }}
+        env:
+          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
+        run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Amazon Orders warning (does not fail the Jobs run)
-        if: ${{ always() && steps.amazon.outcome == 'failure' }}
+        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"

@@ -85,6 +85,12 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 2. Stop any other writer from editing that callout; V7 is the sole owner of its text. The callout keeps its linked Bills table (that is where Paid is ticked): V7 writes one summary line under the heading and never removes or edits the table. Filter the table by relative dates (for example Due Date on or before today plus 7 days), never by fixed dates.
 3. Until `BILLS_CARD_BLOCK_ID` exists the stage reports `not_configured` and changes nothing.
 
+### Amazon card (the "Amazon Orders" callout)
+
+1. The callout is the existing **Amazon Orders** callout on the Daily LIFE OS Report (first child: the heading "Amazon Orders"). In Notion, hover the callout's left edge, click the six-dot handle, choose Copy link to block, and put the block ID at the end of the link (32 characters) into the Actions secret `AMAZON_CARD_BLOCK_ID`.
+2. The card reuses `NOTION_AMAZON_TOKEN` and `NOTION_AMAZON_DATA_SOURCE_ID` (to read orders), `NOTION_JIRA_TOKEN` (to write the Daily Report) and the Calendar, JIRA and Bills block IDs. No new integration.
+3. Until `AMAZON_CARD_BLOCK_ID` exists the stage reports `not_configured` and changes nothing. V7 owns the callout's plain text only; any table or other block you add inside it is left alone.
+
 ### Amazon Orders
 
 1. Create a separate Notion integration with Read, Update and Insert content access, and share only the existing Amazon Orders data source with it.
