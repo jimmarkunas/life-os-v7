@@ -98,6 +98,16 @@ class RenderTests(unittest.TestCase):
         self.assertIn("$0 known", lines(due)[0])
         self.assertEqual(counts["amount_missing"], 1)
 
+    def test_long_lists_are_capped_but_the_counts_cover_every_bill(self):
+        rows = [row(f"Late {i:02d}", f"2026-09-{i + 1:02d}", "2026-11-01") for i in range(28)]
+        blocks, counts = card.render(saved(rows), now=NOW)
+        text = lines(blocks)
+        self.assertIn("28 overdue", text[0])
+        self.assertIn("Overdue — 28 active recurring bills need attention", text)
+        self.assertEqual(sum(t.startswith("Late ") for t in text), card.MAX_LISTED)
+        self.assertTrue(any(t.startswith("…and 18 more overdue") for t in text))
+        self.assertEqual(counts["overdue"], 28)
+
     def test_paid_overdue_and_unsupported_rows_are_not_listed(self):
         rows = [row("Paid Row", "2026-09-01", "2026-10-05", paid=True), row("Lifetime", "2026-09-01", "2026-10-05", cycle="Lifetime"),
                 row("Inactive", "2026-09-01", "2026-10-05", status="Inactive"), row("Real", "2026-10-05", "2026-10-05")]
