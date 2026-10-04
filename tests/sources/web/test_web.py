@@ -3,6 +3,8 @@ from datetime import date, datetime, timedelta
 import json
 import unittest
 
+from unittest import mock
+
 from lifeos.platform import limits
 from lifeos.platform.http import Fetched
 from lifeos.sources.web import diff, lister, run, suppress
@@ -311,3 +313,67 @@ class ForcedBoard(unittest.TestCase):
         self.assertEqual(run.unforced(states, sources, "funnel"), states)
         self.assertEqual(run.unforced(states, sources, "re"), states)
         self.assertEqual(run.unforced(states, sources, None), states)
+        self.assertEqual(list(run.unforced(states, sources, "board:revolut, plentific")), [])             # several companies, board: ignored
+
+
+class FirstPartyAgeInTheWebPass(unittest.TestCase):
+    """D111: age is not a reason to drop a job from an employer's own board; a job dropped for age before comes back."""
+
+    def stale(self):
+        return {"id": "p1", "title": "Project Manager", "location": "London (hybrid)", "url": "https://x/p1", "posted": date(2026, 7, 14), "content": None}
+
+    def test_suppression_ignores_age_for_a_first_party_board_only(self):
+        job = self.stale()
+        self.assertEqual(suppress.reason(job, date(2026, 10, 4), "Scale-Up"), "stale")
+        self.assertIsNone(suppress.reason(job, date(2026, 10, 4), "Scale-Up", first_party=True))
+        self.assertEqual(suppress.reason({**job, "title": "Senior Software Engineer"}, date(2026, 10, 4), "Scale-Up", first_party=True), "off_target_title")
+
+    def test_an_unchanged_job_suppressed_for_age_is_admitted_on_the_next_pass(self):
+        job = self.stale()
+        previous = {"p1": (diff.material_hash(job), "SUPPRESSED")}
+        listing = lister.Listing(lister.COMPLETE, [job])
+        employer = {"id": "s", "kind": "ashby", "tier": "employer"}
+        outcome = run.plan(employer, listing, previous, datetime(2026, 10, 4), 10, lane="Scale-Up")
+        self.assertEqual([j["id"] for j in outcome.admit], ["p1"])
+        aggregator = {"id": "s", "kind": "ashby", "tier": "staffing"}
+        self.assertEqual(run.plan(aggregator, listing, previous, datetime(2026, 10, 4), 10, lane="Scale-Up").admit, [])
+
+
+class StoredJobPutRight(unittest.TestCase):
+    """D111: a job already stored whose listed title or place changed is corrected, judged again, and an exclusion that rested on the wrong place is lifted."""
+
+    class Cur:
+        def __init__(self):
+            self.sql, self.rowcount, self.row = [], 1, (7,)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            sql % tuple("x" for _ in params)                    # survives driver formatting
+            self.sql.append((sql, params))
+
+        def fetchone(self):
+            return self.row
+
+    class Conn:
+        def __init__(self, cur):
+            self.cur = cur
+
+        def cursor(self):
+            return self.cur
+
+    def test_a_changed_stored_job_is_corrected_and_its_score_cleared(self):
+        cur = self.Cur()
+        job = {"id": "p1", "title": "Delivery Manager", "location": "London", "url": "https://x/p1", "posted": None, "content": None}
+        source = {"id": "su-stream", "kind": "stream_html", "tier": "employer", "company": "Stream"}
+        with mock.patch.object(run.intake, "add_job", return_value=("key", False)):
+            run.SqlRepo._admit(self.Conn(cur), source, job, datetime(2026, 10, 4), "Scale-Up")
+        statements = [s for s, _ in cur.sql]
+        update = next(s for s in statements if s.startswith("UPDATE v7_jobs SET title"))
+        self.assertIn("IF(status='EXCLUDED_FIT' AND unresolved_reason='lane_exclude', 'READY', status)", update)
+        self.assertIn("notion_page_id IS NULL", update)
+        self.assertTrue(any(s.startswith("DELETE FROM v7_job_fit") for s in statements))

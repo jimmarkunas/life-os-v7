@@ -78,3 +78,14 @@ class ReviewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeveralCompaniesTests(unittest.TestCase):
+    def test_comma_separated_companies_become_one_or_filter_with_bound_parameters(self):
+        conn = Conn(ROWS)
+        with mock.patch.object(review.store, "connect", return_value=conn), mock.patch.object(review.store, "ensure_schema"):
+            review.run(0, False, environ={"REVIEW_COMPANY": "wheely, hyperexponential ,ab,plentific"})
+        sql, params = next((s, p) for s, p in conn.cur.sql if "FROM v7_jobs" in s) if conn.cur.sql and isinstance(conn.cur.sql[0], tuple) else (None, None)
+        self.assertEqual(params[:-1], ("%wheely%", "%wheely%", "%hyperexponential%", "%hyperexponential%", "%plentific%", "%plentific%"))
+        self.assertEqual(sql.count("j.company LIKE"), 3)
+        sql % tuple("x" for _ in params)                               # survives driver formatting

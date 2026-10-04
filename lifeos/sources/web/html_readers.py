@@ -116,6 +116,26 @@ def _path_jobs(text, source, pattern, reject=None):
     return rows
 
 
+STREAM_SLUG = re.compile(r"^(?P<role>.+)-(?P<city>london|new-york|arlington|manchester|dublin|edinburgh)-\d+$", re.I)
+
+
+def _stream(text, source):
+    """Stream lists "<role> <city> <department>" as one label and says nothing else about the place; its URL slug carries the city
+    (/careers/delivery-manager-london-8459831). The role keeps its own words, the place becomes the job's location (D111)."""
+    rows = _path_jobs(text, source, PATH_KINDS["stream_html"])
+    for row in rows:
+        m = STREAM_SLUG.match(urlparse(row["url"]).path.rstrip("/").rsplit("/", 1)[-1])
+        if not m:
+            continue
+        city = m.group("city").replace("-", " ").title()
+        label = row["title"]
+        cut = re.search(r"\b" + re.escape(city) + r"\b", label, re.I)
+        if cut and label[:cut.start()].strip():
+            row["title"] = label[:cut.start()].strip(" -–—")
+        row["location"] = row["location"] or city
+    return rows
+
+
 def _generic(text, source):
     page = parse_page(text)
     rows = _jsonld_jobs(page, source)
@@ -329,7 +349,7 @@ PATH_KINDS = {"wttj_html": r"/jobs/[^/]+", "stream_html": r"/(?:[a-z]{2}(?:-[a-z
 READERS = {
     "static_complete_html": lambda t, s, f: _generic(t, s), "rippling_html": lambda t, s, f: _generic(t, s),
     "wttj_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["wttj_html"]),
-    "stream_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["stream_html"]),
+    "stream_html": lambda t, s, f: _stream(t, s),
     "popsa_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["popsa_html"]),
     "join_html": lambda t, s, f: _join(t, s), "bluestonex_html": lambda t, s, f: _bluestonex(t, s),
     "sixflow_html": lambda t, s, f: _sixflow(t, s), "futuristic_html": lambda t, s, f: _futuristic(t, s),

@@ -41,8 +41,8 @@ def check(title, company, text, profile=None):
         if not spots:
             continue
         # offsets differ between raw and normalized text, so judge "early" on the raw-text pattern hits alone
-        early = any(m.start() < LEAD for m in _early(rule, raw_text))
-        if rule.get("strict") or early or len(spots) >= 2:
+        early = any(m.start() < LEAD for m in _early(rule, raw_text)) and not rule.get("min_hits")
+        if rule.get("strict") or early or len(spots) >= rule.get("min_hits", 2):
             return {"id": rule["id"], "reason": rule.get("reason") or rule["id"], "where": "text"}, soft
         soft.append(rule["id"])
     return None, soft

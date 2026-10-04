@@ -53,12 +53,12 @@ class Exclusions(unittest.TestCase):
         one, soft = exclusions.check("Program Manager", "Acme", filler + "Clients include healthcare firms.")
         self.assertIsNone(one)
         self.assertEqual(soft, ["healthcare"])
-        two, _ = exclusions.check("Program Manager", "Acme", filler + "Healthcare clients. More healthcare clients.")
-        self.assertEqual(two["id"], "healthcare")
+        two, _ = exclusions.check("Program Manager", "Acme", filler + "Clinical trial sites. More clinical trial work.")      # the default is two mentions
+        self.assertEqual(two["id"], "clinical")
 
     def test_early_mention_is_hard_and_clearance_is_always_hard(self):
-        hard, _ = exclusions.check("Program Manager", "Acme", "We build healthcare software. " + "x " * 500)
-        self.assertEqual(hard["id"], "healthcare")
+        hard, _ = exclusions.check("Program Manager", "Acme", "We build clinical software. " + "x " * 500)
+        self.assertEqual(hard["id"], "clinical")
         hard, _ = exclusions.check("Program Manager", "Acme", "y " * 900 + "Active TS/SCI clearance required.")
         self.assertEqual(hard["id"], "clearance")
 
@@ -415,3 +415,39 @@ class FitTag(unittest.TestCase):
         self.assertNotEqual(a, b)
         self.assertNotEqual(stage.fit_tag("0123456789abcdef", True), stage.fit_tag("0123456789abcdef", False))
         self.assertNotEqual(stage.fit_tag("aaaaaaaaaaaaaaaa", True), stage.fit_tag("bbbbbbbbbbbbbbbb", True))
+
+
+class OnlyClause(unittest.TestCase):
+    def test_named_companies_become_a_bound_or_filter_and_funnel_or_short_names_are_ignored(self):
+        from lifeos.jobs.fit import stage
+        sql, params = stage.only_clause("revolut, wheely ,ab")
+        self.assertEqual(params, ("%revolut%", "%revolut%", "%wheely%", "%wheely%"))
+        self.assertEqual(sql.count("j.company LIKE"), 2)
+        sql % tuple("x" for _ in params)                              # survives driver formatting
+        self.assertEqual(stage.only_clause("funnel"), ("", ()))
+        self.assertEqual(stage.only_clause(""), ("", ()))
+        self.assertEqual(stage.only_clause(None), ("", ()))
+
+    def test_the_pick_statement_with_the_filter_has_one_placeholder_per_parameter(self):
+        from lifeos.jobs.fit import stage
+        extra_sql, extra_params = stage.only_clause("revolut")
+        query = (stage.PICK % (", ".join(stage.AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
+        self.assertEqual(query.count("%s"), 3 + len(extra_params))
+        self.assertLess(query.index("j.company LIKE"), query.index("ORDER BY"))
+
+
+class HealthcareNeedsRealWeight(unittest.TestCase):
+    """D111: Stream (a fintech for frontline workers, many of them in healthcare) was excluded as a healthcare job."""
+    FINTECH = ("Stream is a fintech helping frontline workers in healthcare and retail access their pay. " + "We build payments and earned wage access products. " * 20 +
+               "Many of our customers are healthcare employers. Our healthcare partners include hospitals. ")
+
+    def test_three_mentions_including_an_early_one_are_only_soft(self):
+        hard, soft = exclusions.check("Delivery Manager", "Stream Platforms Ltd", self.FINTECH)
+        self.assertIsNone(hard)
+        self.assertEqual(soft, ["healthcare"])
+
+    def test_a_healthcare_title_or_company_or_four_mentions_is_still_hard(self):
+        self.assertEqual(exclusions.check("Healthcare Program Manager", "Acme", self.FINTECH)[0]["id"], "healthcare")
+        self.assertEqual(exclusions.check("Program Manager", "Acme Healthcare", self.FINTECH)[0]["id"], "healthcare")
+        heavy = self.FINTECH + "Healthcare is our focus. Healthcare IT is the product."
+        self.assertEqual(exclusions.check("Program Manager", "Acme", heavy)[0]["id"], "healthcare")

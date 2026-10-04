@@ -57,6 +57,7 @@ class Facts:
     route: dict = field(default_factory=dict)   # {"Scale-up": POSITIVE, ...}
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
+    first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def _qualify(policy, facts, today):
     if (policy.pay_floor and facts.pay_min is not None and facts.pay_currency == policy.currency
             and facts.pay_min < policy.pay_floor):
         return Decision(EXCLUDE, f"explicit pay below {policy.currency}{policy.pay_floor:,}")
-    if policy.max_age_days is not None:
+    if policy.max_age_days is not None and not facts.first_party:
         if facts.posted is None:
             if policy.unknown_date_blocks:
                 return Decision(REVIEW, "posting date unresolved")
@@ -167,7 +168,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l13"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l14"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -237,13 +238,18 @@ def work_mode_for_fit(location, title, text):
     return "onsite" if mode == "unknown" and _CITY_STATE.match(location or "") else mode
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None):
+def first_party_source(source):
+    """True for a job read off an employer's own board by the web pass (source web:<id>), not off the Open Jobs feed or an aggregator (D111)."""
+    return bool(source) and source.startswith("web:") and source != "web:openjobs"
+
+
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()))
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party)
 
 
 def decide_all(row_lane, facts, today, exclusion=None):

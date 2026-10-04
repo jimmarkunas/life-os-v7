@@ -4,7 +4,8 @@ The logs of this public repository carry counts only, so a question like "which 
 be answered from them. This stage writes the answer to a page in the Job Ledger (private) instead: each job with its title, place, Fit score and the
 stored reason, grouped by what became of it. The page is not a job: it has no row in v7_jobs, so no other stage ever touches it, and Jim deletes it
 when he has read it. The log carries counts only. Input: REVIEW_COMPANY (a substring of the company name or of the source id)."""
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 
 from lifeos.jobs import ledger, store
@@ -47,15 +48,17 @@ def blocks_for(rows):
 
 def run(limit, live, environ=os.environ):
     needle = (environ.get("REVIEW_COMPANY") or "").strip()
-    if len(needle) < 3:
+    names = [n.strip() for n in needle.split(",") if len(n.strip()) >= 3][:12]          # several companies at once: comma separated, each 3+ letters
+    if not names:
         return {"error": "REVIEW_COMPANY_missing_or_short"}
-    like = "%" + needle.replace("%", "").replace("_", "") + "%"
+    likes = ["%" + n.replace("%", "").replace("_", "") + "%" for n in names]
+    where = " OR ".join("(j.company LIKE %s OR j.source LIKE %s)" for _ in likes)
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             cursor.execute("SELECT j.title, j.location_text, j.status, COALESCE(j.source, ''), f.score, f.admission, f.admission_reason, j.unresolved_reason, COALESCE(j.final_apply_url, j.source_url), CONCAT(COALESCE(f.line, ''), ' / ', COALESCE(f.buckets, ''))"
-                           " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE (j.company LIKE %s OR j.source LIKE %s)"
-                           " AND j.status <> 'DUPLICATE' ORDER BY (j.status = 'PUBLISHED') DESC, f.score DESC LIMIT %s", (like, like, MAX_ROWS))
+                           " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE (" + where + ")"
+                           " AND j.status <> 'DUPLICATE' ORDER BY (j.status = 'PUBLISHED') DESC, f.score DESC LIMIT %s", tuple(p for like in likes for p in (like, like)) + (MAX_ROWS,))
             rows = [tuple(r) for r in cursor.fetchall()]
     blocks, groups = blocks_for(rows)
     counts = {"matched": len(rows), "groups": groups, "written": False}
@@ -65,7 +68,7 @@ def run(limit, live, environ=os.environ):
     if ledger.verify(client) != ledger.OK:
         counts["target"] = "not_ok"
         return counts
-    title = f"Fit Review - {needle} - {datetime.now(timezone.utc).date().isoformat()}"
+    title = f"Fit Review - {', '.join(names)[:80]} - {datetime.now(ZoneInfo('America/Chicago')).date().isoformat()}"
     try:
         client.create({"Job": {"title": rich_text(title)}}, blocks)
     except NotionError:

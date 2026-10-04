@@ -40,6 +40,30 @@ def hiring_organization(posting):
     return name[:200] if 2 <= len(name) else None
 
 
+def location(posting):
+    """The place(s) the posting's jobLocation names ("London, GB"), joined with " | ", else None. A string or an object, one or several (D111)."""
+    places = (posting or {}).get("jobLocation")
+    if places is None:
+        return None
+    places = places if isinstance(places, list) else [places]
+    found = []
+    for place in places:
+        address = place.get("address") if isinstance(place, dict) else place
+        if isinstance(address, dict):
+            parts = []
+            for key in ("addressLocality", "addressRegion", "addressCountry"):
+                value = address.get(key)
+                value = value.get("name") if isinstance(value, dict) else value
+                if isinstance(value, str) and value.strip():
+                    parts.append(value.strip())
+            text = ", ".join(parts)
+        else:
+            text = address.strip() if isinstance(address, str) else ""
+        if text and text not in found:
+            found.append(text)
+    return " | ".join(found)[:500] or None
+
+
 def posted_date(posting):
     """datePosted as a date (YYYY-MM-DD or ISO datetime), else None."""
     value = str((posting or {}).get("datePosted") or "").strip()

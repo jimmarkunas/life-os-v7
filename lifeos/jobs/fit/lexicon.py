@@ -75,7 +75,9 @@ HEADINGS = (
 # Generic exclusion defaults. Rules: terms (word match) and/or patterns (regex). `strict` = any hit anywhere is hard.
 DEFAULT_EXCLUSIONS = (
     {"id": "clinical", "reason": "clinical", "terms": ["clinical"]},
-    {"id": "healthcare", "reason": "healthcare", "terms": ["healthcare", "health care", "health-care"]},
+    # D111: a fintech that serves healthcare workers (Stream) names healthcare a few times without being a healthcare job. In the title or the company it is still hard;
+    # in the text it takes four mentions, and a mention in the first 600 characters is no longer enough on its own.
+    {"id": "healthcare", "reason": "healthcare", "terms": ["healthcare", "health care", "health-care"], "min_hits": 4},
     # D89: a different profession in the TITLE (or a hospital as the employer) is never a Fit, whatever generic requirements the posting lists.
     {"id": "hr_function", "reason": "HR / people function", "where": "title", "patterns": [
         r"\bhuman resources\b", r"\bHR\b", r"\bTA\b", r"talent acquisition", r"\brecruit\w*", r"talent partner", r"people operations",

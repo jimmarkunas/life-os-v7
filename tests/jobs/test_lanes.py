@@ -249,3 +249,26 @@ class OtherLaneNeedsAPositiveMarket(unittest.TestCase):
     def test_a_newsletter_uk_sponsor_job_is_still_taken_by_the_uk_lane(self):
         facts = lanes.Facts(fit=80, market="UK", work_mode="onsite", posted=ago(2), route={"Skilled Worker": POSITIVE}, geography=POSITIVE, located=True)
         self.assertEqual(lanes.decide_all("Newsletter", facts, TODAY)[1], "Skilled Worker")
+
+
+class FirstPartyAge(unittest.TestCase):
+    """D111: a job on its employer's own board is open: its posting age is not judged (aggregator and feed jobs keep the age rule)."""
+
+    def test_an_old_posting_on_an_employers_board_is_not_excluded_but_the_same_age_elsewhere_is(self):
+        old = uk(posted=ago(90))
+        self.assertEqual(qualify(SCALE, old, TODAY).reason, "older than 30 days")
+        self.assertEqual(qualify(SCALE, Facts(**{**old.__dict__, "first_party": True}), TODAY).status, ADMIT)
+        us_old = us(posted=ago(60))
+        self.assertEqual(qualify(US, us_old, TODAY).reason, "older than 14 days")
+        self.assertEqual(qualify(US, Facts(**{**us_old.__dict__, "first_party": True}), TODAY).status, ADMIT)
+
+    def test_an_undated_first_party_us_job_is_not_sent_to_review_for_its_date(self):
+        undated = Facts(**{**us().__dict__, "posted": None})
+        self.assertEqual(qualify(US, undated, TODAY).reason, "posting date unresolved")
+        self.assertEqual(qualify(US, Facts(**{**undated.__dict__, "first_party": True}), TODAY).status, ADMIT)
+
+    def test_only_an_employer_board_source_counts_as_first_party(self):
+        self.assertTrue(lanes.first_party_source("web:su-wheely-technologies-ltd"))
+        self.assertTrue(lanes.first_party_source("web:greenhouse-acme"))
+        for source in ("web:openjobs", "jobright", "lensa", "linkedin", "", None):
+            self.assertFalse(lanes.first_party_source(source), source)

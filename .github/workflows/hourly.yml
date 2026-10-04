@@ -294,6 +294,7 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
         env:
           FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
+          FIT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
@@ -318,10 +319,17 @@ jobs:
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; a private Notion page, counts only in the log)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && !startsWith(inputs.report, 'board:') }}
         env:
           REVIEW_COMPANY: ${{ inputs.report }}
         run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
+      - id: boardcheck
+        continue-on-error: true
+        name: Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)
+        if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.report, 'board:') }}
+        env:
+          BOARD_COMPANY: ${{ inputs.report }}
+        run: python -m lifeos.run board-check $([ "$LIVE" = "true" ] && echo --live)
       - id: funnel
         continue-on-error: true
         name: Funnel report (dispatch only, read-only, counts only)
