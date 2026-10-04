@@ -50,7 +50,7 @@ class RenderTests(unittest.TestCase):
     def test_summary_sections_and_the_seven_day_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "Updated 13:30 CT · 2 in transit · 1 delivered (last 7 days) · 1 need review")
+        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 7 days) · 1 need review")
         self.assertIn("In transit", text)
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
@@ -68,7 +68,7 @@ class RenderTests(unittest.TestCase):
 
     def test_degraded_line_keeps_the_last_orders_visible_and_never_says_updated(self):
         blocks, counts = card.render(ROWS, NOW, degraded=True)
-        self.assertTrue(texts(blocks)[0].startswith("DEGRADED · Amazon sync failed at 13:30 CT"))
+        self.assertTrue(texts(blocks)[0].startswith("DEGRADED · Amazon sync failed at 1:30 PM CT"))
         self.assertNotIn("Updated", texts(blocks)[0])
         self.assertTrue(any(t.startswith("Garden hose") for t in texts(blocks)))
         self.assertEqual(counts["status"], "degraded")
@@ -99,7 +99,7 @@ class RunTests(unittest.TestCase):
         kids = notion.children["amazon-callout"]
         self.assertEqual(report_region.plain(kids[0]), "Amazon Orders")
         self.assertEqual(kids[0]["id"], "heading-amazon-callout")
-        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 13:30 CT"))
+        self.assertTrue(report_region.plain(kids[1]).startswith("Updated 1:30 PM CT"))
         self.assertEqual(kids[-1]["id"], "amazon-table-old")                                    # a non-text block is never removed
         self.assertNotIn("last accepted order state retained", "\n".join(texts(kids)))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)

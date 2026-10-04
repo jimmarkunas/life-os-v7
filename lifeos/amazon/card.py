@@ -111,7 +111,7 @@ def sections(rows, now):
 def render(rows, now, degraded=False):
     """-> (blocks, counts). Pure."""
     open_, delivered, review = sections(rows, now)
-    head = (f"DEGRADED · Amazon sync failed at {now.strftime('%H:%M')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%H:%M')} CT")
+    head = (f"DEGRADED · Amazon sync failed at {now.strftime('%-I:%M %p')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%-I:%M %p')} CT")
     summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days) · {len(review)} need review"
     blocks = [_paragraph(summary)]
     for title, items, label in (("In transit", open_, None), (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"), ("Needs review", review, "Review")):

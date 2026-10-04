@@ -291,5 +291,48 @@ def glassdoor(plain=fetch, reader=None, tinyfish_fetch=None):
     return out
 
 
+REVOLUT_DIRECT = ("https://www.revolut.com/careers/position/c7078b70-e10b-4f47-b983-bbe6d08d098a/",
+                  "https://www.revolut.com/careers/position/campaign-creative-lead-92db1b5f-56bc-4524-bc8b-5f1d2188ae1a/")
+
+
+def _next_data(html):
+    script = re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.I | re.S)
+    try:
+        return json.loads(script.group(1)) if script else None
+    except ValueError:
+        return None
+
+
+def revolut(fetch_page=None):
+    """Why are two live Revolut roles missing from the listing page V7 reads? Counts, key NAMES and yes/no only: the page's own inventory size,
+    whether the two known roles are in it, what else the page carries (names of its props and any count-like numbers), and what each direct
+    role page offers (JSON-LD JobPosting, its own __NEXT_DATA__ shape)."""
+    from lifeos.platform import impersonate                                                  # noqa: PLC0415
+    fetch_page = fetch_page or impersonate.fetch
+    source = next(s for s in registry.load(registry.PATHS["Scale-Up"]) if s["id"] == "su-revolut-ltd")
+    listing = fetch_page(source["url"], warm_url=source.get("warm_url"), alt_urls=source.get("alt_urls", ()), must_contain=source.get("must_contain", ""))
+    out = {"listing_status": listing.status, "listing_bytes": len(listing.html)}
+    data = _next_data(listing.html)
+    props = (data or {}).get("props", {}).get("pageProps", {}) if isinstance(data, dict) else {}
+    positions = props.get("positions") if isinstance(props, dict) else None
+    out["page_props_keys"] = sorted(props)[:30] if isinstance(props, dict) else None
+    out["count_like_numbers"] = {k: v for k, v in props.items() if isinstance(v, int) and not isinstance(v, bool)} if isinstance(props, dict) else {}
+    out["positions"] = len(positions) if isinstance(positions, list) else None
+    out["position_keys"] = sorted(positions[0])[:25] if isinstance(positions, list) and positions and isinstance(positions[0], dict) else None
+    ids = {str(p.get("id")) for p in positions if isinstance(p, dict)} if isinstance(positions, list) else set()
+    out["known_roles_in_listing"] = [any(part in i for i in ids) for part in ("c7078b70", "92db1b5f")]
+    out["london_positions"] = sum(any("london" in str(l.get("name", "")).lower() for l in p.get("locations", []) if isinstance(l, dict)) for p in positions if isinstance(p, dict)) if isinstance(positions, list) else None
+    out["direct"] = []
+    for url in REVOLUT_DIRECT:
+        page = fetch_page(url, warm_url=source.get("warm_url"))
+        blocks = [b for b in JSONLD.findall(page.html) if "JobPosting" in b]
+        nd = _next_data(page.html)
+        pp = (nd or {}).get("props", {}).get("pageProps", {}) if isinstance(nd, dict) else {}
+        out["direct"].append({"status": page.status, "bytes": len(page.html), "jobposting_ld": len(blocks), "next_data": nd is not None,
+                              "page_props_keys": sorted(pp)[:25] if isinstance(pp, dict) else None,
+                              "title_in_ld": bool(blocks) and '"title"' in blocks[0], "location_in_ld": bool(blocks) and "jobLocation" in blocks[0]})
+    return out
+
+
 def run(limit, live):
-    return {"glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
