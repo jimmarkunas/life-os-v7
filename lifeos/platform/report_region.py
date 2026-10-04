@@ -166,25 +166,23 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
 
 
 def _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
-    """D129: one paragraph at the top of a callout that holds only Jim's view. The existing paragraph is EDITED IN PLACE (one atomic write; an insert followed by a delete of the old
-    line read back stale on Notion), leftovers from earlier failed runs are removed, and the first run inserts the paragraph at the top. -> removed count."""
+    """D131: the status line of a callout that holds only Jim's view is the callout's OWN text (its rich_text field), set by one PATCH of the callout block. Child paragraphs made the line
+    pile up: Notion's child listing did not show earlier lines, so every run inserted another. One field cannot pile up, needs no insert or delete, and is read back from the same block.
+    Child text blocks the listing does show are removed. -> removed count."""
     if len(blocks) != 1 or blocks[0].get("type") != "paragraph":
         raise fail("CARD_NOT_OWNED")
     rich = blocks[0]["paragraph"]["rich_text"]
-    removed = 0
+    wanted = plain(blocks[0])
     try:
         router.check_write(module, [title])
     except router.RouterError:
         raise fail("CARD_NOT_OWNED") from None
     try:
-        if old_text:
-            keep = old_text[0]
-            client.call("PATCH", f"/blocks/{quote(keep['id'], safe='')}", {"paragraph": {"rich_text": rich}})
-        else:
-            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "position": {"type": "start"}})
+        client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": rich}})
     finally:
         intact()
-    for extra in old_text[1:]:
+    removed = 0
+    for extra in old_text:
         try:
             client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
             removed += 1
@@ -193,27 +191,15 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
                 raise
         finally:
             intact()
-    shape = None
+    shape = (False, False, False)
     for attempt in range(4):                                                              # authoritative read-back; a short wait first if Notion still shows the pre-write state
         if attempt:
             time.sleep(3)
+        meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
         after = children(client, block_id, fail)
         intact()
-        shape = (len(after) == 1 + len(kept), bool(after) and plain(after[0]) == plain(blocks[0]) and after[0].get("type") == "paragraph",
-                 [b.get("id") for b in after[1:]] == kept)
+        own = plain({"type": "callout", "callout": (meta or {}).get("callout") or {}})
+        shape = (own == wanted, not any(b.get("type") in TEXT_KINDS for b in after), [b.get("id") for b in after] == kept)
         if all(shape):
             return removed
-        texts = [b for b in after if b.get("type") in TEXT_KINDS]
-        if len(texts) > 1:                                                                # a leftover line the first listing did not show (or an earlier failed run left): remove what the fresh read shows
-            keep_id = next((b["id"] for b in texts if plain(b) == plain(blocks[0])), texts[0]["id"])
-            for extra in texts:
-                if extra["id"] != keep_id:
-                    try:
-                        client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
-                        removed += 1
-                    except NotionError as error:
-                        if str(error) != "NOTION_HTTP_404":
-                            raise
-                    finally:
-                        intact()
-    raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), 1 + len(kept)))
+    raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(kept)))
