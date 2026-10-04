@@ -1,4 +1,4 @@
-"""Attention (D127): Gmail label and Outlook folder Jim controls -> the canonical Notion Attention data source. Counts and fixed codes only.
+"""Attention (D127): Gmail label and Outlook category Jim controls -> the canonical Notion Attention data source. Counts and fixed codes only.
 
 Flow: read the current and prior week completely -> read each mailbox source completely -> admit by policy -> plan -> write -> read back.
 Fail closed: an unreadable Notion week, a schema mismatch or an incomplete listing writes nothing for what it touches; a failed source only skips that source
@@ -15,7 +15,7 @@ from lifeos.platform.outlook import Outlook, OutlookError
 
 SOURCE_ID = "5cab416c-b1df-43c2-abcc-b98df6656d41"          # the canonical Attention data source (the one the Daily Report view links)
 GMAIL_LABEL, GMAIL_QUERY = "LifeOS/Attention", "label:LifeOS-Attention"
-OUTLOOK_FOLDER = "LifeOS Attention"
+OUTLOOK_CATEGORY = "LifeOS Attention"          # an Outlook category: read-only for V7 (no folder to create), the message stays in the inbox
 SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date"}
 
 
@@ -110,30 +110,29 @@ def _gmail_proof(gmail, label, medium, labeled):
 
 
 def _outlook_source(client, account, limit, live):
-    folder = client.folder_id(OUTLOOK_FOLDER, create=live)
-    if folder is None:
-        return [], set(), None
     out = []
-    for message in client.messages(folder, None, limit):
+    for message in client.messages_in_category(OUTLOOK_CATEGORY, limit):
         sender = ((message.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         out.append({"sender": sender, "subject": message.get("subject") or "", "url": "https://outlook.office.com/mail/id/" + quote(message["id"], safe=""),
                     "medium": f"Outlook:{account}:{message['id']}"})
-    return out, {c["medium"] for c in out}, folder
+    return out, {c["medium"] for c in out}, OUTLOOK_CATEGORY
 
 
-def _outlook_proof(client, folder, medium, labeled):
+def _outlook_proof(client, category, medium, labeled):
+    """present / absent / unknown: absent only when the message is still readable and no longer carries the category."""
     if medium in labeled:
         return "present"
     try:
-        parent = client.get(f"/me/messages/{quote(medium.split(':', 2)[2], safe='')}", {"$select": "id,parentFolderId"}).get("parentFolderId")
-        return "absent" if folder and parent and parent != folder else "unknown"
+        found = client.get(f"/me/messages/{quote(medium.split(':', 2)[2], safe='')}", {"$select": "id,categories"})
+        categories = found.get("categories")
+        return "absent" if isinstance(categories, list) and category not in categories else "unknown"
     except OutlookError:
         return "unknown"
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
     counts = {"gmail": 0, "outlook": 0, "admitted": 0, "owned_elsewhere": 0, "no_risk_signal": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False}
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
         notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
@@ -149,8 +148,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         counts["gmail"], labeled = len(found), labeled | present
         candidates += found
         checkers.append(("Gmail:", lambda m, g=gmail, l=label, p=present: _gmail_proof(g, l, m, p)))
-    except (GmailError, KeyError):
+    except (GmailError, KeyError) as error:
         failed += 1
+        counts["why"].append("gmail:" + str(error)[:90])
     for account, client, connect_error in (outlook_clients if outlook_clients is not None else _outlook_clients(environ)):
         if connect_error:
             failed += 1
@@ -161,8 +161,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             labeled |= present
             candidates += found
             checkers.append((f"Outlook:{account}:", lambda m, c=client, f=folder, p=present: _outlook_proof(c, f, m, p)))
-        except OutlookError:
+        except OutlookError as error:
             failed += 1
+            counts["why"].append(f"outlook@{account}:" + str(error)[:90])
     counts["sources_failed"] = failed
     admitted = []
     for c in candidates:
@@ -208,7 +209,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         if not ok:
             raise AttentionError("ATTENTION_READBACK_MISMATCH")
     if failed:
-        raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread")
+        raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread:" + ";".join(counts["why"]))
     return counts
 
 
