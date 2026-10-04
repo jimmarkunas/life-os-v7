@@ -128,3 +128,4 @@ This index is checked by a test: add a line here with every new decision.
 - D124 — A kept role that Enrich cannot re-read is promoted by Fit (2026-10-04)
 - D125 — Explain: where every job of a company is and why, in the public log (2026-10-04)
 - D126 — A tick never replaces a manual run (2026-10-04)
+- D127 — Attention: a weekly exception queue V7 owns (2026-10-04)
