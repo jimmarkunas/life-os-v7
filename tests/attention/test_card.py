@@ -68,6 +68,23 @@ class Run(unittest.TestCase):
         self.assertTrue(report_region.plain(regions.children["attention-callout"][0]).startswith("DEGRADED"))
         self.assertEqual(counts["status"], "degraded")
 
+    def test_first_run_inserts_at_the_top_and_leftover_lines_are_removed_without_touching_the_view(self):
+        regions = AttentionRegions()
+        regions.children["attention-callout"] = [regions.children["attention-callout"][1]]                       # only the view
+        regions, _ = self.go(regions=regions)
+        self.assertEqual([k["id"] for k in regions.children["attention-callout"]][1:], ["attention-view"])
+        self.assertEqual(report_region.plain(regions.children["attention-callout"][0]), "Updated 1:30 PM CT · No active exceptions.")
+        regions = AttentionRegions()
+        regions.children["attention-callout"].insert(1, regions._text_block("leftover", "paragraph", "Updated 9:00 AM CT · stale"))
+        regions, _ = self.go(regions=regions)
+        self.assertEqual([report_region.plain(k) for k in regions.children["attention-callout"]][:1], ["Updated 1:30 PM CT · No active exceptions."])
+        self.assertEqual(len(regions.children["attention-callout"]), 2)
+
+    def test_an_existing_line_is_edited_in_place_not_replaced(self):
+        regions, _ = self.go()
+        self.assertEqual(regions.children["attention-callout"][0]["id"], "attention-status-old")
+        self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE")], [])
+
     def test_a_callout_with_a_heading_or_no_view_is_not_ours(self):
         for kids in ([{"id": "h", "type": "heading_3", "has_children": False, "heading_3": {"rich_text": [{"plain_text": "Bills: This Week"}]}}, {"id": "v", "type": "child_database", "has_children": False}],
                      [{"id": "t", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}]):

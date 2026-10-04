@@ -273,12 +273,12 @@ class AmazonRegions(BillsRegions):
 
 class AttentionRegions(AmazonRegions):
     """AmazonRegions plus the Attention callout as Jim keeps it: NO heading of its own, only the linked Attention view (a block that is not text and must survive every
-    write) and, to be replaced, one old status line below it."""
+    write) and, to be replaced, one old status line above it (where the card puts it)."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         root = {"id": "attention-callout", "type": "callout", "has_children": True, "parent": {"type": "block_id", "block_id": "column-parent"}, "callout": {}}
         self.roots.append(root)
         self.metas["attention-callout"] = root
-        self.children["attention-callout"] = [{"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}},
-                                              self._text_block("attention-status-old", "paragraph", "Old attention text")]
+        self.children["attention-callout"] = [self._text_block("attention-status-old", "paragraph", "Old attention text"),
+                                              {"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}]

@@ -133,8 +133,10 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             print(f"{tag}: protected region changed", json.dumps({r: changed(before.get(r), after.get(r)) for r in before if before.get(r) != after.get(r)}))
             raise fail("PROTECTED_REGION_CHANGED")
 
+    if headless:
+        return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
     try:
-        placement = {"position": {"type": "start"}} if headless else {"after": existing[0]["id"]}
+        placement = {"after": existing[0]["id"]}
         result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
     finally:
         intact()
@@ -157,23 +159,48 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             intact()
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
-    if headless:
-        for attempt in range(5):                                                           # Notion can serve the pre-write state for a few seconds after a write: look again before failing
-            if attempt:
-                time.sleep(3)
-                after = children(client, block_id, fail)
-                intact()
-            if (len(after) == len(blocks) + len(kept) and [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks]
-                    and [b.get("id") for b in after[len(blocks):]] == kept):
-                return existing, removed
-        shape = (len(after) == len(blocks) + len(kept), [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks], [b.get("id") for b in after[len(blocks):]] == kept)
-        if not all(shape):                                                                 # counts and yes/no only: which part of the read-back differed
-            got, want = plain(after[0]) if after else "", plain(blocks[0]) if blocks else ""
-            common = next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), min(len(got), len(want)))
-            raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d:first=%s:len=%d/%d:same_prefix=%d" % (*shape, len(after), len(blocks) + len(kept),
-                                                                                                          after[0].get("type") if after else "none", len(got), len(want), common))
-        return existing, removed
     if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")
     return existing, removed
+
+
+def _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+    """D129: one paragraph at the top of a callout that holds only Jim's view. The existing paragraph is EDITED IN PLACE (one atomic write; an insert followed by a delete of the old
+    line read back stale on Notion), leftovers from earlier failed runs are removed, and the first run inserts the paragraph at the top. -> removed count."""
+    if len(blocks) != 1 or blocks[0].get("type") != "paragraph":
+        raise fail("CARD_NOT_OWNED")
+    rich = blocks[0]["paragraph"]["rich_text"]
+    removed = 0
+    try:
+        router.check_write(module, [title])
+    except router.RouterError:
+        raise fail("CARD_NOT_OWNED") from None
+    try:
+        if old_text:
+            keep = old_text[0]
+            client.call("PATCH", f"/blocks/{quote(keep['id'], safe='')}", {"paragraph": {"rich_text": rich}})
+        else:
+            client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "position": {"type": "start"}})
+    finally:
+        intact()
+    for extra in old_text[1:]:
+        try:
+            client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
+            removed += 1
+        except NotionError as error:
+            if str(error) != "NOTION_HTTP_404":
+                raise
+        finally:
+            intact()
+    shape = None
+    for attempt in range(4):                                                              # authoritative read-back; a short wait first if Notion still shows the pre-write state
+        if attempt:
+            time.sleep(3)
+        after = children(client, block_id, fail)
+        intact()
+        shape = (len(after) == 1 + len(kept), bool(after) and plain(after[0]) == plain(blocks[0]) and after[0].get("type") == "paragraph",
+                 [b.get("id") for b in after[1:]] == kept)
+        if all(shape):
+            return removed
+    raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), 1 + len(kept)))
