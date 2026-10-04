@@ -194,7 +194,7 @@ def relink_first_party(cursor, now=None):
     (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
     Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
     now = now or _now()
-    cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND final_apply_url IS NULL AND source_url IS NOT NULL AND resolve_attempts < %s AND "
+    cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND resolve_attempts < %s AND "
                    "((status='NEW' AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason='link_mismatch' OR unresolved_reason LIKE 'Fit %% below 72')) OR "
                    "(status='HOLD' AND unresolved_reason LIKE 'http_40%%' AND updated_at < %s)) LIMIT 500",
                    (limits.RESOLVE_MAX_ATTEMPTS, now - timedelta(days=1)))
