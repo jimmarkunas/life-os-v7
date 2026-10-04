@@ -125,3 +125,6 @@ This index is checked by a test: add a line here with every new decision.
 - D121 — JIRA Execution: the update time shares the heading (2026-10-04)
 - D122 — The Bills summary uses the Bills view's boundary: overdue plus today through one week from now (2026-10-04)
 - D123 — Title watch: roles a company's own site lists but its board listing does not carry (2026-10-04)
+- D124 — A kept role that Enrich cannot re-read is promoted by Fit (2026-10-04)
+- D125 — Explain: where every job of a company is and why, in the public log (2026-10-04)
+- D126 — A tick never replaces a manual run (2026-10-04)

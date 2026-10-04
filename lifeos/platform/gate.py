@@ -31,6 +31,15 @@ def decide(runs, now, current_id, gap=MIN_GAP_MINUTES):
     return "run"
 
 
+ACTIVE = ("queued", "in_progress", "pending", "waiting")
+WAIT_MINUTES = 25                  # a manual run waits this long for a tick that is already running, then goes on
+
+
+def active(runs, current_id, title):
+    """Other runs of this workflow with this title (tick | manual) that are queued or running now."""
+    return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title]
+
+
 def stale(runs, now, current_id, minutes=STALE_MINUTES):
     for run in runs:
         if run["id"] != current_id and run.get("conclusion") == "success":
@@ -89,13 +98,23 @@ def watch():
 def main():
     if "--watch" in sys.argv:
         return watch()
-    if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
-        print("gate: not a scheduled run or a timer tick -> run")
-        return 0
     current = int(os.environ["GITHUB_RUN_ID"])
+    if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
+        import time
+        waited = 0                                                  # a manual run never cancels or replaces a tick: it has its own concurrency group and waits here for a running tick
+        while waited < WAIT_MINUTES * 60:
+            runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
+            if not active(runs, current, TICK_TITLE):
+                break
+            time.sleep(30)
+            waited += 30
+        print(f"gate: manual run -> run (waited {waited // 60} min for a tick)")
+        return 0
     runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
     now = dt.datetime.now(dt.timezone.utc)
     verdict = decide(runs, now, current)
+    if verdict == "run" and active(runs, current, "manual"):
+        verdict = "skip"                                            # a manual run is queued or running: it has priority, the next tick covers the hour
     is_stale = stale(runs, now, current)
     _issue(is_stale)
     print(f"gate: {verdict} (stale={is_stale})")

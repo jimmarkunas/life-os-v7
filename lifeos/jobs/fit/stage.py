@@ -72,10 +72,47 @@ def requeue_floor(cursor):
     return int(cursor.rowcount or 0)
 
 
+def _title_description(cursor, job_id, title):
+    """Publishing needs a stored description row. A kept role whose page cannot be read gets the title and a plain note, never invented content."""
+    from lifeos.jobs import jd                                                      # noqa: PLC0415
+    d = jd.describe(f"{title}\n{lanes.TITLE_ONLY_REASON}.", is_html=False)
+    cursor.execute("INSERT INTO v7_job_descriptions (job_id, source_kind, full_text, summary, responsibilities, requirements, qualifications, fingerprint, fetched_at)"
+                   " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE job_id=job_id",
+                   (job_id, "title_only", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], _now()))
+
+
+def promote_kept(cursor):
+    """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
+    becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
+    -> counts: promoted, and (counts only) how many kept RESOLVED jobs lack a stored link, a description or a Review/Admit decision, or already have a page."""
+    cursor.execute("SELECT j.id, j.company, j.title, j.source, j.final_apply_url IS NOT NULL, d.job_id IS NOT NULL, f.admission, j.notion_page_id IS NOT NULL, j.status"
+                   " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status IN ('RESOLVED', 'READY') LIMIT 5000")
+    out = {"promoted": 0, "kept_resolved": 0, "no_link": 0, "no_description": 0, "no_decision": 0, "has_page": 0}
+    for job_id, company, title, source, link, text, admission, page, status in cursor.fetchall():
+        if not (lanes.on_keep_list(company, title) or lanes.title_watch_source(source)):
+            continue
+        if status == "READY":                                                        # already promoted: only the missing description row is added
+            if not text and link:
+                _title_description(cursor, job_id, title)
+                out["described"] = out.get("described", 0) + 1
+            continue
+        out["kept_resolved"] += 1
+        out["no_link"] += not link
+        out["no_description"] += not text
+        out["no_decision"] += admission not in (lanes.ADMIT, lanes.REVIEW)
+        out["has_page"] += bool(page)
+        if link and not page and admission in (lanes.ADMIT, lanes.REVIEW):
+            if not text:
+                _title_description(cursor, job_id, title)
+            cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
+            out["promoted"] += 1
+    return out
+
+
 def run(limit, live, environ=os.environ):
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
-              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0}
+              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0, "promoted": 0}
     try:
         profile = fit_profile.load(environ)
     except fit_profile.ProfileError:
@@ -90,6 +127,7 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
+            counts.update(promote_kept(cursor) if live and gate else {"promoted": 0})
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
             query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))

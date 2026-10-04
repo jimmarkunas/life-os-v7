@@ -8,6 +8,7 @@ The page text of such a role usually cannot be read from the runner (403), so wh
 source (`web:titlewatch:<source id>`): Fit scores the title, the lane never lets it be a Go, and it reaches the board as Review ("found by title search;
 description not read") for Jim to decide from the link. A role not seen by the search for EXPIRE_DAYS is closed. Counts only in the log."""
 from datetime import datetime, timedelta, timezone
+import os
 import re
 from urllib.parse import urlsplit
 
@@ -40,6 +41,14 @@ def pairs(sources):
         for title in source["title_watch"].get("titles") or DEFAULT_TITLES:
             out.append((source, title))
     return out
+
+
+def forced(all_pairs, force):
+    """A dispatch that names companies (the Hourly `report` input, as for the board reads) searches ALL of their titles now, not just this hour's slice."""
+    force = (force or "").strip().lower()
+    force = force[len("board:"):] if force.startswith("board:") else force
+    names = [n.strip() for n in force.split(",") if len(n.strip()) >= 3 and n.strip() != "funnel"]
+    return [(s, t) for s, t in all_pairs if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)] if names else []
 
 
 def window(all_pairs, now, size=MAX_QUERIES_PER_RUN):
@@ -132,7 +141,7 @@ def run(limit, live, search=None, connect=None, sources=None, now=None):
     search = search or tinyfish_search.search
     now = now or _now()
     sources = sources if sources is not None else registry.load(registry.PATHS["Scale-Up"])
-    todo = window(pairs(sources), now)
+    todo = forced(pairs(sources), os.environ.get("WEB_FORCE")) or window(pairs(sources), now)
     counts = {"sources": len(watched(sources)), "queries": 0, "errors": 0, "hits": 0, "known": 0, "new": 0, "added": 0, "expired": 0}
     found = []
     for source, title in todo:

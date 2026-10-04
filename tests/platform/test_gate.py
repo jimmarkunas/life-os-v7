@@ -23,6 +23,12 @@ class Gate(unittest.TestCase):
     def test_manual_runs_never_block_a_tick(self):
         self.assertEqual(gate.decide([run(1, "2026-10-01T17:00:00Z", title="manual"), run(2, "2026-10-01T16:50:00Z", title="hourly")], NOW, 9), "run")
 
+    def test_active_lists_only_running_runs_of_that_kind(self):
+        runs = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"), dict(run(2, "2026-10-01T16:50:00Z", None), status="completed"),
+                dict(run(3, "2026-10-01T17:05:00Z", None), status="queued"), dict(run(9, "2026-10-01T17:07:00Z", None, title="manual"), status="in_progress")]
+        self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual")], [1])
+        self.assertEqual([r["id"] for r in gate.active(runs, 9, "tick")], [3])
+
     def test_a_dropped_slot_is_covered_by_the_next(self):
         later = NOW + dt.timedelta(minutes=20)
         self.assertEqual(gate.decide([run(1, "2026-10-01T16:07:00Z")], later, 9), "run")
