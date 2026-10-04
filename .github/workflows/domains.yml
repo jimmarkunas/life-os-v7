@@ -13,6 +13,10 @@ on:
         description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      amazon:
+        description: "Amazon Orders only (replay from the last recorded order); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
       bills_paid:
         description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); also runs on every tick and under Run every domain job. Dry run (counts) unless Actually write is ticked"
         type: boolean
@@ -240,7 +244,7 @@ jobs:
 
   amazon:
     # Amazon Orders is isolated; a failure warns without affecting the Jobs run.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.amazon }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

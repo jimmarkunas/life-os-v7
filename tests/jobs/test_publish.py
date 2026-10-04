@@ -92,3 +92,58 @@ class SameOpeningTests(unittest.TestCase):
         self.assertIsNone(publish.same_opening(cursor, 9, "Adobe", "Product Manager"))             # two words: generic
         self.assertIsNone(publish.same_opening(cursor, 9, "", "Director, TA Infrastructure"))
         self.assertEqual(len(cursor.sql), 1)
+
+
+class LedgerReseedTests(unittest.TestCase):
+    """D112: the remembered Ledger URLs were taken before the 9/30 purge, so every archived role stayed 'in_ledger' for good."""
+
+    class Cur:
+        def __init__(self, held, known):
+            self.held, self.known, self.sql, self.next, self.count = held, known, [], [], 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            sql % tuple("x" for _ in params)                       # survives driver formatting
+            self.sql.append((sql, params))
+            self.next = (self.held if "final_apply_url" in sql and sql.startswith("SELECT") else [(h,) for h in self.known] if "SELECT url_hash" in sql else [(1 if self.count else 0,)])
+
+        def executemany(self, sql, rows):
+            self.sql.append((sql, list(rows)))
+
+        def fetchall(self):
+            return self.next
+
+        def fetchone(self):
+            return self.next[0]
+
+    class Conn:
+        def __init__(self, cur):
+            self.cur = cur
+
+        def cursor(self):
+            return self.cur
+
+    def test_the_seed_is_replaced_and_only_jobs_no_longer_in_the_ledger_are_released(self):
+        from lifeos.jobs import publish
+        from lifeos.jobs.identity import url_key
+        archived, live = "https://bluestonex.com/sap-project-manager/", "https://x.example/still-on-the-board"
+        cur = self.Cur([(1, archived), (2, live)], [url_key(live)])        # the new seed holds only what is in the Ledger now
+        released = publish._store_seed(self.Conn(cur), {url_key(live)})
+        self.assertEqual(released, 1)
+        statements = [s for s, _ in cur.sql]
+        self.assertTrue(statements[0].startswith("DELETE FROM v7_ledger_urls WHERE source='seed'"))
+        updates = [p for s, p in cur.sql if s.startswith("UPDATE v7_jobs SET status='READY'")]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0][1], 1)
+
+    def test_the_new_marker_is_what_decides_whether_the_ledger_is_read_again(self):
+        from lifeos.jobs import publish
+        cur = self.Cur([], [])
+        self.assertFalse(publish._seeded(self.Conn(cur)))
+        self.assertEqual(cur.sql[0][1], (publish.SEED_MARKER,))
+        self.assertNotEqual(publish.SEED_MARKER, "0" * 64)
