@@ -83,6 +83,13 @@ DEFAULT_EXCLUSIONS = (
     {"id": "legal_compliance", "reason": "legal / compliance / risk role", "where": "title", "patterns": [
         r"\blegal\b", r"\bcounsel\b", r"\bparalegal\b", r"\bcompliance (?:officer|analyst|manager|specialist)\b", r"\bAML\b", r"\bKYC\b",
         r"\brisk (?:analyst|officer)\b", r"employee relations", r"\bresearch scientist\b", r"\bthreat intelligence\b", r"\bmedia planner\b"]},
+    # D103: a financial-risk / financial-crime / treasury / audit role is a different profession, whatever generic requirements it lists ("20+ years", "stakeholder
+    # leadership"). The domain IS the job; program-risk wording ("risk and dependency management") never appears in such a title.
+    {"id": "finance_risk_domain", "reason": "financial risk / fincrime / treasury / audit domain role", "where": "title", "patterns": [
+        r"\bfin ?crime\b", r"\bfinancial crimes?\b", r"\bfraud\b", r"\bsanctions\b", r"\bmlro\b", r"\btreasury\b", r"\bunderwrit\w*", r"\bactuar\w*",
+        r"\binternal audit\b", r"\bauditor\b", r"\bregulatory (?:compliance|affairs|reporting)\b", r"\bcompliance (?:manager|officer|director|lead|head|partner)\b", r"\bchief risk\b", r"\bhead of (?:\w+ )?risk\b",
+        r"(?<!program )(?<!project )(?<!delivery )\brisk (?:manager|director|lead|partner|head)\b", r"\b(?:operational|enterprise|business|credit|market|financial|liquidity|model|conduct) risk\b",
+        r"\bcredit (?:analyst|officer|manager|controller)\b", r"\bcollateral\b", r"\bpayments? (?:fraud|compliance)\b"]},
     {"id": "care_hospitality", "reason": "care / hospitality / trades role", "where": "title", "patterns": [
         r"\bnurser(?:y|ies)\b", r"child ?care", r"back[- ]?up care", r"\bhousekeep\w*", r"\bchef\b", r"\bcook\b", r"\bkitchen\b",
         r"\bnanny\b", r"\bteacher\b", r"\bteaching assistant\b", r"\bjanitor\b", r"\bcustodian\b", r"\bcleaner\b", r"\bdriver\b",

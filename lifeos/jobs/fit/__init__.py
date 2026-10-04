@@ -3,5 +3,5 @@
 The engine here is generic and public. Everything personal (evidence, corrections, role families, private exclusions)
 is injected at run time as a profile (profile.py) and never committed (D16).
 """
-MODEL_VERSION = "4"
+MODEL_VERSION = "5"
 GO_THRESHOLD = 68
