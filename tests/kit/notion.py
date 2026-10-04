@@ -248,6 +248,7 @@ class BillsRegions(AgendaRegions):
             del kids[-len(body["children"]):]
             at = next(i for i, k in enumerate(kids) if k["id"] == after) + 1
             kids[at:at] = made
+            result = {"results": made + kids[at + len(made):]}          # Notion lists the blocks after the insertion point too
         self._poke("APPEND")
         return result
 
