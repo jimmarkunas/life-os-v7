@@ -123,3 +123,4 @@ This index is checked by a test: add a line here with every new decision.
 - D119 — Calendar update time shares the heading; AM/PM everywhere (2026-10-04)
 - D120 — The first live insert-after run: Notion's reply lists more than the new blocks (2026-10-04)
 - D121 — JIRA Execution: the update time shares the heading (2026-10-04)
+- D122 — The Bills summary uses the Bills view's boundary: overdue plus today through one week from now (2026-10-04)
