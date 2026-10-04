@@ -103,3 +103,4 @@ This index is checked by a test: add a line here with every new decision.
 - D99 — Can the runner read Glassdoor? A probe, before any crawler (2026-10-03, Jim)
 - D100 — Two doubts on a weak fit is a miss, not a Review (2026-10-03, Jim)
 - D101 — First-party career-page jobs bounced to NEW are put back (2026-10-04)
+- D102 — A lane that is not the job's own needs a positive market (2026-10-04)
