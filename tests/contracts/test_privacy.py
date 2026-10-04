@@ -46,3 +46,19 @@ class PrivacyGuard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClockFormatTests(unittest.TestCase):
+    """Jim: always AM/PM ("1:30 PM CT"), never 24-hour time, in anything he reads. Machine timestamps (ISO, with a T) are not display."""
+
+    def test_no_24_hour_display_time_in_the_code(self):
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).resolve().parents[2] / "lifeos"
+        bad = []
+        for path in root.rglob("*.py"):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                for match in re.finditer(r"%[Hk]:%M", line):
+                    if line[max(0, match.start() - 1):match.start()] != "T":
+                        bad.append(f"{path.relative_to(root)}:{number}")
+        self.assertEqual(bad, [])

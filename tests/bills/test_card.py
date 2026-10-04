@@ -64,7 +64,7 @@ class RenderTests(unittest.TestCase):
         rows = STALE_FOUR + [row("Water", "2026-10-06", "2026-10-06", amount=45.0), row("Power", "2026-10-08", "2026-10-08", amount=30.0)]
         blocks, counts = card.render(saved(rows), now=NOW)
         head = lines(blocks)[0]
-        self.assertTrue(head.startswith("Updated 12:10 CT"))
+        self.assertTrue(head.startswith("Updated 12:10 PM CT"))
         self.assertIn("2 due in next 7 days", head)
         self.assertIn("$75 known", head)
         self.assertIn("4 overdue", head)
@@ -73,7 +73,7 @@ class RenderTests(unittest.TestCase):
     def test_stale_snapshot_is_labelled_stale_with_its_own_timestamp_never_current(self):
         blocks, counts = card.render(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00"), stale=True, now=NOW)
         head = lines(blocks)[0]
-        self.assertTrue(head.startswith("STALE · last accepted 2026-10-04 05:00 CT"))
+        self.assertTrue(head.startswith("STALE · last accepted Oct 4 5:00 AM CT"))
         self.assertNotIn("Updated", head)
         self.assertEqual(counts["status"], "stale")
 
@@ -115,7 +115,7 @@ class WriteTests(unittest.TestCase):
         kids = notion.children["bills-callout"]
         self.assertEqual([k["id"] for k in kids][0], "heading-bills-callout")                 # the heading block itself is kept
         self.assertEqual(card._plain(kids[0]), "Bills: This Week")
-        self.assertTrue(card._plain(kids[1]).startswith("Updated 12:10 CT"))                  # the summary sits right under the heading
+        self.assertTrue(card._plain(kids[1]).startswith("Updated 12:10 PM CT"))                  # the summary sits right under the heading
         self.assertEqual(kids[2]["id"], "bills-view-old")                                     # the Bills table is still there, below it, untouched
         self.assertEqual(kids[2], view_before)
         self.assertNotIn("last accepted 9/14", "\n".join(lines(kids)))
@@ -144,7 +144,7 @@ class WriteTests(unittest.TestCase):
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
         card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted 2026-10-04 05:00 CT"))
+        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 4 5:00 AM CT"))
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()

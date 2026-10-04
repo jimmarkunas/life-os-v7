@@ -176,7 +176,7 @@ def _window(rows, today):
 
 def _status(saved, stale):
     taken = _instant(saved["taken_at"])
-    return f"STALE · last accepted {taken.strftime('%Y-%m-%d %H:%M')} CT" if stale else f"Updated {taken.strftime('%H:%M')} CT"
+    return f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale else f"Updated {taken.strftime('%-I:%M %p')} CT"
 
 
 def _summary(saved, stale, overdue, due):

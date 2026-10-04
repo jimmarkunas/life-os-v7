@@ -102,13 +102,37 @@ class AgendaCardTests(unittest.TestCase):
         many_blocks, _ = card.render(saved_snapshot(many), now=NOW)
         self.assertGreater(len(many_blocks), 100)
 
-    def test_stale_changes_only_status_and_never_blanks_events(self):
+    def test_stale_changes_only_the_heading_and_never_blanks_events(self):
         event = snapshot.compact(timed("old", "Example retained"), NOW.date(), NOW.date().replace(day=9))
         fresh, _ = card.render(saved_snapshot([event]), now=NOW)
         stale, counts = card.render(saved_snapshot([event], NOW.replace(hour=4)), stale=True, now=NOW)
-        self.assertIn("STALE · last accepted", card._plain(stale[0]))
-        self.assertEqual([card._plain(block) for block in fresh[1:]], [card._plain(block) for block in stale[1:]])
+        self.assertEqual([card._plain(block) for block in fresh], [card._plain(block) for block in stale])
+        self.assertIn("STALE · last accepted", card._heading_text(saved_snapshot([event], NOW.replace(hour=4)), True))
         self.assertEqual(counts["status"], "stale")
+
+    def test_the_update_time_shares_the_heading_in_am_pm_and_the_old_status_line_is_gone(self):
+        event = snapshot.compact(timed("one", "Example fresh"), NOW.date(), NOW.date().replace(day=9))
+        saved = saved_snapshot([event])
+        heading = card._heading_text(saved, False)
+        self.assertRegex(heading, r"^Calendar \(Updated \d{1,2}:\d{2} (AM|PM) CT\)$")
+        self.assertNotRegex(heading, r"\b(1[3-9]|2[0-3]):\d{2}\b")                          # never 24-hour time
+        blocks, _ = card.render(saved, now=NOW)
+        self.assertFalse(any(card._plain(b).startswith("Updated") for b in blocks))
+        notion = AgendaRegions()
+        notion.children["calendar-callout"][1] = notion._paragraph("Updated 12:14 CT")        # last hour's separate status line
+        card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved))
+        kids = notion.children["calendar-callout"]
+        self.assertEqual(card._plain(kids[0]), heading)
+        self.assertEqual(kids[0]["id"], "heading-calendar-callout")                             # the same heading block, edited in place
+        self.assertFalse(any(card._plain(b).startswith("Updated") for b in kids[1:]))
+        self.assertEqual(card._plain(kids[1]), "Today")
+        # the next hour finds the combined heading and still owns the card
+        card.run(1, True, environ=self._env(), client=notion, now=NOW, connect=lambda: AgendaSnapshotDB(saved))
+        self.assertEqual(card._plain(notion.children["calendar-callout"][0]), heading)
+
+    def test_a_heading_that_only_starts_with_calendar_is_not_the_card(self):
+        for text in ("Calendar notes", "Calendars (Updated 1:00 PM CT)", "Calendar (Updated 1:00 PM CT) extra"):
+            self.assertFalse(card._owned([{"type": "heading_3", "heading_3": {"rich_text": [{"plain_text": text}]}}]), text)
 
     def test_nested_card_accepts_heading_three_and_four_and_replaces_foreign_content(self):
         event = snapshot.compact(timed("one", "Example fresh"), NOW.date(), NOW.date().replace(day=9))
@@ -126,7 +150,8 @@ class AgendaCardTests(unittest.TestCase):
                                  if kind == "GET" and path.startswith("/blocks/calendar-callout/children"))
                 self.assertLess(append_at, delete_at)
                 self.assertLess(delete_at, final_read)
-                self.assertEqual(notion.children["calendar-callout"][0], before_heading)
+                self.assertEqual(notion.children["calendar-callout"][0]["id"], before_heading["id"])
+                self.assertTrue(card._plain(notion.children["calendar-callout"][0]).startswith("Calendar (Updated "))
                 self.assertNotIn("Foreign writer content", [card._plain(block) for block in notion.children["calendar-callout"]])
                 self.assertEqual(notion.full_tree("jira-callout"), before_jira)
                 self.assertEqual(counts["status"], "fresh")
@@ -171,7 +196,7 @@ class AgendaCardTests(unittest.TestCase):
         self.assertEqual(counts["status"], "not_configured")
         self.assertEqual(counts["blocks_written"], 0)
 
-    def test_stale_live_run_updates_status_only_and_keeps_existing_event_blocks(self):
+    def test_stale_live_run_updates_the_heading_only_and_keeps_existing_event_blocks(self):
         saved = saved_snapshot([], NOW.replace(hour=4))
         database = AgendaSnapshotDB(saved)
         notion = AgendaRegions()
@@ -181,7 +206,7 @@ class AgendaCardTests(unittest.TestCase):
                           now=NOW, connect=lambda: database)
         self.assertEqual(counts["status"], "stale")
         self.assertEqual(counts["blocks_written"], 1)
-        self.assertTrue(any(card._plain(block).startswith("STALE · last accepted") for block in notion.children["calendar-callout"]))
+        self.assertTrue(card._plain(notion.children["calendar-callout"][0]).startswith("Calendar (STALE · last accepted"))
         self.assertIn("Example previous event", [card._plain(block) for block in notion.children["calendar-callout"]])
 
 

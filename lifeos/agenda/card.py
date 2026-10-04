@@ -30,8 +30,11 @@ def _plain(block):
 
 
 def _owned(blocks):
-    return (bool(blocks) and blocks[0].get("type") in ("heading_3", "heading_4")
-            and _plain(blocks[0]).strip() == CARD_TITLE)
+    """The first child is the Calendar heading: exactly "Calendar", or "Calendar (Updated 1:18 PM CT)" once the update time shares the heading (D119)."""
+    if not (blocks and blocks[0].get("type") in ("heading_3", "heading_4")):
+        return False
+    heading = _plain(blocks[0]).strip()
+    return heading == CARD_TITLE or (heading.startswith(CARD_TITLE + " (") and heading.endswith(")"))
 
 
 def _children(client, block_id):
@@ -202,8 +205,12 @@ def _status(snapshot, stale):
         taken = _instant(snapshot["taken_at"])
     except (KeyError, TypeError, ValueError):
         raise CardError("AGENDA_SNAPSHOT_INVALID") from None
-    return (f"STALE · last accepted {taken.strftime('%Y-%m-%d %H:%M')} CT" if stale
-            else f"Updated {taken.strftime('%H:%M')} CT")
+    return (f"STALE · last accepted {taken.strftime('%b %-d %-I:%M %p')} CT" if stale
+            else f"Updated {taken.strftime('%-I:%M %p')} CT")
+
+
+def _heading_text(snapshot, stale):
+    return f"{CARD_TITLE} ({_status(snapshot, stale)})"
 
 
 def _snapshot_counts(snapshot, stale):
@@ -242,7 +249,7 @@ def render(snapshot, stale=False, now=None):
     now = now or datetime.now(TZ)
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
     counts = _snapshot_counts(snapshot, stale)
-    blocks = [_paragraph(_status(snapshot, stale))]
+    blocks = []
     today = _day_events(snapshot, snapshot["today"])
     marker_id, marker = _today_marker(today, now)
     for label, day, events in (("Today", snapshot["today"], today),
@@ -296,12 +303,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     blocks, counts = render(saved, stale, now)
     client = client or _client(environ)
     existing = _target(client, block_id)
-    status = _status(saved, stale)
+    heading = _heading_text(saved, stale)
+    heading_block = existing[0]
+    heading_patch = {heading_block["type"]: {"rich_text": rich_text(heading)}}
     if stale:
-        status_block = next((block for block in existing[1:] if block.get("type") == "paragraph"
-                             and _plain(block).startswith(STATUS_PREFIXES)), None)
-        if status_block is None:
-            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")
+        if len(existing) < 2:
+            raise CardError("AGENDA_CARD_STALE_NO_BASELINE")                 # nothing known-good to keep showing: do not write a STALE heading over an empty card
         if live:
             jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
             if not jira_id:
@@ -311,13 +318,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
                 router.check_write(MODULE, [CARD_TITLE])
             except router.RouterError:
                 raise CardError("AGENDA_CARD_NOT_OWNED") from None
-            client.call("PATCH", f"/blocks/{quote(status_block['id'], safe='')}",
-                        {"paragraph": {"rich_text": rich_text(status)}})
+            client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)     # only the heading text changes; the events stay as accepted
             _require_protected_intact(client, jira_id, before)
             after = _children(client, block_id)
-            if not _owned(after) or _plain(next((b for b in after if b.get("id") == status_block["id"]), {})) != status:
+            if not _owned(after) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
-            if hashlib.sha256(json.dumps(existing[2:], sort_keys=True).encode()).hexdigest() != hashlib.sha256(json.dumps(after[2:], sort_keys=True).encode()).hexdigest():
+            if hashlib.sha256(json.dumps(existing[1:], sort_keys=True).encode()).hexdigest() != hashlib.sha256(json.dumps(after[1:], sort_keys=True).encode()).hexdigest():
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
             _require_protected_intact(client, jira_id, before)
             counts["blocks_written"] = 1
@@ -348,9 +354,11 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
                 raise
         finally:
             _require_protected_intact(client, jira_id, before)
+    client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)   # the update time shares the heading (D119)
+    _require_protected_intact(client, jira_id, before)
     after = _children(client, block_id)                    # read back the configured Calendar region
     _require_protected_intact(client, jira_id, before)
-    if not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[1]) != status:
+    if not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
         raise CardError("AGENDA_CARD_VERIFY_FAILED")
     counts["blocks_written"] = len(new_blocks)
     return counts
