@@ -108,19 +108,39 @@ def ledger_urls(client):
         cursor = data.get("next_cursor")
 
 
+SEED_MARKER = "0" * 63 + "2"        # D112: the Ledger read is repeated once after Jim's 9/30 purge (marker 2); the first seed (marker 1, all zeros) still held every archived URL
+
+
 def _seeded(connection):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM v7_ledger_urls WHERE source='seed'")
+        cursor.execute("SELECT COUNT(*) FROM v7_ledger_urls WHERE source='seed' AND url_hash=%s", (SEED_MARKER,))
         return cursor.fetchone()[0] > 0
 
 
 def _store_seed(connection, urls):
-    """Remember every URL already in the Ledger (plus a marker row so the read is never repeated)."""
-    rows = [("0" * 64, "seed", _now())] + [(key, "seed", _now()) for key in urls]
+    """Replace the remembered Ledger URLs with the ones in the Ledger now (plus a marker row so the read is never repeated), then release the jobs the old list was
+    holding back: a role V1 or V2 once published and a purge archived is not in the Ledger any more, so it is no longer a duplicate of it."""
+    now = _now()
+    rows = [("0" * 64, "seed", now), (SEED_MARKER, "seed", now)] + [(key, "seed", now) for key in urls]
     with connection.cursor() as cursor:
+        cursor.execute("DELETE FROM v7_ledger_urls WHERE source='seed'")
         for start in range(0, len(rows), 500):
             cursor.executemany("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,%s,%s)",
                                rows[start:start + 500])
+    return release_in_ledger(connection)
+
+
+def release_in_ledger(connection):
+    """Jobs set aside as `in_ledger` whose URL is not in the remembered Ledger URLs any more go back to READY. Returns how many."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL")
+        held = cursor.fetchall()
+        cursor.execute("SELECT url_hash FROM v7_ledger_urls")
+        known = {row[0] for row in cursor.fetchall()}
+        free = [row[0] for row in held if url_key(row[1]) not in known]
+        for job_id in free:
+            cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='released_ledger', updated_at=%s WHERE id=%s AND status='DUPLICATE'", (_now(), job_id))
+    return len(free)
 
 
 def _pick(connection, limit, gated=False):
@@ -154,7 +174,7 @@ def run(limit, live, environ=os.environ):
     if need_seed:
         urls = ledger_urls(client)                                   # slow: no connection open
         with store.connect() as connection:
-            _store_seed(connection, urls)
+            counts["released"] = _store_seed(connection, urls)
         counts["seeded"] = len(urls)
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
