@@ -133,7 +133,7 @@ def _outlook_proof(client, folder, medium, labeled):
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
     counts = {"gmail": 0, "outlook": 0, "admitted": 0, "owned_elsewhere": 0, "no_risk_signal": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False}
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
         notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
@@ -149,8 +149,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         counts["gmail"], labeled = len(found), labeled | present
         candidates += found
         checkers.append(("Gmail:", lambda m, g=gmail, l=label, p=present: _gmail_proof(g, l, m, p)))
-    except (GmailError, KeyError):
+    except (GmailError, KeyError) as error:
         failed += 1
+        counts["why"].append("gmail:" + str(error)[:90])
     for account, client, connect_error in (outlook_clients if outlook_clients is not None else _outlook_clients(environ)):
         if connect_error:
             failed += 1
@@ -161,8 +162,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             labeled |= present
             candidates += found
             checkers.append((f"Outlook:{account}:", lambda m, c=client, f=folder, p=present: _outlook_proof(c, f, m, p)))
-        except OutlookError:
+        except OutlookError as error:
             failed += 1
+            counts["why"].append(f"outlook@{account}:" + str(error)[:90])
     counts["sources_failed"] = failed
     admitted = []
     for c in candidates:
@@ -208,7 +210,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         if not ok:
             raise AttentionError("ATTENTION_READBACK_MISMATCH")
     if failed:
-        raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread")
+        raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread:" + ";".join(counts["why"]))
     return counts
 
 
