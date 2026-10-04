@@ -2,7 +2,7 @@
 
 Bill Tracker -> bills-paid -> bills-snapshot -> bills-card. This stage only reads the accepted private snapshot and writes the one callout it owns;
 it never reads or writes the Bill Tracker, and it never advances a Due Date (the Paid processor owns that). The supporting window is calculated at
-render time from the America/Chicago date, [today, today + 6]; no calendar date is stored anywhere. Counts-only logs, fixed error codes."""
+render time from the America/Chicago date, [today, today + 7] (the same boundary as the Bills view's native 'one week from now' filter); no calendar date is stored anywhere. Counts-only logs, fixed error codes."""
 import hashlib
 import json
 import os
@@ -17,7 +17,7 @@ from . import snapshot as bills_snapshot, state
 
 TZ = ZoneInfo(bills_snapshot.LOCAL_TZ)
 STALE_HOURS = 3
-WINDOW_DAYS = 7                                  # [today, today + 6]
+WINDOW_DAYS = 8                                  # [today, today + 7]: today through one week from now, 8 calendar dates inclusive
 CARD_TITLE = router.BILLS_REGION
 MODULE = router.OWNERS[CARD_TITLE]
 HEADINGS = ("heading_2", "heading_3", "heading_4")
@@ -165,9 +165,9 @@ def _short(value):
 
 
 def _window(rows, today):
-    """Active unpaid recurring bills whose Next Due falls in [today, today + 6], from the state classifier's buckets."""
+    """Active unpaid recurring bills whose Next Due falls in [today, today + 7], from the state classifier's buckets (its due_today and due_next_7_days)."""
     buckets = state.classify(rows, today)
-    last = today + timedelta(days=WINDOW_DAYS - 1)
+    last = today + timedelta(days=WINDOW_DAYS - 1)                  # today + 7
     due = [row for row in buckets["due_today"] + buckets["due_next_7_days"] if (day := state._day(row.get("Next Due"))) is not None and day <= last]
     overdue = sorted(buckets["stale_due"], key=lambda row: (state._day(row["Due Date"]), row["Name"]))
     late = {row["page_id"] for row in overdue if "page_id" in row}
@@ -182,7 +182,7 @@ def _status(saved, stale):
 
 def _summary(saved, stale, overdue, due):
     known = [amount for amount in (_amount(row) for row in due) if amount is not None]
-    parts = [_status(saved, stale), f"{len(due)} due in next {WINDOW_DAYS} days"]
+    parts = [_status(saved, stale), f"{len(due)} due through one week from now"]
     if due:
         parts.append(f"{_money(sum(known))} known")
         if len(known) < len(due):
@@ -222,7 +222,7 @@ def render(saved, stale=False, now=None, tracker_url=None):
     overdue, due = _window(saved["rows"], now.date())
     blocks = [_paragraph(_summary(saved, stale, overdue, due), "Bill Tracker", tracker_url)]
     counts = {"rows": len(saved["rows"]), "active": sum(row.get("Status") == "Active" for row in saved["rows"]), "overdue": len(overdue),
-              "due_7d": len(due), "amount_missing": sum(_amount(row) is None for row in overdue + due),
+              "due_window": len(due), "amount_missing": sum(_amount(row) is None for row in overdue + due),
               "status": "stale" if stale else "fresh", "blocks_written": 0}
     return blocks, counts
 
@@ -282,7 +282,7 @@ def _client(environ):
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     block_id = (environ.get("BILLS_CARD_BLOCK_ID") or "").strip()
     if not block_id:
-        return {"rows": 0, "active": 0, "overdue": 0, "due_7d": 0, "amount_missing": 0, "blocks_written": 0, "status": "not_configured"}
+        return {"rows": 0, "active": 0, "overdue": 0, "due_window": 0, "amount_missing": 0, "blocks_written": 0, "status": "not_configured"}
     try:
         with (connect or db.connect)() as connection:
             saved = bills_snapshot.load(connection)
