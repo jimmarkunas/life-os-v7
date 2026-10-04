@@ -241,7 +241,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
 
     class Cur:
         def __init__(self, rows):
-            self.rows, self.sql = rows, []
+            self.rows, self.sql, self.rowcount = rows, [], 3
 
         def execute(self, sql, params=()):
             sql % tuple("x" for _ in params)                 # the statement must survive %-formatting (the 5 PM crash)
@@ -251,11 +251,14 @@ class FirstPartyRelinkTests(unittest.TestCase):
             return self.rows
 
     def test_requeues_a_first_party_link_that_passes_the_link_test(self):
-        cur = self.Cur([(7, self.URL), (8, "https://www.revolut.com/")])
-        self.assertEqual(enrich.relink_first_party(cur), 1)
-        update = [p for s, p in cur.sql if s.startswith("UPDATE")]
-        self.assertEqual(len(update), 1)
-        self.assertEqual(update[0][0], self.URL)
+        cur = self.Cur([(7, self.URL), (8, "https://www.revolut.com/"), (9, "https://careers.example.com/careers/product-manager")])
+        self.assertEqual(enrich.relink_first_party(cur), 2 + 3)                  # two relinked, three stale first-party rows read again (D111)
+        update = [(s, p) for s, p in cur.sql if s.startswith("UPDATE")]
+        self.assertEqual(len(update), 3)
+        self.assertEqual((update[0][1][0], update[0][1][1]), (self.URL, None))   # a sound link needs no proof
+        self.assertEqual((update[1][1][0], update[1][1][1]), ("https://careers.example.com/careers/product-manager", "unproven"))   # an ambiguous shape is proved by the page title
+        self.assertIn("EXCLUDED_STALE", update[2][0])
+        self.assertIn("notion_page_id IS NULL", update[2][0])
 
     def test_revolut_403_is_retried_as_chrome(self):
         html = JOB % ("2020-01-01", LONG.replace('"', "'"))
@@ -271,3 +274,54 @@ class FirstPartyRelinkTests(unittest.TestCase):
             result = enrich.read_page("https://careers.example.com/j/1", "x")
         chrome.assert_not_called()
         self.assertEqual(result["reason"], "http_403")
+
+
+class LocationFromThePageTests(unittest.TestCase):
+    """D111: a board that states no place is read off the job page's own JSON-LD."""
+
+    def page(self, location):
+        today = enrich._now().date().isoformat()
+        return ("<html><head><title>Senior Data Engineer</title><script type='application/ld+json'>"
+                '{"@type":"JobPosting","title":"Senior Data Engineer","datePosted":"%s","description":"%s","jobLocation":%s}'
+                "</script></head><body>x</body></html>") % (today, LONG.replace('"', "'"), location)
+
+    def test_the_posting_location_is_carried_in_the_result(self):
+        for raw, expected in (('{"@type":"Place","address":{"addressLocality":"London","addressCountry":"GB"}}', "London, GB"),
+                              ('[{"address":{"addressLocality":"London"}},{"address":{"addressLocality":"Leeds","addressCountry":{"name":"United Kingdom"}}}]', "London | Leeds, United Kingdom"),
+                              ('{"address":"London, UK"}', "London, UK")):
+            result = enrich.parse_html("https://careers.example.com/j/1", "Senior Data Engineer", self.page(raw))
+            self.assertEqual((result["outcome"], result.get("location")), ("ready", expected), raw)
+
+    def test_no_location_in_the_page_adds_nothing(self):
+        today = enrich._now().date().isoformat()
+        html = JOB % (today, LONG.replace('"', "'"))
+        self.assertNotIn("location", enrich.parse_html("https://careers.example.com/j/1", "Senior Data Engineer", html))
+
+    def test_a_stored_place_is_never_overwritten(self):
+        class Cur:
+            def __init__(self):
+                self.sql, self.rowcount = [], 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, params=()):
+                sql % tuple("x" for _ in params)
+                self.sql.append(sql)
+
+        class Conn:
+            def __init__(self, cur):
+                self.cur = cur
+
+            def cursor(self):
+                return self.cur
+
+        cur = Cur()
+        result = {"outcome": "ready", "description": {"full_text": "t" * 300, "summary": "s", "responsibilities": "", "requirements": "", "qualifications": "", "fingerprint": "f"},
+                  "source_kind": "jsonld", "location": "London, GB", "posted": None, "final_url": "https://x"}
+        enrich.save(Conn(cur), 5, result)
+        update = next(s for s in cur.sql if "SET location_text" in s)
+        self.assertIn("location_text IS NULL OR location_text=''", update)

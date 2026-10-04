@@ -108,3 +108,27 @@ class FirstPartyReaders(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamReaderTests(unittest.TestCase):
+    """D111: Stream's label is '<role> <city> <department>' and its place is only in the URL slug."""
+    PAGE = ('<html><body>'
+            '<a href="/en/careers/delivery-manager-london-8459831">Delivery Manager London Delivery</a>'
+            '<a href="/en/careers/director-of-partnerships-new-york-123456">Director of Partnerships New York Commercial</a>'
+            '<a href="/en/careers/senior-engineer-5555">Senior Engineer</a>'
+            '</body></html>')
+
+    def rows(self):
+        from lifeos.sources.web import html_readers
+        return html_readers.READERS["stream_html"](self.PAGE, {"url": "https://stream.co/en/company/careers"}, None)
+
+    def test_the_city_becomes_the_location_and_the_title_loses_the_city_and_department(self):
+        by_url = {r["url"].rsplit("/", 1)[-1]: r for r in self.rows()}
+        self.assertEqual((by_url["delivery-manager-london-8459831"]["title"], by_url["delivery-manager-london-8459831"]["location"]), ("Delivery Manager", "London"))
+        self.assertEqual((by_url["director-of-partnerships-new-york-123456"]["title"], by_url["director-of-partnerships-new-york-123456"]["location"]),
+                         ("Director of Partnerships", "New York"))
+
+    def test_a_label_without_a_city_in_its_slug_is_left_as_it_is(self):
+        row = next(r for r in self.rows() if r["url"].endswith("senior-engineer-5555"))
+        self.assertEqual((row["title"], row["location"]), ("Senior Engineer", ""))
+
