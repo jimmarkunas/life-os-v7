@@ -6,6 +6,7 @@ Jim's interactive views stay where they are); re-reads the callout; and proves t
 `fail(code)` builds the caller's own error type, so codes stay fixed and carry no content."""
 import hashlib
 import json
+import time
 from copy import deepcopy
 from urllib.parse import quote
 
@@ -157,6 +158,14 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
     if headless:
+        for attempt in range(5):                                                           # Notion can serve the pre-write state for a few seconds after a write: look again before failing
+            if attempt:
+                time.sleep(3)
+                after = children(client, block_id, fail)
+                intact()
+            if (len(after) == len(blocks) + len(kept) and [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks]
+                    and [b.get("id") for b in after[len(blocks):]] == kept):
+                return existing, removed
         shape = (len(after) == len(blocks) + len(kept), [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks], [b.get("id") for b in after[len(blocks):]] == kept)
         if not all(shape):                                                                 # counts and yes/no only: which part of the read-back differed
             got, want = plain(after[0]) if after else "", plain(blocks[0]) if blocks else ""
