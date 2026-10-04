@@ -75,7 +75,7 @@ def requeue_floor(cursor):
 def run(limit, live, environ=os.environ):
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
-              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0}
+              "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0, "promoted": 0}
     try:
         profile = fit_profile.load(environ)
     except fit_profile.ProfileError:
@@ -95,6 +95,7 @@ def run(limit, live, environ=os.environ):
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
+    kept_ids = {r[0] for r in rows if lanes.on_keep_list(r[2], r[1]) or lanes.title_watch_source(r[11])}      # Jim's keep list and title-watch finds: their own page cannot be re-read (403), the stored description is what Fit scored
     scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
@@ -125,6 +126,10 @@ def run(limit, live, environ=os.environ):
                     cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
                                    " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
                     counts["revived"] += cursor.rowcount
+                if gate and job_id in kept_ids and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D124: a kept role that Enrich cannot re-read (403) but that has a stored description and a link is judged here, never left in RESOLVED
+                    cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'"
+                                   " AND final_apply_url IS NOT NULL AND notion_page_id IS NULL", (_now(), job_id))
+                    counts["promoted"] += cursor.rowcount
                 if gate and decision.status == lanes.EXCLUDE:
                     cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))

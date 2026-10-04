@@ -280,6 +280,8 @@ jobs:
         continue-on-error: true
         name: Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
+        env:
+          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
         run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)
       - id: sponsors
         continue-on-error: true

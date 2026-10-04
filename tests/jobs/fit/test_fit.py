@@ -479,3 +479,14 @@ class HealthcareNeedsRealWeight(unittest.TestCase):
         self.assertEqual(exclusions.check("Program Manager", "Acme Healthcare", self.FINTECH)[0]["id"], "healthcare")
         heavy = self.FINTECH + "Healthcare is our focus. Healthcare IT is the product."
         self.assertEqual(exclusions.check("Program Manager", "Acme", heavy)[0]["id"], "healthcare")
+
+
+class KeptPromotion(unittest.TestCase):
+    def test_only_kept_and_title_watch_jobs_are_promoted_from_resolved(self):
+        import inspect
+        from lifeos.jobs.fit import stage
+        source = inspect.getsource(stage.run)
+        self.assertIn("job_id in kept_ids", source)
+        self.assertIn("status='RESOLVED'", source)
+        self.assertIn("lanes.on_keep_list(r[2], r[1])", source)
+        self.assertIn("lanes.title_watch_source(r[11])", source)
