@@ -239,6 +239,14 @@ class BillsRegions(AgendaRegions):
         return result
 
     def call_once(self, method, path, body=None):
-        result = super().call_once(method, path, body)
+        block_id = path.split("/")[2]
+        result = super().call_once(method, path, {"children": body["children"]})
+        after = body.get("after")
+        if after:                                           # Notion inserts the new blocks right after the named block
+            kids = self.children[block_id]
+            made = kids[-len(body["children"]):]
+            del kids[-len(body["children"]):]
+            at = next(i for i, k in enumerate(kids) if k["id"] == after) + 1
+            kids[at:at] = made
         self._poke("APPEND")
         return result

@@ -82,7 +82,7 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 ### Bills card (the "Bills: This Week" callout)
 
 1. The callout is the existing **Bills: This Week** callout on the Daily LIFE OS Report: its first child must be the heading "Bills: This Week". Copy the callout's block link (the callout itself, not the heading) and put its block ID into the Actions secret `BILLS_CARD_BLOCK_ID`. The card reuses `NOTION_JIRA_TOKEN`, `CALENDAR_CARD_BLOCK_ID` and `JIRA_CARD_BLOCK_ID`; no new integration.
-2. Stop any other writer from editing that callout; V7 is its sole owner. On the first live run the old linked "View of Bills" block inside the callout is removed (the Bill Tracker database itself is never touched).
+2. Stop any other writer from editing that callout; V7 is the sole owner of its text. The callout keeps its linked Bills table (that is where Paid is ticked): V7 writes one summary line under the heading and never removes or edits the table. Filter the table by relative dates (for example Due Date on or before today plus 7 days), never by fixed dates.
 3. Until `BILLS_CARD_BLOCK_ID` exists the stage reports `not_configured` and changes nothing.
 
 ### Amazon Orders

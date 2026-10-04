@@ -18,13 +18,12 @@ from . import snapshot as bills_snapshot, state
 TZ = ZoneInfo(bills_snapshot.LOCAL_TZ)
 STALE_HOURS = 3
 WINDOW_DAYS = 7                                  # [today, today + 6]
-MAX_LISTED = 10                                  # rows shown per section; the counts always cover every bill
 CARD_TITLE = router.BILLS_REGION
 MODULE = router.OWNERS[CARD_TITLE]
 HEADINGS = ("heading_2", "heading_3", "heading_4")
-# What may be removed from the callout when it is re-rendered. A linked database VIEW of the tracker ("View of ...") is the old frozen window and
-# is removed; any other database, any page or any block kind not listed stops the run before a single write, so no canonical data can be deleted.
-TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "heading_3", "heading_4", "divider", "bookmark", "unsupported")
+# D117: the card owns only the TEXT in the callout (the summary line). The linked Bills table inside it is Jim's interactive view (it is where he ticks
+# Paid), so it is never removed or rewritten: only these plain text kinds are replaced; every other block stays exactly where it is.
+TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
 
 
 class CardError(NotionError):
@@ -107,15 +106,14 @@ def _changed(before, after):
     return {"fields": fields, "children": kids}
 
 
-def _append(client, block_id, blocks, after_chunk):
-    for start in range(0, len(blocks), 100):
-        chunk = blocks[start:start + 100]
-        try:
-            result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": chunk})
-        finally:
-            after_chunk()
-        if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) != len(chunk):
-            raise CardError("BILLS_CARD_APPEND_MISMATCH")
+def _insert_after(client, block_id, after_id, blocks, after_write):
+    """Insert the new text right under the heading, so the table below it keeps its place."""
+    try:
+        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": after_id})
+    finally:
+        after_write()
+    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) != len(blocks):
+        raise CardError("BILLS_CARD_APPEND_MISMATCH")
 
 
 def _owned(blocks):
@@ -222,18 +220,6 @@ def render(saved, stale=False, now=None, tracker_url=None):
     saved = _valid(saved)
     overdue, due = _window(saved["rows"], now.date())
     blocks = [_paragraph(_summary(saved, stale, overdue, due), "Bill Tracker", tracker_url)]
-    if overdue:
-        blocks.append(_paragraph(f"Overdue — {len(overdue)} active recurring bill{'s' if len(overdue) != 1 else ''} need attention"))
-        blocks += [_bullet(_line(row, "Due Date")) for row in overdue[:MAX_LISTED]]
-        if len(overdue) > MAX_LISTED:
-            blocks.append(_bullet(f"…and {len(overdue) - MAX_LISTED} more overdue (see Bill Tracker)"))
-    if due:
-        blocks.append(_paragraph(f"Next {WINDOW_DAYS} days"))
-        blocks += [_bullet(_line(row, "Next Due")) for row in due[:MAX_LISTED]]
-        if len(due) > MAX_LISTED:
-            blocks.append(_bullet(f"…and {len(due) - MAX_LISTED} more due this week (see Bill Tracker)"))
-    elif not overdue:
-        blocks.append(_paragraph(f"Nothing due in the next {WINDOW_DAYS} days"))
     counts = {"rows": len(saved["rows"]), "active": sum(row.get("Status") == "Active" for row in saved["rows"]), "overdue": len(overdue),
               "due_7d": len(due), "amount_missing": sum(_amount(row) is None for row in overdue + due),
               "status": "stale" if stale else "fresh", "blocks_written": 0}
@@ -274,11 +260,8 @@ def _target(client, block_id):
     return blocks
 
 
-def _removable(block):
-    kind = block.get("type")
-    if kind == "child_database":
-        return str((block.get("child_database") or {}).get("title") or "").strip().lower().startswith("view of ")
-    return kind in TEXT_KINDS
+def _replaceable(block):
+    return block.get("type") in TEXT_KINDS
 
 
 def _tracker_link(existing):
@@ -313,19 +296,19 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     stale = now - _instant(saved["taken_at"]) > timedelta(hours=STALE_HOURS)
     client = client or _client(environ)
     existing = _target(client, block_id)
-    if any(not _removable(block) for block in existing[1:]):
-        raise CardError("BILLS_CARD_CANONICAL_PROTECTED")
     blocks, counts = render(saved, stale, now, _tracker_link(existing))
     if not live:
         return counts
+    old_text = [block for block in existing[1:] if _replaceable(block)]
+    kept = [block["id"] for block in existing[1:] if not _replaceable(block)]            # the interactive table and anything else stays untouched, in order
     before = _protected(client, environ)
     try:
         router.check_write(MODULE, [CARD_TITLE])
     except router.RouterError:
         raise CardError("BILLS_CARD_NOT_OWNED") from None
-    _append(client, block_id, blocks, lambda: _require_intact(client, environ, before))   # append first: a failed write leaves the old callout
+    _insert_after(client, block_id, existing[0]["id"], blocks, lambda: _require_intact(client, environ, before))   # new text first: a failed write leaves the old text
     removed = 0
-    for old in existing[1:]:
+    for old in old_text:
         try:
             router.check_write(MODULE, [CARD_TITLE])
         except router.RouterError:
@@ -340,8 +323,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             _require_intact(client, environ, before)
     after = _children(client, block_id)                   # authoritative read-back of the configured Bills region
     _require_intact(client, environ, before)
-    if (not _owned(after) or len(after) != 1 + len(blocks) or [_plain(b) for b in after[1:]] != [_plain(b) for b in blocks]
-            or after[0].get("id") != existing[0].get("id")):
+    if (not _owned(after) or after[0].get("id") != existing[0].get("id") or len(after) != 1 + len(blocks) + len(kept)
+            or [_plain(b) for b in after[1:1 + len(blocks)]] != [_plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise CardError("BILLS_CARD_VERIFY_FAILED")
     counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts
