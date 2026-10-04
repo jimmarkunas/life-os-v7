@@ -156,8 +156,8 @@ class ScaleUp(unittest.TestCase):
         ready = registry.for_lane("Scale-Up")
         self.assertEqual(sorted({r["kind"] for r in ready if "_html" not in r["kind"] and r["kind"] != "doubleword_bundle"}),
                          ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
-        self.assertEqual(len(ready), 37)                                          # 19 public ATS boards + 18 first-party careers pages (Futuristic via the announced-bot header; Floww via the WTTJ company page, D111); Otto Car and Truvi are fallback (D51)
-        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 11)        # no discoverable ATS: stays DEGRADED, never zero
+        self.assertEqual(len(ready), 36)                                          # 19 public ATS boards + 17 first-party careers pages (Futuristic via the announced-bot header); Otto Car and Truvi are fallback (D51)
+        self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):
         j = lambda t, where, posted=None: {"title": t, "location": where, "posted": posted}

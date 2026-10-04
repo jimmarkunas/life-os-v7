@@ -345,11 +345,10 @@ def _veramed(text, source, fetch_text):
 
 
 # kind -> reader(text, source, fetch_text); `zero_marker` (registry) is the only way an empty page is a COMPLETE zero
-PATH_KINDS = {"wttj_html": r"/jobs/[^/]+", "wttj_www_html": r"/(?:[a-z]{2}/)?companies/[^/]+/jobs/[^/]+", "stream_html": r"/(?:[a-z]{2}(?:-[a-z]{2})?/)?careers/[^/]+", "popsa_html": r"/careers/[^/]+"}
+PATH_KINDS = {"wttj_html": r"/jobs/[^/]+", "stream_html": r"/(?:[a-z]{2}(?:-[a-z]{2})?/)?careers/[^/]+", "popsa_html": r"/careers/[^/]+"}
 READERS = {
     "static_complete_html": lambda t, s, f: _generic(t, s), "rippling_html": lambda t, s, f: _generic(t, s),
     "wttj_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["wttj_html"]),
-    "wttj_www_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["wttj_www_html"]),      # the server-rendered company page (www.welcometothejungle.com/en/companies/<slug>/jobs)
     "stream_html": lambda t, s, f: _stream(t, s),
     "popsa_html": lambda t, s, f: _path_jobs(t, s, PATH_KINDS["popsa_html"]),
     "join_html": lambda t, s, f: _join(t, s), "bluestonex_html": lambda t, s, f: _bluestonex(t, s),

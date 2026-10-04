@@ -132,12 +132,3 @@ class StreamReaderTests(unittest.TestCase):
         row = next(r for r in self.rows() if r["url"].endswith("senior-engineer-5555"))
         self.assertEqual((row["title"], row["location"]), ("Senior Engineer", ""))
 
-
-class WttjWwwReaderTests(unittest.TestCase):
-    PAGE = ('<html><body><a href="/en/companies/plentific/jobs/senior-product-manager-data-insights_london">Senior Product Manager - Data and Insights</a>'
-            '<a href="/en/companies/plentific/jobs/customer-success-manager_london">Customer Success Manager</a>'
-            '<a href="/en/companies/plentific">About</a></body></html>')
-
-    def test_the_server_rendered_company_page_lists_its_jobs(self):
-        rows = hr.READERS["wttj_www_html"](self.PAGE, {"url": "https://www.welcometothejungle.com/en/companies/plentific/jobs"}, None)
-        self.assertEqual(sorted(r["title"] for r in rows), ["Customer Success Manager", "Senior Product Manager - Data and Insights"])
