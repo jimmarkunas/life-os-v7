@@ -157,9 +157,9 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
     if headless:
-        if (len(after) != len(blocks) + len(kept) or [plain(b) for b in after[:len(blocks)]] != [plain(b) for b in blocks]
-                or [b.get("id") for b in after[len(blocks):]] != kept):
-            raise fail("CARD_VERIFY_FAILED")
+        shape = (len(after) == len(blocks) + len(kept), [plain(b) for b in after[:len(blocks)]] == [plain(b) for b in blocks], [b.get("id") for b in after[len(blocks):]] == kept)
+        if not all(shape):                                                                 # counts and yes/no only: which part of the read-back differed
+            raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(blocks) + len(kept)))
         return existing, removed
     if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
