@@ -250,3 +250,14 @@ class BillsRegions(AgendaRegions):
             kids[at:at] = made
         self._poke("APPEND")
         return result
+
+
+class AmazonRegions(BillsRegions):
+    """BillsRegions (so Calendar, JIRA, ChatGPT and Bills are all protected) plus the Amazon callout as it stood on 2026-10-04: a heading and the
+    frozen September status text. `table` adds a block that is not text (it must survive every write)."""
+
+    def __init__(self, table=True, **kwargs):
+        super().__init__(**kwargs)
+        old = self._text_block("amazon-status-old", "paragraph", "DEGRADED · last accepted order state retained · unresolved Amazon exact-source recovery debt remains")
+        kids = [old] + ([{"id": "amazon-table-old", "type": "table", "has_children": False, "table": {}}] if table else [])
+        self._add_region("amazon-callout", "Amazon Orders", kids, heading_type="heading_3")
