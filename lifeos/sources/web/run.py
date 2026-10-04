@@ -81,7 +81,7 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
             out.pending += 1
     out.pending += sum(1 for _, _, ingest, _, _ in out.items if ingest == "PENDING")
     out.counts = {"added": len(new), "changed": len(changed), "unchanged": len(unchanged), "removed": len(removed),
-                  "suppressed": sum(suppressed.values()), "admit": len(out.admit), "pending": out.pending, "why": suppressed}
+                  "suppressed": sum(suppressed.values()), "relocated": len(relocate), "admit": len(out.admit), "pending": out.pending, "why": suppressed}
     return out
 
 
