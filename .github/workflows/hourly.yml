@@ -135,12 +135,12 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-hourly
+  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # ticks and manual runs never share a slot, so a tick cannot replace a queued manual run; lifeos.platform.gate keeps them from overlapping
   cancel-in-progress: false
 jobs:
   prep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45                 # a manual run may wait up to 25 minutes in the gate for a running tick
     permissions:
       contents: read
       actions: write
@@ -330,6 +330,13 @@ jobs:
         env:
           REVIEW_COMPANY: ${{ inputs.report }}
         run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
+      - id: explain
+        continue-on-error: true
+        name: Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && !startsWith(inputs.report, 'board:') }}
+        env:
+          EXPLAIN_COMPANY: ${{ inputs.report }}
+        run: python -m lifeos.run explain
       - id: boardcheck
         continue-on-error: true
         name: Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)
