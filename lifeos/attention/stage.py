@@ -131,7 +131,7 @@ def _outlook_proof(client, category, medium, labeled):
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
-    counts = {"gmail": 0, "outlook": 0, "admitted": 0, "owned_elsewhere": 0, "no_risk_signal": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
+    counts = {"gmail": 0, "outlook": 0, "admitted": 0, "owned_elsewhere": 0, "admitted_other": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
               "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
@@ -172,8 +172,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             admitted.append({"category": detail, "item": policy.item_text(c["subject"]), "url": c["url"], "medium": c["medium"]})
         elif verdict == "OWNED":
             counts["owned_elsewhere"] += 1
-        else:
-            counts["no_risk_signal"] += 1
+        if verdict == "ADMIT" and detail == "Other":
+            counts["admitted_other"] += 1
     counts["admitted"] = len(admitted)
     for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
         medium = row["medium"]
@@ -208,6 +208,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         counts["verified"] = ok
         if not ok:
             raise AttentionError("ATTENTION_READBACK_MISMATCH")
+    new_items = counts["created"] - counts["carried"]
+    if live and new_items > 0:                                          # counts only: no sender, subject or link ever leaves the private database
+        from lifeos.platform import alerts                              # noqa: PLC0415
+        counts["notified"] = alerts.ntfy((environ.get("NTFY_TOPIC") or "").strip(), "LIFE OS Attention",
+                                         f"{new_items} new item{'s' if new_items != 1 else ''} need{'' if new_items != 1 else 's'} your attention", alerts.PAGE)
     if failed:
         raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread:" + ";".join(counts["why"]))
     return counts
