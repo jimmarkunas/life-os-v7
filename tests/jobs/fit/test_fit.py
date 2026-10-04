@@ -483,10 +483,19 @@ class HealthcareNeedsRealWeight(unittest.TestCase):
 
 class KeptPromotion(unittest.TestCase):
     def test_only_kept_and_title_watch_jobs_are_promoted_from_resolved(self):
-        import inspect
         from lifeos.jobs.fit import stage
-        source = inspect.getsource(stage.run)
-        self.assertIn("job_id in kept_ids", source)
-        self.assertIn("status='RESOLVED'", source)
-        self.assertIn("lanes.on_keep_list(r[2], r[1])", source)
-        self.assertIn("lanes.title_watch_source(r[11])", source)
+        from tests.kit.db import FakeConn
+        rows = [(1, "Revolut Ltd", "Product Designer (Platform)", "web:su-revolut-ltd"),
+                (2, "Revolut Ltd", "Software Engineer", "web:su-revolut-ltd"),
+                (3, "Otto Car", "Anything", "web:titlewatch:su-otto"),
+                (4, "Other", "Product Designer (Platform)", "lensa")]
+        updated = []
+
+        class Cur:
+            def execute(self, sql, params=()):
+                if sql.startswith("UPDATE"):
+                    updated.append(params[1])
+            def fetchall(self):
+                return rows
+        self.assertEqual(stage.promote_kept(Cur()), 2)
+        self.assertEqual(updated, [1, 3])

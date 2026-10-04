@@ -72,6 +72,17 @@ def requeue_floor(cursor):
     return int(cursor.rowcount or 0)
 
 
+def promote_kept(cursor):
+    """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored description and link, and whose stored Fit decision is ADMIT or REVIEW
+    becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score. -> count."""
+    cursor.execute("SELECT j.id, j.company, j.title, j.source FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id"
+                   " WHERE j.status='RESOLVED' AND j.final_apply_url IS NOT NULL AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') LIMIT 200")
+    ids = [r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2]) or lanes.title_watch_source(r[3])]
+    for job_id in ids:
+        cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'", (_now(), job_id))
+    return len(ids)
+
+
 def run(limit, live, environ=os.environ):
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
@@ -90,12 +101,12 @@ def run(limit, live, environ=os.environ):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
+            counts["promoted"] = promote_kept(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
             query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
-    kept_ids = {r[0] for r in rows if lanes.on_keep_list(r[2], r[1]) or lanes.title_watch_source(r[11])}      # Jim's keep list and title-watch finds: their own page cannot be re-read (403), the stored description is what Fit scored
     scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
@@ -126,10 +137,6 @@ def run(limit, live, environ=os.environ):
                     cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
                                    " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
                     counts["revived"] += cursor.rowcount
-                if gate and job_id in kept_ids and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D124: a kept role that Enrich cannot re-read (403) but that has a stored description and a link is judged here, never left in RESOLVED
-                    cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason=NULL, updated_at=%s WHERE id=%s AND status='RESOLVED'"
-                                   " AND final_apply_url IS NOT NULL AND notion_page_id IS NULL", (_now(), job_id))
-                    counts["promoted"] += cursor.rowcount
                 if gate and decision.status == lanes.EXCLUDE:
                     cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
