@@ -243,7 +243,13 @@ class BillsRegions(AgendaRegions):
         block_id = path.split("/")[2]
         result = super().call_once(method, path, {"children": body["children"]})
         after = body.get("after")
-        if after:                                           # Notion inserts the new blocks right after the named block
+        if (body.get("position") or {}).get("type") == "start":          # Notion inserts the new blocks before everything else in the callout
+            kids = self.children[block_id]
+            made = kids[-len(body["children"]):]
+            del kids[-len(body["children"]):]
+            kids[0:0] = made
+            result = {"results": made + kids[len(made):]}
+        elif after:                                           # Notion inserts the new blocks right after the named block
             kids = self.children[block_id]
             made = kids[-len(body["children"]):]
             del kids[-len(body["children"]):]
@@ -266,9 +272,13 @@ class AmazonRegions(BillsRegions):
 
 
 class AttentionRegions(AmazonRegions):
-    """AmazonRegions plus the Attention callout: a heading, one old status line and the linked Attention view (a block that is not text and must survive every write)."""
+    """AmazonRegions plus the Attention callout as Jim keeps it: NO heading of its own, only the linked Attention view (a block that is not text and must survive every
+    write) and, to be replaced, one old status line below it."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        old = self._text_block("attention-status-old", "paragraph", "Old attention text")
-        self._add_region("attention-callout", "Attention", [old, {"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}], heading_type="heading_3")
+        root = {"id": "attention-callout", "type": "callout", "has_children": True, "parent": {"type": "block_id", "block_id": "column-parent"}, "callout": {}}
+        self.roots.append(root)
+        self.metas["attention-callout"] = root
+        self.children["attention-callout"] = [{"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}},
+                                              self._text_block("attention-status-old", "paragraph", "Old attention text")]

@@ -102,13 +102,18 @@ def protected(client, ids, fail):
         raise fail("PROTECTED_REGION_UNAVAILABLE") from None
 
 
-def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live):
-    """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count)."""
+def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False):
+    """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count).
+    headless (D129): the callout has no heading of its own (it holds only Jim's interactive view, which shows its own title), so the configured block id is the ownership proof;
+    it must hold at least one non-text block and no heading, and the text goes in at the top, above that view."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
     existing = children(client, block_id, fail)
-    if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
+    if headless:
+        if not existing or any(b.get("type") in HEADINGS for b in existing) or all(b.get("type") in TEXT_KINDS for b in existing):
+            raise fail("CARD_NOT_OWNED")
+    elif not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
         raise fail("CARD_NOT_OWNED")
     try:
         router.check_write(module, [title])
@@ -116,8 +121,9 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
         raise fail("CARD_NOT_OWNED") from None
     if not live:
         return existing, 0
-    old_text = [b for b in existing[1:] if b.get("type") in TEXT_KINDS]
-    kept = [b["id"] for b in existing[1:] if b.get("type") not in TEXT_KINDS]           # tables, databases, pages and anything else stay, in order
+    body = existing if headless else existing[1:]
+    old_text = [b for b in body if b.get("type") in TEXT_KINDS]
+    kept = [b["id"] for b in body if b.get("type") not in TEXT_KINDS]                    # tables, databases, pages and anything else stay, in order
     before = protected(client, protected_ids, fail)
 
     def intact():
@@ -127,7 +133,8 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             raise fail("PROTECTED_REGION_CHANGED")
 
     try:
-        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": existing[0]["id"]})
+        placement = {"position": {"type": "start"}} if headless else {"after": existing[0]["id"]}
+        result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
     finally:
         intact()
     # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
@@ -149,6 +156,11 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             intact()
     after = children(client, block_id, fail)                                             # authoritative read-back
     intact()
+    if headless:
+        if (len(after) != len(blocks) + len(kept) or [plain(b) for b in after[:len(blocks)]] != [plain(b) for b in blocks]
+                or [b.get("id") for b in after[len(blocks):]] != kept):
+            raise fail("CARD_VERIFY_FAILED")
+        return existing, removed
     if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")

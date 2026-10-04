@@ -48,9 +48,8 @@ class Run(unittest.TestCase):
         before = {k: regions.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout", "amazon-callout")}
         regions, counts = self.go(regions=regions)
         kids = regions.children["attention-callout"]
-        self.assertEqual(report_region.plain(kids[0]), "Attention")
-        self.assertEqual(report_region.plain(kids[1]), "Updated 1:30 PM CT · No active exceptions.")
-        self.assertEqual(kids[-1]["id"], "attention-view")                                      # the linked view is never removed
+        self.assertEqual(report_region.plain(kids[0]), "Updated 1:30 PM CT · No active exceptions.")       # the text sits above the view, no heading is added
+        self.assertEqual([k["id"] for k in kids][1:], ["attention-view"])                       # the linked view is never removed
         self.assertNotIn("Old attention text", "\n".join(line(kids)))
         self.assertEqual({k: regions.full_tree(k) for k in before}, before)
         self.assertEqual(counts["active"], 0)
@@ -66,8 +65,18 @@ class Run(unittest.TestCase):
 
     def test_failed_sync_flag_writes_the_degraded_line(self):
         regions, counts = self.go(env={"ATTENTION_SYNC_OUTCOME": "failure"})
-        self.assertTrue(report_region.plain(regions.children["attention-callout"][1]).startswith("DEGRADED"))
+        self.assertTrue(report_region.plain(regions.children["attention-callout"][0]).startswith("DEGRADED"))
         self.assertEqual(counts["status"], "degraded")
+
+    def test_a_callout_with_a_heading_or_no_view_is_not_ours(self):
+        for kids in ([{"id": "h", "type": "heading_3", "has_children": False, "heading_3": {"rich_text": [{"plain_text": "Bills: This Week"}]}}, {"id": "v", "type": "child_database", "has_children": False}],
+                     [{"id": "t", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}]):
+            regions = AttentionRegions()
+            regions.children["attention-callout"] = kids
+            with self.assertRaises(Exception) as ctx:
+                card.run(0, True, environ=ENV, reader=FakeNotion(), client=regions, now=NOW)
+            self.assertIn("CARD_NOT_OWNED", str(ctx.exception))
+            self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE", "PATCH")], [])
 
     def test_a_schema_mismatch_changes_nothing(self):
         regions = AttentionRegions()
