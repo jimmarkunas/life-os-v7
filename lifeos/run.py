@@ -86,6 +86,7 @@ STAGES = {
     "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
     "web": lazy("lifeos.sources.web.run"),
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
+    "web-titlewatch": lazy("lifeos.sources.web.titlewatch"),
     "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),

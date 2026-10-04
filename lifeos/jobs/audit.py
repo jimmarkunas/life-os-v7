@@ -20,11 +20,14 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def judge(url, full_text, proven=False):
-    """None when the row is sound, else a fixed reason code. proven: Enrich proved the page by title, so an ambiguous link shape is no longer a reason."""
+def judge(url, full_text, proven=False, title_only=False):
+    """None when the row is sound, else a fixed reason code. proven: Enrich proved the page by title, so an ambiguous link shape is no longer a reason.
+    title_only (D123): a title-search find has a title and a snippet by design, so a thin description is not a reason."""
     problem = quality.url_problem(url)
     if problem and not (proven and problem in quality.AMBIGUOUS):
         return "audit_url_" + problem
+    if title_only:
+        return None
     problem = quality.jd_problem(full_text)
     return "audit_jd_" + problem if problem else None
 
@@ -47,11 +50,13 @@ def run(limit, live, environ=os.environ):
                 excluded = cursor.fetchall()
             cursor.execute("SELECT id FROM v7_jobs WHERE link_proof='title' AND status IN ('READY','PUBLISHED')")
             proven = {r[0] for r in cursor.fetchall()}
+            cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:titlewatch:%",))
+            watched = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
                            " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
             pages = cursor.fetchall()
     counts["checked"] = len(rows)
-    bad = [(r, judge(r[2], r[4], r[0] in proven)) for r in rows]
+    bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
     already = {r[0] for r, _ in bad}
     dupe_of = {}

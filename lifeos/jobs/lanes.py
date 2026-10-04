@@ -54,6 +54,14 @@ KEEP_LIST = (
 )
 
 
+TITLE_WATCH_PREFIX = "web:titlewatch:"
+TITLE_ONLY_REASON = "found by title search; description not read"
+
+
+def title_watch_source(source):
+    return bool(source) and source.startswith(TITLE_WATCH_PREFIX)
+
+
 def on_keep_list(company, title):
     return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_LIST)
 
@@ -70,7 +78,8 @@ class Facts:
     route: dict = field(default_factory=dict)   # {"Scale-up": POSITIVE, ...}
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
-    kept: bool = False                   # D115: on Jim's keep list
+    kept: bool = False                   # D115: on Jim's keep list (or found by a title watch: Jim chose the title)
+    title_only: bool = False             # D123: found by a title search; the page text could not be read, so the Fit rests on the title alone
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
 
 
@@ -84,8 +93,10 @@ def qualify(policy, facts, today):
     """D100: Review is for ONE open question on a job that otherwise clearly fits. A near-miss Fit (60-67) with any other evidence also unresolved
     (work mode, posting date, route, geography) is not Review, it is EXCLUDE: two doubts on a weak fit is a miss, not a question for Jim."""
     decision = _qualify(policy, facts, today)
-    if decision.status == REVIEW and facts.fit is not None and facts.fit < FIT_FLOOR and not (decision.reason or "").startswith("Fit "):
+    if decision.status == REVIEW and facts.fit is not None and facts.fit < FIT_FLOOR and not (decision.reason or "").startswith("Fit ") and not facts.kept:
         return Decision(EXCLUDE, f"Fit {facts.fit} below {FIT_FLOOR} and {decision.reason}")
+    if facts.title_only and decision.status == ADMIT:                  # D123: a score from a title alone is never a Go; Jim decides from the link
+        return Decision(REVIEW, TITLE_ONLY_REASON)
     return decision
 
 
@@ -257,13 +268,13 @@ def first_party_source(source):
     return bool(source) and source.startswith("web:") and source != "web:openjobs"
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False):
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept)
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only)
 
 
 def decide_all(row_lane, facts, today, exclusion=None):

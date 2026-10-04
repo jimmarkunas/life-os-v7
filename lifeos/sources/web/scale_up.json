@@ -332,7 +332,15 @@
    "impersonate": true,
    "must_contain": "__NEXT_DATA__",
    "warm_url": "https://www.revolut.com/",
-   "alt_urls": ["https://www.revolut.com/careers/"]
+   "alt_urls": [
+    "https://www.revolut.com/careers/"
+   ],
+   "title_watch": {
+    "domains": [
+     "revolut.com"
+    ],
+    "path": "/careers/position/"
+   }
   },
   {
    "id": "su-six-flow-ltd",
@@ -422,7 +430,12 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "fallback",
-   "url": "https://careers.ottocar.co.uk/jobs"
+   "url": "https://careers.ottocar.co.uk/jobs",
+   "title_watch": {
+    "domains": [
+     "ottocar.co.uk"
+    ]
+   }
   },
   {
    "id": "su-quantum-services-management-lt",
@@ -462,7 +475,12 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "fallback",
-   "url": "https://www.sixfold.bio/team"
+   "url": "https://www.sixfold.bio/team",
+   "title_watch": {
+    "domains": [
+     "sixfold.bio"
+    ]
+   }
   },
   {
    "id": "su-taipec-ltd",
@@ -482,7 +500,12 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "fallback",
-   "url": "https://www.tambo.io/"
+   "url": "https://www.tambo.io/",
+   "title_watch": {
+    "domains": [
+     "tambo.io"
+    ]
+   }
   },
   {
    "id": "su-truvi-holdings-ltd",
@@ -492,7 +515,12 @@
    "enabled": true,
    "completeness": "fallback_partial",
    "status": "fallback",
-   "url": "https://truvi.com/careers/"
+   "url": "https://truvi.com/careers/",
+   "title_watch": {
+    "domains": [
+     "truvi.com"
+    ]
+   }
   }
  ]
 }
