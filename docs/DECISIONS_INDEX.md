@@ -118,3 +118,4 @@ This index is checked by a test: add a line here with every new decision.
 - D114 — Jim's five exclusions, product-led fraud roles kept, application boilerplate is not a requirement (2026-10-04)
 - D115 — A keep-list: named roles reach the board as Review whatever they score (2026-10-04)
 - D116 — Bills: This Week renders from the saved Bills snapshot (2026-10-04)
+- D117 — The Bills card owns the summary line only; the Bills table stays Jim's (2026-10-04)
