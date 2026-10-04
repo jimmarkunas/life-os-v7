@@ -109,3 +109,4 @@ This index is checked by a test: add a line here with every new decision.
 - D105 — Evidence can be added without replacing the profile (2026-10-04)
 - D106 — A named board is read now; an excluded job that now qualifies comes back (2026-10-04)
 - D107 — The Fit version tag fit its column (2026-10-04)
+- D108 — Every Agenda event title opens the event in Google Calendar; the meeting is a separate Join link (2026-10-04)
