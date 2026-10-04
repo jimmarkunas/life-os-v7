@@ -273,6 +273,8 @@ jobs:
         continue-on-error: true
         name: Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
+        env:
+          WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
         run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: sponsors
         continue-on-error: true

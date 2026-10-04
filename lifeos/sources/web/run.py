@@ -3,6 +3,7 @@ accepted state, drop unequivocal misses cheaply, and admit the rest into Jobs OS
 The accepted state only advances on a COMPLETE listing; a FAILED board keeps its state and can never imply a removal.
 """
 from concurrent.futures import ThreadPoolExecutor
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha1
@@ -43,6 +44,15 @@ def pick_due(sources, states, now, limit):
     return sorted(due, key=lambda s: (states.get(s["id"], {}).get("due_at") or datetime.min, s["id"]))[:limit]
 
 
+def unforced(states, sources, force):
+    """D104: a dispatch may name a company (3+ letters, the Hourly `report` input) whose board is read now whether or not it is due: the states of the sources that match are dropped."""
+    force = (force or "").strip().lower()
+    if len(force) < 3:
+        return states
+    hit = {s["id"] for s in sources if force in s["id"].lower() or force in (s.get("company") or "").lower()}
+    return {k: v for k, v in states.items() if k not in hit}
+
+
 def next_due(source_id, now, complete, failures, pending):
     if pending:
         return now                                                      # a backlog drains on the next run
@@ -81,7 +91,7 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
             out.pending += 1
     out.pending += sum(1 for _, _, ingest, _, _ in out.items if ingest == "PENDING")
     out.counts = {"added": len(new), "changed": len(changed), "unchanged": len(unchanged), "removed": len(removed),
-                  "suppressed": sum(suppressed.values()), "admit": len(out.admit), "pending": out.pending, "why": suppressed}
+                  "suppressed": sum(suppressed.values()), "relocated": len(relocate), "admit": len(out.admit), "pending": out.pending, "why": suppressed}
     return out
 
 
@@ -179,6 +189,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         with store.connect() as connection:
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
+    states = unforced(states, sources, os.environ.get("WEB_FORCE"))
     due = pick_due(sources, states, now, min(limit, limits.WEB_BOARDS_PER_RUN))
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": []}
