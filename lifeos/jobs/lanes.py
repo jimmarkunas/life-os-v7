@@ -121,9 +121,13 @@ def _qualify(policy, facts, today):
     return Decision(ADMIT)
 
 
-def qualify_all(facts, today, policies=POLICIES):
+def qualify_all(facts, today, policies=POLICIES, own=None):
     """{lane: Decision} for every enabled lane, plus the one visible lane (None when no lane admits it)."""
     results = {name: qualify(p, facts, today) for name, p in policies.items() if p.enabled}
+    if own is not None:                                                # D102: a lane that is not the job's own admits it only on a POSITIVE market match
+        for name, p in policies.items():
+            if name != own and name in results and results[name].status == ADMIT and facts.market != p.market:
+                results[name] = Decision(EXCLUDE, f"market not shown to be {p.market}")
     visible = next((n for n in PRECEDENCE if n in results and results[n].status == ADMIT), None)
     return results, visible
 
@@ -163,7 +167,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l11"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l12"                            # bump when a policy changes so stored decisions are re-evaluated
 
 
 def lane_for(row_lane):
@@ -249,7 +253,7 @@ def decide_all(row_lane, facts, today, exclusion=None):
     own = lane_for(row_lane)
     if exclusion:
         return Decision(EXCLUDE, f"excluded: {exclusion}"), own, []
-    results, visible = qualify_all(facts, today)
+    results, visible = qualify_all(facts, today, own=own)
     eligible = [n for n in PRECEDENCE if n in results and results[n].status == ADMIT]
     if own in results and results[own].status == ADMIT:
         lane = visible if visible and PRECEDENCE.index(visible) < PRECEDENCE.index(own) else own
