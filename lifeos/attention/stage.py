@@ -46,8 +46,8 @@ def _row(page):
 def _schema(notion, source_id):
     try:
         props = notion.call("GET", f"/data_sources/{quote(source_id, safe='')}").get("properties")
-    except NotionError:
-        raise AttentionError("ATTENTION_SCHEMA_READ_FAILED") from None
+    except NotionError as error:                                    # the fixed Notion code (NOTION_HTTP_404 means the integration cannot see the data source)
+        raise AttentionError(f"ATTENTION_SCHEMA_READ_FAILED:{error}") from None
     if not isinstance(props, dict) or any((props.get(n) or {}).get("type") != t for n, t in SCHEMA.items()):
         raise AttentionError("ATTENTION_SCHEMA_MISMATCH")
     names = {o.get("name") for o in (props["Category"].get("select") or {}).get("options", []) if isinstance(o, dict)}
