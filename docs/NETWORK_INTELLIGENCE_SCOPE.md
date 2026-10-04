@@ -1,33 +1,30 @@
 # Network Intelligence: scope and roadmap (scoping only, no code)
 
 Status: scoped for Jim's review. Nothing here is built, and this document changes no schema, secret, workflow or `docs/DECISIONS.md`.
-**Revised after reading the live Notion canon (section 0a).** Jim had approved a periodic re-export as the refresh and a local-import seed path. The live canon page for this feature names Jim's existing Google Sheet of connections as the canonical dataset and forbids a second connection database, so the plan is now two phases: Phase 1 reads that Sheet directly (no tables, no import); Phase 2, the temporal history the brief wanted, needs Jim to allow a derived cache. The first slice's triggers are a qualified job (`ADMIT`) and an applied job. Decisions: section O.
+**Settled by Jim:** the data is driven from **a separate, updatable table in the Hostinger database already used for Jobs OS, not from a Google Sheet** (this overrides the live canon page, section 0a). A periodic re-export of the connections file is the accepted refresh, and the local-import seed path is approved (section N). Assumed defaults, change on request: the first slice's triggers are a qualified job (`ADMIT`) and an applied job. Still open: the decisions in section O.
 
 ## 0. The shape of it in one paragraph
 
-Network Intelligence is a small temporal people graph in Hostinger that makes Jobs OS smarter: when a job is admitted, it lists the few people in Jim's network who currently or formerly list that employer, with the evidence and its age. The graph is seeded from a LinkedIn connections export and kept alive by importing a fresh export every so often and diffing it against what is already stored. That diff is free, bulk, deterministic and permitted, and it produces exactly the change events the brief wants (company changed, title changed). It does not need any live lookup, any scraping, any paid service, or any chat connector, none of which V7's runtime can use. Every claim carries its source and the date it was observed; nothing is inferred about relationship strength.
+Network Intelligence is a small temporal people graph in Hostinger (separate tables beside the Jobs tables, updatable by Jim, never read from a Sheet at runtime) that makes Jobs OS smarter: when a job is admitted, it lists the few people in Jim's network who currently or formerly list that employer, with the evidence and its age. The graph is seeded from Jim's connections data (his existing Google Sheet downloaded as a CSV on his own machine, or a LinkedIn export; either is just a file) and kept alive by importing a fresh file every so often and diffing it against what is already stored. That diff is free, bulk, deterministic and permitted, and it produces exactly the change events the brief wants (company changed, title changed). It does not need any live lookup, any scraping, any paid service, or any chat connector, none of which V7's runtime can use. Every claim carries its source and the date it was observed; nothing is inferred about relationship strength.
 
 Why the refresh changed: the brief's targeted lookups run through a connected chat app. V7 must run with chat unavailable (D54) and GitHub Actions cannot reach a chat connector, so V7 has no people-evidence source at runtime at all. The browser paths are closed by D12 and D14, and TinyFish Fetch is reserved for job pages (D11, D12 amendment). A re-export is the one permitted bulk source that needs no new decision.
 
-## 0a. The live Notion canon, read directly, and what it changes
+## 0a. The live Notion canon, and the one place Jim has overridden it
 
-I read the Notion page "LI Connection Database & Integration" (a child of the career-operations roadmap row, last edited in late September). The brief and my first draft of this scope did not have it. It says:
+I read the Notion page "LI Connection Database & Integration" (a child of the career-operations roadmap row, last edited in late September). The brief and my first draft did not have it. Most of it is adopted here:
 
-- **Canonical dataset:** Jim's existing Google Sheet of LinkedIn connections (a dated export, also attached to the page). LIFE OS may read and normalize it for matching and search, but must not create a second CRM or an independently editable connection database merely for this feature. People Identity may link a row to the same person in Apple Contacts without replacing the Sheet.
-- **Stale or unavailable data:** if the Sheet is stale, unavailable or ambiguous, the surface shows that limitation instead of inventing context.
-- **Four triggers:** a newly qualified open job in the US Remote or Scale-Up experience; Jim moves an opportunity into active pursuit or applied; an interview is scheduled or confirmed; Jim explicitly asks.
-- **Matching:** normalized employer name and known aliases, ranked only by context actually in the Sheet (currently or recently at the company, a plausibly relevant role or function, recruiter or hiring proximity when the source supports it). Never infer closeness, influence or willingness to refer.
-- **Output:** a compact shortlist: person, current role and company, why relevant, which opportunity, a recommended networking objective, a suggested next action (draft outreach, open LinkedIn, dismiss), and the Sheet's freshness.
-- **Lifecycle:** a recommendation is derived career context, not a new durable person record. Dismissing one suppresses the same unchanged recommendation for the same opportunity; materially new evidence can bring it back.
-- **Non-goals:** a second CRM, scraping beyond Jim's supplied data, an inferred social graph, automatic messaging, and any automatic claim that a connection can refer him.
+- **Four triggers:** a newly qualified open job in the US Remote or Scale-Up experience; Jim moves an opportunity into active pursuit or applied; an interview is scheduled or confirmed; Jim explicitly asks. Section H.
+- **Matching:** normalized employer name and known aliases, ranked only by context actually in the data (currently or recently at the company, a plausibly relevant role or function). Never infer closeness, influence or willingness to refer. Section H.
+- **Output:** a compact shortlist: person, current role and company, why relevant, which opportunity, a recommended networking objective, a suggested next action (draft outreach, open LinkedIn, dismiss), and the data's freshness. Section J.
+- **Lifecycle:** a recommendation is derived career context, not a new durable person record. Dismissing one suppresses the same unchanged recommendation for the same opportunity; materially new evidence brings it back. Sections E and J.
+- **Stale or unavailable data:** shown as a limitation, never papered over. Section G.
+- **Non-goals:** a second CRM, scraping beyond Jim's supplied data, an inferred social graph, automatic messaging, any automatic claim that a connection can refer him. Section K.
 
-**Where this collides with the brief and my first draft.** The brief makes Hostinger the system of record for a temporal graph (people, positions, events). The canon makes the Sheet canonical and rules out a separate connection database. Both are Jim's. The live canon outranks a scoping brief in the authority order the other handoffs use, but Jim's explicit later instruction outranks both, and he approved my first draft without this page in front of him. It also means the seed-path question mostly disappears: the data already sits in Drive.
+**Where Jim has overridden it.** The page names Jim's Google Sheet as the canonical dataset and says LIFE OS must not create "an independently editable connection database merely for this feature". Jim's instruction in this session is the opposite: the feature is driven from a separate, updatable table in the same Hostinger database as Jobs OS, not from a Sheet. His later, explicit instruction governs, so this scope follows it, and **the Notion page needs a matching edit** (section O, decision 1). I have not edited that page; I will when he says so.
 
-**Revised plan.**
-- **Phase 1, fits the canon, no new datastore.** V7 reads the Sheet read-only through a small platform reader that reuses the service-account pattern in `gcal.py` (a token signed with stdlib and the system openssl, so no new dependency; a read-only Sheets scope; Jim shares that one Sheet with the service account; the Sheet's identifier is a secret). It normalizes in memory, matches on demand, and writes one owned block on the Ledger page. The block carries a dismissal checkbox that V7 reads back and honors, so dismissals need no table. Freshness is the Sheet's modified time.
-- **Phase 2, only if Jim wants "who moved".** The change history in the brief needs the previous observation to diff against, and a Sheet overwritten by each new export cannot supply it. That needs a derived, rebuildable cache in Hostinger (sections E to G). The canon does not allow it yet; Jim would have to say a derived, non-editable cache is acceptable and have the canon page say so.
+**What keeps the table from becoming "a second CRM".** The Sheet stays where Jim edits his connections. The table is fed from it by a periodic import and holds what the Sheet cannot: observation dates and change history. Three small things in the database are Jim's own and are not rebuildable from any file (a company alias list, corrections he makes by hand, and dismissals); the rest can be rebuilt from a fresh file, except the accumulated change events, which are the reason the table exists. Because of that, the Hostinger backup covers these tables like the Jobs tables.
 
-**What this does to Jim's approvals.** The periodic re-export still works as the refresh (Jim refreshes the Sheet from a new export). The local-import seed path is no longer needed and I recommend not building it; it stays as a Phase 2 fallback if he prefers V7 never read the Sheet. The trigger widens from the `ADMIT`-only default to the canon's four; the first slice covers the two that surface on the Ledger page.
+**Consequence.** No Google Sheets reader is built: no new Google scope, no new secret, no Sheet shared with the service account. The seed and the refresh are both a CSV file read on Jim's machine (section N).
 
 ## A. Current-state architecture map (what exists today)
 
@@ -91,8 +88,8 @@ Placement: `lifeos/network/` (identity, store, import, reconcile, match, render)
 
 | Source | Viable | Gives | Bulk or targeted | Auth and cost | MVP |
 |---|---|---|---|---|---|
-| LinkedIn connections export (member data download) | Yes, member-initiated, permitted | Name, profile URL, current listed company and position, connection date, sometimes email | Bulk | None; free; Jim downloads it | **MVP, the seed** |
-| Canonical Google Sheet of connections, read through the service account | Yes; the canon names it the canonical dataset | Name, profile address, company, position and connection date per row | Bulk | Existing Google service account, one new read-only Sheets scope, one Sheet shared with it; free | **MVP, Phase 1** |
+| Jim's existing Google Sheet of connections, downloaded as a CSV (File, Download) and imported on his machine | Yes; his own data, nothing read from Google at runtime | Whatever columns the Sheet has (the inspector reports them by count) | Bulk | None; free | **MVP, the seed and the refresh** |
+| LinkedIn connections export (member data download), same import path | Yes, member-initiated, permitted | Name, profile URL, current listed company and position, connection date, sometimes email | Bulk | None; free; Jim downloads it | MVP alternative if the Sheet lacks profile addresses |
 | Fresh re-export, diffed | Yes | Change in the listed company or title since the last export | Bulk | None; free | **MVP, the refresh** |
 | LinkedIn through the connected chat app | Not at V7 runtime | Targeted current lookup | Targeted | Chat connector | Reject for V7. A human could relay an observation later through a private channel (decision 3). |
 | V7's LinkedIn job resolver | No | Jobs only | n/a | n/a | Reject: job-only, must not become a people crawler |
@@ -107,20 +104,28 @@ What the export can and cannot say: it carries each connection's single currentl
 
 ## E. Hostinger schema (minimum, added by slice)
 
-**Phase 2 only.** Phase 1 (section 0a) needs no table. These tables are added only if Jim decides a derived temporal cache is allowed, and only after he approves each slice's tables. Table creation happens only on a live run.
+Added only after Jim approves each slice's tables. Table creation happens only on a live run.
 
 `v7_network_people` (NET-1b)
 - `id` (key), `person_key` unique (hash of the identity key), `url_key` unique and nullable (normalized profile address: scheme, host, case, query string and trailing slash removed), `display_name`, `connected_on` date, `first_seen`, `last_observed`, `status` (`ACTIVE`, `REMOVED`), `history_coverage` (`SEED_ONLY`, `PARTIAL`, `UNKNOWN`), timestamps.
-- No email column unless Jim decides to keep one (decision 6). The brief's `refresh_state` and `refresh_due_at` are dropped: with export diffing there is no per-person refresh schedule to track until a live source exists.
+- No email column unless Jim decides to keep one (decision 5). If the Sheet has an email column the importer ignores it. The brief's `refresh_state` and `refresh_due_at` are dropped: with export diffing there is no per-person refresh schedule to track until a live source exists.
 - Identity rule: the URL key is the identity. With no URL, fall back to normalized name plus company key, and treat any collision as ambiguous and unmerged. Two people with one name never merge; a changed employer never creates a new person.
 
 `v7_network_positions` (NET-1b)
-- `id`, `person_id`, `company_key` (joined `core()` tokens), `company_name`, `title` nullable, `position_state` (`CURRENT`, `SUPERSEDED`), `first_observed`, `last_observed`, `source_kind` (`LINKEDIN_EXPORT`, later `USER_CONFIRMED`), `source_ref` (an export batch label, never a URL), `source_observed_at`, `confidence`, `material_hash` (unique per person, company, title and source), timestamps.
+- `id`, `person_id`, `company_key` (joined `core()` tokens), `company_name`, `title` nullable, `position_state` (`CURRENT`, `SUPERSEDED`), `first_observed`, `last_observed`, `source_kind` (`CONNECTIONS_FILE`, `USER_CONFIRMED`), `source_ref` (a batch label such as the file's date, never a URL or a file path), `source_observed_at`, `confidence`, `material_hash` (unique per person, company, title and source), timestamps.
 - `SUPERSEDED` means "no longer the listed position as of a later observation". It does not assert that employment ended, so no end date is invented. Start and end date columns from the brief are left out until a source supplies tenure.
 - Index on (`company_key`, `position_state`) for matching.
 
 `v7_network_events` (NET-2)
 - `id`, `person_id`, `event_type` (`PERSON_IMPORTED`, `CURRENT_POSITION_CONFIRMED`, `COMPANY_CHANGED`, `TITLE_CHANGED`, `PROFILE_UNRESOLVED`, `CONFLICT_DETECTED`), `old_position_id`, `new_position_id`, `observed_at`, `source_kind`, `event_hash` unique, `created_at`. Append-only and idempotent.
+
+`v7_network_aliases` (NET-1b, Jim-maintained)
+- `id`, `alias_key` unique (a company key as `core()` would produce it), `company_key` (the key it resolves to), `note`, `created_at`. Added by a local command (for example "Meta Platforms" resolves to the same key as "Meta"). The canon asks for "known aliases", and this is the deterministic way to hold them. No fuzzy matching.
+
+`v7_network_dismissals` (NET-4)
+- `id`, `job_page_id`, `person_id`, `evidence_hash` (the lead's reason text and observation date), `dismissed_at`. Copied from the checkbox in the owned Notion block each run so that rewriting or deleting the block cannot resurrect a dismissed lead. A lead returns only when its `evidence_hash` changes (new evidence).
+
+**What "updatable" means here.** Three paths, all local and dry-run by default: (1) re-import a fresh file (upsert plus diff; the normal path); (2) a one-person correction command that writes a `USER_CONFIRMED` position (for a role Jim learns about by hand), which never gets overwritten by a lower-trust import; (3) alias rows. Nothing writes to the tables from the hourly run except the dismissals copy.
 
 Not added: a raw-observation table (positions already carry source and observed time), a recommendations table (matching is computed on demand), a refresh queue.
 
@@ -133,7 +138,7 @@ One platform addition: a small transaction context in `platform/db.py`. The conn
 class PersonObservation:
     url_key: str | None; display_name: str; connected_on: date | None
     company_name: str | None; title: str | None
-    source_kind: SourceKind; source_ref: str; observed_on: date
+    source_kind: SourceKind; source_ref: str; observed_on: date      # columns found by header name, reported by the inspector
 
 @dataclass(frozen=True)
 class ImportReport:    # counts only
@@ -161,7 +166,7 @@ Source adapters return observations and never write; `apply` is the only writer.
 
 ## G. Refresh algorithm (re-export diff)
 
-1. Jim refreshes the canonical Sheet from a new export. The observation date is the Sheet's modified time or an explicit date, because the data itself carries none. Cadence is his choice; about every four to six weeks and before an active search is a sensible default.
+1. Jim updates his Sheet from a new LinkedIn export as he does today, downloads it as a CSV, and runs the import with the date he downloaded it. The date is explicit because the file carries none. Cadence is his choice; about every four to six weeks and before an active search is a sensible default.
 2. Parse the whole file first. Any structural error fails the run before a write (a full result or an error, never partial).
 3. For each row, derive the identity key and company key, then compare with the stored current position:
    - same company key and same title: confirm (`last_observed` and `source_observed_at` advance); no event.
@@ -172,18 +177,19 @@ Source adapters return observations and never write; `apply` is the only writer.
    - two rows that resolve to one identity with conflicting positions, or a collision with no URL: counted as ambiguous, no write for that person.
 4. People absent from a newer file are left untouched. Absence from one export proves nothing, so nothing is demoted or removed for it.
 5. Replay of the same file is a no-op: unique hashes on positions and events, so a second run creates zero people, zero positions and zero events.
-6. Freshness is computed from `source_observed_at` and always shown with the date. Proposed defaults, held as named constants: `FRESH` up to 45 days, `AGING` to 120 days, `STALE` beyond that, and `CONFLICTED` while an ambiguity flag is set. The first batch is labelled seed until a later export confirms it.
+6. Freshness is computed from `source_observed_at` and always shown with the date (the canon's stale-data rule: a stale lead says so). Proposed defaults, held as named constants: `FRESH` up to 45 days, `AGING` to 120 days, `STALE` beyond that, and `CONFLICTED` while an ambiguity flag is set. The first batch is labelled seed until a later export confirms it.
 7. There is no retry or rate logic, because the only I/O is the file and the database. Database failures use the existing fixed `StoreError` codes and roll the person back.
 
 ## H. Job-to-network recommendation algorithm
 
-Triggers (from the canon): (1) a newly qualified job, meaning a published job with a page id and a verified time whose stored `admission` is `ADMIT` (`REVIEW` jobs also publish but are not included by default); (2) Jim moves a job to active pursuit (the Ledger's Applied checkbox or Applied-on date); (3) an interview scheduled or confirmed; (4) Jim explicitly asks (a manual stage that takes a company). The first slice covers 1 and 2, because both surface on the Ledger page; 3 and 4 need a surface decision, since Hiring Pipeline pages are human-owned and never written. Matching is stateless: in Phase 1 it reads the Sheet, in Phase 2 the Hostinger cache.
+Triggers (from the canon): (1) a newly qualified job, meaning a published job with a page id and a verified time whose stored `admission` is `ADMIT` (`REVIEW` jobs also publish but are not included by default); (2) Jim moves a job to active pursuit (the Ledger's Applied checkbox or Applied-on date); (3) an interview scheduled or confirmed; (4) Jim explicitly asks (a manual stage that takes a company). **The first slice covers 1 and 2**, because both surface on the Ledger page; 3 and 4 need a surface decision, since Hiring Pipeline pages are human-owned and never written. Matching is stateless and reads current Hostinger state.
 
-- Company match is by equal company key only. There is no fuzzy or prefix match in the MVP, so a missed alias ("Meta" against "Meta Platforms") shows up as a miss rather than a wrong person. A small deterministic alias table can come later.
+- Company match is by equal company key only. There is no fuzzy or prefix match, so a missed alias ("Meta" against "Meta Platforms") shows up as a miss rather than a wrong person. Known aliases come from Jim's alias table (`v7_network_aliases`), which maps an alias key to a company key; the match is equal after alias resolution.
 - Tier 1: a `CURRENT` position at the company. Tier 2: a `SUPERSEDED` position at the company ("previously listed there"). Within a tier, order by function overlap between the stored title and the job's role (shared role tokens), then by freshness, then by name for a stable order. No numeric score is stored; every ordering factor is visible.
 - A person with no company match is never shown, so weak signals cannot fill slots. At most five leads.
 - Reasons are fixed templates built from stored facts, for example "Listed at Acme as Director of Product, as of the September export (45 days)" or "Previously listed at Acme; later listed elsewhere". Nothing about closeness, referral likelihood or willingness is ever generated.
 - A stale lead is shown with its age and a verify-first note, never as current.
+- A lead whose `evidence_hash` is in the dismissals table is not shown for that job; new evidence changes the hash and it returns.
 - Objectives are fixed templates by basis (for example, learn how the team is organised for a current employee). Drafting message text is not part of V7; that stays a human or ChatGPT-side step.
 
 Examples (synthetic):
@@ -196,17 +202,16 @@ Examples (synthetic):
 
 | Slice | Outcome | Likely files | Schema | Tests and UAT | Depends on | Risks | Size | PRs |
 |---|---|---|---|---|---|---|---|---|
-| **NET-1a Sheet inspector** | Jim runs a dry run over the canonical Sheet (or a local export file) and sees counts only: rows, blank URL, blank company, duplicate URL keys, distinct company keys, ambiguous identities. Proves the file's real shape before anything is stored. | `lifeos/platform/gsheets.py` (a read-only Sheets reader on the `gcal.py` service-account pattern), `lifeos/network/{identity,parse}.py`, `run.py` line, `.gitignore` entry for export files, `docs/SETUP.md` | none | table-driven parser and identity tests (tracking parameters, case, trailing slash, same-name collision, blank fields), counts-only output test | Jim shares the one Sheet with the Google service account | The real export's columns may differ from the documented ones; that is exactly what this finds | S to M | 1 |
-| **NET-1b Private import** | The seed lands in Hostinger without duplicates; replay creates nothing. | `lifeos/network/{store,import_export}.py`, `platform/db.py` transaction helper, tests | `v7_network_people`, `v7_network_positions` | replay twice equals once; ambiguous people unmerged; dry run creates no tables; read-back equals written | NET-1a, Jim's table approval, seed path (section N) | PII handling: logs counts only | M | 1 |
+| **NET-1a File inspector** | Jim runs a dry run on his downloaded Sheet (or a LinkedIn export) locally and sees counts only: columns found, rows, blank URL, blank company, duplicate URL keys, distinct company keys, ambiguous identities. Proves the file's real shape before anything is stored. | `lifeos/network/{identity,parse}.py`, `run.py` line, `.gitignore` entry for export-shaped files, `docs/SETUP.md` | none | table-driven parser and identity tests (tracking parameters, case, trailing slash, same-name collision, blank fields), counts-only output test | nothing | The real export's columns may differ from the documented ones; that is exactly what this finds | S to M | 1 |
+| **NET-1b Private import** | The seed lands in Hostinger without duplicates; replay creates nothing; Jim can add an alias. | `lifeos/network/{store,import_export,aliases}.py`, `platform/db.py` transaction helper, tests | `v7_network_people`, `v7_network_positions`, `v7_network_aliases` | replay twice equals once; ambiguous people unmerged; dry run creates no tables; read-back equals written | NET-1a, Jim's table approval, seed path (section N) | PII handling: logs counts only | M | 1 |
 | **NET-2 Re-export diff** | A second export yields exactly the right change events and freshness. | `lifeos/network/{reconcile,freshness}.py`, `network-changes` counts report | `v7_network_events` | title change, company change, blank field, new person, absent person, conflicting rows; each yields the specified events exactly once | NET-1b | Export granularity: changes are only as fresh as the export cadence | M | 1 |
-| **NET-3 Job match (no surface yet)** | A dry-run stage reports, by count, how many admitted jobs have leads and how many leads each. | `lifeos/network/match.py`, `lifeos/sources/network_leads.py`, `run.py` line | none | the three examples above, tier order, five-lead cap, no weak fill | NET-2, decision 1 | A missing alias gives a miss, not a wrong match | M | 1 |
-| **NET-4 Surface** | Leads appear on the job page in one machine-owned block; unchanged leads cause no write. | marker-block writer generalized from `report_region`, one step in the `finish` job after publish (continue-on-error, not in the failure list) | none | owned block replaced, nothing else touched, read-back, hash skip, page-gone and Ledger-target guards | NET-3, decision 5 | A human editing inside the owned block loses the edit; documented | M | 1 |
+| **NET-2b Correction command** | Jim can fix or add one person's current position by hand and it sticks over later imports. | `lifeos/network/correct.py` | none (uses `USER_CONFIRMED` in the positions table) | a correction survives a conflicting re-import; blank import never demotes it; replay is a no-op | NET-2 | The command must be local and dry-run first | S | 1 |
+| **NET-3 Job match (no surface yet)** | A dry-run stage reports, by count, how many admitted jobs have leads and how many leads each. | `lifeos/network/match.py`, `lifeos/sources/network_leads.py`, `run.py` line | none | the three examples above, tier order, five-lead cap, no weak fill, alias hit, dismissed lead hidden | NET-2 | A missing alias gives a miss, not a wrong match | M | 1 |
+| **NET-4 Surface** | Leads appear on the job page in one machine-owned block with a dismissal checkbox; unchanged leads cause no write; a dismissal is remembered. | marker-block writer generalized from `report_region`, one step in the `finish` job after publish (continue-on-error, not in the failure list) | `v7_network_dismissals` | owned block replaced, nothing else touched, read-back, hash skip, page-gone and Ledger-target guards, dismissal read-back and persistence | NET-3, decision 4 | A human editing inside the owned block loses the edit; documented | M | 1 |
 | **NET-5 History and change digest** | "Who moved recently" and "who has listed company X" answered from stored events, as counts first and a private page or region later. | `lifeos/network/queries.py`, a stage | none | query tests; region ownership decided before any report region | NET-2 | Region ownership is a product decision (roadmap decision 3) | M to L | 1 |
 | **NET-6 Relationship evidence (later)** | Accepted mail and calendar evidence of real contact. | later | later | later | core value proven | Easy to overreach into relationship scoring, which is out of scope | L | later |
 
-**Re-mapping after the canon.** NET-1a is now a dry-run inspector over the canonical Sheet through the new read-only reader. NET-3 and NET-4 (match, then surface) run in Phase 1 directly against the Sheet. NET-1b and NET-2 (the Hostinger cache and the diff) belong to Phase 2 and happen only if Jim allows a derived cache. NET-5 follows whichever phase exists.
-
-NET-0 from the brief is absorbed: with no live source to prove, its work is the NET-1a inspector plus the decisions in section O.
+NET-0 from the brief is absorbed: with no live source to prove, its work is the NET-1a inspector plus the decisions in section O. Triggers 3 and 4 from the canon (an interview, an explicit ask) are later slices and wait on a surface decision.
 
 ## J. Surfacing mechanics (NET-4 in detail)
 
@@ -214,8 +219,9 @@ NET-0 from the brief is absorbed: with no live source to prove, its work is the 
 - An unchanged hash means no write. A changed hash deletes the owned block and appends the new one, then reads the page back. Nothing outside the owned block is read for change or written.
 - The existing description marker at the top of the body (`v7-jd:1`) and the properties the publisher and fit sync own are never touched, so `readback.py`'s first-three-blocks check keeps passing.
 - Before any write: `ledger.verify` on the data source, page not archived or in trash, description marker still present. A failed guard writes nothing.
-- Dismissal: the owned block carries a checkbox per lead. V7 reads it before any rewrite, keeps an unchanged lead dismissed, and offers it again only on materially new evidence (the canon's rule). No table is needed to remember it.
-- Reading the Sheet in this step needs the Google service-account secret in the `finish` job.
+- Each lead has a checkbox, Dismiss. V7 reads it before any rewrite, copies it to the dismissals table, and keeps an unchanged lead dismissed; it offers it again only when new evidence changes the lead's `evidence_hash` (the canon's rule).
+- The block shows the data's freshness (the date of the last import) on every lead, per the canon.
+- Matching reads only Hostinger in the `finish` job, using the database settings that job needs for the Jobs publish; no Google secret is involved.
 - The step runs in the hourly `finish` job after publish because the Jobs Notion secrets exist only there. It is continue-on-error and absent from the lane-failure list, so a network failure cannot fail the Jobs run.
 
 ## K. Non-goals and rejected architecture
@@ -225,9 +231,10 @@ No second scheduler, workflow family or workflow input. No graph database. No pr
 ## L. Decision-log proposals (draft; `docs/DECISIONS.md` is not edited)
 
 - Network Intelligence is its own OS package; the Jobs-to-Network glue lives in `lifeos/sources/`.
-- Phase 1 reads the canonical connections Sheet through a read-only platform reader and stores nothing; a derived Hostinger cache (Phase 2) needs Jim's explicit allowance and a matching edit to the canon page.
-- Dismissal is a checkbox in the owned block, not a table.
+- The Network Intelligence data lives in separate, Jim-updatable Hostinger tables beside the Jobs tables; no Sheet is read at runtime. This supersedes the canon page's "Sheet is canonical" rule, and the page is edited to match.
 - The refresh mechanism is a periodic re-export diff; no live people source is used.
+- Company aliases are a Jim-maintained table; there is no fuzzy matching.
+- Dismissals are copied from the checkbox in the owned block into a table, so rewriting the block cannot resurrect a dismissed lead.
 - A position is "listed as of an export"; a superseded position does not assert that employment ended, and no tenure dates are invented.
 - Person identity is the normalized profile address; a name alone never merges two people.
 - Matching is stateless, by equal company key, and shows at most five leads with visible reasons and freshness.
@@ -242,61 +249,65 @@ No second scheduler, workflow family or workflow input. No graph database. No pr
 | 2 | `platform/db.connect`, `StoreError`, `names.core`, `notion_client`, `redact`, `alerts`, `limits`; plus one new transaction helper. |
 | 3 | A dedicated `lifeos/network/store.py` with its own `ensure_schema`, created only on live runs. |
 | 4 | Reuse `names.core`; the key is its joined tokens, with no platform change. Do not use `same_company` as a key. |
-| 5 | Published job with a page id and verified time, `admission = ADMIT` (plus the canon's other three triggers; see section H). The brief's status chain with ENRICHED and FIT does not exist. |
+| 5 | Published job with a page id and verified time, `admission = ADMIT`, plus the canon's other three triggers (first slice: qualified and applied jobs; section H). The brief's status chain with ENRICHED and FIT does not exist. |
 | 6 | One marker-owned toggle block at the end of the Ledger page body, from a `finish`-job step after publish. |
 | 7 | Matching is database-only and at most about ten Notion calls; no network refresh runs on the tick at all. |
 | 8 | `python -m lifeos.run network-*` stages, dry run by default, run locally or from `domains.yml`; no new `hourly.yml` input. |
 | 9 | None permitted at runtime. The re-export diff replaces it. |
 | 10 | Only forward accumulation, one export at a time. Retroactive history is not promised. |
-| 11 | MVP adapter: the export importer. Later: user-confirmed corrections and per-site public pages. |
-| 12 | Not needed in Phase 1: V7 reads the canonical Sheet directly (sections 0a and N). |
+| 11 | MVP adapter: the file importer. Next: the hand-correction command (NET-2b). Later: per-site public pages. |
+| 12 | Local import on Jim's machine of his Sheet downloaded as a CSV (section N). |
 | 13 | Profile-address identity; name-only collisions stay unmerged and are counted. |
 | 14 | The schema allows several current positions per person; the export can only show one, so concurrent roles wait for a richer source. |
 | 15 | Fresh to 45 days, aging to 120, stale beyond, always with the date. Defaults, tunable. |
-| 16 | None in Phase 1; people and positions in Phase 2 (NET-1b), events in NET-2. |
+| 16 | People and positions in NET-1b; events in NET-2. |
 | 17 | Yes, stateless on demand; the page's marker hash is the only stored idempotency. |
 | 18 | All of it deterministic in V7. Message drafting stays human or ChatGPT-side and outside V7. |
-| 19 | Person rows and addresses stay in Hostinger. Only the lead's display name, listed company and title, the observation date and a fixed reason appear in Jim's private Notion block (decision 6 covers whether to show more or less). |
+| 19 | Person rows and addresses stay in Hostinger. Only the lead's display name, listed company and title, the observation date and a fixed reason appear in Jim's private Notion block (decision 5 covers whether to show more or less). |
 | 20 | First as counts from a stage, then as a private page or a region once ownership is decided. |
 
 ## N. Seed path
 
-**Phase 1 needs no seed.** The connections data already lives in a private Google Sheet (the canonical dataset per the canon page), so nothing has to be imported into Hostinger. V7 reads it where it is: Jim shares that one Sheet, read-only, with the Google service account V7 already uses for Calendar; one read-only Sheets scope is added; and the Sheet's identifier is an Actions secret (it is an identifier, and this repository is public). To refresh, Jim updates the Sheet from a new LinkedIn export.
+**Recommended: a local import on Jim's machine, from his own Sheet downloaded as a CSV.** The file never leaves his machine and nothing is read from Google at runtime.
 
-**The local-import path Jim approved** (a command run on his machine through the same SSH-tunnel database module, the file never leaving it, counts-only output) is no longer recommended for Phase 1. It remains the fallback for Phase 2 if Jim prefers V7 never read the Sheet.
+- Jim downloads his connections Sheet as a CSV (File, Download, CSV) or requests a fresh LinkedIn export, and keeps the file outside the repository. A `.gitignore` entry for export-shaped files is added in NET-1a as a safety net.
+- He runs the import locally: the stage takes a file path and the date he downloaded it, dry run by default, then `--live`. It reaches Hostinger through the same SSH-tunnel module the pipeline uses, with the eight existing database settings supplied from his password manager as environment variables on his machine, never written to a file in the repository.
+- Output is counts only. The file is read, parsed and discarded. If the Sheet carries email addresses the importer ignores them.
 
-Rejected: workflow inputs and artifacts (world-readable on a public repository), committing the file, split-secret transport (it would copy personal data into GitHub's secret store when the data is already in Drive), and a manual SQL upload.
+Fallback if running locally is not workable: split the compressed file across several repository secrets (each is capped at 48 KB) and run the import from a `domains.yml` job. This puts personal data in GitHub's secret store and the runner, needs a `DOMAIN_SECRETS` change and a manual cleanup afterward, so it is the second choice.
+
+Rejected: reading the Sheet through the Google service account at runtime (the table is the source now, Jim's instruction; it would also add a Google scope and a secret), workflow inputs and artifacts (world-readable on a public repository), committing the file, and a manual SQL upload into a staging table.
 
 ## O. Decisions Jim must make
 
-1. **Confirm the revised plan:** Phase 1 reads the canonical Sheet directly, and the local-import seed path he approved is not built.
-2. **Phase 2:** allow a derived, rebuildable Hostinger cache for "who moved" history (the canon page would need to say so), or stop at Phase 1.
-3. **Triggers:** the canon's four. The first slice covers a qualified job (`ADMIT`; `REVIEW` jobs are not included by default) and an applied job. The interview-scheduled and explicit-ask triggers need a surface decision, because Hiring Pipeline pages are human-owned and never written.
-4. **Sheet access:** share the Sheet read-only with the Google service account, supply its identifier as a secret, and (if absent) add the Google secret to the hourly `finish` job.
-5. **Confirm** the glue lives in `lifeos/sources/` and that leads appear as an appended, machine-owned block with a dismissal checkbox on the job page.
-6. **Fields shown in Notion** (recommended: display name, listed company and title, the Sheet's date, a fixed reason), and that email addresses in the Sheet are never copied by V7.
-7. **Aliases:** a Jim-maintained alias list for company names, since the canon asks for known aliases.
-8. **Hand-relayed chat-side observations:** not in the MVP.
-9. **Erasure and retention** (only if Phase 2 is allowed).
+Settled by Jim: the data is driven from separate, updatable Hostinger tables, not a Sheet; the refresh is a periodic re-export; the seed path is a local import.
+
+1. **The canon page.** "LI Connection Database & Integration" in Notion says the Sheet is canonical and forbids a separate connection database, which now contradicts your instruction. Recommended: I edit that page to say the Hostinger tables drive the feature, the Sheet is the file you import from, and the four-trigger rules stay. Say "edit it" and I will.
+2. **Triggers.** The canon's four; the first slice covers a qualified job (`ADMIT`) and an applied job. `REVIEW` jobs are not included by default; say so if they should be.
+3. **Hand-relayed observations.** Whether a position Jim learns about by hand may be recorded (NET-2b, `USER_CONFIRMED`). Recommended: yes, since you asked for an updatable table; a position relayed from a chat-side lookup stays out.
+4. **Where the glue lives and what the page block looks like.** The glue in `lifeos/sources/` (recommended), and leads as an appended, machine-owned block with a Dismiss checkbox on the job page.
+5. **Fields and email.** Store emails at all (recommended: no), and which fields may appear in the Notion block (recommended: display name, listed company and title, import date, reason).
+6. **Erasure and retention for people** (recommended: a `REMOVED` status that excludes a person from matching, plus a hard-delete command).
+7. **Approve the tables** in section E, slice by slice.
 
 ## P. First build slice
 
 ```text
 FIRST BUILD SLICE:
-NET-1a Sheet inspector (a read-only Sheets reader plus a dry-run parser and identity check, counts only)
+NET-1a file inspector (dry-run parser and identity check, local, counts only)
 
 WHY FIRST:
-It needs no table, proves V7 can read the canonical Sheet through the existing service-account pattern, and shows the real columns, blank fields and ambiguous identities by count before anything is matched or written. Every later slice depends on those answers.
+It needs no schema and no secret, runs on Jim's downloaded Sheet, and proves the file's real columns, how many fields are blank and how many identities are ambiguous before anything is stored. Every later slice depends on those answers, and it settles the seed path in practice.
 
 EXPECTED FILES:
-lifeos/platform/gsheets.py, lifeos/network/__init__.py, identity.py, parse.py, one line in lifeos/run.py, tests/network/* and a reader test in tests/platform, a docs/SETUP.md section
+lifeos/network/__init__.py, lifeos/network/identity.py, lifeos/network/parse.py, one line in lifeos/run.py, tests/network/*, a .gitignore entry, a docs/SETUP.md section
 
 SCHEMA:
 NONE
 
 ACCEPTANCE:
-Reader and parser tests pass on synthetic sheets (tracking-parameter and case variants of profile addresses, same-name collisions, blank fields, malformed rows, an incomplete read failing closed); a dry run prints counts only; nothing is written anywhere; the full suite passes.
+Table-driven tests pass for profile-address normalization, column detection by header name, same-name collisions, blank fields and malformed rows; a dry run over a synthetic file prints counts only; nothing is written anywhere; the full suite passes.
 
 DO NOT BUILD YET:
-Tables, any import or cache, the diff and events, the Notion block, a local importer, any live or targeted lookup.
+Tables, the live import, aliases, the diff and events, matching, the Notion block, the change digest, any live or targeted lookup, relationship evidence.
 ```
