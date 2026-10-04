@@ -8,7 +8,7 @@ SCHEMA = (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         dedupe_key CHAR(64) NOT NULL,
         status VARCHAR(24) NOT NULL,
-        title VARCHAR(300), company VARCHAR(200), location_text VARCHAR(200),
+        title VARCHAR(300), company VARCHAR(200), location_text VARCHAR(2000),
         source_url TEXT, final_apply_url TEXT, apply_kind VARCHAR(24),
         posted_age_days SMALLINT NULL, unresolved_reason VARCHAR(100),
         notion_page_id VARCHAR(64) NULL,
@@ -142,6 +142,10 @@ def existing_v7_tables(connection):
         return {row[0] for row in cursor.fetchall()}
 
 
+# D104: Revolut lists every office alphabetically, so 'London' fell past character 200 and the job was judged 'market not UK'.
+WIDEN = (("v7_jobs", "location_text", 2000),)
+
+
 def ensure_schema(connection):
     before = existing_v7_tables(connection)
     with connection.cursor() as cursor:
@@ -155,6 +159,13 @@ def ensure_schema(connection):
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
                 if index:
                     cursor.execute(f"ALTER TABLE {table} {index}")
+    with connection.cursor() as cursor:                                   # D104: a column that was created too narrow is widened once
+        for table, column, width in WIDEN:
+            cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
+                           "AND table_name = %s AND column_name = %s", (table, column))
+            row = cursor.fetchone()
+            if row and row[0] is not None and row[0] < width:
+                cursor.execute(f"ALTER TABLE {table} MODIFY {column} VARCHAR({width})")
     after = existing_v7_tables(connection)
     return {"created": len(after - before), "present": len(after & set(TABLES)), "expected": len(TABLES)}
 
