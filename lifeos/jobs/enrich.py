@@ -76,7 +76,7 @@ def _title_ok(want, *found, strict=False):
     return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= (0.8 if strict else 0.6)
 
 
-def read_page(url, title, lane=None, proof=None):
+def read_page(url, title, lane=None, proof=None, first_party=False):
     """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an ambiguous link shape on its
     provenance, so the page must prove identity by title (strict)."""
     problem = quality.link_problem(url)
@@ -99,14 +99,14 @@ def read_page(url, title, lane=None, proof=None):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
             return {"outcome": "blocked", "reason": f"http_{page.status or 0}"}
-        result = parse_html(url, title, page.html, lane, strict)
+        result = parse_html(url, title, page.html, lane, strict, first_party)
         if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
             result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
         return result
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
 
 
-def parse_html(url, title, html, lane=None, strict=False):
+def parse_html(url, title, html, lane=None, strict=False, first_party=False):
     """Description / date / liveness / title-match from already-fetched page HTML (plain HTTP or TinyFish Fetch)."""
     posting = jsonld.job_posting(html)
     body_text = jd.html_to_text(html)
@@ -124,14 +124,14 @@ def parse_html(url, title, html, lane=None, strict=False):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-    result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict)
+    result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
     org = jsonld.hiring_organization(posting) if posting else None
     if org and result.get("outcome") in ("ready", "stale"):
         result["company"] = org                              # D91: the employer as the page names it (replaces a job board's host stored as the company)
     return result
 
 
-def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False):
+def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False, first_party=False):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
@@ -144,7 +144,7 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
-    max_age = lanes.POLICIES[lanes.lane_for(lane)].max_age_days            # the lane policy is the only freshness authority
+    max_age = None if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days     # the lane policy is the only freshness authority; a job on its employer's own board is open (D111)
     if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
         return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
@@ -202,7 +202,9 @@ def relink_first_party(cursor, now=None):
     for job_id, url in ids:
         cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', unresolved_reason=NULL, enrich_attempts=0, updated_at=%s WHERE id=%s",
                        (url, now, job_id))
-    return len(ids)
+    cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
+                   " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL", (now,))
+    return len(ids) + int(cursor.rowcount or 0)           # D111: a job dropped as old that sits on its employer's own board is read again, and is no longer judged by age
 
 
 def host_family(url):
@@ -270,7 +272,7 @@ def run(limit, live):
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         try:
-            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id))
+            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id), lanes.first_party_source(source_of.get(job_id)))
         except Exception as error:                                   # noqa: BLE001 - one unreadable page must never stop the rest of the batch (D83)
             result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:
@@ -280,7 +282,7 @@ def run(limit, live):
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
-    _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"})
+    _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
@@ -297,7 +299,7 @@ def _strict(job_id, titles, unproven_ids):
     return job_id in unproven_ids and bool(quality.link_problem(titles[job_id][0]))
 
 
-def _fallback(results, rows, counts, lane_of=None, unproven_ids=()):
+def _fallback(results, rows, counts, lane_of=None, unproven_ids=(), first_party_ids=()):
     """Rendered-fetch fallback (D12 amendment): ONE free TinyFish Fetch of an ALREADY-RESOLVED final URL when plain HTTP / the ATS API gave no usable page.
     It reads JD, date and liveness evidence only: no clicking, signing in, searching, link traversal, or choosing another vacancy, and it never
     changes final_apply_url. Counted against the daily cap BEFORE sending."""
@@ -333,7 +335,7 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=()):
                     desc = jd.describe(job["html"], is_html=True)
                     results[i] = (job_id, finish(titles[job_id][1], desc, job["title"] or desc["full_text"][:300],
                                                  _parse_date(job["posted"]), "ats_api", None, (lane_of or {}).get(job_id),
-                                                 _strict(job_id, titles, unproven_ids)))
+                                                 _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
                     counts["outcome"]["blocked"] -= 1
                     counts["outcome"][results[i][1]["outcome"]] = counts["outcome"].get(results[i][1]["outcome"], 0) + 1
                     done += 1
@@ -343,7 +345,7 @@ def _fallback(results, rows, counts, lane_of=None, unproven_ids=()):
             if text:
                 job_id = results[i][0]
                 results[i] = (job_id, parse_html(url, titles[job_id][1], text, (lane_of or {}).get(job_id),
-                                                    _strict(job_id, titles, unproven_ids)))
+                                                    _strict(job_id, titles, unproven_ids), job_id in first_party_ids))
                 if results[i][1].get("reason") == "description_empty":
                     results[i][1]["reason"] = TRIED_REASON
                 counts["outcome"]["blocked"] -= 1

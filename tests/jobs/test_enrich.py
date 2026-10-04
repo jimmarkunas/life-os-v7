@@ -241,7 +241,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
 
     class Cur:
         def __init__(self, rows):
-            self.rows, self.sql = rows, []
+            self.rows, self.sql, self.rowcount = rows, [], 3
 
         def execute(self, sql, params=()):
             sql % tuple("x" for _ in params)                 # the statement must survive %-formatting (the 5 PM crash)
@@ -252,10 +252,12 @@ class FirstPartyRelinkTests(unittest.TestCase):
 
     def test_requeues_a_first_party_link_that_passes_the_link_test(self):
         cur = self.Cur([(7, self.URL), (8, "https://www.revolut.com/")])
-        self.assertEqual(enrich.relink_first_party(cur), 1)
-        update = [p for s, p in cur.sql if s.startswith("UPDATE")]
-        self.assertEqual(len(update), 1)
-        self.assertEqual(update[0][0], self.URL)
+        self.assertEqual(enrich.relink_first_party(cur), 1 + 3)                  # one relinked, three stale first-party rows read again (D111)
+        update = [(s, p) for s, p in cur.sql if s.startswith("UPDATE")]
+        self.assertEqual(len(update), 2)
+        self.assertEqual(update[0][1][0], self.URL)
+        self.assertIn("EXCLUDED_STALE", update[1][0])
+        self.assertIn("notion_page_id IS NULL", update[1][0])
 
     def test_revolut_403_is_retried_as_chrome(self):
         html = JOB % ("2020-01-01", LONG.replace('"', "'"))

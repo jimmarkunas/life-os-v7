@@ -14,7 +14,7 @@ from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, profile as fit_profile,
 from lifeos.jobs.fit.score import evaluate
 
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
-        " j.posted_date, j.first_seen, j.route_evidence FROM v7_jobs j"
+        " j.posted_date, j.first_seen, j.route_evidence, j.source FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
         " WHERE j.status IN (%s) AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
@@ -51,11 +51,11 @@ def score_rows(rows, profile, today, semantic=None, register=None):
     [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence). Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
-        lane, location, salary, posted, first_seen, route = (list(rest) + [None] * 6)[:6]
+        lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
         result = evaluate(title, company, text, profile, today, semantic)
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
-        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route)
+        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source))
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, result.exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out

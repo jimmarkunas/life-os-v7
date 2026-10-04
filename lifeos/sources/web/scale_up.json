@@ -223,11 +223,11 @@
    "id": "su-plentific",
    "company": "Plentific",
    "tier": "employer",
-   "kind": "wttj_html",
+   "kind": "wttj_www_html",
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://app.welcometothejungle.com/companies/Plentific"
+   "url": "https://www.welcometothejungle.com/en/companies/plentific/jobs"
   },
   {
    "id": "su-prepaid-financial-services-lim",
@@ -332,7 +332,9 @@
    "impersonate": true,
    "must_contain": "__NEXT_DATA__",
    "warm_url": "https://www.revolut.com/",
-   "alt_urls": ["https://www.revolut.com/careers/"]
+   "alt_urls": [
+    "https://www.revolut.com/careers/"
+   ]
   },
   {
    "id": "su-six-flow-ltd",
@@ -398,11 +400,11 @@
    "id": "su-fomtech-ltd-floww",
    "company": "Fomtech Ltd (Floww)",
    "tier": "employer",
-   "kind": "provider_html",
+   "kind": "wttj_www_html",
    "enabled": true,
-   "completeness": "fallback_partial",
-   "status": "fallback",
-   "url": "https://uk.indeed.com/cmp/Floww"
+   "completeness": "job_list_full",
+   "status": "ready",
+   "url": "https://www.welcometothejungle.com/en/companies/floww/jobs"
   },
   {
    "id": "su-i-f-concept-ltd",

@@ -69,12 +69,14 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
     new, changed, unchanged, removed = diff.classify({i: h for i, (h, _) in previous.items()}, listing.jobs, True)
     by_id = {j["id"]: j for j in listing.jobs}
     relocate = {i: by_id[i]["location"] for i in unchanged if len(by_id[i].get("location") or "") > 200}
+    first_party = source.get("tier") == "employer"
     backlog = [by_id[i] for i in unchanged if previous[i][1] == "PENDING"]       # seen before, not yet admitted
+    backlog += [by_id[i] for i in unchanged if previous[i][1] == "SUPPRESSED" and not suppress.reason(by_id[i], now.date(), lane, first_party)]   # D111: a rule that no longer drops it (age) lets it in
     out = Outcome(source, now, "COMPLETE", frontier=diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}),
                   unchanged=[i for i in unchanged if previous[i][1] != "PENDING"], removed=removed, relocate=relocate)
     suppressed = {}
     for job, digest, is_new in [(j, h, True) for j, h in new] + [(j, h, False) for j, h in changed]:
-        why = suppress.reason(job, now.date(), lane)
+        why = suppress.reason(job, now.date(), lane, first_party)
         if why:
             suppressed[why] = suppressed.get(why, 0) + 1
             out.items.append((job, digest, "SUPPRESSED", why, is_new))
@@ -168,6 +170,12 @@ class SqlRepo:
             if is_new:
                 cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', route_evidence=%s, updated_at=%s WHERE id=%s",
                                (job["url"], source.get("route_evidence"), now, job_id))
+            else:                                                       # D111: a job already stored whose listed title or place changed (the reader learned to split Stream's label) is put right,
+                title, place = job["title"][:300], (job["location"] or "")[:2000]      # judged again, and an exclusion that rested on the wrong place is lifted
+                cursor.execute("UPDATE v7_jobs SET title=%s, location_text=%s, status=IF(status='EXCLUDED_FIT' AND unresolved_reason='lane_exclude', 'READY', status),"
+                               " updated_at=%s WHERE id=%s AND notion_page_id IS NULL AND (title<>%s OR COALESCE(location_text, '')<>%s)", (title, place, now, job_id, title, place))
+                if cursor.rowcount:
+                    cursor.execute("DELETE FROM v7_job_fit WHERE job_id=%s", (job_id,))
         if is_new and job["content"]:
             from lifeos.jobs import jd                                              # noqa: PLC0415
             desc = jd.describe(job["content"], is_html=False)
