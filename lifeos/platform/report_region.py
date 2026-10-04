@@ -130,7 +130,8 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
         result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, "after": existing[0]["id"]})
     finally:
         intact()
-    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) != len(blocks):
+    # Notion's reply to an insert-after can list the following blocks as well as the new ones, so the count is only a floor; the read-back below is the proof.
+    if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(blocks):
         raise fail("CARD_APPEND_MISMATCH")
     removed = 0
     for old in old_text:
