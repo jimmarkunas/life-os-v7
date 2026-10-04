@@ -1,7 +1,7 @@
 """Attention admission policy (D127). Attention is a small weekly exception queue for genuine unresolved human judgment, never a second task list.
 
-A message Jim labelled `LifeOS/Attention` (Gmail) or put in the `LifeOS Attention` folder (Outlook) is only a CANDIDATE. It is admitted when it carries a
-risk signal (Security, Account, Deadline, Admin) and no other canonical surface owns the action. Pure; fixed patterns; subjects are matched, never logged."""
+A message Jim labelled `LifeOS/Attention` (Gmail) or tagged with the `LifeOS Attention` category (Outlook) is a CANDIDATE. It is admitted unless another canonical
+surface owns the action; a risk signal only picks its category (Security, Account, Deadline, Admin), no signal is Other. Pure; fixed patterns; subjects are matched, never logged."""
 import re
 
 OWNED = (                                              # (owner, pattern over "sender | subject"): the action belongs to another surface, so Attention never duplicates it
@@ -32,7 +32,7 @@ def normalize(text):
 
 
 def decide(sender, subject):
-    """-> ("ADMIT", category) | ("OWNED", owner) | ("SKIP", "no_risk_signal"). Owned elsewhere always wins over a risk signal."""
+    """-> ("ADMIT", category) | ("OWNED", owner). Owned elsewhere always wins; otherwise the message is admitted (category Other when no risk signal)."""
     haystack = f"{sender or ''} | {item_text(subject)}"
     for owner, pattern in OWNED:
         if re.search(pattern, haystack, re.I):
@@ -40,4 +40,4 @@ def decide(sender, subject):
     for category, pattern in RISK:
         if re.search(pattern, haystack, re.I):
             return "ADMIT", category
-    return "SKIP", "no_risk_signal"
+    return "ADMIT", "Other"                                   # Jim's label or category IS the signal: mail he routes here and nothing else owns still needs him

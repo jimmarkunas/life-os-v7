@@ -85,6 +85,18 @@ class Run(unittest.TestCase):
         self.assertEqual(regions.children["attention-callout"][0]["id"], "attention-status-old")
         self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE")], [])
 
+    def test_a_leftover_line_that_only_the_fresh_read_shows_is_removed(self):
+        class Late(AttentionRegions):
+            def call(self, method, path, body=None):
+                result = super().call(method, path, body)
+                if method == "PATCH" and path.endswith("attention-status-old") and not getattr(self, "added", False):
+                    self.added = True                                   # a stale line appears after the in-place edit
+                    self.children["attention-callout"].insert(1, self._text_block("late", "paragraph", "Updated 9:00 AM CT · stale"))
+                return result
+        regions, _ = self.go(regions=Late())
+        self.assertEqual([report_region.plain(k) for k in regions.children["attention-callout"]][:1], ["Updated 1:30 PM CT · No active exceptions."])
+        self.assertEqual([k["id"] for k in regions.children["attention-callout"]][1:], ["attention-view"])
+
     def test_a_callout_with_a_heading_or_no_view_is_not_ours(self):
         for kids in ([{"id": "h", "type": "heading_3", "has_children": False, "heading_3": {"rich_text": [{"plain_text": "Bills: This Week"}]}}, {"id": "v", "type": "child_database", "has_children": False}],
                      [{"id": "t", "type": "paragraph", "has_children": False, "paragraph": {"rich_text": []}}]):
