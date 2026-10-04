@@ -34,9 +34,9 @@ def group_of(status, admission, reason):
 
 def blocks_for(rows):
     groups = {}
-    for title, location, status, source, score, admission, reason, stop in rows:
+    for title, location, status, source, score, admission, reason, stop, link in rows:
         why = (reason or stop or "").strip()
-        line = f"{title} | {(location or 'no place stated')[:100]} | " + (f"Fit {score}" if score is not None else "not scored") + (f" | {why}" if why else "")
+        line = f"{title} | {(location or 'no place stated')[:100]} | " + (f"Fit {score}" if score is not None else "not scored") + (f" | {why}" if why else "") + f" | via {source or 'unknown'}" + (f" | {link[:140]}" if link and status in ("NEW", "HOLD", "RESOLVED") else "")
         groups.setdefault(group_of(status, admission, why), []).append(line)
     blocks = []
     for name in sorted(groups, key=lambda g: (g != "On the board", g)):
@@ -53,7 +53,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT j.title, j.location_text, j.status, COALESCE(j.source, ''), f.score, f.admission, f.admission_reason, j.unresolved_reason"
+            cursor.execute("SELECT j.title, j.location_text, j.status, COALESCE(j.source, ''), f.score, f.admission, f.admission_reason, j.unresolved_reason, COALESCE(j.final_apply_url, j.source_url)"
                            " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE (j.company LIKE %s OR j.source LIKE %s)"
                            " AND j.status <> 'DUPLICATE' ORDER BY (j.status = 'PUBLISHED') DESC, f.score DESC LIMIT %s", (like, like, MAX_ROWS))
             rows = [tuple(r) for r in cursor.fetchall()]
