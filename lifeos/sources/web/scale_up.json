@@ -227,7 +227,9 @@
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://www.welcometothejungle.com/en/companies/plentific/jobs"
+   "url": "https://www.welcometothejungle.com/en/companies/plentific/jobs",
+   "impersonate": true,
+   "warm_url": "https://www.welcometothejungle.com/en"
   },
   {
    "id": "su-prepaid-financial-services-lim",
@@ -404,7 +406,9 @@
    "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
-   "url": "https://www.welcometothejungle.com/en/companies/floww/jobs"
+   "url": "https://www.welcometothejungle.com/en/companies/floww/jobs",
+   "impersonate": true,
+   "warm_url": "https://www.welcometothejungle.com/en"
   },
   {
    "id": "su-i-f-concept-ltd",
