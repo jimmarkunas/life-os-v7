@@ -75,12 +75,36 @@ class Profile:
         return self._best(self.functions, text)
 
 
+def _merge(base, extra):
+    """The extra block ADDS to the profile: its capabilities, functions, exclusions and term lists are appended, its scope only fills keys the profile lacks."""
+    merged = dict(base)
+    for key in ("capabilities", "functions", "exclusions", "advantage", "specialization", "hard_family"):
+        merged[key] = list(base.get(key) or []) + list(extra.get(key) or [])
+    merged["scope"] = {**(extra.get("scope") or {}), **(base.get("scope") or {})}
+    merged["years"] = max(int(base.get("years") or 0), int(extra.get("years") or 0))
+    return merged
+
+
 def load(environ):
-    """The profile from the FIT_PROFILE_JSON secret; ProfileError when it is absent or invalid."""
+    """The profile from the FIT_PROFILE_JSON secret, plus the optional FIT_PROFILE_EXTRA_JSON block (D105: evidence added without replacing the profile);
+    ProfileError when either is present but invalid, or the profile is absent."""
     raw = (environ.get("FIT_PROFILE_JSON") or "").strip()
     if not raw:
         raise ProfileError("FIT_PROFILE_JSON is not set")
     try:
-        return Profile(json.loads(raw))
+        data = json.loads(raw)
+    except (ValueError, TypeError) as error:
+        raise ProfileError("FIT_PROFILE_JSON is not a valid profile") from error
+    extra_raw = (environ.get("FIT_PROFILE_EXTRA_JSON") or "").strip()
+    if extra_raw:
+        try:
+            extra = json.loads(extra_raw)
+            if not isinstance(extra, dict) or not isinstance(data, dict):
+                raise ValueError("not an object")
+            data = _merge(data, extra)
+        except (ValueError, TypeError, KeyError) as error:
+            raise ProfileError("FIT_PROFILE_EXTRA_JSON is not a valid profile block") from error
+    try:
+        return Profile(data)
     except (ValueError, TypeError, KeyError) as error:
         raise ProfileError("FIT_PROFILE_JSON is not a valid profile") from error

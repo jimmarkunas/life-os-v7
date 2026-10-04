@@ -358,3 +358,26 @@ class FinanceDomainAndFunctionalCap(unittest.TestCase):
         result = evaluate("Technical Program Manager", "Acme", GOOD, PROFILE, TODAY)
         self.assertEqual(result.score, result.pre_functional)
         self.assertGreaterEqual(result.score, GO_THRESHOLD)
+
+
+class ExtraProfileBlock(unittest.TestCase):
+    """D105: evidence is added through FIT_PROFILE_EXTRA_JSON without replacing the profile."""
+    BASE = '{"years": 15, "capabilities": [{"id": "a", "label": "A", "class": "direct", "terms": ["alpha"]}], "scope": {"team_size": 10}}'
+
+    def test_the_extra_block_adds_and_never_replaces(self):
+        extra = ('{"years": 20, "capabilities": [{"id": "b", "label": "B", "class": "direct", "terms": ["beta"]}], '
+                 '"functions": [{"terms": ["product owner"], "class": "direct"}], "scope": {"team_size": 99, "budget_usd": 5}}')
+        profile = load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": extra})
+        self.assertEqual([c["id"] for c in profile.capabilities], ["a", "b"])
+        self.assertEqual(profile.years, 20)
+        self.assertEqual(profile.scope, {"team_size": 10, "budget_usd": 5})
+        self.assertIsNotNone(profile.function("product owner"))
+
+    def test_no_extra_block_is_the_same_profile_and_hash(self):
+        self.assertEqual(load({"FIT_PROFILE_JSON": self.BASE}).hash, load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": ""}).hash)
+
+    def test_an_invalid_extra_block_is_an_error_not_silently_ignored(self):
+        with self.assertRaises(ProfileError):
+            load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": "{not json"})
+        with self.assertRaises(ProfileError):
+            load({"FIT_PROFILE_JSON": self.BASE, "FIT_PROFILE_EXTRA_JSON": '{"capabilities": [{"id": "x", "class": "bogus", "terms": ["x"]}]}'})
