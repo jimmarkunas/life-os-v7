@@ -50,6 +50,16 @@ class ParsingTests(unittest.TestCase):
             seen |= {(s["id"], t) for s, t in window}
         self.assertEqual(len(seen), len(pairs))
 
+    def test_a_dispatch_naming_a_company_searches_all_its_titles_not_just_the_hours_slice(self):
+        pairs = tw.pairs(registry.load(registry.PATHS["Scale-Up"]))
+        got = tw.forced(pairs, "revolut")
+        self.assertEqual({s["id"] for s, _ in got}, {"su-revolut-ltd"})
+        self.assertEqual(len(got), len(tw.DEFAULT_TITLES))
+        self.assertEqual(tw.forced(pairs, "board:Revolut, truvi").__len__(), 2 * len(tw.DEFAULT_TITLES))
+        self.assertEqual(tw.forced(pairs, ""), [])
+        self.assertEqual(tw.forced(pairs, "funnel"), [])
+        self.assertEqual(tw.forced(pairs, "ab"), [])                                            # names need 3 letters
+
     def test_the_registry_watches_revolut_and_the_own_site_fallback_companies_only(self):
         watched = {s["id"] for s in tw.watched(registry.load(registry.PATHS["Scale-Up"]))}
         self.assertIn("su-revolut-ltd", watched)
