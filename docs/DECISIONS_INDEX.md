@@ -131,3 +131,4 @@ This index is checked by a test: add a line here with every new decision.
 - D127 — Attention: a weekly exception queue V7 owns (2026-10-04)
 - D128 — The Attention card: one line above the interactive view (2026-10-04)
 - D129 — The Attention callout has no heading, so the card is headless (2026-10-04)
+- D130 — Attention admits what Jim routes to it; a push for new items; the card removes leftover lines (2026-10-04)

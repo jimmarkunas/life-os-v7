@@ -203,4 +203,17 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
                  [b.get("id") for b in after[1:]] == kept)
         if all(shape):
             return removed
+        texts = [b for b in after if b.get("type") in TEXT_KINDS]
+        if len(texts) > 1:                                                                # a leftover line the first listing did not show (or an earlier failed run left): remove what the fresh read shows
+            keep_id = next((b["id"] for b in texts if plain(b) == plain(blocks[0])), texts[0]["id"])
+            for extra in texts:
+                if extra["id"] != keep_id:
+                    try:
+                        client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
+                        removed += 1
+                    except NotionError as error:
+                        if str(error) != "NOTION_HTTP_404":
+                            raise
+                    finally:
+                        intact()
     raise fail("CARD_VERIFY_FAILED:count=%s:text=%s:kept=%s:n=%d/%d" % (*shape, len(after), 1 + len(kept)))

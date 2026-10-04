@@ -34,8 +34,9 @@ class Policy(unittest.TestCase):
         self.assertEqual(self.verdict("ship-confirm@" + "amazon.com", "Security alert on your order"), ("OWNED", "amazon"))
         self.assertEqual(self.verdict("noreply@example.com", "You have new mail: action required"), ("OWNED", "mail_alerts"))
 
-    def test_generic_fyi_is_not_admitted(self):
-        self.assertEqual(self.verdict("news@example.com", "Our monthly update"), ("SKIP", "no_risk_signal"))
+    def test_mail_jim_routes_here_is_admitted_as_other_when_nothing_owns_it(self):
+        self.assertEqual(self.verdict("ted@example.com", "Can you review the draft by Friday?")[0], "ADMIT")
+        self.assertEqual(self.verdict("ted@example.com", "Can you send me the numbers"), ("ADMIT", "Other"))
 
 
 def row(rid, item, category="Account", done=False, active=True, week=WEEK, medium="Gmail:1"):
@@ -164,10 +165,21 @@ class Stage(unittest.TestCase):
         gm = FakeGmail({"g1": ("no-reply@example.com", "Debit card ending 4328 was added"), "g2": ("news@example.com", "Monthly update"),
                         "g3": ("r@example.com", "Interview request - action required")})
         out = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
-        self.assertEqual((out["created"], out["admitted"], out["no_risk_signal"], out["owned_elsewhere"], out["verified"]), (2, 2, 1, 1, True))
+        self.assertEqual((out["created"], out["admitted"], out["admitted_other"], out["owned_elsewhere"], out["verified"]), (3, 3, 1, 1, True))
         again = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
         self.assertEqual(again["created"], 0)
-        self.assertEqual(len(notion.pages), 2)
+        self.assertEqual(len(notion.pages), 3)
+
+    def test_a_push_goes_out_for_new_items_only_with_counts(self):
+        from unittest import mock
+        notion = FakeNotion()
+        gm = FakeGmail({"g1": ("ted@example.com", "Can you review the draft by Friday?")})
+        with mock.patch("lifeos.platform.alerts.ntfy", return_value=True) as push:
+            out = stage.run(200, True, environ={"NTFY_TOPIC": "topic-example"}, gmail=gm, notion=notion, outlook_clients=[], now=NOW)
+            stage.run(200, True, environ={"NTFY_TOPIC": "topic-example"}, gmail=gm, notion=notion, outlook_clients=[], now=NOW)
+        self.assertEqual(push.call_count, 1)
+        self.assertEqual(push.call_args[0][2], "1 new item needs your attention")
+        self.assertTrue(out["notified"])
 
     def test_only_the_attention_source_is_touched(self):
         notion = FakeNotion()
