@@ -266,3 +266,81 @@ class ProtectedRegionDigestTests(unittest.TestCase):
         located = card._changed(before, after)
         self.assertEqual((located["fields"], located["children"]), ([], [0]))
         self.assertNotIn("Different", json.dumps(located))
+
+
+def links(block):
+    """[(text, url)] of every linked piece in a rendered event bullet."""
+    return [(part["text"]["content"], part["text"]["link"]["url"]) for part in block["bulleted_list_item"]["rich_text"] if part["text"].get("link")]
+
+
+def event_blocks(snap):
+    blocks, _ = card.render(snap, now=NOW)
+    return [block for block in blocks if block.get("type") == "bulleted_list_item" and links(block) is not None]
+
+
+class CalendarDeepLinkTests(unittest.TestCase):
+    """The event title opens the event in Google Calendar; the conference (Teams / Meet) is a separate small Join link."""
+    CAL = "https://www.google.com/calendar/event?eid=abc123"
+    MEET = "https://teams.example.com/meet/42"
+
+    def compacted(self, raw):
+        return snapshot.compact(raw, NOW.date(), NOW.date().replace(day=9))
+
+    def test_snapshot_keeps_the_google_event_link_and_the_meeting_link_separately(self):
+        both = self.compacted(timed("t1", "Example sync", htmlLink=self.CAL, hangoutLink=self.MEET))
+        self.assertEqual((both["calendar_link"], both["meeting_link"]), (self.CAL, self.MEET))
+        day = self.compacted(all_day(htmlLink=self.CAL))
+        self.assertEqual((day["calendar_link"], day["meeting_link"]), (self.CAL, None))
+        conference = self.compacted(timed("t2", "Example call", htmlLink=self.CAL,
+                                          conferenceData={"entryPoints": [{"uri": self.MEET}]}))
+        self.assertEqual((conference["calendar_link"], conference["meeting_link"]), (self.CAL, self.MEET))
+
+    def test_a_missing_or_non_web_event_link_is_none_and_a_wrong_type_is_invalid(self):
+        self.assertIsNone(self.compacted(timed("t3", "Example"))["calendar_link"])
+        self.assertIsNone(self.compacted(timed("t4", "Example", htmlLink="javascript:alert(1)"))["calendar_link"])
+        with self.assertRaises(snapshot.AgendaError) as caught:
+            self.compacted(timed("t5", "Example", htmlLink=7))
+        self.assertEqual(str(caught.exception), "AGENDA_EVENT_INVALID")
+
+    def test_timed_event_title_links_to_the_calendar_and_join_links_to_the_meeting(self):
+        snap = saved_snapshot([self.compacted(timed("t1", "Example sync", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00",
+                                                    htmlLink=self.CAL, hangoutLink=self.MEET, location="Room 2"))])
+        block = event_blocks(snap)[0]
+        self.assertEqual(links(block), [("Example sync", self.CAL), ("Join", self.MEET)])
+        self.assertEqual(card._plain(block), "Now · 9:30 AM–10:45 AM — Example sync · Join · Room 2")
+
+    def test_all_day_event_links_to_the_calendar_and_has_no_join_without_a_meeting(self):
+        snap = saved_snapshot([self.compacted(all_day(htmlLink=self.CAL))])
+        block = event_blocks(snap)[0]
+        self.assertEqual(links(block), [("Example all day", self.CAL)])
+        self.assertNotIn("Join", card._plain(block))
+
+    def test_a_meeting_without_a_calendar_link_never_links_the_title_to_the_meeting(self):
+        snap = saved_snapshot([self.compacted(timed("t6", "Example call", hangoutLink=self.MEET))])
+        self.assertEqual(links(event_blocks(snap)[0]), [("Join", self.MEET)])
+
+    def test_a_snapshot_saved_before_the_field_existed_is_still_valid_and_renders_unlinked(self):
+        old = {"id": "old", "title": "Example old", "start": "2026-03-08T11:00:00-05:00", "end": "2026-03-08T11:30:00-05:00",
+               "all_day": False, "location": None, "meeting_link": None, "source": "native", "days": ["2026-03-08"]}
+        blocks, counts = card.render(saved_snapshot([old]), now=NOW)
+        self.assertEqual(counts["events"], 1)
+        self.assertEqual(links(event_blocks(saved_snapshot([old]))[0]), [])
+
+    def test_a_non_string_calendar_link_in_a_saved_snapshot_is_refused(self):
+        bad = {**self.compacted(timed("t7", "Example")), "calendar_link": 5}
+        with self.assertRaises(card.CardError) as caught:
+            card.render(saved_snapshot([bad]), now=NOW)
+        self.assertEqual(str(caught.exception), "AGENDA_SNAPSHOT_INVALID")
+
+    def test_production_path_calendar_read_to_saved_snapshot_to_card(self):
+        calendar = CalendarEvents([timed("p1", "Example sync", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00",
+                                         htmlLink=self.CAL, hangoutLink=self.MEET), all_day(htmlLink=self.CAL + "2")])
+        database = AgendaSnapshotDB()
+        snapshot.run(1, True, calendar=calendar, now=NOW, connect=lambda: database)
+        loaded = snapshot.load(database)
+        self.assertEqual([event["calendar_link"] for event in loaded["events"]], [self.CAL, self.CAL + "2"])
+        rendered = event_blocks(loaded)
+        flat = [pair for block in rendered for pair in links(block)]
+        self.assertIn(("Example sync", self.CAL), flat)
+        self.assertIn(("Join", self.MEET), flat)
+        self.assertIn(("Example all day", self.CAL + "2"), flat)
