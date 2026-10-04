@@ -234,3 +234,40 @@ class EmployerFromThePageTests(unittest.TestCase):
             self.assertTrue(re.search(enrich.BOARD_HOST_COMPANY, board, re.I), board)
         for real in ("Stripe", "Acme Robotics, Inc.", "ServiceNow", "Community Health"):
             self.assertFalse(re.search(enrich.BOARD_HOST_COMPANY, real, re.I), real)
+
+
+class FirstPartyRelinkTests(unittest.TestCase):
+    URL = "https://www.revolut.com/en-GB/careers/position/chief-risk-officer-06107fff-99e7-4841-b66c-e101da5f1031/"
+
+    class Cur:
+        def __init__(self, rows):
+            self.rows, self.sql = rows, []
+
+        def execute(self, sql, params=()):
+            sql % tuple("x" for _ in params)                 # the statement must survive %-formatting (the 5 PM crash)
+            self.sql.append((sql, params))
+
+        def fetchall(self):
+            return self.rows
+
+    def test_requeues_a_first_party_link_that_passes_the_link_test(self):
+        cur = self.Cur([(7, self.URL), (8, "https://www.revolut.com/")])
+        self.assertEqual(enrich.relink_first_party(cur), 1)
+        update = [p for s, p in cur.sql if s.startswith("UPDATE")]
+        self.assertEqual(len(update), 1)
+        self.assertEqual(update[0][0], self.URL)
+
+    def test_revolut_403_is_retried_as_chrome(self):
+        html = JOB % ("2020-01-01", LONG.replace('"', "'"))
+        with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
+                mock.patch.object(enrich.impersonate, "fetch", return_value=Page(200, html)) as chrome:
+            result = enrich.read_page(self.URL, "Senior Data Engineer")
+        chrome.assert_called_once()
+        self.assertEqual(result["outcome"], "stale")
+
+    def test_other_hosts_403_stays_blocked(self):
+        with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
+                mock.patch.object(enrich.impersonate, "fetch") as chrome:
+            result = enrich.read_page("https://careers.example.com/j/1", "x")
+        chrome.assert_not_called()
+        self.assertEqual(result["reason"], "http_403")

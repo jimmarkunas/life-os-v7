@@ -222,3 +222,30 @@ class TwoDoubts(unittest.TestCase):
     def test_nothing_else_changes(self):
         self.assertEqual(qualify(US, us(fit=59, work_mode="unknown"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(fit=80), TODAY).status, ADMIT)
+
+
+class OtherLaneNeedsAPositiveMarket(unittest.TestCase):
+    """D102: Revolut's Argentina / Colombia / South Africa / Cyprus remote roles reached the board because the US Remote lane, which only asks for remote, took
+    what Scale-Up had rejected; their market is unknown (the market word list does not know those places), and unknown is not US."""
+
+    def facts(self, location):
+        return lanes.Facts(fit=77, market=lanes.market_of(location), work_mode="remote", posted=ago(2), route={"Scale-up": POSITIVE},
+                           geography=lanes.geography_status(location), located=True)
+
+    def test_a_scale_up_job_outside_london_is_not_taken_by_the_us_lane(self):
+        for location in ("Argentina - Remote · remote · Argentina", "Colombia - Remote · remote · Colombia", "South Africa - Remote · remote · South Africa",
+                         "Cyprus - Remote · remote · Cyprus", "Switzerland - Remote · remote · Switzerland"):
+            decision, lane, eligible = lanes.decide_all("Scale-Up", self.facts(location), TODAY)
+            self.assertEqual((decision.status, decision.reason, lane, eligible), (EXCLUDE, "not in London", "Scale-Up", []), location)
+
+    def test_london_and_uk_remote_still_admit(self):
+        for location in ("London · office · United Kingdom", "UK - Remote · remote · United Kingdom"):
+            self.assertEqual(lanes.decide_all("Scale-Up", self.facts(location), TODAY)[0].status, ADMIT, location)
+
+    def test_a_us_row_is_still_judged_by_its_own_lane(self):
+        decision, lane, _ = lanes.decide_all("US Remote", lanes.Facts(fit=80, market=None, work_mode="remote", posted=ago(1)), TODAY)
+        self.assertEqual((decision.status, lane), (ADMIT, "US Remote"))
+
+    def test_a_newsletter_uk_sponsor_job_is_still_taken_by_the_uk_lane(self):
+        facts = lanes.Facts(fit=80, market="UK", work_mode="onsite", posted=ago(2), route={"Skilled Worker": POSITIVE}, geography=POSITIVE, located=True)
+        self.assertEqual(lanes.decide_all("Newsletter", facts, TODAY)[1], "Skilled Worker")

@@ -11,7 +11,7 @@ import re
 from urllib.parse import urlsplit
 
 from lifeos.jobs.resolve import ats_match, search_match
-from lifeos.platform import usage, limits, tinyfish
+from lifeos.platform import impersonate, usage, limits, tinyfish
 from lifeos.jobs import ats_detail, jd, jsonld, lanes, quality, store
 from lifeos.platform.http import fetch
 
@@ -93,6 +93,8 @@ def read_page(url, title, lane=None, proof=None):
         valid_through = None
     else:
         page = fetch(url, timeout=15, max_hops=6)
+        if page.status in (401, 403) and (urlsplit(url).hostname or "").lower().endswith("revolut.com"):
+            page = impersonate.fetch(url, warm_url="https://www.revolut.com/en-GB/careers/")      # D101: Revolut refuses a plain request; the listing already reads as Chrome
         if page.status in (404, 410):
             return {"outcome": "closed"}
         if page.status != 200 or not page.html:
@@ -187,6 +189,22 @@ def save(connection, job_id, result):
                            ((result.get("reason") or "blocked")[:100], limits.ENRICH_MAX_ATTEMPTS, now, job_id))
 
 
+def relink_first_party(cursor, now=None):
+    """D101: a first-party career-page job (source web:*) has no resolver: its link IS its own page. When an audit or Enrich bounced it back to NEW or HOLD
+    (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
+    Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
+    now = now or _now()
+    cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND resolve_attempts < %s AND "
+                   "((status='NEW' AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason='link_mismatch' OR unresolved_reason LIKE 'Fit %% below 72')) OR "
+                   "(status='HOLD' AND unresolved_reason LIKE 'http_40%%' AND updated_at < %s)) LIMIT 500",
+                   (limits.RESOLVE_MAX_ATTEMPTS, now - timedelta(days=1)))
+    ids = [(r[0], r[1]) for r in cursor.fetchall() if not quality.link_problem(r[1])]
+    for job_id, url in ids:
+        cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='ats', unresolved_reason=NULL, enrich_attempts=0, updated_at=%s WHERE id=%s",
+                       (url, now, job_id))
+    return len(ids)
+
+
 def host_family(url):
     """Counts-only label for where a page lives: a known ATS domain, LinkedIn, or 'employer_site' (never a company name)."""
     host = (urlsplit(url or "").hostname or "").lower()
@@ -228,8 +246,12 @@ def mismatch_report(results, urls, source_of, previous):
 
 
 def run(limit, live):
+    relinked = 0
     with store.connect() as connection:
         store.ensure_schema(connection)
+        if live:
+            with connection.cursor() as cursor:
+                relinked = relink_first_party(cursor)
         with connection.cursor() as cursor:
             cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
@@ -238,7 +260,7 @@ def run(limit, live):
     lane_of = {r[0]: r[5] for r in fetched}
     source_of = {r[0]: r[6] for r in fetched}
     proof_of = {r[0]: (r[7] if len(r) > 7 else None) for r in fetched}
-    counts = {"picked": len(rows), "outcome": {}, "source": {}}
+    counts = {"picked": len(rows), "outcome": {}, "source": {}, "relinked": relinked}
     results = []
     for job_id, url, title, kind, _prev in rows:
         url = quality.canonical_job_url(url)
