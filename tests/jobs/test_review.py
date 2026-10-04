@@ -3,10 +3,10 @@ from unittest import mock
 
 from lifeos.jobs import review
 
-ROWS = [("Technical Program Manager", "London", "PUBLISHED", "web:su-revolut-ltd", 82, "ADMIT", "", None, None),
-        ("API Enterprise Sales Executive", "Madrid", "EXCLUDED_FIT", "web:su-revolut-ltd", 79, "EXCLUDE", "excluded: sales_role", None, None),
-        ("Senior Product Manager", "London", "EXCLUDED_FIT", "web:su-revolut-ltd", 55, "EXCLUDE", "Fit 55 below 60", None, None),
-        ("Director of Delivery", None, "NEW", "web:su-revolut-ltd", None, None, None, "http_403", "https://www.revolut.com/")]
+ROWS = [("Technical Program Manager", "London", "PUBLISHED", "web:su-revolut-ltd", 82, "ADMIT", "", None, None, None),
+        ("API Enterprise Sales Executive", "Madrid", "EXCLUDED_FIT", "web:su-revolut-ltd", 79, "EXCLUDE", "excluded: sales_role", None, None, None),
+        ("Senior Product Manager", "London", "EXCLUDED_FIT", "web:su-revolut-ltd", 55, "EXCLUDE", "Fit 55 below 60", None, None, None),
+        ("Director of Delivery", None, "NEW", "web:su-revolut-ltd", None, None, None, "http_403", "https://www.revolut.com/", None)]
 
 
 class Cur:
