@@ -273,6 +273,34 @@ class ProfessionGate(unittest.TestCase):
         self.assertEqual(lanes.detect_work_mode("New York, NY", "Vice President", ""), "unknown")      # acquisition filters never guess
 
 
+class JimsExclusions(unittest.TestCase):
+    """D114: Jim's five rejected roles are excluded by title; product-led fraud roles and Revolut's wanted roles are not."""
+
+    def hard(self, title):
+        got, _ = exclusions.check(title, "Acme", GOOD)
+        return got and got["id"]
+
+    def test_five_named_roles_are_excluded(self):
+        for title in ("Head of Revenue Enablement", "Revenue Enablement Lead", "Director of Engineering", "Technical Trainer", "Senior Event Manager"):
+            self.assertEqual(self.hard(title), "not_my_function", title)
+
+    def test_wanted_roles_are_not_caught(self):
+        for title in ("Head of Product (Fraud)", "Product Owner (Technical)", "Product Owner (UX)", "Entrepreneur in Residence",
+                      "Operations Manager (Revenue)", "Engineering Program Manager", "Product Designer (Platform)", "Partnerships Manager (Lifestyle)"):
+            self.assertIsNone(self.hard(title), title)
+
+    def test_plain_fraud_and_fincrime_roles_stay_excluded(self):
+        self.assertEqual(self.hard("Fraud Analyst"), "finance_risk_domain")
+        self.assertEqual(self.hard("Operations Manager (FinCrime)"), "finance_risk_domain")
+
+
+class BoilerplateIsNotARequirement(unittest.TestCase):
+    def test_equal_opportunity_and_application_legal_lines_are_dropped(self):
+        text = ("Requirements\n3+ years in product\nThat\u2019s why we encourage applications from people with diverse backgrounds\n"
+                "By submitting this application, I confirm that all the information given is correct")
+        self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))], ["3+ years in product"])
+
+
 class EducationGate(unittest.TestCase):
     def test_education_titles_and_school_employers_are_hard_exclusions(self):
         for title in ("Senior Manager of Ellucian Student Delivery Excellence & Enablement |Remote", "Director, Admissions Operations", "K-12 Program Manager"):

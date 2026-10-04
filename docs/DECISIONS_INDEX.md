@@ -115,3 +115,4 @@ This index is checked by a test: add a line here with every new decision.
 - D111 — First-party boards: open means open; the guards stop blocking their jobs (2026-10-04)
 - D113 — Amazon ingress: the Inbox and the Amazon label are not processed boundaries (2026-10-04)
 - D112 — A role the 9/30 purge archived is not a duplicate of the Ledger (2026-10-04)
+- D114 — Jim's five exclusions, product-led fraud roles kept, application boilerplate is not a requirement (2026-10-04)

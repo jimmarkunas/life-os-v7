@@ -43,6 +43,12 @@ def _heading(line):
     return None
 
 
+# D114: equal-opportunity and application-legal sentences sit under a "requirements" heading in some postings (Revolut) and match the requirement shape
+# ("background", "required"). They are not requirements and must never count as gaps.
+_BOILER = re.compile(r"encourage applications|diverse backgrounds?|by submitting (?:this|your) application|equal opportunit|we are committed to|"
+                     r"privacy (?:notice|policy)|reasonable adjustments?|regardless of (?:race|gender|age)", re.I)
+
+
 def parse(text):
     """Units in document order. A line that is a known heading switches section; long paragraphs split to sentences."""
     units, section, strict = [], "summary", False
@@ -59,7 +65,7 @@ def parse(text):
             continue
         pieces = [line.lstrip("• ").strip()] if line.startswith("•") or len(line) < 220 else \
             [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
-        units += [Unit(p, section, strict) for p in pieces if len(p) > 3]
+        units += [Unit(p, section, strict) for p in pieces if len(p) > 3 and not _BOILER.search(p)]
     if not any(u.section in ("required", "preferred", "duty") for u in units):
         units = [Unit(u.text, "required", False) for u in units]       # no recognisable headings: every sentence is judged on its shape
     return units
