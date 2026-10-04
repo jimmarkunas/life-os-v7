@@ -100,7 +100,7 @@ STAGES = {
     "jira-card": lazy("lifeos.jira.card"),
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
     "agenda-card": lazy("lifeos.agenda.card"),
-    "amazon-orders": lazy("lifeos.amazon.stage"),
+    "amazon-orders": lazy("lifeos.amazon.stage", floor=200),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),

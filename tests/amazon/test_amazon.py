@@ -108,8 +108,9 @@ class StageTests(unittest.TestCase):
         self.assertLess(trace.index(("notion", "POST_ONCE")), trace.index(("gmail", "modify")))
         self.assertLess(trace.index(("gmail", "modify")), trace.index(("gmail", "labels")))
         query = next(call[1] for call in gmail.calls if call[0] == "list")
-        self.assertIn("in:inbox", query)
-        self.assertIn("-label:Amazon", query)
+        self.assertNotIn("in:inbox", query)
+        self.assertNotIn("label:", query)
+        self.assertIn("after:", query)
         self.assertEqual(query.count("from:"), 3)
         self.assertIn("label-amazon", gmail.messages["m-1"]["label_ids"])
         self.assertNotIn("INBOX", gmail.messages["m-1"]["label_ids"])
@@ -189,7 +190,8 @@ class StageTests(unittest.TestCase):
         second = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual(first["filed"], 1)
         self.assertEqual(second["filed"], 0)
-        self.assertEqual(second["listed"], 0)
+        self.assertEqual(second["already_filed"], 1)
+        self.assertEqual(second["orders_same"], 1)
 
     def test_review_readback_change_to_unrelated_property_is_rejected(self):
         prior = orders.reconcile([event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
@@ -216,6 +218,102 @@ class StageTests(unittest.TestCase):
             stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertFalse(any(call[0] in ("POST_ONCE", "PATCH_ONCE") for call in notion.calls))
         self.assertNotIn("modify", [call[0] for call in gmail.calls])
+
+
+def _row(order_id, status, at, ids, total="12.34"):
+    evs = [event(i, s_, a, order_id=order_id, total=total if s_ == "ORDERED" else None) for i, s_, a in ids]
+    return orders.reconcile(evs, now=NOW)[0]
+
+
+class IngressRepairTests(unittest.TestCase):
+    """D113: the Amazon label and the Inbox are not processed boundaries."""
+
+    def test_message_already_carrying_the_amazon_label_and_in_inbox_is_ingested(self):
+        gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm", labels=["INBOX", "label-amazon"])})
+        counts = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=AmazonNotion(), now=NOW)
+        self.assertEqual((counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1))
+        self.assertNotIn("INBOX", gmail.messages["m-1"]["label_ids"])
+
+    def test_message_labeled_and_out_of_inbox_is_still_recorded_but_not_refiled(self):
+        gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm", labels=["label-amazon"])})
+        notion = AmazonNotion()
+        counts = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual((counts["orders_new"], counts["filed"], counts["already_filed"]), (1, 0, 1))
+        self.assertNotIn("modify", [c[0] for c in gmail.calls])
+
+    def test_query_is_bounded_by_the_last_accepted_event_minus_overlap(self):
+        prior = _row("123-1234567-1234567", "ORDERED", None, [("old", "ORDERED", "2026-09-09T12:00:00+00:00")])
+        notion = AmazonNotion({prior["Order ID"]: notion_page(prior["Order ID"], prior, "page-old")})
+        gmail = AmazonGmail({})
+        stage.run(10, False, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        query = next(c[1] for c in gmail.calls if c[0] == "list")
+        expected = int((datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc) - stage.OVERLAP).timestamp())
+        self.assertIn(f"after:{expected}", query)
+
+    def test_empty_data_source_uses_bootstrap_window_not_the_whole_mailbox(self):
+        gmail = AmazonGmail({})
+        stage.run(10, False, environ=TOKEN, gmail=gmail, notion=AmazonNotion(), now=NOW)
+        query = next(c[1] for c in gmail.calls if c[0] == "list")
+        self.assertIn(f"after:{int((NOW - stage.BOOTSTRAP).timestamp())}", query)
+
+    def test_missed_lifecycle_replays_in_order_across_orders_and_is_replay_safe(self):
+        a, b = "111-1111111-1111111", "222-2222222-2222222"
+        msgs = {}
+        for oid, base in ((a, "2026-09-29"), (b, "2026-09-30")):
+            for i, (local, hour) in enumerate((("auto-confirm", "08"), ("shipment-tracking", "12"), ("order-update", "18"))):
+                mid = f"{oid[:3]}-{i}"
+                msgs[mid] = message(mid, local, order_id=oid, at=f"{base}T{hour}:00:00+00:00", labels=["label-amazon"] if i == 1 else ["INBOX"])
+        gmail, notion = AmazonGmail(msgs), AmazonNotion()
+        first = stage.run(50, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(first["orders_new"], 2)
+        for oid in (a, b):
+            self.assertEqual(AmazonNotion._row(notion.rows[oid])["Status"], "DELIVERED")
+            self.assertEqual(len(AmazonNotion._row(notion.rows[oid])["Source Message IDs"].splitlines()), 3)
+        writes = len([c for c in notion.calls if c[0].endswith("_ONCE")])
+        second = stage.run(50, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual((second["orders_same"], second["filed"], second["failed"]), (2, 0, 0))
+        self.assertEqual(writes, len([c for c in notion.calls if c[0].endswith("_ONCE")]))
+
+    def test_recovery_over_limit_fails_closed_before_any_write(self):
+        msgs = {f"m-{i}": message(f"m-{i}", "auto-confirm", order_id=f"123-1234567-{1000000 + i}") for i in range(4)}
+        gmail, notion = AmazonGmail(msgs), AmazonNotion()
+        with self.assertRaises(stage.AmazonError):
+            stage.run(2, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertFalse(any(c[0].endswith("_ONCE") for c in notion.calls))
+        self.assertNotIn("modify", [c[0] for c in gmail.calls])
+
+    def test_explicit_since_overrides_the_watermark(self):
+        gmail = AmazonGmail({})
+        stage.run(10, False, environ={**TOKEN, "AMAZON_SINCE": "2026-09-10"}, gmail=gmail, notion=AmazonNotion(), now=NOW)
+        query = next(c[1] for c in gmail.calls if c[0] == "list")
+        self.assertIn(f"after:{int(datetime(2026, 9, 10, tzinfo=timezone.utc).timestamp())}", query)
+
+    def test_stale_lifecycle_regression_goes_to_review_never_overwrites_state(self):
+        prior = _row("123-1234567-1234567", "SHIPPED", None, [("o", "ORDERED", "2026-10-01T12:00:00+00:00"), ("s", "SHIPPED", "2026-10-02T12:00:00+00:00")])
+        notion = AmazonNotion({prior["Order ID"]: notion_page(prior["Order ID"], prior, "page-1")})
+        gmail = AmazonGmail({"late": message("late", "auto-confirm", at="2026-10-03T12:00:00+00:00")})
+        counts = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(counts["review"], 1)
+        self.assertEqual(AmazonNotion._row(notion.rows[prior["Order ID"]])["Status"], "REVIEW")
+        self.assertNotIn("modify", [c[0] for c in gmail.calls])
+
+    def test_no_second_datastore_or_scheduler_is_introduced(self):
+        import inspect
+        source = inspect.getsource(stage)
+        for banned in ("lifeos.jobs", "psycopg", "tinyfish", "TinyFish", "cron"):
+            self.assertNotIn(banned, source)
+
+
+class ProjectionTests(unittest.TestCase):
+    def test_pass_no_action_and_degraded_are_region_local(self):
+        from lifeos.amazon import projection
+        ok = {"listed": 3, "accepted": 3, "review": 0, "failed": 0}
+        self.assertEqual(projection.outcome(ok), "PASS")
+        self.assertEqual(projection.outcome({"listed": 0, "accepted": 0, "review": 0, "failed": 0}), "NO_ACTION")
+        self.assertEqual(projection.outcome({"listed": 3, "accepted": 2, "review": 1, "failed": 0}), "DEGRADED")
+        self.assertEqual(projection.outcome({"failed": 1}), "DEGRADED")
+        self.assertEqual(projection.outcome(None), "DEGRADED")
+        self.assertEqual(projection.outcome("AMAZON_FAILED:1of0:X"), "DEGRADED")
 
 
 class GmailClientTests(unittest.TestCase):

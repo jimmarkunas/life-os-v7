@@ -1,13 +1,17 @@
 """Gmail to canonical Notion Amazon Orders; filing follows a verified durable write."""
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import events, orders
 
-SENDERS_QUERY = "{" + " ".join("from:" + address for address in events.SENDERS) + "} in:inbox -label:Amazon"
+# D113: the sender allowlist is the only mailbox filter. Neither the Inbox nor the Amazon label is a processed boundary: a Gmail filter may
+# label mail on arrival, and a human may move it, so both would hide real orders. Idempotence belongs to LIFE OS (Source Message IDs on the order row).
+SENDERS_QUERY = "{" + " ".join("from:" + address for address in events.SENDERS) + "}"
+OVERLAP = timedelta(days=3)                 # re-read window behind the last accepted event; replay-safe because merging is idempotent
+BOOTSTRAP = timedelta(days=45)              # used only when the canonical data source has no dated order yet
 SCHEMA_TYPES = {
     "Order ID": "title", "Status": "select", "Ordered At": "date", "Latest Event At": "date",
     "Grand Total": "number", "Item Summary": "rich_text", "Item Count": "number",
@@ -237,10 +241,29 @@ def _config(environ):
     return source, Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": source})
 
 
-def _gmail_ids(gmail, limit):
+def _watermark(client, source_id):
+    """Latest accepted event time in the canonical data source (one sorted read), or None when no dated order exists."""
+    body = {"page_size": 1, "sorts": [{"property": "Latest Event At", "direction": "descending"}]}
+    try:
+        page = client.query_data_source(source_id, body)
+    except NotionError:
+        raise AmazonError("AMAZON_NOTION_QUERY_FAILED") from None
+    if not isinstance(page, dict) or not isinstance(page.get("results"), list):
+        raise AmazonError("AMAZON_NOTION_QUERY_INCOMPLETE")
+    stamps = [row["Latest Event At"] for row in (_row_from_page(item) for item in page["results"]) if row.get("Latest Event At")]
+    return max((_minute(stamp) for stamp in stamps), default=None)
+
+
+def window_query(watermark, now, since=None):
+    """The bounded Gmail search: allowlisted senders after (last accepted state - overlap). Never mailbox-wide."""
+    start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
+    return f"{SENDERS_QUERY} after:{int(start.timestamp())}"
+
+
+def _gmail_ids(gmail, limit, query):
     try:
         # The Gmail search has an exact sender allowlist; message headers are checked again before extraction.
-        return gmail.list_ids_complete(SENDERS_QUERY, limit)
+        return gmail.list_ids_complete(query, limit)
     except GmailError as error:
         code = str(error)
         if code in {"GMAIL_LIST_LIMIT_EXCEEDED", "GMAIL_LIST_LIMIT_INVALID", "GMAIL_LISTING_INCOMPLETE"}:
@@ -248,17 +271,22 @@ def _gmail_ids(gmail, limit):
         raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
 
 
-def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
+def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None):
     counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
-              "orders_same": 0, "filed": 0, "failed": 0}
+              "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
     try:
         gmail = gmail or Gmail.from_env()
         source_id, notion = _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
         if not source_id:
             raise AmazonError("AMAZON_CONFIG_MISSING")
         label_id = gmail.label_id("Amazon", create=False)
+        now = now or _now()
+        _schema(notion, source_id)
+        if since is None and (environ.get("AMAZON_SINCE") or "").strip():
+            since = _minute((environ.get("AMAZON_SINCE") or "").strip() + ("T00:00:00+00:00" if len((environ.get("AMAZON_SINCE") or "").strip()) == 10 else ""))
+        query = window_query(None if since else _watermark(notion, source_id), now, since)
         try:
-            message_ids = _gmail_ids(gmail, limit)
+            message_ids = _gmail_ids(gmail, limit, query)
         except AmazonError as error:
             if str(error) == "AMAZON_GMAIL_LIST_LIMIT_EXCEEDED":
                 counts["listed"] = limit + 1
@@ -273,9 +301,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
                 raise AmazonError("AMAZON_GMAIL_READ_FAILED") from None
             messages.append(message)
         events_by_order, review_by_order, accepted_ids = {}, {}, {}
+        # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
+        already_filed = {m["id"] for m in messages if label_id in m["label_ids"] and "INBOX" not in m["label_ids"]}
         for message in messages:
-            if label_id in message["label_ids"]:
-                continue
             parsed = events.extract(message)
             if parsed.get("status") == "REVIEW":
                 counts["review"] += 1
@@ -288,8 +316,6 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
             accepted_ids.setdefault(order_id, []).append(message["id"])
         if not events_by_order and not review_by_order:
             return counts
-        _schema(notion, source_id)
-        now = now or _now()
         plans = []
         for order_id in sorted(set(events_by_order) | set(review_by_order)):
             found = _query_order(notion, source_id, order_id)
@@ -341,6 +367,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
                 if review_only:
                     continue
                 for message_id in file_ids:
+                    if message_id in already_filed:
+                        counts["already_filed"] += 1
+                        continue
                     try:
                         gmail.apply_amazon(message_id, label_id)
                         labels = gmail.message_labels(message_id)

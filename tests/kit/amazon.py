@@ -21,7 +21,12 @@ class AmazonGmail:
     def list_ids_complete(self, query, limit):
         self.calls.append(("list", query, limit))
         self.trace.append(("gmail", "list"))
-        ids = [key for key, row in self.messages.items() if "INBOX" in row.get("label_ids", []) and "label-amazon" not in row.get("label_ids", [])]
+        import re
+        from datetime import datetime, timezone
+        after = re.search(r"after:(\d+)", query)
+        floor = datetime.fromtimestamp(int(after.group(1)), timezone.utc) if after else None
+        ids = [key for key, row in self.messages.items()
+               if floor is None or datetime.fromisoformat(row["received_at"]) >= floor]
         if len(ids) > limit:
             raise RuntimeError("GMAIL_LIST_LIMIT_EXCEEDED")
         return ids
@@ -102,6 +107,10 @@ class AmazonNotion:
     def query_data_source(self, source_id, body):
         self.calls.append(("QUERY", source_id, deepcopy(body)))
         self.trace.append(("notion", "QUERY"))
+        if "filter" not in body:                       # watermark read: newest Latest Event At first
+            dated = [p for p in self.rows.values() if p["properties"]["Latest Event At"]["date"]]
+            dated.sort(key=lambda p: p["properties"]["Latest Event At"]["date"]["start"], reverse=True)
+            return {"results": [deepcopy(p) for p in dated[:body["page_size"]]], "has_more": False}
         order_id = body["filter"]["title"]["equals"]
         if order_id in self.duplicates:
             page = self.rows.get(order_id)
