@@ -252,13 +252,15 @@ class FirstPartyRelinkTests(unittest.TestCase):
 
     def test_requeues_a_first_party_link_that_passes_the_link_test(self):
         cur = self.Cur([(7, self.URL), (8, "https://www.revolut.com/"), (9, "https://careers.example.com/careers/product-manager")])
-        self.assertEqual(enrich.relink_first_party(cur), 2 + 3)                  # two relinked, three stale first-party rows read again (D111)
+        self.assertEqual(enrich.relink_first_party(cur), 2 + 3 + 3)              # two relinked, three held rows read again, three stale first-party rows read again (D111)
         update = [(s, p) for s, p in cur.sql if s.startswith("UPDATE")]
-        self.assertEqual(len(update), 3)
+        self.assertEqual(len(update), 4)
         self.assertEqual((update[0][1][0], update[0][1][1]), (self.URL, None))   # a sound link needs no proof
         self.assertEqual((update[1][1][0], update[1][1][1]), ("https://careers.example.com/careers/product-manager", "unproven"))   # an ambiguous shape is proved by the page title
-        self.assertIn("EXCLUDED_STALE", update[2][0])
-        self.assertIn("notion_page_id IS NULL", update[2][0])
+        self.assertIn("status='HOLD' AND final_apply_url IS NOT NULL", update[2][0])             # a parked role that has a link is read once a day, in its own hour
+        self.assertIn(enrich.DAILY_SLOT, update[2][0])
+        self.assertIn("EXCLUDED_STALE", update[3][0])
+        self.assertIn("notion_page_id IS NULL", update[3][0])
 
     def test_revolut_403_is_retried_as_chrome(self):
         html = JOB % ("2020-01-01", LONG.replace('"', "'"))
@@ -329,6 +331,8 @@ class FirstPartyRelinkTests(unittest.TestCase):
         enrich.relink_first_party(cur)
         select = cur.sql[0][0]
         self.assertIn("'link_mismatch', 'jd_listing', 'jd_template'", select)
+        self.assertIn(enrich.DAILY_SLOT, select)
+        self.assertNotIn("updated_at <", select)                                          # a hold stamp the daily listing refresh keeps touching can never say "a day ago"
         self.assertIn("LEAST(resolve_attempts", [s for s, _ in cur.sql if s.startswith("UPDATE")][0])
 
 
