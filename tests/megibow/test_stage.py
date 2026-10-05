@@ -18,6 +18,7 @@ class FakeNotion:
         self.patches, self.created, self.updated = [], [], []
         self.review_rows = review_rows or []
         self.shape_ok = True
+        self.legacy = ""
 
     def call(self, method, path, body=None):
         if method == "GET" and path.startswith("/blocks/page/children"):
@@ -25,7 +26,8 @@ class FakeNotion:
         if method == "GET" and path.startswith("/blocks/para"):
             return {"id": "para", "type": "paragraph"}
         if method == "GET" and path.startswith("/blocks/cal/children"):
-            return {"results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}], "has_more": False}
+            extra = [{"id": "leg", "type": "paragraph", "paragraph": {"rich_text": CELL(self.legacy)}}] if self.legacy else []
+            return {"results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}] + extra, "has_more": False}
         if method == "GET" and path.startswith("/blocks/tbl/children"):
             return {"results": [{"id": k, "type": "table_row", "table_row": {"cells": [CELL(c) for c in v]}} for k, v in self.rows.items()], "has_more": False}
         if method == "GET" and path.startswith("/blocks/cal"):
@@ -168,6 +170,15 @@ class Stage(unittest.TestCase):
         self.assertEqual(n.rows, before)
         self.assertTrue(n.callout.startswith("DEGRADED"))
         self.assertIn("incomplete", n.callout)
+
+    def test_legacy_totals_seed_cumulative(self):
+        n = FakeNotion()
+        n.legacy = "Legacy totals: Outreach 20, Scheduled 13, Networking Calls 11, Recruiter Calls 36, Company Calls 15"
+        run(FakeGmail({}), FakeGcal([]), n)
+        self.assertEqual(n.rows["r1"][1], "95")
+        self.assertEqual(n.rows["r2"][1], "20")
+        n.legacy = "Legacy totals: Outreach 20"
+        self.assertIsNone(card.read_legacy(n, "cal"))
 
     def test_dry_run_changes_nothing(self):
         n = FakeNotion()

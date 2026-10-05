@@ -84,3 +84,18 @@ def write(client, block_id, text, table_rows, live):
         if table_ok and _plain_callout(after_meta) == text:
             return result
     raise _fail("VERIFY_FAILED")
+
+
+def read_legacy(client, block_id):
+    """The one-time seed for Cumulative: a paragraph inside the block reading "Legacy totals: Outreach 20, Scheduled 13, ..." -> counts, or None when there is none."""
+    from lifeos.megibow import classify as C                                   # noqa: PLC0415
+    for block in report_region.children(client, block_id, _fail):
+        text = report_region.plain(block)
+        if block.get("type") == "paragraph" and text.lower().startswith("legacy totals:"):
+            found = {}
+            for part in text.split(":", 1)[1].split(","):
+                name, _, number = part.strip().rpartition(" ")
+                if name in C.ACTIVITIES and number.isdigit():
+                    found[name] = int(number)
+            return found if set(found) == set(C.ACTIVITIES) else None
+    return None
