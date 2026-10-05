@@ -5,7 +5,13 @@ from lifeos.megibow import warnings as W
 from lifeos.megibow.windows import chicago
 
 DASH = "–"
-HEADER = ["Activity", "Cumulative"] + [f"Week -{n}" for n in range(7, 0, -1)] + ["Current Week"]
+
+
+def header(weeks):
+    """Each weekly column is headed by the Monday it begins on; the open week says so."""
+    labels = [f"{w.strftime('%b')} {w.day}" for w in weeks]
+    labels[-1] += " (current)"
+    return ["Activity", "Cumulative"] + labels
 
 
 def _cell(value):
@@ -14,7 +20,7 @@ def _cell(value):
 
 def table(proj):
     """6 rows x 10 columns of strings: header, Jim — Total, then the five activities."""
-    rows = [list(HEADER)]
+    rows = [header(proj["weeks"])]
     counts = [proj["counts"][w] for w in proj["weeks"]]
     rows.append(["Jim — Total", str(P.total(proj["cumulative"]))] + [_cell(P.total(c) if c else None) for c in counts])
     for activity in C.ACTIVITIES:
