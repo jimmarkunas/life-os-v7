@@ -275,6 +275,30 @@ class FirstPartyRelinkTests(unittest.TestCase):
         chrome.assert_not_called()
         self.assertEqual(result["reason"], "http_403")
 
+    def test_a_first_party_403_is_retried_as_the_announced_bot(self):
+        html = JOB % ("2020-01-01", LONG.replace('"', "'"))
+        with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
+                mock.patch.object(enrich.egress, "honest", return_value=Page(200, html)) as honest:
+            result = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer", first_party=True)
+        honest.assert_called_once()
+        self.assertEqual(result["outcome"], "ready")
+
+    def test_a_greenhouse_embed_page_is_read_from_the_boards_own_api(self):
+        shell = "<html><title>Job openings</title><script src='https://boards.greenhouse.io/embed/job_board/js?for=acme'></script>" + "<p>all roles</p>" * 500
+        api = {"title": "Senior Data Engineer", "html": LONG, "posted": "2026-10-01"}
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, shell)), mock.patch.object(enrich, "_api_job", side_effect=[None, api]) as read:
+            result = enrich.read_page("https://acme.example/job-openings/?gh_jid=4567", "Senior Data Engineer", first_party=True)
+        read.assert_called_with("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
+        self.assertEqual(result["outcome"], "ready")
+        self.assertIsNone(enrich._greenhouse_embed("https://acme.example/jobs/", shell))               # no gh_jid, no embed read
+
+    def test_a_mismatch_hold_is_read_again_once_a_day(self):
+        cur = self.Cur([(11, "https://careers.example.com/careers/product-manager")])
+        enrich.relink_first_party(cur)
+        select = cur.sql[0][0]
+        self.assertIn("'link_mismatch', 'jd_listing', 'jd_template'", select)
+        self.assertIn("LEAST(resolve_attempts", [s for s, _ in cur.sql if s.startswith("UPDATE")][0])
+
 
 class LocationFromThePageTests(unittest.TestCase):
     """D111: a board that states no place is read off the job page's own JSON-LD."""

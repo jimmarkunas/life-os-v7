@@ -376,6 +376,16 @@ def revolut_titles(search=None, fetch_many=None, fetch_page=None):
     return out
 
 
+def _replay(url, title):
+    """What today's reader makes of the held role's page: its outcome and reason code only."""
+    from lifeos.jobs import enrich                                                           # noqa: PLC0415
+    try:
+        got = enrich.read_page(url, title or "", lane="Scale-Up", first_party=True) if url else {}
+    except Exception as error:                                                               # noqa: BLE001 - a probe never stops on one page
+        return type(error).__name__
+    return f"{got.get('outcome')}:{got.get('reason') or ''}"
+
+
 def held_first_party(fetcher=fetch, rows=None):
     """Why do Scale-Up roles on their employer's own board sit on HOLD? Replays the link test on each held role's own page (counts and yes/no only):
     page status, whether the job-title words are in the page <title>, in the first 1500 characters of readable text, or anywhere in the HTML, and what the
@@ -400,7 +410,7 @@ def held_first_party(fetcher=fetch, rows=None):
         out.setdefault(source, []).append({
             "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
             "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
-            "greenhouse_embed": "greenhouse" in html.lower()})
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title)})
     return out
 
 
