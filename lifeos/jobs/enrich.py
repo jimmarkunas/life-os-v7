@@ -29,8 +29,8 @@ def _api_job(url):
     parts = urlsplit(url)
     host, segs = (parts.hostname or "").lower(), [s for s in parts.path.split("/") if s]
     if host.endswith("greenhouse.io"):
-        board = (re.search(r"[?&]for=([^&]+)", parts.query) or [None, segs[0] if segs else ""])[1]
-        ident = (re.search(r"[?&]token=(\d+)", parts.query) or [None, None])[1] or next(
+        board = (re.search(r"(?:^|&)for=([^&]+)", parts.query) or [None, segs[0] if segs else ""])[1]
+        ident = (re.search(r"(?:^|&)token=(\d+)", parts.query) or [None, None])[1] or next(
             (s for s in reversed(segs) if s.isdigit()), None)
         if board and ident:
             page = fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{ident}", timeout=limits.ATS_TIMEOUT_SECONDS,
