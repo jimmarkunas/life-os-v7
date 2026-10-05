@@ -1,11 +1,13 @@
 name: safety
-# SAFE-1.1 (D141): the hardening slice. Read-only, counts only; a failure pushes to the phone and fails the run.
+# SAFE-1.1 (D141, D142): the weekly hardening slice (Mondays, and on demand). Read-only, counts only; a failure pushes to the phone and fails the run.
 #   sql-smoke:   every SQL statement in lifeos/ is EXPLAINed on the real database with the real driver (plans, never executes).
 #   fit-golden:  the saved representative real-job set (lifeos/jobs/fit_golden.json) is re-scored with today's rules; any changed decision fails.
 #   fit-capture: manual only; prints a fresh saved set to commit after an intended rule change.
 # Its own concurrency group: it never blocks or replaces an hourly tick.
 on:
-  workflow_dispatch:                # manual only: the repository has exactly one recurring scheduler (D30/D52); a schedule here needs Jim's decision
+  schedule:
+    - cron: "17 13 * * 1"           # Mondays, 8:17 AM Chicago (CDT); Jim decided a weekly check on Oct 5 (D142). A scheduled run does both checks.
+  workflow_dispatch:
     inputs:
       stage:
         description: "all (both database checks), sql-smoke, fit-golden, or fit-capture (prints a new saved set; writes nothing)"
