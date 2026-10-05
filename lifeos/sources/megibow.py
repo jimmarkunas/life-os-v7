@@ -5,6 +5,7 @@ Flow: read every source (a failed source makes the run DEGRADED and the table is
 Lives under sources because it may read the Jobs tables for the companies Jim is pursuing; the engine itself (lifeos/megibow) imports platform only."""
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+import collections
 import contextlib
 import os
 
@@ -16,6 +17,8 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.outlook import OutlookError
 
 FORWARD_DAYS = 60
+DASHBOARD_PAGE = "3cf3c5a0-5926-8008-acfa-c0b4765caa92"        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
+REVIEW_SOURCE = "23953290-4ca5-4d94-802c-656aae0ddfc7"        # the MegIBOW Review data source
 CUTOVER_DEFAULT = "2026-10-05"
 
 
@@ -111,10 +114,10 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
             known = known_companies(connection)
     known = known or set()
     excluded = {d.strip().lower() for d in (environ.get("MEGIBOW_EXCLUDED_DOMAINS") or "").split(",") if d.strip()}
-    review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or "").strip().replace("collection://", "")
-    notion = notion or (_writer(environ) if review_id or environ.get("MEGIBOW_BLOCK_ID") else None)
+    review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or REVIEW_SOURCE).strip().replace("collection://", "")
+    notion = notion or _writer(environ)
     rows = []
-    if review_id and notion is not None:
+    if review_id and notion is not None and environ.get("MEGIBOW_REVIEW_DB_ID", "on") != "off":
         review.check_schema(notion, review_id)
         rows = review.read(notion, review_id)
     sent_to = {}
@@ -148,7 +151,9 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     cutover = date.fromisoformat((environ.get("MEGIBOW_CUTOVER") or CUTOVER_DEFAULT).strip())
     # Monday rollover: freeze every finished week from the cut-over on, once, with read-back; only from a complete read
     this_monday = monday(today)
+    counts["buckets"] = dict(collections.Counter(f"{o['status']}:{o['reason']}" for o in outcomes))
     proj = P.project(outcomes, today, frozen, legacy, cutover)
+    proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     if live and connection is not None and not degraded:
         for week in proj["weeks"]:
             if week < this_monday and week >= cutover and week not in frozen and proj["counts"][week] is not None:
@@ -157,6 +162,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
                 frozen[week], trusted[week] = dict(proj["counts"][week]), clean
                 counts["frozen"] += 1
         proj = P.project(outcomes, today, frozen, legacy, cutover)
+        proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     baseline = []
     for week in proj["weeks"][:-1]:
         c = proj["counts"][week]
@@ -178,11 +184,8 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     status = R.status(now, degraded, len(proj["review"]), None)
     text = status + (("\n" + R.notes(warns, degraded)) if R.notes(warns, degraded) else "")
     table = None if degraded else R.table(proj)
-    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip()
-    if not block_id:
-        counts["card"] = "not_configured"
-    else:
-        counts.update(card.write(notion, block_id, text, table, live))
+    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip() or card.find(notion, (environ.get("MEGIBOW_PAGE_ID") or DASHBOARD_PAGE).strip())
+    counts.update(card.write(notion, block_id, text, table, live))
     if degraded:
         _alert(environ, now, live, counts)
         raise MegibowError("MEGIBOW_DEGRADED:" + ";".join(counts["why"]))

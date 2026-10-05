@@ -20,6 +20,10 @@ class FakeNotion:
         self.shape_ok = True
 
     def call(self, method, path, body=None):
+        if method == "GET" and path.startswith("/blocks/page/children"):
+            return {"results": [{"id": "para", "type": "paragraph"}, {"id": "cal", "type": "callout"}], "has_more": False}
+        if method == "GET" and path.startswith("/blocks/para"):
+            return {"id": "para", "type": "paragraph"}
         if method == "GET" and path.startswith("/blocks/cal/children"):
             return {"results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}], "has_more": False}
         if method == "GET" and path.startswith("/blocks/tbl/children"):
@@ -83,7 +87,7 @@ def gevent(uid, who, start, created, summary="Intro", bridged=False):
     return e
 
 
-ENV = {"MEGIBOW_BLOCK_ID": "cal", "MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"}
+ENV = {"MEGIBOW_PAGE_ID": "page", "MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"}
 KNOWN = {"lensa"}
 
 
@@ -169,10 +173,6 @@ class Stage(unittest.TestCase):
         n = FakeNotion()
         run(FakeGmail({}), FakeGcal([]), n, live=False)
         self.assertEqual((n.patches, n.created, n.updated), ([], [], []))
-
-    def test_no_block_configured_is_reported(self):
-        counts = run(FakeGmail({}), FakeGcal([]), None, env={})
-        self.assertEqual(counts["card"], "not_configured")
 
 
 if __name__ == "__main__":

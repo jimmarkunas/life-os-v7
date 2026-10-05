@@ -26,6 +26,22 @@ def _plain_callout(meta):
     return report_region.plain({"type": "callout", "callout": (meta or {}).get("callout") or {}})
 
 
+def find(client, page_id):
+    """The one top-level callout on the page that holds exactly one 10-column table with 7 rows (the status text changes, the shape does not). Not exactly one -> DEGRADED, nothing written."""
+    found = []
+    for block in report_region.children(client, page_id, _fail):
+        if block.get("type") != "callout":
+            continue
+        try:
+            locate(client, block["id"])
+        except NotionError:
+            continue
+        found.append(block["id"])
+    if len(found) != 1:
+        raise _fail("BLOCK_NOT_FOUND")
+    return found[0]
+
+
 def locate(client, block_id):
     """-> (callout meta, table block, table rows). Anything unexpected raises: the last good block stays."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
