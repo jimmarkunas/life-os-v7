@@ -135,3 +135,4 @@ This index is checked by a test: add a line here with every new decision.
 - D131 — The Attention status line is the callout's own text (2026-10-04)
 - D132 — Network Intelligence NET-1a: a counts-only inspector reads the connections CSV attached to a private Notion page (2026-10-05)
 - D134 — MegIBOW: Jim's weekly job-search table is computed from sent mail and calendars by rules, with a Notion review list for what is unclear (2026-10-05)
+- D133 — Scheduler scopes: two schedulers, each sole within its own scope (Jim, 2026-10-04)
