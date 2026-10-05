@@ -97,3 +97,12 @@ Register one Azure app that signs in both mailboxes (steps are given one at a ti
 2. Add its token as the Actions secret `NOTION_AMAZON_TOKEN`.
 3. Add the existing Amazon Orders data source ID as the Actions secret `NOTION_AMAZON_DATA_SOURCE_ID`.
 4. The Amazon Orders stage uses the existing Gmail OAuth secrets; the documented `gmail.modify` scope permits adding the existing Amazon label and removing INBOX.
+
+### Network inspector (NET-1a, read-only)
+
+Measures the LinkedIn connections file by count before anything is stored. It writes nothing to Notion or the database and creates no table.
+
+1. In Notion, open the page that holds the connections CSV (the "LI Connection Database & Integration" page has it attached), choose the three-dot menu, **Connections**, and add the Notion integration whose token is `NOTION_API_TOKEN` (the Jobs integration). This gives it read access to that page only.
+2. Add the page's identifier as the Actions secret `NETWORK_HANDOFF_PAGE_ID` (it is an identifier, and this repository is public).
+3. Run the **network-inspect** workflow (Actions, Run workflow). The log shows one line of counts: rows, blank and duplicate profile addresses, companies that are not employers, distinct employers, the file's export date and age. It never shows a name, company, address or link.
+4. If a newer CSV is attached to the same page, the newest one is used. Only a file Notion itself hosts is read; an external link is refused.
