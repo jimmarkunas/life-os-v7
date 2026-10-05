@@ -138,3 +138,4 @@ This index is checked by a test: add a line here with every new decision.
 - D133 — Scheduler scopes: two schedulers, each sole within its own scope (Jim, 2026-10-04)
 - D135 — Network NET-1b: the seed import reads the Notion attachment and records people and positions independently (2026-10-05)
 - D136 — Attention rows carry the date the mail was received (2026-10-05)
+- D137 — Attention categories say what Jim owes (Reply needed, Review / decide, FYI); Other is retired (2026-10-05)

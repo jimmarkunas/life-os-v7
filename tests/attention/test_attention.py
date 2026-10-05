@@ -36,7 +36,7 @@ class Policy(unittest.TestCase):
 
     def test_mail_jim_routes_here_is_admitted_as_other_when_nothing_owns_it(self):
         self.assertEqual(self.verdict("ted@example.com", "Can you review the draft by Friday?")[0], "ADMIT")
-        self.assertEqual(self.verdict("ted@example.com", "Can you send me the numbers"), ("ADMIT", "Other"))
+        self.assertEqual(self.verdict("ted@example.com", "Can you send me the numbers"), ("ADMIT", "Reply needed"))
 
 
 def row(rid, item, category="Account", done=False, active=True, week=WEEK, medium="Gmail:1"):
@@ -96,7 +96,7 @@ class FakeNotion:
     def call(self, method, path, body=None):
         self.paths.append((method, path.split("/")[1]))
         types = dict(stage.SCHEMA) if self.schema_ok else {**stage.SCHEMA, "Done": "text"}
-        return {"properties": {k: ({"type": v, "select": {"options": [{"name": n} for n in ("Security", "Account", "Deadline", "Admin")]}} if v == "select" else {"type": v}) for k, v in types.items()}}
+        return {"properties": {k: ({"type": v, "select": {"options": [{"name": n} for n in ("Security", "Account", "Deadline", "Admin", "Reply needed", "Review / decide", "FYI")]}} if v == "select" else {"type": v}) for k, v in types.items()}}
 
     def query_data_source(self, source, body):
         self.paths.append(("POST", "data_sources"))
@@ -125,6 +125,8 @@ class FakeNotion:
         for k, v in properties.items():
             if k == "Received":
                 self.pages[page_id]["properties"][k]["date"] = v["date"]
+            elif k == "Category":
+                self.pages[page_id]["properties"][k]["select"] = v["select"]
             elif k == "Item":
                 self.pages[page_id]["properties"][k]["title"] = [{**t, "plain_text": t["text"]["content"], "href": t["text"].get("link", {}).get("url")} for t in v["title"]]
             else:
@@ -172,7 +174,7 @@ class Stage(unittest.TestCase):
         gm = FakeGmail({"g1": ("no-reply@example.com", "Debit card ending 4328 was added"), "g2": ("news@example.com", "Monthly update"),
                         "g3": ("r@example.com", "Interview request - action required")})
         out = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
-        self.assertEqual((out["created"], out["admitted"], out["admitted_other"], out["owned_elsewhere"], out["verified"]), (3, 3, 1, 1, True))
+        self.assertEqual((out["created"], out["admitted"], out["categories"].get("FYI"), out["owned_elsewhere"], out["verified"]), (3, 3, 1, 1, True))
         again = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
         self.assertEqual(again["created"], 0)
         self.assertEqual(len(notion.pages), 3)
@@ -244,6 +246,18 @@ class Stage(unittest.TestCase):
         self.assertEqual(self.go(old, gm)["linked"], 1)
         self.assertIsNotNone(old.pages["old"]["properties"]["Item"]["title"][0]["href"])
         self.assertEqual(self.go(old, gm)["linked"], 0)
+
+    def test_owes_categories_and_legacy_other_rows_are_recategorized_without_duplicates(self):
+        for sender, subject, expect in (("ted@example.com", "Can you confirm the plan", "Reply needed"), ("a@example.com", "Proposal attached for your review", "Review / decide"),
+                                        ("a@example.com", "Weekly summary", "FYI"), ("a@example.com", "Security alert: new sign-in", "Security")):
+            self.assertEqual(policy.decide(sender, subject), ("ADMIT", expect))
+        gm = FakeGmail({"g1": ("a@example.com", "Weekly summary")})
+        notion = FakeNotion([page("old", "Weekly summary", category="Other", medium="Gmail:g1")])
+        out = self.go(notion, gm)
+        self.assertEqual((out["created"], out["recategorized"]), (0, 1))
+        self.assertEqual(notion.pages["old"]["properties"]["Category"]["select"]["name"], "FYI")
+        self.assertEqual(len(notion.pages), 1)
+        self.assertEqual(self.go(notion, gm)["recategorized"], 0)
 
     def test_monday_rollover_carries_unresolved_once_and_keeps_history(self):
         notion = FakeNotion([page("a", "Open item", week=PRIOR, medium="Gmail:g1"), page("b", "Done item", week=PRIOR, done=True, medium="Gmail:g2")])

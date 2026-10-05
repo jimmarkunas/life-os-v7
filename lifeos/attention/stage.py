@@ -62,7 +62,7 @@ def _schema(notion, source_id):
     if not isinstance(props, dict) or any((props.get(n) or {}).get("type") != t for n, t in SCHEMA.items()):
         raise AttentionError("ATTENTION_SCHEMA_MISMATCH")
     names = {o.get("name") for o in (props["Category"].get("select") or {}).get("options", []) if isinstance(o, dict)}
-    if not {"Security", "Account", "Deadline", "Admin"} <= names:
+    if not {"Security", "Account", "Deadline", "Admin", "Reply needed", "Review / decide", "FYI"} <= names:
         raise AttentionError("ATTENTION_SCHEMA_MISMATCH")
 
 
@@ -160,7 +160,7 @@ def _outlook_proof(client, category, medium, labeled):
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
-    counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "admitted_other": 0, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
+    counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
               "reused": 0, "ambiguous": 0, "skipped_done": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
@@ -203,8 +203,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             admitted.append({"category": detail, "item": policy.item_text(c["subject"]), "url": c["url"], "medium": c["medium"], "received": c.get("received", "")})
         elif verdict == "OWNED":
             counts["owned_elsewhere"] += 1
-        if verdict == "ADMIT" and detail == "Other":
-            counts["admitted_other"] += 1
+        if verdict == "ADMIT":
+            counts["categories"][detail] = counts["categories"].get(detail, 0) + 1
     counts["admitted"] = len(admitted)
     for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
         medium = row["medium"]
@@ -213,7 +213,17 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
                 proofs[medium] = check(medium)
     for c in admitted:
         proofs[c["medium"]] = "present"
+    legacy = {(str(r["week"]), policy.normalize(r["item"])): r for r in rows if r["category"] == "Other"}
+    recategorize = []                                                    # rows filed as Other before the Reply needed / Review / FYI split: recategorized in place, never duplicated
+    for c in admitted:
+        for week in (str(this_week), str(this_week - timedelta(days=7))):
+            row = legacy.get((week, policy.normalize(c["item"])))
+            if row and c["category"] != "Other":
+                row["category"] = c["category"]
+                recategorize.append((row["id"], c["category"], week == str(this_week)))
+    counts["recategorized"] = sum(1 for _, _, current in recategorize if current)
     plan = reconcile.plan(admitted, rows, today, proofs)
+    plan["recategorize"] = [(rid, cat) for rid, cat, current in recategorize if current]
     dates = {c["medium"]: c["received"] for c in admitted if c.get("received")}
     plan["backfill"] = [(r["id"], dates[r["medium"]]) for r in rows if not r["received"] and r["medium"] in dates]          # rows written before the column existed
     counts["backfilled"] = len(plan["backfill"])
@@ -234,6 +244,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         for row_id in plan["deactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
             counts["deactivated"] += 1
+        for row_id, category in plan["recategorize"]:
+            notion.update_page_properties(row_id, {"Category": {"select": {"name": category}}})
         for row_id, received in plan["backfill"]:
             notion.update_page_properties(row_id, {"Received": {"date": {"start": received}}})
         for r in plan["upgrade"]:
