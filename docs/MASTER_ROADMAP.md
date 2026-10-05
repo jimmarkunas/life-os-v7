@@ -28,8 +28,8 @@ MegIBOW is **🔴 Blocked** until the first required Monday rollover proof point
 6. **Bills recurrence — real weekly/bi-weekly/quarterly/yearly cases** — Owner: `ChatGPT` — 🟡 In Progress.
 7. **Bills overdue count — reconcile 24 overdue bills** — Owner: `ChatGPT` — 🟡 In Progress.
 8. **Amazon missing-field behavior — real orders with no date/total** — Owner: `ChatGPT` — 🟡 In Progress.
-9. **Outlook tagging — create/confirm one real tagged example if the UI is required** — Owner: `Jim` — 🔵 To-Do.
-10. **Outlook tagging — verify V7 detects the tag in both intended accounts** — Owner: `ChatGPT` — 🔴 Blocked on row 9 if no suitable tagged example already exists.
+9. **Outlook tagging — real tagged example exists** — Owner: `Jim` — 🟢 Done. Existing Bytalos/TGP messages in `james.markunas@outlook.com` already carry the `LIFE OS Attention` category; no manual tagging action remains.
+10. **Outlook tagging — verify V7 detects the tag in the intended mailbox** — Owner: `ChatGPT` — 🟡 In Progress. Use the existing tagged messages as the fixture and prove the V7 Outlook path detects the category end to end; do not ask Jim to retag mail.
 
 ### Next delivery chain
 
