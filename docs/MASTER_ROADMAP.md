@@ -10,9 +10,10 @@ Last updated: October 5, 2026 (night). This file is the source; Notion shows the
 - **One owner per row:** every roadmap row is owned by exactly one of `ChatGPT`, `Jim`, or `Claude Code`. If ownership changes between steps, those are separate rows in delivery order.
 - **Order rule:** the roadmap is topological: prerequisite work appears before the work it unlocks. Blocked dependent work sits immediately after its unmet prerequisite where practical.
 - **Weekly hardening:** every week a small, fixed amount of work goes to things that stop silent bugs (below, `Safety net`).
+- **Privacy rule:** never commit source-derived personal identifiers to this public roadmap: no personal email addresses, full personal names, phone numbers, or street/postal addresses. Use neutral system/account/role labels instead. The fixed owner labels `Jim`, `ChatGPT`, and `Claude Code` are allowed.
 - **Safety rules:** private data never goes in this public repository; a failed step says so instead of showing old numbers as fresh; consequential database/secret/schema changes retain their existing approval gates.
 
-## Hard date: Wednesday, October 7, 3 PM CT (meeting with Matt)
+## Hard date: Wednesday, October 7, 3 PM CT
 
 MegIBOW is **🔴 Blocked** until the first required Monday rollover proof point. The weekly table fills itself every hour, Cumulative is seeded from the old sheet, warnings show, review items go to the MegIBOW Review list, and a failed refresh says DEGRADED. Still to prove after the rollover becomes available: the Monday rollover (first freeze Monday Oct 12), a real review item answered end to end, and the sixteen acceptance scenarios on the real dashboard. The 1:30 PM and 2:30 PM CT phone alerts fire only when a Wednesday refresh is failing.
 
