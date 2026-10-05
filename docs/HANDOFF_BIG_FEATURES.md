@@ -21,7 +21,7 @@ Read in this order:
 - **A schema change stops work for Jim's approval** (every new Hostinger table, Notion database or secret). Dry run is the default; writes need `--live`.
 - V7 must work with ChatGPT unavailable (D54). Fail closed. One writer per Daily Report region (D58). `hourly.yml` is at its 25-input limit: add none. New scheduled work is a stage in V7's tick or a `domains.yml` job with its own `DOMAIN_SECRETS` entry; **no new scheduler** (D123 on the scoping branch).
 - **Never read, download or print Jim's personal data** (the connections file, mail, calendar content) while working. A sandbox safety check blocked a download of the connections file in the scoping session, correctly. Real data is measured only by counts-only runs in Jim's own cloud.
-- No pull request unless Jim asks; never merge. Commit trailer: `Co-Authored-By: Claude <noreply@anthropic.com>` plus the session link.
+- No pull request unless Jim asks; never merge. Commit trailer: the usual Claude co-author line (no model name in it) plus the session link; copy it from earlier commits on the scoping branch.
 - Jim's style: plain language, no jargon, a default he can veto in one line, and decisions printed in chat rather than buried in documents. He gets frustrated by repeated questions and by guesses; when a fact is unknown, name the one fact and how to get it.
 
 ## 3. Status per feature
