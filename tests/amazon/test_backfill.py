@@ -17,11 +17,12 @@ class BackfillTests(unittest.TestCase):
 
         def ingest(limit, live, **kw):
             seen.append((kw["since"].strftime("%Y-%m"), kw["until"].strftime("%Y-%m"), live))
-            return {"listed": 3, "orders_new": 2, "filed": 1}
+            return {"listed": 3, "orders_new": 2, "filed": 1, "review_why": {"ORDER_ID_MISSING": 1}}
         total = backfill.run(0, False, environ={"AMAZON_SINCE": "2026-08-20"}, now=NOW, ingest=ingest)
         self.assertEqual([s[:2] for s in seen], [("2026-08", "2026-09"), ("2026-09", "2026-10"), ("2026-10", "2026-10")])
         self.assertTrue(all(live is False for *_, live in seen))
         self.assertEqual((total["months"], total["listed"], total["orders_new"], total["filed"]), (3, 9, 6, 3))
+        self.assertEqual(total["review_why"], {"ORDER_ID_MISSING": 3})
 
     def test_a_failed_month_is_reported_and_the_rest_continue(self):
         def ingest(limit, live, **kw):
