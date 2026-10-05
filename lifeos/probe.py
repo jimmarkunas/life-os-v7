@@ -376,6 +376,17 @@ def revolut_titles(search=None, fetch_many=None, fetch_page=None):
     return out
 
 
+def _embed_api(html, url):
+    """Veramed-style Greenhouse embed: the board API's status for the role (a number only)."""
+    from lifeos.jobs import enrich                                                           # noqa: PLC0415
+    target = enrich._greenhouse_embed(url or "", html or "")
+    if not target:
+        return None
+    board, token = re.search(r"for=([^&]+)", target).group(1), re.search(r"token=(\d+)", target).group(1)
+    return {"role": fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{token}", timeout=15, max_hops=2).status,
+            "board": fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs", timeout=15, max_hops=2).status}
+
+
 def _replay(url, title):
     """What today's reader makes of the held role's page: its outcome and reason code only."""
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
@@ -410,7 +421,7 @@ def held_first_party(fetcher=fetch, rows=None):
         out.setdefault(source, []).append({
             "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
             "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
-            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title)})
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "embed_api": _embed_api(html, url)})
     return out
 
 

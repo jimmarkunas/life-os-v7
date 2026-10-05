@@ -111,9 +111,7 @@ def read_page(url, title, lane=None, proof=None, first_party=False):
         embedded = _greenhouse_embed(url, page.html)
         if embedded:                                                  # an employer page that embeds a Greenhouse board (Veramed ?gh_jid=): the role is read from the board's own API
             api = _api_job(embedded)
-            if api and api.get("closed"):
-                return {"outcome": "closed"}
-            if api:
+            if api and not api.get("closed"):                         # a 404 here may only mean the embed names a different board: never closes a role, the page path decides
                 desc = jd.describe(api["html"], is_html=True)
                 return finish(title, desc, api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api", None, lane, strict, first_party)
         result = parse_html(url, title, page.html, lane, strict, first_party)
