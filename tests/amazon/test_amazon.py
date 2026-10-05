@@ -89,6 +89,15 @@ class ReconciliationTests(unittest.TestCase):
         shipment_with_amount = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00", total="99.00")
         self.assertIsNone(orders.reconcile([shipment_with_amount], now=NOW)[0]["Grand Total"])
 
+    def test_replaying_an_older_month_does_not_roll_the_row_back(self):
+        ordered = event("m-order", "ORDERED", "2026-09-30T12:00:00+00:00", total="12.34", subject="Ordered: Old text")
+        shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00", subject="Shipped: New text")
+        row, _ = orders.reconcile([ordered, shipped], now=NOW)
+        replay, reason = orders.reconcile([ordered], row, now=NOW)                          # only the earlier month is read again
+        self.assertIsNone(reason)
+        self.assertTrue(orders.same(row, replay))
+        self.assertEqual(replay["Item Summary"], "Shipped: New text")
+
     def test_idempotent_row_equality_ignores_only_reconciled_timestamp(self):
         first = event("m-1", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")
         row, _ = orders.reconcile([first], now=NOW)

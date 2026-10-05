@@ -119,8 +119,9 @@ def reconcile(events, existing=None, now=None):
     all_latest = max([latest_time] + ([existing_latest] if existing_latest else []))
     existing_subject = _text(existing.get("Last Source Subject"))
     last_subject = existing_subject if existing_latest and existing_latest > latest_time else _text(latest_event.get("subject"))
-    latest_summary = _text(latest_event.get("item_summary")) or _text(existing.get("Item Summary"))
-    latest_count = latest_event.get("item_count") if latest_event.get("item_count") is not None else existing.get("Item Count")
+    newer_than_row = not (existing_latest and existing_latest > latest_time)          # replaying an older month must not roll the item text back over a newer event's
+    latest_summary = (_text(latest_event.get("item_summary")) if newer_than_row else "") or _text(existing.get("Item Summary")) or _text(latest_event.get("item_summary"))
+    latest_count = latest_event.get("item_count") if latest_event.get("item_count") is not None and newer_than_row else existing.get("Item Count")
     total = next(iter(incoming_totals), prior_total)
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
