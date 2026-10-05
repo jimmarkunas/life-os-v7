@@ -391,7 +391,8 @@ def _embed_api(html, url, title=""):
         data = {}
     words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
     found = set(ats_match.norm(data.get("title") or "").split())
-    return {"role": got.status, "title_share": round(sum(w in found for w in words) / len(words), 2) if words else 0,
+    read = enrich._api_job(target)
+    return {"reader": "none" if not read else "closed" if read.get("closed") else "ok", "role": got.status, "title_share": round(sum(w in found for w in words) / len(words), 2) if words else 0,
             "content_chars": len(data.get("content") or ""), "api_title_words": len(found), "stored_title_words": len(words)}
 
 
