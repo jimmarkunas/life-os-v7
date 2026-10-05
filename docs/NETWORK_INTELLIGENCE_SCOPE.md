@@ -1,6 +1,6 @@
 # Network Intelligence: scope and roadmap (scoping only, no code)
 
-Status: scoped for Jim's review. Nothing here is built, and this document changes no schema, secret, workflow or `docs/DECISIONS.md`.
+Status (October 5, 2026): **NET-1a, the read-only inspector, is built and has run on the real file. Door B (the private Notion page attachment) is selected for the seed import. The three NET-1 tables are already approved by Jim. NET-1b, the importer, is the next implementation slice** and is built in D135 (`lifeos/network/{identity,store,importer}.py`, stage `network-import`, manual workflow `network.yml`). Everything beyond NET-1 is still scoping only.
 **Settled by Jim:** the **whole network (about 5,000 connections, and where each one works) lives in the Hostinger database already used for Jobs OS**, so the apply side of Jobs OS can recommend contacts for any job; everything runs in the cloud and is automated, with no local files, no commands and no lists he maintains; **ChatGPT keeps the data fresh through its connected LinkedIn app and its Drive access**; V7 does not touch Drive; learned company aliases and "no correction command" are approved; and there are **no small caps**. Still open, and it is the one thing only ChatGPT can answer: which door ChatGPT's batches use to reach Hostinger (section N). Assumed defaults, change on request: the first slice's triggers are a qualified job (`ADMIT`) and an applied job.
 
 ## 0. The shape of it in one paragraph
@@ -29,7 +29,7 @@ I first said the Notion page "LI Connection Database & Integration" forbids a se
 
 | Concern | Where | State |
 |---|---|---|
-| Network code | `lifeos/network/` | Does not exist. No people or contact code anywhere in V7. |
+| Network code | `lifeos/network/` | Exists: the read-only source, parser and inspector (NET-1a, run on the real file) and, with NET-1b, the identity classifier, the store and the importer. Missing: reconciliation, events, matching, surfacing. |
 | Hostinger access | `lifeos/platform/db.py` | SSH tunnel plus MySQL with retry and fixed codes. Autocommit is on and there is no transaction or upsert helper. |
 | Schema ownership | `lifeos/jobs/store.py` (Jobs), `lifeos/jira/store.py`, `platform/outlook_tokens.py` | Each OS owns its tables, with `CREATE TABLE IF NOT EXISTS` plus an information-schema check for added columns. Stages call `ensure_schema` even on dry runs, so a network stage must create tables only when live. |
 | Company normalization | `lifeos/platform/names.py` | `core(name)` drops legal suffixes and trailing generic words (so "Acme Technologies, Inc." gives the key `acme`). It is a comparator toolkit with no key generator, and `same_company` uses a prefix rule that is not transitive, so it must not be used as a key. A second, simpler normalizer lives in `jobs/identity.py`. |
@@ -44,9 +44,9 @@ I first said the Notion page "LI Connection Database & Integration" forbids a se
 
 | Capability | Status | Note |
 |---|---|---|
-| People and positions store | MISSING | |
-| Batch validator and chunked importer | MISSING | |
-| Person identity (profile-URL key, collision handling) | MISSING | |
+| People and positions store | BUILT (NET-1b, tables approved) | |
+| Batch validator and chunked importer | BUILT for the seed (NET-1b); the roster validator for later batches is NET-2 | |
+| Person identity (profile-URL key, collision handling) | BUILT (NET-1b): a person exists only for a valid, unique profile address | |
 | Company key | PARTIAL | `core()` is reusable; a key built as the joined core tokens needs no platform change. |
 | Transactional write | MISSING | A tiny platform helper is needed so a position change and its event commit together. |
 | Change detection and events | MISSING | |
@@ -104,20 +104,20 @@ Placement: `lifeos/network/` (identity, store, inbox, validate, reconcile, match
 
 ## E. Hostinger schema (minimum, added by slice)
 
-Added only after Jim approves each slice's tables. Table creation happens only on a live run. **No table is edited by hand.** Everything in them is written by V7 from validated evidence or copied from a tick Jim makes in Notion.
+**`v7_network_people`, `v7_network_positions` and `v7_network_batches` are approved (Jim, October 5).** Later slices' tables are added only after Jim approves them. Table creation happens only on a live run. **No table is edited by hand.** Everything in them is written by V7 from validated evidence or copied from a tick Jim makes in Notion.
 
 `v7_network_people` (NET-1)
 - `id` (key), `person_key` unique (hash of the identity key), `url_key` unique and nullable (normalized profile address: scheme, host, case, query string and trailing slash removed), `display_name`, `connected_on` date, `first_seen`, `last_observed`, `status` (`ACTIVE`, `REMOVED`), `history_coverage` (`SEED_ONLY`, `PARTIAL`, `UNKNOWN`), timestamps.
 - No email column; evidence that carries one has it dropped on import (decision 4). The brief's `refresh_state` and `refresh_due_at` become a derived "due for a check" computed from `last_verified` and job relevance, not a queue table.
-- Identity rule: the URL key is the identity. With no URL, fall back to normalized name plus company key, and treat any collision as ambiguous and unmerged. Two people with one name never merge; a changed employer never creates a new person.
+- Identity rule (corrected by the real seed): the URL key is the identity. **NET-1 creates a person only for a valid, unique profile address.** A row with no address is held and counted, never guessed from name plus employer; rows sharing one address are held together; an address that is not a profile address is rejected. Two people with one name never merge; a changed employer never creates a new person. Person existence and position existence are independent: a person with no usable employer exists with no position row.
 
 `v7_network_positions` (NET-1)
-- `id`, `person_id`, `company_key` (joined `core()` tokens), `company_name`, `title` nullable, `position_state` (`CURRENT`, `SUPERSEDED`), `first_observed`, `last_observed`, `last_verified` (the latest observation that confirmed it), `source_kind` (`SHEET_VIA_CHATGPT`, `LINKEDIN_APP_VIA_CHATGPT`), `source_ref` (the evidence batch label, never a URL), `source_observed_at`, `material_hash` (unique per person, company, title and source), timestamps.
+- `id`, `person_id`, `company_key` (joined `core()` tokens), `company_name`, `title` nullable (a usable employer with a blank title creates a position with a NULL title), `position_state` (`CURRENT`, `SUPERSEDED`), `first_observed`, `last_observed`, `last_verified` (the latest observation that confirmed it), `source_kind` (`SHEET_VIA_CHATGPT`, `LINKEDIN_APP_VIA_CHATGPT`), `source_ref` (the evidence batch label, never a URL), `source_observed_at`, `material_hash` (unique per person, company, title and source), timestamps.
 - `SUPERSEDED` means "no longer the listed position as of a later observation". It does not assert that employment ended, so no end date is invented.
 - Index on (`company_key`, `position_state`) for matching.
 
 `v7_network_batches` (NET-1)
-- `id`, `batch_key` unique (a hash of the batch consumed), `batch_kind`, `observed_from` and `observed_to`, row and outcome counts, the apply cursor, `status` (`RECEIVED`, `APPLYING`, `COMPLETE`, `FAILED`), `imported_at`. This is the idempotency record ("have I already consumed this batch?"), the chunk cursor, and the "last evidence received" freshness line.
+- `id`, `batch_key` unique (a hash of the batch consumed), `batch_kind`, `observed_from` and `observed_to`, row and outcome counts (source rows, deterministic people accepted, positions accepted, identity-ambiguous rows held, rejected rows), the apply cursor, `status` (`RECEIVED`, `APPLYING`, `COMPLETE`, `FAILED`), `imported_at`. This is the idempotency record ("have I already consumed this batch?"), the chunk cursor, and the "last evidence received" freshness line.
 
 `v7_network_events` (NET-2)
 - `id`, `person_id`, `event_type` (`PERSON_IMPORTED`, `CURRENT_POSITION_CONFIRMED`, `COMPANY_CHANGED`, `TITLE_CHANGED`, `PROFILE_UNRESOLVED`, `CONFLICT_DETECTED`), `old_position_id`, `new_position_id`, `observed_at`, `event_hash` unique, `created_at`. Append-only and idempotent. This is the history neither the Sheet nor ChatGPT keeps.
@@ -180,10 +180,10 @@ The pace is the connector's, which NET-0 measures. V7 does not ask, cap or queue
    - same company key and same title: confirm (`last_verified` and `last_observed` advance); no event.
    - same company key, different title: previous position `SUPERSEDED`, new position `CURRENT`, one `TITLE_CHANGED` event. No promotion is inferred.
    - different company key: previous `SUPERSEDED`, new `CURRENT`, one `COMPANY_CHANGED` event.
-   - blank company or title where a value was stored: no change and no event; the stored value simply ages.
+   - blank company or title where a value was stored: no change and no event; the stored value simply ages. A blank or non-employer company never supersedes an accepted position, and a blank title never erases an accepted title.
    - a company value that is the person's own name or freelance, independent or self-employed wording is recorded as given but flagged `NOT_AN_EMPLOYER` and never matches a job.
-   - person not seen before: create the person and the position, one `PERSON_IMPORTED` event. (The first ROSTER batch creates about 5,000 of these and no change events beyond that.)
-   - two rows that resolve to one identity with conflicting positions, or a collision with no URL: counted as ambiguous, no write for that person. **Conflicts never silently overwrite** (the brief's rule): the last accepted state stays and the conflict is flagged.
+   - person not seen before: create the person (always, when identity is deterministic) and, only when the employer is usable, the position (a blank title is allowed); no usable employer means a person with no position. One `PERSON_IMPORTED` event (NET-2). (The first ROSTER batch creates about 5,000 of these and no change events beyond that.)
+   - two rows that resolve to one identity with conflicting positions, or a row with no URL: counted as an identity-ambiguous hold, no person and no position written (a later observation with a deterministic identity may resolve it). **Conflicts never silently overwrite** (the brief's rule): the last accepted state stays and the conflict is flagged.
    - **Trust:** evidence is an observation with provenance, never authority. A newer `LINKEDIN_APP` observation outranks an older `SHEET` one; an older observation never replaces a newer one.
 4. People absent from a newer batch are left untouched. Absence proves nothing, so nothing is demoted or removed for it.
 5. When the last chunk is applied, mark the batch `COMPLETE`, write the batch record, and read the tables back. Replaying a batch is a no-op (unique hashes), so a second run creates zero people, zero positions and zero events.
@@ -216,7 +216,7 @@ Examples (synthetic):
 | Slice | Outcome | Likely files | Schema | Tests and UAT | Depends on | Risks | Size | PRs |
 |---|---|---|---|---|---|---|---|---|
 | **NET-0 ChatGPT capability check (no V7 code)** | One ChatGPT run, nothing written, answers by capability and number only: can its LinkedIn app list all connections with employers, how many per call, any daily cap; what it can write to (Hostinger, Notion, Drive, GitHub), how large; the Sheet's real columns. Picks the door (section N). | none (the prompt in section N) | none | The answers; no name or row content written anywhere in this repository | Jim runs it | The connector may return less than hoped, and the door may need something new | S | 0 |
-| **NET-1 Door, validator and chunked importer** | A batch reaches Hostinger through the chosen door; V7 validates it, applies it in chunks, and records people and positions without duplicates; replay creates nothing; dry run by default; a 5,000-row roster applies inside the runtime budget. | `lifeos/network/{identity,inbox,validate,store}.py`, `platform/db.py` transaction helper, `run.py` line, a step in `finish` (continue-on-error), `docs/SETUP.md` | `v7_network_people`, `v7_network_positions`, `v7_network_batches` (and `v7_network_inbox` for door A) | table-driven validator and identity tests (tracking parameters, case, trailing slash, same-name collision, blank fields, own-name company, future dates, oversized and implausibly small batches), a 5,000-row synthetic roster applied in chunks and resumed after a crash, replay twice equals once, an unreachable door is DEGRADED and keeps the old data | NET-0, the door, table approval | Evidence quality depends on ChatGPT; the validator is the guard | M to L | 1 |
+| **NET-1 Door, validator and chunked importer** (NET-1a inspector built and run; NET-1b importer in D135; door B resolved for the seed; the three tables approved, so no approval dependency) | A batch reaches Hostinger through the chosen door; V7 validates it, applies it in chunks, and records people and positions without duplicates; replay creates nothing; dry run by default; a 5,000-row roster applies inside the runtime budget. Real seed acceptance: 3,453 source rows, 3,346 people, 3,244 positions, 107 held (`3453 / 3346 / 3244 / 107`). | `lifeos/network/{identity,inbox,validate,store}.py`, `platform/db.py` transaction helper, `run.py` line, a step in `finish` (continue-on-error), `docs/SETUP.md` | `v7_network_people`, `v7_network_positions`, `v7_network_batches` (and `v7_network_inbox` for door A) | table-driven validator and identity tests (tracking parameters, case, trailing slash, same-name collision, blank fields, own-name company, future dates, oversized and implausibly small batches), a 5,000-row synthetic roster applied in chunks and resumed after a crash, replay twice equals once, an unreachable door is DEGRADED and keeps the old data | NET-0, the door, table approval | Evidence quality depends on ChatGPT; the validator is the guard | M to L | 1 |
 | **NET-2 Change events, digest line, stall alert** | A second observation yields exactly the right change events; the push line fires once per batch; a week without a batch alerts once. | `lifeos/network/{reconcile,freshness,alerts}.py` | `v7_network_events` | title change, company change, blank field, new person, absent person, conflicting rows; stall alert once | NET-1, the alert fix (P2), ChatGPT's module live | Changes are only as fresh as ChatGPT's batches | M | 1 |
 | **NET-3 Job match (no surface yet)** | A dry-run stage reports, by count, how many admitted jobs have leads and how many leads each, over the whole roster. | `lifeos/network/match.py`, `lifeos/sources/network_leads.py`, `run.py` line | none | the three examples above, tier order, five-lead cap, no weak fill, possible-match tier, own-name company never matches, a 5,000-person roster matched fast | NET-2 | A missed alias gives a miss, not a wrong match | M | 1 |
 | **NET-4 Surface** | Leads appear on the job page in one machine-owned block with Dismiss and Same-company ticks; unchanged leads cause no write; both ticks are remembered. | marker-block writer generalized from `report_region`, one step in the `finish` job after publish | `v7_network_dismissals`, `v7_network_aliases` | owned block replaced, nothing else touched, read-back, hash skip, page-gone and Ledger-target guards, tick read-back and persistence | NET-3, decision 3 | A human editing inside the owned block loses the edit; documented | M | 1 |
@@ -268,7 +268,7 @@ No second scheduler, workflow family or workflow input. No local files, commands
 | 9 | ChatGPT's connected LinkedIn app, run by ChatGPT; V7 cannot call it, so its output arrives as batches through a door to Hostinger (section N). |
 | 10 | Only forward accumulation, one export at a time. Retroactive history is not promised. |
 | 11 | MVP adapters: the Sheet roster and the connected app, both via ChatGPT. Later: per-site public pages. No hand-correction path. |
-| 12 | No export import by V7: ChatGPT reads the Sheet already in Drive and sends it as the first ROSTER batch (section N); nothing is local and V7 never reads Drive. |
+| 12 | The seed export is read mechanically by V7 from the private Notion page attachment (door B, NET-1b); V7 still never reads Drive, and nothing is local. Later ROSTER and CHECK batches use the same door or ChatGPT's (section N). |
 | 13 | Profile-address identity; name-only collisions stay unmerged and are counted. |
 | 14 | The schema allows several current positions per person; the export can only show one, so concurrent roles wait for a richer source. |
 | 15 | Fresh to 45 days, aging to 120, stale beyond, always with the date. Defaults, tunable. |
@@ -281,15 +281,15 @@ No second scheduler, workflow family or workflow input. No local files, commands
 ## N. The door to Hostinger, and ChatGPT's side (cloud, automatic)
 
 **Fastest path to the import (October 5, Jim: "we need the fastest solution for the import").** The original LinkedIn export, `LI_Connections_20260907.csv`, is already attached to the Notion page "LI Connection Database & Integration". That file is the whole roster, in the cloud, in LinkedIn's own clean format, and V7's existing Notion integration can read it. So door B needs **no new setup beyond sharing that one page**, no ChatGPT step, no Drive and no new component:
-1. **Done (code, tested on invented data, pushed):** `python -m lifeos.run network-inspect` (manual workflow `network.yml`) reads that attachment in memory and prints counts only. No table, no write.
-2. **Jim, about two minutes:** share the page with the Jobs Notion integration, add the page identifier as the secret `NETWORK_HANDOFF_PAGE_ID` (steps in `docs/SETUP.md`), run the workflow. The one line it prints is the real file's shape: rows, blanks, duplicate profile keys, employer-less companies, distinct employers.
-3. **Jim, one word:** approve the three tables (`v7_network_people`, `v7_network_positions`, `v7_network_batches`).
-4. **Next code (the importer):** reuse the same reader and parser, apply the roster in chunks inside the runtime budget, resumable and replay-safe. First live run is a manual workflow (dry first, then live): about 5,000 people in Hostinger.
+1. **Done (October 5):** the inspector ran on the real file: 3,453 rows, 107 with no profile address, 0 invalid, 0 duplicate keys, 2,485 distinct employers. (Originally:) `python -m lifeos.run network-inspect` (manual workflow `network.yml`) reads that attachment in memory and prints counts only. No table, no write.
+2. **Done (Jim):** the page is shared, `NETWORK_HANDOFF_PAGE_ID` is set and the inspector ran. (Originally: share the page with the Jobs Notion integration, add the page identifier as the secret `NETWORK_HANDOFF_PAGE_ID` (steps in `docs/SETUP.md`), run the workflow. The one line it prints is the real file's shape: rows, blanks, duplicate profile keys, employer-less companies, distinct employers.
+3. **Done (Jim, October 5):** the three tables (`v7_network_people`, `v7_network_positions`, `v7_network_batches`) are approved.
+4. **Built (NET-1b, D135):** the importer reuses the same reader and parser and applies the roster in chunks, resumable and replay-safe. First live run is the manual workflow `network.yml` (stage `import`, dry first, then live). Measured acceptance, not "about 5,000": 3,453 source rows, 3,346 deterministic people, 3,244 initial positions, 107 identity-ambiguous rows held (`3453 / 3346 / 3244 / 107`). The 102 people with no usable employer exist without a position.
 5. **Refresh after that:** attach a newer CSV to the same page (Jim in ten seconds from his phone, or ChatGPT if it can attach a file) and the next tick imports it; ChatGPT's CHECK batches use the same door later.
-This is the fastest because it removes every unknown from the critical path: no Google setup, no dependence on what ChatGPT's connector can do, no Hostinger write path to build. The data still lives only in Hostinger; Notion is the doorway for a moment. NET-0's ChatGPT prompt remains useful for the *refresh* (pace and limits), but the import no longer waits for it.
+This is the fastest because it removes every unknown from the critical path: no Google setup, no dependence on what ChatGPT's connector can do, no Hostinger write path to build. The data still lives only in Hostinger; Notion is the doorway for a moment. NET-0's ChatGPT prompt remains useful only for later LinkedIn-app refresh capability (pace and limits); it is not a blocker for NET-1, and door B is no longer an open question for the seed import.
 
 
-**The one open technical question.** ChatGPT must get its batches into Hostinger. Nothing in the existing contracts lets ChatGPT write to the Hostinger database: the database is reached by V7 through a locked SSH tunnel whose key is "for the database tunnel only" (D51 amendment), and in the existing design ChatGPT hands evidence to a runtime that persists it. Three doors, and the choice turns on a fact only ChatGPT can report:
+**The open technical question is now only about later refresh batches (not the seed).** ChatGPT must get its batches into Hostinger. Nothing in the existing contracts lets ChatGPT write to the Hostinger database: the database is reached by V7 through a locked SSH tunnel whose key is "for the database tunnel only" (D51 amendment), and in the existing design ChatGPT hands evidence to a runtime that persists it. Three doors, and the choice turns on a fact only ChatGPT can report:
 
 | Door | How it works | What it needs | Verdict |
 |---|---|---|---|
@@ -313,29 +313,30 @@ Rejected: any V7 access to Drive or a Sheets reader; any local import or downloa
 
 Settled by Jim: the whole roster in Hostinger; everything in the cloud and automated; no local sheet, commands or hand-kept lists; ChatGPT keeps the data fresh through its connected app and Drive access; V7 does not touch Drive; no small caps; learned aliases; no correction command.
 
-1. **The door** (section N): the one open question. Default B (a private file drop in Notion that V7 loads into Hostinger); A if ChatGPT can already write to Hostinger (tell me how) or you want a small endpoint built. NET-0's prompt answers the facts.
+1. **The door:** settled for the seed import: B, the private Notion page attachment (do not ask again). A remains an option only for later ChatGPT refresh batches.
 2. **Triggers.** The canon's four; the first slice covers a qualified job (`ADMIT`) and an applied job. `REVIEW` jobs are not included by default.
 3. **Fields and email.** Email addresses are not stored. The Notion block shows display name, listed company and title, observation date, a profile link and a fixed reason.
-4. **The canon clause** (section 0a): on hold, as you asked.
+4. **The canon clause** (section 0a): on hold, as you asked. The Notion page is not edited.
 5. **Erasure and retention for people** (recommended: a `REMOVED` status that excludes a person from matching, set when Jim asks).
-6. **The tables:** `v7_network_people`, `v7_network_positions` and `v7_network_batches` are **approved (Jim, October 5)**; `v7_network_inbox` (door A only), `v7_network_events`, `v7_network_dismissals` and `v7_network_aliases` are approved slice by slice.
+6. **The tables (settled, do not ask again):** `v7_network_people`, `v7_network_positions` and `v7_network_batches` are **approved (Jim, October 5)**; `v7_network_inbox` (door A only), `v7_network_events`, `v7_network_dismissals` and `v7_network_aliases` are approved slice by slice.
 
 ## P. First build slice
 
 ```text
 FIRST BUILD SLICE:
-NET-0 ChatGPT capability check (no V7 code), then NET-1 door, validator and chunked importer
+NET-1b importer (NET-1a inspector is built and has run; the schema is approved; door B is settled). NET-0 is optional and only for later refresh capability.
 
 WHY FIRST:
-NET-0 settles what nobody here has verified: whether ChatGPT's LinkedIn app can list all 5,000 connections with employers, its limits, how a batch can reach Hostinger without retyping rows, and the Sheet's columns. NET-1 then builds the part V7 owns (validation, identity, chunked apply, history) against real facts.
+(Original rationale, kept for the refresh work.) NET-0 settles what nobody here has verified: whether ChatGPT's LinkedIn app can list all 5,000 connections with employers, its limits, how a batch can reach Hostinger without retyping rows, and the Sheet's columns. NET-1 then builds the part V7 owns (validation, identity, chunked apply, history) against real facts.
 
 EXPECTED FILES (NET-1):
-lifeos/network/__init__.py, identity.py, inbox.py, validate.py, store.py, one line in lifeos/run.py, a step in the hourly finish job, tests/network/*, a docs/SETUP.md section
+lifeos/network/identity.py, store.py, importer.py, one line in lifeos/run.py, the manual `network.yml` workflow (no hourly step: the seed is one batch and a replay is a no-op), tests/network/*, tests/kit/mysqlite.py
 
 SCHEMA:
-NONE for NET-0. NET-1: v7_network_people, v7_network_positions, v7_network_batches (and v7_network_inbox for door A), after Jim's approval.
+NET-1: v7_network_people, v7_network_positions, v7_network_batches: already approved (Jim, October 5). No inbox table (door B).
 
-ACCEPTANCE:
+ACCEPTANCE (NET-1b):
+The real attached file: dry run counts equal the inspector's; a live run gives `3453 / 3346 / 3244 / 107` with the batch COMPLETE and Hostinger read-back agreeing; a rerun writes zero new people or positions; no email is stored. Deterministic proof: an invented seed of the same shape, a 5,000-row scale run, resume after a simulated failure, replay twice equals once. (Earlier NET-0/NET-1 criteria follow.)
 NET-0: the five answers in the prompt, by capability and number only. NET-1: validator and identity tests pass on synthetic batches (tracking-parameter and case variants of profile addresses, same-name collisions, blank fields, own-name companies, future dates, oversized and implausibly small batches, commas and emoji in names); a 5,000-row synthetic roster applies in chunks and resumes after a simulated crash; a dry run prints counts only; nothing is written anywhere; replay is a no-op; the full suite passes.
 
 DO NOT BUILD YET:
