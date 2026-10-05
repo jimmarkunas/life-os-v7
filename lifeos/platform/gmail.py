@@ -154,6 +154,36 @@ class Gmail:
         return {"id": str(message_id), "sender": values.get("from", ""), "subject": values.get("subject", ""),
                 "received_at": received, "body_text": _find_text(full["payload"]), "label_ids": labels}
 
+    SENT_HEADERS = ("From", "To", "Cc", "Subject", "Date", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe")
+
+    def sent_record(self, message_id):
+        """Metadata of one message (headers and a short preview, never the body): sender, recipients, subject, sent time, thread id, bulk-mail markers, labels."""
+        query = "&".join(["format=metadata"] + ["metadataHeaders=" + name for name in self.SENT_HEADERS])
+        full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?{query}")
+        if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values = {}
+        for header in full["payload"].get("headers") or []:
+            if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
+                values.setdefault(header["name"].lower(), header["value"])
+        try:
+            sent = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc)
+        except (TypeError, ValueError, OverflowError, OSError):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
+        labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
+        return {"id": str(message_id), "thread": str(full.get("threadId") or ""), "sender": values.get("from", ""), "to": values.get("to", ""), "cc": values.get("cc", ""),
+                "subject": values.get("subject", ""), "snippet": str(full.get("snippet") or ""), "sent_at": sent, "labels": labels,
+                "bulk": any(values.get(k) for k in ("list-id", "list-unsubscribe")) or values.get("precedence", "").lower() in ("bulk", "list", "junk")
+                or values.get("auto-submitted", "no").lower() not in ("", "no")}
+
+    def profile_address(self):
+        """The mailbox's own address (used only in memory, to tell self-sends from real recipients)."""
+        reply = self._request("GET", f"{API}/profile")
+        address = reply.get("emailAddress") if isinstance(reply, dict) else None
+        if not isinstance(address, str) or "@" not in address:
+            raise GmailError("GMAIL_PROFILE_INCOMPLETE")
+        return address.lower()
+
     def message_labels(self, message_id):
         path = f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=minimal"
         result = self._request("GET", path)

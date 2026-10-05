@@ -21,6 +21,10 @@ on:
         description: "Attention only: the Gmail label LifeOS/Attention and the Outlook folder 'LifeOS Attention' into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      megibow:
+        description: "MegIBOW only: Jim's weekly job-search table (sent mail and calendars to the Notion block); dry run (counts) unless Actually write is ticked"
+        type: boolean
+        default: false
       bills_paid:
         description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); also runs on every tick and under Run every domain job. Dry run (counts) unless Actually write is ticked"
         type: boolean
@@ -348,3 +352,40 @@ jobs:
       - name: Attention warning (does not fail the Jobs run)
         if: ${{ always() && (steps.attention.outcome == 'failure' || steps.attncard.outcome == 'failure') }}
         run: echo "::warning title=Attention::the Attention stage failed or a source was unread; the Jobs pipeline is unaffected"
+
+  megibow:
+    # D134: MegIBOW is its own job. It reads sent mail and calendars (read only) and writes only its one Notion block, its review list and two tiny private tables; a failure is a
+    # warning that never touches another card or the Jobs run, and a failed source leaves the last good table in place and says DEGRADED.
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.megibow }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: megibow
+        continue-on-error: true
+        name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ secrets.GCAL_SERVICE_ACCOUNT_JSON }}
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          MEGIBOW_BLOCK_ID: ${{ secrets.MEGIBOW_BLOCK_ID }}
+          MEGIBOW_REVIEW_DB_ID: ${{ secrets.MEGIBOW_REVIEW_DB_ID }}
+          MEGIBOW_EXCLUDED_DOMAINS: ${{ secrets.MEGIBOW_EXCLUDED_DOMAINS }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run megibow --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: MegIBOW warning (does not fail the Jobs run)
+        if: ${{ always() && steps.megibow.outcome == 'failure' }}
+        run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"

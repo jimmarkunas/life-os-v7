@@ -107,6 +107,7 @@ STAGES = {
     "amazon-card": lazy("lifeos.amazon.card"),
     "attention": lazy("lifeos.attention.stage", floor=200),
     "attention-card": lazy("lifeos.attention.card"),
+    "megibow": lazy("lifeos.sources.megibow"),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
