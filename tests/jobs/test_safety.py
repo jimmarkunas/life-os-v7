@@ -40,12 +40,19 @@ class SqlSmokeTests(unittest.TestCase):
         for path, line, sql in found:
             marks = safety._placeholders(sql)
             sql % tuple(1 for _ in range(marks))                          # a stray '%' (the 5 PM crash) fails here, before any database
+            self.assertEqual(len(safety._params(sql)), marks)
 
     def test_explain_runs_each_statement_with_one_value_per_placeholder(self):
         conn = Conn()
         counts = safety.sql_smoke(conn, [("m.py", 1, "SELECT * FROM v7_jobs WHERE id = %s AND x LIKE 'a%%' LIMIT %s")])
         sql, params = conn.cur.seen[0]
         self.assertEqual((sql.startswith("EXPLAIN SELECT"), params, counts["ok"]), (True, (1, 1), 1))
+
+    def test_in_placeholders_take_a_tuple_and_runtime_fragments_are_skipped(self):
+        conn = Conn()
+        counts = safety.sql_smoke(conn, [("a.py", 1, "SELECT id FROM v7_jobs WHERE status IN %s AND x = %s"), ("b.py", 2, "SELECT id FROM v7_jobs WHERE k IN (")])
+        self.assertEqual(conn.cur.seen[0][1], ((1,), 1))
+        self.assertEqual((counts["ok"], counts["fragments"], len(conn.cur.seen)), (1, 1, 1))
 
     def test_a_driver_error_is_reported_by_location_and_code_never_by_text(self):
         conn = Conn({"BAD": Exception(1054, "Unknown column 'secret_name'")})
