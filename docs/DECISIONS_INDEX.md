@@ -143,3 +143,4 @@ This index is checked by a test: add a line here with every new decision.
 - D139 — Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)
 - D140 — Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)
 - D141 — SAFE-1.1: the hardening slice (2026-10-05)
+- D142 — The SAFE-1.1 database checks run weekly (2026-10-05, Jim)

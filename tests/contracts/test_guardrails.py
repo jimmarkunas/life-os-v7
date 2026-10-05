@@ -174,7 +174,11 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
 
     def test_exactly_one_recurring_scheduler(self):
         scheduled = [p.name for p in (ROOT / ".github/workflows").glob("*.y*ml") if re.search(r"^\s*schedule:", p.read_text(), re.M)]
-        self.assertEqual(sorted(scheduled), ["hourly.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline
+        self.assertEqual(sorted(scheduled), ["hourly.yml", "safety.yml", "watchdog.yml"])    # the watchdog only raises an alert (D52); it never runs the pipeline. safety.yml is Jim's weekly read-only check (D142): it touches no pipeline state
+        safety = (ROOT / ".github/workflows/safety.yml").read_text()
+        self.assertEqual(len(re.findall(r"^\s*- cron:", safety, re.M)), 1)
+        for word in ("--live", "NOTION_", "GMAIL_"):
+            self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "NTFY_TOPIC"])
