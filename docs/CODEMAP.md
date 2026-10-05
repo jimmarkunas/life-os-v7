@@ -6,6 +6,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `agenda-card` -> `lifeos.agenda.card:run`
 - `agenda-snapshot` -> `lifeos.agenda.snapshot:run`
 - `alerts` -> `lifeos.jobs.alerts:run`
+- `amazon-backfill` -> `lifeos.amazon.backfill:run`
 - `amazon-card` -> `lifeos.amazon.card:run`
 - `amazon-orders` -> `lifeos.amazon.stage:run`
 - `amazon-retention` -> `lifeos.amazon.retention:run`
@@ -47,6 +48,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `resolve-jobright` -> `lifeos.run:_jobright`
 - `resolve-lensa` -> `lifeos.run:_lensa`
 - `resolve-linkedin` -> `lifeos.run:_linkedin`
+- `scale-up-holds` -> `lifeos.jobs.holds:run`
 - `sponsors` -> `lifeos.sources.sponsor_register:run`
 - `sync-seen` -> `lifeos.run:_sync_seen`
 - `web` -> `lifeos.sources.web.run:run`
@@ -58,6 +60,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/agenda/card.py`: Render the saved Agenda snapshot into V7's one Calendar callout.
 - `lifeos/agenda/snapshot.py`: Read the complete Chicago today/tomorrow calendar window into a private snapshot.
 ### lifeos/amazon/
+- `lifeos/amazon/backfill.py`: D140: record ALL historical Amazon order mail in the canonical Amazon Orders data source, one calendar month at a time.
 - `lifeos/amazon/card.py`: Render the canonical Amazon Orders rows into V7's one "Amazon Orders" callout on the Daily Report (D118).
 - `lifeos/amazon/events.py`: Pure extraction of the three accepted Amazon order mail events.
 - `lifeos/amazon/orders.py`: Pure monotone reconciliation of Amazon order events.
@@ -113,6 +116,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/guard.py`: Human-state guard: nothing destructive happens to a Job Ledger page while a human pursuit may exist.
 - `lifeos/jobs/hiring_pipeline.py`: INT-7.1A, the bounded progression handoff: which jobs already have a human hiring process behind them.
 - `lifeos/jobs/hold.py`: Jobs that sit on HOLD for a week are excluded, so the newsletter mail that holds them open can close. HOLD means retries ran out (a link that never resolves, a page that 
+- `lifeos/jobs/holds.py`: Counts-only diagnostic: why do parked (HOLD) roles on employers' own boards not move? Reads v7_jobs, writes nothing, prints no title, link or text.
 - `lifeos/jobs/identity.py`: Job identity (Jobs OS): the same keys for every producer, so one opening is one row however it arrives.
 - `lifeos/jobs/intake.py`: The one way a producer adds a job to Jobs OS. A source emits a normalized job here and stops; dedupe, repost linking and everything downstream (resolve, enrich, quality, 
 - `lifeos/jobs/jd.py`: Job description handling: HTML -> clean text -> sections (summary / responsibilities / requirements / qualifications).
@@ -214,6 +218,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `amazon.yml`: jobs amazon; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
+- `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_JIRA_TOKEN, NTFY_TOPIC, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
@@ -354,3 +359,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D137: Attention categories say what Jim owes; "Other" is retired (2026-10-05)
 - D138: Scale-Up is live in V7; the V1 "quarantined" wording is stale (2026-10-05)
 - D139: Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)
+- D140: Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)
