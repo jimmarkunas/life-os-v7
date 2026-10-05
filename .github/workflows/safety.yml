@@ -8,7 +8,7 @@ on:
   workflow_dispatch:                # manual only: the repository has exactly one recurring scheduler (D30/D52); a schedule here needs Jim's decision
     inputs:
       stage:
-        description: "all (both weekly checks), sql-smoke, fit-golden, or fit-capture (prints a new saved set; writes nothing)"
+        description: "all (both database checks), sql-smoke, fit-golden, or fit-capture (prints a new saved set; writes nothing)"
         type: choice
         options: ["all", "sql-smoke", "fit-golden", "fit-capture"]
         default: "all"
@@ -53,7 +53,8 @@ jobs:
         run: python -m lifeos.run safety-fit-capture
       - name: Phone alert
         if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
-        run: python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly safety check failed" --body "SQL smoke: ${{ steps.smoke.outcome }}. Fit re-check: ${{ steps.golden.outcome }}. Open the safety run in Actions."
+        run: |
+          python3 -m lifeos.platform.alerts push --severity page --title "V7 safety check failed" --body "SQL smoke ${{ steps.smoke.outcome }}, Fit re-check ${{ steps.golden.outcome }}. Open the safety run in Actions."
       - name: Fail the run when a check failed
         if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
         run: exit 1
