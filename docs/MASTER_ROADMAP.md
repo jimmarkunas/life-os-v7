@@ -1,6 +1,6 @@
 # LIFE OS V7: the one plan (plain words)
 
-Last updated: October 5, 2026. One Claude Code session builds everything below, one pull request at a time. Jim approves each merge ("Merge PR N"). This file is the source; Notion shows the same table (ChatGPT keeps it in step).
+Last updated: October 5, 2026 (night). One Claude Code session builds everything below, one pull request at a time. Jim approves each merge ("Merge PR N"). This file is the source; Notion shows the same table (ChatGPT keeps it in step).
 
 ## How we work
 
@@ -11,14 +11,14 @@ Last updated: October 5, 2026. One Claude Code session builds everything below, 
 
 ## Hard date: Wednesday, October 7, 3 PM CT (meeting with Matt)
 
-The full automated MegIBOW must be live before that meeting: its weekly table fills itself, review items appear for Jim to settle, and a stale or failed refresh says so. Plan: build it in pieces from Monday night; Jim's yeses are listed at the end of each status message.
+MegIBOW is **live (Merged, Live-checked; waiting on Jim's "Done")**: the weekly table fills itself every hour, Cumulative is seeded from the old sheet, warnings show, review items go to the MegIBOW Review list, and a failed refresh says DEGRADED. Still to prove: the Monday rollover (first freeze Monday Oct 12), a real review item answered end to end, and the sixteen acceptance scenarios on the real dashboard. The 1:30 PM and 2:30 PM CT phone alerts fire only when a Wednesday refresh is failing.
 
 ## Order
 
 **Now**
-1. MegIBOW, end to end (the Wednesday deadline).
-2. Network inspector: Jim merged it; run it once and read the counts.
-3. Bring the scoping documents onto `main` (docs only).
+1. MegIBOW: watch the first rollover and Wednesday's refresh; Jim confirms.
+2. Network inspector: Merged and run once; read the counts and decide the importer.
+3. Scoping documents: Merged on `main`.
 
 **Next, in this order**
 4. Safety net: Fit re-checks a named company first after a rule change; a test that formats every database statement the way the real driver does; a saved set of real jobs every Fit change must pass; a phone alert when a job source stops delivering.
@@ -38,7 +38,7 @@ Backups with a tested restore; one switch that stops all Notion writes; a review
 The scheduled runs since the Fit clean-up; Bills weekly, bi-weekly, quarterly and yearly cases on real rows; the 24 overdue bills; Amazon orders with no date or total; Outlook tagging (V7 reads two accounts and found nothing tagged yet).
 
 ## Jim's own to-dos
-Say "Merge PR N"; create the Mail Alerts box and send its link; add the "Needs review" column to Recruiters; finish the Oracle upgrade; carrier developer credentials (Delivery); the MegIBOW weekly block and review database (Wednesday deadline); the five old MegIBOW totals (once).
+Say "Merge PR N"; create the Mail Alerts box and send its link; add the "Needs review" column to Recruiters; finish the Oracle upgrade; carrier developer credentials (Delivery); check the MegIBOW table after Monday's rollover and say if it is Done; answer review items as they appear.
 
 ## On hold (do not do)
 Merging the contract branch in `life-os-automation`; the Notion scope clause on the LI Connection page; ChatGPT's "Network Lookups" module text; any other contract change.
