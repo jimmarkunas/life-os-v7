@@ -71,3 +71,11 @@ def activity_of(decision):
             if a == wanted or a == wanted + "s":
                 return a
     return None
+
+
+def save_legacy(connection, counts):
+    """Seed the Cumulative column once (a LEGACY row); never overwritten by a later run."""
+    snapshot = {"schema": 1, "taken_at": _now(), "counts": counts, "trustworthy": True, "frozen_at": _now(), "note": "legacy totals"}
+    WEEKS.save(connection, LEGACY, snapshot)
+    if WEEKS.load(connection, LEGACY) != snapshot:
+        raise StoreError("MEGIBOW_LEGACY_READBACK_MISMATCH")
