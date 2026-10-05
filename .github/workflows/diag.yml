@@ -1,0 +1,34 @@
+name: diag
+# Manual only, read-only, counts only. Runs in its own concurrency group, so it never blocks or replaces an hourly tick (the hourly gate counts only hourly.yml runs).
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing)"
+        type: choice
+        options: ["scale-up-holds"]
+        default: "scale-up-holds"
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Diagnostic (read-only; counts only)
+        env:
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+          STAGE: ${{ inputs.stage }}
+        run: python -m lifeos.run "$STAGE"

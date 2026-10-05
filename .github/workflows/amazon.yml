@@ -3,6 +3,15 @@ name: amazon-orders
 on:
   workflow_dispatch:
     inputs:
+      stage:
+        description: "orders (the normal recent pass), backfill (every historical month, D140) or retention (D139: mail older than 30 days to the Trash; always a dry run here)"
+        type: choice
+        options: ["orders", "backfill", "retention"]
+        default: "orders"
+      since:
+        description: "backfill only: first day, YYYY-MM-DD (default 2015-01-01)"
+        type: string
+        default: "2015-01-01"
       live:
         description: "Persist orders and archive accepted mail (unticked = dry run, counts only)"
         type: boolean
@@ -15,7 +24,7 @@ concurrency:
 jobs:
   amazon:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 330                 # a full backfill is one Notion write pass per month of mail; it is replay-safe, so a timeout is resumed by running it again
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
@@ -26,4 +35,6 @@ jobs:
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
-        run: python -m lifeos.run amazon-orders $([ "${{ inputs.live }}" = "true" ] && echo --live)
+          AMAZON_SINCE: ${{ inputs.since }}
+          STAGE: ${{ inputs.stage }}
+        run: python -m lifeos.run "amazon-$([ "$STAGE" = "orders" ] && echo orders || echo "$STAGE")" $([ "${{ inputs.live }}" = "true" ] && [ "$STAGE" != "retention" ] && echo --live)

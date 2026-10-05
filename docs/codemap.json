@@ -40,6 +40,7 @@
   "D137": "Attention categories say what Jim owes; \"Other\" is retired (2026-10-05)",
   "D138": "Scale-Up is live in V7; the V1 \"quarantined\" wording is stale (2026-10-05)",
   "D139": "Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)",
+  "D140": "Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -120,6 +121,7 @@
    "lifeos/agenda/snapshot.py": "Read the complete Chicago today/tomorrow calendar window into a private snapshot."
   },
   "amazon": {
+   "lifeos/amazon/backfill.py": "D140: record ALL historical Amazon order mail in the canonical Amazon Orders data source, one calendar month at a time.",
    "lifeos/amazon/card.py": "Render the canonical Amazon Orders rows into V7's one \"Amazon Orders\" callout on the Daily Report (D118).",
    "lifeos/amazon/events.py": "Pure extraction of the three accepted Amazon order mail events.",
    "lifeos/amazon/orders.py": "Pure monotone reconciliation of Amazon order events.",
@@ -181,6 +183,7 @@
    "lifeos/jobs/guard.py": "Human-state guard: nothing destructive happens to a Job Ledger page while a human pursuit may exist.",
    "lifeos/jobs/hiring_pipeline.py": "INT-7.1A, the bounded progression handoff: which jobs already have a human hiring process behind them.",
    "lifeos/jobs/hold.py": "Jobs that sit on HOLD for a week are excluded, so the newsletter mail that holds them open can close. HOLD means retries ran out (a link that never resolves, a page that ",
+   "lifeos/jobs/holds.py": "Counts-only diagnostic: why do parked (HOLD) roles on employers' own boards not move? Reads v7_jobs, writes nothing, prints no title, link or text.",
    "lifeos/jobs/identity.py": "Job identity (Jobs OS): the same keys for every producer, so one opening is one row however it arrives.",
    "lifeos/jobs/intake.py": "The one way a producer adds a job to Jobs OS. A source emits a normalized job here and stops; dedupe, repost linking and everything downstream (resolve, enrich, quality, ",
    "lifeos/jobs/jd.py": "Job description handling: HTML -> clean text -> sections (summary / responsibilities / requirements / qualifications).",
@@ -287,6 +290,7 @@
   "agenda-card": "lifeos.agenda.card:run",
   "agenda-snapshot": "lifeos.agenda.snapshot:run",
   "alerts": "lifeos.jobs.alerts:run",
+  "amazon-backfill": "lifeos.amazon.backfill:run",
   "amazon-card": "lifeos.amazon.card:run",
   "amazon-orders": "lifeos.amazon.stage:run",
   "amazon-retention": "lifeos.amazon.retention:run",
@@ -328,6 +332,7 @@
   "resolve-jobright": "lifeos.run:_jobright",
   "resolve-lensa": "lifeos.run:_lensa",
   "resolve-linkedin": "lifeos.run:_linkedin",
+  "scale-up-holds": "lifeos.jobs.holds:run",
   "sponsors": "lifeos.sources.sponsor_register:run",
   "sync-seen": "lifeos.run:_sync_seen",
   "web": "lifeos.sources.web.run:run",
@@ -424,6 +429,22 @@
     "LIFEOS_ACQ_SSH_PRIVATE_KEY",
     "LIFEOS_ACQ_SSH_USER",
     "OUTLOOK_CLIENT_ID"
+   ]
+  },
+  "diag.yml": {
+   "jobs": [
+    "diag"
+   ],
+   "manual": true,
+   "secrets": [
+    "LIFEOS_ACQ_DB_NAME",
+    "LIFEOS_ACQ_DB_PASSWORD",
+    "LIFEOS_ACQ_DB_USER",
+    "LIFEOS_ACQ_SSH_HOST",
+    "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
+    "LIFEOS_ACQ_SSH_PORT",
+    "LIFEOS_ACQ_SSH_PRIVATE_KEY",
+    "LIFEOS_ACQ_SSH_USER"
    ]
   },
   "domains.yml": {
