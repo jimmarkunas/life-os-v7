@@ -299,6 +299,22 @@ class FirstPartyRelinkTests(unittest.TestCase):
             enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
         self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
 
+    def test_a_role_on_its_employers_own_board_is_accepted_when_the_page_carries_its_words(self):
+        body = LONG.replace('"', "'")
+        page = f"<html><head><title>Careers</title></head><body><p>Senior Data Engineer</p>{body}</body></html>"
+        other = page.replace("Senior Data Engineer", "Office Manager")
+        for strict in (True, False):                                                                     # a link that names no job, or one that does
+            self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", strict, True)["outcome"], "ready")
+            self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", strict, True)["outcome"], "mismatch")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")      # a link that names no job and no provenance: the <title> must prove it
+
+    def test_the_board_name_is_read_when_for_is_the_first_query_parameter(self):
+        seen = []
+        with mock.patch.object(enrich, "fetch", side_effect=lambda url, **k: seen.append(url) or Page(404, "")):
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
+
     def test_a_heading_that_names_the_role_proves_an_ambiguous_link_on_an_employers_own_page(self):
         body = LONG.replace('"', "'")
         page = f"<html><head><title>Careers</title></head><body><h2>Senior Data Engineer</h2>{body}</body></html>"

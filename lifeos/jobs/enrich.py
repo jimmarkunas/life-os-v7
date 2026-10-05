@@ -83,6 +83,13 @@ def _greenhouse_embed(url, html):
     return f"https://boards.greenhouse.io/embed/job_app?for={board.group(1)}&token={job.group(1)}" if job and board else None
 
 
+def _title_words_in(want, html):
+    """Share of the job-title words found anywhere on the page, markup removed (script data such as JSON-LD counts)."""
+    tokens = [t for t in ats_match.norm(want).split() if len(t) > 2]
+    hay = set(ats_match.norm(re.sub(r"<[^>]+>", " ", html or "")).split())
+    return sum(t in hay for t in tokens) / len(tokens) if tokens else 0
+
+
 def read_page(url, title, lane=None, proof=None, first_party=False):
     """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an ambiguous link shape on its
     provenance, so the page must prove identity by title (strict)."""
@@ -139,9 +146,11 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
-        if strict and first_party:                           # an employer's own page whose link names no job: a heading that names the role proves it (Lessel, Futuristic), not just the <title>
-            found_title += " " + " ".join(jd.html_to_text(h) for h in re.findall(r"<h[1-3][^>]*>.*?</h[1-3]>", html, re.S | re.I))
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
+    if first_party and result.get("outcome") == "mismatch" and not result.get("reason") and _title_words_in(title, html) >= 0.8:
+        result = finish(title, desc, title, posted, source_kind, valid_through, lane, False, first_party)       # the employer's own board listed this role at this address and its page carries the role's words (a page <title> that says only "Careers" proved nothing either way)
+        if result.get("outcome") in ("ready", "stale"):
+            result["proof"] = "page_text"
     where = jsonld.location(posting) if posting else None
     if where and result.get("outcome") in ("ready", "stale"):
         result["location"] = where                           # D111: a board that gave no place (Prepaid, Veramed, Bluestonex) is read off the job page's own data
