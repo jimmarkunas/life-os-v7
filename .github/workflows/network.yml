@@ -1,21 +1,42 @@
-name: network-inspect
-# Manual, read-only, counts only: measures the connections file attached to a private Notion page. Writes nothing anywhere (NET-1a).
+name: network
+# Manual only. inspect: read-only, counts only, writes nothing (NET-1a). import: NET-1b, reads the same attached file and records it in the approved Hostinger tables;
+# dry unless "Actually write" is ticked (a dry run opens no database connection). No schedule: the seed is one batch and replaying it is a no-op.
 on:
   workflow_dispatch:
+    inputs:
+      stage:
+        description: "inspect (counts of the file) or import (record it in Hostinger)"
+        type: choice
+        options: ["inspect", "import"]
+        default: "inspect"
+      live:
+        description: "import only: actually write to Hostinger (unticked = dry run, counts only)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: life-os-v7-network
   cancel-in-progress: false
 jobs:
-  inspect:
+  network:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
-      - name: Network inspector (reads the attached CSV through Notion; prints counts only)
+      - name: Network (reads the attached CSV through Notion; prints counts only)
         env:
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
           NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
-        run: python -m lifeos.run network-inspect
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+          STAGE: ${{ inputs.stage }}
+          LIVE: ${{ inputs.live }}
+        run: python -m lifeos.run "network-$STAGE" $([ "$STAGE" = "import" ] && [ "$LIVE" = "true" ] && echo --live)

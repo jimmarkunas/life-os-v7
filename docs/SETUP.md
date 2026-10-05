@@ -109,3 +109,6 @@ Measures the LinkedIn connections file by count before anything is stored. It wr
 
 ## MegIBOW (D134)
 No secret is required: the dashboard page and the MegIBOW Review data source ids are defaults in code (the block is found by its shape). Optional secrets: `MEGIBOW_EXCLUDED_DOMAINS` (comma-separated work/client domains that never count). The Notion integration behind `NOTION_JIRA_TOKEN` must be connected to the dashboard page and the review database. Two Hostinger tables are created on the first live run: `v7_megibow_weeks`, `v7_megibow_overrides`. Dry run: Actions > Domain jobs > Run workflow > MegIBOW, live unticked (counts only).
+
+## Network import (D135)
+Actions > network > Run workflow: stage `inspect` (counts of the attached file) or `import` (record it in the approved Hostinger tables). `import` is a dry run (counts only, no database connection) unless "Actually write" is ticked; the live run creates the three `v7_network_*` tables if missing, applies the file in chunks, and prints people/positions totals read back from the database. Running it again on the same file writes nothing.
