@@ -310,6 +310,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
             parsed = events.extract(message)
             if parsed.get("status") == "REVIEW":
                 counts["review"] += 1
+                why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
+                why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
                 if parsed.get("order_id"):
                     review_by_order.setdefault(parsed["order_id"], []).append(message)
                 continue
