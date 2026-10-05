@@ -113,6 +113,7 @@ STAGES = {
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
     "calendar-sync": lazy("lifeos.calendar_bridge.sync"),
     "network-inspect": lazy("lifeos.network.inspect"),
+    "network-import": lazy("lifeos.network.importer"),
     "openjobs": lazy("lifeos.sources.openjobs"),
     "sponsors": lazy("lifeos.sources.sponsor_register"),
     "probe": lazy("lifeos.probe"),
