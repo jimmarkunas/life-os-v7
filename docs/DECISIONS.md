@@ -571,3 +571,5 @@ D134 addendum (2026-10-05): the Cumulative column is seeded once from a paragrap
 
 ## D136 — Attention rows carry the date the mail was received (2026-10-05)
 The Attention data source gained a `Received` date column (Jim approved, October 5). New rows are written with the mail's received date as a Chicago calendar date (Gmail `internalDate`, Outlook `receivedDateTime`); a carried row keeps its original date; rows written before the column existed are filled once, in place, when their source mail is read again (`backfilled` in the counts). The column is part of the schema check, so a data source without it fails closed as `ATTENTION_SCHEMA_MISMATCH`.
+
+D136 addendum: an Attention row's title is a link to the email (Gmail or Outlook address) and the row's page holds one line, "Open the email", with the same link; the mail itself is never copied into Notion. Rows written before this are upgraded once in place (`linked` in the counts). The `Source URL` column holds the same address.

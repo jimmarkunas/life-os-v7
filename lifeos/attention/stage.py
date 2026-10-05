@@ -48,7 +48,8 @@ def _row(page):
         week = ((props["Week Ending"].get("date") or {}).get("start") or "")[:10]
         return {"id": page["id"], "item": _text(props["Item"]), "category": ((props["Category"].get("select") or {}).get("name")),
                 "done": bool(props["Done"]["checkbox"]), "active": bool(props["Active"]["checkbox"]), "medium": _text(props["Medium"]),
-                "url": props["Source URL"].get("url") or "", "week": week, "received": ((props["Received"].get("date") or {}).get("start") or "")[:10]}
+                "url": props["Source URL"].get("url") or "", "week": week, "received": ((props["Received"].get("date") or {}).get("start") or "")[:10],
+                "linked": any(isinstance(i, dict) and (i.get("href") or (i.get("text") or {}).get("link")) for i in props["Item"].get("title") or [])}
     except (KeyError, TypeError, AttributeError):
         raise AttentionError("ATTENTION_ROW_INVALID") from None
 
@@ -85,8 +86,22 @@ def read_week(notion, source_id, week):
     raise AttentionError("ATTENTION_READ_INCOMPLETE")
 
 
+def _linked_title(item, url):
+    """The row title; when the mail has an address the whole title is a link to it, so the row opens the email instead of an empty page."""
+    parts = rich_text(item)
+    if url:
+        for part in parts:
+            part["text"]["link"] = {"url": url}
+    return parts
+
+
+def _open_block(url):
+    """The one line in a row's page: a link to the email (the mail itself is never copied into Notion)."""
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Open the email", "link": {"url": url}}}]}}
+
+
 def _props(c):
-    props = {"Item": {"title": rich_text(c["item"])}, "Category": {"select": {"name": c["category"]}}, "Active": {"checkbox": True}, "Done": {"checkbox": False},
+    props = {"Item": {"title": _linked_title(c["item"], c["url"])}, "Category": {"select": {"name": c["category"]}}, "Active": {"checkbox": True}, "Done": {"checkbox": False},
              "Medium": {"rich_text": rich_text(c["medium"])}, "Week Ending": {"date": {"start": c["week"]}}}
     if c.get("received"):
         props["Received"] = {"date": {"start": c["received"]}}
@@ -202,6 +217,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     dates = {c["medium"]: c["received"] for c in admitted if c.get("received")}
     plan["backfill"] = [(r["id"], dates[r["medium"]]) for r in rows if not r["received"] and r["medium"] in dates]          # rows written before the column existed
     counts["backfilled"] = len(plan["backfill"])
+    plan["upgrade"] = [r for r in rows if r["url"] and not r["linked"]]                                                              # rows written before the title was a link
+    counts["linked"] = len(plan["upgrade"])
     for name in ("ambiguous", "reused", "skipped_done", "carried"):
         counts[name] = plan[name]
     if not live:
@@ -209,13 +226,19 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     else:
         done_before = {r["id"]: r["done"] for r in rows}
         for create in plan["create"]:
-            notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)})
+            body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)}
+            if create["url"]:
+                body["children"] = [_open_block(create["url"])]
+            notion.call_once("POST", "/pages", body)
             counts["created"] += 1
         for row_id in plan["deactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
             counts["deactivated"] += 1
         for row_id, received in plan["backfill"]:
             notion.update_page_properties(row_id, {"Received": {"date": {"start": received}}})
+        for r in plan["upgrade"]:
+            notion.update_page_properties(r["id"], {"Item": {"title": _linked_title(r["item"], r["url"])}})
+            notion.call("PATCH", f"/blocks/{r['id']}/children", {"children": [_open_block(r["url"])]})
         for row_id in plan["reactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": True}})
             counts["reactivated"] += 1

@@ -107,6 +107,7 @@ class FakeNotion:
         self.paths.append((method, path.split("/")[1]))
         self.n += 1
         props = body["properties"]
+        self.bodies = getattr(self, "bodies", []) + [body]
         page = {"id": f"p{self.n}", "properties": {
             "Item": {"type": "title", "title": props["Item"]["title"]}, "Category": {"type": "select", "select": props["Category"]["select"]},
             "Done": {"type": "checkbox", "checkbox": False}, "Active": {"type": "checkbox", "checkbox": True},
@@ -115,6 +116,7 @@ class FakeNotion:
         for k in ("Item", "Medium"):
             for part in page["properties"][k][page["properties"][k]["type"]]:
                 part["plain_text"] = part["text"]["content"]
+                part["href"] = (part["text"].get("link") or {}).get("url")
         self.pages[page["id"]] = page
         return page
 
@@ -123,6 +125,8 @@ class FakeNotion:
         for k, v in properties.items():
             if k == "Received":
                 self.pages[page_id]["properties"][k]["date"] = v["date"]
+            elif k == "Item":
+                self.pages[page_id]["properties"][k]["title"] = [{**t, "plain_text": t["text"]["content"], "href": t["text"].get("link", {}).get("url")} for t in v["title"]]
             else:
                 self.pages[page_id]["properties"][k]["checkbox"] = v["checkbox"]
 
@@ -225,6 +229,21 @@ class Stage(unittest.TestCase):
         self.assertEqual(out["backfilled"], 1)
         self.assertEqual(old.pages["old"]["properties"]["Received"]["date"], {"start": "2026-10-04"})
         self.assertEqual(self.go(old, gm)["backfilled"], 0)
+
+    def test_title_is_a_link_to_the_email_and_the_page_holds_one_link_line(self):
+        gm = FakeGmail({"g1": ("x@example.com", "Security alert: new sign-in")})
+        notion = FakeNotion()
+        self.go(notion, gm)
+        body = notion.bodies[0]
+        self.assertTrue(all(t["text"]["link"]["url"].startswith("https://mail.google.com/") for t in body["properties"]["Item"]["title"]))
+        self.assertEqual(len(body["children"]), 1)
+        self.assertEqual(body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"], "Open the email")
+        again = self.go(notion, gm)                                                     # already linked: nothing to upgrade
+        self.assertEqual(again["linked"], 0)
+        old = FakeNotion([page("old", "Security alert: new sign-in", medium="Gmail:g1")])           # a row written before titles were links
+        self.assertEqual(self.go(old, gm)["linked"], 1)
+        self.assertIsNotNone(old.pages["old"]["properties"]["Item"]["title"][0]["href"])
+        self.assertEqual(self.go(old, gm)["linked"], 0)
 
     def test_monday_rollover_carries_unresolved_once_and_keeps_history(self):
         notion = FakeNotion([page("a", "Open item", week=PRIOR, medium="Gmail:g1"), page("b", "Done item", week=PRIOR, done=True, medium="Gmail:g2")])
