@@ -275,6 +275,62 @@ class FirstPartyRelinkTests(unittest.TestCase):
         chrome.assert_not_called()
         self.assertEqual(result["reason"], "http_403")
 
+    def test_a_first_party_403_is_retried_as_the_announced_bot(self):
+        html = JOB % ("2020-01-01", LONG.replace('"', "'"))
+        with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
+                mock.patch.object(enrich.egress, "honest", return_value=Page(200, html)) as honest:
+            result = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer", first_party=True)
+        honest.assert_called_once()
+        self.assertEqual(result["outcome"], "ready")
+
+    def test_a_greenhouse_embed_page_is_read_from_the_boards_own_api(self):
+        shell = "<html><title>Job openings</title><script src='https://boards.greenhouse.io/embed/job_board/js?for=acme'></script>" + "<p>all roles</p>" * 500
+        api = {"title": "Senior Data Engineer", "html": LONG, "posted": "2026-10-01"}
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, shell)), mock.patch.object(enrich, "_api_job", side_effect=[None, api]) as read:
+            result = enrich.read_page("https://acme.example/job-openings/?gh_jid=4567", "Senior Data Engineer", first_party=True)
+        read.assert_called_with("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
+        self.assertEqual(result["outcome"], "ready")
+        self.assertIsNone(enrich._greenhouse_embed("https://acme.example/jobs/", shell))               # no gh_jid, no embed read
+
+    def test_the_board_name_is_read_when_for_is_the_first_query_parameter(self):
+        seen = []
+        with mock.patch.object(enrich, "fetch", side_effect=lambda url, **k: seen.append(url) or Page(404, "")):
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
+
+    def test_a_role_on_its_employers_own_board_is_accepted_when_the_page_carries_its_words(self):
+        body = LONG.replace('"', "'")
+        page = f"<html><head><title>Careers</title></head><body><p>Senior Data Engineer</p>{body}</body></html>"
+        other = page.replace("Senior Data Engineer", "Office Manager")
+        for strict in (True, False):                                                                     # a link that names no job, or one that does
+            self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", strict, True)["outcome"], "ready")
+            self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", strict, True)["outcome"], "mismatch")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")      # a link that names no job and no provenance: the <title> must prove it
+
+    def test_the_board_name_is_read_when_for_is_the_first_query_parameter(self):
+        seen = []
+        with mock.patch.object(enrich, "fetch", side_effect=lambda url, **k: seen.append(url) or Page(404, "")):
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")
+            enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
+        self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
+
+    def test_a_heading_that_names_the_role_proves_an_ambiguous_link_on_an_employers_own_page(self):
+        body = LONG.replace('"', "'")
+        page = f"<html><head><title>Careers</title></head><body><h2>Senior Data Engineer</h2>{body}</body></html>"
+        other = page.replace("Senior Data Engineer", "Office Manager")
+        loose = enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, True)
+        self.assertEqual(loose["outcome"], "ready")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", True, True)["outcome"], "mismatch")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")   # no provenance, no heading proof
+
+    def test_a_mismatch_hold_is_read_again_once_a_day(self):
+        cur = self.Cur([(11, "https://careers.example.com/careers/product-manager")])
+        enrich.relink_first_party(cur)
+        select = cur.sql[0][0]
+        self.assertIn("'link_mismatch', 'jd_listing', 'jd_template'", select)
+        self.assertIn("LEAST(resolve_attempts", [s for s, _ in cur.sql if s.startswith("UPDATE")][0])
+
 
 class LocationFromThePageTests(unittest.TestCase):
     """D111: a board that states no place is read off the job page's own JSON-LD."""

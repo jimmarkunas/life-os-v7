@@ -3,6 +3,7 @@ key NAMES, counts) and never any posting text, URL or personal data. Result deci
 import json
 import os
 import re
+from urllib.parse import urlsplit
 
 from lifeos.platform.http import fetch
 from lifeos.sources.web import registry
@@ -376,5 +377,91 @@ def revolut_titles(search=None, fetch_many=None, fetch_page=None):
     return out
 
 
+def _embed_api(html, url, title=""):
+    """Veramed-style Greenhouse embed: the board API's status for the role (a number only)."""
+    from lifeos.jobs import enrich                                                           # noqa: PLC0415
+    target = enrich._greenhouse_embed(url or "", html or "")
+    if not target:
+        return None
+    board, token = re.search(r"for=([^&]+)", target).group(1), re.search(r"token=(\d+)", target).group(1)
+    from lifeos.jobs.resolve import ats_match                                                # noqa: PLC0415
+    got = fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{token}", timeout=15, max_hops=2)
+    try:
+        data = json.loads(got.html)
+    except ValueError:
+        data = {}
+    words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+    found = set(ats_match.norm(data.get("title") or "").split())
+    read = enrich._api_job(target)
+    return {"reader": "none" if not read else "closed" if read.get("closed") else "ok", "role": got.status, "title_share": round(sum(w in found for w in words) / len(words), 2) if words else 0,
+            "content_chars": len(data.get("content") or ""), "api_title_words": len(found), "stored_title_words": len(words)}
+
+
+def _replay(url, title):
+    """What today's reader makes of the held role's page: its outcome and reason code only."""
+    from lifeos.jobs import enrich                                                           # noqa: PLC0415
+    try:
+        proof = "unproven" if url and enrich.quality.link_problem(url) in enrich.quality.AMBIGUOUS else None          # what the pipeline passes for an ambiguous shape on an employer's own board
+        got = enrich.read_page(url, title or "", lane="Scale-Up", proof=proof, first_party=True) if url else {}
+    except Exception as error:                                                               # noqa: BLE001 - a probe never stops on one page
+        return type(error).__name__
+    return f"{got.get('outcome')}:{got.get('reason') or ''}"
+
+
+def enrich_ambiguous(url):
+    from lifeos.jobs import quality                                                          # noqa: PLC0415
+    return quality.link_problem(url) in quality.AMBIGUOUS
+
+
+def _parse_facts(title, html, strict):
+    """Which branch of the page reader runs and how well the stored title matches what that branch compares (numbers only)."""
+    from lifeos.jobs import enrich, jd, jsonld, quality                                      # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                                # noqa: PLC0415
+    words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+
+    def share(text):
+        hay = set(ats_match.norm(text or "").split())
+        return round(sum(w in hay for w in words) / len(words), 2) if words else 0
+    posting = jsonld.job_posting(html)
+    if posting and posting.get("description"):
+        branch, found, desc = "jsonld", posting.get("title") or "", jd.describe(str(posting["description"]), is_html=True)
+    else:
+        embedded = jsonld.embedded_description(html)
+        branch = "next_data" if embedded else "page_text"
+        desc = jd.describe(embedded, is_html=True) if embedded else jd.describe(jd.html_to_text(html), is_html=False)
+        found = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
+    text = desc["full_text"]
+    return {"branch": branch, "found_title_share": share(found), "desc_1500_share": share(text[:1500]), "desc_all_share": share(text), "desc_chars": len(text),
+            "jd_problem": quality.jd_problem(text), "strict": strict}
+
+
+def held_first_party(fetcher=fetch, rows=None):
+    """Why do Scale-Up roles on their employer's own board sit on HOLD? Replays the link test on each held role's own page (counts and yes/no only):
+    page status, whether the job-title words are in the page <title>, in the first 1500 characters of readable text, or anywhere in the HTML, and what the
+    page carries (JobPosting JSON-LD, a Greenhouse embed). Reads the store, writes nothing."""
+    from lifeos.jobs import store                                                            # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                              # noqa: PLC0415
+    if rows is None:
+        with store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT source, source_url, title, unresolved_reason FROM v7_jobs WHERE source LIKE 'web:su-%%' AND status='HOLD' LIMIT 200")
+            rows = cursor.fetchall()
+
+    def share(words, text):
+        hay = set(ats_match.norm(text).split())
+        return round(sum(w in hay for w in words) / len(words), 2) if words else 0
+    out = {}
+    for source, url, title, reason in rows:
+        words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+        page = fetcher(url, timeout=15, max_hops=6) if url else None
+        head = (re.search(r"<title[^>]*>(.*?)</title>", page.html or "", re.S | re.I) or [None, ""])[1] if page else ""
+        text = re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page.html or "")) if page else ""
+        html = page.html or "" if page else ""
+        out.setdefault(source, []).append({
+            "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
+            "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "parse": _parse_facts(title, html, bool(url and enrich_ambiguous(url))) if html else None, "url_shape": re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", urlsplit(url or "").path + ("?" + urlsplit(url or "").query if urlsplit(url or "").query else ""))), "embed_api": _embed_api(html, url, title)})
+    return out
+
+
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
