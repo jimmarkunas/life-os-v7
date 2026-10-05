@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from . import stage
 
 MONTH_LIMIT = 2000
-SUM_KEYS = ("listed", "accepted", "review", "orders_new", "orders_updated", "orders_same", "filed", "already_filed", "failed")
+SUM_KEYS = ("unreadable", "listed", "accepted", "review", "orders_new", "orders_updated", "orders_same", "filed", "already_filed", "failed")
 
 
 def months(start, end):
@@ -30,7 +30,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, inge
     for lo, hi in months(start, now):
         total["months"] += 1
         try:
-            counts = ingest(limit if limit and limit > 0 else MONTH_LIMIT, live, environ=environ, gmail=gmail, notion=notion, now=now, since=lo, until=hi)
+            counts = ingest(limit if limit and limit > 0 else MONTH_LIMIT, live, environ=environ, gmail=gmail, notion=notion, now=now, since=lo, until=hi, skip_unreadable=True)
         except stage.AmazonError as error:
             total["months_failed"] += 1
             total["first_failed"] = total["first_failed"] or f"{lo:%Y-%m}:{str(error)[:40]}"
