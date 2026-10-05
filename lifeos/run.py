@@ -105,6 +105,7 @@ STAGES = {
     "agenda-card": lazy("lifeos.agenda.card"),
     "amazon-orders": lazy("lifeos.amazon.stage", floor=200),
     "amazon-card": lazy("lifeos.amazon.card"),
+    "amazon-retention": lazy("lifeos.amazon.retention"),
     "attention": lazy("lifeos.attention.stage", floor=200),
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),

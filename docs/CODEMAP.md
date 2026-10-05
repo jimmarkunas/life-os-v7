@@ -8,6 +8,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `alerts` -> `lifeos.jobs.alerts:run`
 - `amazon-card` -> `lifeos.amazon.card:run`
 - `amazon-orders` -> `lifeos.amazon.stage:run`
+- `amazon-retention` -> `lifeos.amazon.retention:run`
 - `attention` -> `lifeos.attention.stage:run`
 - `attention-card` -> `lifeos.attention.card:run`
 - `audit` -> `lifeos.jobs.audit:run`
@@ -61,6 +62,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/amazon/events.py`: Pure extraction of the three accepted Amazon order mail events.
 - `lifeos/amazon/orders.py`: Pure monotone reconciliation of Amazon order events.
 - `lifeos/amazon/projection.py`: Region-local Amazon status for the Daily Command Center (consumer is ChatGPT-owned): a pure function of one run's counts, fail closed.
+- `lifeos/amazon/retention.py`: D139: Amazon order mail older than 30 days goes to the Gmail Trash, once its order is safely recorded in the canonical Amazon Orders data source.
 - `lifeos/amazon/stage.py`: Gmail to canonical Notion Amazon Orders; filing follows a verified durable write.
 ### lifeos/attention/
 - `lifeos/attention/card.py`: Attention card (D128): the one line the Daily Report's Attention callout shows above Jim's interactive Attention view.
@@ -351,3 +353,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D136: Attention rows carry the date the mail was received (2026-10-05)
 - D137: Attention categories say what Jim owes; "Other" is retired (2026-10-05)
 - D138: Scale-Up is live in V7; the V1 "quarantined" wording is stale (2026-10-05)
+- D139: Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)
