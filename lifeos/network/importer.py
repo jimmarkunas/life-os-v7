@@ -46,3 +46,11 @@ def _apply(counts, connection, key, plan, exported, chunk):
     counts["people_new"], counts["positions_new"] = after["people_total"] - before["people_total"], after["positions_total"] - before["positions_total"]
     counts["batch_status"] = "COMPLETE"
     return counts
+
+
+def audit(limit, live, connection=None):
+    """python -m lifeos.run network-audit: read-only counts of the stored network (including how many text values look like an email address)."""
+    if connection is not None:
+        return store.audit(connection)
+    with db.connect() as opened:
+        return store.audit(opened)
