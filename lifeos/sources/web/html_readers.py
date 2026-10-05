@@ -176,6 +176,7 @@ def _bluestonex(text, source):
         title = " ".join(label.split())
         if "full-time more information" not in title.casefold():
             continue
+        title = re.split(r"\s*full-time more information", title, flags=re.I)[0].strip()     # the card's button text is not part of the role
         url = urljoin(source["url"], href)
         if url not in seen:
             rows.append(job(_sid(url), title, None, url))

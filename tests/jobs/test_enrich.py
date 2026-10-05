@@ -299,6 +299,15 @@ class FirstPartyRelinkTests(unittest.TestCase):
             enrich._api_job("https://boards.greenhouse.io/embed/job_app?token=4567&for=acme")
         self.assertEqual(seen, ["https://boards-api.greenhouse.io/v1/boards/acme/jobs/4567"] * 2)
 
+    def test_a_heading_that_names_the_role_proves_an_ambiguous_link_on_an_employers_own_page(self):
+        body = LONG.replace('"', "'")
+        page = f"<html><head><title>Careers</title></head><body><h2>Senior Data Engineer</h2>{body}</body></html>"
+        other = page.replace("Senior Data Engineer", "Office Manager")
+        loose = enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, True)
+        self.assertEqual(loose["outcome"], "ready")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", True, True)["outcome"], "mismatch")
+        self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")   # no provenance, no heading proof
+
     def test_a_mismatch_hold_is_read_again_once_a_day(self):
         cur = self.Cur([(11, "https://careers.example.com/careers/product-manager")])
         enrich.relink_first_party(cur)

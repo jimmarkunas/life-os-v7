@@ -139,6 +139,8 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
             desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
+        if strict and first_party:                           # an employer's own page whose link names no job: a heading that names the role proves it (Lessel, Futuristic), not just the <title>
+            found_title += " " + " ".join(jd.html_to_text(h) for h in re.findall(r"<h[1-3][^>]*>.*?</h[1-3]>", html, re.S | re.I))
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
     where = jsonld.location(posting) if posting else None
     if where and result.get("outcome") in ("ready", "stale"):

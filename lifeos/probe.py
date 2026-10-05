@@ -3,6 +3,7 @@ key NAMES, counts) and never any posting text, URL or personal data. Result deci
 import json
 import os
 import re
+from urllib.parse import urlsplit
 
 from lifeos.platform.http import fetch
 from lifeos.sources.web import registry
@@ -400,7 +401,8 @@ def _replay(url, title):
     """What today's reader makes of the held role's page: its outcome and reason code only."""
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
     try:
-        got = enrich.read_page(url, title or "", lane="Scale-Up", first_party=True) if url else {}
+        proof = "unproven" if url and enrich.quality.link_problem(url) in enrich.quality.AMBIGUOUS else None          # what the pipeline passes for an ambiguous shape on an employer's own board
+        got = enrich.read_page(url, title or "", lane="Scale-Up", proof=proof, first_party=True) if url else {}
     except Exception as error:                                                               # noqa: BLE001 - a probe never stops on one page
         return type(error).__name__
     return f"{got.get('outcome')}:{got.get('reason') or ''}"
@@ -430,7 +432,7 @@ def held_first_party(fetcher=fetch, rows=None):
         out.setdefault(source, []).append({
             "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
             "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
-            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "embed_api": _embed_api(html, url, title)})
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "url_shape": re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", urlsplit(url or "").path + ("?" + urlsplit(url or "").query if urlsplit(url or "").query else ""))), "embed_api": _embed_api(html, url, title)})
     return out
 
 
