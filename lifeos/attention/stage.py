@@ -15,7 +15,7 @@ from lifeos.platform.outlook import Outlook, OutlookError
 
 SOURCE_ID = "5cab416c-b1df-43c2-abcc-b98df6656d41"          # the canonical Attention data source (the one the Daily Report view links)
 GMAIL_LABEL, GMAIL_QUERY = "LifeOS/Attention", "label:LifeOS-Attention"
-OUTLOOK_CATEGORY = "LifeOS Attention"          # an Outlook category: read-only for V7 (no folder to create), the message stays in the inbox
+OUTLOOK_CATEGORIES = ("LifeOS Attention", "LIFE OS Attention", "Life OS Attention")          # the Outlook category (any of these spellings): read-only for V7, the message stays in the inbox
 SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date"}
 
 
@@ -111,11 +111,11 @@ def _gmail_proof(gmail, label, medium, labeled):
 
 def _outlook_source(client, account, limit, live):
     out = []
-    for message in client.messages_in_category(OUTLOOK_CATEGORY, limit):
+    for message in client.messages_in_category(OUTLOOK_CATEGORIES, limit):
         sender = ((message.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         out.append({"sender": sender, "subject": message.get("subject") or "", "url": "https://outlook.office.com/mail/id/" + quote(message["id"], safe=""),
                     "medium": f"Outlook:{account}:{message['id']}"})
-    return out, {c["medium"] for c in out}, OUTLOOK_CATEGORY
+    return out, {c["medium"] for c in out}, OUTLOOK_CATEGORIES
 
 
 def _outlook_proof(client, category, medium, labeled):
@@ -125,7 +125,8 @@ def _outlook_proof(client, category, medium, labeled):
     try:
         found = client.get(f"/me/messages/{quote(medium.split(':', 2)[2], safe='')}", {"$select": "id,categories"})
         categories = found.get("categories")
-        return "absent" if isinstance(categories, list) and category not in categories else "unknown"
+        wanted = {"".join(n.lower().split()) for n in ([category] if isinstance(category, str) else category)}
+        return "absent" if isinstance(categories, list) and not any("".join(str(c).lower().split()) in wanted for c in categories) else "unknown"
     except OutlookError:
         return "unknown"
 

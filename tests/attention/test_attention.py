@@ -223,3 +223,30 @@ class Stage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutlookCategorySpellings(unittest.TestCase):
+    def test_filter_accepts_every_spelling_and_the_absent_proof_ignores_case_and_spaces(self):
+        from lifeos.platform.outlook import Outlook
+        seen = {}
+
+        class Stub(Outlook):
+            def __init__(self):
+                pass
+
+            def get(self, url, params=None, prefer=""):
+                seen["filter"] = (params or {}).get("$filter")
+                return {"value": []}
+        Stub().messages_in_category(stage.OUTLOOK_CATEGORIES)
+        for name in stage.OUTLOOK_CATEGORIES:
+            self.assertIn(f"c eq '{name}'", seen["filter"])
+
+        class Found:
+            def get(self, url, params=None):
+                return {"categories": ["LifeOS  attention"]}
+        self.assertEqual(stage._outlook_proof(Found(), stage.OUTLOOK_CATEGORIES, "Outlook:a:1", set()), "unknown")      # still carries the category: never proves it absent
+
+        class Gone:
+            def get(self, url, params=None):
+                return {"categories": ["Other"]}
+        self.assertEqual(stage._outlook_proof(Gone(), stage.OUTLOOK_CATEGORIES, "Outlook:a:1", set()), "absent")

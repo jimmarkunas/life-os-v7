@@ -148,10 +148,11 @@ class Outlook:
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
 
     def messages_in_category(self, category, limit=5000):
-        """Every message in the mailbox that carries one Outlook category (read-only; the message stays where it is), following every page. An enumeration that
-        cannot be proven complete raises instead of returning a partial list."""
-        quoted = category.replace("'", "''")
-        params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:c eq '{quoted}')"}
+        """Every message in the mailbox that carries one of the given Outlook categories (a name, or several spellings of it), read-only (the message stays where it is), following every page.
+        An enumeration that cannot be proven complete raises instead of returning a partial list."""
+        names = [category] if isinstance(category, str) else list(category)
+        clause = " or ".join("c eq '" + n.replace("'", "''") + "'" for n in names)
+        params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:{clause})"}
         out, url = [], "/me/messages"
         for page in range(MAX_PAGES):
             reply = self.get(url, params if page == 0 else None)
