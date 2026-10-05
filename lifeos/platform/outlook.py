@@ -129,12 +129,12 @@ class Outlook:
         self._request("POST", f"/me/messages/{quoted}/move", None, {"destinationId": folder_id})
         return self.get(f"/me/messages/{quoted}", {"$select": "id,parentFolderId"}).get("parentFolderId") == folder_id
 
-    def messages(self, folder="inbox", since=None, limit=5000):
+    def messages(self, folder="inbox", since=None, limit=5000, fields=None, time_field="receivedDateTime"):
         """Every message in a folder received at or after `since` (ISO 8601), newest first, following every page. A listing that
         cannot be proven complete (page cap hit with more to come) raises instead of returning a partial census."""
-        params = {"$select": MESSAGE_FIELDS, "$top": PAGE_SIZE, "$orderby": "receivedDateTime desc"}
+        params = {"$select": fields or MESSAGE_FIELDS, "$top": PAGE_SIZE, "$orderby": f"{time_field} desc"}
         if since:
-            params["$filter"] = f"receivedDateTime ge {since}"
+            params["$filter"] = f"{time_field} ge {since}"
         out, url = [], f"/me/mailFolders/{urllib.parse.quote(folder)}/messages"
         for page in range(MAX_PAGES):
             reply = self.get(url, params if page == 0 else None)
@@ -164,10 +164,10 @@ class Outlook:
             url = link
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
 
-    def events(self, start, end, limit=2000):
+    def events(self, start, end, limit=2000, fields=None):
         """Every calendar event overlapping [start, end) (ISO 8601, UTC), recurring series expanded into occurrences, times in UTC.
         Like the mail listing, an incomplete enumeration raises."""
-        params = {"startDateTime": start, "endDateTime": end, "$top": 100, "$select": EVENT_FIELDS,
+        params = {"startDateTime": start, "endDateTime": end, "$top": 100, "$select": fields or EVENT_FIELDS,
                   "$orderby": "start/dateTime"}
         out, url = [], "/me/calendarView"
         for page in range(MAX_PAGES):
