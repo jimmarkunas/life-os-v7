@@ -7,6 +7,7 @@ Last updated: October 5, 2026 (night). One Claude Code session builds everything
 - **Done means:** merged, run live once, a counts-only check passes, and Jim says it is done.
 - **Status words:** To-Do, In Progress, Done, Blocked.
 - **Status mapping:** To-Do = not started but actionable; In Progress = building, merged-but-not-yet-confirmed, live-checking, or validation underway; Blocked = cannot advance because of a dependency, prerequisite, credential, decision, or explicit hold; Done = only after the Done rule above is satisfied.
+- **RAG mapping:** 🔵 To-Do; 🟡 In Progress; 🔴 Blocked; 🟢 Done. RAG mirrors Status exactly; it is not a separate health score.
 - **Weekly hardening:** every week a small, fixed amount of work goes to things that stop silent bugs (below, "Safety net").
 - **Safety rules:** private data never goes in this public repository; a failed step says so instead of showing old numbers as fresh; anything that changes a database, a secret or a Notion layout stops for Jim's yes.
 
