@@ -12,6 +12,9 @@ EXPIRIES = Path(__file__).with_name("expiries.json")
 SOURCE_FAILURES = 3          # a sponsor that failed this many runs in a row
 STUCK_JOBS = 25              # jobs sitting in READY/RESOLVED for over a day
 QUIET_HOURS = 24             # no job published for this long
+STOP_WINDOW_HOURS = 24       # SAFE-1.1: a source that normally delivers new jobs ...
+STOP_BASELINE_DAYS = 14      # ... (measured over the 14 days before the window) ...
+STOP_PER_DAY = 3.0           # ... at least this many a day, and delivered none in the window, has stopped
 
 
 def detect(counts, now, expiries=None):
@@ -26,6 +29,10 @@ def detect(counts, now, expiries=None):
     if counts.get("stuck_jobs", 0) >= STUCK_JOBS:
         out.append(alerts.Alert("stuck_jobs", alerts.INFO, "Jobs stuck before publish", f"{counts['stuck_jobs']} job(s) waiting over 24 hours.",
                                 "check enrich and fit counts in the latest run"))
+    for name, per_day in counts.get("stopped_sources", []):
+        out.append(alerts.Alert(f"source_stopped_{name}", alerts.PAGE, f"Job source stopped: {name}",
+                                f"No new jobs in {STOP_WINDOW_HOURS} hours; it normally brings about {per_day:g} a day.",
+                                "open the source's last run (and its Gmail label or site) to see why"))
     for key, item in (expiries or {}).items():
         days = (dt.date.fromisoformat(item["expires"]) - now.date()).days
         if days <= 7:
@@ -43,7 +50,13 @@ def gather(connection, now):
         failing = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY','RESOLVED') AND updated_at < %s", (cutoff,))
         stuck = cursor.fetchone()[0]
-    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck}
+        window = now - dt.timedelta(hours=STOP_WINDOW_HOURS)
+        start = window - dt.timedelta(days=STOP_BASELINE_DAYS)
+        cursor.execute("SELECT source, SUM(first_seen > %s), SUM(first_seen <= %s) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source",
+                       (window, window, start))
+        stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in cursor.fetchall()
+                   if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY]
+    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "stopped_sources": sorted(stopped)}
 
 
 def load_state(connection):
