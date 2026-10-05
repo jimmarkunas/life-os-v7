@@ -376,15 +376,23 @@ def revolut_titles(search=None, fetch_many=None, fetch_page=None):
     return out
 
 
-def _embed_api(html, url):
+def _embed_api(html, url, title=""):
     """Veramed-style Greenhouse embed: the board API's status for the role (a number only)."""
     from lifeos.jobs import enrich                                                           # noqa: PLC0415
     target = enrich._greenhouse_embed(url or "", html or "")
     if not target:
         return None
     board, token = re.search(r"for=([^&]+)", target).group(1), re.search(r"token=(\d+)", target).group(1)
-    return {"role": fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{token}", timeout=15, max_hops=2).status,
-            "board": fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs", timeout=15, max_hops=2).status}
+    from lifeos.jobs.resolve import ats_match                                                # noqa: PLC0415
+    got = fetch(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{token}", timeout=15, max_hops=2)
+    try:
+        data = json.loads(got.html)
+    except ValueError:
+        data = {}
+    words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+    found = set(ats_match.norm(data.get("title") or "").split())
+    return {"role": got.status, "title_share": round(sum(w in found for w in words) / len(words), 2) if words else 0,
+            "content_chars": len(data.get("content") or ""), "api_title_words": len(found), "stored_title_words": len(words)}
 
 
 def _replay(url, title):
@@ -421,7 +429,7 @@ def held_first_party(fetcher=fetch, rows=None):
         out.setdefault(source, []).append({
             "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
             "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
-            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "embed_api": _embed_api(html, url)})
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "embed_api": _embed_api(html, url, title)})
     return out
 
 
