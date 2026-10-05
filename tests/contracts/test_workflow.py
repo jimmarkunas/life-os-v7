@@ -17,10 +17,12 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("jobs", data, path.name)
             self.assertTrue("on" in data or True in data, path.name)
 
-    def test_safety_workflow_is_manual_only_with_its_stages(self):
+    def test_safety_workflow_is_weekly_and_manual_with_its_stages(self):
         root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
         data = yaml.safe_load((root / "safety.yml").read_text())
-        self.assertEqual(list(data[True]), ["workflow_dispatch"])                       # one recurring scheduler only (D30/D52)
+        self.assertEqual(sorted(data[True]), ["schedule", "workflow_dispatch"])         # Jim's weekly check (D142); a scheduled run has no input, so the stage defaults to all
+        self.assertEqual(data[True]["schedule"], [{"cron": "17 13 * * 1"}])
+        self.assertIn("|| 'all'", yaml.safe_load((root / "safety.yml").read_text())["jobs"]["safety"]["env"]["STAGE"])
         self.assertEqual(data[True]["workflow_dispatch"]["inputs"]["stage"]["options"], ["all", "sql-smoke", "fit-golden", "fit-capture"])
 
     def test_hourly_workflow_is_valid_yaml_with_dispatch_inputs(self):
