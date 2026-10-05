@@ -2,82 +2,90 @@
 
 Last updated: October 5, 2026 (night). This file is the source; Notion shows the same operating plan.
 
-## How we work
+## Roadmap contract
 
 - **Done means:** merged where code is involved, run live once, a counts-only or equivalent acceptance check passes, and Jim says it is done.
 - **Status values:** 🔵 To-Do, 🟡 In Progress, 🔴 Blocked, 🟢 Done.
-- **Status mapping:** To-Do = not started but actionable; In Progress = actively building, validating, live-checking, or awaiting Jim's final Done confirmation after required proof is available; Blocked = cannot advance because of a dependency, prerequisite, credential, decision, time-bound proof point, or explicit hold; Done = only after the Done rule above is satisfied.
-- **One owner per row:** every roadmap row is owned by exactly one of `ChatGPT`, `Jim`, or `Claude Code`. If ownership changes between steps, those are separate rows in delivery order.
+- **Live, awaiting Jim:** keep the row 🟡 In Progress until Jim explicitly confirms Done; say `Live, awaiting Jim` in the row so production-live work is not confused with unfinished implementation.
+- **One owner per WBS element:** every tracked row is owned by exactly one of `ChatGPT`, `Jim`, or `Claude Code`. If ownership changes between steps, split the work into separate WBS elements in dependency order.
+- **WBS contract:** every Item starts with a stable WBS element using `<DOMAIN>-<STREAM>.<ELEMENT>`. WBS IDs are semantic identifiers, not row numbers: never renumber them merely because delivery order changes. New work gets the next unused child within its domain. References should use the WBS ID first.
 - **Order rule:** the roadmap is topological: prerequisite work appears before the work it unlocks. Blocked dependent work sits immediately after its unmet prerequisite where practical.
-- **Weekly hardening:** every week a small, fixed amount of work goes to things that stop silent bugs (below, `Safety net`).
 - **Privacy rule:** never commit source-derived personal identifiers to this public roadmap: no personal email addresses, full personal names, phone numbers, or street/postal addresses. Use neutral system/account/role labels instead. The fixed owner labels `Jim`, `ChatGPT`, and `Claude Code` are allowed.
 - **Safety rules:** private data never goes in this public repository; a failed step says so instead of showing old numbers as fresh; consequential database/secret/schema changes retain their existing approval gates.
 
-## Hard date: Wednesday, October 7, 3 PM CT
+## Tracking table
 
-MegIBOW is **🔴 Blocked** until the first required Monday rollover proof point. The weekly table fills itself every hour, Cumulative is seeded from the old sheet, warnings show, review items go to the MegIBOW Review list, and a failed refresh says DEGRADED. Still to prove after the rollover becomes available: the Monday rollover (first freeze Monday Oct 12), a real review item answered end to end, and the sixteen acceptance scenarios on the real dashboard. The 1:30 PM and 2:30 PM CT phone alerts fire only when a Wednesday refresh is failing.
+| WBS | Item | Status | What it is / delivers | Owner | Next step | Needs Jim | Proof |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| MEGI-1.1 | MegIBOW — Monday rollover + final acceptance | 🟡 In Progress | **Live, awaiting Jim.** Hourly accountability table, cumulative totals, warnings, review queue and fail-closed degraded state are live. | ChatGPT | After the first Monday rollover, verify the freeze, complete one real review item end to end, and run the 16 real-dashboard acceptance scenarios. | Yes — final Done confirmation after the remaining proof. | D134; PRs 150, 151, 152. Live hourly. Warnings accepted. First rollover/freeze proof due Mon Oct 12; Wednesday 1:30/2:30 PM CT phone alert is failure-only. |
+| NET-1.2 | Network importer — NET-1b | 🟢 Done | Imports deterministic network people and positions from the approved private attachment; ambiguous identity rows are held rather than guessed. Inspector evidence is folded into this WBS element and is not tracked separately. | Claude Code | None. | No. | **Jim confirmed Done Oct 5.** D135; PRs 154, 155. Live read-back: 3,453 source rows / 3,346 people / 3,244 positions / 107 held. Replay wrote 0 new. No email address stored; 7 `@` values were job-title text. The 107 held rows contain only a connection date, so there is nothing else safe to import. |
+| ATTN-0.1 | Outlook tagging — real tagged fixture exists | 🟢 Done | The intended mailbox already contains real mail carrying the LIFE OS Attention category; no manual tagging setup remains. | Jim | None. | No. | Real tagged fixture existed before the V7 acceptance run and was independently confirmed. |
+| ATTN-1.1 | Outlook tagging — V7 detects the tag | 🟡 In Progress | **Live, awaiting Jim.** V7 reads the real Outlook category spellings, classifies the tagged mail and writes/read-backs Attention state. | ChatGPT | Ask Jim for final Done confirmation; no further detection work is required unless he rejects the result. | Yes — final Done confirmation. | PR 156. Dry: `outlook_accounts=2`, `outlook=34`, `sources_failed=0`. Live: `gmail=1`, `admitted=35`, `created=19`, `sources_failed=0`, `verified=true`, push sent. |
+| ATTN-1.2 | Attention improvements — received date, action categories and source links | 🟡 In Progress | **Live, awaiting Jim.** Rows carry Received date; categories now express what action is owed; titles and row pages carry source links; the Daily Report view is reduced to four working columns. | Claude Code | No implementation work remains. Jim decides whether the current UX is acceptable enough to mark Done. | Yes — final Done confirmation. | D136, D137; PRs 158, 159. First classification run: FYI 23 / Reply needed 11 / Security 1 / Review-decide 0. Received dates and category behavior confirmed. Known native Notion limitation: a database title cell still represents the Notion row/page; browser new-tab targeting is not configurable on that title click. |
+| DOC-1.1 | Scoping documents and roadmap housekeeping | 🟡 In Progress | Keeps current scopes, decisions and the master roadmap aligned with accepted product direction. | ChatGPT | Keep only current planning artifacts aligned; no broad documentation-maintenance program. | Final acceptance only if a scope materially changes product direction. | PRs 149, 153, 157 merged; decisions D132–D137 recorded. |
+| OPS-1.1 | Scheduled runs since Fit clean-up — production verification | 🟡 In Progress | Verifies scheduled production behavior after Fit cleanup from authoritative run evidence. | ChatGPT | Inspect the relevant production runs and reconcile current state. | Yes — final Done confirmation after proof. | Pending authoritative production verification. |
+| BILL-1.1 | Bills recurrence — real weekly / bi-weekly / quarterly / yearly cases | 🟡 In Progress | Proves remaining recurrence patterns against real Bill Tracker rows. | ChatGPT | Run and verify the remaining real recurrence cases. | Yes — final Done confirmation. | Pending real recurrence proof. |
+| BILL-1.2 | Bills overdue count — reconcile 24 overdue bills | 🟡 In Progress | Reconciles the dashboard overdue count against canonical bill rows. | ChatGPT | Validate the overdue state against live rows. | Yes — final Done confirmation. | Current reconciliation target: 24 overdue bills. |
+| AMZ-1.1 | Amazon missing-field behavior — real orders with no date / total | 🟡 In Progress | Proves missing date/total values render truthfully without invented data. | ChatGPT | Validate real missing-field cases. | Yes — final Done confirmation. | Pending real missing-field acceptance. |
+| SAFE-1.1 | Safety net — weekly hardening slice | 🔵 To-Do | Small fixed reliability slice: Fit re-check after a rule change, real-driver SQL smoke test, saved representative Fit job set, and phone alert when a job source stops delivering. | Claude Code | Implement the fixed hardening slice only; no generic reliability framework. | No. | Required proof: representative Fit re-check; SQL smoke against real DB driver; saved real-job Fit set; source-stop phone alert. |
+| MAIL-1.1 | Mail Alerts — Notion presentation surface | 🔵 To-Do | Creates/restores the Daily Report physical-mail presentation region without changing canonical mail state. | ChatGPT | Create or restore the approved surface and verify its structure. | No. | Surface exists in the approved location; protected regions unchanged. |
+| MAIL-1.2 | Mail Alerts — V7 runtime wiring | 🔴 Blocked | Wires accepted physical-mail lifecycle state into the Mail Alerts surface with authoritative read-back. | Claude Code | Implement after MAIL-1.1 exists. | Yes — final Done confirmation after live proof. | Blocked on MAIL-1.1. |
+| HIRE-1.1 | Hiring Pipeline — Notion presentation surface | 🔵 To-Do | Creates/restores the Daily Report hiring-pipeline presentation region without changing hiring canonical state. | ChatGPT | Create or restore the approved surface and verify its structure. | No. | Surface exists in the approved location; protected regions unchanged. |
+| HIRE-1.2 | Hiring Pipeline — V7 runtime wiring | 🔴 Blocked | Wires accepted hiring state into the Hiring Pipeline surface with authoritative read-back. | Claude Code | Implement after HIRE-1.1 exists. | Yes — final Done confirmation after live proof. | Blocked on HIRE-1.1. |
+| RECR-1.1 | Recruiters — `Needs review` property and view | 🔵 To-Do | Adds the Notion review field/view needed to hold uncertain recruiter classifications. | ChatGPT | Add `Needs review` and configure the recruiter view. | No — this connector-capable schema/view step is agent-owned. | Property/view exist and uncertain classifications can be held for review. |
+| RECR-1.2 | Recruiters — V7 runtime wiring | 🔴 Blocked | Routes accepted recruiter/human-outreach state into the interactive recruiter surface. | Claude Code | Implement after RECR-1.1. | Yes — final Done confirmation after live proof. | Blocked on RECR-1.1. |
+| DEL-1.1 | Delivery tracking — tracking-number census from mail | 🔵 To-Do | Finds and counts real tracking numbers before any carrier/API persistence work. | Claude Code | Implement the mail census with no database change. | No. | Live mail census works; counts checked; no unintended DB mutation. |
+| DEL-1.2 | Delivery tracking — carrier credentials / developer access | 🔴 Blocked | Supplies carrier developer credentials only if DEL-1.1 proves they are actually required. | Jim | Wait for DEL-1.1 to determine the real carrier/API requirement. | Yes — credential action if required. | Blocked on DEL-1.1. |
+| DEL-1.3 | Delivery tracking — carrier-aware lifecycle | 🔴 Blocked | Completes carrier lookup, in-transit state, delivery state and presentation. | Claude Code | Proceed after DEL-1.1 and DEL-1.2 where credentials are required. | Yes — final Done confirmation after live proof. | Blocked on delivery prerequisites. |
+| NET-2.1 | Network next slice — change events | 🔵 To-Do | Adds temporal change-event handling on top of the accepted NET-1 state. | Claude Code | Implement the smallest change-event slice from current canonical network state. | No. | NET-1.2 is Done; this is the first next network slice. |
+| NET-2.2 | Network next slice — matching | 🔴 Blocked | Matches useful network contacts to current jobs/interviews from accepted temporal state. | Claude Code | Proceed after NET-2.1. | Yes — final Done confirmation after live proof. | Blocked on NET-2.1. |
+| NET-2.3 | Network next slice — surfacing | 🔴 Blocked | Surfaces the small ranked network shortlist without creating a second CRM. | Claude Code | Proceed after NET-2.2. | Yes — final Done confirmation after live proof. | Blocked on NET-2.2. |
+| JOBS-1.1 | Jobs OS clean-up — ranking / data-quality defects | 🔵 To-Do | Fixes the accepted cleanup list for work mode/date, company edge cases, Fit regressions and stale company labels. | Claude Code | Fix the named cleanup package and verify each case live. | No. | Each accepted defect verified live; counts/results checked. |
+| RECR-2.1 | Recruiters / Hiring Pipeline — mail-evidence routing | 🔴 Blocked | Routes accepted mail evidence into recruiter and hiring projections without making email the canonical workflow store. | Claude Code | Proceed after MAIL-1.2, HIRE-1.2 and RECR-1.2. | Yes — final Done confirmation after live proof. | Blocked on recruiter/hiring presentation/runtime prerequisites. |
+| MAIL-2.1 | Physical Mail tracking — forwarding / tracking / delivered lifecycle | 🔴 Blocked | Tracks physical-mail items through action, forwarding, tracking and delivered state. | Claude Code | Proceed after delivery/mail tracking prerequisites. | Yes — final Done confirmation after live proof. | Blocked on delivery/mail prerequisites. |
+| COCK-1.1 | Company cockpit — Notion operating surface / product presentation | 🟡 In Progress | Defines the operating cockpit presentation without creating a second source of truth. | ChatGPT | Finish current source mapping and presentation boundaries. | Final product acceptance if the cockpit meaning changes. | Product/surface contract still in progress. |
+| COCK-1.2 | Company cockpit — V7 live synthesis | 🔴 Blocked | Populates the cockpit from accepted Jira, Outlook, Calendar and Notion evidence. | Claude Code | Implement after COCK-1.1 and required source paths are accepted. | Yes — final Done confirmation after live proof. | Blocked on COCK-1.1. |
+| EDGE-1.1 | Edge Gateway — VM prerequisite | 🔵 To-Do | Provides the approved VM prerequisite for the edge gateway. | Jim | Provision the prerequisite when this work reaches execution. | Yes. | Required prerequisite not yet completed. |
+| EDGE-1.2 | Edge Gateway — implementation | 🔴 Blocked | Implements the approved edge/gateway role on the prerequisite VM. | Claude Code | Proceed after EDGE-1.1. | Yes — final Done confirmation after live proof. | Blocked on EDGE-1.1. |
+| JOBS-2.1 | Lensa product/source decision | 🔵 To-Do | Decides whether and how the source belongs in the approved Jobs architecture. | Jim | Make the product/source decision when reached. | Yes. | Decision pending. |
+| JOBS-2.2 | Reed parser | 🔵 To-Do | Adds the bounded parser capability in the existing Jobs architecture. | Claude Code | Implement when its turn is reached. | No. | Pending. |
+| ACCT-1.1 | Accountability — product/surface definition | 🔵 To-Do | Defines the accountability product/surface before runtime work. | ChatGPT | Define the bounded product/surface contract. | Final product acceptance if meaning changes. | Pending. |
+| ACCT-1.2 | Accountability — runtime implementation | 🔴 Blocked | Implements the accepted accountability behavior. | Claude Code | Proceed after ACCT-1.1. | Yes — final Done confirmation after live proof. | Blocked on ACCT-1.1. |
+| DRIVE-1.1 | Drive Index | 🔵 To-Do | Implements the accepted Drive Index work in V7. | Claude Code | Implement when reached. | No. | Pending. |
+| RECR-2.2 | Recruiter-mail brief | 🔴 Blocked | Produces the recruiter-mail brief from accepted routed evidence. | Claude Code | Proceed after RECR-2.1. | Yes — final Done confirmation after live proof. | Blocked on RECR-2.1. |
+| INT-1.1 | Interview OS promotion | 🔴 Blocked | Promotes the accepted Interview OS lifecycle after prerequisite live proof. | Claude Code | Proceed when prerequisite lifecycle proof is complete. | Yes — final Done confirmation after live proof. | Blocked on prerequisite lifecycle proof. |
+| GOV-1.1 | Privacy incident — optional GitHub Support purge request | 🔵 To-Do | Optional follow-up for the already-corrected public-roadmap privacy incident. | Jim | If desired, ask GitHub Support to purge any remaining server-side/cached reachability of the old object. | Yes — optional. | PR 155 replaced the identifier; Jim-approved history rewrite removed it from current `main` history. GitHub may still serve the old object by ID until purged. |
 
-## Execution order — prerequisite first
+## Surfaces
 
-### Active proof / decisions
+- **MegIBOW:** accountability block plus Review database on the shared accountability dashboard.
+- **Attention:** `Received` date, `Reply needed` / `Review / decide` / `FYI` category options, source-link formula, and updated views. The Daily Report presentation is reduced to the working four-column view; the database is locked.
 
-1. **MegIBOW — Monday rollover + final acceptance** — Owner: `ChatGPT` — 🔴 Blocked until Monday rollover evidence exists. After it exists, run the real review-item path and dashboard acceptance checks; Jim gives final Done confirmation.
-2. **Network inspector — first-run counts + importer design** — Owner: `ChatGPT` — 🟡 In Progress. Real run: 3,453 source rows; 3,346 deterministic profile identities; 3,244 initial position-eligible rows; 107 no-URL identity collisions held unresolved. The importer direction is accepted: Door B, person identity and position eligibility are separate, ambiguous rows are counted holds, and NET-1 uses only the three already-approved tables. Await Jim's final Done confirmation after the corrected spec/read-back is complete.
-3. **Network importer — bounded Notion-attachment importer** — Owner: `Claude Code` — 🟢 Done (Jim confirmed October 5, 2026). Live import read back 3,453 source rows, 3,346 people, 3,244 positions and 107 held (those 107 rows carry only a connection date: no name, link, company or email, so there is nothing to import); a replay wrote nothing new; the stored tables hold no email address. It reused the private Notion attachment and made replay a no-op. `v7_network_people`, `v7_network_positions`, and `v7_network_batches` were already approved by Jim on October 5; no new Jim approval blocks NET-1.
-4. **Scoping documents — reconcile current scopes into planning input** — Owner: `ChatGPT` — 🟡 In Progress.
-5. **Scheduled runs since Fit clean-up — production verification** — Owner: `ChatGPT` — 🟡 In Progress.
-6. **Bills recurrence — real weekly/bi-weekly/quarterly/yearly cases** — Owner: `ChatGPT` — 🟡 In Progress.
-7. **Bills overdue count — reconcile 24 overdue bills** — Owner: `ChatGPT` — 🟡 In Progress.
-8. **Amazon missing-field behavior — real orders with no date/total** — Owner: `ChatGPT` — 🟡 In Progress.
-9. **Outlook tagging — real tagged example exists** — Owner: `Jim` — 🟢 Done. Existing Bytalos/TGP messages in the personal Outlook mailbox already carry the `LIFE OS Attention` category; no manual tagging action remains.
-10. **Outlook tagging — verify V7 detects the tag in the intended mailbox** — Owner: `ChatGPT` — 🟡 In Progress. Use the existing tagged messages as the fixture and prove the V7 Outlook path detects the category end to end; do not ask Jim to retag mail.
+## Incident record — public roadmap privacy
 
-### Next delivery chain
+A direct connector roadmap commit introduced a source-derived personal identifier into the public repository and the privacy test caught it only after the fact. PR 155 replaced it; Jim then approved a history rewrite that removed it from current `main` history. GitHub may still serve the old object by ID through cached or historical surfaces until its own purge completes. The standing rule is now explicit: ChatGPT must never put personal email addresses, full personal names, phone numbers, or street/postal addresses into public repo files.
 
-11. **Safety net — weekly hardening slice** — Owner: `Claude Code` — 🔵 To-Do.
-12. **Mail Alerts — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
-13. **Mail Alerts — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 12.
-14. **Hiring Pipeline — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
-15. **Hiring Pipeline — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 14.
-16. **Recruiters — add `Needs review` property and configure the Notion view** — Owner: `ChatGPT` — 🔵 To-Do.
-17. **Recruiters — V7 runtime wiring** — Owner: `Claude Code` — 🔴 Blocked on row 16.
-18. **Delivery tracking — step 1 tracking-number census from mail** — Owner: `Claude Code` — 🔵 To-Do.
-19. **Jobs OS clean-up — named ranking/data-quality defects** — Owner: `Claude Code` — 🔵 To-Do.
+## Execution order
 
-### Later dependency chains
+After the active proof/acceptance rows, the locked delivery order is:
 
-20. **Delivery — carrier credentials / developer access if the chosen carriers require them** — Owner: `Jim` — 🔴 Blocked until row 18 determines the real carrier/API requirement.
-21. **Delivery — steps 2–7 carrier-aware lifecycle** — Owner: `Claude Code` — 🔴 Blocked on rows 18 and 20 where credentials are required.
-22. **Network refresh and matching** — Owner: `Claude Code` — 🔴 Blocked on row 3.
-23. **Recruiters/Hiring Pipeline — mail-evidence routing** — Owner: `Claude Code` — 🔴 Blocked on rows 13, 15, and 17.
-24. **Physical Mail tracking — forwarding/tracking/delivered lifecycle** — Owner: `Claude Code` — 🔴 Blocked on the delivery/mail prerequisites.
-25. **Company cockpit — Notion operating surface / product presentation** — Owner: `ChatGPT` — 🟡 In Progress.
-26. **Company cockpit — V7 live synthesis from accepted sources** — Owner: `Claude Code` — 🔴 Blocked until row 25 and the required source path are accepted.
-27. **Oracle VM prerequisite for Edge Gateway** — Owner: `Jim` — 🔵 To-Do.
-28. **Edge Gateway — implementation on the approved VM** — Owner: `Claude Code` — 🔴 Blocked on row 27.
-29. **Lensa product/source decision** — Owner: `Jim` — 🔵 To-Do.
-30. **Reed parser** — Owner: `Claude Code` — 🔵 To-Do.
-31. **Accountability — product/surface definition** — Owner: `ChatGPT` — 🔵 To-Do.
-32. **Accountability — runtime implementation** — Owner: `Claude Code` — 🔴 Blocked on row 31.
-33. **Drive Index** — Owner: `Claude Code` — 🔵 To-Do.
-34. **Recruiter-mail brief** — Owner: `Claude Code` — 🔴 Blocked on row 23.
-35. **Interview OS promotion** — Owner: `Claude Code` — 🔴 Blocked until its prerequisite live lifecycle proof is complete.
+`SAFE-1.1 → MAIL-1.1/1.2 + HIRE-1.1/1.2 → RECR-1.1/1.2 → DEL-1.1/1.2/1.3 → NET-2.1/2.2/2.3 → JOBS-1.1`
 
-## Safety net (small, every week)
-
-Backups with a tested restore; one switch that stops all Notion writes; a review of which integrations can write; every step fails alone; clean-up of the Node 20 warning and a short runbook.
+Do not reorder that chain unless Jim explicitly changes it.
 
 ## Jim's own to-dos
 
-Only the rows explicitly owned by Jim above plus final Done confirmation after proof. Agent-capable Notion/configuration/review work must not be pushed to Jim.
+- Check MEGI-1.1 after Monday's rollover and confirm Done only after the remaining proof passes.
+- Answer MegIBOW review items as they appear.
+- Confirm Done on ATTN-1.1 and ATTN-1.2 if the current live behavior is acceptable.
+- GOV-1.1 is optional.
+- Other Jim-owned rows above remain the only manual roadmap work; agent-capable Notion/configuration/review work must not be pushed to Jim.
 
-## Agent-owned actions — do not push these to Jim
+## On hold — do not do
 
-ChatGPT owns Notion presentation/schema/view changes that the connector can perform, validation/reconciliation, inspection, product/cockpit definition, and evidence review. Claude Code owns repository/runtime implementation and repair packages. When ownership changes, use separate roadmap rows.
-
-## On hold (do not do)
-
-36. **Contract branch in `life-os-automation` — reactivate or keep frozen** — Owner: `Jim` — 🔴 Blocked by explicit hold.
-37. **LI Connection page scope-clause change — reactivate or keep frozen** — Owner: `Jim` — 🔴 Blocked by explicit hold.
-38. **ChatGPT `Network Lookups` module text — reactivate or keep frozen** — Owner: `Jim` — 🔴 Blocked by explicit hold.
-39. **Any other production-contract change outside an approved package** — Owner: `Jim` — 🔴 Blocked unless Jim explicitly authorizes it.
+| WBS | Item | Status | Owner | Reason |
+| --- | --- | --- | --- | --- |
+| GOV-9.1 | Contract branch in `life-os-automation` — reactivate or keep frozen | 🔴 Blocked | Jim | Explicit hold. |
+| NET-9.1 | LI Connection page scope-clause change — reactivate or keep frozen | 🔴 Blocked | Jim | Explicit hold. |
+| NET-9.2 | ChatGPT Network Lookups module text — reactivate or keep frozen | 🔴 Blocked | Jim | Explicit hold. |
+| GOV-9.2 | Any other production-contract change outside an approved package | 🔴 Blocked | Jim | Requires explicit authorization. |
