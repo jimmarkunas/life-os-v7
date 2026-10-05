@@ -280,6 +280,15 @@ No second scheduler, workflow family or workflow input. No local files, commands
 
 ## N. The door to Hostinger, and ChatGPT's side (cloud, automatic)
 
+**Fastest path to the import (October 5, Jim: "we need the fastest solution for the import").** The original LinkedIn export, `LI_Connections_20260907.csv`, is already attached to the Notion page "LI Connection Database & Integration". That file is the whole roster, in the cloud, in LinkedIn's own clean format, and V7's existing Notion integration can read it. So door B needs **no new setup beyond sharing that one page**, no ChatGPT step, no Drive and no new component:
+1. **Done (code, tested on invented data, pushed):** `python -m lifeos.run network-inspect` (manual workflow `network.yml`) reads that attachment in memory and prints counts only. No table, no write.
+2. **Jim, about two minutes:** share the page with the Jobs Notion integration, add the page identifier as the secret `NETWORK_HANDOFF_PAGE_ID` (steps in `docs/SETUP.md`), run the workflow. The one line it prints is the real file's shape: rows, blanks, duplicate profile keys, employer-less companies, distinct employers.
+3. **Jim, one word:** approve the three tables (`v7_network_people`, `v7_network_positions`, `v7_network_batches`).
+4. **Next code (the importer):** reuse the same reader and parser, apply the roster in chunks inside the runtime budget, resumable and replay-safe. First live run is a manual workflow (dry first, then live): about 5,000 people in Hostinger.
+5. **Refresh after that:** attach a newer CSV to the same page (Jim in ten seconds from his phone, or ChatGPT if it can attach a file) and the next tick imports it; ChatGPT's CHECK batches use the same door later.
+This is the fastest because it removes every unknown from the critical path: no Google setup, no dependence on what ChatGPT's connector can do, no Hostinger write path to build. The data still lives only in Hostinger; Notion is the doorway for a moment. NET-0's ChatGPT prompt remains useful for the *refresh* (pace and limits), but the import no longer waits for it.
+
+
 **The one open technical question.** ChatGPT must get its batches into Hostinger. Nothing in the existing contracts lets ChatGPT write to the Hostinger database: the database is reached by V7 through a locked SSH tunnel whose key is "for the database tunnel only" (D51 amendment), and in the existing design ChatGPT hands evidence to a runtime that persists it. Three doors, and the choice turns on a fact only ChatGPT can report:
 
 | Door | How it works | What it needs | Verdict |

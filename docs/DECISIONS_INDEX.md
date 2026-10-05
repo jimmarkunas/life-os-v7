@@ -125,3 +125,4 @@ This index is checked by a test: add a line here with every new decision.
 - D121 — JIRA Execution: the update time shares the heading (2026-10-04)
 - D122 — The Bills summary uses the Bills view's boundary: overdue plus today through one week from now (2026-10-04)
 - D123 — Scheduler scopes: two schedulers, each sole within its own scope (Jim, 2026-10-04)
+- D124 — Network Intelligence NET-1a: a counts-only inspector reads the connections CSV attached to a private Notion page (2026-10-05)

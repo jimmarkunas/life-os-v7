@@ -1,0 +1,21 @@
+name: network-inspect
+# Manual, read-only, counts only: measures the connections file attached to a private Notion page. Writes nothing anywhere (NET-1a).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-network
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Network inspector (reads the attached CSV through Notion; prints counts only)
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
+        run: python -m lifeos.run network-inspect

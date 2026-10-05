@@ -12,6 +12,7 @@ import os
 import sys
 
 from lifeos.calendar_bridge.sync import BridgeError
+from lifeos.network.errors import NetworkError
 from lifeos.platform.db import StoreError
 from lifeos.platform.jira import JiraError
 from lifeos.platform.notion_client import NotionError
@@ -107,6 +108,7 @@ STAGES = {
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
     "calendar-sync": lazy("lifeos.calendar_bridge.sync"),
+    "network-inspect": lazy("lifeos.network.inspect"),
     "openjobs": lazy("lifeos.sources.openjobs"),
     "sponsors": lazy("lifeos.sources.sponsor_register"),
     "probe": lazy("lifeos.probe"),
@@ -131,7 +133,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         counts = STAGES[args.stage](args.limit, args.live)
-    except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError) as error:
+    except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
