@@ -10,6 +10,7 @@ intended effect of the change, to be re-captured in the same PR, or a regression
 import ast
 import json
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -57,13 +58,26 @@ def _placeholders(sql):
     return sql.replace("%%", "").count("%s")
 
 
+def _params(sql):
+    """One value per placeholder; a placeholder written `IN %s` takes a tuple, which the driver expands to `(1)` as the code relies on."""
+    return tuple((1,) if m.group(1) else 1 for m in re.finditer(r"(\bIN\s+)?%s", sql.replace("%%", ""), re.I))
+
+
+def _fragment(sql):
+    """A statement the code finishes at run time (`... IN (` plus a joined list of placeholders) cannot be planned as written."""
+    return sql.count("(") != sql.count(")")
+
+
 def sql_smoke(connection, items=None):
     items = statements() if items is None else items
-    counts = {"statements": len(items), "ok": 0, "missing_table": 0, "failed": 0, "failures": []}
+    counts = {"statements": len(items), "ok": 0, "fragments": 0, "missing_table": 0, "failed": 0, "failures": []}
     with connection.cursor() as cursor:
         for path, line, sql in items:
+            if _fragment(sql):
+                counts["fragments"] += 1
+                continue
             try:
-                cursor.execute("EXPLAIN " + sql, tuple(1 for _ in range(_placeholders(sql))))
+                cursor.execute("EXPLAIN " + sql, _params(sql))
                 cursor.fetchall()
                 counts["ok"] += 1
             except Exception as error:                                              # noqa: BLE001 - any driver error is a finding, reported by code only
