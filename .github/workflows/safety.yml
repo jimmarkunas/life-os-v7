@@ -1,0 +1,59 @@
+name: safety
+# SAFE-1.1 (D141): the hardening slice. Read-only, counts only; a failure pushes to the phone and fails the run.
+#   sql-smoke:   every SQL statement in lifeos/ is EXPLAINed on the real database with the real driver (plans, never executes).
+#   fit-golden:  the saved representative real-job set (lifeos/jobs/fit_golden.json) is re-scored with today's rules; any changed decision fails.
+#   fit-capture: manual only; prints a fresh saved set to commit after an intended rule change.
+# Its own concurrency group: it never blocks or replaces an hourly tick.
+on:
+  workflow_dispatch:                # manual only: the repository has exactly one recurring scheduler (D30/D52); a schedule here needs Jim's decision
+    inputs:
+      stage:
+        description: "all (both weekly checks), sql-smoke, fit-golden, or fit-capture (prints a new saved set; writes nothing)"
+        type: choice
+        options: ["all", "sql-smoke", "fit-golden", "fit-capture"]
+        default: "all"
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-safety
+  cancel-in-progress: false
+jobs:
+  safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+      LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+      LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+      LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+      LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+      LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+      LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+      LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+      FIT_PROFILE_JSON: ${{ secrets.FIT_PROFILE_JSON }}
+      FIT_PROFILE_EXTRA_JSON: ${{ secrets.FIT_PROFILE_EXTRA_JSON }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      STAGE: ${{ inputs.stage || 'all' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: smoke
+        continue-on-error: true
+        name: SQL smoke test (real driver, real database; EXPLAIN only)
+        if: ${{ env.STAGE == 'all' || env.STAGE == 'sql-smoke' }}
+        run: python -m lifeos.run safety-sql-smoke
+      - id: golden
+        continue-on-error: true
+        name: Fit re-check on the saved representative job set
+        if: ${{ env.STAGE == 'all' || env.STAGE == 'fit-golden' }}
+        run: python -m lifeos.run safety-fit-golden
+      - id: capture
+        name: Fit capture (manual; prints a set to save)
+        if: ${{ env.STAGE == 'fit-capture' }}
+        run: python -m lifeos.run safety-fit-capture
+      - name: Phone alert
+        if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
+        run: python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly safety check failed" --body "SQL smoke: ${{ steps.smoke.outcome }}. Fit re-check: ${{ steps.golden.outcome }}. Open the safety run in Actions."
+      - name: Fail the run when a check failed
+        if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
+        run: exit 1

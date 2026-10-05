@@ -48,6 +48,9 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `resolve-jobright` -> `lifeos.run:_jobright`
 - `resolve-lensa` -> `lifeos.run:_lensa`
 - `resolve-linkedin` -> `lifeos.run:_linkedin`
+- `safety-fit-capture` -> `lifeos.jobs.safety:run_fit_capture`
+- `safety-fit-golden` -> `lifeos.jobs.safety:run_fit_golden`
+- `safety-sql-smoke` -> `lifeos.jobs.safety:run_sql_smoke`
 - `scale-up-holds` -> `lifeos.jobs.holds:run`
 - `sponsors` -> `lifeos.sources.sponsor_register:run`
 - `sync-seen` -> `lifeos.run:_sync_seen`
@@ -140,6 +143,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/resolve/stage.py`: Resolve stage: NEW jobs -> final apply link, saved to Hostinger (D1: nothing without a final link is ever published).
 - `lifeos/jobs/retention.py`: Retention (weekly), per the Jobs canon plus Jim's rules (docs/LANES.md).
 - `lifeos/jobs/review.py`: Fit review (D97): one private Notion page that lists what happened to every job of one company or source, and why.
+- `lifeos/jobs/safety.py`: SAFE-1.1: two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes only.
 - `lifeos/jobs/sponsors.py`: UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?
 - `lifeos/jobs/store.py`: Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db.
 - `lifeos/jobs/tombstone.py`: Suppression tombstones (machine state only): after a canonical job is retired, keep the minimum identity for 90 days so the same stale or reposted vacancy is not immediat
@@ -223,6 +227,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
+- `safety.yml`: jobs safety; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NTFY_TOPIC
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, NTFY_TOPIC
 
 ## Database tables (Hostinger) and the file that owns each
@@ -360,3 +365,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D138: Scale-Up is live in V7; the V1 "quarantined" wording is stale (2026-10-05)
 - D139: Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)
 - D140: Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)
+- D141: SAFE-1.1: the hardening slice (2026-10-05)
