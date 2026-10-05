@@ -304,8 +304,20 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - id: aretain
+        continue-on-error: true
+        name: Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)
+        if: ${{ always() }}
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
+          NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
+          RETENTION_LIVE: "false"   # D139: dry run until Jim has read the first counts; a later change flips this to "true"
+        run: python -m lifeos.run amazon-retention $([ "$RETENTION_LIVE" = "true" ] && echo --live)
       - name: Amazon Orders warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure') }}
+        if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure' || steps.aretain.outcome == 'failure') }}
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"
 
   attention:

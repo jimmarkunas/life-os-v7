@@ -200,6 +200,10 @@ class Gmail:
         return self._request("POST", f"{API}/messages/{message}/modify",
                              body={"addLabelIds": [amazon_label_id], "removeLabelIds": ["INBOX"]})
 
+    def trash(self, message_id):
+        """Move one message to the Gmail Trash (recoverable for 30 days); never a permanent delete."""
+        return self._request("POST", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}/trash")
+
     def sender(self, message_id):
         url = f"{API}/messages/{message_id}?format=metadata&metadataHeaders=From"
         for header in self._request("GET", url).get("payload", {}).get("headers", []):
