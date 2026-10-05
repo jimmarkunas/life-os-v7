@@ -16,7 +16,7 @@ from lifeos.platform.outlook import Outlook, OutlookError
 SOURCE_ID = "5cab416c-b1df-43c2-abcc-b98df6656d41"          # the canonical Attention data source (the one the Daily Report view links)
 GMAIL_LABEL, GMAIL_QUERY = "LifeOS/Attention", "label:LifeOS-Attention"
 OUTLOOK_CATEGORIES = ("LifeOS Attention", "LIFE OS Attention", "Life OS Attention")          # the Outlook category (any of these spellings): read-only for V7, the message stays in the inbox
-SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date"}
+SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date", "Received": "date"}
 
 
 class AttentionError(NotionError):
@@ -25,6 +25,16 @@ class AttentionError(NotionError):
 
 def _today(now=None):
     return (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/Chicago")).date()
+
+
+def _chicago_date(stamp):
+    """The Chicago calendar date (YYYY-MM-DD) of an ISO timestamp, or "" when it is missing or unreadable."""
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    moment = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(ZoneInfo("America/Chicago")).date().isoformat()
 
 
 def _text(prop):
@@ -38,7 +48,8 @@ def _row(page):
         week = ((props["Week Ending"].get("date") or {}).get("start") or "")[:10]
         return {"id": page["id"], "item": _text(props["Item"]), "category": ((props["Category"].get("select") or {}).get("name")),
                 "done": bool(props["Done"]["checkbox"]), "active": bool(props["Active"]["checkbox"]), "medium": _text(props["Medium"]),
-                "url": props["Source URL"].get("url") or "", "week": week}
+                "url": props["Source URL"].get("url") or "", "week": week, "received": ((props["Received"].get("date") or {}).get("start") or "")[:10],
+                "linked": any(isinstance(i, dict) and (i.get("href") or (i.get("text") or {}).get("link")) for i in props["Item"].get("title") or [])}
     except (KeyError, TypeError, AttributeError):
         raise AttentionError("ATTENTION_ROW_INVALID") from None
 
@@ -75,9 +86,25 @@ def read_week(notion, source_id, week):
     raise AttentionError("ATTENTION_READ_INCOMPLETE")
 
 
+def _linked_title(item, url):
+    """The row title; when the mail has an address the whole title is a link to it, so the row opens the email instead of an empty page."""
+    parts = rich_text(item)
+    if url:
+        for part in parts:
+            part["text"]["link"] = {"url": url}
+    return parts
+
+
+def _open_block(url):
+    """The one line in a row's page: a link to the email (the mail itself is never copied into Notion)."""
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Open the email", "link": {"url": url}}}]}}
+
+
 def _props(c):
-    props = {"Item": {"title": rich_text(c["item"])}, "Category": {"select": {"name": c["category"]}}, "Active": {"checkbox": True}, "Done": {"checkbox": False},
+    props = {"Item": {"title": _linked_title(c["item"], c["url"])}, "Category": {"select": {"name": c["category"]}}, "Active": {"checkbox": True}, "Done": {"checkbox": False},
              "Medium": {"rich_text": rich_text(c["medium"])}, "Week Ending": {"date": {"start": c["week"]}}}
+    if c.get("received"):
+        props["Received"] = {"date": {"start": c["received"]}}
     if c["url"]:
         props["Source URL"] = {"url": c["url"]}
     return props
@@ -95,7 +122,8 @@ def _gmail_source(gmail, limit, live):
     out = []
     for message_id in ids:
         record = gmail.message_record(message_id)
-        out.append({"sender": record["sender"], "subject": record["subject"], "url": f"https://mail.google.com/mail/u/0/#all/{message_id}", "medium": f"Gmail:{message_id}"})
+        out.append({"sender": record["sender"], "subject": record["subject"], "url": f"https://mail.google.com/mail/u/0/#all/{message_id}", "medium": f"Gmail:{message_id}",
+                    "received": _chicago_date(record.get("received_at"))})
     return out, {c["medium"] for c in out}, label
 
 
@@ -114,7 +142,7 @@ def _outlook_source(client, account, limit, live):
     for message in client.messages_in_category(OUTLOOK_CATEGORIES, limit):
         sender = ((message.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         out.append({"sender": sender, "subject": message.get("subject") or "", "url": "https://outlook.office.com/mail/id/" + quote(message["id"], safe=""),
-                    "medium": f"Outlook:{account}:{message['id']}"})
+                    "medium": f"Outlook:{account}:{message['id']}", "received": _chicago_date(message.get("receivedDateTime"))})
     return out, {c["medium"] for c in out}, OUTLOOK_CATEGORIES
 
 
@@ -172,7 +200,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     for c in candidates:
         verdict, detail = policy.decide(c["sender"], c["subject"])
         if verdict == "ADMIT":
-            admitted.append({"category": detail, "item": policy.item_text(c["subject"]), "url": c["url"], "medium": c["medium"]})
+            admitted.append({"category": detail, "item": policy.item_text(c["subject"]), "url": c["url"], "medium": c["medium"], "received": c.get("received", "")})
         elif verdict == "OWNED":
             counts["owned_elsewhere"] += 1
         if verdict == "ADMIT" and detail == "Other":
@@ -186,6 +214,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     for c in admitted:
         proofs[c["medium"]] = "present"
     plan = reconcile.plan(admitted, rows, today, proofs)
+    dates = {c["medium"]: c["received"] for c in admitted if c.get("received")}
+    plan["backfill"] = [(r["id"], dates[r["medium"]]) for r in rows if not r["received"] and r["medium"] in dates]          # rows written before the column existed
+    counts["backfilled"] = len(plan["backfill"])
+    plan["upgrade"] = [r for r in rows if r["url"] and not r["linked"]]                                                              # rows written before the title was a link
+    counts["linked"] = len(plan["upgrade"])
     for name in ("ambiguous", "reused", "skipped_done", "carried"):
         counts[name] = plan[name]
     if not live:
@@ -193,11 +226,19 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     else:
         done_before = {r["id"]: r["done"] for r in rows}
         for create in plan["create"]:
-            notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)})
+            body = {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": _props(create)}
+            if create["url"]:
+                body["children"] = [_open_block(create["url"])]
+            notion.call_once("POST", "/pages", body)
             counts["created"] += 1
         for row_id in plan["deactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
             counts["deactivated"] += 1
+        for row_id, received in plan["backfill"]:
+            notion.update_page_properties(row_id, {"Received": {"date": {"start": received}}})
+        for r in plan["upgrade"]:
+            notion.update_page_properties(r["id"], {"Item": {"title": _linked_title(r["item"], r["url"])}})
+            notion.call("PATCH", f"/blocks/{r['id']}/children", {"children": [_open_block(r["url"])]})
         for row_id in plan["reactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": True}})
             counts["reactivated"] += 1
