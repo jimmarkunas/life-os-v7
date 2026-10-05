@@ -376,5 +376,33 @@ def revolut_titles(search=None, fetch_many=None, fetch_page=None):
     return out
 
 
+def held_first_party(fetcher=fetch, rows=None):
+    """Why do Scale-Up roles on their employer's own board sit on HOLD? Replays the link test on each held role's own page (counts and yes/no only):
+    page status, whether the job-title words are in the page <title>, in the first 1500 characters of readable text, or anywhere in the HTML, and what the
+    page carries (JobPosting JSON-LD, a Greenhouse embed). Reads the store, writes nothing."""
+    from lifeos.jobs import store                                                            # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                              # noqa: PLC0415
+    if rows is None:
+        with store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT source, source_url, title, unresolved_reason FROM v7_jobs WHERE source LIKE 'web:su-%%' AND status='HOLD' LIMIT 200")
+            rows = cursor.fetchall()
+
+    def share(words, text):
+        hay = set(ats_match.norm(text).split())
+        return round(sum(w in hay for w in words) / len(words), 2) if words else 0
+    out = {}
+    for source, url, title, reason in rows:
+        words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+        page = fetcher(url, timeout=15, max_hops=6) if url else None
+        head = (re.search(r"<title[^>]*>(.*?)</title>", page.html or "", re.S | re.I) or [None, ""])[1] if page else ""
+        text = re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page.html or "")) if page else ""
+        html = page.html or "" if page else ""
+        out.setdefault(source, []).append({
+            "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
+            "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
+            "greenhouse_embed": "greenhouse" in html.lower()})
+    return out
+
+
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
