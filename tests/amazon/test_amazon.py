@@ -126,6 +126,18 @@ class StageTests(unittest.TestCase):
         self.assertIn("INBOX", gmail.messages["m-1"]["label_ids"])
         self.assertNotIn("modify", [call[0] for call in gmail.calls])
 
+    def test_backfill_counts_an_unreadable_message_and_records_the_rest(self):
+        class Flaky(AmazonGmail):
+            def message_record(self, message_id):
+                if message_id == "m-1":
+                    raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+                return super().message_record(message_id)
+        rows = {"m-1": message("m-1", "auto-confirm"), "m-2": message("m-2", "auto-confirm", order_id="555-5555555-5555555")}
+        with self.assertRaises(stage.AmazonError):                                         # the normal pass still refuses to act on an incomplete read
+            stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW)
+        counts = stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW, skip_unreadable=True)
+        self.assertEqual((counts["unreadable"], counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1, 1))
+
     def test_dry_run_has_counts_only_and_makes_no_writes(self):
         gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm")})
         notion = AmazonNotion()

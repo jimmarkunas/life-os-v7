@@ -271,7 +271,7 @@ def _gmail_ids(gmail, limit, query):
         raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
 
 
-def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None):
+def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None, skip_unreadable=False):
     counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
               "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
     try:
@@ -298,7 +298,10 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
             try:
                 message = gmail.message_record(message_id)
             except GmailError:
-                raise AmazonError("AMAZON_GMAIL_READ_FAILED") from None
+                if not skip_unreadable:
+                    raise AmazonError("AMAZON_GMAIL_READ_FAILED") from None
+                counts["unreadable"] = counts.get("unreadable", 0) + 1       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
+                continue
             messages.append(message)
         events_by_order, review_by_order, accepted_ids = {}, {}, {}
         # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
