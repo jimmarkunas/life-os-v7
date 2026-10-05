@@ -4,6 +4,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
 ## Map
+- **Start with `docs/CODEMAP.md` (or `docs/codemap.json`)**: a generated index of every stage, module (with its one-line purpose), workflow, secret name, database table and decision. It is rebuilt by `python -m lifeos.codemap`, and a test fails when it is stale, so trust it before browsing. Find the file there, then read only that file.
 - `lifeos/platform/` shared clients and primitives (Notion, Gmail, Outlook, Graph tokens, Jira, Google Calendar, db, alerts, gate, router, `rest.py` retry helper). Imports nothing from other `lifeos` layers.
 - `lifeos/jobs/`, `lifeos/interview/`, `lifeos/jira/`, `lifeos/outlook/`, `lifeos/calendar_bridge/` — one OS per package; may import `platform` only.
 - `lifeos/sources/` producers (newsletters, web, openjobs, sponsor register); may import any OS.
