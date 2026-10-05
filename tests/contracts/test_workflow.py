@@ -9,6 +9,20 @@ except ImportError:          # PyYAML is a dev convenience, not a runtime depend
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class WorkflowTests(unittest.TestCase):
+    def test_every_workflow_file_parses_and_every_manual_one_declares_its_dispatch(self):
+        """A workflow that is not valid YAML is silently not runnable (safety.yml shipped that way once)."""
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        for path in sorted(root.glob("*.y*ml")):
+            data = yaml.safe_load(path.read_text())
+            self.assertIn("jobs", data, path.name)
+            self.assertTrue("on" in data or True in data, path.name)
+
+    def test_safety_workflow_is_manual_only_with_its_stages(self):
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        data = yaml.safe_load((root / "safety.yml").read_text())
+        self.assertEqual(list(data[True]), ["workflow_dispatch"])                       # one recurring scheduler only (D30/D52)
+        self.assertEqual(data[True]["workflow_dispatch"]["inputs"]["stage"]["options"], ["all", "sql-smoke", "fit-golden", "fit-capture"])
+
     def test_hourly_workflow_is_valid_yaml_with_dispatch_inputs(self):
         path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(path.read_text())
