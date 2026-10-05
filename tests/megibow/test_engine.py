@@ -130,6 +130,8 @@ class Projection(unittest.TestCase):
         rows = R.table(p)
         self.assertEqual((len(rows), len(rows[0])), (7, 10))
         self.assertEqual(rows[1][0], "Jim — Total")
+        self.assertEqual(rows[0][2:4], ["Aug 17", "Aug 24"])
+        self.assertEqual(rows[0][-1], "Oct 5 (current)")
 
     def test_current_week_moves_down(self):
         out = [{"status": C.COUNTED, "activity": C.OUTREACH, "week": date(2026, 10, 5), "reason": "", "key": "k1", "candidate": None}]
