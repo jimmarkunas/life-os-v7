@@ -26,9 +26,10 @@ def paid_page(*, page_id, cycle, next_due="2026-10-10"):
 
 
 class RecurrenceAcceptanceTests(unittest.TestCase):
-    def test_weekly_and_quarterly_paid_transitions_are_deterministic(self):
+    def test_weekly_biweekly_and_quarterly_paid_transitions_are_deterministic(self):
         cases = (
             ("Weekly", "11111111-1111-4111-8111-111111111117", "2026-10-17"),
+            ("Bi-Weekly", "11111111-1111-4111-8111-111111111114", "2026-10-24"),
             ("Quarterly", "11111111-1111-4111-8111-111111111191", "2027-01-09"),
         )
         now = datetime(2026, 10, 3, 12, tzinfo=ZoneInfo("America/Chicago"))
