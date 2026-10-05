@@ -26,7 +26,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, inge
     start = datetime.fromisoformat(raw + "T00:00:00+00:00") if len(raw) == 10 else datetime.fromisoformat(raw)
     ingest = ingest or stage.run
     total = {key: 0 for key in SUM_KEYS}
-    total.update(months=0, months_failed=0, first_failed="")
+    total.update(months=0, months_failed=0, first_failed="", review_why={})
     for lo, hi in months(start, now):
         total["months"] += 1
         try:
@@ -37,4 +37,6 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, inge
             continue
         for key in SUM_KEYS:
             total[key] += counts.get(key, 0)
+        for reason, n in (counts.get("review_why") or {}).items():
+            total["review_why"][reason] = total["review_why"].get(reason, 0) + n
     return total
