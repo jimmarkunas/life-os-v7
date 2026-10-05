@@ -137,3 +137,4 @@ This index is checked by a test: add a line here with every new decision.
 - D134 — MegIBOW: Jim's weekly job-search table is computed from sent mail and calendars by rules, with a Notion review list for what is unclear (2026-10-05)
 - D133 — Scheduler scopes: two schedulers, each sole within its own scope (Jim, 2026-10-04)
 - D135 — Network NET-1b: the seed import reads the Notion attachment and records people and positions independently (2026-10-05)
+- D136 — Attention rows carry the date the mail was received (2026-10-05)

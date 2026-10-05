@@ -28,7 +28,7 @@ def plan(candidates, rows, today, proofs):
         by_key.setdefault(key(row["week"], row["category"], row["item"]), []).append(row)
     planned = set()
 
-    def want(category, item, url, medium, carried=False):
+    def want(category, item, url, medium, carried=False, received=""):
         k = key(this_week, category, item)
         if k in planned:
             return
@@ -47,14 +47,14 @@ def plan(candidates, rows, today, proofs):
             else:
                 out["reused"] += 1
             return
-        out["create"].append({"week": str(this_week), "category": category, "item": item, "url": url, "medium": medium})
+        out["create"].append({"week": str(this_week), "category": category, "item": item, "url": url, "medium": medium, "received": received})
         out["carried"] += carried
 
     for c in candidates:
-        want(c["category"], c["item"], c["url"], c["medium"])
+        want(c["category"], c["item"], c["url"], c["medium"], received=c.get("received", ""))
     for row in rows:                                                  # carry-forward: immediately prior week, still active and not done
         if str(row["week"]) == str(prior) and row["active"] and not row["done"] and row["category"] != "Physical Mail":
-            want(row["category"], row["item"], row["url"], row["medium"], carried=True)
+            want(row["category"], row["item"], row["url"], row["medium"], carried=True, received=row.get("received", ""))
     for row in rows:                                                  # deactivate only on proof that the source condition is gone (label removed by Jim)
         if str(row["week"]) == str(this_week) and row["active"] and not row["done"] and proofs.get(row["medium"]) == "absent":
             out["deactivate"].append(row["id"])
