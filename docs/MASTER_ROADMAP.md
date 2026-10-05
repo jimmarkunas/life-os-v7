@@ -9,7 +9,7 @@ Last updated: October 5, 2026 (night). This file is the source; Notion shows the
 - **Live, awaiting Jim:** keep the row 🟡 In Progress until Jim explicitly confirms Done; say `Live, awaiting Jim` in the row so production-live work is not confused with unfinished implementation.
 - **One owner per WBS element:** every tracked row is owned by exactly one of `ChatGPT`, `Jim`, or `Claude Code`. If ownership changes between steps, split the work into separate WBS elements in dependency order.
 - **WBS contract:** every Item starts with a stable WBS element using `<DOMAIN>-<STREAM>.<ELEMENT>`. WBS IDs are semantic identifiers, not row numbers: never renumber them merely because delivery order changes. New work gets the next unused child within its domain. References should use the WBS ID first.
-- **Order rule:** the roadmap is topological: prerequisite work appears before the work they unlock. Blocked dependent work sits immediately after its unmet prerequisite where practical.
+- **Order rule:** the roadmap is topological: prerequisite work appears before the work it unlocks. Blocked dependent work sits immediately after its unmet prerequisite where practical.
 - **Privacy rule:** never commit source-derived personal identifiers to this public roadmap: no personal email addresses, full personal names, phone numbers, or street/postal addresses. Use neutral system/account/role labels instead. The fixed owner labels `Jim`, `ChatGPT`, and `Claude Code` are allowed.
 - **Safety rules:** private data never goes in this public repository; a failed step says so instead of showing old numbers as fresh; consequential database/secret/schema changes retain their existing approval gates.
 
