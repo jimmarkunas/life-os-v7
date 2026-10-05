@@ -350,3 +350,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D135: Network NET-1b: the seed import reads the Notion attachment and records people and positions independently (2026-10-05)
 - D136: Attention rows carry the date the mail was received (2026-10-05)
 - D137: Attention categories say what Jim owes; "Other" is retired (2026-10-05)
+- D138: Scale-Up is live in V7; the V1 "quarantined" wording is stale (2026-10-05)

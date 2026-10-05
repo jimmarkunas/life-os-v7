@@ -51,6 +51,7 @@ class FirstPartyReaders(unittest.TestCase):
     def test_bluestonex_card_label(self):
         got = listing("bluestonex_html", '<a href="/careers/qa">QA Analyst Full-time More information</a><a href="/x">Other</a>')
         self.assertEqual(len(got.jobs), 1)
+        self.assertEqual(got.jobs[0]["title"], "QA Analyst")
 
     def test_sixflow_explicit_zero_is_complete_and_ambiguous_is_failed(self):
         zero = listing("sixflow_html", "<p>We don't have any live vacancies right now</p>")
