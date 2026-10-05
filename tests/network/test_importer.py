@@ -138,6 +138,22 @@ class Import(unittest.TestCase):
         self.assertEqual(conn.raw.execute("SELECT title, position_state, last_verified FROM v7_network_positions").fetchall(), [("Director", "CURRENT", "2026-10-07")])
 
 
+class Audit(unittest.TestCase):
+    def test_audit_is_read_only_and_finds_no_email_shaped_text(self):
+        conn = MySQLite()
+        run_import([row(1), row(2, company="Beta Inc")], conn=conn)
+        before = [conn.count(t) for t in ("v7_network_people", "v7_network_positions", "v7_network_batches")]
+        out = importer.audit(0, False, connection=conn)
+        self.assertEqual((out["people_total"], out["positions_total"], out["batches"], out["at_sign_total"]), (2, 2, {"COMPLETE": 1}, 0))
+        self.assertEqual(before, [conn.count(t) for t in ("v7_network_people", "v7_network_positions", "v7_network_batches")])
+
+    def test_audit_would_catch_an_email(self):
+        conn = MySQLite()
+        run_import([row(1)], conn=conn)
+        conn.raw.execute("UPDATE v7_network_people SET display_name='x@example.com'")
+        self.assertEqual(importer.audit(0, False, connection=conn)["at_sign_people_display_name"], 1)
+
+
 class EntryPoint(unittest.TestCase):
     def test_registered_stage_and_fixed_failure_code(self):
         self.assertEqual(run.STAGES["network-import"].target, ("lifeos.network.importer", "run"))

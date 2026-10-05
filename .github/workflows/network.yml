@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "inspect (counts of the file) or import (record it in Hostinger)"
+        description: "inspect (counts of the file), import (record it in Hostinger) or audit (read-only counts of the stored tables)"
         type: choice
-        options: ["inspect", "import"]
+        options: ["inspect", "import", "audit"]
         default: "inspect"
       live:
         description: "import only: actually write to Hostinger (unticked = dry run, counts only)"

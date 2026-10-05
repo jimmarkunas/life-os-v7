@@ -154,3 +154,18 @@ def complete(connection, batch_id, plan, clock=lambda: datetime.now(timezone.utc
         cursor.execute("SELECT status, cursor_row FROM v7_network_batches WHERE id=%s", (batch_id,))
         if tuple(cursor.fetchone()) != ("COMPLETE", len(plan["people"])):
             raise NetworkError("NETWORK_READBACK_MISMATCH")
+
+
+def audit(connection):
+    """Read-only, counts only: row totals, batch states, and how many text values contain an @ (email-shaped). Nothing is written and no value is returned."""
+    out = dict(totals(connection))
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT status, COUNT(*) FROM v7_network_batches GROUP BY status")
+        out["batches"] = {str(status): n for status, n in cursor.fetchall()}
+        for table, columns in (("v7_network_people", ("url_key", "display_name")), ("v7_network_positions", ("company_key", "company_name", "title", "source_ref")),
+                               ("v7_network_batches", ("batch_key",))):
+            for column in columns:
+                cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {column} LIKE %s", ("%@%",))
+                out[f"at_sign_{table[11:]}_{column}"] = cursor.fetchone()[0]
+    out["at_sign_total"] = sum(v for k, v in out.items() if k.startswith("at_sign_"))
+    return out
