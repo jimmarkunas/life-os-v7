@@ -14,17 +14,22 @@ RETENTION_DAYS = 30
 DEFAULT_LIMIT = 100
 
 
-def _recorded(notion, source_id, message):
-    parsed = events.extract(message)
-    order_id = parsed.get("order_id")
+def _status(notion, source_id, message):
+    """Why a message is or is not safe to trash: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order recorded, this message not on it)."""
+    order_id = events.extract(message).get("order_id")
     if not order_id:
-        return False
+        return "no_order_id"
     rows = _query_order(notion, source_id, order_id)
-    return len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x)
+    if not rows:
+        return "no_row"
+    if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
+        return "recorded"
+    return "not_listed"
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
-    counts = {"candidates": 0, "recorded": 0, "kept_unrecorded": 0, "trashed": 0, "failed": 0}
+    counts = {"candidates": 0, "recorded": 0, "kept_unrecorded": 0, "no_order_id": 0, "no_row": 0, "not_listed": 0, "oldest_days": 0, "trashed": 0, "failed": 0}
+    now = now or datetime.now(timezone.utc)
     try:
         gmail = gmail or Gmail.from_env()
         source_id, notion = _config(environ) if notion is None else ((environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip(), notion)
@@ -39,8 +44,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
             message = gmail.message_record(message_id)
             if "TRASH" in message["label_ids"]:
                 continue
-            if not _recorded(notion, source_id, message):
+            counts["oldest_days"] = max(counts["oldest_days"], (now - datetime.fromisoformat(message["received_at"])).days)
+            why = _status(notion, source_id, message)
+            if why != "recorded":
                 counts["kept_unrecorded"] += 1
+                counts[why] += 1
                 continue
             counts["recorded"] += 1
             if not live:

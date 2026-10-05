@@ -254,10 +254,10 @@ def _watermark(client, source_id):
     return max((_minute(stamp) for stamp in stamps), default=None)
 
 
-def window_query(watermark, now, since=None):
-    """The bounded Gmail search: allowlisted senders after (last accepted state - overlap). Never mailbox-wide."""
+def window_query(watermark, now, since=None, until=None):
+    """The bounded Gmail search: allowlisted senders after (last accepted state - overlap), and before `until` when a backfill window closes. Never mailbox-wide."""
     start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
-    return f"{SENDERS_QUERY} after:{int(start.timestamp())}"
+    return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "")
 
 
 def _gmail_ids(gmail, limit, query):
@@ -271,7 +271,7 @@ def _gmail_ids(gmail, limit, query):
         raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
 
 
-def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None):
+def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None):
     counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
               "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
     try:
@@ -284,7 +284,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         _schema(notion, source_id)
         if since is None and (environ.get("AMAZON_SINCE") or "").strip():
             since = _minute((environ.get("AMAZON_SINCE") or "").strip() + ("T00:00:00+00:00" if len((environ.get("AMAZON_SINCE") or "").strip()) == 10 else ""))
-        query = window_query(None if since else _watermark(notion, source_id), now, since)
+        query = window_query(None if since else _watermark(notion, source_id), now, since, until)
         try:
             message_ids = _gmail_ids(gmail, limit, query)
         except AmazonError as error:

@@ -141,3 +141,4 @@ This index is checked by a test: add a line here with every new decision.
 - D137 — Attention categories say what Jim owes; "Other" is retired (2026-10-05)
 - D138 — Scale-Up is live in V7; the V1 "quarantined" wording is stale (2026-10-05)
 - D139 — Amazon order mail older than 30 days goes to the Trash (2026-10-05, Jim)
+- D140 — Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)
