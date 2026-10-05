@@ -116,6 +116,12 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     excluded = {d.strip().lower() for d in (environ.get("MEGIBOW_EXCLUDED_DOMAINS") or "").split(",") if d.strip()}
     review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or REVIEW_SOURCE).strip().replace("collection://", "")
     notion = notion or _writer(environ)
+    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip() or card.find(notion, (environ.get("MEGIBOW_PAGE_ID") or DASHBOARD_PAGE).strip())
+    if legacy is None:                                                    # the old sheet's totals, typed once into the block as "Legacy totals: ..."; read, then remembered
+        legacy = card.read_legacy(notion, block_id)
+        if legacy and live and connection is not None:
+            store.save_legacy(connection, legacy)
+            counts["legacy_seeded"] = True
     rows = []
     if review_id and notion is not None and environ.get("MEGIBOW_REVIEW_DB_ID", "on") != "off":
         review.check_schema(notion, review_id)
@@ -184,7 +190,6 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     status = R.status(now, degraded, len(proj["review"]), None)
     text = status + (("\n" + R.notes(warns, degraded)) if R.notes(warns, degraded) else "")
     table = None if degraded else R.table(proj)
-    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip() or card.find(notion, (environ.get("MEGIBOW_PAGE_ID") or DASHBOARD_PAGE).strip())
     counts.update(card.write(notion, block_id, text, table, live))
     if degraded:
         _alert(environ, now, live, counts)
