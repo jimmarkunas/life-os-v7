@@ -21,34 +21,34 @@ MegIBOW is **🔴 Blocked** until the first required Monday rollover proof point
 ### Active proof / decisions
 
 1. **MegIBOW — Monday rollover + final acceptance** — Owner: `ChatGPT` — 🔴 Blocked until Monday rollover evidence exists. After it exists, run the real review-item path and dashboard acceptance checks; Jim gives final Done confirmation.
-2. **Network inspector — first-run counts + importer design** — Owner: `ChatGPT` — 🟡 In Progress. Read the first-run counts and decide the smallest importer design.
-3. **Scoping documents — reconcile current scopes into planning input** — Owner: `ChatGPT` — 🟡 In Progress.
-4. **Scheduled runs since Fit clean-up — production verification** — Owner: `ChatGPT` — 🟡 In Progress.
-5. **Bills recurrence — real weekly/bi-weekly/quarterly/yearly cases** — Owner: `ChatGPT` — 🟡 In Progress.
-6. **Bills overdue count — reconcile 24 overdue bills** — Owner: `ChatGPT` — 🟡 In Progress.
-7. **Amazon missing-field behavior — real orders with no date/total** — Owner: `ChatGPT` — 🟡 In Progress.
-8. **Outlook tagging — create/confirm one real tagged example if the UI is required** — Owner: `Jim` — 🔵 To-Do.
-9. **Outlook tagging — verify V7 detects the tag in both intended accounts** — Owner: `ChatGPT` — 🔴 Blocked on row 8 if no suitable tagged example already exists.
+2. **Network inspector — first-run counts + importer design** — Owner: `ChatGPT` — 🟡 In Progress. Real run: 3,453 source rows; 3,346 deterministic profile identities; 3,244 initial position-eligible rows; 107 no-URL identity collisions held unresolved. The importer direction is accepted: Door B, person identity and position eligibility are separate, ambiguous rows are counted holds, and NET-1 uses only the three already-approved tables. Await Jim's final Done confirmation after the corrected spec/read-back is complete.
+3. **Network importer — bounded Notion-attachment importer** — Owner: `Claude Code` — 🔵 To-Do. Reuse the existing private Notion attachment; import all 3,346 deterministic people, create initial positions only for the 3,244 rows with usable employer evidence, hold the 107 ambiguous no-URL rows without guessing, drop email, allow nullable title, chunk/resume safely, and make replay a no-op. `v7_network_people`, `v7_network_positions`, and `v7_network_batches` were already approved by Jim on October 5; no new Jim approval blocks NET-1.
+4. **Scoping documents — reconcile current scopes into planning input** — Owner: `ChatGPT` — 🟡 In Progress.
+5. **Scheduled runs since Fit clean-up — production verification** — Owner: `ChatGPT` — 🟡 In Progress.
+6. **Bills recurrence — real weekly/bi-weekly/quarterly/yearly cases** — Owner: `ChatGPT` — 🟡 In Progress.
+7. **Bills overdue count — reconcile 24 overdue bills** — Owner: `ChatGPT` — 🟡 In Progress.
+8. **Amazon missing-field behavior — real orders with no date/total** — Owner: `ChatGPT` — 🟡 In Progress.
+9. **Outlook tagging — create/confirm one real tagged example if the UI is required** — Owner: `Jim` — 🔵 To-Do.
+10. **Outlook tagging — verify V7 detects the tag in both intended accounts** — Owner: `ChatGPT` — 🔴 Blocked on row 9 if no suitable tagged example already exists.
 
 ### Next delivery chain
 
-10. **Safety net — weekly hardening slice** — Owner: `Claude Code` — 🔵 To-Do.
-11. **Mail Alerts — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
-12. **Mail Alerts — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 11.
-13. **Hiring Pipeline — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
-14. **Hiring Pipeline — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 13.
-15. **Recruiters — add `Needs review` property and configure the Notion view** — Owner: `ChatGPT` — 🔵 To-Do.
-16. **Recruiters — V7 runtime wiring** — Owner: `Claude Code` — 🔴 Blocked on row 15.
-17. **Delivery tracking — step 1 tracking-number census from mail** — Owner: `Claude Code` — 🔵 To-Do.
-18. **Network importer — implement the bounded importer chosen from inspector evidence** — Owner: `Claude Code` — 🔴 Blocked on row 2.
+11. **Safety net — weekly hardening slice** — Owner: `Claude Code` — 🔵 To-Do.
+12. **Mail Alerts — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
+13. **Mail Alerts — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 12.
+14. **Hiring Pipeline — create/restore Notion presentation surface** — Owner: `ChatGPT` — 🔵 To-Do.
+15. **Hiring Pipeline — V7 runtime wiring + authoritative read-back** — Owner: `Claude Code` — 🔴 Blocked on row 14.
+16. **Recruiters — add `Needs review` property and configure the Notion view** — Owner: `ChatGPT` — 🔵 To-Do.
+17. **Recruiters — V7 runtime wiring** — Owner: `Claude Code` — 🔴 Blocked on row 16.
+18. **Delivery tracking — step 1 tracking-number census from mail** — Owner: `Claude Code` — 🔵 To-Do.
 19. **Jobs OS clean-up — named ranking/data-quality defects** — Owner: `Claude Code` — 🔵 To-Do.
 
 ### Later dependency chains
 
-20. **Delivery — carrier credentials / developer access if the chosen carriers require them** — Owner: `Jim` — 🔴 Blocked until row 17 determines the real carrier/API requirement.
-21. **Delivery — steps 2–7 carrier-aware lifecycle** — Owner: `Claude Code` — 🔴 Blocked on rows 17 and 20 where credentials are required.
-22. **Network refresh and matching** — Owner: `Claude Code` — 🔴 Blocked on row 18.
-23. **Recruiters/Hiring Pipeline — mail-evidence routing** — Owner: `Claude Code` — 🔴 Blocked on rows 12, 14, and 16.
+20. **Delivery — carrier credentials / developer access if the chosen carriers require them** — Owner: `Jim` — 🔴 Blocked until row 18 determines the real carrier/API requirement.
+21. **Delivery — steps 2–7 carrier-aware lifecycle** — Owner: `Claude Code` — 🔴 Blocked on rows 18 and 20 where credentials are required.
+22. **Network refresh and matching** — Owner: `Claude Code` — 🔴 Blocked on row 3.
+23. **Recruiters/Hiring Pipeline — mail-evidence routing** — Owner: `Claude Code` — 🔴 Blocked on rows 13, 15, and 17.
 24. **Physical Mail tracking — forwarding/tracking/delivered lifecycle** — Owner: `Claude Code` — 🔴 Blocked on the delivery/mail prerequisites.
 25. **Company cockpit — Notion operating surface / product presentation** — Owner: `ChatGPT` — 🟡 In Progress.
 26. **Company cockpit — V7 live synthesis from accepted sources** — Owner: `Claude Code` — 🔴 Blocked until row 25 and the required source path are accepted.
