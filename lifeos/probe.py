@@ -408,6 +408,33 @@ def _replay(url, title):
     return f"{got.get('outcome')}:{got.get('reason') or ''}"
 
 
+def enrich_ambiguous(url):
+    from lifeos.jobs import quality                                                          # noqa: PLC0415
+    return quality.link_problem(url) in quality.AMBIGUOUS
+
+
+def _parse_facts(title, html, strict):
+    """Which branch of the page reader runs and how well the stored title matches what that branch compares (numbers only)."""
+    from lifeos.jobs import enrich, jd, jsonld, quality                                      # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                                # noqa: PLC0415
+    words = [w for w in ats_match.norm(title or "").split() if len(w) > 2]
+
+    def share(text):
+        hay = set(ats_match.norm(text or "").split())
+        return round(sum(w in hay for w in words) / len(words), 2) if words else 0
+    posting = jsonld.job_posting(html)
+    if posting and posting.get("description"):
+        branch, found, desc = "jsonld", posting.get("title") or "", jd.describe(str(posting["description"]), is_html=True)
+    else:
+        embedded = jsonld.embedded_description(html)
+        branch = "next_data" if embedded else "page_text"
+        desc = jd.describe(embedded, is_html=True) if embedded else jd.describe(jd.html_to_text(html), is_html=False)
+        found = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
+    text = desc["full_text"]
+    return {"branch": branch, "found_title_share": share(found), "desc_1500_share": share(text[:1500]), "desc_all_share": share(text), "desc_chars": len(text),
+            "jd_problem": quality.jd_problem(text), "strict": strict}
+
+
 def held_first_party(fetcher=fetch, rows=None):
     """Why do Scale-Up roles on their employer's own board sit on HOLD? Replays the link test on each held role's own page (counts and yes/no only):
     page status, whether the job-title words are in the page <title>, in the first 1500 characters of readable text, or anywhere in the HTML, and what the
@@ -432,7 +459,7 @@ def held_first_party(fetcher=fetch, rows=None):
         out.setdefault(source, []).append({
             "reason": reason, "status": page.status if page else None, "bytes": len(html), "title_in_head": share(words, head),
             "title_in_text_1500": share(words, text[:1500]), "title_in_html": share(words, html), "jobposting_ld": html.count("JobPosting"),
-            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "url_shape": re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", urlsplit(url or "").path + ("?" + urlsplit(url or "").query if urlsplit(url or "").query else ""))), "embed_api": _embed_api(html, url, title)})
+            "greenhouse_embed": "greenhouse" in html.lower(), "replay": _replay(url, title), "parse": _parse_facts(title, html, bool(url and enrich_ambiguous(url))) if html else None, "url_shape": re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", urlsplit(url or "").path + ("?" + urlsplit(url or "").query if urlsplit(url or "").query else ""))), "embed_api": _embed_api(html, url, title)})
     return out
 
 
