@@ -107,6 +107,8 @@ Properties: **Item** (title, written by V7), **Week of** (date), **Candidate** (
 
 **Is the database "associated how it needs to be"?** Yes, in the ways that matter, with one limit: V7 can create and read rows and read the dropdown (the Amazon Orders code does the same kind of thing), and the database inherits access from the dashboard page the V7 integration is already shared with. What V7 cannot do is create the view that places it under the table, so Jim adds that once in Notion. If he cannot place it there, **the fallback is Option A**: each item becomes a line with tick-boxes inside the MegIBOW block (Company, Recruiter, Networking, Did not happen, Not sure), which V7 reads back the same way. The decision is made at MEG-3 with the block in front of him.
 
+**ChatGPT second pass (optional, later).** A review row can carry a "Suggested resolution" cell that ChatGPT fills on its own scheduled run (roadmap P7); it never decides, V7 never reads it as a decision, and Jim's dropdown stays the authority. It exists only to make his tap faster.
+
 The page says V7 should not build "a second canonical activity database". This one holds only unsettled items and recent decisions, which is the "minimal correction state" the page allows, and it is the input form, not a ledger.
 
 ## 7. Weekly rhythm and the Wednesday guarantee

@@ -134,9 +134,9 @@ Any LIFE OS read, the Notion integration, any model, any other channel, any writ
 
 ## 9. Decisions Jim must make
 
-1. **Priority.** Start EDGE-0 now as non-overlapping infrastructure and hold EDGE-1 until you say "prioritize OPENCLAW-0" (recommended), or hold both until `J1C` is accepted.
+1. **Priority: settled (Jim, October 5).** Start EDGE-0 as non-overlapping infrastructure as soon as the VM exists, and hold EDGE-1 until he says "prioritize OPENCLAW-0".
 2. **Oracle account type: upgrading (Jim, October 4).** Pay As You Go with a small budget alert, so the VM is not stopped for idleness or disabled if the free allowance changes; resources stay within the free allowances. The upgrade is what has stalled the setup.
-3. **Admin and deploy access.** Tailscale with port 22 closed (recommended, and what OpenClaw's own Oracle guide does), OCI Bastion, or pull-based deploys. Also: move the SSH key secret into a GitHub Environment with you as required reviewer before any workflow uses it (recommended).
+3. **Admin and deploy access: settled (Jim, October 5).** Tailscale with port 22 closed, and the SSH key moved into a GitHub Environment with him as required reviewer before any workflow uses it.
 4. **Read path for EDGE-1.** A dedicated read-only Notion integration shared with the Daily Report page only (recommended), rather than any path into Hostinger.
 5. **First model.** None in EDGE-1; a local model on a Mac only in EDGE-4 (recommended).
 6. **Health.** A heartbeat checked by extending the existing alarm-only watchdog (a small amendment to D52), or an external monitor with V7 uninvolved.

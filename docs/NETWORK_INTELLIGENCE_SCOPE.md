@@ -318,7 +318,7 @@ Settled by Jim: the whole roster in Hostinger; everything in the cloud and autom
 3. **Fields and email.** Email addresses are not stored. The Notion block shows display name, listed company and title, observation date, a profile link and a fixed reason.
 4. **The canon clause** (section 0a): on hold, as you asked.
 5. **Erasure and retention for people** (recommended: a `REMOVED` status that excludes a person from matching, set when Jim asks).
-6. **Approve the tables**, slice by slice.
+6. **The tables:** `v7_network_people`, `v7_network_positions` and `v7_network_batches` are **approved (Jim, October 5)**; `v7_network_inbox` (door A only), `v7_network_events`, `v7_network_dismissals` and `v7_network_aliases` are approved slice by slice.
 
 ## P. First build slice
 
