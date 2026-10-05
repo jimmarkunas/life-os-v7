@@ -148,22 +148,28 @@ class Outlook:
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
 
     def messages_in_category(self, category, limit=5000):
-        """Every message in the mailbox that carries one of the given Outlook categories (a name, or several spellings of it), read-only (the message stays where it is), following every page.
-        An enumeration that cannot be proven complete raises instead of returning a partial list."""
+        """Every message in the mailbox that carries the Outlook category (a name, or several spellings of it: one query per spelling, merged by message id), read-only (the message stays
+        where it is), following every page. An enumeration that cannot be proven complete raises instead of returning a partial list."""
         names = [category] if isinstance(category, str) else list(category)
-        clause = " or ".join("c eq '" + n.replace("'", "''") + "'" for n in names)
-        params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:{clause})"}
-        out, url = [], "/me/messages"
-        for page in range(MAX_PAGES):
-            reply = self.get(url, params if page == 0 else None)
-            out += reply.get("value") or []
-            link = reply.get("@odata.nextLink")
-            if not link:
-                return out[:limit]
-            if len(out) >= limit:
+        merged = {}
+        for name in names:
+            quoted = name.replace("'", "''")
+            params = {"$select": MESSAGE_FIELDS + ",categories", "$top": PAGE_SIZE, "$filter": f"categories/any(c:c eq '{quoted}')"}
+            url, found = "/me/messages", []
+            for page in range(MAX_PAGES):
+                reply = self.get(url, params if page == 0 else None)
+                found += reply.get("value") or []
+                link = reply.get("@odata.nextLink")
+                if not link:
+                    break
+                if len(found) >= limit:
+                    raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+                url = link
+            else:
                 raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
-            url = link
-        raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+            for message in found:
+                merged.setdefault(message["id"], message)
+        return list(merged.values())[:limit]
 
     def events(self, start, end, limit=2000, fields=None):
         """Every calendar event overlapping [start, end) (ISO 8601, UTC), recurring series expanded into occurrences, times in UTC.

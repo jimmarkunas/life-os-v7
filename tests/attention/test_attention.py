@@ -228,18 +228,18 @@ if __name__ == "__main__":
 class OutlookCategorySpellings(unittest.TestCase):
     def test_filter_accepts_every_spelling_and_the_absent_proof_ignores_case_and_spaces(self):
         from lifeos.platform.outlook import Outlook
-        seen = {}
+        seen = []
 
         class Stub(Outlook):
             def __init__(self):
                 pass
 
             def get(self, url, params=None, prefer=""):
-                seen["filter"] = (params or {}).get("$filter")
-                return {"value": []}
-        Stub().messages_in_category(stage.OUTLOOK_CATEGORIES)
-        for name in stage.OUTLOOK_CATEGORIES:
-            self.assertIn(f"c eq '{name}'", seen["filter"])
+                seen.append(params["$filter"])
+                return {"value": [{"id": "m1"}] if "LIFE OS" in params["$filter"] else []}
+        found = Stub().messages_in_category(stage.OUTLOOK_CATEGORIES)
+        self.assertEqual([f"categories/any(c:c eq '{n}')" for n in stage.OUTLOOK_CATEGORIES], seen)          # one plain filter per spelling (Graph rejects an or inside the lambda)
+        self.assertEqual(found, [{"id": "m1"}])
 
         class Found:
             def get(self, url, params=None):
