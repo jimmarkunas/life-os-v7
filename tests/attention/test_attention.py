@@ -111,7 +111,7 @@ class FakeNotion:
             "Item": {"type": "title", "title": props["Item"]["title"]}, "Category": {"type": "select", "select": props["Category"]["select"]},
             "Done": {"type": "checkbox", "checkbox": False}, "Active": {"type": "checkbox", "checkbox": True},
             "Medium": {"type": "rich_text", "rich_text": props["Medium"]["rich_text"]}, "Source URL": {"type": "url", "url": (props.get("Source URL") or {}).get("url")},
-            "Week Ending": {"type": "date", "date": props["Week Ending"]["date"]}}}
+            "Week Ending": {"type": "date", "date": props["Week Ending"]["date"]}, "Received": {"type": "date", "date": props["Received"]["date"] if "Received" in props else None}}}
         for k in ("Item", "Medium"):
             for part in page["properties"][k][page["properties"][k]["type"]]:
                 part["plain_text"] = part["text"]["content"]
@@ -121,14 +121,17 @@ class FakeNotion:
     def update_page_properties(self, page_id, properties):
         self.paths.append(("PATCH", "pages"))
         for k, v in properties.items():
-            self.pages[page_id]["properties"][k]["checkbox"] = v["checkbox"]
+            if k == "Received":
+                self.pages[page_id]["properties"][k]["date"] = v["date"]
+            else:
+                self.pages[page_id]["properties"][k]["checkbox"] = v["checkbox"]
 
 
-def page(pid, item, category="Account", done=False, active=True, week=WEEK, medium="Gmail:1"):
+def page(pid, item, category="Account", done=False, active=True, week=WEEK, medium="Gmail:1", received=None):
     t = lambda kind, text: {"type": kind, kind: [{"plain_text": text, "text": {"content": text}}]}
     return {"id": pid, "properties": {"Item": t("title", item), "Category": {"type": "select", "select": {"name": category}}, "Done": {"type": "checkbox", "checkbox": done},
                                       "Active": {"type": "checkbox", "checkbox": active}, "Medium": t("rich_text", medium), "Source URL": {"type": "url", "url": "u"},
-                                      "Week Ending": {"type": "date", "date": {"start": week}}}}
+                                      "Week Ending": {"type": "date", "date": {"start": week}}, "Received": {"type": "date", "date": received}}}
 
 
 class FakeGmail:
@@ -145,7 +148,7 @@ class FakeGmail:
 
     def message_record(self, mid):
         sender, subject = self.messages[mid]
-        return {"sender": sender, "subject": subject, "label_ids": ["L1"]}
+        return {"sender": sender, "subject": subject, "label_ids": ["L1"], "received_at": getattr(self, "received", {}).get(mid, "2026-10-05T03:30:00+00:00")}
 
     def message_labels(self, mid):
         return ["INBOX"]                                           # label gone
@@ -210,6 +213,18 @@ class Stage(unittest.TestCase):
         self.assertFalse(notion.pages["open"]["properties"]["Active"]["checkbox"])
         self.assertTrue(notion.pages["handled"]["properties"]["Done"]["checkbox"])
         self.assertTrue(notion.pages["handled"]["properties"]["Active"]["checkbox"])
+
+    def test_received_date_is_written_on_new_rows_in_chicago_time_and_backfilled_once(self):
+        gm = FakeGmail({"g1": ("x@example.com", "Security alert: new sign-in")})
+        notion = FakeNotion()
+        self.go(notion, gm)
+        created = next(iter(notion.pages.values()))
+        self.assertEqual(created["properties"]["Received"]["date"]["start"], "2026-10-04")        # 03:30 UTC is still the 4th in Chicago
+        old = FakeNotion([page("old", "Security alert: new sign-in", medium="Gmail:g1")])           # a row written before the column existed
+        out = self.go(old, gm)
+        self.assertEqual(out["backfilled"], 1)
+        self.assertEqual(old.pages["old"]["properties"]["Received"]["date"], {"start": "2026-10-04"})
+        self.assertEqual(self.go(old, gm)["backfilled"], 0)
 
     def test_monday_rollover_carries_unresolved_once_and_keeps_history(self):
         notion = FakeNotion([page("a", "Open item", week=PRIOR, medium="Gmail:g1"), page("b", "Done item", week=PRIOR, done=True, medium="Gmail:g2")])
