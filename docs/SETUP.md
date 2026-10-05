@@ -106,3 +106,6 @@ Measures the LinkedIn connections file by count before anything is stored. It wr
 2. Add the page's identifier as the Actions secret `NETWORK_HANDOFF_PAGE_ID` (it is an identifier, and this repository is public).
 3. Run the **network-inspect** workflow (Actions, Run workflow). The log shows one line of counts: rows, blank and duplicate profile addresses, companies that are not employers, distinct employers, the file's export date and age. It never shows a name, company, address or link.
 4. If a newer CSV is attached to the same page, the newest one is used. Only a file Notion itself hosts is read; an external link is refused.
+
+## MegIBOW (D134)
+Secrets (Actions): `MEGIBOW_BLOCK_ID` (the callout that holds the table), `MEGIBOW_REVIEW_DB_ID` (the MegIBOW Review data source), optional `MEGIBOW_EXCLUDED_DOMAINS` (comma-separated work/client domains that never count). The Notion integration behind `NOTION_JIRA_TOKEN` must be connected to the dashboard page and the review database. Two Hostinger tables are created on the first live run: `v7_megibow_weeks`, `v7_megibow_overrides`. Dry run: Actions > Domain jobs > Run workflow > MegIBOW, live unticked (counts only).

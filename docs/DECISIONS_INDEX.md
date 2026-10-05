@@ -134,3 +134,4 @@ This index is checked by a test: add a line here with every new decision.
 - D130 — Attention admits what Jim routes to it; a push for new items; the card removes leftover lines (2026-10-04)
 - D131 — The Attention status line is the callout's own text (2026-10-04)
 - D132 — Network Intelligence NET-1a: a counts-only inspector reads the connections CSV attached to a private Notion page (2026-10-05)
+- D134 — MegIBOW: Jim's weekly job-search table is computed from sent mail and calendars by rules, with a Notion review list for what is unclear (2026-10-05)

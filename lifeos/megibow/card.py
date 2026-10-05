@@ -1,0 +1,70 @@
+"""The MegIBOW block writer (D134). Writes only inside the one machine-owned callout whose id is MEGIBOW_BLOCK_ID: the callout's own text (status line, warnings) and the cells of the
+one table it holds. Every edit is in place (a PATCH of an existing block): nothing is inserted, deleted, moved or reordered, so nothing around the block can change.
+A block that is not the expected shape is DEGRADED and nothing is written; a write is read back and compared exactly."""
+from urllib.parse import quote
+import time
+
+from lifeos.platform import report_region
+from lifeos.platform.notion_client import NotionError
+
+ROWS, COLS = 7, 10
+
+
+class CardError(NotionError):
+    """Fixed codes only."""
+
+
+def _fail(code):
+    return CardError("MEGIBOW_" + code)
+
+
+def _cells(row):
+    return [report_region.plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+
+
+def _plain_callout(meta):
+    return report_region.plain({"type": "callout", "callout": (meta or {}).get("callout") or {}})
+
+
+def locate(client, block_id):
+    """-> (callout meta, table block, table rows). Anything unexpected raises: the last good block stays."""
+    meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+    if not isinstance(meta, dict) or meta.get("type") != "callout":
+        raise _fail("BLOCK_NOT_FOUND")
+    tables = [b for b in report_region.children(client, block_id, _fail) if b.get("type") == "table"]
+    if len(tables) != 1 or (tables[0].get("table") or {}).get("table_width") != COLS:
+        raise _fail("BLOCK_SHAPE")
+    rows = report_region.children(client, tables[0]["id"], _fail)
+    if len(rows) != ROWS or any(len(_cells(r)) != COLS for r in rows):
+        raise _fail("BLOCK_SHAPE")
+    return meta, tables[0], rows
+
+
+def write(client, block_id, text, table_rows, live):
+    """text: the callout's own text; table_rows: ROWS x COLS strings, or None to leave the table alone (DEGRADED). -> {"rows_written", "text_written", "verified"}."""
+    meta, _, rows = locate(client, block_id)
+    changed = []
+    if table_rows is not None:
+        if len(table_rows) != ROWS or any(len(r) != COLS for r in table_rows):
+            raise _fail("RENDER_SHAPE")
+        changed = [(r["id"], want) for r, want in zip(rows, table_rows) if _cells(r) != want]
+    text_changed = _plain_callout(meta) != text
+    result = {"rows_written": 0, "text_written": False, "verified": True, "rows_changed": len(changed), "text_changed": text_changed}
+    if not live:
+        return result
+    for row_id, want in changed:
+        client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}}] for c in want]}})
+        result["rows_written"] += 1
+    if text_changed:
+        client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+        result["text_written"] = True
+    if not (changed or text_changed):
+        return result
+    for attempt in range(4):                                                          # authoritative read-back; Notion may briefly show the old state
+        if attempt:
+            time.sleep(3)
+        after_meta, _, after_rows = locate(client, block_id)
+        table_ok = table_rows is None or [_cells(r) for r in after_rows] == table_rows
+        if table_ok and _plain_callout(after_meta) == text:
+            return result
+    raise _fail("VERIFY_FAILED")
