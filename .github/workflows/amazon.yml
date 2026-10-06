@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "orders (the normal recent pass), backfill (every historical month, D140) or retention (D139: mail older than 30 days to the Trash; always a dry run here) or review-reset (D146: trash REVIEW rows that hold no data so a backfill rebuilds them; dry run unless Actually write)"
+        description: "orders (the normal recent pass), backfill (every historical month, D140) or retention (D139: mail older than 30 days to the Trash; always a dry run here) or review-reset (D146: trash REVIEW rows that hold no data so a backfill rebuilds them; dry run unless Actually write) or census (DEL-1.1: count tracking numbers in the last year of mail; read-only, writes nothing)"
         type: choice
-        options: ["orders", "backfill", "retention", "review-reset"]
+        options: ["orders", "backfill", "retention", "review-reset", "census"]
         default: "orders"
       since:
         description: "backfill only: first day, YYYY-MM-DD (default 2015-01-01)"

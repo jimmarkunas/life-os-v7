@@ -8,6 +8,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `alerts` -> `lifeos.jobs.alerts:run`
 - `amazon-backfill` -> `lifeos.amazon.backfill:run`
 - `amazon-card` -> `lifeos.amazon.card:run`
+- `amazon-census` -> `lifeos.delivery.census:run`
 - `amazon-orders` -> `lifeos.amazon.stage:run`
 - `amazon-retention` -> `lifeos.amazon.retention:run`
 - `amazon-review-reset` -> `lifeos.amazon.reset:run`
@@ -87,6 +88,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/bills/state.py`: Pure due-state buckets over a saved Bill Tracker snapshot.
 ### lifeos/calendar_bridge/
 - `lifeos/calendar_bridge/sync.py`: Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook even
+### lifeos/delivery/
+- `lifeos/delivery/census.py`: DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.
 ### lifeos/hiring/
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
@@ -394,3 +397,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D148: MegIBOW history comes from Jim's own sheet, V7 counts from Oct 5, and the totals row is last and bold (2026-10-06, Jim)
 - D149: MegIBOW: Jim types his phone calls into one editable line (2026-10-06, Jim)
 - D150: Amazon: re-read trashed confirmations for totals; keep a confirmation until its total is recorded (2026-10-06, Jim)
+- D151: Delivery tracking: a read-only mail census before any carrier work (2026-10-06, DEL-1.1)
