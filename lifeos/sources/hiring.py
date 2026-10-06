@@ -104,7 +104,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         result = C.compile_rows(applied, parents, events, prior, ok, now)
         text, cells, counts = render.render(result, prior, now)
         counts.update({"applied": len(applied), "opportunities": len(parents), "events": len(events), "unsupported": result["unsupported"],
-                       "unmatched_events": result["unmatched_events"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
+                       "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         new = snapshot.build(result, prior, now)
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched

@@ -116,6 +116,10 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual([(r["company"], r["stage"]) for r in got["rows"]], [("Acme", "Interviewing")])
         self.assertEqual((got["unsupported"], got["reasons"]), (1, []))
 
+    def test_a_notes_page_without_a_company_and_role_title_is_ignored_not_degraded(self):
+        got = compile_([applied("Acme", "Senior Program Manager")], [parent("p1", "Babylist", "")])
+        self.assertEqual((got["reasons"], got["untitled_pages"], [r["company"] for r in got["rows"]]), ([], 1, ["Acme"]))
+
     def test_prior_state_carries_only_as_degraded_and_never_rolls_a_stage_back(self):
         first = compile_([applied("Acme", "Senior Program Manager")], events=[{"id": "e1", "title": "Interview Acme", "start": at(2)}])
         prior = snapshot.build(first, None, NOW)
