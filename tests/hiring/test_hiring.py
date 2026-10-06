@@ -617,7 +617,7 @@ class GuardrailTests(unittest.TestCase):
         hourly = (ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertNotIn("lifeos.run hiring", hourly)
         self.assertNotIn("HIRING_CARD_BLOCK_ID", hourly)
-        self.assertEqual(subprocess_diff_hourly(), "")
+        self.assertNotIn("hiring", subprocess_diff_hourly().lower())                      # later slices may change hourly.yml; the Hiring Pipeline never has
         domains = (ROOT / ".github/workflows/domains.yml").read_text()
         self.assertNotIn("schedule:", domains)
         self.assertNotIn("cron", domains)

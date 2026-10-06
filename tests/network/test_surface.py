@@ -220,6 +220,39 @@ class Corrections(unittest.TestCase):
         self.assertEqual((owned_count(ledger, "page-1"), owned_count(ledger, "page-2")), (1, 0))
         self.assertEqual(go(conn, ledger, limit=5)["pages_read"], 2)                          # a larger explicit limit reads more; DEFAULT_PAGES applies only when none is supplied
 
+    def test_hourly_rotation_reaches_every_page_without_stored_state(self):
+        from datetime import timedelta
+        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT"), (KEY3, "page-3", "Acme Corp", "Analyst", "ADMIT"),
+                ("e" * 64, "page-4", "Nowhere Ltd", "Engineer", "REVIEW")]
+        conn = build(jobs=jobs)
+        ledger = ledger_for((KEY1, "page-1"), (KEY2, "page-2"), (KEY3, "page-3"), ("e" * 64, "page-4"))
+        for hour in range(4):
+            network_surface.run(2, True, connection=conn, client=ledger, now=NOW + timedelta(hours=hour), today=TODAY)
+        self.assertEqual([owned_count(ledger, f"page-{n}") for n in (1, 2, 3)], [1, 1, 1])                  # every target with leads was reached within a few two-page runs
+        self.assertEqual(owned_count(ledger, "page-4"), 0)
+
+    def test_a_production_sized_ledger_is_covered_within_the_stated_bound_with_no_starvation(self):
+        from datetime import timedelta
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
+        surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
+        others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
+        with_leads = {f"t{i:04d}" for i in range(n_leads)}
+        total = n_leads + n_other + n_nontarget
+        bound = -(-total // budget)                                                                        # ceil(1,600 / 41) = 40 hours
+        last, worst = {}, 0
+        for hour in range(bound * 4):
+            picked, candidates = network_surface._queue(surfaced, others, with_leads, budget, NOW + timedelta(hours=hour))
+            self.assertEqual((len(picked), candidates), (budget, total))
+            for key, *_ in picked:
+                worst = max(worst, hour - last.get(key, -1))
+                last[key] = hour
+        self.assertEqual(len(last), total)                                                                 # no page is starved, cleanup pool included
+        self.assertEqual(bound, 40)
+        self.assertLessEqual(worst, 40)                                                                    # and no page waits longer than the stated 40 hours (exactly, no rounding allowance)
+        small = network_surface._queue({"a": ("pa", "C", "R", set())}, [], {"a"}, 1, NOW)[0]
+        self.assertEqual([k for k, *_ in small], ["a"])                                                    # an explicit limit of one still serves a page
+        self.assertEqual(network_surface._queue({}, [], set(), 40, NOW), ([], 0))
+
     def test_a_failed_append_leaves_the_previously_accepted_block_untouched(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
@@ -314,7 +347,13 @@ class Contract(unittest.TestCase):
             text = (self.ROOT / name).read_text()
             for banned in ("TinyFish", "tinyfish", "sendMail", "/send", "move(", "hiring_pipeline.read", "Hiring Pipeline page"):
                 self.assertNotIn(banned, text, name)
-        self.assertNotIn("network-surface", (self.ROOT / ".github/workflows/hourly.yml").read_text())
+        text = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        step = text[text.index("id: network_surface"):]
+        step = step[:step.index("      - id: review")]
+        self.assertIn("continue-on-error: true", step)                                                       # a Network failure never fails the Jobs run ...
+        self.assertIn("--limit 41", step)                                                                    # ... the bound that makes the 40-hour worst case true ...
+        self.assertIn("::warning title=Network surface::", step)                                             # ... but it is always explicit warning evidence, never silent
+        self.assertNotIn("network_surface", text[text.index("Lane failures fail the run"):])                 # and it is not in the lane-failure list
 
     def test_the_importer_does_not_create_the_surface_tables(self):
         conn = MySQLite()

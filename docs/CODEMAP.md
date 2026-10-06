@@ -427,3 +427,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D158: Network change events (NET-2.1) (2026-10-06)
 - D159: Network matching (NET-2.2): leads for jobs, applied opportunities and upcoming interviews, counts only (2026-10-06)
 - D160: Network surface (NET-2.3): one owned "Network Leads (n)" block per Job Ledger page (2026-10-07)
+- D162: Network surface: acceptance record and hourly wiring at 40 pages (2026-10-07)
