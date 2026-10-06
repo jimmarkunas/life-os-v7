@@ -182,7 +182,12 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "NTFY_TOPIC"])
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])   # EDGE-1.3: the push topic now comes from Bitwarden; the GitHub copy of NTFY_TOPIC is no longer read here
+        self.assertNotIn("secrets.NTFY_TOPIC", watchdog)
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", watchdog), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"])   # the reviewed v3.0.1 commit, never a tag or branch
+        self.assertEqual(re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", watchdog, re.M), ["83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC"])   # exactly one secret, nothing else fetched
+        self.assertEqual(re.findall(r"^\s*- cron:\s*\"([^\"]+)\"", watchdog, re.M), ["17 * * * *", "47 * * * *"])           # schedules unchanged
+        self.assertLess(watchdog.index("bitwarden/sm-action"), watchdog.index("lifeos.platform.gate --watch"))              # loaded before the first step that needs it
         self.assertEqual(len(re.findall(r"^\s*- cron:", (ROOT / ".github/workflows/hourly.yml").read_text(), re.M)), 3)   # D30: three triggers, one gate
 
     def test_machine_input_universes_are_frozen(self):
