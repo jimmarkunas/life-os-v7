@@ -166,8 +166,20 @@ class Warnings(unittest.TestCase):
     def test_trend_suppressed_with_short_history(self):
         self.assertEqual(W.evaluate(counts(o=0, s=1), self.base[:3], NOW, 3), [])
 
-    def test_degraded_only_evidence(self):
-        self.assertEqual(W.evaluate(counts(), self.base, self.thursday, 0, degraded=True), [W.EVIDENCE])
+    def test_a_failed_source_says_so_and_never_claims_unresolved_review_items(self):
+        out = W.evaluate(counts(), self.base, self.thursday, 0, degraded=True)
+        self.assertEqual(out, [W.SOURCE_UNAVAILABLE])
+        self.assertIn("temporarily unavailable", out[0])
+        self.assertIn("last accepted counts retained", out[0])
+        self.assertNotIn("Review queue", out[0])
+        self.assertNotIn("unresolved", out[0])
+        self.assertEqual(W.evaluate(counts(), self.base, self.thursday, 0, degraded=True, unresolved=5), [W.SOURCE_UNAVAILABLE])
+
+    def test_two_or_more_unresolved_items_point_to_the_review_queue_one_does_not(self):
+        self.assertIn(W.EVIDENCE, W.evaluate(counts(), self.base, self.thursday, 3, unresolved=2))
+        self.assertIn("MegIBOW Review queue", W.EVIDENCE)
+        self.assertNotIn(W.EVIDENCE, W.evaluate(counts(), self.base, self.thursday, 3, unresolved=1))
+        self.assertNotIn(W.SOURCE_UNAVAILABLE, W.evaluate(counts(), self.base, self.thursday, 3, unresolved=2))
 
     def test_max_three_and_order(self):
         out = W.evaluate(counts(), self.base, self.thursday, 0, unresolved=2)

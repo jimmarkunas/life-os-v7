@@ -69,6 +69,18 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('--live', step["run"])                                           # live only when LIVE (V7_LIVE on a tick, Actually write by hand)
         self.assertIs(domains[True]["workflow_dispatch"]["inputs"]["bills_paid"]["default"], False)
 
+    def test_the_manual_amazon_orders_pass_queues_with_the_domain_jobs_and_maintenance_does_not(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        amazon = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
+        domains = yaml.safe_load((root / ".github/workflows/domains.yml").read_text())
+        group = amazon["concurrency"]["group"]
+        self.assertIn("inputs.stage == 'orders'", group)
+        self.assertIn(f"'{domains['concurrency']['group']}'", group)                       # orders: the very group the domain jobs hold
+        self.assertIn("'life-os-v7-amazon-orders'", group)                                  # backfill, retention, review-reset: their own
+        self.assertIs(amazon["concurrency"]["cancel-in-progress"], False)
+        self.assertNotIn("schedule", amazon[True])
+
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]

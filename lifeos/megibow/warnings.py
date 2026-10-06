@@ -1,7 +1,7 @@
 """MegIBOW warnings (D134): the Notion contract's v1 rules, exactly. Pure, no model.
 
 At most 3, ordered: evidence quality, no meetings scheduled / forward pipeline, pipeline imbalance, outreach drop, conversation drop. One suggestion each.
-Trend rules need four trustworthy completed weeks. Degraded evidence yields only the evidence warning (never a healthy line)."""
+Trend rules need four trustworthy completed weeks. A failed source yields only the source-unavailable warning; two or more unresolved review items yield the Review-queue warning (never a healthy line)."""
 from statistics import median
 
 from lifeos.megibow import classify as C
@@ -9,7 +9,8 @@ from lifeos.megibow.windows import chicago, elapsed_business_days
 
 MAX = 3
 HEALTHY = "Megibow: pipeline healthy — no intervention suggested."
-EVIDENCE = "⚠ Megibow evidence is incomplete — review the unresolved Gmail/Calendar items before using this week's numbers to make a pipeline decision."
+EVIDENCE = "⚠ Megibow evidence is incomplete — use the MegIBOW Review queue to resolve the unclassified Gmail/Calendar items before using this week's numbers to make a pipeline decision."
+SOURCE_UNAVAILABLE = "⚠ MegIBOW source evidence is temporarily unavailable — last accepted counts retained; check system health before using this week's numbers."
 NO_MEETINGS = "⚠ No new meetings scheduled this week — send 5 targeted outreach messages today and convert at least 1 into a calendar meeting before the week ends."
 FORWARD_EMPTY = "⚠ Forward pipeline is empty — book 2 conversations into the next 14 days before doing lower-priority job-search work."
 FORWARD_THIN = "⚠ Forward pipeline is thin — add at least 1 more conversation to the next 14 days."
@@ -25,8 +26,8 @@ def calls(counts):
 
 def evaluate(current, baseline, now, forward_14, degraded=False, unresolved=0):
     """current: this week's counts; baseline: counts of the trustworthy completed weeks among the prior 7; forward_14: int or None when unknown. -> list of warning strings (maybe empty)."""
-    if degraded:
-        return [EVIDENCE]
+    if degraded:                                            # a failed source says so; it never claims that something waits in the Review queue
+        return [SOURCE_UNAVAILABLE]
     weekday = chicago(now).weekday()  # Monday 0
     elapsed = elapsed_business_days(now)
     trend = len(baseline) >= 4
