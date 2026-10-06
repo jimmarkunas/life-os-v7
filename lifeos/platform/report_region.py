@@ -18,6 +18,16 @@ TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
 VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}      # metadata that changes without the content changing
 
 
+def clean_id(raw):
+    """A block id as Notion wants it. Accepts the id itself (with or without dashes) or a copied Notion link, whose `#` fragment is the block id; anything else comes back
+    unchanged so the caller's own check rejects it. Never logs or raises."""
+    value = (raw or "").strip()
+    if "#" in value:
+        value = value.rsplit("#", 1)[1].strip()
+    bare = value.replace("-", "")
+    return bare.lower() if len(bare) == 32 and all(c in "0123456789abcdefABCDEF" for c in bare) else (raw or "").strip()
+
+
 def plain(block):
     inner = block.get(block.get("type")) or {}
     return "".join((part.get("plain_text") or (part.get("text") or {}).get("content") or "")
@@ -74,6 +84,7 @@ def _tree(client, block, fail):
 
 def region_digest(client, block_id, fail):
     """One hash per field of a protected callout and one per child block, so a change can be located (names only)."""
+    block_id = clean_id(block_id)
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if isinstance(meta, dict) and meta.get("type") == "heading_3" and same_id(meta.get("id"), block_id):
         return floating_digest(client, meta, fail)                                   # the Hiring Pipeline region is a heading, a paragraph and a table, not a callout
@@ -95,7 +106,7 @@ def changed(before, after):
 
 def protected(client, ids, fail):
     """ids: {region heading: block id}. Every id must be configured; -> {region: digest}."""
-    ids = {region: block_id for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
+    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     try:

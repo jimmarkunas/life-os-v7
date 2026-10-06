@@ -32,22 +32,22 @@ def _step(name, call):
 
 def validate(client, environ):
     """-> (region, page digest). The anchor must be the exact heading, on the same page as the Jira card, in the exact H3 -> paragraph -> table shape."""
-    block_id = (environ.get("HIRING_CARD_BLOCK_ID") or "").strip()
+    block_id = R.clean_id(environ.get("HIRING_CARD_BLOCK_ID"))
     if not block_id:
         raise fail("NOT_CONFIGURED")
     if M.TITLE != router.HIRING_REGION:
         raise fail("TITLE_DRIFT")
     for name in ("HIRING_CARD_BLOCK_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
-        raw = (environ.get(name) or "").strip().replace("-", "")
+        raw = R.clean_id(environ.get(name)).replace("-", "")
         if raw and not re.fullmatch(r"[0-9a-fA-F]{32}", raw):             # a pasted link or stray text: say which secret, never its value
             raise fail(f"ID_INVALID:{name}:len{len(raw)}")
-    status_id, table_id = (environ.get("HIRING_STATUS_BLOCK_ID") or "").strip(), (environ.get("HIRING_TABLE_BLOCK_ID") or "").strip()
+    status_id, table_id = R.clean_id(environ.get("HIRING_STATUS_BLOCK_ID")), R.clean_id(environ.get("HIRING_TABLE_BLOCK_ID"))
     if not status_id or not table_id:                            # all three blocks are pinned by id: the heading, the status paragraph and the table
         raise fail("NOT_CONFIGURED")
     region = _step("ANCHOR", lambda: R.floating_region(client, block_id, M.TITLE, fail))
     if not R.same_id(region["status"]["id"], status_id) or not R.same_id(region["table"]["id"], table_id):
         raise fail("PINNED_BLOCK_MISMATCH")                      # the blocks under the heading are not the ones Jim named: nothing is written
-    anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
+    anchor = R.clean_id(environ.get("JIRA_CARD_BLOCK_ID"))
     if not anchor:
         raise fail("PAGE_UNPROVEN")
     jira = _step("JIRA_BLOCK", lambda: R._meta(client, anchor))

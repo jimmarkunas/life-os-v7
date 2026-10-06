@@ -290,6 +290,17 @@ class RegionWriterTests(unittest.TestCase):
             self.assertEqual(str(error.exception), "HIRING_PINNED_BLOCK_MISMATCH")
             self.assertEqual(writes(t), [])
 
+    def test_a_copied_notion_link_is_accepted_as_the_block_id_everywhere(self):
+        link = lambda block: f"https://example.test/Daily-Report-3c73c5a0592680e3898cc56025ab8678?source=copy_link#{block}"      # noqa: E731
+        env = {**ENV, "HIRING_CARD_BLOCK_ID": link("0000000000000000000000000000a001"), "HIRING_STATUS_BLOCK_ID": link("0000000000000000000000000000a002"),
+               "HIRING_TABLE_BLOCK_ID": link("0000000000000000000000000000a003")}
+        self.assertTrue(card.present(page(extra_rows=1), env, "Updated", WANT, True)["verified"])
+        self.assertEqual(R.clean_id("0000000000000000-0000-00000000A001"), "0000000000000000000000000000a001")
+        self.assertEqual(R.clean_id("not an id"), "not an id")
+        t = page()
+        got = R.protected(t, {router.JIRA_REGION: "0000000000000000000000000000a004", router.HIRING_REGION: link("0000000000000000000000000000a001")}, lambda code: RuntimeError(code))
+        self.assertEqual(set(got), {router.JIRA_REGION, router.HIRING_REGION})
+
     def test_a_pasted_link_or_stray_text_is_named_by_secret_not_value(self):
         t = page()
         with self.assertRaises(snapshot.HiringError) as error:
