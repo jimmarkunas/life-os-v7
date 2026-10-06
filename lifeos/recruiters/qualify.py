@@ -3,6 +3,7 @@
 Person: a human name from the sender. Company: only from the signature line or a first-person statement. Client: only when the source says so explicitly. Role: only from a fixed
 pattern. A missing company, or a relay, makes the row Needs review; a name that cannot be read at all is UNRESOLVED (no row, nothing invented)."""
 import re
+from datetime import datetime
 
 from . import classify as C
 from .identity import clean_name, week_ending
@@ -12,6 +13,11 @@ ROLE = re.compile(r"\b(?:for|regarding|about)\s+(?:a|an|the|our)\s+(?P<r>[A-Z][A
 TITLE_AT = re.compile(rf"{C.TITLE}\s*(?:(?:\bat\b|\bwith\b|[|@,\-–—])\s*)(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{{1,60}}?)\s*(?:$|[|,.;(])", re.I)
 ORG_LINE = re.compile(r"^[\s|\-–—•*]*(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?\s(?:Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Corp\.?|Corporation|Technologies|Technology|Solutions|Systems|Staffing|Consulting|Group|Networks|Services|Partners|Global|Labs|Software|Infotech))[\s|,.\-–—]*$")
 MEDIUM = "Email"
+
+
+def minute(moment):
+    """The message time to the minute, as ISO 8601. Notion stores date-times to the minute, so comparing and reading back at full precision would never match."""
+    return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).replace(second=0, microsecond=0).isoformat()
 
 
 def _company(evidence):
@@ -51,5 +57,5 @@ def qualify(message, shape, reason, evidence):
     client = _search(CLIENT, "c", body)
     role = _search(ROLE, "r", message.get("subject", ""), body)
     review = relay or not company or len(person.split()) < 2
-    return "CANDIDATE", {"person": person, "company": company, "client": client, "role": role, "medium": MEDIUM, "last_contact": message["received"],
+    return "CANDIDATE", {"person": person, "company": company, "client": client, "role": role, "medium": MEDIUM, "last_contact": minute(message["received"]),
                          "week_ending": week_ending(message["received"]), "source_url": message.get("url", ""), "needs_review": review, "shape": shape}

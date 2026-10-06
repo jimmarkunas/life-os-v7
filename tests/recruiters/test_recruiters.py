@@ -84,6 +84,18 @@ class RealShapeTests(unittest.TestCase):
         self.assertEqual(nameless[0], C.OTHER)
 
 
+class MinutePrecisionTests(unittest.TestCase):
+    def test_last_contact_is_kept_to_the_minute_so_a_replay_finds_nothing_to_update(self):
+        notion = FakeRecruiters()
+        msg = signed(received="2026-10-07T15:08:23+00:00")
+        run([msg], notion, live=True)
+        notion.pages[0]["properties"]["Last Contact"]["date"]["start"] = "2026-10-07T15:08:00.000+00:00"      # Notion keeps minutes only
+        again = run([msg], notion, live=True)
+        self.assertEqual((again["existing"], again["updated"], again["failed"], len(notion.writes)), (1, 0, 0, 1))
+        later = run([signed(received="2026-10-07T15:09:59+00:00")], notion, live=True)
+        self.assertEqual((later["updated"], later["failed"]), (1, 0))
+
+
 class WeekTests(unittest.TestCase):
     def test_week_ending_is_the_sunday_of_the_monday_to_sunday_week_in_chicago(self):
         self.assertEqual(identity.week_ending("2026-10-05T14:00:00+00:00"), "2026-10-11")       # Monday morning Chicago
