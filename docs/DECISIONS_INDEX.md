@@ -154,3 +154,4 @@ This index is checked by a test: add a line here with every new decision.
 - D150 — Amazon: re-read trashed confirmations for totals; keep a confirmation until its total is recorded (2026-10-06, Jim)
 - D151 — Delivery tracking: a read-only mail census before any carrier work (2026-10-06, DEL-1.1)
 - D152 — Amazon Orders: a row with no Grand Total is cleared (2026-10-06, Jim)
+- D153 — Delivery census also reads tracking links (2026-10-06, DEL-1.1)

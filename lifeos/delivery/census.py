@@ -6,6 +6,7 @@ many candidate messages hold none. No tracking number, sender or subject is ever
 import os
 import re
 from collections import Counter
+from urllib.parse import unquote
 from datetime import datetime, timedelta, timezone
 
 from lifeos.platform.gmail import Gmail, GmailError
@@ -21,6 +22,8 @@ SHAPES = (                                                    # (carrier, regex,
     ("FEDEX", re.compile(NEAR + r"([0-9]{12}|[0-9]{15})\b", re.I), True),
     ("DHL", re.compile(NEAR + r"([0-9]{10})\b", re.I), True),
 )
+HREF = re.compile(r"""href\s*=\s*["']([^"']+)["']""", re.I)
+PARAM = re.compile(r"(?:tracknum|tracknumbers?|trackingnumbers?|tracking_number|trknbr|tlabels|trackid|trackingid|tracking_id|trackingnum)=([0-9A-Za-z]{10,34})", re.I)
 CARRIERS = tuple(name for name, _, _ in SHAPES)
 
 
@@ -40,9 +43,23 @@ def numbers_in(text):
     return found
 
 
+def link_numbers(html):
+    """Distinct (carrier, number) pairs held in the links of an HTML body: a carrier-shaped number anywhere in a link, or a number in a tracking query parameter."""
+    found, taken = [], set()
+    for href in HREF.findall(html or ""):
+        href = unquote(unquote(href.replace("&amp;", "&")))
+        candidates = [(c, n) for c, n in numbers_in(href)]
+        candidates += [(c, n) for c, n in numbers_in("tracking " + " tracking ".join(PARAM.findall(href)))]
+        for carrier, number in candidates:
+            if number not in taken:
+                taken.add(number)
+                found.append((carrier, number))
+    return found
+
+
 def run(limit, live, environ=os.environ, gmail=None, now=None):
     """Read-only: `live` changes nothing here. Returns counts only."""
-    counts = {"messages": 0, "with_numbers": 0, "without_numbers": 0, "numbers": 0, "distinct": 0, "repeated": 0, "unreadable": 0, "since_days": DAYS,
+    counts = {"messages": 0, "in_links_only": 0, "with_numbers": 0, "without_numbers": 0, "numbers": 0, "distinct": 0, "repeated": 0, "unreadable": 0, "since_days": DAYS,
               "by_carrier": {c: 0 for c in CARRIERS}, "written": 0}
     try:
         gmail = gmail or Gmail.from_env()
@@ -58,6 +75,14 @@ def run(limit, live, environ=os.environ, gmail=None, now=None):
             counts["unreadable"] += 1
             continue
         pairs = numbers_in(record.get("body_text", ""))
+        try:
+            linked = link_numbers(gmail.message(message_id)[1])
+        except GmailError:
+            linked = []
+        known = {n for _, n in pairs}
+        extra = [(c, n) for c, n in linked if n not in known]
+        counts["in_links_only"] += 1 if extra and not pairs else 0
+        pairs += extra
         counts["with_numbers" if pairs else "without_numbers"] += 1
         for carrier, number in pairs:
             counts["numbers"] += 1
