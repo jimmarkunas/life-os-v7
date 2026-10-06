@@ -1,4 +1,52 @@
-# Edge gateway (Oracle VM + OpenClaw): scope and roadmap (scoping only, no code, nothing provisioned)
+# Edge gateway (Oracle VM + OpenClaw): live contract
+
+**Status: LIVE FOUNDATION / CURRENT CONTRACT — October 6, 2026.** The Oracle host and OpenClaw gateway now exist. This live amendment supersedes the historical scoping text below wherever they conflict; older sections remain rationale only.
+
+## Current role
+
+OpenClaw is LIFE OS's bounded edge capability/control plane. It may provide model routing, messaging transports, browser/node/computer access, local inference, and approved operations. V7/domain owners retain business rules, canonical persistence, permissions, and scheduling.
+
+Current capability lanes:
+- everyday cloud: `openrouter/free`; no automatic paid fallback;
+- specialist: Gemini 3.8 Flash, explicit only when quota is available;
+- premium: GPT-6 Sol, explicit only; GPT-6 Astra is prohibited for LIFE OS routing;
+- local: paired Mac worker via Ollama; Oracle remains lightweight;
+- Notion: official CLI/browser-auth path;
+- GitHub: authenticated CLI/API path;
+- Claude Code and other MCP clients: use `openclaw mcp serve` or a bounded adapter;
+- ChatGPT: use the same named-capability contract through an approved LIFE OS connector/adapter, not raw SSH.
+
+## Current hard boundaries
+
+- No second LIFE OS recurring scheduler, duplicate canonical datastore, or business-rule engine.
+- No unrestricted shell/elevated/filesystem authority for ordinary assistant sessions.
+- No autonomous permanent deletion of personal files; file stewardship is read/inventory/hash/propose/quarantine-first.
+- No secret values in GitHub or Notion; choose one central secrets manager and expose only scoped runtime references.
+- No durable meeting archive on Oracle; durable Meeting Evidence belongs in Notion.
+- Interview capture remains invisible/botless. Keep Granola as the current acquisition layer; visible OpenClaw meeting participants are not the Interview OS capture path.
+- Local Whisper/whisper.cpp remains the future Granola-replacement candidate, not the first meeting slice.
+
+## Security package now in progress
+
+`EDGE-1.3` owns central secrets selection, least-privilege exec/file policy, approval gates, plugin allowlisting, bounded storage/backup, and separate everyday-assistant vs maintenance-agent authority. `EDGE-1.4` then publishes the capability registry used by Claude/ChatGPT and domain consumers. Channels/tasks follow only after the hardening proof.
+
+### Approved security decisions — October 6, 2026
+
+- **Canonical runtime secrets vault: Bitwarden Secrets Manager.** Use one vault/source of truth rather than synchronizing Bitwarden and Infisical. Infisical may remain an unused evaluation account; it is not a second live secret source.
+- Bitwarden Free is acceptable for the current topology because it supports unlimited secrets, up to three projects, and up to three machine accounts. Initial machine accounts are scoped separately for Oracle/OpenClaw and GitHub Actions; keep the third slot unused until a real consumer needs it.
+- OpenClaw consumes Bitwarden through its SecretRef `exec` provider boundary using the Bitwarden Secrets Manager CLI or a narrow resolver wrapper. The assistant receives SecretRefs/placeholders, not raw values.
+- GitHub Actions retrieves only the secrets needed by a workflow through a scoped Bitwarden machine account; do not mirror the entire vault into repository secrets.
+- **Mac Mini is the dedicated iMessage bridge host.** Keep SIP enabled. Use basic iMessage send/receive only, a dedicated automation user where practical, and the minimum Full Disk Access/Automation permissions required by the bridge.
+- Telegram, WhatsApp, Discord, iMessage, Reminders and Todoist remain downstream of the hardening gate. Telegram one-owner DMs use an explicit numeric-user allowlist rather than open-ended pairing once the operator identity is captured.
+- Main assistant and operations agent remain separate authorities. Ordinary assistant sessions cannot widen their own exec/file/plugin permissions.
+- Personal-file cleanup is inventory/hash/propose/quarantine-first. Permanent deletion is never autonomous.
+- Oracle remains private-admin over Tailscale and keeps bounded runtime state only; durable meeting evidence remains in Notion.
+
+
+---
+
+## Historical scoping below — reference only
+
 
 Status: scoped for Jim's review. Nothing here is built or provisioned, and this document changes no schema, secret, workflow, test or `docs/DECISIONS.md`. It treats the Oracle VM as **a new deployment target for the OpenClaw boundary that the Platform Canon already describes**, not as "LIFE OS in the cloud".
 
