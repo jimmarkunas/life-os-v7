@@ -154,11 +154,23 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
             if kind in C.CALLS and meta:
                 for contact in meta["people"]:
                     store.remember(connection, contact, "CONTACT", kind)
+    manual, bad_manual, has_line = {}, 0, True
+    try:
+        manual, bad_manual, has_line = card.read_manual(notion, block_id, today)
+    except NotionError:
+        pass                                                                      # an unreadable line never fails the run; the count simply is not added
+    counts["manual_unreadable"] = bad_manual
+    if live and not has_line:
+        try:
+            card.ensure_manual_line(notion, block_id)
+            counts["manual_line_added"] = True
+        except NotionError:
+            pass
     cutover = date.fromisoformat((environ.get("MEGIBOW_CUTOVER") or CUTOVER_DEFAULT).strip())
     # Monday rollover: freeze every finished week from the cut-over on, once, with read-back; only from a complete read
     this_monday = monday(today)
     counts["buckets"] = dict(collections.Counter(f"{o['status']}:{o['reason']}" for o in outcomes))
-    proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS)
+    proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS, manual)
     proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     if live and connection is not None and not degraded:
         for week in proj["weeks"]:
@@ -167,7 +179,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
                 store.freeze(connection, week, proj["counts"][week], clean)
                 frozen[week], trusted[week] = dict(proj["counts"][week]), clean
                 counts["frozen"] += 1
-        proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS)
+        proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS, manual)
         proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     baseline = []
     for week in proj["weeks"][:-1]:

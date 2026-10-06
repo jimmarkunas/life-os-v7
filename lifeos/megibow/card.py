@@ -101,3 +101,49 @@ def read_legacy(client, block_id):
                     found[name] = int(number)
             return found if set(found) == set(C.ACTIVITIES) else None
     return None
+
+
+MANUAL = "phone calls:"
+
+
+def parse_manual(text, today):
+    """Jim's own count line, "Phone calls: Oct 5 Recruiter Calls 1; Oct 7 Company Calls 2" -> ({monday: {activity: n}}, unreadable entry count). A date is "Mon D" in the current year
+    (the previous year when that would be more than a week ahead); an entry that does not parse is counted and ignored, never guessed."""
+    from datetime import date, datetime as dt, timedelta                         # noqa: PLC0415
+    from lifeos.megibow import classify as C                                     # noqa: PLC0415
+    from lifeos.megibow.windows import monday                                    # noqa: PLC0415
+    out, bad = {}, 0
+    body = text.split(":", 1)[1] if ":" in text else ""
+    for entry in body.replace("\n", ";").split(";"):
+        entry = " ".join(entry.split())
+        if not entry or entry.lower() in ("none", "-"):
+            continue
+        parts = entry.split(" ")
+        try:
+            day = dt.strptime(" ".join(parts[:2]) + f" {today.year}", "%b %d %Y").date()
+            if day > today + timedelta(days=7):
+                day = day.replace(year=today.year - 1)
+            activity, number = " ".join(parts[2:-1]), parts[-1]
+            if activity not in C.ACTIVITIES or not number.isdigit():
+                raise ValueError
+        except (ValueError, IndexError):
+            bad += 1
+            continue
+        week = out.setdefault(monday(day), {})
+        week[activity] = week.get(activity, 0) + int(number)
+    return out, bad
+
+
+def read_manual(client, block_id, today):
+    """-> ({monday: {activity: n}}, unreadable entries, line present). Reads the paragraph inside the block that starts with "Phone calls:"; absent means no entries."""
+    for block in report_region.children(client, block_id, _fail):
+        text = report_region.plain(block)
+        if block.get("type") == "paragraph" and text.lower().startswith(MANUAL):
+            found, bad = parse_manual(text, today)
+            return found, bad, True
+    return {}, 0, False
+
+
+def ensure_manual_line(client, block_id):
+    """Add the empty "Phone calls: none" paragraph at the end of the block once, so Jim has a line to edit. Never touches an existing one."""
+    client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Phone calls: none"}}]}}]})

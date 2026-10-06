@@ -27,6 +27,8 @@ class FakeNotion:
             return {"id": "para", "type": "paragraph"}
         if method == "GET" and path.startswith("/blocks/cal/children"):
             extra = [{"id": "leg", "type": "paragraph", "paragraph": {"rich_text": CELL(self.legacy)}}] if self.legacy else []
+            if getattr(self, "phone", ""):
+                extra.append({"id": "phone", "type": "paragraph", "paragraph": {"rich_text": CELL(self.phone)}})
             return {"results": [{"id": "tbl", "type": "table", "table": {"table_width": 10 if self.shape_ok else 4}}] + extra, "has_more": False}
         if method == "GET" and path.startswith("/blocks/tbl/children"):
             return {"results": [{"id": k, "type": "table_row", "table_row": {"cells": [CELL(c) for c in v]}} for k, v in self.rows.items()], "has_more": False}
@@ -47,6 +49,10 @@ class FakeNotion:
         raise AssertionError((method, path))
 
     def call_once(self, method, path, body=None):
+        if path.endswith("/children"):                                   # the one empty "Phone calls: none" line V7 adds for Jim to edit
+            self.appended = getattr(self, "appended", []) + [body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]]
+            self.phone = body["children"][0]["paragraph"]["rich_text"][0]["text"]["content"]
+            return {}
         self.created.append(body["properties"])
         return {}
 
@@ -174,6 +180,26 @@ class Stage(unittest.TestCase):
         self.assertEqual(n.rows, before)
         self.assertTrue(n.callout.startswith("DEGRADED"))
         self.assertIn("incomplete", n.callout)
+
+    def test_jims_phone_call_line_is_added_once_and_his_counts_reach_the_week_and_the_totals(self):
+        n = FakeNotion()
+        run(FakeGmail({}), FakeGcal([]), n)
+        self.assertEqual(n.appended, ["Phone calls: none"])                  # added once, live
+        run(FakeGmail({}), FakeGcal([]), n)
+        self.assertEqual(len(n.appended), 1)                                  # never again
+        n.phone = "Phone calls: Oct 5 Recruiter Calls 2; Oct 6 Company Calls 1; Oct 7 Outreach 1; Oct 7 Bogus 4; nonsense"
+        counts = run(FakeGmail({}), FakeGcal([]), n)
+        self.assertEqual(counts["manual_unreadable"], 2)                      # counted and ignored, never guessed
+        self.assertEqual(counts["status"][C.RECRUITER], 2)
+        self.assertEqual(counts["status"][C.COMPANY], 1)
+        self.assertEqual(n.rows["r6"][-1], "4")                               # the bold totals row (last): 2 + 1 + 1 this week
+
+    def test_the_phone_line_parser_reads_dates_and_counts_strictly(self):
+        from datetime import date
+        got, bad = card.parse_manual("Phone calls: Oct 5 Recruiter Calls 1; Oct 5 Recruiter Calls 2; Sep 29 Networking Calls 1; Oct 5 Recruiter Calls x; Oct 5 Recruiter Calls", date(2026, 10, 7))
+        self.assertEqual(got, {date(2026, 10, 5): {"Recruiter Calls": 3}, date(2026, 9, 28): {"Networking Calls": 1}})
+        self.assertEqual(bad, 2)
+        self.assertEqual(card.parse_manual("Phone calls: none", date(2026, 10, 7)), ({}, 0))
 
     def test_legacy_totals_seed_cumulative(self):
         n = FakeNotion()

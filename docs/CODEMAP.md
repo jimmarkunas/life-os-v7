@@ -392,3 +392,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D146: Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)
 - D147: MegIBOW: a failed source is not an unresolved review item; manual Amazon orders queue with the domain jobs (2026-10-06)
 - D148: MegIBOW history comes from Jim's own sheet, V7 counts from Oct 5, and the totals row is last and bold (2026-10-06, Jim)
+- D149: MegIBOW: Jim types his phone calls into one editable line (2026-10-06, Jim)
