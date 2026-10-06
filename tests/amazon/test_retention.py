@@ -99,7 +99,7 @@ class MultiOrderTests(unittest.TestCase):
         for body in (LINKS + f"\nsee also 333-3333333-3333333", f"order {A} and order {B}", f"orderID={A}\nand {B}"):
             got = events.extract_all(message("x", "shipment-tracking", body=body))
             self.assertEqual([(e["status"], e["reason"]) for e in got], [("REVIEW", "ORDER_ID_AMBIGUOUS")])
-        many = "\n".join(f"orderID=10{n}-1111111-1111111" for n in range(6))
+        many = "\n".join(f"orderID=10{n}-1111111-1111111" for n in range(11))
         self.assertEqual(events.extract_all(message("y", "shipment-tracking", body=many))[0]["status"], "REVIEW")
 
     def test_both_orders_are_recorded_and_the_message_is_trashed_only_when_both_list_it(self):
@@ -143,3 +143,39 @@ class ReviewAgeTests(unittest.TestCase):
         before = repr(notion.rows)
         retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual(repr(notion.rows), before)
+
+
+class TotalLineTests(unittest.TestCase):
+    def total(self, body):
+        from lifeos.amazon import events
+        return events.extract(message("t", "auto-confirm", body=body))
+
+    def test_the_current_confirmation_layout_gives_a_total_and_subtotals_never_do(self):
+        order = "114-5655798-1950618"
+        self.assertEqual(self.total(f"Order #\n{order}\n\n* Item\n  Quantity: 1\n  19.45 USD\n\nTotal\n21.2 USD\n\n(c) 2025")["grand_total"], "21.20")
+        self.assertIsNone(self.total(f"Order #\n{order}\n\nSubtotal\n19.45 USD")["grand_total"])
+        self.assertEqual(self.total(f"Order {order}\nGrand Total: $12.34")["grand_total"], "12.34")
+        self.assertEqual(self.total(f"Order {order}\nOrder Total: $9")["grand_total"], "9.00")
+
+    def test_two_different_totals_in_one_message_still_conflict(self):
+        got = self.total("Order 114-5655798-1950618\nTotal\n21.2 USD\nGrand Total: $30.00")
+        self.assertEqual((got["status"], got["reason"]), ("REVIEW", "TOTAL_CONFLICT"))
+
+
+class GroupedTotalTests(unittest.TestCase):
+    BODY = ("Thanks for your order!\nOrder #\n{a}\n\nView or edit order\nhttps://www.amazon.com/your-orders/order-details?orderID={a}&ref_=x\n\nGrand Total:\n15.72 USD\n\n"
+            "Order #\n{b}\n\nView\nhttps://www.amazon.com/your-orders/order-details?orderID={b}&ref_=x\n\nOrder #\n{b}\n\nOrder #\n{b}\n\nGrand Total:\n64.39 USD\n\n(c) Amazon")
+
+    def test_a_confirmation_with_each_order_followed_by_its_total_gives_each_order_its_own_total(self):
+        from lifeos.amazon import events
+        got = events.extract_all(message("c1", "auto-confirm", body=self.BODY.format(a=A, b=B)))
+        self.assertEqual([(e["order_id"], e["status"], e["grand_total"]) for e in got], [(A, "ORDERED", "15.72"), (B, "ORDERED", "64.39")])
+
+    def test_an_order_number_after_the_last_total_or_shared_by_two_totals_is_not_guessed(self):
+        from lifeos.amazon import events
+        trailing = self.BODY.format(a=A, b=B) + f"\nSee also {A}"
+        shared = self.BODY.format(a=A, b=A)
+        for body in (trailing, shared):
+            got = events.extract_all(message("c2", "auto-confirm", body=body))
+            self.assertTrue(all(e.get("total") is None for e in got))
+            self.assertNotEqual([e.get("grand_total") for e in got], ["15.72", "64.39"])
