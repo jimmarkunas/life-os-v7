@@ -25,6 +25,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `fit` -> `lifeos.jobs.fit.stage:run`
 - `fit-review` -> `lifeos.jobs.review:run`
 - `funnel` -> `lifeos.jobs.funnel:run`
+- `hiring` -> `lifeos.sources.hiring:run`
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
@@ -84,6 +85,12 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/bills/state.py`: Pure due-state buckets over a saved Bill Tracker snapshot.
 ### lifeos/calendar_bridge/
 - `lifeos/calendar_bridge/sync.py`: Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook even
+### lifeos/hiring/
+- `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
+- `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
+- `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
+- `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
+- `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
 ### lifeos/interview/
 - `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
@@ -201,6 +208,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/tinyfish_search.py`: TinyFish Search API client (free; 30 requests/minute). Key from TINYFISH_API_KEY. Fixed codes only in errors.
 - `lifeos/platform/usage.py`: Hard spending/rate guard for TinyFish (Jim's wallet is $35 total and must never be used up).
 ### lifeos/sources/
+- `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/newsletters/config.py`: Phase 1 configuration: which senders are job newsletters and where they go.
 - `lifeos/sources/newsletters/finalize.py`: Stage 4 - finalize: close out a newsletter email only when EVERY job in it has an outcome.
@@ -231,7 +239,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_JIRA_TOKEN, NTFY_TOPIC, OUTLOOK_CLIENT_ID
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_API_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JIRA_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
@@ -376,3 +384,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D141: SAFE-1.1: the hardening slice (2026-10-05)
 - D142: The SAFE-1.1 database checks run weekly (2026-10-05, Jim)
 - D143: MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)
+- D144: HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)

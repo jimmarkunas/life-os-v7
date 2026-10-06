@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import db, router
+from lifeos.platform import db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import snapshot as agenda_snapshot
 
@@ -112,21 +112,22 @@ def _changed(before, after):
     return {"fields": fields, "children": kids, "child_count": [len(before["children"]), len(after["children"])]}
 
 
-def _protected(client, jira_id):
+def _protected(client, jira_id, hiring_id=""):
     try:
         digest = _region_digest(client, jira_id)
+        hiring = report_region.region_digest(client, hiring_id, lambda code: CardError("AGENDA_" + code)) if hiring_id else None      # the floating Hiring region, once configured
     except CardError:
         raise
     except Exception:
         raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE") from None
-    state = {router.JIRA_REGION: digest}
+    state = {router.JIRA_REGION: digest, **({router.HIRING_REGION: hiring} if hiring else {})}
     if not router.protected_intact(MODULE, state, state):
         raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
     return state
 
 
-def _require_protected_intact(client, jira_id, before):
-    after = _protected(client, jira_id)
+def _require_protected_intact(client, jira_id, before, hiring_id=""):
+    after = _protected(client, jira_id, hiring_id)
     if not router.protected_intact(MODULE, before, after):
         print("agenda: protected region changed", json.dumps(_changed(before.get(router.JIRA_REGION), after.get(router.JIRA_REGION))))
         raise CardError("AGENDA_PROTECTED_REGION_CHANGED")
@@ -281,6 +282,7 @@ def _append(client, block_id, blocks, after_chunk=None):
 
 def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     block_id = (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()
+    hiring_id = (environ.get("HIRING_CARD_BLOCK_ID") or "").strip()
     if not block_id:
         return {"events": 0, "all_day": 0, "today": 0, "tomorrow": 0, "saved": 0,
                 "blocks_written": 0, "status": "not_configured"}
@@ -313,19 +315,19 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
             if not jira_id:
                 raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
-            before = _protected(client, jira_id)
+            before = _protected(client, jira_id, hiring_id)
             try:
                 router.check_write(MODULE, [CARD_TITLE])
             except router.RouterError:
                 raise CardError("AGENDA_CARD_NOT_OWNED") from None
             client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)     # only the heading text changes; the events stay as accepted
-            _require_protected_intact(client, jira_id, before)
+            _require_protected_intact(client, jira_id, before, hiring_id)
             after = _children(client, block_id)
             if not _owned(after) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
             if hashlib.sha256(json.dumps(existing[1:], sort_keys=True).encode()).hexdigest() != hashlib.sha256(json.dumps(after[1:], sort_keys=True).encode()).hexdigest():
                 raise CardError("AGENDA_CARD_VERIFY_FAILED")
-            _require_protected_intact(client, jira_id, before)
+            _require_protected_intact(client, jira_id, before, hiring_id)
             counts["blocks_written"] = 1
         return counts
     if not live:
@@ -334,12 +336,12 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
     jira_id = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not jira_id:
         raise CardError("AGENDA_PROTECTED_REGION_UNAVAILABLE")
-    before = _protected(client, jira_id)
+    before = _protected(client, jira_id, hiring_id)
     try:
         router.check_write(MODULE, [CARD_TITLE])
     except router.RouterError:
         raise CardError("AGENDA_CARD_NOT_OWNED") from None
-    _append(client, block_id, new_blocks, lambda: _require_protected_intact(client, jira_id, before))
+    _append(client, block_id, new_blocks, lambda: _require_protected_intact(client, jira_id, before, hiring_id))
     for old in existing[1:]:
         try:
             router.check_write(MODULE, [CARD_TITLE])
@@ -353,11 +355,11 @@ def run(limit, live, environ=os.environ, client=None, now=None, connect=None):
             else:
                 raise
         finally:
-            _require_protected_intact(client, jira_id, before)
+            _require_protected_intact(client, jira_id, before, hiring_id)
     client.call("PATCH", f"/blocks/{quote(heading_block['id'], safe='')}", heading_patch)   # the update time shares the heading (D119)
-    _require_protected_intact(client, jira_id, before)
+    _require_protected_intact(client, jira_id, before, hiring_id)
     after = _children(client, block_id)                    # read back the configured Calendar region
-    _require_protected_intact(client, jira_id, before)
+    _require_protected_intact(client, jira_id, before, hiring_id)
     if not _owned(after) or len(after) != 1 + len(new_blocks) or _plain(after[0]) != heading or after[0].get("id") != heading_block["id"]:
         raise CardError("AGENDA_CARD_VERIFY_FAILED")
     counts["blocks_written"] = len(new_blocks)

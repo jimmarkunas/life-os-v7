@@ -145,3 +145,4 @@ This index is checked by a test: add a line here with every new decision.
 - D141 — SAFE-1.1: the hardening slice (2026-10-05)
 - D142 — The SAFE-1.1 database checks run weekly (2026-10-05, Jim)
 - D143 — MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)
+- D144 — HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)
