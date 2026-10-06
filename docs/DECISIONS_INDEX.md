@@ -149,3 +149,4 @@ This index is checked by a test: add a line here with every new decision.
 - D145 — Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)
 - D146 — Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)
 - D147 — MegIBOW: a failed source is not an unresolved review item; manual Amazon orders queue with the domain jobs (2026-10-06)
+- D148 — MegIBOW counts every visible week; the cutover is Aug 17 (2026-10-06, Jim)
