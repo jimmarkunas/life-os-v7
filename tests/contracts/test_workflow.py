@@ -112,6 +112,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
+    def test_amazon_since_reaches_only_the_backfill_stage_so_orders_keeps_its_normal_watermark_window(self):
+        """Live run 37541352965: the 2015-01-01 default of the backfill-only `since` input reached stage=orders (AMAZON_SINCE overrides the watermark in lifeos/amazon/stage.py), so the
+        normal pass listed the whole mailbox and stopped at the 200-message limit."""
+        import re
+        from pathlib import Path
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/amazon.yml").read_text()
+        step_env = yaml.safe_load(text)["jobs"]["amazon"]["steps"][-1]["env"]
+        expression = step_env["AMAZON_SINCE"]
+        self.assertEqual(expression, "${{ inputs.stage == 'backfill' && inputs.since || '' }}")
+        self.assertEqual(len(re.findall(r"inputs\.since", text)), 1)                                       # the only use of the input
+        stage_choices = yaml.safe_load(text)[True]["workflow_dispatch"]["inputs"]["stage"]["options"]
+        gate = re.fullmatch(r"\$\{\{ inputs\.stage == '([a-z-]+)' && inputs\.since \|\| '' \}\}", expression).group(1)
+        default_since = yaml.safe_load(text)[True]["workflow_dispatch"]["inputs"]["since"]["default"]
+        passed = {stage: (default_since if stage == gate else "") for stage in stage_choices}                  # what each stage receives when the operator leaves `since` at its default
+        self.assertEqual({stage for stage, value in passed.items() if value}, {"backfill"})
+        self.assertEqual(passed["orders"], "")                                                              # the normal pass never receives the 2015-01-01 default
+        self.assertEqual(yaml.safe_load(text)[True]["workflow_dispatch"]["inputs"]["since"]["default"], "2015-01-01")   # the backfill default is unchanged
+
 
 if __name__ == "__main__":
     unittest.main()
