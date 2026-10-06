@@ -4,6 +4,7 @@ Derived, machine-maintained state for matching and history; the LinkedIn Connect
 Tables are created only on a live run. A batch is applied in chunks, each chunk one transaction that also moves the batch's cursor, so a failure leaves earlier chunks
 accepted and the next run resumes at the cursor. Every write is idempotent (unique person and position keys), so replaying a batch changes nothing.
 Fixed NETWORK_* codes only; never a driver message."""
+import hashlib
 from datetime import datetime, timezone
 
 from lifeos.network import identity
@@ -34,10 +35,18 @@ SCHEMA = (
         cursor_row INT NOT NULL, status VARCHAR(12) NOT NULL, imported_at DATETIME NULL,
         UNIQUE KEY uq_net_batch (batch_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_network_events (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        person_id BIGINT NOT NULL, event_type VARCHAR(20) NOT NULL, old_position_id BIGINT NULL, new_position_id BIGINT NULL, batch_id BIGINT NOT NULL,
+        observed_date DATE NOT NULL, event_hash CHAR(64) NOT NULL, created_at DATETIME NOT NULL,
+        UNIQUE KEY uq_net_event (event_hash), KEY ix_net_event_person (person_id, event_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
+EVENT_TYPES = ("PERSON_IMPORTED", "COMPANY_CHANGED", "TITLE_CHANGED")
 EXPECTED = {"v7_network_people": "id,person_key,url_key,display_name,connected_on,first_seen,last_observed,status,history_coverage",
             "v7_network_positions": "id,person_id,company_key,company_name,title,position_state,first_observed,last_observed,last_verified,source_kind,source_ref,source_observed_at,material_hash",
-            "v7_network_batches": "id,batch_key,batch_kind,observed_from,observed_to,source_rows,people_accepted,positions_accepted,ambiguous_held,rejected,cursor_row,status,imported_at"}
+            "v7_network_batches": "id,batch_key,batch_kind,observed_from,observed_to,source_rows,people_accepted,positions_accepted,ambiguous_held,rejected,cursor_row,status,imported_at",
+            "v7_network_events": "id,person_id,event_type,old_position_id,new_position_id,batch_id,observed_date,event_hash,created_at"}
 
 
 def _marks(n):
@@ -80,8 +89,12 @@ def open_batch(connection, key, plan, exported):
         return cursor.fetchone()[0], "APPLYING", 0
 
 
-def _apply(cursor, chunk, exported, ref, now):
+def _apply(cursor, chunk, exported, ref, now, batch_id=0, events=False):
+    """Apply one chunk. With `events` (a baseline batch already exists), also return the change events as (type, person_id, old_position_id, new_material_hash, hash) rows;
+    each is written in this same transaction. The first batch is the baseline and writes none (D158)."""
     keys = [p["url_key"] for p in chunk]
+    cursor.execute(f"SELECT url_key FROM v7_network_people WHERE url_key IN ({_marks(len(keys))})", keys)
+    known = {row[0] for row in cursor.fetchall()}
     cursor.executemany("INSERT IGNORE INTO v7_network_people (person_key, url_key, display_name, connected_on, first_seen, last_observed, status, history_coverage)"
                        " VALUES (%s,%s,%s,%s,%s,%s,'ACTIVE','SEED_ONLY')",
                        [(identity.person_key(p["url_key"]), p["url_key"], p["name"], p["connected_on"].isoformat() if p["connected_on"] else None, now.isoformat(sep=" ", timespec="seconds"), exported) for p in chunk])
@@ -91,7 +104,7 @@ def _apply(cursor, chunk, exported, ref, now):
         raise NetworkError("NETWORK_READBACK_MISMATCH")
     cursor.execute(f"SELECT person_id, id, company_key, title, source_observed_at FROM v7_network_positions WHERE position_state='CURRENT' AND person_id IN ({_marks(len(ids))})", list(ids.values()))
     current = {row[0]: row[1:] for row in cursor.fetchall()}
-    new, confirm, supersede = [], [], []
+    new, confirm, supersede, changes = [], [], [], []
     for p in chunk:
         if not p["company_key"]:
             continue                                                     # no usable employer: the person exists, no position is created or replaced
@@ -105,6 +118,7 @@ def _apply(cursor, chunk, exported, ref, now):
                 confirm.append((exported, exported, pos_id))
                 continue
             supersede.append((pos_id,))
+            changes.append(("COMPANY_CHANGED" if ckey != p["company_key"] else "TITLE_CHANGED", pid, pos_id, identity.material_hash(p["url_key"], p["company_key"], title, SOURCE_KIND, exported)))
         new.append((pid, p["company_key"], p["company_name"], title, exported, exported, exported, SOURCE_KIND, ref, exported, identity.material_hash(p["url_key"], p["company_key"], title, SOURCE_KIND, exported)))
     if supersede:
         cursor.executemany("UPDATE v7_network_positions SET position_state='SUPERSEDED' WHERE id=%s", supersede)
@@ -114,9 +128,31 @@ def _apply(cursor, chunk, exported, ref, now):
         cursor.executemany("INSERT IGNORE INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified,"
                            " source_kind, source_ref, source_observed_at, material_hash) VALUES (%s,%s,%s,%s,'CURRENT',%s,%s,%s,%s,%s,%s,%s)", new)
     cursor.executemany("UPDATE v7_network_people SET last_observed=%s WHERE url_key=%s AND last_observed < %s", [(exported, k, exported) for k in keys])
+    if not events:
+        return []
+    planned = changes + [("PERSON_IMPORTED", ids[p["url_key"]], None, "") for p in chunk if p["url_key"] not in known]
+    if not planned:
+        return []
+    hashes = [mh for _, _, _, mh in planned if mh]
+    positions = {}
+    if hashes:
+        cursor.execute(f"SELECT material_hash, id FROM v7_network_positions WHERE material_hash IN ({_marks(len(hashes))})", hashes)
+        positions = dict(cursor.fetchall())
+    rows = []
+    for kind, pid, old, mh in planned:
+        digest = hashlib.sha256(f"{kind}|{pid}|{old or 0}|{mh}|{exported}".encode()).hexdigest()
+        rows.append((pid, kind, old, positions.get(mh), batch_id, exported, digest, now.isoformat(sep=" ", timespec="seconds")))
+    cursor.executemany("INSERT IGNORE INTO v7_network_events (person_id, event_type, old_position_id, new_position_id, batch_id, observed_date, event_hash, created_at)"
+                       " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", rows)
+    return rows
 
 
-def _readback(cursor, chunk):
+def _readback(cursor, chunk, events=()):
+    if events:
+        hashes = [row[6] for row in events]
+        cursor.execute(f"SELECT COUNT(*) FROM v7_network_events WHERE event_hash IN ({_marks(len(hashes))})", hashes)
+        if cursor.fetchone()[0] != len(hashes):
+            raise NetworkError("NETWORK_READBACK_MISMATCH")
     keys = [p["url_key"] for p in chunk]
     cursor.execute(f"SELECT COUNT(*) FROM v7_network_people WHERE url_key IN ({_marks(len(keys))})", keys)
     if cursor.fetchone()[0] != len(keys):
@@ -128,14 +164,19 @@ def _readback(cursor, chunk):
 
 
 def apply_batch(connection, batch_id, start, plan, exported, ref, chunk=CHUNK, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
-    """Apply people[start:] in chunks; each chunk is one transaction (people, positions and the cursor together) and is read back after it commits."""
+    """Apply people[start:] in chunks; each chunk is one transaction (people, positions, change events and the cursor together) and is read back after it commits.
+    Returns the number of change events written, by type."""
     people = plan["people"]
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM v7_network_batches WHERE status='COMPLETE' AND id<>%s", (batch_id,))
+        baseline = cursor.fetchone()[0] > 0                           # no completed batch yet: this is the baseline (the seed), and a baseline writes no events
+    written = {kind: 0 for kind in EVENT_TYPES}
     for at in range(start, len(people), chunk):
         part = people[at:at + chunk]
         try:
             connection.begin()
             with connection.cursor() as cursor:
-                _apply(cursor, part, exported, ref, clock())
+                rows = _apply(cursor, part, exported, ref, clock(), batch_id, baseline)
                 cursor.execute("UPDATE v7_network_batches SET cursor_row=%s WHERE id=%s", (at + len(part), batch_id))
             connection.commit()
         except NetworkError:
@@ -145,7 +186,10 @@ def apply_batch(connection, batch_id, start, plan, exported, ref, chunk=CHUNK, c
             connection.rollback()
             raise NetworkError("NETWORK_STORE_FAILED") from None
         with connection.cursor() as cursor:
-            _readback(cursor, part)
+            _readback(cursor, part, rows)
+        for row in rows:
+            written[row[1]] += 1
+    return written
 
 
 def complete(connection, batch_id, plan, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
@@ -160,6 +204,8 @@ def audit(connection):
     """Read-only, counts only: row totals, batch states, and how many text values contain an @ (email-shaped). Nothing is written and no value is returned."""
     out = dict(totals(connection))
     with connection.cursor() as cursor:
+        cursor.execute("SELECT event_type, COUNT(*) FROM v7_network_events GROUP BY event_type")
+        out["events"] = {str(kind): n for kind, n in cursor.fetchall()}
         cursor.execute("SELECT status, COUNT(*) FROM v7_network_batches GROUP BY status")
         out["batches"] = {str(status): n for status, n in cursor.fetchall()}
         for table, columns in (("v7_network_people", ("url_key", "display_name")), ("v7_network_positions", ("company_key", "company_name", "title", "source_ref")),

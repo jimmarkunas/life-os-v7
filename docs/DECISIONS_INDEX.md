@@ -159,3 +159,4 @@ This index is checked by a test: add a line here with every new decision.
 - D155 — Recruiters: tuned to the shapes real mail has (2026-10-06)
 - D156 — Recruiters: Last Contact is kept to the minute (2026-10-06)
 - D157 — Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)
+- D158 — Network change events (NET-2.1) (2026-10-06)

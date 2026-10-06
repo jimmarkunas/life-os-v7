@@ -280,6 +280,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_people`: `lifeos/network/store.py`
 - `v7_network_positions`: `lifeos/network/store.py`
 - `v7_network_batches`: `lifeos/network/store.py`
+- `v7_network_events`: `lifeos/network/store.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 
@@ -415,3 +416,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D155: Recruiters: tuned to the shapes real mail has (2026-10-06)
 - D156: Recruiters: Last Contact is kept to the minute (2026-10-06)
 - D157: Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)
+- D158: Network change events (NET-2.1) (2026-10-06)
