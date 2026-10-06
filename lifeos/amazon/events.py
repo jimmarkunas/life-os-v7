@@ -17,7 +17,7 @@ TOTAL_RE = re.compile(r"\bGrand\s+Total\s*:?\s*(?:USD\s*)?([-+]?\$?\s*(?:\d{1,3}
 MAX_ORDERS_PER_MESSAGE = 10
 # Current confirmation mail states the total on its own lines: "Total" then "21.2 USD" (one or two decimals). Only a line that is exactly "Total", "Order Total" or "Grand Total" counts;
 # "Subtotal" and the unlabeled item prices above it never do.
-LINE_TOTAL_RE = re.compile(r"(?im)^[ \t]*(?:(?:Order|Grand)[ \t]+)?Total[ \t]*:?[ \t]*\r?\n?[ \t]*(?:USD[ \t]*)?(\$?[ \t]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:[ \t]*USD)?[ \t]*$")
+LINE_TOTAL_RE = re.compile(r"(?im)^[ \t]*(?:(?:Order|Grand)[ \t]+)?Total[ \t]*:?[ \t]*\r?\n?[ \t]*(?:USD[ \t]*)?(\$?[ \t]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:[ \t]*USD)?[ \t\r]*$")
 CANONICAL_URL = "https://www.amazon.com/your-orders/order-details?orderID={}"
 
 

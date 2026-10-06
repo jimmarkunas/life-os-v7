@@ -10,6 +10,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `amazon-card` -> `lifeos.amazon.card:run`
 - `amazon-orders` -> `lifeos.amazon.stage:run`
 - `amazon-retention` -> `lifeos.amazon.retention:run`
+- `amazon-review-reset` -> `lifeos.amazon.reset:run`
 - `attention` -> `lifeos.attention.stage:run`
 - `attention-card` -> `lifeos.attention.card:run`
 - `audit` -> `lifeos.jobs.audit:run`
@@ -71,6 +72,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/amazon/events.py`: Pure extraction of the three accepted Amazon order mail events.
 - `lifeos/amazon/orders.py`: Pure monotone reconciliation of Amazon order events.
 - `lifeos/amazon/projection.py`: Region-local Amazon status for the Daily Command Center (consumer is ChatGPT-owned): a pure function of one run's counts, fail closed.
+- `lifeos/amazon/reset.py`: D146: put the orders that were frozen EMPTY back into the queue. A REVIEW row that holds only its order number (no event date, no order date, no total, no source messages
 - `lifeos/amazon/retention.py`: D139: Amazon order mail older than 30 days goes to the Gmail Trash, once its order is safely recorded in the canonical Amazon Orders data source.
 - `lifeos/amazon/stage.py`: Gmail to canonical Notion Amazon Orders; filing follows a verified durable write.
 ### lifeos/attention/
@@ -386,3 +388,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D143: MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)
 - D144: HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)
 - D145: Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)
+- D146: Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)

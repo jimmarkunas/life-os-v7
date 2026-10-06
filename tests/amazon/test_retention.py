@@ -179,3 +179,36 @@ class GroupedTotalTests(unittest.TestCase):
             got = events.extract_all(message("c2", "auto-confirm", body=body))
             self.assertTrue(all(e.get("total") is None for e in got))
             self.assertNotEqual([e.get("grand_total") for e in got], ["15.72", "64.39"])
+
+
+class ReviewResetTests(unittest.TestCase):
+    def store(self):
+        from tests.kit.amazon import notion_page
+        notion = AmazonNotion()
+        notion.rows["111-1111111-1111111"] = notion_page("111-1111111-1111111", {"Status": "REVIEW", "Needs Review": True}, "page-empty")
+        notion.rows["222-2222222-2222222"] = notion_page("222-2222222-2222222", {"Status": "REVIEW", "Needs Review": True, "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-data")
+        notion.rows["333-3333333-3333333"] = notion_page("333-3333333-3333333", {"Status": "SHIPPED", "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-ok")
+        return notion
+
+    def test_only_review_rows_with_no_data_are_trashed_and_a_dry_run_changes_nothing(self):
+        from lifeos.amazon import reset
+        notion = self.store()
+        notion.query_data_source = lambda source_id, body: {"results": [p for p in notion.rows.values() if p["properties"]["Status"]["select"] and p["properties"]["Status"]["select"]["name"] == "REVIEW"], "has_more": False}
+        calls = []
+        notion.call_once = lambda method, path, body=None: calls.append((method, path, body)) or {}
+        real_call = notion.call
+        notion.call = lambda method, path, body=None: {"in_trash": True} if path.startswith("/pages/") else real_call(method, path, body)
+        dry = reset.run(100, False, environ=TOKEN, notion=notion)
+        self.assertEqual((dry["review_rows"], dry["empty"], dry["kept_with_data"], dry["trashed"], calls), (2, 1, 1, 0, []))
+        live = reset.run(100, True, environ=TOKEN, notion=notion)
+        self.assertEqual((live["trashed"], live["failed"], calls), (1, 0, [("PATCH", "/pages/page-empty", {"in_trash": True})]))
+
+
+class WindowsLineEndingTests(unittest.TestCase):
+    def test_total_lines_are_read_when_the_mail_uses_carriage_returns(self):
+        from lifeos.amazon import events
+        single = events.extract(message("w1", "auto-confirm", body="Order #114-5655798-1950618\r\n\r\nTotal\r\n21.2 USD\r\n\r\nx"))
+        self.assertEqual(single["grand_total"], "21.20")
+        two = "Order 1 of 2\r\nOrder #114-5645978-6137859\r\n\r\n    Order Total: $0.00\r\n\r\nOrder 2 of 2\r\nOrder #114-9093037-6606664\r\n\r\n    Order Total: $7.50\r\n\r\nbye"
+        got = events.extract_all(message("w2", "auto-confirm", body=two))
+        self.assertEqual([(e["order_id"], e["grand_total"]) for e in got], [("114-5645978-6137859", "0.00"), ("114-9093037-6606664", "7.50")])

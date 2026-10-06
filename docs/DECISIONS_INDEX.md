@@ -147,3 +147,4 @@ This index is checked by a test: add a line here with every new decision.
 - D143 — MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)
 - D144 — HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)
 - D145 — Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)
+- D146 — Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)
