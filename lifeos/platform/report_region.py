@@ -75,6 +75,8 @@ def _tree(client, block, fail):
 def region_digest(client, block_id, fail):
     """One hash per field of a protected callout and one per child block, so a change can be located (names only)."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+    if isinstance(meta, dict) and meta.get("type") == "heading_3" and same_id(meta.get("id"), block_id):
+        return floating_digest(client, meta, fail)                                   # the Hiring Pipeline region is a heading, a paragraph and a table, not a callout
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     tree = _stable(_tree(client, meta, fail))
@@ -93,6 +95,7 @@ def changed(before, after):
 
 def protected(client, ids, fail):
     """ids: {region heading: block id}. Every id must be configured; -> {region: digest}."""
+    ids = {region: block_id for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     try:
@@ -203,3 +206,152 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
         if all(shape):
             return removed
     raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(kept)))
+
+
+# ---- The floating region (HIRE-1.2): a heading_3 anchor, one status paragraph and one table, owned by one module and written in place. ----
+# Shared primitives: resolve and validate the region, digest the whole page outside it, and rewrite the paragraph and the table rows. Nothing here creates, moves or deletes the heading.
+TABLE_KINDS = ("table", "table_row")
+LEAVES = ("child_page", "child_database", "link_to_page", "link_preview", "unsupported")      # separate pages and views: never walked, never ours
+
+
+def cells_of(row):
+    return [plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
+
+
+def _links_of(row):
+    return [[(part.get("text") or {}).get("link", {}).get("url") if isinstance(part, dict) else None for part in cell] for cell in (row.get("table_row") or {}).get("cells") or []]
+
+
+def _meta(client, block_id):
+    return client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+
+
+def page_of(client, meta, fail, ancestors=None):
+    """The page id a block lives on, walking up its parents (at most 12 levels). `ancestors`, if given, collects every ancestor block's type."""
+    node = meta
+    for _ in range(12):
+        parent = (node or {}).get("parent") or {}
+        kind = parent.get("type")
+        if kind == "page_id":
+            return parent["page_id"]
+        if kind != "block_id":
+            break
+        node = _meta(client, parent["block_id"])
+        if not isinstance(node, dict):
+            break
+        if ancestors is not None:
+            ancestors.append(node.get("type"))
+    raise fail("FLOATING_PAGE_UNRESOLVED")
+
+
+def floating_region(client, block_id, title, fail):
+    """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
+    Accepted shape ONLY: a heading_3 whose text is exactly `title`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
+    columns; the block after them (if any) is neither a paragraph nor a table. Anything else raises: no write is ever attempted on an ambiguous region."""
+    meta = _meta(client, block_id)
+    if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or plain(meta).strip() != title:
+        raise fail("FLOATING_HEADING_INVALID")
+    ancestors = []
+    page_id = page_of(client, meta, fail, ancestors)
+    if "callout" in ancestors:
+        raise fail("FLOATING_WRAPPED_IN_CALLOUT")
+    parent = meta["parent"]
+    parent_id = parent.get("block_id") or parent.get("page_id")
+    siblings = children(client, parent_id, fail)
+    at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
+    if len(at) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
+        raise fail("FLOATING_HEADING_AMBIGUOUS")
+    i = at[0]
+    status, table = (siblings[i + 1:i + 2] or [None])[0], (siblings[i + 2:i + 3] or [None])[0]
+    after = (siblings[i + 3:i + 4] or [None])[0]
+    if not status or status.get("type") != "paragraph" or not table or table.get("type") != "table" or (after and after.get("type") in ("paragraph", "table")):
+        raise fail("FLOATING_SHAPE_INVALID")
+    rows = children(client, table["id"], fail)
+    spec = table.get("table") or {}
+    if spec.get("table_width") != 4 or spec.get("has_column_header") is not True or not rows or any(r.get("type") != "table_row" for r in rows):
+        raise fail("FLOATING_TABLE_INVALID")
+    return {"heading": siblings[i], "status": status, "table": table, "rows": rows, "page_id": page_id, "parent_id": parent_id, "siblings": siblings}
+
+
+def floating_digest(client, meta, fail):
+    """Digest of a floating region as a protected neighbour: the heading and the next two blocks with everything under them. Lenient about shape (only the owner validates it)."""
+    parent = (meta.get("parent") or {})
+    parent_id = parent.get("block_id") or parent.get("page_id")
+    if not parent_id:
+        raise fail("PROTECTED_REGION_UNAVAILABLE")
+    siblings = children(client, parent_id, fail)
+    at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), meta.get("id"))]
+    if len(at) != 1:
+        raise fail("PROTECTED_REGION_UNAVAILABLE")
+    group = siblings[at[0]:at[0] + 3]
+    trees = [_stable(_tree(client, b, fail)) for b in group]
+    return {"fields": {f"block{n}": _hash(tree) for n, tree in enumerate(trees)}, "children": [[t.get("type"), _hash(t)] for t in trees]}
+
+
+def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
+    """A stable digest of every block on the page OUTSIDE the owned blocks: {"nodes": {id: hash of the block's own content}, "layout": {parent: [child ids]}, "h3": {heading text: count}}.
+    Owned blocks (and everything under them) appear only as ids, so the owner's own edits never register. A callout whose first child is a heading in `skip_titles`
+    (a region another system writes on its own schedule) is recorded by id only. Separate pages and views are never entered."""
+    own = {i.replace("-", "").lower() for i in own_ids}
+    nodes, layout, titles, left = {}, {}, {}, [budget]
+
+    def walk(parent_id):
+        left[0] -= 1
+        if left[0] < 0:
+            raise fail("PAGE_DIGEST_INCOMPLETE")
+        kids = children(client, parent_id, fail)
+        layout[parent_id] = [k["id"] for k in kids]
+        for position, kid in enumerate(kids):
+            key = kid["id"].replace("-", "").lower()
+            if key in own:
+                nodes[kid["id"]] = "owned"
+                continue
+            flat = {k: v for k, v in kid.items() if k not in ("has_children",)}
+            nodes[kid["id"]] = _hash(_stable(flat))
+            if kid.get("type") == "heading_3":
+                titles[plain(kid).strip()] = titles.get(plain(kid).strip(), 0) + 1
+            if kid.get("has_children") and kid.get("type") not in LEAVES:
+                if kid.get("type") == "callout" and skip_titles:
+                    first = (children(client, kid["id"], fail) or [None])[0]
+                    if first and plain(first).strip() in skip_titles:
+                        continue
+                walk(kid["id"])
+
+    walk(page_id)
+    return {"nodes": nodes, "layout": layout, "h3": titles}
+
+
+def page_changed(before, after):
+    """Counts only: how many blocks differ, appeared or vanished, and whether any parent's child order moved."""
+    keys = set(before["nodes"]) | set(after["nodes"])
+    return {"blocks": sum(before["nodes"].get(k) != after["nodes"].get(k) for k in keys),
+            "layout": sum(before["layout"].get(k) != after["layout"].get(k) for k in set(before["layout"]) | set(after["layout"]))}
+
+
+def cell_blocks(cells):
+    """cells: one row as [(text, link or None)] -> the table_row `cells` field."""
+    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}}] for text, link in cells]
+
+
+def write_floating(client, region, status_text, rows, fail):
+    """Rewrite only the status paragraph and the table rows of a validated region. rows: [[(text, link)] x 4] or None to leave the table alone.
+    The header row (row 0) is never edited. Existing data rows are PATCHed in place, extras appended, surplus deleted. -> {"rows_changed", "rows_added", "rows_removed"}."""
+    counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0}
+    table_id = region["table"]["id"]
+    if rows is not None:
+        have = region["rows"][1:]
+        for row, want in zip(have, rows):
+            if cells_of(row) != [t for t, _ in want] or [x[0] if x else None for x in _links_of(row)] != [link for _, link in want]:
+                client.call("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": cell_blocks(want)}})
+                counts["rows_changed"] += 1
+        extra = rows[len(have):]
+        if extra:
+            client.call_once("PATCH", f"/blocks/{quote(table_id, safe='')}/children",
+                             {"children": [{"object": "block", "type": "table_row", "table_row": {"cells": cell_blocks(r)}} for r in extra]})
+            counts["rows_added"] = len(extra)
+        for row in have[len(rows):]:
+            client.call("DELETE", f"/blocks/{quote(row['id'], safe='')}")
+            counts["rows_removed"] += 1
+    if plain(region["status"]) != status_text:
+        client.call("PATCH", f"/blocks/{quote(region['status']['id'], safe='')}", {"paragraph": {"rich_text": [{"type": "text", "text": {"content": status_text}}]}})
+    return counts
