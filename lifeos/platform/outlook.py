@@ -129,7 +129,7 @@ class Outlook:
         self._request("POST", f"/me/messages/{quoted}/move", None, {"destinationId": folder_id})
         return self.get(f"/me/messages/{quoted}", {"$select": "id,parentFolderId"}).get("parentFolderId") == folder_id
 
-    def messages(self, folder="inbox", since=None, limit=5000, fields=None, time_field="receivedDateTime"):
+    def messages(self, folder="inbox", since=None, limit=5000, fields=None, time_field="receivedDateTime", prefer=""):
         """Every message in a folder received at or after `since` (ISO 8601), newest first, following every page. A listing that
         cannot be proven complete (page cap hit with more to come) raises instead of returning a partial census."""
         params = {"$select": fields or MESSAGE_FIELDS, "$top": PAGE_SIZE, "$orderby": f"{time_field} desc"}
@@ -137,7 +137,7 @@ class Outlook:
             params["$filter"] = f"{time_field} ge {since}"
         out, url = [], f"/me/mailFolders/{urllib.parse.quote(folder)}/messages"
         for page in range(MAX_PAGES):
-            reply = self.get(url, params if page == 0 else None)
+            reply = self.get(url, params if page == 0 else None, prefer)
             out += reply.get("value") or []
             link = reply.get("@odata.nextLink")
             if not link:
