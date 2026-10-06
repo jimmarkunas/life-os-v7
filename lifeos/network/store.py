@@ -49,6 +49,66 @@ EXPECTED = {"v7_network_people": "id,person_key,url_key,display_name,connected_o
             "v7_network_events": "id,person_id,event_type,old_position_id,new_position_id,batch_id,observed_date,event_hash,created_at"}
 
 
+SURFACE_SCHEMA = (                                                    # NET-2.3 (D160): created only by an explicitly approved live surface run, never by the importer
+    """CREATE TABLE IF NOT EXISTS v7_network_dismissals (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        job_key CHAR(64) NOT NULL, person_id BIGINT NOT NULL, evidence_hash CHAR(64) NOT NULL, dismissed_at DATETIME NOT NULL,
+        UNIQUE KEY uq_net_dismissal (job_key, person_id, evidence_hash)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_network_aliases (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        alias_key VARCHAR(300) NOT NULL, company_key VARCHAR(300) NOT NULL, confirmed_at DATETIME NOT NULL,
+        UNIQUE KEY uq_net_alias (alias_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+)
+SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash,dismissed_at", "v7_network_aliases": "id,alias_key,company_key,confirmed_at"}
+
+
+def ensure_surface_schema(connection):
+    """Live only: create the two surface tables if missing and prove their columns; a different table fails closed."""
+    try:
+        with connection.cursor() as cursor:
+            for statement in SURFACE_SCHEMA:
+                cursor.execute(statement)
+            for table, columns in SURFACE_EXPECTED.items():
+                cursor.execute(f"SELECT {columns} FROM {table} LIMIT 0")
+    except Exception:                                                  # noqa: BLE001
+        raise NetworkError("NETWORK_SCHEMA_MISMATCH") from None
+
+
+def load_decisions(connection):
+    """-> (dismissed {(job_key, person_id, evidence_hash)}, aliases {alias_key: company_key}, tables_present). A missing table reads as no decisions (a dry run before the tables exist)."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT job_key, person_id, evidence_hash FROM v7_network_dismissals")
+            dismissed = {(k, int(p), e) for k, p, e in cursor.fetchall()}
+            cursor.execute("SELECT alias_key, company_key FROM v7_network_aliases")
+            aliases = {a: c for a, c in cursor.fetchall()}
+        return dismissed, aliases, True
+    except Exception:                                                  # noqa: BLE001
+        return set(), {}, False
+
+
+def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
+    """Persist Jim's ticks (idempotent: a repeat changes nothing) and read them back; raises when a row is missing afterwards."""
+    now = clock().isoformat(sep=" ", timespec="seconds")
+    _, known, _ = load_decisions(connection)
+    if any(a in known and known[a] != c for a, c in aliases):
+        raise NetworkError("NETWORK_ALIAS_CONFLICT")                    # a confirmed alias is never silently kept pointing at a different company
+    try:
+        connection.begin()
+        with connection.cursor() as cursor:
+            cursor.executemany("INSERT IGNORE INTO v7_network_dismissals (job_key, person_id, evidence_hash, dismissed_at) VALUES (%s,%s,%s,%s)", [(k, p, e, now) for k, p, e in dismissals])
+            cursor.executemany("INSERT IGNORE INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES (%s,%s,%s)", [(a, c, now) for a, c in aliases])
+        connection.commit()
+    except Exception:                                                  # noqa: BLE001
+        connection.rollback()
+        raise NetworkError("NETWORK_STORE_FAILED") from None
+    dismissed, known, _ = load_decisions(connection)
+    if any((k, p, e) not in dismissed for k, p, e in dismissals) or any(known.get(a) != c for a, c in aliases):
+        raise NetworkError("NETWORK_READBACK_MISMATCH")
+
+
 def _marks(n):
     return ",".join(["%s"] * n)
 

@@ -43,6 +43,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-import` -> `lifeos.network.importer:run`
 - `network-inspect` -> `lifeos.network.inspect:run`
 - `network-match` -> `lifeos.sources.network_leads:run`
+- `network-surface` -> `lifeos.sources.network_surface:run`
 - `openjobs` -> `lifeos.sources.openjobs:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
@@ -185,6 +186,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/network/parse.py`: Read a LinkedIn connections export and measure it. Pure functions over text: no I/O, no network, nothing stored.
 - `lifeos/network/source.py`: Find and fetch the connections file attached to a private Notion page. Read-only. Nothing is written to Notion, and the file is held in memory only: never saved, logged, 
 - `lifeos/network/store.py`: NET-1 Hostinger state (approved tables v7_network_people, v7_network_positions, v7_network_batches): the sole writer of them.
+- `lifeos/network/surface.py`: NET-2.3 (D160): the one machine-owned "Network Leads (n)" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client.
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
 - `lifeos/outlook/store.py`: The Outlook token table lives in the platform (other operating systems, such as the calendar bridge, read it too).
@@ -229,6 +231,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
+- `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
 - `lifeos/sources/newsletters/config.py`: Phase 1 configuration: which senders are job newsletters and where they go.
 - `lifeos/sources/newsletters/finalize.py`: Stage 4 - finalize: close out a newsletter email only when EVERY job in it has an outcome.
 - `lifeos/sources/newsletters/ingest.py`: Stage 3 - extract: parse job cards out of labeled newsletters into v7_jobs (status NEW).
@@ -260,7 +263,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_API_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JIRA_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
-- `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
+- `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
 - `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_RECRUITERS_DATA_SOURCE_ID, NOTION_RECRUITERS_TOKEN, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NTFY_TOPIC
@@ -284,6 +287,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_positions`: `lifeos/network/store.py`
 - `v7_network_batches`: `lifeos/network/store.py`
 - `v7_network_events`: `lifeos/network/store.py`
+- `v7_network_dismissals`: `lifeos/network/store.py`
+- `v7_network_aliases`: `lifeos/network/store.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 
@@ -421,3 +426,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D157: Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)
 - D158: Network change events (NET-2.1) (2026-10-06)
 - D159: Network matching (NET-2.2): leads for jobs, applied opportunities and upcoming interviews, counts only (2026-10-06)
+- D160: Network surface (NET-2.3): one owned "Network Leads (n)" block per Job Ledger page (2026-10-07)

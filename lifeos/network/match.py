@@ -24,13 +24,14 @@ def _words(title):
 
 
 def build_index(rows):
-    """rows of (person_id, company_key, title, position_state, last_verified: date) -> {company_key: [(person_id, tier, title_words, last_verified)]}. A blank company key is dropped."""
+    """rows of (person_id, company_key, title, position_state, last_verified: date[, position_id]) -> {company_key: [(person_id, tier, title_words, last_verified, position_id)]}.
+    A blank company key is dropped. The optional position id lets a surface look up the stored position it displays; matching never reads it."""
     index = {}
-    for person_id, company_key, title, state, verified in rows:
+    for person_id, company_key, title, state, verified, *rest in rows:
         if not company_key:
             continue
         tier = CURRENT if state == "CURRENT" else PREVIOUS
-        index.setdefault(company_key, []).append((person_id, tier, _words(title), verified))
+        index.setdefault(company_key, []).append((person_id, tier, _words(title), verified, rest[0] if rest else None))
     return index
 
 
@@ -41,27 +42,31 @@ def _prefix(a, b):
     return a != b and bool(short) and long_[:len(short)] == short
 
 
-def leads_for(company_key, job_title, index, today):
-    """-> up to MAX_LEADS leads, best first: {person_id, tier, freshness, age_days, overlap}. Each person appears once, at their best tier."""
+def leads_for(company_key, job_title, index, today, aliases=None, limit=MAX_LEADS):
+    """-> up to `limit` leads, best first: {person_id, tier, freshness, age_days, overlap, company_key[, position_id]}. Each person appears once, at their best tier.
+    `aliases` ({company key: company key}) are Jim's confirmed same-company decisions: they make two keys equal for matching only and never rewrite a stored name."""
     if not company_key:
         return []
+    aliases = aliases or {}
     wanted = _words(job_title)
     best = {}
     for key, entries in index.items():
-        if key == company_key:
+        if key == company_key or aliases.get(key) == company_key or aliases.get(company_key) == key:
             kind = None
         elif _prefix(key, company_key):
             kind = POSSIBLE
         else:
             continue
-        for person_id, tier, words, verified in entries:
+        for person_id, tier, words, verified, position_id in entries:
             tier = kind or tier
             rank = TIERS.index(tier)
-            lead = {"person_id": person_id, "tier": tier, "age_days": max((today - verified).days, 0), "overlap": len(wanted & words), "_verified": verified}
+            lead = {"person_id": person_id, "tier": tier, "age_days": max((today - verified).days, 0), "overlap": len(wanted & words), "company_key": key, "_verified": verified}
+            if position_id is not None:
+                lead["position_id"] = position_id
             if person_id not in best or rank < TIERS.index(best[person_id]["tier"]) or (rank == TIERS.index(best[person_id]["tier"]) and verified > best[person_id]["_verified"]):
                 best[person_id] = lead
     ordered = sorted(best.values(), key=lambda l: (TIERS.index(l["tier"]), -l["overlap"], l["age_days"], l["person_id"]))
     for lead in ordered:
         lead["freshness"] = freshness(lead["age_days"])
         del lead["_verified"]
-    return ordered[:MAX_LEADS]
+    return ordered[:limit]
