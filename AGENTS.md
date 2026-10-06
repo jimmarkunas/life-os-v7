@@ -10,6 +10,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 - Secret values do not belong in this repository or Notion; use the approved central secrets service/runtime references.
 - Ordinary assistant sessions do not get unrestricted host/file authority; destructive personal-file actions require an explicitly approved workflow.
 - Interview meeting capture stays botless: Granola is the current acquisition layer, durable normalized Meeting Evidence goes to Notion, and visible meeting-bot capture is not the Interview path.
+- Telegram has two separate products: the OpenClaw helper bot for talking to LIFE OS, and the Oracle-hosted TDLib personal-account attention bridge for Dashboard unread/health state. Do not merge these responsibilities or use the personal-user bridge as a generic sender/message archive.
 - Domain code should consume named OpenClaw capabilities through the approved adapter/MCP contract rather than raw SSH.
 
 ## Map
