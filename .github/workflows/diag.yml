@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing)"
         type: choice
-        options: ["scale-up-holds", "scale-up-links"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open"]
         default: "scale-up-holds"
 permissions:
   contents: read
