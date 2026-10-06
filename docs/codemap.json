@@ -482,40 +482,6 @@
     "NOTION_BILLS_TOKEN"
    ]
   },
-  "bws-migrate.yml": {
-   "jobs": [
-    "migrate"
-   ],
-   "manual": true,
-   "secrets": [
-    "FIT_PROFILE_EXTRA_JSON",
-    "FIT_PROFILE_JSON",
-    "GCAL_SERVICE_ACCOUNT_JSON",
-    "GMAIL_OAUTH_CLIENT_SECRET",
-    "GMAIL_OAUTH_REFRESH_TOKEN",
-    "JIRA_API_TOKEN",
-    "JIRA_EMAIL",
-    "JOBRIGHT_EMAIL",
-    "JOBRIGHT_PASSWORD",
-    "LIFEOS_ACQ_DB_NAME",
-    "LIFEOS_ACQ_DB_PASSWORD",
-    "LIFEOS_ACQ_DB_USER",
-    "LIFEOS_ACQ_SSH_HOST",
-    "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-    "LIFEOS_ACQ_SSH_PRIVATE_KEY",
-    "LIFEOS_ACQ_SSH_USER",
-    "LIFEOS_BWS_MIGRATION_TOKEN",
-    "NOTION_AMAZON_TOKEN",
-    "NOTION_API_TOKEN",
-    "NOTION_BILLS_TOKEN",
-    "NOTION_INTERVIEW_TOKEN",
-    "NOTION_JIRA_TOKEN",
-    "NOTION_RECRUITERS_TOKEN",
-    "NTFY_TOPIC",
-    "OPEN_JOBS_CONTACT",
-    "TINYFISH_API_KEY"
-   ]
-  },
   "calendar.yml": {
    "jobs": [
     "calendar"
