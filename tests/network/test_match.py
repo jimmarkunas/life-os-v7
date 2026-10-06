@@ -127,6 +127,20 @@ class Stage(unittest.TestCase):
         for text in ("Acme", "WidgetCo", "Analyst", "2026-10-09"):
             self.assertNotIn(text, repr(counts))
 
+    def test_the_hiring_pipelines_own_active_rule_decides_which_applications_are_targets(self):
+        conn = seeded()
+        save_pipeline(conn, [pipeline_row("Acme Corp", "Old", "Submitted", None, None, applied_on="2026-08-01"),                                # older than 30 days: no longer active
+                             pipeline_row("Acme Corp", "Edge", "Submitted", None, None, applied_on="2026-09-07"),                               # exactly 30 days: still active
+                             pipeline_row("Acme Corp", "Fresh", "Submitted", None, None, applied_on="2026-10-01"),
+                             pipeline_row("Acme Corp", "Undated", "Submitted", None, None, applied_on=None),                                    # an undated one stays
+                             dict(pipeline_row("Acme Corp", "Carried", "Submitted", None, None, applied_on="2026-07-01"), carried=True),        # carried safe state keeps its behaviour
+                             pipeline_row("Acme Corp", "Later", "Interviewing", "interview", "2026-09-01T10:00:00-05:00", applied_on="2026-07-01")])   # a later stage stays
+        counts = network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)
+        self.assertEqual((counts["by_class"]["applied"]["considered"], counts["older_submitted_excluded"]), (5, 1))
+        from lifeos.hiring import render as hiring_render
+        row = pipeline_row("Acme Corp", "Old", "Submitted", None, None, applied_on="2026-08-01")
+        self.assertTrue(hiring_render.older_submitted(row, NOW) and network_leads.hiring_render.older_submitted is hiring_render.older_submitted)      # one rule, shared
+
     def test_an_unreadable_or_degraded_pipeline_is_reported_never_a_silent_zero(self):
         conn = seeded()
         self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "unavailable")             # no snapshot row at all

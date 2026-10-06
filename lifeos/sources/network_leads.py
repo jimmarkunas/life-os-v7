@@ -6,7 +6,7 @@ and the Calendar): no Notion or Calendar read, no new source. The roster is the 
 belongs to more than one class is counted in each class and once in the distinct total (by company key and role words)."""
 from datetime import date, datetime, timezone
 
-from lifeos.hiring import snapshot as hiring_snapshot
+from lifeos.hiring import render as hiring_render, snapshot as hiring_snapshot
 from lifeos.network import match, parse
 from lifeos.network.errors import NetworkError
 from lifeos.platform import db, names
@@ -36,8 +36,10 @@ def _read(connection):
     return rows, jobs, pipeline
 
 
-def targets(jobs, pipeline, now):
-    """-> ([(class, company, title)], source status). Pipeline rows are structure from the accepted snapshot; an interview is a timed upcoming event of an interview kind."""
+def targets(jobs, pipeline, now, stats=None):
+    """-> ([(class, company, title)], source status). Pipeline rows are structure from the accepted snapshot. An opportunity is active by the Hiring Pipeline's own rule
+    (`hiring.render.older_submitted`: a plain Submitted row older than 30 days after Applied On is no longer active; a carried row, an undated row and any later stage stay), not a second
+    lifecycle. An interview is a timed upcoming event of an interview kind."""
     out = [(ADMITTED_JOB, company, title or "") for _, company, title in jobs]
     if not pipeline or not isinstance(pipeline.get("rows"), list):
         return out, "unavailable"
@@ -45,7 +47,11 @@ def targets(jobs, pipeline, now):
         company, role = str(row.get("company") or ""), str(row.get("role") or "")
         if not company:
             continue
-        out.append((APPLIED, company, role))                           # every snapshot row is an applied or active-pursuit opportunity by construction
+        if hiring_render.older_submitted(row, now):
+            if stats is not None:
+                stats["older_submitted_excluded"] = stats.get("older_submitted_excluded", 0) + 1
+            continue
+        out.append((APPLIED, company, role))
         start, kind = row.get("event_start"), row.get("event_kind")
         if kind in INTERVIEW_KINDS and start:
             try:
@@ -67,8 +73,9 @@ def count(rows, jobs, pipeline, today, now=None):
         raise NetworkError("NETWORK_NO_ROSTER")                        # an empty roster is a failed read, never "no leads"
     now = now or datetime.now(timezone.utc)
     index = match.build_index(rows)
-    found, status = targets(jobs, pipeline, now)
-    out = {"roster_positions": len(rows), "roster_companies": len(index), "pursuit_source": status, "by_class": {c: _blank() for c in CLASSES}, "distinct_targets": 0, "distinct_with_leads": 0, "live": False}
+    extra = {}
+    found, status = targets(jobs, pipeline, now, extra)
+    out = {"older_submitted_excluded": extra.get("older_submitted_excluded", 0), "roster_positions": len(rows), "roster_companies": len(index), "pursuit_source": status, "by_class": {c: _blank() for c in CLASSES}, "distinct_targets": 0, "distinct_with_leads": 0, "live": False}
     seen = {}
     for kind, company, title in found:
         stats = out["by_class"][kind]

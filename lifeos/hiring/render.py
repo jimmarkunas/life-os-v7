@@ -65,6 +65,9 @@ def _older(row, now):
             and (now.date() - local(row["applied_on"]).date()).days > M.APPLIED_DAYS)
 
 
+older_submitted = _older                                             # the one active-row rule, shared with network matching (NET-2.2); not a second lifecycle
+
+
 def render(result, stored, now):
     """result: compile_rows output. -> (status text, table rows or None, counts). None leaves the table as it was (UNAVAILABLE)."""
     now = local(now)
