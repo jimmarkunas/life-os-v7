@@ -73,7 +73,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/amazon/events.py`: Pure extraction of the three accepted Amazon order mail events.
 - `lifeos/amazon/orders.py`: Pure monotone reconciliation of Amazon order events.
 - `lifeos/amazon/projection.py`: Region-local Amazon status for the Daily Command Center (consumer is ChatGPT-owned): a pure function of one run's counts, fail closed.
-- `lifeos/amazon/reset.py`: D146: put the orders that were frozen EMPTY back into the queue. A REVIEW row that holds only its order number (no event date, no order date, no total, no source messages
+- `lifeos/amazon/reset.py`: D146/D152: clear the Amazon Orders rows that never got a Grand Total. Jim's rule (D152): an order without a total is not worth keeping, so every row whose Grand Total is 
 - `lifeos/amazon/retention.py`: D139: Amazon order mail older than 30 days goes to the Gmail Trash, once its order is safely recorded in the canonical Amazon Orders data source.
 - `lifeos/amazon/stage.py`: Gmail to canonical Notion Amazon Orders; filing follows a verified durable write.
 ### lifeos/attention/
@@ -398,3 +398,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D149: MegIBOW: Jim types his phone calls into one editable line (2026-10-06, Jim)
 - D150: Amazon: re-read trashed confirmations for totals; keep a confirmation until its total is recorded (2026-10-06, Jim)
 - D151: Delivery tracking: a read-only mail census before any carrier work (2026-10-06, DEL-1.1)
+- D152: Amazon Orders: a row with no Grand Total is cleared (2026-10-06, Jim)
