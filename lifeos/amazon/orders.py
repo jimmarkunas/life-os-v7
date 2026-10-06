@@ -84,18 +84,8 @@ def reconcile(events, existing=None, now=None):
     except (TypeError, ValueError):
         return _conflict(existing), "EVENT_TIME_INVALID"
     existing_rank = RANK.get(current_status, 0)
-    chronological = sorted(unique, key=lambda event: (_time(event["received_at"]), RANK[event["status"]], event["id"]))
-    previous_rank = 0
-    previous_time = None
-    for event in chronological:
-        event_time = _time(event["received_at"])
-        rank = RANK[event["status"]]
-        if previous_time is not None and event_time > previous_time and rank < previous_rank:
-            return _conflict(existing), "LIFECYCLE_REGRESSION"
-        previous_rank = max(previous_rank, rank) if event_time == previous_time else rank
-        previous_time = event_time
-        if existing_latest is not None and event_time > existing_latest and existing_rank and rank < existing_rank:
-            return _conflict(existing), "LIFECYCLE_REGRESSION"
+    # D146: a later event with a lower status is NOT a conflict. One order can ship in several packages, so a delivery can precede another shipment or a late confirmation.
+    # The status is the highest seen and the time the latest; only real contradictions (two totals, a bad URL, an invalid event) go to REVIEW.
     ordered = [event for event in unique if event["status"] == "ORDERED"]
     incoming_totals = {event["grand_total"] for event in ordered if event.get("grand_total") is not None}
     try:
