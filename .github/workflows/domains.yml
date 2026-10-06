@@ -361,6 +361,7 @@ jobs:
           LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
       - id: mcard
         continue-on-error: true
