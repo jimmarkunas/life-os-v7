@@ -212,3 +212,30 @@ class WindowsLineEndingTests(unittest.TestCase):
         two = "Order 1 of 2\r\nOrder #114-5645978-6137859\r\n\r\n    Order Total: $0.00\r\n\r\nOrder 2 of 2\r\nOrder #114-9093037-6606664\r\n\r\n    Order Total: $7.50\r\n\r\nbye"
         got = events.extract_all(message("w2", "auto-confirm", body=two))
         self.assertEqual([(e["order_id"], e["grand_total"]) for e in got], [("114-5645978-6137859", "0.00"), ("114-9093037-6606664", "7.50")])
+
+
+class TrashedConfirmationTests(unittest.TestCase):
+    def test_a_recovery_run_reads_the_trash_and_never_re_files_trashed_mail(self):
+        gmail = RetentionGmail({"c1": message("c1", "auto-confirm", body="Order #114-5655798-1950618\n\nTotal\n21.2 USD\n")})
+        gmail.messages["c1"]["label_ids"] = ["label-amazon", "TRASH"]
+        notion = AmazonNotion()
+        counts = stage.run(10, True, environ={**TOKEN, "AMAZON_SINCE": "2025-09-01"}, gmail=gmail, notion=notion, now=NOW)
+        self.assertIn("in:anywhere", next(c[1] for c in gmail.calls if c[0] == "list"))
+        self.assertEqual((counts["accepted"], counts["filed"], counts["failed"]), (1, 0, 0))
+        self.assertEqual(AmazonNotion._row(notion.rows["114-5655798-1950618"])["Grand Total"], 21.2)
+        plain = stage.window_query(None, NOW)
+        self.assertNotIn("in:anywhere", plain)                                                # the hourly pass does not read the Trash
+
+    def test_retention_keeps_a_confirmation_until_its_row_has_taken_the_total(self):
+        from tests.kit.amazon import notion_page
+        order = "114-5655798-1950618"
+        gmail = RetentionGmail({"c1": message("c1", "auto-confirm", order_id=order, at="2026-06-01T12:00:00+00:00", body=f"Order #{order}\n\nTotal\n21.2 USD\n")})
+        gmail.messages["c1"]["label_ids"] = ["label-amazon"]
+        notion = AmazonNotion()
+        row = {"Order ID": order, "Status": "ORDERED", "Source Message IDs": "c1", "Latest Event At": "2026-06-01T12:00:00+00:00", "Ordered At": "2026-06-01T12:00:00+00:00"}
+        notion.rows[order] = notion_page(order, row, "page-1")
+        counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual((counts["trashed"], counts["kept_detail"]), (0, {"not_listed:TOTAL_PENDING": 1}))
+        notion.rows[order] = notion_page(order, {**row, "Grand Total": "21.20"}, "page-1")
+        counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(counts["trashed"], 1)

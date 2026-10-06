@@ -31,6 +31,9 @@ def _status(notion, source_id, message, age_days=0):
         if not rows:
             return "no_row", ""
         if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
+            event = extracted_all[order_ids.index(order_id)]
+            if event.get("status") == "ORDERED" and event.get("grand_total") is not None and rows[0].get("Grand Total") in (None, ""):
+                worst = ("not_listed", "TOTAL_PENDING")                  # a confirmation the row has not taken its total from yet is kept, so it can still be read
             continue
         if len(rows) == 1 and rows[0].get("Status") == "REVIEW" and age_days > REVIEW_DAYS:
             aged = True                                                    # a conflicted order is never rewritten; its old mail may go

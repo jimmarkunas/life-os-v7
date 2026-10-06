@@ -151,3 +151,4 @@ This index is checked by a test: add a line here with every new decision.
 - D147 — MegIBOW: a failed source is not an unresolved review item; manual Amazon orders queue with the domain jobs (2026-10-06)
 - D148 — MegIBOW history comes from Jim's own sheet, V7 counts from Oct 5, and the totals row is last and bold (2026-10-06, Jim)
 - D149 — MegIBOW: Jim types his phone calls into one editable line (2026-10-06, Jim)
+- D150 — Amazon: re-read trashed confirmations for totals; keep a confirmation until its total is recorded (2026-10-06, Jim)
