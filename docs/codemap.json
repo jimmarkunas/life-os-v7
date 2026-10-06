@@ -679,17 +679,8 @@
    ],
    "manual": true,
    "secrets": [
-    "FIT_PROFILE_EXTRA_JSON",
-    "FIT_PROFILE_JSON",
-    "LIFEOS_ACQ_DB_NAME",
-    "LIFEOS_ACQ_DB_PASSWORD",
-    "LIFEOS_ACQ_DB_USER",
-    "LIFEOS_ACQ_SSH_HOST",
-    "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
     "LIFEOS_ACQ_SSH_PORT",
-    "LIFEOS_ACQ_SSH_PRIVATE_KEY",
-    "LIFEOS_ACQ_SSH_USER",
-    "NTFY_TOPIC"
+    "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
   "watchdog.yml": {

@@ -180,6 +180,23 @@ class QuarantineAndSchedulerAndRegistries(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^\s*- cron:", safety, re.M)), 1)
         for word in ("--live", "NOTION_", "GMAIL_"):
             self.assertNotIn(word, safety)                                                          # the weekly check reads the database and prints counts; it writes nothing and holds no mailbox or Notion token
+        # EDGE-1.3 Phase B: the migrated values come from Bitwarden through the pinned official action; only the bootstrap token and the (unmigrated) SSH port are GitHub secrets
+        moved = {"FIT_PROFILE_EXTRA_JSON": "3e264d79-3af4-4f2a-a86a-b4db015a68de", "FIT_PROFILE_JSON": "31a07198-aa35-450f-913c-b4db015a690d", "LIFEOS_ACQ_DB_NAME": "d71bbaed-6a6c-49b5-8a1f-b4db015ecfda",
+                 "LIFEOS_ACQ_DB_PASSWORD": "00d82e0d-be10-4c8c-bdbe-b4db015ed389", "LIFEOS_ACQ_DB_USER": "9422b842-3bb0-4153-bb8d-b4db015ed746", "LIFEOS_ACQ_SSH_HOST": "6f1c86f6-c48f-4e77-b65d-b4db015edb15",
+                 "LIFEOS_ACQ_SSH_KNOWN_HOSTS": "b65dd2fc-2573-4bda-9e80-b4db015edec6", "LIFEOS_ACQ_SSH_PRIVATE_KEY": "7ada9cea-8711-4b37-bef9-b4db015ee298",
+                 "LIFEOS_ACQ_SSH_USER": "6b3e12b9-1987-4073-bda2-b4db015ee653", "NTFY_TOPIC": "83c553e9-23a6-45aa-9006-b4db015f00ac"}
+        self.assertEqual(re.findall(r"^\s*- cron:\s*\"([^\"]+)\"", safety, re.M), ["17 13 * * 1"])                       # the one Monday schedule, unchanged
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", safety))), ["LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])
+        for name in moved:
+            self.assertNotIn(f"secrets.{name}", safety)                                                # no direct GitHub copy, so no fallback
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", safety), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"])   # the reviewed v3.0.1 commit
+        mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", safety, re.M)
+        self.assertEqual(sorted(mappings), sorted(f"{uuid} > {name}" for name, uuid in moved.items()))          # exactly these 10; LIFEOS_ACQ_SSH_PORT and everything else is not fetched
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", safety)), 10)
+        loader = safety.index("bitwarden/sm-action")
+        self.assertTrue(all(loader < safety.index(f"lifeos.run {stage}") for stage in ("safety-sql-smoke", "safety-fit-golden", "safety-fit-capture")))   # loaded before any safety command
+        self.assertEqual(re.search(r"options:\s*(\[[^\]]*\])", safety).group(1), '["all", "sql-smoke", "fit-golden", "fit-capture"]')            # dispatch choices unchanged
+        self.assertNotRegex(safety, r"(?m)^\s*(workflow_run|repository_dispatch|push|pull_request\w*):")        # no new trigger or runtime path
         watchdog = (ROOT / ".github/workflows/watchdog.yml").read_text()
         self.assertNotIn("lifeos.run", watchdog)
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", watchdog))), ["GITHUB_TOKEN", "LIFEOS_BWS_RUNTIME_TOKEN"])   # EDGE-1.3: the push topic now comes from Bitwarden; the GitHub copy of NTFY_TOPIC is no longer read here
