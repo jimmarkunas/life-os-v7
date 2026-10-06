@@ -6,6 +6,7 @@ import re
 
 OWNED = (                                              # (owner, pattern over "sender | subject"): the action belongs to another surface, so Attention never duplicates it
     ("amazon", r"@[\w.-]*amazon\.[a-z.]+"),
+    ("mail_alerts", r"@[\w.-]*anytimemailbox\.[a-z.]+"),                         # the Physical Mail vendor by sender address: Mail Alerts owns it, never Attention
     ("mail_alerts", r"anytime mailbox|physical mail|scanned (mail|letter|item)|you have (new )?mail|mail(box)? (notice|item)"),
     ("bills", r"payment (due|reminder|received|scheduled|processed|failed)|amount due|past due|autopay|minimum payment|(bill|invoice|statement) (is )?(ready|available|due)"),
     ("hiring", r"\binterview\b|recruiter|your application|application (received|status)|job alert|offer letter|\bhiring\b"),

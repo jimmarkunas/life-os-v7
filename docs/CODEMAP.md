@@ -33,6 +33,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-rollover` -> `lifeos.jira.rollover:run`
 - `jira-rollover-scheduled` -> `lifeos.jira.rollover:run`
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
+- `mail-alerts` -> `lifeos.physmail.stage:run`
+- `mail-card` -> `lifeos.physmail.card:run`
 - `megibow` -> `lifeos.sources.megibow:run`
 - `network-audit` -> `lifeos.network.importer:audit`
 - `network-import` -> `lifeos.network.importer:run`
@@ -168,6 +170,12 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
 - `lifeos/outlook/store.py`: The Outlook token table lives in the platform (other operating systems, such as the calendar bridge, read it too).
+### lifeos/physmail/
+- `lifeos/physmail/card.py`: Render the Physical Mail state into V7's one "Mail Alerts" callout on the Daily Report (MAIL-1.2). V7 owns this region exclusively (router.OWNERS).
+- `lifeos/physmail/chains.py`: Per-mail-number lifecycle fold (MAIL-1.2). Pure and order-independent: the events of one mail number are sorted by time, then folded.
+- `lifeos/physmail/events.py`: Pure extraction of the two accepted Physical Mail notice shapes (MAIL-1.2). Read-only evidence: nothing here touches Gmail.
+- `lifeos/physmail/stage.py`: Gmail Physical Mail evidence -> deterministic parse -> private derivative state (MAIL-1.2). Counts only; fixed error codes.
+- `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
 - `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
@@ -223,7 +231,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_JIRA_TOKEN, NTFY_TOPIC, OUTLOOK_CLIENT_ID
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, attention, megibow; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GCAL_SERVICE_ACCOUNT_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_EMAIL, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_AMAZON_TOKEN, NOTION_BILLS_DATA_SOURCE_ID, NOTION_BILLS_TOKEN, NOTION_JIRA_TOKEN, NTFY_TOPIC, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
@@ -367,3 +375,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D140: Every historical Amazon order is recorded; the retention stage says why mail is unrecorded (2026-10-05, Jim)
 - D141: SAFE-1.1: the hardening slice (2026-10-05)
 - D142: The SAFE-1.1 database checks run weekly (2026-10-05, Jim)
+- D143: MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)

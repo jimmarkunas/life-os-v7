@@ -10,8 +10,9 @@ CALENDAR_REGION = "Calendar"                            # V7 owns it exclusively
 BILLS_REGION = "Bills: This Week"                       # V7 owns it exclusively (lifeos/bills/card.py)
 ATTENTION_REGION = "Attention"                           # V7 owns it exclusively (lifeos/attention/card.py): only the text above Jim's interactive Attention view
 AMAZON_REGION = "Amazon Orders"                         # V7 owns it exclusively (lifeos/amazon/card.py)
+MAIL_ALERTS_REGION = "Mail Alerts"                      # V7 owns it exclusively (lifeos/physmail/card.py; Production Contract v2.15.12): LIFE OS Daily Runs neither reads the source nor writes it
 DCC_REGION = "ChatGPT · Daily Command Center"      # the one region the Daily Command Center module may write
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center"}
+OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center"}
 
 
 class RouterError(RuntimeError):
