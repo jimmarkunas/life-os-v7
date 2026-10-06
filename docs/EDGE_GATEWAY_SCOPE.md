@@ -30,6 +30,19 @@ Current capability lanes:
 
 `EDGE-1.3` owns central secrets selection, least-privilege exec/file policy, approval gates, plugin allowlisting, bounded storage/backup, and separate everyday-assistant vs maintenance-agent authority. `EDGE-1.4` then publishes the capability registry used by Claude/ChatGPT and domain consumers. Channels/tasks follow only after the hardening proof.
 
+### Approved security decisions — October 6, 2026
+
+- **Canonical runtime secrets vault: Bitwarden Secrets Manager.** Use one vault/source of truth rather than synchronizing Bitwarden and Infisical. Infisical may remain an unused evaluation account; it is not a second live secret source.
+- Bitwarden Free is acceptable for the current topology because it supports unlimited secrets, up to three projects, and up to three machine accounts. Initial machine accounts are scoped separately for Oracle/OpenClaw and GitHub Actions; keep the third slot unused until a real consumer needs it.
+- OpenClaw consumes Bitwarden through its SecretRef `exec` provider boundary using the Bitwarden Secrets Manager CLI or a narrow resolver wrapper. The assistant receives SecretRefs/placeholders, not raw values.
+- GitHub Actions retrieves only the secrets needed by a workflow through a scoped Bitwarden machine account; do not mirror the entire vault into repository secrets.
+- **Mac Mini is the dedicated iMessage bridge host.** Keep SIP enabled. Use basic iMessage send/receive only, a dedicated automation user where practical, and the minimum Full Disk Access/Automation permissions required by the bridge.
+- Telegram, WhatsApp, Discord, iMessage, Reminders and Todoist remain downstream of the hardening gate. Telegram one-owner DMs use an explicit numeric-user allowlist rather than open-ended pairing once the operator identity is captured.
+- Main assistant and operations agent remain separate authorities. Ordinary assistant sessions cannot widen their own exec/file/plugin permissions.
+- Personal-file cleanup is inventory/hash/propose/quarantine-first. Permanent deletion is never autonomous.
+- Oracle remains private-admin over Tailscale and keeps bounded runtime state only; durable meeting evidence remains in Notion.
+
+
 ---
 
 ## Historical scoping below — reference only
