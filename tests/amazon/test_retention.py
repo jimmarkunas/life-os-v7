@@ -118,3 +118,28 @@ class MultiOrderTests(unittest.TestCase):
         notion.rows[B] = notion_page(B, row, page["id"])                  # one of the two orders does not list it: it stays
         counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
         self.assertEqual((counts["recorded"], counts["kept_unrecorded"], counts["trashed"]), (0, 1, 0))
+
+
+class ReviewAgeTests(unittest.TestCase):
+    def store(self, at):
+        from tests.kit.amazon import notion_page
+        order = "555-5555555-5555555"
+        gmail = RetentionGmail({"m-9": message("m-9", "order-update", order_id=order, at=at)})
+        gmail.messages["m-9"]["label_ids"] = ["label-amazon"]
+        notion = AmazonNotion()
+        notion.rows[order] = notion_page(order, {"Status": "REVIEW", "Needs Review": True}, "page-9")          # a conflicted order: identity and the two review fields only
+        return gmail, notion
+
+    def test_mail_for_a_review_order_goes_to_the_trash_only_after_ninety_days(self):
+        old = self.store("2026-06-01T12:00:00+00:00")                       # 124 days before NOW
+        counts = retention.run(100, True, environ=TOKEN, gmail=old[0], notion=old[1], now=NOW)
+        self.assertEqual((counts["trashed"], counts["review_aged"], counts["kept_unrecorded"]), (1, 1, 0))
+        young = self.store("2026-08-01T12:00:00+00:00")                     # 63 days
+        counts = retention.run(100, True, environ=TOKEN, gmail=young[0], notion=young[1], now=NOW)
+        self.assertEqual((counts["trashed"], counts["kept_unrecorded"], counts["kept_detail"]), (0, 1, {"not_listed:REVIEW": 1}))
+
+    def test_the_review_order_row_itself_is_never_touched(self):
+        gmail, notion = self.store("2026-06-01T12:00:00+00:00")
+        before = repr(notion.rows)
+        retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(repr(notion.rows), before)
