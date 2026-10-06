@@ -257,7 +257,8 @@ def _watermark(client, source_id):
 def window_query(watermark, now, since=None, until=None):
     """The bounded Gmail search: allowlisted senders after (last accepted state - overlap), and before `until` when a backfill window closes. Never mailbox-wide."""
     start = since or ((watermark - OVERLAP) if watermark else (now - BOOTSTRAP))
-    return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "")
+    # An explicit start (a backfill or a recovery) also reads the Trash: retention moves recorded mail there, and a mail whose total was not readable yet must stay re-readable.
+    return f"{SENDERS_QUERY} after:{int(start.timestamp())}" + (f" before:{int(until.timestamp())}" if until else "") + (" in:anywhere" if since else "")
 
 
 def _gmail_ids(gmail, limit, query):
@@ -321,7 +322,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
             messages.append(message)
         events_by_order, review_by_order, accepted_ids = {}, {}, {}
         # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
-        already_filed = {m["id"] for m in messages if label_id in m["label_ids"] and "INBOX" not in m["label_ids"]}
+        already_filed = {m["id"] for m in messages if ("TRASH" in m["label_ids"]) or (label_id in m["label_ids"] and "INBOX" not in m["label_ids"])}     # trashed mail is read, never re-filed
         for message in messages:
             for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
                 if parsed.get("status") == "REVIEW":
