@@ -84,6 +84,8 @@ def resolve_targets(jobs, pipeline, now, every=()):
             counts[kind + "_no_safe_surface"] += 1
             why = why_unresolved(company, role, every)
             counts["pursuit_unresolved_why"][why] = counts["pursuit_unresolved_why"].get(why, 0) + 1
+            if why == "published_job_at_company_other_role":              # TEMP one-off inspection requested by Jim (never merged)
+                counts.setdefault("inspect", []).append({"pipeline_role": role, "published_roles": [t for c, t, st, pg in every if names.same_company(company, c or "") and st == "PUBLISHED" and pg]})
     others = [(k, p, c or "", t or "") for k, p, c, t, _ in jobs if k not in surfaced]
     return surfaced, others, counts
 
