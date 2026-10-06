@@ -186,22 +186,23 @@ class ReviewResetTests(unittest.TestCase):
         from tests.kit.amazon import notion_page
         notion = AmazonNotion()
         notion.rows["111-1111111-1111111"] = notion_page("111-1111111-1111111", {"Status": "REVIEW", "Needs Review": True}, "page-empty")
-        notion.rows["222-2222222-2222222"] = notion_page("222-2222222-2222222", {"Status": "REVIEW", "Needs Review": True, "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-data")
-        notion.rows["333-3333333-3333333"] = notion_page("333-3333333-3333333", {"Status": "SHIPPED", "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-ok")
+        notion.rows["222-2222222-2222222"] = notion_page("222-2222222-2222222", {"Status": "SHIPPED", "Latest Event At": "2026-10-01T12:00:00+00:00"}, "page-shipped")
+        notion.rows["333-3333333-3333333"] = notion_page("333-3333333-3333333", {"Status": "DELIVERED", "Latest Event At": "2026-10-01T12:00:00+00:00", "Grand Total": 9.5}, "page-ok")
         return notion
 
-    def test_only_review_rows_with_no_data_are_trashed_and_a_dry_run_changes_nothing(self):
+    def test_only_rows_with_no_total_are_trashed_and_a_dry_run_changes_nothing(self):
         from lifeos.amazon import reset
         notion = self.store()
-        notion.query_data_source = lambda source_id, body: {"results": [p for p in notion.rows.values() if p["properties"]["Status"]["select"] and p["properties"]["Status"]["select"]["name"] == "REVIEW"], "has_more": False}
+        notion.query_data_source = lambda source_id, body: {"results": list(notion.rows.values()), "has_more": False}
         calls = []
         notion.call_once = lambda method, path, body=None: calls.append((method, path, body)) or {}
         real_call = notion.call
         notion.call = lambda method, path, body=None: {"in_trash": True} if path.startswith("/pages/") else real_call(method, path, body)
         dry = reset.run(100, False, environ=TOKEN, notion=notion)
-        self.assertEqual((dry["review_rows"], dry["empty"], dry["kept_with_data"], dry["trashed"], calls), (2, 1, 1, 0, []))
+        self.assertEqual((dry["rows"], dry["no_total"], dry["kept_with_total"], dry["trashed"], calls), (3, 2, 1, 0, []))
         live = reset.run(100, True, environ=TOKEN, notion=notion)
-        self.assertEqual((live["trashed"], live["failed"], calls), (1, 0, [("PATCH", "/pages/page-empty", {"in_trash": True})]))
+        self.assertEqual((live["trashed"], live["failed"]), (2, 0))
+        self.assertEqual(sorted(c[1] for c in calls), ["/pages/page-empty", "/pages/page-shipped"])
 
 
 class WindowsLineEndingTests(unittest.TestCase):
