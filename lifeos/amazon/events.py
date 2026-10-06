@@ -14,6 +14,7 @@ SENDERS = {
 ORDER_ID_RE = re.compile(r"(?<![\w-])\d{3}-\d{7}-\d{7}(?![\w-])")
 TOTAL_LABEL_RE = re.compile(r"\bGrand\s+Total\b", re.IGNORECASE)
 TOTAL_RE = re.compile(r"\bGrand\s+Total\s*:?\s*(?:USD\s*)?([-+]?\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?)(?![\d.,])", re.IGNORECASE)
+MAX_ORDERS_PER_MESSAGE = 5
 CANONICAL_URL = "https://www.amazon.com/your-orders/order-details?orderID={}"
 
 
@@ -53,6 +54,21 @@ def ambiguity_shape(message):
     subject = message.get("subject") if isinstance(message.get("subject"), str) else ""
     linked = set(re.findall(r"orderID=(\d{3}-\d{7}-\d{7})", body))
     return f"ids={len(set(ORDER_ID_RE.findall(body)))},subject={len(set(ORDER_ID_RE.findall(subject)))},linked={len(linked)}"
+
+
+def extract_all(message):
+    """The events a message carries: normally one. A message that names several orders is accepted ONLY when every order number in it is one of its own order-detail links
+    (orderID=...) and nothing else in the body looks like an order number; it then yields one event per order with the same status and no total (a total cannot be
+    assigned to one of several orders). Any other multi-order message stays a REVIEW result. Never returns body text."""
+    first = extract(message)
+    if first.get("reason") != "ORDER_ID_AMBIGUOUS":
+        return [first]
+    body = message.get("body_text")
+    ids = sorted(set(ORDER_ID_RE.findall(body)))
+    linked = set(re.findall(r"orderID=(\d{3}-\d{7}-\d{7})", body))
+    if len(ids) > MAX_ORDERS_PER_MESSAGE or set(ids) != linked:
+        return [first]
+    return [extract({**message, "body_text": f"orderID={order_id}"}) for order_id in ids]
 
 
 def extract(message):
