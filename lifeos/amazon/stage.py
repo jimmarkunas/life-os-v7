@@ -332,6 +332,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                         shape = counts.setdefault("ambiguous_shape", {})
                         key = f"{events.ambiguity_shape(message)},from={parsed_sender(message)}"
                         shape[key] = shape.get(key, 0) + 1
+                        days = counts.setdefault("ambiguous_days", [])
+                        if len(days) < 6 and parsed_sender(message) == "ORDERED":
+                            days.append((message.get("received_at") or "")[:16])               # a date only, so Jim can open an example; never content
                     if parsed.get("order_id"):
                         review_by_order.setdefault(parsed["order_id"], []).append(message)
                     continue
