@@ -233,12 +233,12 @@ class Corrections(unittest.TestCase):
 
     def test_a_production_sized_ledger_is_covered_within_the_stated_bound_with_no_starvation(self):
         from datetime import timedelta
-        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 40                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
         surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
         others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
         with_leads = {f"t{i:04d}" for i in range(n_leads)}
         total = n_leads + n_other + n_nontarget
-        bound = -(-total // budget)                                                                        # ceil(1,600 / 40) = 40 hours
+        bound = -(-total // budget)                                                                        # ceil(1,600 / 41) = 40 hours
         last, worst = {}, 0
         for hour in range(bound * 4):
             picked, candidates = network_surface._queue(surfaced, others, with_leads, budget, NOW + timedelta(hours=hour))
@@ -247,7 +247,8 @@ class Corrections(unittest.TestCase):
                 worst = max(worst, hour - last.get(key, -1))
                 last[key] = hour
         self.assertEqual(len(last), total)                                                                 # no page is starved, cleanup pool included
-        self.assertLessEqual(worst, bound + 1)                                                             # and no page waits longer than the stated bound (plus one run of rounding)
+        self.assertEqual(bound, 40)
+        self.assertLessEqual(worst, 40)                                                                    # and no page waits longer than the stated 40 hours (exactly, no rounding allowance)
         small = network_surface._queue({"a": ("pa", "C", "R", set())}, [], {"a"}, 1, NOW)[0]
         self.assertEqual([k for k, *_ in small], ["a"])                                                    # an explicit limit of one still serves a page
         self.assertEqual(network_surface._queue({}, [], set(), 40, NOW), ([], 0))
@@ -350,7 +351,7 @@ class Contract(unittest.TestCase):
         step = text[text.index("id: network_surface"):]
         step = step[:step.index("      - id: review")]
         self.assertIn("continue-on-error: true", step)                                                       # a Network failure never fails the Jobs run ...
-        self.assertIn("--limit 40", step)                                                                    # ... the bound proven in acceptance ...
+        self.assertIn("--limit 41", step)                                                                    # ... the bound that makes the 40-hour worst case true ...
         self.assertIn("::warning title=Network surface::", step)                                             # ... but it is always explicit warning evidence, never silent
         self.assertNotIn("network_surface", text[text.index("Lane failures fail the run"):])                 # and it is not in the lane-failure list
 
