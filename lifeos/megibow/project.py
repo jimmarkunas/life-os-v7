@@ -26,7 +26,7 @@ def total(counts):
     return sum(counts.values())
 
 
-def project(outcomes, today, frozen=None, legacy=None, cutover=None):
+def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=None):
     """-> {weeks, counts{monday: {activity: n} | None}, cumulative, review[], current}. frozen: {monday: counts}; legacy: counts or None."""
     frozen = frozen or {}
     weeks = visible_weeks(today)
@@ -38,23 +38,24 @@ def project(outcomes, today, frozen=None, legacy=None, cutover=None):
             live[o["week"]][o["activity"]] += 1
         elif o["status"] == C.REVIEW and o["week"] >= weeks[0]:
             review.append(o)
+    history = history or {}
     counts = {}
     for w in weeks:
         if w == current:
             counts[w] = live[w]
+        elif cutover is not None and w < cutover:
+            counts[w] = dict(history[w]) if w in history else None          # before the cutover Jim's own recorded week, never V7's reading of the mailbox
         elif w in frozen:
             counts[w] = dict(frozen[w])
-        elif cutover is not None and w < cutover:
-            counts[w] = None
         else:
             counts[w] = live[w]
     cumulative = dict(legacy) if legacy else zero()
     for w, c in frozen.items():
-        if w not in weeks:
+        if w not in weeks and (cutover is None or w >= cutover):
             for a in C.ACTIVITIES:
                 cumulative[a] += c.get(a, 0)
     for w in weeks:
-        if counts[w]:
+        if counts[w] and (cutover is None or w >= cutover):                  # the history weeks are already inside the legacy totals
             for a in C.ACTIVITIES:
                 cumulative[a] += counts[w][a]
     return {"weeks": weeks, "counts": counts, "cumulative": cumulative, "review": review, "current": current}
