@@ -18,7 +18,13 @@ FIRST_PERSON = re.compile(rf"\bI(?:'m|’m| am)\s+(?:a|an|the|your)?\s*(?:\w+\s+
 SIGNATURE = re.compile(rf"^[\s\-–—|•*]*(?:[\w.'’ \-]{{0,40}}[|,\-–—]\s*)?{TITLE}\b", re.I)
 HIRING_MANAGER = re.compile(r"\b(?:hiring manager|engineering manager|director|vice president|vp\b|head of|team lead|manager of)\b", re.I)
 AUTOREPLY = re.compile(r"\b(?:automatic reply|auto[- ]?reply|out of (?:the )?office|undeliverable|delivery (?:status|failure)|vacation reply)\b", re.I)
-RELAY_PHRASE = re.compile(r"\b(?:sent you a message|has messaged you|new message from|replied to your|message from|inmail)\b", re.I)
+RELAY_PHRASE = re.compile(r"\b(?:sent you a message|has messaged you|new message from|replied to your|message from|message replied|you have a new message|inmail)\b", re.I)
+RELAY_BODY_NAME = re.compile(r"(?:^|\n)[ \t]*(?:InMail:\s*)?You have a new message\s*\n+\s*(?P<name>[^\n]{2,60}?)\s*\n", re.I)      # the board's plain-text layout: header line, then the sender's name
+SOLICITATION = tuple(re.compile(p, re.I) for p in (
+    r"\bupdated (?:resume|cv)\b", r"\bexpected (?:pay )?rate\b", r"\b(?:c2c|corp[- ]to[- ]corp|w2|1099)\b", r"\bvisa (?:status|type)\b|\bwork authori[sz]ation\b",
+    r"\bjob description\b", r"\b(?:urgent|immediate) (?:requirement|opening|position|need)\b", r"\blet me know (?:your|if you(?:'re| are)) interest",
+    r"\bshare (?:your|an) (?:updated )?(?:resume|cv)\b", r"\b(?:direct client|end client|implementation partner|prime vendor)\b", r"\bjob (?:opportunity|opening)\b",
+    r"\bI have an? (?:urgent |immediate )?(?:position|requirement|opening|role)\b"))
 RELAY_SUBJECT_NAME = re.compile(r"^(?:re:\s*)?(?:new )?message from\s+(?P<name>[^:\-|]+)", re.I)
 
 
@@ -58,9 +64,15 @@ def classify(message):
         return OTHER, "AUTOMATION_ADDRESS", {}
     body = message.get("body", "")
     line, first = signature_line(body), first_person(body)
+    if not (line or first) and clean_name(message.get("sender_name", "")) and sum(1 for rx in SOLICITATION if rx.search(subject_and(message))) >= 2:
+        return DIRECT_HUMAN, "STAFFING_OUTREACH", {"name": message.get("sender_name", ""), "signature": "", "first_person": ""}
     if not (line or first):
         return OTHER, ("HIRING_MANAGER" if HIRING_MANAGER.search(signature_tail(body)) else "NO_RECRUITER_EVIDENCE"), {}
     return DIRECT_HUMAN, "RECRUITER_SELF_IDENTIFIED", {"name": message.get("sender_name", ""), "signature": line, "first_person": first}
+
+
+def subject_and(message):
+    return message.get("subject", "") + "\n" + str(message.get("body", ""))[:6000]
 
 
 def signature_tail(body):
@@ -72,6 +84,9 @@ def _relay(message):
     if not (RELAY_PHRASE.search(subject) or RELAY_PHRASE.search(body[:1500]) or " via " in message.get("sender_name", "")):
         return OTHER, "RELAY_NOT_A_MESSAGE", {}                         # alerts, digests and acknowledgements from a board
     name = message.get("sender_name", "") if " via " in message.get("sender_name", "") else ""
+    if not name:
+        found = RELAY_BODY_NAME.search(body[:600])
+        name = found.group("name").strip() if found else ""
     if not name:
         found = RELAY_SUBJECT_NAME.match(subject.strip())
         name = found.group("name").strip() if found else ""

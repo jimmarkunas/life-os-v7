@@ -67,6 +67,23 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(classify(mail(sender_name="", address="x1@example.com", body=SIGNED))[2], ("UNRESOLVED", "NAME_UNREADABLE"))
 
 
+class RealShapeTests(unittest.TestCase):
+    LINKEDIN = "Message replied: Role for you\nInMail: You have a new message\n\n        Lee Relay\n\n      Reply\n      https://example.com/thread\n\nHi, are you free Monday?\n"
+
+    def test_the_boards_plain_text_layout_gives_a_human_name(self):
+        shape, reason, (verdict, c) = classify(mail(sender_name="", address="hit-reply@linkedin.com", subject="Message replied: Role for you", body=self.LINKEDIN))
+        self.assertEqual((shape, reason, verdict, c["person"], c["needs_review"]), (C.HUMAN_NAMED_RELAY, "RELAY_NAMED", "CANDIDATE", "Lee Relay", True))
+
+    def test_staffing_outreach_without_a_title_qualifies_only_with_two_solicitation_signals_and_a_human_name(self):
+        body = "Hi,\n\nI have an urgent position. Please send your updated resume and expected rate.\n\nThanks,\nSam Sample\nNorthwind Staffing\n"
+        shape, reason, (verdict, c) = classify(mail(sender_name="Sam Sample", address="sam@example.com", subject="Urgent Requirement", body=body))
+        self.assertEqual((shape, reason, verdict, c["company"], c["needs_review"]), (C.DIRECT_HUMAN, "STAFFING_OUTREACH", "CANDIDATE", "Northwind Staffing", False))
+        one = classify(mail(sender_name="Sam Sample", address="sam@example.com", body="Hi, please send your updated resume. Thanks, Sam"))
+        self.assertEqual(one[0], C.OTHER)
+        nameless = classify(mail(sender_name="Staffing Desk", address="desk@example.com", body=body))
+        self.assertEqual(nameless[0], C.OTHER)
+
+
 class WeekTests(unittest.TestCase):
     def test_week_ending_is_the_sunday_of_the_monday_to_sunday_week_in_chicago(self):
         self.assertEqual(identity.week_ending("2026-10-05T14:00:00+00:00"), "2026-10-11")       # Monday morning Chicago

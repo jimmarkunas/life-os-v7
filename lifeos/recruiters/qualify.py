@@ -10,12 +10,22 @@ from .identity import clean_name, week_ending
 CLIENT = re.compile(r"(?:\bon behalf of\b|\bour client,?|\bmy client,?)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?)\s*(?:[,.;]|\bis\b|\bhas\b|\bare\b|$)")
 ROLE = re.compile(r"\b(?:for|regarding|about)\s+(?:a|an|the|our)\s+(?P<r>[A-Z][A-Za-z0-9/&+.\- ]{2,60}?)\s+(?:role|position|opening|opportunity)\b")
 TITLE_AT = re.compile(rf"{C.TITLE}\s*(?:(?:\bat\b|\bwith\b|[|@,\-–—])\s*)(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{{1,60}}?)\s*(?:$|[|,.;(])", re.I)
+ORG_LINE = re.compile(r"^[\s|\-–—•*]*(?P<c>[A-Z][A-Za-z0-9&'’.\- ]{1,50}?\s(?:Inc\.?|LLC|L\.L\.C\.|Ltd\.?|Corp\.?|Corporation|Technologies|Technology|Solutions|Systems|Staffing|Consulting|Group|Networks|Services|Partners|Global|Labs|Software|Infotech))[\s|,.\-–—]*$")
 MEDIUM = "Email"
 
 
 def _company(evidence):
     for text in (evidence.get("signature", ""), evidence.get("first_person", "")):
         found = TITLE_AT.search(text.strip())
+        if found:
+            return found.group("c").strip()
+    return ""
+
+
+def _org_from_signature(body):
+    """A closing line that is only an organization name (it ends in a company word such as Inc, LLC, Solutions or Staffing), or ''."""
+    for line in [l.strip() for l in str(body or "").splitlines() if l.strip()][-14:]:
+        found = ORG_LINE.match(line) if len(line) <= 70 else None
         if found:
             return found.group("c").strip()
     return ""
@@ -36,7 +46,7 @@ def qualify(message, shape, reason, evidence):
     person = clean_name(evidence.get("name", ""), allow_single=relay)
     if not person:
         return "UNRESOLVED", "NAME_UNREADABLE"
-    company = "" if relay else _company(evidence)
+    company = "" if relay else (_company(evidence) or _org_from_signature(message.get("body", "")))
     body = message.get("body", "")[:6000]
     client = _search(CLIENT, "c", body)
     role = _search(ROLE, "r", message.get("subject", ""), body)
