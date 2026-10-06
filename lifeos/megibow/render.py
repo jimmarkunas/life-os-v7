@@ -19,12 +19,12 @@ def _cell(value):
 
 
 def table(proj):
-    """6 rows x 10 columns of strings: header, Jim — Total, then the five activities."""
+    """7 rows x 10 columns of strings: header, the five activities, then Jim — Total last (the card writes that last row in bold)."""
     rows = [header(proj["weeks"])]
     counts = [proj["counts"][w] for w in proj["weeks"]]
-    rows.append(["Jim — Total", str(P.total(proj["cumulative"]))] + [_cell(P.total(c) if c else None) for c in counts])
     for activity in C.ACTIVITIES:
         rows.append([activity, str(proj["cumulative"][activity])] + [_cell(c[activity] if c else None) for c in counts])
+    rows.append(["Jim — Total", str(P.total(proj["cumulative"]))] + [_cell(P.total(c) if c else None) for c in counts])
     return rows
 
 

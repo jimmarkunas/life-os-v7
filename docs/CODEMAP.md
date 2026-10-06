@@ -162,6 +162,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/megibow/card.py`: The MegIBOW block writer (D134). Writes only inside the one machine-owned callout whose id is MEGIBOW_BLOCK_ID: the callout's own text (status line, warnings) and the cel
 - `lifeos/megibow/classify.py`: MegIBOW classification (D134): deterministic rules, no model. Pure.
 - `lifeos/megibow/evidence.py`: MegIBOW evidence readers (D134): Gmail and Outlook sent mail, Google and Outlook calendar events -> the plain dicts classify expects. Read only, in memory only.
+- `lifeos/megibow/history.py`: MegIBOW history (D148): the weeks before V7 took over, from Jim's own Google Sheet "Megibow Dashboard" (his week-of dates, each placed in the Monday to Sunday week that c
 - `lifeos/megibow/project.py`: MegIBOW weekly projection (D134): outcomes -> the 8-week table with Cumulative. Pure.
 - `lifeos/megibow/render.py`: MegIBOW block text (D134). Pure: projection -> the table rows and the note lines. No names, only counts and fixed words.
 - `lifeos/megibow/review.py`: The MegIBOW Review list (D134): a small Notion database Jim answers with a dropdown. Private to Jim's workspace; fixed codes in logs, counts only.
@@ -390,4 +391,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D145: Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)
 - D146: Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)
 - D147: MegIBOW: a failed source is not an unresolved review item; manual Amazon orders queue with the domain jobs (2026-10-06)
-- D148: MegIBOW counts every visible week; the cutover is Aug 17 (2026-10-06, Jim)
+- D148: MegIBOW history comes from Jim's own sheet, V7 counts from Oct 5, and the totals row is last and bold (2026-10-06, Jim)

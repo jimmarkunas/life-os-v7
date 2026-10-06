@@ -129,7 +129,7 @@ class Projection(unittest.TestCase):
         self.assertEqual(p["cumulative"][C.OUTREACH], 12)
         rows = R.table(p)
         self.assertEqual((len(rows), len(rows[0])), (7, 10))
-        self.assertEqual(rows[1][0], "Jim — Total")
+        self.assertEqual(rows[-1][0], "Jim — Total")
         self.assertEqual(rows[0][2:4], ["Aug 17", "Aug 24"])
         self.assertEqual(rows[0][-1], "Oct 5 (current)")
 
@@ -200,9 +200,25 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class CutoverDefaultTests(unittest.TestCase):
-    def test_the_default_cutover_is_the_first_visible_week_so_no_visible_week_is_dashed(self):
-        from datetime import date
-        from lifeos.sources import megibow
-        from lifeos.megibow.windows import visible_weeks
-        self.assertEqual(date.fromisoformat(megibow.CUTOVER_DEFAULT), visible_weeks(date(2026, 10, 6))[0])
+class HistoryTests(unittest.TestCase):
+    def test_the_weeks_before_the_cutover_are_jims_recorded_numbers_and_never_counted_twice(self):
+        from lifeos.megibow import history
+        out = [{"status": C.COUNTED, "activity": C.RECRUITER, "week": date(2026, 9, 21), "reason": "", "key": "k", "candidate": None}]      # V7 saw one; Jim's sheet says 3
+        legacy = {"Outreach": 20, "Scheduled": 13, "Networking Calls": 11, "Recruiter Calls": 36, "Company Calls": 15}
+        p = P.project(out, date(2026, 10, 6), frozen={}, legacy=legacy, cutover=date(2026, 10, 5), history=history.WEEKS)
+        self.assertEqual(p["counts"][date(2026, 9, 21)]["Recruiter Calls"], 3)                 # his number, not V7's reading of the mailbox
+        self.assertEqual(p["counts"][date(2026, 8, 17)], {"Outreach": 4, "Scheduled": 0, "Networking Calls": 1, "Recruiter Calls": 5, "Company Calls": 4})
+        self.assertEqual(P.total(p["cumulative"]), 95)                                        # the history is inside the legacy totals: no double count
+        self.assertEqual(p["cumulative"]["Recruiter Calls"], 36)
+        rows = R.table(p)
+        self.assertEqual(rows[0][2:4], ["Aug 17", "Aug 24"])
+        self.assertEqual(rows[-1][:2], ["Jim — Total", "95"])
+        self.assertEqual(rows[-1][2:9], ["14", "13", "5", "7", "8", "6", "3"])                   # the sheet's weekly totals
+        self.assertEqual(rows[-1][-1], "0")
+
+    def test_the_history_adds_up_to_the_sheets_weekly_totals_and_a_stale_frozen_week_is_ignored(self):
+        from lifeos.megibow import history
+        self.assertEqual([sum(w.values()) for _, w in sorted(history.WEEKS.items())], [14, 13, 5, 7, 8, 6, 3])
+        stale = {date(2026, 9, 28): {a: 9 for a in C.ACTIVITIES}}                             # frozen earlier from V7's reading
+        p = P.project([], date(2026, 10, 6), frozen=stale, legacy=None, cutover=date(2026, 10, 5), history=history.WEEKS)
+        self.assertEqual(sum(p["counts"][date(2026, 9, 28)].values()), 3)

@@ -68,8 +68,10 @@ def write(client, block_id, text, table_rows, live):
     result = {"rows_written": 0, "text_written": False, "verified": True, "rows_changed": len(changed), "text_changed": text_changed}
     if not live:
         return result
+    last_id = rows[-1]["id"] if rows else None
     for row_id, want in changed:
-        client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}}] for c in want]}})
+        bold = {"annotations": {"bold": True}} if row_id == last_id else {}               # the totals row is the last row and is bold
+        client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}, **bold}] for c in want]}})
         result["rows_written"] += 1
     if text_changed:
         client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
