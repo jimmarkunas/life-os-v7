@@ -47,12 +47,14 @@ class Detect(unittest.TestCase):
                 return (1,)
 
             def fetchall(self):
-                return [("lensa", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None)]
+                if "last_complete_at" in self.last:                     # boards read in full inside the window
+                    return [("braze",)]
+                return [("lensa", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400)]
 
         class Conn:
             def cursor(self):
                 return Cur()
-        self.assertEqual(jobs_alerts.gather(Conn(), NOW)["stopped_sources"], [("lensa", 50.0)])
+        self.assertEqual(jobs_alerts.gather(Conn(), NOW)["stopped_sources"], [("lensa", 50.0), ("web:figma", 28.6)])
 
     def test_expiry_pages_a_week_before_and_after(self):
         exp = {"timer_token": {"label": "Timer token", "expires": "2026-10-31", "renew": "renew it"}}

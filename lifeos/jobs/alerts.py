@@ -54,8 +54,11 @@ def gather(connection, now):
         start = window - dt.timedelta(days=STOP_BASELINE_DAYS)
         cursor.execute("SELECT source, SUM(first_seen > %s), SUM(first_seen <= %s) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source",
                        (window, window, start))
-        stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in cursor.fetchall()
-                   if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY]
+        rows = cursor.fetchall()
+        cursor.execute("SELECT source_id FROM v7_sources WHERE last_complete_at > %s", (window,))
+        healthy = {f"web:{row[0]}" for row in cursor.fetchall()}     # a board read in full inside the window is idle, not stopped
+        stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
+                   if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy]
     return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "stopped_sources": sorted(stopped)}
 
 
