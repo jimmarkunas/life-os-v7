@@ -16,17 +16,23 @@ DEFAULT_LIMIT = 200
 
 def _status(notion, source_id, message):
     """-> (why, detail). why: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order recorded, this message not on it).
+    A message that carries several orders is recorded only when EVERY one of its orders lists it.
     detail (fixed vocabulary only): the parser's reason code for an unreadable message, or the order row's Status for a not_listed one."""
-    extracted = events.extract(message)
-    order_id = extracted.get("order_id")
-    if not order_id:
-        return "no_order_id", extracted.get("reason") or "NONE"
-    rows = _query_order(notion, source_id, order_id)
-    if not rows:
-        return "no_row", ""
-    if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
-        return "recorded", ""
-    return "not_listed", str(rows[0].get("Status") or "NONE")[:30] if len(rows) == 1 else "DUPLICATE_ROWS"
+    extracted_all = events.extract_all(message)
+    first = extracted_all[0]
+    order_ids = [e.get("order_id") for e in extracted_all]
+    if not all(order_ids):
+        reason = first.get("reason") or "NONE"
+        return "no_order_id", reason + (":" + events.ambiguity_shape(message) if reason == "ORDER_ID_AMBIGUOUS" else "")
+    worst = ("recorded", "")
+    for order_id in order_ids:
+        rows = _query_order(notion, source_id, order_id)
+        if not rows:
+            return "no_row", ""
+        if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
+            continue
+        worst = ("not_listed", str(rows[0].get("Status") or "NONE")[:30] if len(rows) == 1 else "DUPLICATE_ROWS")
+    return worst
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
