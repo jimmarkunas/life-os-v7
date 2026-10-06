@@ -329,8 +329,8 @@ jobs:
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
-          RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 100 a run
-        run: python -m lifeos.run amazon-retention $([ "$RETENTION_LIVE" = "true" ] && echo --live)
+          RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 200 a run (Jim approved raising it from 40)
+        run: python -m lifeos.run amazon-retention --limit 200 $([ "$RETENTION_LIVE" = "true" ] && echo --live)
       - name: Amazon Orders warning (does not fail the Jobs run)
         if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure' || steps.aretain.outcome == 'failure') }}
         run: echo "::warning title=Amazon Orders::the Amazon Orders stage failed; the Jobs pipeline is unaffected"

@@ -37,4 +37,4 @@ jobs:
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
           AMAZON_SINCE: ${{ inputs.since }}
           STAGE: ${{ inputs.stage }}
-        run: python -m lifeos.run "amazon-$([ "$STAGE" = "orders" ] && echo orders || echo "$STAGE")" $([ "${{ inputs.live }}" = "true" ] && [ "$STAGE" != "retention" ] && echo --live)
+        run: python -m lifeos.run "amazon-$([ "$STAGE" = "orders" ] && echo orders || echo "$STAGE")" $([ "$STAGE" = "retention" ] && echo "--limit 200") $([ "${{ inputs.live }}" = "true" ] && [ "$STAGE" != "retention" ] && echo --live)
