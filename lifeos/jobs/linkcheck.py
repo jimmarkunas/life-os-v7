@@ -38,7 +38,7 @@ def classify(url, title, fetch_page=fetch, impersonate_page=impersonate.fetch):
 
 
 def run(limit, live, fetch_page=fetch, impersonate_page=impersonate.fetch):
-    out = {"by_source": {}, "checked": 0, "blocked_titles": []}
+    out = {"by_source": {}, "checked": 0}
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT source, title, COALESCE(final_apply_url, source_url), unresolved_reason FROM v7_jobs "
                        "WHERE source LIKE 'web:su-%%' AND status='HOLD' AND (unresolved_reason IN ('link_mismatch','jd_listing','jd_template') OR unresolved_reason LIKE 'http_40%%') "
@@ -49,6 +49,4 @@ def run(limit, live, fetch_page=fetch, impersonate_page=impersonate.fetch):
         bucket = out["by_source"].setdefault(source, {})
         bucket[key] = bucket.get(key, 0) + 1
         out["checked"] += 1
-        if "revolut" in source and str(reason).startswith("http_40"):
-            out["blocked_titles"].append(title)                  # public job titles of the blocked Revolut roles only, so each can go on Jim's keep list (D124)
     return out
