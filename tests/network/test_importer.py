@@ -138,6 +138,72 @@ class Import(unittest.TestCase):
         self.assertEqual(conn.raw.execute("SELECT title, position_state, last_verified FROM v7_network_positions").fetchall(), [("Director", "CURRENT", "2026-10-07")])
 
 
+class ChangeEvents(unittest.TestCase):
+    """NET-2.1 (D158): events are ids and a hash only, written with the position change, replay-safe, and the seed (the first batch) writes none."""
+
+    def events(self, conn):
+        return conn.raw.execute("SELECT person_id, event_type, old_position_id, new_position_id FROM v7_network_events ORDER BY person_id, event_type").fetchall()
+
+    def test_the_seed_writes_the_table_but_no_events(self):
+        conn = MySQLite()
+        first = run_import(seed_rows(), conn=conn)
+        self.assertEqual(conn.count("v7_network_events"), 0)
+        self.assertEqual((first["events_person_imported"], first["events_company_changed"], first["events_title_changed"]), (0, 0, 0))
+
+    def test_a_later_batch_yields_exactly_the_right_events(self):
+        conn = MySQLite()
+        run_import([row(1, "Acme Corp", "Director"), row(2, "Beta Inc", "Lead"), row(3, "Cora Ltd", "Analyst"), row(4, "Dune LLC", "Manager"), row(5, "Echo Co", "Chief")],
+                   conn=conn, name="LI_Connections_20260907.csv")
+        later = [row(1, "", ""),                      # blank fields: no event
+                 row(2, "Gamma LLC", "Lead"),         # company changed
+                 row(3, "Cora Ltd", "Senior Analyst"),  # title changed
+                 row(6, "Fox Inc", "Engineer")]       # new person; persons 4 and 5 are absent: nothing
+        counts = run_import(later, conn=conn, name="LI_Connections_20261007.csv")
+        self.assertEqual((counts["events_person_imported"], counts["events_company_changed"], counts["events_title_changed"]), (1, 1, 1))
+        got = conn.raw.execute("SELECT p.url_key, e.event_type FROM v7_network_events e JOIN v7_network_people p ON p.id = e.person_id ORDER BY p.url_key").fetchall()
+        self.assertEqual(got, [("person-00002", "COMPANY_CHANGED"), ("person-00003", "TITLE_CHANGED"), ("person-00006", "PERSON_IMPORTED")])
+        change = conn.raw.execute("SELECT e.old_position_id, e.new_position_id, o.position_state, n.position_state, n.company_key FROM v7_network_events e "
+                                  "JOIN v7_network_positions o ON o.id = e.old_position_id JOIN v7_network_positions n ON n.id = e.new_position_id WHERE e.event_type='COMPANY_CHANGED'").fetchone()
+        self.assertEqual(change[2:], ("SUPERSEDED", "CURRENT", "gamma"))
+
+    def test_replay_and_an_older_file_add_no_events(self):
+        conn = MySQLite()
+        run_import([row(1, "Acme Corp", "Director")], conn=conn, name="LI_Connections_20260907.csv")
+        run_import([row(1, "Gamma LLC", "Director"), row(2, "Beta Inc", "Lead")], conn=conn, name="LI_Connections_20261007.csv")
+        before = self.events(conn)
+        again = run_import([row(1, "Gamma LLC", "Director"), row(2, "Beta Inc", "Lead")], conn=conn, name="LI_Connections_20261007.csv")
+        self.assertEqual((again["replay"], again["events_company_changed"], self.events(conn)), (True, 0, before))
+        run_import([row(1, "Acme Corp", "Director")], conn=conn, name="LI_Connections_20260801.csv")          # older: never replaces a newer one, so no event
+        self.assertEqual(self.events(conn), before)
+        self.assertEqual(len(before), 2)
+
+    def test_events_hold_ids_and_a_hash_only(self):
+        conn = MySQLite()
+        run_import([row(1, "Acme Corp", "Director")], conn=conn)
+        run_import([row(1, "Gamma LLC", "Director")], conn=conn, name="LI_Connections_20261007.csv")
+        columns = [c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_events)").fetchall()]
+        self.assertEqual(columns, ["id", "person_id", "event_type", "old_position_id", "new_position_id", "batch_id", "observed_date", "event_hash", "created_at"])
+        dump = repr(conn.raw.execute("SELECT * FROM v7_network_events").fetchall())
+        for text in ("gamma", "acme", "Director", "person-", "@"):
+            self.assertNotIn(text, dump)
+
+    def test_a_failed_chunk_rolls_the_events_back_with_the_positions(self):
+        conn = MySQLite()
+        run_import([row(1, "Acme Corp", "Director")], conn=conn)
+        conn.fail_on = ("INSERT IGNORE INTO v7_network_events", 1)
+        with self.assertRaises(NetworkError):
+            run_import([row(1, "Gamma LLC", "Director")], conn=conn, name="LI_Connections_20261007.csv")
+        self.assertEqual(conn.count("v7_network_events"), 0)
+        self.assertEqual(conn.raw.execute("SELECT position_state FROM v7_network_positions WHERE company_key='acme'").fetchone(), ("CURRENT",))      # the supersede rolled back too
+        done = run_import([row(1, "Gamma LLC", "Director")], conn=conn, name="LI_Connections_20261007.csv")
+        self.assertEqual((done["events_company_changed"], conn.count("v7_network_events")), (1, 1))
+
+    def test_the_dry_run_stays_database_free(self):
+        with patch("lifeos.network.importer.db.connect", side_effect=AssertionError("dry run must not connect")):
+            counts = run_import(seed_rows(), live=False, conn=MySQLite())
+        self.assertNotIn("events_company_changed", counts)
+
+
 class Audit(unittest.TestCase):
     def test_audit_is_read_only_and_finds_no_email_shaped_text(self):
         conn = MySQLite()

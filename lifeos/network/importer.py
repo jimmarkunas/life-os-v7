@@ -38,12 +38,14 @@ def _apply(counts, connection, key, plan, exported, chunk):
     before = store.totals(connection)
     batch_id, status, cursor = store.open_batch(connection, key, plan, exported)
     counts["replay"] = status == "COMPLETE"
+    events = {kind: 0 for kind in store.EVENT_TYPES}
     if status != "COMPLETE":
-        store.apply_batch(connection, batch_id, cursor, plan, exported, key[:16], chunk)
+        events = store.apply_batch(connection, batch_id, cursor, plan, exported, key[:16], chunk)
         store.complete(connection, batch_id, plan)
     after = store.totals(connection)
     counts.update(after)
     counts["people_new"], counts["positions_new"] = after["people_total"] - before["people_total"], after["positions_total"] - before["positions_total"]
+    counts.update({"events_" + kind.lower(): n for kind, n in events.items()})
     counts["batch_status"] = "COMPLETE"
     return counts
 
