@@ -63,7 +63,7 @@ class Leads(unittest.TestCase):
 
     def test_no_closeness_or_willingness_is_ever_in_a_lead(self):
         found = match.leads_for("acme", "Engineer", match.build_index([pos(1, "acme")]), TODAY)
-        self.assertEqual(sorted(found[0]), ["age_days", "freshness", "overlap", "person_id", "tier"])
+        self.assertEqual(sorted(found[0]), ["age_days", "company_key", "freshness", "overlap", "person_id", "tier"])
 
 
 def seeded():
