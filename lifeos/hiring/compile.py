@@ -68,7 +68,7 @@ def _pick(events, now):
     return future[0] if future else past[-1] if past else None
 
 
-def _opportunities(applied, parents, reasons):
+def _opportunities(applied, parents, reasons, out):
     opps = []
     for row in applied:                                           # one opportunity per company+role, whatever the number of ledger rows
         for opp in opps:
@@ -83,7 +83,7 @@ def _opportunities(applied, parents, reasons):
             if parent["company"] and parent["role"]:
                 opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": []})
             else:
-                reasons.add("PARENT_IDENTITY_UNREADABLE")
+                out["untitled_pages"] += 1                            # a page whose title is not "Company — Role" has no identity to match: counted, ignored, never a degraded state
         elif len(near) > 1 or near[0]["parent_state"] != "none":
             for o in near:
                 o["parent"], o["parent_state"] = None, "ambiguous"
@@ -98,13 +98,13 @@ def _key(company, role):
 
 
 def compile_rows(applied, parents, events, prior, ok, now):
-    reasons, out = set(), {"unsupported": 0, "unmatched_events": 0}
+    reasons, out = set(), {"unsupported": 0, "unmatched_events": 0, "untitled_pages": 0}
     if not ok["ledger"] or not ok["parents"]:                     # the two sources that decide WHO is in the pipeline: without both, only safe prior state may show
         reasons.add("LEDGER_UNAVAILABLE" if not ok["ledger"] else "OPPORTUNITIES_UNAVAILABLE")
         rows = [dict(r, carried=True) for r in prior["rows"]] if prior and prior.get("rows") else None
         return {**out, "rows": rows, "reasons": sorted(reasons)}
     prior_rows = {r["key"]: r for r in (prior or {}).get("rows", [])}
-    opps = _opportunities(applied, parents, reasons)
+    opps = _opportunities(applied, parents, reasons, out)
     if ok["calendar"]:
         for event in events:
             kind = event_kind(event["title"])
