@@ -99,7 +99,7 @@ class MultiOrderTests(unittest.TestCase):
         for body in (LINKS + f"\nsee also 333-3333333-3333333", f"order {A} and order {B}", f"orderID={A}\nand {B}"):
             got = events.extract_all(message("x", "shipment-tracking", body=body))
             self.assertEqual([(e["status"], e["reason"]) for e in got], [("REVIEW", "ORDER_ID_AMBIGUOUS")])
-        many = "\n".join(f"orderID=10{n}-1111111-1111111" for n in range(11))
+        many = "\n".join(f"orderID={100+n}-1111111-1111111" for n in range(11))
         self.assertEqual(events.extract_all(message("y", "shipment-tracking", body=many))[0]["status"], "REVIEW")
 
     def test_both_orders_are_recorded_and_the_message_is_trashed_only_when_both_list_it(self):
