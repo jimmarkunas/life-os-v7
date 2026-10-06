@@ -128,6 +128,7 @@ STAGES = {
     "network-inspect": lazy("lifeos.network.inspect"),
     "network-import": lazy("lifeos.network.importer"),
     "network-audit": lazy("lifeos.network.importer", "audit"),
+    "network-match": lazy("lifeos.sources.network_leads"),
     "openjobs": lazy("lifeos.sources.openjobs"),
     "sponsors": lazy("lifeos.sources.sponsor_register"),
     "probe": lazy("lifeos.probe"),
