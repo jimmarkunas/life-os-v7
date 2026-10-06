@@ -59,7 +59,7 @@
   "D156": "Recruiters: Last Contact is kept to the minute (2026-10-06)",
   "D157": "Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)",
   "D158": "Network change events (NET-2.1) (2026-10-06)",
-  "D159": "Network matching (NET-2.2): leads for admitted jobs, counts only (2026-10-06)",
+  "D159": "Network matching (NET-2.2): leads for jobs, applied opportunities and upcoming interviews, counts only (2026-10-06)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -312,7 +312,7 @@
   "sources": {
    "lifeos/sources/hiring.py": "Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e",
    "lifeos/sources/megibow.py": "MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.",
-   "lifeos/sources/network_leads.py": "NET-2.2: how many admitted jobs have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or title.",
+   "lifeos/sources/network_leads.py": "NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl",
    "lifeos/sources/newsletters/config.py": "Phase 1 configuration: which senders are job newsletters and where they go.",
    "lifeos/sources/newsletters/finalize.py": "Stage 4 - finalize: close out a newsletter email only when EVERY job in it has an outcome.",
    "lifeos/sources/newsletters/ingest.py": "Stage 3 - extract: parse job cards out of labeled newsletters into v7_jobs (status NEW).",

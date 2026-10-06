@@ -1,6 +1,8 @@
 """NET-2.2 matching: invented companies, titles and ids only."""
+import json
+import pathlib
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 
 from lifeos import run
 from lifeos.network import match, store
@@ -82,33 +84,78 @@ def seeded():
     return conn
 
 
+NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+
+
+def pipeline_row(company, role, stage=None, kind=None, start=None, applied_on="2026-09-30"):
+    return {"key": "k", "company": company, "role": role, "applied_on": applied_on, "parent": None, "parent_state": "none", "stage": stage, "event_kind": kind, "event_start": start, "rounds": 0, "carried": False}
+
+
+def save_pipeline(conn, rows, reasons=()):
+    from lifeos.hiring import snapshot
+    snap = {"schema": snapshot.SCHEMA_V, "taken_at": NOW.isoformat(), "accepted_at": NOW.isoformat(), "reasons": list(reasons), "rows": rows}
+    snapshot.STORE.ensure(conn)                                      # the stand-in has no ON DUPLICATE KEY: write the row the pipeline would have saved
+    conn.raw.execute("DELETE FROM v7_hiring_pipeline")
+    conn.raw.execute("INSERT INTO v7_hiring_pipeline (snapshot_id, taken_at, schema_v, payload) VALUES (?,?,?,?)", (snapshot.KEY, "2026-10-07 12:00:00", snapshot.SCHEMA_V, json.dumps(snap)))
+
+
 class Stage(unittest.TestCase):
-    def test_counts_for_published_admitted_jobs_only_and_nothing_is_written(self):
+    def test_admitted_job_counts_only_published_admit_and_nothing_is_written(self):
         conn = seeded()
         before = conn.raw.execute("SELECT (SELECT COUNT(*) FROM v7_network_people), (SELECT COUNT(*) FROM v7_network_positions), (SELECT COUNT(*) FROM v7_jobs)").fetchone()
-        counts = network_leads.run(0, True, connection=conn, today=TODAY)
-        self.assertEqual((counts["jobs_considered"], counts["jobs_with_leads"], counts["jobs_without_leads"], counts["leads_total"]), (3, 2, 1, 3))
-        self.assertEqual(counts["leads_per_job"], {"0": 1, "1": 1, "2": 1, "3": 0, "4": 0, "5": 0})
-        self.assertEqual((counts["by_tier"]["CURRENT"], counts["by_freshness"]["FRESH"], counts["live"]), (3, 3, False))
+        counts = network_leads.run(0, True, connection=conn, today=TODAY, now=NOW)
+        job = counts["by_class"]["admitted_job"]
+        self.assertEqual((job["considered"], job["with_leads"], job["without_leads"], job["leads_total"]), (3, 2, 1, 3))
+        self.assertEqual(job["leads_per_target"], {"0": 1, "1": 1, "2": 1, "3": 0, "4": 0, "5": 0})
+        self.assertEqual((job["by_tier"]["CURRENT"], job["by_freshness"]["FRESH"], counts["live"], counts["pursuit_source"]), (3, 3, False, "unavailable"))
         self.assertEqual(conn.raw.execute("SELECT (SELECT COUNT(*) FROM v7_network_people), (SELECT COUNT(*) FROM v7_network_positions), (SELECT COUNT(*) FROM v7_jobs)").fetchone(), before)
         for text in ("acme", "Acme", "widget", "Director", "page-"):
             self.assertNotIn(text, repr(counts))
+
+    def test_applied_opportunities_and_upcoming_interviews_are_their_own_trigger_classes(self):
+        conn = seeded()
+        save_pipeline(conn, [pipeline_row("Acme Corp", "Product Director"),                                                              # applied only
+                             pipeline_row("WidgetCo", "Analyst", "Hiring-Manager Interview Scheduled", "hiring_manager", "2026-10-09T15:00:00-05:00"),   # applied and an upcoming interview
+                             pipeline_row("Nobody Ltd", "Engineer", "Interviewing", "interview", "2026-09-01T15:00:00-05:00"),                 # a past interview is not upcoming
+                             pipeline_row("Acme Corp", "Engineer", "Submitted", None, None, applied_on=None)])                                  # an active-pursuit page
+        counts = network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)
+        applied, interview = counts["by_class"]["applied"], counts["by_class"]["interview"]
+        self.assertEqual((applied["considered"], applied["with_leads"], applied["without_leads"]), (4, 3, 1))
+        self.assertEqual((interview["considered"], interview["with_leads"]), (1, 1))                                                     # only the upcoming one
+        self.assertEqual((counts["pursuit_source"], counts["by_class"]["admitted_job"]["considered"]), ("ok", 3))
+        self.assertGreaterEqual(counts["distinct_with_leads"], 2)
+        for text in ("Acme", "WidgetCo", "Analyst", "2026-10-09"):
+            self.assertNotIn(text, repr(counts))
+
+    def test_an_unreadable_or_degraded_pipeline_is_reported_never_a_silent_zero(self):
+        conn = seeded()
+        self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "unavailable")             # no snapshot row at all
+        save_pipeline(conn, [pipeline_row("Acme Corp", "Engineer")], reasons=["CALENDAR_UNAVAILABLE"])
+        self.assertEqual(network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["pursuit_source"], "carried")
+
+    def test_a_pipeline_row_without_a_company_is_ignored_and_a_company_with_no_key_is_counted(self):
+        conn = seeded()
+        save_pipeline(conn, [pipeline_row("", "Engineer"), pipeline_row("Inc.", "Engineer")])
+        applied = network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)["by_class"]["applied"]
+        self.assertEqual((applied["considered"], applied["without_company_key"]), (1, 1))
 
     def test_an_empty_roster_is_a_failure_not_zero_leads(self):
         conn = seeded()
         conn.raw.execute("DELETE FROM v7_network_positions")
         with self.assertRaises(NetworkError) as ctx:
-            network_leads.run(0, False, connection=conn, today=TODAY)
+            network_leads.run(0, False, connection=conn, today=TODAY, now=NOW)
         self.assertEqual(str(ctx.exception), "NETWORK_NO_ROSTER")
 
     def test_a_missing_table_fails_with_a_fixed_code(self):
         with self.assertRaises(NetworkError) as ctx:
-            network_leads.run(0, False, connection=MySQLite(), today=TODAY)
+            network_leads.run(0, False, connection=MySQLite(), today=TODAY, now=NOW)
         self.assertEqual(str(ctx.exception), "NETWORK_MATCH_READ_FAILED")
 
-    def test_the_stage_is_registered_and_creates_no_table(self):
+    def test_the_stage_is_registered_reads_only_and_creates_no_table(self):
         self.assertEqual(run.STAGES["network-match"].target, ("lifeos.sources.network_leads", "run"))
-        self.assertNotIn("CREATE TABLE", open(network_leads.__file__).read())
+        text = pathlib.Path(network_leads.__file__).read_text()
+        for banned in ("CREATE TABLE", "INSERT", "UPDATE", "DELETE", "snapshot.save", "call_once", "Client("):
+            self.assertNotIn(banned, text)
 
 
 if __name__ == "__main__":
