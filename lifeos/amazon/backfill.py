@@ -39,6 +39,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, inge
             total[key] += counts.get(key, 0)
         for reason, n in (counts.get("review_why") or {}).items():
             total["review_why"][reason] = total["review_why"].get(reason, 0) + n
+        for reason, n in (counts.get("ambiguous_shape") or {}).items():
+            total.setdefault("ambiguous_shape", {})[reason] = total.get("ambiguous_shape", {}).get(reason, 0) + n
         for reason, n in (counts.get("conflict_why") or {}).items():
             total.setdefault("conflict_why", {})[reason] = total.get("conflict_why", {}).get(reason, 0) + n
     return total

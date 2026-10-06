@@ -271,6 +271,11 @@ def _gmail_ids(gmail, limit, query):
         raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
 
 
+def parsed_sender(message):
+    """The allowlisted sender's kind (never an address): ORDERED, SHIPPED, DELIVERED or OTHER."""
+    return events.SENDERS.get(events._sender(message.get("sender")), "OTHER")
+
+
 def _note_conflict(counts, cause, existing, received, now):
     """Counts only: why an order went to REVIEW, whether it already held data (a flip) or was created empty, and whether its mail is recent (30 days)."""
     why = counts.setdefault("conflict_why", {})
@@ -323,6 +328,10 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                     counts["review"] += 1
                     why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
                     why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
+                    if parsed.get("reason") == "ORDER_ID_AMBIGUOUS":                  # counts only: how many orders, how many links, which sender
+                        shape = counts.setdefault("ambiguous_shape", {})
+                        key = f"{events.ambiguity_shape(message)},from={parsed_sender(message)}"
+                        shape[key] = shape.get(key, 0) + 1
                     if parsed.get("order_id"):
                         review_by_order.setdefault(parsed["order_id"], []).append(message)
                     continue
