@@ -4,6 +4,7 @@ HIRING_CARD_BLOCK_ID, HIRING_STATUS_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the 
 write the whole page outside those two blocks is digested; after it the region is re-read and the digest must be identical. Any mismatch, any wrong shape, any ambiguity
 raises: nothing is created, moved or guessed. Fixed codes only."""
 import json
+import re
 
 from lifeos.platform import report_region as R, router
 from lifeos.platform.notion_client import Client
@@ -36,6 +37,10 @@ def validate(client, environ):
         raise fail("NOT_CONFIGURED")
     if M.TITLE != router.HIRING_REGION:
         raise fail("TITLE_DRIFT")
+    for name in ("HIRING_CARD_BLOCK_ID", "HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID"):
+        raw = (environ.get(name) or "").strip().replace("-", "")
+        if raw and not re.fullmatch(r"[0-9a-fA-F]{32}", raw):             # a pasted link or stray text: say which secret, never its value
+            raise fail(f"ID_INVALID:{name}:len{len(raw)}")
     status_id, table_id = (environ.get("HIRING_STATUS_BLOCK_ID") or "").strip(), (environ.get("HIRING_TABLE_BLOCK_ID") or "").strip()
     if not status_id or not table_id:                            # all three blocks are pinned by id: the heading, the status paragraph and the table
         raise fail("NOT_CONFIGURED")

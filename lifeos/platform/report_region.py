@@ -248,25 +248,33 @@ def floating_region(client, block_id, title, fail):
     """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
     Accepted shape ONLY: a heading_3 whose text is exactly `title`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
     columns; the block after them (if any) is neither a paragraph nor a table. Anything else raises: no write is ever attempted on an ambiguous region."""
-    meta = _meta(client, block_id)
+    def at(stage, call):
+        try:
+            return call()
+        except NotionError as error:
+            if type(error).__name__ == type(fail("X")).__name__:
+                raise
+            raise fail(f"FLOATING_{stage}_{error}") from None             # the failing call's name and Notion's status, never an id or text
+
+    meta = at("HEADING_GET", lambda: _meta(client, block_id))
     if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or plain(meta).strip() != title:
         raise fail("FLOATING_HEADING_INVALID")
     ancestors = []
-    page_id = page_of(client, meta, fail, ancestors)
+    page_id = at("PARENT_WALK", lambda: page_of(client, meta, fail, ancestors))
     if "callout" in ancestors:
         raise fail("FLOATING_WRAPPED_IN_CALLOUT")
     parent = meta["parent"]
     parent_id = parent.get("block_id") or parent.get("page_id")
-    siblings = children(client, parent_id, fail)
-    at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
-    if len(at) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
+    siblings = at("SIBLINGS", lambda: children(client, parent_id, fail))
+    found = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
+    if len(found) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
         raise fail("FLOATING_HEADING_AMBIGUOUS")
-    i = at[0]
+    i = found[0]
     status, table = (siblings[i + 1:i + 2] or [None])[0], (siblings[i + 2:i + 3] or [None])[0]
     after = (siblings[i + 3:i + 4] or [None])[0]
     if not status or status.get("type") != "paragraph" or not table or table.get("type") != "table" or (after and after.get("type") in ("paragraph", "table")):
         raise fail("FLOATING_SHAPE_INVALID")
-    rows = children(client, table["id"], fail)
+    rows = at("TABLE_ROWS", lambda: children(client, table["id"], fail))
     spec = table.get("table") or {}
     if spec.get("table_width") != 4 or spec.get("has_column_header") is not True or not rows or any(r.get("type") != "table_row" for r in rows):
         raise fail("FLOATING_TABLE_INVALID")

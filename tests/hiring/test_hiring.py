@@ -19,7 +19,7 @@ CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 6, 14, 0, tzinfo=CT)
 OK = {"ledger": True, "parents": True, "calendar": True}
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ENV = {"HIRING_CARD_BLOCK_ID": "hire-h3", "HIRING_STATUS_BLOCK_ID": "hire-status", "HIRING_TABLE_BLOCK_ID": "hire-table", "JIRA_CARD_BLOCK_ID": "jira-card", "NOTION_JIRA_TOKEN": "t"}
+ENV = {"HIRING_CARD_BLOCK_ID": "0000000000000000000000000000a001", "HIRING_STATUS_BLOCK_ID": "0000000000000000000000000000a002", "HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000a003", "JIRA_CARD_BLOCK_ID": "0000000000000000000000000000a004", "NOTION_JIRA_TOKEN": "t"}
 
 
 def at(days=0, hour=10):
@@ -179,16 +179,16 @@ def page(extra_rows=0, wrapped=False, headers=M.HEADERS, duplicate=False, status
     if wrapped:
         t.add("wrap", "callout", "right")
         parent_id = "wrap"
-    t.add("hire-h3", "heading_3", parent_id, text=heading)
-    t.add("hire-status", status_kind, parent_id, text="old status")
+    t.add("0000000000000000000000000000a001", "heading_3", parent_id, text=heading)
+    t.add("0000000000000000000000000000a002", status_kind, parent_id, text="old status")
     if with_table:
-        t.table("hire-table", parent_id, [list(headers)] + [[f"old {n}", "s", "a", "Needs Notes"] for n in range(extra_rows)])
+        t.table("0000000000000000000000000000a003", parent_id, [list(headers)] + [[f"old {n}", "s", "a", "Needs Notes"] for n in range(extra_rows)])
     if duplicate:
-        t.add("hire-h3-2", "heading_3", parent_id, text=heading)
+        t.add("0000000000000000000000000000a001-2", "heading_3", parent_id, text=heading)
     if after == "callout":
-        t.add("jira-card", "callout", "right")
-        t.add("jira-h", "heading_3", "jira-card", text="JIRA Execution")
-        t.add("jira-p", "paragraph", "jira-card", text="3 open")
+        t.add("0000000000000000000000000000a004", "callout", "right")
+        t.add("jira-h", "heading_3", "0000000000000000000000000000a004", text="JIRA Execution")
+        t.add("jira-p", "paragraph", "0000000000000000000000000000a004", text="3 open")
         t.add("clients", "callout", "right")
         t.add("clients-h", "heading_3", "clients", text="Clients & Projects")
         t.add("mail-card", "callout", "right")
@@ -209,7 +209,7 @@ def writes(tree):
     return [e for e in tree.log if e[0] != "GET"]
 
 
-def table_state(tree, table="hire-table"):
+def table_state(tree, table="0000000000000000000000000000a003"):
     out = []
     for row_id in tree.kids[table][1:]:
         row = tree.blocks[row_id]
@@ -220,21 +220,21 @@ def table_state(tree, table="hire-table"):
 class RegionWriterTests(unittest.TestCase):
     def test_the_exact_heading_status_table_shape_is_written_in_place_and_read_back(self):
         t = page(extra_rows=1)
-        before = t.snapshot(skip={"hire-status", "hire-table", "hire-table-r0", "hire-table-r1"})
+        before = t.snapshot(skip={"0000000000000000000000000000a002", "0000000000000000000000000000a003", "0000000000000000000000000000a003-r0", "0000000000000000000000000000a003-r1"})
         done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
         self.assertTrue(done["verified"])
         self.assertEqual((done["rows_changed"], done["rows_added"], done["rows_removed"]), (1, 1, 0))
         self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
-        self.assertEqual(R.plain(t.blocks["hire-status"]), "Updated 2:00 PM CT · 2 active")
-        self.assertEqual(t.snapshot(skip={"hire-status", "hire-table"} | set(t.kids["hire-table"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("hire-table-r")})
-        self.assertEqual(R.plain(t.blocks["hire-h3"]), "📈 Hiring Pipeline")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "Updated 2:00 PM CT · 2 active")
+        self.assertEqual(t.snapshot(skip={"0000000000000000000000000000a002", "0000000000000000000000000000a003"} | set(t.kids["0000000000000000000000000000a003"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("0000000000000000000000000000a003-r")})
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline")
 
     def test_the_header_row_and_the_heading_are_never_written(self):
         t = page(extra_rows=3)
         card.present(t, ENV, "Updated", WANT[:1], True)
         patched = [path for method, path in writes(t) if method == "PATCH"]
-        self.assertFalse(any("hire-h3" in p or "hire-table-r0" in p for p in patched))
-        self.assertEqual(len(t.kids["hire-table"]), 2)                                         # header + one row; the surplus rows were removed
+        self.assertFalse(any("0000000000000000000000000000a001" in p or "0000000000000000000000000000a003-r0" in p for p in patched))
+        self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 2)                                         # header + one row; the surplus rows were removed
 
     def test_a_dry_run_validates_and_writes_nothing(self):
         t = page(extra_rows=1)
@@ -247,7 +247,7 @@ class RegionWriterTests(unittest.TestCase):
         t.log.clear()
         again = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
         self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"], writes(t)), (0, 0, 0, []))
-        self.assertEqual(len(t.kids["hire-table"]), 3)
+        self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 3)
 
     def test_a_callout_wrapped_hiring_surface_is_rejected_without_a_write(self):
         t = page(wrapped=True)
@@ -265,14 +265,14 @@ class RegionWriterTests(unittest.TestCase):
             self.assertEqual(writes(t), [])
         t = page()
         with self.assertRaises(stage.NotionError):
-            card.present(t, {**ENV, "HIRING_CARD_BLOCK_ID": "nope"}, "x", WANT, True)
+            card.present(t, {**ENV, "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000b003"}, "x", WANT, True)
         self.assertEqual(writes(t), [])
         with self.assertRaises(snapshot.HiringError):
             card.present(page(), {k: v for k, v in ENV.items() if k != "HIRING_CARD_BLOCK_ID"}, "x", WANT, True)
         with self.assertRaises(stage.NotionError):
-            card.present(page(), {**ENV, "HIRING_CARD_BLOCK_ID": "nope"}, "x", WANT, True)
+            card.present(page(), {**ENV, "HIRING_CARD_BLOCK_ID": "0000000000000000000000000000b003"}, "x", WANT, True)
         t = page()
-        t.blocks["hire-h3"]["type"] = "heading_2"
+        t.blocks["0000000000000000000000000000a001"]["type"] = "heading_2"
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT, True)
 
@@ -283,12 +283,20 @@ class RegionWriterTests(unittest.TestCase):
                 card.present(t, {k: v for k, v in ENV.items() if k != missing}, "x", WANT, True)
             self.assertEqual(str(error.exception), "HIRING_NOT_CONFIGURED")
             self.assertEqual(writes(t), [])
-        for wrong in ({"HIRING_STATUS_BLOCK_ID": "cal-p"}, {"HIRING_TABLE_BLOCK_ID": "other-table"}):
+        for wrong in ({"HIRING_STATUS_BLOCK_ID": "0000000000000000000000000000b001"}, {"HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000b002"}):
             t = page()
             with self.assertRaises(snapshot.HiringError) as error:
                 card.present(t, {**ENV, **wrong}, "x", WANT, True)
             self.assertEqual(str(error.exception), "HIRING_PINNED_BLOCK_MISMATCH")
             self.assertEqual(writes(t), [])
+
+    def test_a_pasted_link_or_stray_text_is_named_by_secret_not_value(self):
+        t = page()
+        with self.assertRaises(snapshot.HiringError) as error:
+            card.present(t, {**ENV, "HIRING_TABLE_BLOCK_ID": "https://example.test/page#abc"}, "x", WANT, True)
+        self.assertRegex(str(error.exception), r"^HIRING_ID_INVALID:HIRING_TABLE_BLOCK_ID:len\d+$")
+        self.assertNotIn("example", str(error.exception))
+        self.assertEqual(writes(t), [])
 
     def test_a_changed_shape_is_rejected(self):
         for kwargs, code in (({"headers": ("Company", "Stage", "Action", "Source")}, "HEADERS_CHANGED"), ({"status_kind": "callout"}, "FLOATING_SHAPE_INVALID"), ({"with_table": False}, "FLOATING_SHAPE_INVALID")):
@@ -298,11 +306,11 @@ class RegionWriterTests(unittest.TestCase):
             self.assertEqual(str(error.exception), "HIRING_" + code)
             self.assertEqual(writes(t), [])
         t = page()
-        t.add("extra-p", "paragraph", "right", text="an unexpected paragraph", index=t.kids["right"].index("jira-card"))        # the region now runs on past its table
+        t.add("extra-p", "paragraph", "right", text="an unexpected paragraph", index=t.kids["right"].index("0000000000000000000000000000a004"))        # the region now runs on past its table
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT, True)
         t = page()
-        t.blocks["hire-table"]["table"]["table_width"] = 5
+        t.blocks["0000000000000000000000000000a003"]["table"]["table_width"] = 5
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT, True)
 
@@ -310,7 +318,7 @@ class RegionWriterTests(unittest.TestCase):
         t = page()
         t.blocks["cols"]["parent"] = {"type": "page_id", "page_id": "page-2"}                   # the Jira card now sits on a different page than the anchor's column
         t.blocks["left"]["parent"] = {"type": "block_id", "block_id": "cols"}
-        t.blocks["jira-card"]["parent"] = {"type": "page_id", "page_id": "page-9"}
+        t.blocks["0000000000000000000000000000a004"]["parent"] = {"type": "page_id", "page_id": "page-9"}
         with self.assertRaises(snapshot.HiringError) as error:
             card.present(t, ENV, "x", WANT, True)
         self.assertEqual(str(error.exception), "HIRING_WRONG_PAGE")
@@ -318,35 +326,35 @@ class RegionWriterTests(unittest.TestCase):
     def test_every_other_region_and_the_notes_are_proven_unchanged_and_a_change_fails_closed(self):
         for victim in ("clients-h", "mail-p", "cal-p", "jira-p", "notes"):
             t = page()
-            t.trip = ("hire-status", lambda tree, v=victim: tree.blocks[v][tree.blocks[v]["type"]].update({"rich_text": rich("changed by someone else")}))
+            t.trip = ("0000000000000000000000000000a002", lambda tree, v=victim: tree.blocks[v][tree.blocks[v]["type"]].update({"rich_text": rich("changed by someone else")}))
             with self.assertRaises(snapshot.HiringError) as error:
                 card.present(t, ENV, "x", WANT[:1], True)
             self.assertEqual(str(error.exception), "HIRING_PROTECTED_REGION_CHANGED", victim)
         t = page()                                                                              # a block that vanishes or a new one that appears is a change too
-        t.trip = ("hire-status", lambda tree: tree.add("sneaky", "paragraph", "page-1", text="new"))
+        t.trip = ("0000000000000000000000000000a002", lambda tree: tree.add("sneaky", "paragraph", "page-1", text="new"))
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT[:1], True)
 
     def test_the_heading_is_immutable_during_a_write(self):
         t = page()
-        t.trip = ("hire-status", lambda tree: tree.blocks["hire-h3"]["heading_3"].update({"rich_text": rich("📈 Hiring Pipeline ")}))
+        t.trip = ("0000000000000000000000000000a002", lambda tree: tree.blocks["0000000000000000000000000000a001"]["heading_3"].update({"rich_text": rich("📈 Hiring Pipeline ")}))
         with self.assertRaises(snapshot.HiringError) as error:
             card.present(t, ENV, "x", WANT[:1], True)
         self.assertIn(str(error.exception), ("HIRING_HEADING_CHANGED", "HIRING_FLOATING_HEADING_INVALID"))
 
     def test_the_region_chatgpt_writes_is_outside_the_proof_but_never_touched(self):
         t = page()
-        t.trip = ("hire-status", lambda tree: tree.blocks["dcc-p"]["paragraph"].update({"rich_text": rich("chatgpt rewrote it")}))
+        t.trip = ("0000000000000000000000000000a002", lambda tree: tree.blocks["dcc-p"]["paragraph"].update({"rich_text": rich("chatgpt rewrote it")}))
         self.assertTrue(card.present(t, ENV, "x", WANT[:1], True)["verified"])
         self.assertFalse(any("dcc" in path for _, path in writes(t)))
 
     def test_a_failed_write_leaves_an_honest_degraded_line_and_raises(self):
         t = page(extra_rows=1)
-        t.fail_write = "hire-table-r1"
+        t.fail_write = "0000000000000000000000000000a003-r1"
         with self.assertRaises(snapshot.HiringError) as error:
             card.present(t, ENV, "Updated 2:00 PM CT", WANT, True)
         self.assertEqual(str(error.exception), "HIRING_WRITE_FAILED")
-        self.assertTrue(R.plain(t.blocks["hire-status"]).startswith("DEGRADED · Hiring Pipeline update failed"))
+        self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("DEGRADED · Hiring Pipeline update failed"))
 
     def test_a_read_back_that_does_not_match_fails(self):
         t = page(extra_rows=1)
@@ -354,8 +362,8 @@ class RegionWriterTests(unittest.TestCase):
 
         def lying(method, path, body=None):
             result = original(method, path, body)
-            if method == "PATCH" and "hire-table-r1" in path:
-                t.blocks["hire-table-r1"]["table_row"]["cells"][0][0]["plain_text"] = "something else"
+            if method == "PATCH" and "0000000000000000000000000000a003-r1" in path:
+                t.blocks["0000000000000000000000000000a003-r1"]["table_row"]["cells"][0][0]["plain_text"] = "something else"
             return result
         t.call = lying
         with self.assertRaises(snapshot.HiringError) as error:
@@ -367,7 +375,7 @@ class RegionWriterTests(unittest.TestCase):
         rows_before = table_state(t)
         card.present(t, ENV, "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT", None, True)
         self.assertEqual(table_state(t), rows_before)
-        self.assertEqual(R.plain(t.blocks["hire-status"]), "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT")
 
 
 class ReciprocalProtectionTests(unittest.TestCase):
@@ -386,21 +394,21 @@ class ReciprocalProtectionTests(unittest.TestCase):
     def test_other_writers_digest_the_hiring_region_and_notice_a_change_to_it(self):
         t = page(extra_rows=1)
         fail = lambda code: RuntimeError(code)                                                 # noqa: E731
-        ids = {router.JIRA_REGION: "jira-card", router.HIRING_REGION: "hire-h3"}
+        ids = {router.JIRA_REGION: "0000000000000000000000000000a004", router.HIRING_REGION: "0000000000000000000000000000a001"}
         before = R.protected(t, ids, fail)
         self.assertEqual(set(before), set(ids))
         self.assertTrue(router.protected_intact("v7-mail-alerts", before, R.protected(t, ids, fail)))
-        t.blocks["hire-table-r1"]["table_row"]["cells"][0][0]["plain_text"] = "edited"
+        t.blocks["0000000000000000000000000000a003-r1"]["table_row"]["cells"][0][0]["plain_text"] = "edited"
         self.assertFalse(router.protected_intact("v7-mail-alerts", before, R.protected(t, ids, fail)))
-        t.blocks["hire-status"]["paragraph"]["rich_text"] = rich("another status")
+        t.blocks["0000000000000000000000000000a002"]["paragraph"]["rich_text"] = rich("another status")
         self.assertFalse(router.protected_intact("v7-mail-alerts", before, R.protected(t, ids, fail)))
 
     def test_an_unconfigured_hiring_anchor_does_not_break_the_other_cards(self):
         t = page()
-        got = R.protected(t, {router.JIRA_REGION: "jira-card", router.HIRING_REGION: ""}, lambda code: RuntimeError(code))
+        got = R.protected(t, {router.JIRA_REGION: "0000000000000000000000000000a004", router.HIRING_REGION: ""}, lambda code: RuntimeError(code))
         self.assertEqual(set(got), {router.JIRA_REGION})
         with self.assertRaises(RuntimeError):
-            R.protected(t, {router.JIRA_REGION: "", router.HIRING_REGION: "hire-h3"}, lambda code: RuntimeError(code))      # a missing mandatory id still fails
+            R.protected(t, {router.JIRA_REGION: "", router.HIRING_REGION: "0000000000000000000000000000a001"}, lambda code: RuntimeError(code))      # a missing mandatory id still fails
 
     def test_every_existing_card_that_proves_its_neighbours_also_proves_the_hiring_region(self):
         from lifeos.amazon import card as amazon
@@ -501,7 +509,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
         self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing · Interview Tomorrow 10:00 AM CT", None),
                                            ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Notes", "https://www.notion.so/aaaa1111000040008000000000000001")]])
-        self.assertEqual(R.plain(t.blocks["hire-status"]), "Updated 2:00 PM CT · 1 active")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "Updated 2:00 PM CT · 1 active")
         t.log.clear()
         again = run(t, store, events=events)
         self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))
@@ -522,7 +530,7 @@ class RuntimePathTests(unittest.TestCase):
         for kwargs in ({"ledger_broken": True}, {"pages_ok": False}, {"calendar_broken": True}):
             counts = run(t, store, now=NOW + timedelta(hours=1), **kwargs)
             self.assertEqual(counts["status"], "degraded", kwargs)
-            self.assertTrue(R.plain(t.blocks["hire-status"]).startswith("DEGRADED"), kwargs)
+            self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("DEGRADED"), kwargs)
             self.assertIn("(last accepted)" if "calendar_broken" in kwargs else "Interviewing", " ".join(c[0] for c in table_state(t)[0]))
         self.assertEqual(store.row["accepted_at"], NOW.isoformat())                              # carried, never refreshed by a degraded run
 
@@ -532,7 +540,7 @@ class RuntimePathTests(unittest.TestCase):
         counts = run(t, store, ledger_broken=True)
         self.assertEqual(counts["status"], "unavailable")
         self.assertEqual((table_state(t), store.saves), (before, 0))
-        self.assertIn("unavailable", R.plain(t.blocks["hire-status"]))
+        self.assertIn("unavailable", R.plain(t.blocks["0000000000000000000000000000a002"]))
 
     def test_cancelled_declined_and_all_day_events_are_not_evidence(self):
         mine = [{"self": True, "responseStatus": "declined"}]
@@ -612,7 +620,7 @@ class GuardrailTests(unittest.TestCase):
     def test_the_stage_never_returns_names_or_ids(self):
         t, store = page(), FakeStore()
         out = json.dumps(run(t, store))
-        for private in ("Acme", "Senior Program Manager", "aaaa1111", "hire-h3"):
+        for private in ("Acme", "Senior Program Manager", "aaaa1111", "0000000000000000000000000000a001"):
             self.assertNotIn(private, out)
 
 
