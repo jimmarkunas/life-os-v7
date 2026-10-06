@@ -58,6 +58,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `safety-fit-golden` -> `lifeos.jobs.safety:run_fit_golden`
 - `safety-sql-smoke` -> `lifeos.jobs.safety:run_sql_smoke`
 - `scale-up-holds` -> `lifeos.jobs.holds:run`
+- `scale-up-links` -> `lifeos.jobs.linkcheck:run`
 - `sponsors` -> `lifeos.sources.sponsor_register:run`
 - `sync-seen` -> `lifeos.run:_sync_seen`
 - `web` -> `lifeos.sources.web.run:run`
@@ -141,6 +142,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/jsonld.py`: schema.org JobPosting extraction from a page: the most reliable public source of description + posting date.
 - `lifeos/jobs/lanes.py`: Lane policy: one data-driven qualification for every acquisition lane (docs/LANES.md).
 - `lifeos/jobs/ledger.py`: Production target guard: before any Notion write (publish, audit trash, retention trash) verify the configured data source really is the LIFE OS Job Ledger, by the proper
+- `lifeos/jobs/linkcheck.py`: Counts-only diagnostic: why do parked Scale-Up roles keep failing their link check? Reads v7_jobs and each parked role's own public job page, writes nothing, prints no ti
 - `lifeos/jobs/meta.py`: Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route, Compensation. Pure: no I/O. Only populated fields are re
 - `lifeos/jobs/names.py`: Employer-name comparison for Jobs: the hiring-pipeline handoff and the sponsor register. The normalizer and the token rules live in `lifeos.platform.names` (shared with I
 - `lifeos/jobs/progression.py`: Does a protected human pursuit exist for this job? Retention asks here and never reads a Notion stage field.
@@ -412,3 +414,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D154: Recruiters runtime slice 1 (RECR-1.2): read-only mail to the existing Recruiters data source (2026-10-06)
 - D155: Recruiters: tuned to the shapes real mail has (2026-10-06)
 - D156: Recruiters: Last Contact is kept to the minute (2026-10-06)
+- D157: Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)
