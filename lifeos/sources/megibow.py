@@ -19,7 +19,7 @@ from lifeos.platform.outlook import OutlookError
 FORWARD_DAYS = 60
 DASHBOARD_PAGE = "3cf3c5a0-5926-8008-acfa-c0b4765caa92"        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
 REVIEW_SOURCE = "23953290-4ca5-4d94-802c-656aae0ddfc7"        # the MegIBOW Review data source
-CUTOVER_DEFAULT = "2026-10-05"
+CUTOVER_DEFAULT = "2026-08-17"          # Jim, Oct 6: V7 counts every visible week from the first one (it was Oct 5); MEGIBOW_CUTOVER can still override
 
 
 class MegibowError(NotionError):
