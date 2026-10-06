@@ -323,6 +323,14 @@ jobs:
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
         run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
+      - id: network_surface
+        continue-on-error: true
+        name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 40 pages a run, rotating; a failure never fails the Jobs run but always warns)
+        if: ${{ env.PIPELINE == 'true' }}
+        run: python -m lifeos.run network-surface --limit 40 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Network surface warning (never fails the run; DEGRADED is explicit evidence)
+        if: ${{ always() && steps.network_surface.outcome == 'failure' }}
+        run: echo "::warning title=Network surface::NETWORK_SURFACE_DEGRADED or failed; Ledger Network Leads blocks may be stale, Jobs is unaffected. See the step log for the counts."
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; a private Notion page, counts only in the log)

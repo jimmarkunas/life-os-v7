@@ -9,7 +9,6 @@ marker still opens the body); read Jim's Dismiss and Same company ticks from the
 aliases applied, five at most); then create, replace, leave or REMOVE the owned block (no leads removes an existing block, never an empty placeholder) and read it back, proving nothing
 outside it changed. Any failed read, guard, write or read-back is counted and the run ends DEGRADED (NETWORK_SURFACE_DEGRADED): it is never turned into zero leads or a silent success.
 The tables v7_network_dismissals and v7_network_aliases are created only by a live run. A page budget (`limit`) bounds one run; pages with leads come first and the rest rotate daily."""
-import hashlib
 import json
 import os
 from datetime import date, datetime, timezone
@@ -111,10 +110,25 @@ def _decisions(owned, full, job_key, ckey):
     return dismissals, aliases, stale
 
 
-def _order(surfaced, others, today):
-    first = sorted(surfaced)
-    rest = sorted(others, key=lambda o: hashlib.sha256(f"{o[0]}{today.isoformat()}".encode()).hexdigest())
-    return first, rest
+def _window(items, size, hour):
+    """`size` items starting at an offset that advances with the hour, wrapping, so successive runs cover the whole list (no stored state)."""
+    if not items or size <= 0:
+        return []
+    start = (hour * size) % len(items)
+    return (items[start:] + items[:start])[:size]
+
+
+def _queue(surfaced, others, with_leads, budget, now):
+    """-> (pages to read this run, number of candidate pages). Half the budget (at least one page) goes to targets that have leads to show, rotating through them; the rest rotates through
+    every other page (targets with nothing to show and pages that stopped being targets, whose old blocks must still be found and removed). Over successive hourly runs every page is reached."""
+    hour = int(now.timestamp() // 3600)
+    shown = sorted(k for k in surfaced if k in with_leads)
+    rest = sorted(k for k in surfaced if k not in with_leads) + sorted(o[0] for o in others)
+    first = min(len(shown), max(1, (budget + 1) // 2)) if budget else 0
+    picks = _window(shown, first, hour) + _window(rest, budget - first if rest else 0, hour)
+    pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
+    pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
+    return [(k,) + pages[k] for k in picks], len(shown) + len(rest)
 
 
 def run(limit, live, environ=os.environ, connection=None, client=None, now=None, today=None):
@@ -159,9 +173,9 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["degraded"] = True
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
-    first, rest = _order(surfaced, others, today)
-    queue = [(key,) + surfaced[key][:3] + (True,) for key in first] + [o + (False,) for o in rest]
-    for key, page, company, title, target in queue[:budget]:
+    with_leads = {k for k, (page, company, title, classes) in surfaced.items() if _leads(company, title, index, details, today, aliases, dismissed, k)[0]}
+    queue, candidates = _queue(surfaced, others, with_leads, budget, now)
+    for key, page, company, title, target in queue:
         try:
             _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts)
         except (NotionError, NetworkError) as error:
@@ -169,7 +183,7 @@ def _run(limit, live, environ, connection, client, now, today):
             counts["degraded"] = True
             code = str(error)[:48]
             counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
-    counts["pages_deferred"] = max(len(queue) - budget, 0)
+    counts["pages_deferred"] = max(candidates - len(queue), 0)
     return _finish(counts)
 
 
