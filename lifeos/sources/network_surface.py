@@ -119,16 +119,24 @@ def _window(items, size, hour):
 
 
 def _queue(surfaced, others, with_leads, budget, now):
-    """-> (pages to read this run, number of candidate pages). Half the budget (at least one page) goes to targets that have leads to show, rotating through them; the rest rotates through
-    every other page (targets with nothing to show and pages that stopped being targets, whose old blocks must still be found and removed). Over successive hourly runs every page is reached."""
+    """-> (pages to read this run, number of candidate pages). Two pools rotate by the hour: targets that have leads to show, and every other page (targets with nothing to show and pages that
+    stopped being targets, whose old blocks must still be found and removed). The budget is split in proportion to the pool sizes (at least one page each while a pool is not empty), so both pools
+    complete a full cycle in the same time: every page is reached within ceil(candidates / budget) runs (40 hours for 1,600 pages at 40 an hour; a larger --limit shortens it). A leads-bearing target
+    is therefore revisited no faster than any other page; there is no priority that could starve the cleanup pool."""
     hour = int(now.timestamp() // 3600)
     shown = sorted(k for k in surfaced if k in with_leads)
     rest = sorted(k for k in surfaced if k not in with_leads) + sorted(o[0] for o in others)
-    first = min(len(shown), max(1, (budget + 1) // 2)) if budget else 0
-    picks = _window(shown, first, hour) + _window(rest, budget - first if rest else 0, hour)
+    total = len(shown) + len(rest)
+    if not budget or not total:
+        return [], total
+    if not shown or not rest:
+        first = budget if shown else 0
+    else:
+        first = min(len(shown), max(1, round(budget * len(shown) / total)), budget - 1) if budget > 1 else 1
+    picks = _window(shown, first, hour) + _window(rest, budget - first, hour)
     pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
     pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
-    return [(k,) + pages[k] for k in picks], len(shown) + len(rest)
+    return [(k,) + pages[k] for k in picks], total
 
 
 def run(limit, live, environ=os.environ, connection=None, client=None, now=None, today=None):

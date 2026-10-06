@@ -231,6 +231,27 @@ class Corrections(unittest.TestCase):
         self.assertEqual([owned_count(ledger, f"page-{n}") for n in (1, 2, 3)], [1, 1, 1])                  # every target with leads was reached within a few two-page runs
         self.assertEqual(owned_count(ledger, "page-4"), 0)
 
+    def test_a_production_sized_ledger_is_covered_within_the_stated_bound_with_no_starvation(self):
+        from datetime import timedelta
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 40                                          # the live shape: 1,075 targets (154 with leads) and 525 other published pages
+        surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
+        others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
+        with_leads = {f"t{i:04d}" for i in range(n_leads)}
+        total = n_leads + n_other + n_nontarget
+        bound = -(-total // budget)                                                                        # ceil(1,600 / 40) = 40 hours
+        last, worst = {}, 0
+        for hour in range(bound * 4):
+            picked, candidates = network_surface._queue(surfaced, others, with_leads, budget, NOW + timedelta(hours=hour))
+            self.assertEqual((len(picked), candidates), (budget, total))
+            for key, *_ in picked:
+                worst = max(worst, hour - last.get(key, -1))
+                last[key] = hour
+        self.assertEqual(len(last), total)                                                                 # no page is starved, cleanup pool included
+        self.assertLessEqual(worst, bound + 1)                                                             # and no page waits longer than the stated bound (plus one run of rounding)
+        small = network_surface._queue({"a": ("pa", "C", "R", set())}, [], {"a"}, 1, NOW)[0]
+        self.assertEqual([k for k, *_ in small], ["a"])                                                    # an explicit limit of one still serves a page
+        self.assertEqual(network_surface._queue({}, [], set(), 40, NOW), ([], 0))
+
     def test_a_failed_append_leaves_the_previously_accepted_block_untouched(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
