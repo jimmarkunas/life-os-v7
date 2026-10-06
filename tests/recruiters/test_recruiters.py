@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import pathlib
 import re
@@ -82,6 +84,18 @@ class RealShapeTests(unittest.TestCase):
         self.assertEqual(one[0], C.OTHER)
         nameless = classify(mail(sender_name="Staffing Desk", address="desk@example.com", body=body))
         self.assertEqual(nameless[0], C.OTHER)
+
+
+class MinutePrecisionTests(unittest.TestCase):
+    def test_last_contact_is_kept_to_the_minute_so_a_replay_finds_nothing_to_update(self):
+        notion = FakeRecruiters()
+        msg = signed(received="2026-10-07T15:08:23+00:00")
+        run([msg], notion, live=True)
+        notion.pages[0]["properties"]["Last Contact"]["date"]["start"] = "2026-10-07T15:08:00.000+00:00"      # Notion keeps minutes only
+        again = run([msg], notion, live=True)
+        self.assertEqual((again["existing"], again["updated"], again["failed"], len(notion.writes)), (1, 0, 0, 1))
+        later = run([signed(received="2026-10-07T15:09:59+00:00")], notion, live=True)
+        self.assertEqual((later["updated"], later["failed"]), (1, 0))
 
 
 class WeekTests(unittest.TestCase):
@@ -187,7 +201,7 @@ class StageTests(unittest.TestCase):
         notion = FakeRecruiters()
         broken = ReadOnlyGmail([signed()])
         broken.list_ids_complete = lambda *a, **k: (_ for _ in ()).throw(platform_mail.GmailError("GMAIL_LISTING_INCOMPLETE"))
-        with self.assertRaises(store.RecruitersError):
+        with self.assertRaises(store.RecruitersError), contextlib.redirect_stdout(io.StringIO()):          # the degraded run prints its counts line; keep it out of the test log
             stage.run(0, True, environ={}, gmail=broken, outlook_accounts=[], notion=notion, now=NOW)
         self.assertEqual(notion.writes, [])
 

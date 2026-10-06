@@ -157,3 +157,4 @@ This index is checked by a test: add a line here with every new decision.
 - D153 — Delivery census also reads tracking links (2026-10-06, DEL-1.1)
 - D154 — Recruiters runtime slice 1 (RECR-1.2): read-only mail to the existing Recruiters data source (2026-10-06)
 - D155 — Recruiters: tuned to the shapes real mail has (2026-10-06)
+- D156 — Recruiters: Last Contact is kept to the minute (2026-10-06)
