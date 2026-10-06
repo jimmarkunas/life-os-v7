@@ -42,6 +42,6 @@ jobs:
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
-          AMAZON_SINCE: ${{ inputs.since }}
+          AMAZON_SINCE: ${{ inputs.stage == 'backfill' && inputs.since || '' }}   # backfill only: the 2015-01-01 default must never reach the normal orders window
           STAGE: ${{ inputs.stage }}
         run: python -m lifeos.run "amazon-$([ "$STAGE" = "orders" ] && echo orders || echo "$STAGE")" $([ "$STAGE" = "retention" ] && echo "--limit 200") $([ "${{ inputs.live }}" = "true" ] && [ "$STAGE" != "retention" ] && echo --live)
