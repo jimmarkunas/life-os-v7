@@ -94,22 +94,21 @@ def children(client, block_id):
 
 
 def read_page(client, page_id):
-    """-> (top-level blocks, owned block or None). owned = {"id", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}. A page whose owned block cannot be read raises."""
+    """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}. Normally one; an interrupted replacement can leave two,
+    and the next run converges them (see apply). A page whose owned block cannot be read raises."""
     top = children(client, page_id)
-    owned = None
+    owned = []
     for block in top:
         if block.get("type") != "toggle" or not block.get("has_children", True):
             continue
         inner = children(client, block["id"])
         if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
-            if owned is not None:
-                raise SurfaceError("NETWORK_SURFACE_DUPLICATE_BLOCK")
             ticks = []
             for child in inner[1:]:
                 found = TICK.match(_plain(child)) if child.get("type") == "to_do" else None
                 if found:
                     ticks.append((found.group(1), int(found.group(2)), found.group(3), bool((child.get("to_do") or {}).get("checked"))))
-            owned = {"id": block["id"], "hash": _plain(inner[0])[len(MARK):].strip(), "ticks": ticks}
+            owned.append({"id": block["id"], "hash": _plain(inner[0])[len(MARK):].strip(), "ticks": ticks})
     return top, owned
 
 
@@ -129,27 +128,52 @@ def guard(page, top, job_key, source_id):
     return None
 
 
+def _others(top, owned):
+    ids = {o["id"] for o in owned}
+    return [b["id"] for b in top if b["id"] not in ids]
+
+
+def _verify(client, page_id, others, want, count):
+    """Proves the page holds exactly `count` owned blocks, all with the wanted hash, and that no other top-level block changed."""
+    top, owned = read_page(client, page_id)
+    if _others(top, owned) != others or len(owned) != count or any(o["hash"] != want for o in owned):
+        raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+    return top, owned
+
+
 def apply(client, page_id, top, owned, desired_leads, live):
-    """-> "unchanged" | "created" | "replaced" | "removed" | "none" (and the same prefixed "would_" when not live). Only the owned block is ever touched; the others are proven unchanged."""
+    """-> "unchanged" | "created" | "replaced" | "converged" | "removed" | "none" (prefixed "would_" when not live). Only owned blocks are ever touched; the others are proven unchanged.
+
+    A replacement is recoverable: the new block is appended and PROVEN first, and only then is the previously accepted block retired. If the run is interrupted anywhere in between, the page
+    holds the old and the new block, the old one is still visible, and the next run (the new block's hash is the wanted one) retires the extras and converges. Duplicates never accumulate."""
     want = set_hash(desired_leads)
+    others = _others(top, owned)
+    matching = [o for o in owned if o["hash"] == want] if desired_leads else []
     if not desired_leads:
         action = "removed" if owned else "none"
-    elif owned and owned["hash"] == want:
+    elif matching and len(owned) == 1:
         action = "unchanged"
+    elif matching:
+        action = "converged"                                            # the wanted block is already there; extra (older) owned blocks are retired
     else:
         action = "replaced" if owned else "created"
     if action in ("none", "unchanged"):
         return action
     if not live:
         return "would_" + action
-    others = [b["id"] for b in top if not (owned and b["id"] == owned["id"])]
-    if owned:
-        client.call("DELETE", f"/blocks/{quote(owned['id'], safe='')}")
-    if desired_leads:
+    keep = matching[-1] if matching else None
+    if not desired_leads:
+        retire = list(owned)
+    elif keep:
+        retire = [o for o in owned if o is not keep]
+    else:
         client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [build_block(desired_leads)]})
-    after_top, after_owned = read_page(client, page_id)
-    if [b["id"] for b in after_top if not (after_owned and b["id"] == after_owned["id"])] != others:
-        raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
-    if (after_owned["hash"] if after_owned else "") != want or (not desired_leads) != (after_owned is None):
-        raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+        _, now_owned = read_page(client, page_id)
+        fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
+        if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:
+            raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")      # the old block is still there and still visible: nothing known-good was retired
+        retire = list(owned)
+    for old in retire:
+        client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
+    _verify(client, page_id, others, want, 1 if desired_leads else 0)
     return action

@@ -92,6 +92,9 @@ def load_decisions(connection):
 def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
     """Persist Jim's ticks (idempotent: a repeat changes nothing) and read them back; raises when a row is missing afterwards."""
     now = clock().isoformat(sep=" ", timespec="seconds")
+    _, known, _ = load_decisions(connection)
+    if any(a in known and known[a] != c for a, c in aliases):
+        raise NetworkError("NETWORK_ALIAS_CONFLICT")                    # a confirmed alias is never silently kept pointing at a different company
     try:
         connection.begin()
         with connection.cursor() as cursor:
@@ -102,7 +105,7 @@ def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(t
         connection.rollback()
         raise NetworkError("NETWORK_STORE_FAILED") from None
     dismissed, known, _ = load_decisions(connection)
-    if any((k, p, e) not in dismissed for k, p, e in dismissals) or any(a not in known for a, _ in aliases):
+    if any((k, p, e) not in dismissed for k, p, e in dismissals) or any(known.get(a) != c for a, c in aliases):
         raise NetworkError("NETWORK_READBACK_MISMATCH")
 
 

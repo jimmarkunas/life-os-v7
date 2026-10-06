@@ -12,7 +12,7 @@ class FakeLedger:
 
     def __init__(self):
         self.pages, self.blocks, self.kids, self.n, self.writes, self.fail_get = {}, {}, {}, 0, [], False
-        self.drop_appends = False
+        self.drop_appends, self.fail_delete = False, False
 
     def _new(self, kind, text, checked=None, children=()):
         self.n += 1
@@ -63,6 +63,8 @@ class FakeLedger:
             owner = unquote(path.split("/blocks/")[1].split("/children")[0])
             return {"results": [dict(self.blocks[b]) for b in self.kids[owner]], "has_more": False}
         if method == "DELETE" and path.startswith("/blocks/"):
+            if self.fail_delete:
+                raise NotionError("NOTION_HTTP_500")
             self.writes.append("DELETE")
             bid = path.rsplit("/", 1)[1]
             for kids in self.kids.values():

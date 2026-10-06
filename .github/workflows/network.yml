@@ -9,6 +9,10 @@ on:
         type: choice
         options: ["inspect", "import", "audit", "match", "surface"]
         default: "inspect"
+      pages:
+        description: "surface only: the most Ledger pages one run may read (default 40; 1 for a first acceptance run)"
+        type: string
+        default: "40"
       live:
         description: "import or surface only: actually write (import: Hostinger tables; surface: the two surface tables and the owned Network Leads block). Unticked = dry run, counts only"
         type: boolean
@@ -40,4 +44,5 @@ jobs:
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}
-        run: python -m lifeos.run "network-$STAGE" $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ]; } && [ "$LIVE" = "true" ] && echo --live)
+          PAGES: ${{ inputs.pages }}
+        run: python -m lifeos.run "network-$STAGE" $([ "$STAGE" = "surface" ] && echo --limit "$PAGES") $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ]; } && [ "$LIVE" = "true" ] && echo --live)

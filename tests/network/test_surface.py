@@ -43,8 +43,8 @@ def ledger_for(*keys_pages):
     return ledger
 
 
-def go(conn, ledger, live=False, **kw):
-    return network_surface.run(0, live, connection=conn, client=ledger, now=NOW, today=TODAY, **kw)
+def go(conn, ledger, live=False, limit=0, **kw):
+    return network_surface.run(limit, live, connection=conn, client=ledger, now=NOW, today=TODAY, **kw)
 
 
 def degraded(conn, ledger, live=False):
@@ -203,6 +203,107 @@ class Surface(unittest.TestCase):
         go(conn, ledger, live=True)
         self.assertEqual([b["id"] for b in ledger.top("page-1")][:3], ids)
         self.assertEqual(set(ledger.writes), {"APPEND"})
+
+
+def owned_count(ledger, page="page-1"):
+    return sum(1 for b in ledger.top(page) if b["type"] == "toggle")
+
+
+class Corrections(unittest.TestCase):
+    """PR 205 review: the explicit page limit, a recoverable replacement, decisions validated against every candidate, and exact alias read-back."""
+
+    def test_an_explicit_limit_of_one_reads_and_writes_at_most_one_page(self):
+        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT")]
+        conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
+        counts = go(conn, ledger, live=True, limit=1)
+        self.assertEqual((counts["pages_read"], counts["pages_deferred"], ledger.writes), (1, 1, ["APPEND"]))
+        self.assertEqual((owned_count(ledger, "page-1"), owned_count(ledger, "page-2")), (1, 0))
+        self.assertEqual(go(conn, ledger, limit=5)["pages_read"], 2)                          # a larger explicit limit reads more; DEFAULT_PAGES applies only when none is supplied
+
+    def test_a_failed_append_leaves_the_previously_accepted_block_untouched(self):
+        conn, ledger = build(), ledger_for()
+        go(conn, ledger, live=True)
+        before = ledger.texts("page-1")
+        conn.raw.execute("UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1")        # new evidence: the block must be replaced
+        ledger.drop_appends = True
+        self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
+        self.assertEqual((ledger.texts("page-1"), "DELETE" in ledger.writes), (before, False))              # the old block is still there; nothing was retired
+
+    def test_an_interrupted_retirement_leaves_the_old_block_visible_and_the_retry_converges(self):
+        conn, ledger = build(), ledger_for()
+        go(conn, ledger, live=True)
+        old = ledger.texts("page-1")[3]
+        conn.raw.execute("UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1")
+        ledger.fail_delete = True
+        self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
+        self.assertEqual(owned_count(ledger), 2)                                                              # old (still visible) and new, never zero and never lost
+        self.assertEqual(ledger.texts("page-1")[3], old)
+        ledger.fail_delete = False
+        counts = go(conn, ledger, live=True)
+        self.assertEqual((counts["blocks"], owned_count(ledger)), ({"converged": 1}, 1))
+        self.assertEqual(go(conn, ledger, live=True)["blocks"], {"unchanged": 1})                           # and it stays converged
+
+    def test_duplicate_owned_blocks_are_never_left_accumulating(self):
+        conn, ledger = build(), ledger_for()
+        go(conn, ledger, live=True)
+        ledger.drop_appends = False
+        ledger.call_once("PATCH", "/blocks/page-1/children", {"children": [surface.build_block(network_surface._leads("Acme Corp", "Product Director", *self.state(conn))[0])]})
+        self.assertEqual(owned_count(ledger), 2)
+        self.assertEqual(go(conn, ledger, live=True)["blocks"], {"converged": 1})
+        self.assertEqual(owned_count(ledger), 1)
+
+    def state(self, conn):
+        from lifeos.network import match
+        roster, jobs, pipeline = network_surface._read(conn, NOW)
+        index = match.build_index([(pid, ckey, title, state, network_surface._day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
+        details = {posid: (name, url, cname, title, network_surface._day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
+        return index, details, TODAY, {}, set(), KEY1
+
+    def test_a_failed_removal_is_degraded_and_the_block_remains_for_the_retry(self):
+        conn, ledger = build(), ledger_for()
+        go(conn, ledger, live=True)
+        conn.raw.execute("DELETE FROM v7_network_positions")
+        conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+                         " source_observed_at, material_hash) VALUES (1,'otherco','Other','x','CURRENT','2026-09-07','2026-09-07','2026-09-20','X','r','2026-09-07','zz')")
+        ledger.fail_delete = True
+        self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
+        self.assertEqual(owned_count(ledger), 1)
+        ledger.fail_delete = False
+        self.assertEqual(go(conn, ledger, live=True)["blocks"], {"removed": 1})
+
+    def test_a_dismissed_lead_pushed_out_of_the_top_five_keeps_its_decision_and_stays_suppressed(self):
+        people = [(1, "acme", "Acme Corp", "Director", "CURRENT", "2026-09-20")] + [(10 + i, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-01") for i in range(4)]
+        conn, ledger = build(people=people), ledger_for()
+        go(conn, ledger, live=True)
+        self.assertEqual(ledger.texts("page-1")[3], "Network Leads (5)")
+        ledger.tick("page-1", "Dismiss · 1:")                                                                 # Jim dismisses person 1
+        for i in range(6):                                                                                    # six new people outrank person 1 (better title overlap, fresher)
+            conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
+                             (50 + i, f"k{50 + i}", f"person-{50 + i:05d}", f"Invented Person{50 + i}", "2026-09-07 00:00:00", "2026-09-07"))
+            conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+                             " source_observed_at, material_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (50 + i, "acme", "Acme Corp", "Product Director", "CURRENT", "2026-09-07", "2026-09-07", "2026-10-05", "X", "r", "2026-09-07", f"n{i}"))
+        counts = go(conn, ledger, live=True)
+        self.assertEqual(counts["ticks_dismiss"], 1)                                                           # validated against every candidate, not only the new five
+        self.assertEqual(conn.raw.execute("SELECT person_id FROM v7_network_dismissals").fetchall(), [(1,)])
+        conn.raw.execute("DELETE FROM v7_network_positions WHERE person_id >= 50")                              # person 1 would rank back in: still suppressed, evidence unchanged
+        go(conn, ledger, live=True)
+        refs = [c["to_do"]["rich_text"][0]["plain_text"] for c in ledger.owned("page-1") if c["type"] == "to_do"]
+        self.assertFalse(any(r.startswith("Dismiss · 1:") for r in refs))
+
+    def test_a_conflicting_alias_confirmation_fails_closed_and_changes_nothing(self):
+        conn = build(people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")], jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")])
+        ledger = ledger_for()
+        go(conn, ledger, live=True)
+        conn.raw.execute("INSERT INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES ('meta platforms', 'somethingelse', '2026-10-01 00:00:00')")
+        ledger.tick("page-1", "Same company · 1:")
+        before = ledger.texts("page-1")
+        self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
+        self.assertEqual(conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(), [("meta platforms", "somethingelse")])
+        self.assertEqual(ledger.texts("page-1"), before)                                                       # nothing replaced
+        with self.assertRaises(NetworkError) as ctx:
+            store.save_decisions(conn, [], [("meta platforms", "meta")])
+        self.assertEqual(str(ctx.exception), "NETWORK_ALIAS_CONFLICT")
+        store.save_decisions(conn, [], [("meta platforms", "somethingelse")])                                  # an identical confirmation is idempotent
 
 
 class Contract(unittest.TestCase):

@@ -82,20 +82,23 @@ def _display(lead, details, today):
     return out
 
 
-def _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=True):
+CANDIDATES = 200                                                        # the bounded candidate set a decision is validated against (the rendered shortlist is still five)
+
+
+def _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=True, shortlist=True):
     ckey = network_leads.parse.company_key(company)
-    found = match.leads_for(ckey, title, index, today, aliases, limit=50) if ckey else []
+    found = match.leads_for(ckey, title, index, today, aliases, limit=CANDIDATES) if ckey else []
     shown = [d for d in (_display(l, details, today) for l in found) if d]
     if honour_dismissals:
         shown = [d for d in shown if (key, d["person_id"], d["evidence_hash"]) not in dismissed]
-    return shown[:match.MAX_LEADS], ckey
+    return (shown[:match.MAX_LEADS] if shortlist else shown), ckey
 
 
 def _decisions(owned, full, job_key, ckey):
     """Jim's ticks that match exactly the evidence that was shown -> (dismissals, aliases, stale count)."""
     dismissals, aliases, stale = [], [], 0
     shown = {(d["person_id"], d["evidence_hash"]): d for d in full}
-    for kind, person_id, evidence, checked in (owned["ticks"] if owned else []):
+    for kind, person_id, evidence, checked in [t for o in (owned or []) for t in o["ticks"]]:
         if not checked:
             continue
         lead = shown.get((person_id, evidence))
@@ -124,7 +127,7 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None,
 
 
 def _run(limit, live, environ, connection, client, now, today):
-    budget = limit if limit and limit > DEFAULT_PAGES else DEFAULT_PAGES
+    budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES      # an explicit positive limit is honoured exactly (the first live run can be 1 page)
     roster, jobs, pipeline = _read(connection, now)
     if not roster:
         raise NetworkError("NETWORK_NO_ROSTER")
@@ -183,7 +186,7 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         action = surface.apply(notion, page_id, top, owned, [], live)
         counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
         return
-    full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False)
+    full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)       # decisions are validated against every candidate, not only the shown five
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
     counts["ticks_dismiss"] += len(new_dismissals)
     counts["ticks_same_company"] += len(new_aliases)
