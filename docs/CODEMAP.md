@@ -385,3 +385,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D142: The SAFE-1.1 database checks run weekly (2026-10-05, Jim)
 - D143: MAIL-1.2: Physical Mail evidence drives the V7-owned Mail Alerts card (2026-10-05)
 - D144: HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)
+- D145: Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)

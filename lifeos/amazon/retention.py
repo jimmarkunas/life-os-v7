@@ -11,10 +11,11 @@ from . import events
 from .stage import AmazonError, SENDERS_QUERY, _config, _query_order, _schema
 
 RETENTION_DAYS = 30
+REVIEW_DAYS = 90                      # Jim, Oct 6: mail for an order held in REVIEW is trashable once it is 90 days old (the Trash keeps it 30 more)
 DEFAULT_LIMIT = 200
 
 
-def _status(notion, source_id, message):
+def _status(notion, source_id, message, age_days=0):
     """-> (why, detail). why: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order recorded, this message not on it).
     A message that carries several orders is recorded only when EVERY one of its orders lists it.
     detail (fixed vocabulary only): the parser's reason code for an unreadable message, or the order row's Status for a not_listed one."""
@@ -24,15 +25,18 @@ def _status(notion, source_id, message):
     if not all(order_ids):
         reason = first.get("reason") or "NONE"
         return "no_order_id", reason + (":" + events.ambiguity_shape(message) if reason == "ORDER_ID_AMBIGUOUS" else "")
-    worst = ("recorded", "")
+    worst, aged = ("recorded", ""), False
     for order_id in order_ids:
         rows = _query_order(notion, source_id, order_id)
         if not rows:
             return "no_row", ""
         if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
             continue
+        if len(rows) == 1 and rows[0].get("Status") == "REVIEW" and age_days > REVIEW_DAYS:
+            aged = True                                                    # a conflicted order is never rewritten; its old mail may go
+            continue
         worst = ("not_listed", str(rows[0].get("Status") or "NONE")[:30] if len(rows) == 1 else "DUPLICATE_ROWS")
-    return worst
+    return ("recorded", "REVIEW_AGED") if worst[0] == "recorded" and aged else worst
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
@@ -52,8 +56,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
             message = gmail.message_record(message_id)
             if "TRASH" in message["label_ids"]:
                 continue
-            counts["oldest_days"] = max(counts["oldest_days"], (now - datetime.fromisoformat(message["received_at"])).days)
-            why, detail = _status(notion, source_id, message)
+            age = (now - datetime.fromisoformat(message["received_at"])).days
+            counts["oldest_days"] = max(counts["oldest_days"], age)
+            why, detail = _status(notion, source_id, message, age)
             if why != "recorded":
                 counts["kept_unrecorded"] += 1
                 counts[why] += 1
@@ -61,6 +66,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
                 bucket[f"{why}:{detail}"] = bucket.get(f"{why}:{detail}", 0) + 1
                 continue
             counts["recorded"] += 1
+            if detail == "REVIEW_AGED":
+                counts["review_aged"] = counts.get("review_aged", 0) + 1
             if not live:
                 continue
             try:
