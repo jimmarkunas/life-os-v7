@@ -271,6 +271,17 @@ def _gmail_ids(gmail, limit, query):
         raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
 
 
+def _note_conflict(counts, cause, existing, received, now):
+    """Counts only: why an order went to REVIEW, whether it already held data (a flip) or was created empty, and whether its mail is recent (30 days)."""
+    why = counts.setdefault("conflict_why", {})
+    why[cause] = why.get(cause, 0) + 1
+    kind = "review_flipped" if existing and existing.get("Latest Event At") else "review_created_empty" if not existing else "review_already_empty"
+    counts[kind] = counts.get(kind, 0) + 1
+    newest = max((r for r in received if r), default=None)
+    if newest and (now - datetime.fromisoformat(newest)).days <= 30:
+        counts["review_recent"] = counts.get("review_recent", 0) + 1
+
+
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, since=None, until=None, skip_unreadable=False):
     counts = {"listed": 0, "accepted": 0, "review": 0, "orders_new": 0, "orders_updated": 0,
               "orders_same": 0, "filed": 0, "already_filed": 0, "failed": 0}
@@ -328,13 +339,18 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                 raise AmazonError("AMAZON_NOTION_DUPLICATE_ORDER")
             existing = found[0] if found else None
             conflict = bool(review_by_order.get(order_id))
+            cause = ("PARSE_" + next((e.get("reason") or "UNKNOWN") for e in [events.extract_all(m)[0] for m in review_by_order[order_id]])) if conflict else None
             desired = _review_desired(order_id) if conflict else None
             if not conflict:
                 desired, reason = orders.reconcile(events_by_order[order_id], existing, now)
                 conflict = reason is not None
                 if conflict:
                     desired = _review_desired(order_id)
+                    cause = reason
+                    if reason == "ORDER_ALREADY_REVIEW":                   # the row was frozen earlier: would these messages alone conflict? (FRESH_NONE = they would not)
+                        cause = "FRESH_" + (orders.reconcile(events_by_order[order_id], None, now)[1] or "NONE")
             if conflict:
+                _note_conflict(counts, cause, existing, [m["received_at"] for m in review_by_order.get(order_id, [])] + [e["received_at"] for e in events_by_order.get(order_id, [])], now)
                 counts["accepted"] -= len(events_by_order.get(order_id, []))
                 counts["review"] += len(events_by_order.get(order_id, []))
                 if existing:
