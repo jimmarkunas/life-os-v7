@@ -19,7 +19,7 @@ CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 6, 14, 0, tzinfo=CT)
 OK = {"ledger": True, "parents": True, "calendar": True}
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ENV = {"HIRING_CARD_BLOCK_ID": "hire-h3", "JIRA_CARD_BLOCK_ID": "jira-card", "NOTION_JIRA_TOKEN": "t"}
+ENV = {"HIRING_CARD_BLOCK_ID": "hire-h3", "HIRING_STATUS_BLOCK_ID": "hire-status", "HIRING_TABLE_BLOCK_ID": "hire-table", "JIRA_CARD_BLOCK_ID": "jira-card", "NOTION_JIRA_TOKEN": "t"}
 
 
 def at(days=0, hour=10):
@@ -275,6 +275,20 @@ class RegionWriterTests(unittest.TestCase):
         t.blocks["hire-h3"]["type"] = "heading_2"
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT, True)
+
+    def test_all_three_blocks_are_pinned_and_a_different_block_under_the_heading_is_never_written(self):
+        for missing in ("HIRING_STATUS_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "HIRING_CARD_BLOCK_ID"):
+            t = page()
+            with self.assertRaises(snapshot.HiringError) as error:
+                card.present(t, {k: v for k, v in ENV.items() if k != missing}, "x", WANT, True)
+            self.assertEqual(str(error.exception), "HIRING_NOT_CONFIGURED")
+            self.assertEqual(writes(t), [])
+        for wrong in ({"HIRING_STATUS_BLOCK_ID": "cal-p"}, {"HIRING_TABLE_BLOCK_ID": "other-table"}):
+            t = page()
+            with self.assertRaises(snapshot.HiringError) as error:
+                card.present(t, {**ENV, **wrong}, "x", WANT, True)
+            self.assertEqual(str(error.exception), "HIRING_PINNED_BLOCK_MISMATCH")
+            self.assertEqual(writes(t), [])
 
     def test_a_changed_shape_is_rejected(self):
         for kwargs, code in (({"headers": ("Company", "Stage", "Action", "Source")}, "HEADERS_CHANGED"), ({"status_kind": "callout"}, "FLOATING_SHAPE_INVALID"), ({"with_table": False}, "FLOATING_SHAPE_INVALID")):

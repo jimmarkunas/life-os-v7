@@ -1,6 +1,6 @@
 """Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 
-HIRING_CARD_BLOCK_ID names the existing heading_3 anchor. The writer may change only the status paragraph and the table rows under it; the heading is immutable. Before a live
+HIRING_CARD_BLOCK_ID, HIRING_STATUS_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the existing heading_3, status paragraph and table; all three must match the live shape. The writer may change only the status paragraph and the table rows under it; the heading is immutable. Before a live
 write the whole page outside those two blocks is digested; after it the region is re-read and the digest must be identical. Any mismatch, any wrong shape, any ambiguity
 raises: nothing is created, moved or guessed. Fixed codes only."""
 import json
@@ -25,7 +25,12 @@ def validate(client, environ):
         raise fail("NOT_CONFIGURED")
     if M.TITLE != router.HIRING_REGION:
         raise fail("TITLE_DRIFT")
+    status_id, table_id = (environ.get("HIRING_STATUS_BLOCK_ID") or "").strip(), (environ.get("HIRING_TABLE_BLOCK_ID") or "").strip()
+    if not status_id or not table_id:                            # all three blocks are pinned by id: the heading, the status paragraph and the table
+        raise fail("NOT_CONFIGURED")
     region = R.floating_region(client, block_id, M.TITLE, fail)
+    if not R.same_id(region["status"]["id"], status_id) or not R.same_id(region["table"]["id"], table_id):
+        raise fail("PINNED_BLOCK_MISMATCH")                      # the blocks under the heading are not the ones Jim named: nothing is written
     anchor = (environ.get("JIRA_CARD_BLOCK_ID") or "").strip()
     if not anchor:
         raise fail("PAGE_UNPROVEN")
