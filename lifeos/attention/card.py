@@ -15,7 +15,7 @@ TZ = ZoneInfo("America/Chicago")
 TITLE = router.ATTENTION_REGION
 MODULE = router.OWNERS[TITLE]
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
 
 class CardError(NotionError):

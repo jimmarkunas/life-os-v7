@@ -17,7 +17,7 @@ TITLE = router.MAIL_ALERTS_REGION
 MODULE = router.OWNERS[TITLE]
 STALE_HOURS = 6                                    # the pipeline is hourly: no accepted evidence for six hours is stale
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
 
 class CardError(NotionError):

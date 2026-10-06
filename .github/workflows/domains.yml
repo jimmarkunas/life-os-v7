@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       all:
-        description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon, Attention, Physical Mail); dry run unless Actually write is ticked"
+        description: "Run every domain job like an hourly tick does (Jira snapshot + card, Outlook, Bills, Agenda, Amazon, Attention, Physical Mail, Hiring Pipeline); dry run unless Actually write is ticked"
         type: boolean
         default: false
       amazon:
@@ -25,6 +25,10 @@ on:
         description: "Physical Mail FIRST run only: how many items were waiting on October 4, 2026 (Jim's anchor). Ignored once the state row exists"
         type: string
         default: ""
+      hiring:
+        description: "Hiring Pipeline only (HIRE-1.2, no mail): the Job Ledger Applied state, the Hiring Pipeline pages and the Calendar into the private state row and the floating Hiring Pipeline region; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
       attention:
         description: "Attention only: the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
@@ -217,6 +221,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -263,6 +268,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -310,6 +316,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: aretain
@@ -367,6 +374,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -380,6 +388,44 @@ jobs:
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
+
+  hiring:
+    # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading, a status line and a four-column table; never a callout). It runs after EVERY other Daily Report writer,
+    # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
+    needs: [jira, agenda, bills, amazon, attention, mail]
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: hiring
+        continue-on-error: true
+        name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+          NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
+          HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
+          NOTION_JIRA_TOKEN: ${{ secrets.NOTION_JIRA_TOKEN }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_STATUS_BLOCK_ID: ${{ secrets.HIRING_STATUS_BLOCK_ID }}
+          HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ secrets.GCAL_SERVICE_ACCOUNT_JSON }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run hiring --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Hiring Pipeline warning (does not fail the Jobs run)
+        if: ${{ always() && steps.hiring.outcome == 'failure' }}
+        run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
 
   attention:
     # D127: Attention is its own job. It reads only the Gmail label and the Outlook category Jim controls and writes only the Attention data source (never the Daily Report
@@ -420,6 +466,7 @@ jobs:
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           ATTENTION_SYNC_OUTCOME: ${{ steps.attention.outcome }}
         run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Attention warning (does not fail the Jobs run)
