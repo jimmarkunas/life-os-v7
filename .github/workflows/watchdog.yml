@@ -19,13 +19,16 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
+      - name: Load the push topic from Bitwarden (EDGE-1.3, the one secret this job reads; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: Stale-pipeline check (counts only; no job data; the only secret is the push topic)
         run: python3 -m lifeos.platform.gate --watch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       - name: Test push (dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_push }}
         run: python3 -m lifeos.platform.alerts push --severity info --title "V7 test push" --body "If you can read this on your phone, alerts work."
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
