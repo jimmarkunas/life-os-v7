@@ -18,7 +18,7 @@ from lifeos.hiring import models as hiring_models
 from lifeos.jobs import ledger
 from lifeos.network import match, store, surface
 from lifeos.network.errors import NetworkError
-from lifeos.platform import db
+from lifeos.platform import db, names
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.sources import network_leads
 
@@ -34,23 +34,37 @@ def _read(connection, now):
             cursor.execute("SELECT j.dedupe_key, j.notion_page_id, j.company, j.title, f.admission FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id "
                            "WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL")
             jobs = cursor.fetchall()
+            cursor.execute("SELECT company, title, status, notion_page_id FROM v7_jobs")
+            every = cursor.fetchall()
         except Exception:                                              # noqa: BLE001 - a driver message may carry names; only the fixed code leaves
             raise NetworkError("NETWORK_MATCH_READ_FAILED") from None
     try:
         pipeline = network_leads.hiring_snapshot.load(connection)
     except Exception:                                                  # noqa: BLE001
         pipeline = None
-    return roster, jobs, pipeline
+    return roster, jobs, pipeline, every
 
 
 def _day(value):
     return value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
 
 
-def resolve_targets(jobs, pipeline, now):
+def why_unresolved(company, role, every):
+    """A fixed code saying why a pursuit target has no single published Ledger page (counts only, never a name): what V7 holds for that company and role."""
+    same_company = [(c, t, st, page) for c, t, st, page in every if names.same_company(company, c or "")]
+    if not same_company:
+        return "no_job_for_company"
+    exact = [(st, page) for c, t, st, page in same_company if hiring_models.same(company, role, c or "", t or "")]
+    if exact:
+        statuses = {st for st, _ in exact}
+        return "job_published_without_page" if "PUBLISHED" in statuses else "job_status_" + sorted(statuses)[0].lower()     # the status vocabulary is fixed (READY, CLOSED, EXCLUDED_FIT, ...)
+    return "published_job_at_company_other_role" if any(st == "PUBLISHED" and page for _, _, st, page in same_company) else "unpublished_job_at_company_other_role"
+
+
+def resolve_targets(jobs, pipeline, now, every=()):
     """-> (surfaced {job_key: (page_id, company, title, classes)}, others [(job_key, page_id, company, title)], counts). A pursuit target resolves only to exactly one published page."""
     pursuit, status = network_leads.targets([], pipeline, now)
-    surfaced, counts = {}, {"pursuit_source": status, "targets_admitted": 0, "targets_pursuit_resolved": 0, "applied_no_safe_surface": 0, "interview_no_safe_surface": 0, "pursuit_ambiguous": 0}
+    surfaced, counts = {}, {"pursuit_unresolved_why": {}, "pursuit_source": status, "targets_admitted": 0, "targets_pursuit_resolved": 0, "applied_no_safe_surface": 0, "interview_no_safe_surface": 0, "pursuit_ambiguous": 0}
     for key, page, company, title, admission in jobs:
         if admission == "ADMIT":
             surfaced[key] = (page, company or "", title or "", {network_leads.ADMITTED_JOB})
@@ -68,6 +82,8 @@ def resolve_targets(jobs, pipeline, now):
             counts[kind + "_no_safe_surface"] += 1
         else:
             counts[kind + "_no_safe_surface"] += 1
+            why = why_unresolved(company, role, every)
+            counts["pursuit_unresolved_why"][why] = counts["pursuit_unresolved_why"].get(why, 0) + 1
     others = [(k, p, c or "", t or "") for k, p, c, t, _ in jobs if k not in surfaced]
     return surfaced, others, counts
 
@@ -128,12 +144,12 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None,
 
 def _run(limit, live, environ, connection, client, now, today):
     budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES      # an explicit positive limit is honoured exactly (the first live run can be 1 page)
-    roster, jobs, pipeline = _read(connection, now)
+    roster, jobs, pipeline, every = _read(connection, now)
     if not roster:
         raise NetworkError("NETWORK_NO_ROSTER")
     index = match.build_index([(pid, ckey, title, state, _day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
     details = {posid: (name, url, cname, title, _day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
-    surfaced, others, counts = resolve_targets(jobs, pipeline, now)
+    surfaced, others, counts = resolve_targets(jobs, pipeline, now, every)
     counts.update({"live": bool(live), "roster_positions": len(roster), "published_pages": len(jobs), "pages_read": 0, "pages_deferred": 0, "with_leads": 0, "blocks": {}, "ticks_dismiss": 0,
                    "ticks_same_company": 0, "ticks_stale": 0, "guard_failed": {}, "failed": 0, "degraded": False, "pages_unread": 0})
     if counts["pursuit_source"] == "unavailable":

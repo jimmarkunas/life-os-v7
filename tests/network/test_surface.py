@@ -169,6 +169,21 @@ class Surface(unittest.TestCase):
         self.assertEqual((counts["targets_admitted"], counts["targets_pursuit_resolved"], counts["applied_no_safe_surface"], counts["interview_no_safe_surface"]), (1, 1, 2, 0))
         self.assertEqual(counts["pursuit_ambiguous"], 0)
 
+    def test_an_unresolved_pursuit_says_why_with_a_fixed_code_only(self):
+        jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT")]
+        conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"))
+        conn.raw.execute("INSERT INTO v7_jobs VALUES (50,'x1','CLOSED','Closed Co','Program Manager',NULL)")
+        conn.raw.execute("INSERT INTO v7_jobs VALUES (51,'x2','READY','Ready Co','Engineer',NULL)")
+        conn.raw.execute("INSERT INTO v7_jobs VALUES (52,'x3','PUBLISHED','Nopage Co','Analyst',NULL)")
+        conn.raw.execute("INSERT INTO v7_jobs VALUES (53,'x4','EXCLUDED_FIT','Other Role Co','Designer',NULL)")
+        save_pipeline(conn, [pipeline_row("Closed Co", "Program Manager"), pipeline_row("Ready Co", "Engineer"), pipeline_row("Nopage Co", "Analyst"), pipeline_row("Other Role Co", "Chef"),
+                             pipeline_row("Acme Corp", "Chef"), pipeline_row("Unknown Ltd", "Engineer")])
+        counts = go(conn, ledger)
+        self.assertEqual(counts["pursuit_unresolved_why"], {"job_status_closed": 1, "job_status_ready": 1, "job_published_without_page": 1, "unpublished_job_at_company_other_role": 1,
+                                                            "published_job_at_company_other_role": 1, "no_job_for_company": 1})
+        for text in ("Closed", "Ready Co", "Nopage", "Chef", "Unknown"):
+            self.assertNotIn(text, json.dumps(counts))
+
     def test_two_ledger_pages_for_one_pursuit_are_ambiguous_and_write_nothing_for_it(self):
         jobs = [(KEY1, "page-1", "Zed Corp", "Engineer", "REVIEW"), (KEY2, "page-2", "Zed Corp", "Engineer", "REVIEW")]
         conn, ledger = build(jobs=jobs, people=[(1, "zed", "Zed Corp", "Engineer", "CURRENT", "2026-09-20")]), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
@@ -254,7 +269,7 @@ class Corrections(unittest.TestCase):
 
     def state(self, conn):
         from lifeos.network import match
-        roster, jobs, pipeline = network_surface._read(conn, NOW)
+        roster, jobs, pipeline, _ = network_surface._read(conn, NOW)
         index = match.build_index([(pid, ckey, title, state, network_surface._day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
         details = {posid: (name, url, cname, title, network_surface._day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
         return index, details, TODAY, {}, set(), KEY1
