@@ -76,8 +76,15 @@ class ReconciliationTests(unittest.TestCase):
     def test_later_regression_total_url_and_duplicate_event_conflicts(self):
         shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00")
         later_ordered = event("m-order", "ORDERED", "2026-10-03T12:00:00+00:00", total="12.34")
-        row, reason = orders.reconcile([shipped, later_ordered], now=NOW)
-        self.assertEqual((row, reason), ({"Status": "REVIEW", "Needs Review": True}, "LIFECYCLE_REGRESSION"))
+        row, reason = orders.reconcile([shipped, later_ordered], now=NOW)             # D146: split shipments make a later lower status normal
+        self.assertIsNone(reason)
+        self.assertEqual((row["Status"], row["Grand Total"], row["Latest Event At"]), ("SHIPPED", "12.34", "2026-10-03T12:00:00+00:00"))
+        split = [event("d1", "DELIVERED", "2026-10-02T12:00:00+00:00"), event("s2", "SHIPPED", "2026-10-04T12:00:00+00:00")]
+        row, reason = orders.reconcile(split, now=NOW)
+        self.assertEqual((reason, row["Status"], row["Latest Event At"]), (None, "DELIVERED", "2026-10-04T12:00:00+00:00"))
+        old_delivered = {"Status": "DELIVERED", "Latest Event At": "2026-10-02T12:00:00+00:00"}
+        row, reason = orders.reconcile([event("s3", "SHIPPED", "2026-10-05T12:00:00+00:00")], old_delivered, NOW)
+        self.assertEqual((reason, row["Status"]), (None, "DELIVERED"))
         old = {"Status": "ORDERED", "Grand Total": "11.00"}
         row, reason = orders.reconcile([event("m-order", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34")], old, NOW)
         self.assertEqual(reason, "TOTAL_CONFLICT")
@@ -165,7 +172,7 @@ class StageTests(unittest.TestCase):
         prior = orders.reconcile([event("old", "ORDERED", "2026-10-01T12:00:00+00:00", total="12.34"),
                                   event("ship", "SHIPPED", "2026-10-02T12:00:00+00:00")], now=NOW)[0]
         page = notion_page(prior["Order ID"], prior, "page-old")
-        gmail2 = AmazonGmail({"m-regress": message("m-regress", "auto-confirm", at="2026-10-03T12:00:00+00:00")})
+        gmail2 = AmazonGmail({"m-regress": message("m-regress", "auto-confirm", at="2026-10-03T12:00:00+00:00", body=f"Order {prior['Order ID']}\nGrand Total: $99.00")})
         notion2 = AmazonNotion({prior["Order ID"]: page})
         output2 = stage.run(10, True, environ=TOKEN, gmail=gmail2, notion=notion2, now=NOW)
         self.assertEqual(output2["review"], 1)
@@ -309,10 +316,11 @@ class IngressRepairTests(unittest.TestCase):
         query = next(c[1] for c in gmail.calls if c[0] == "list")
         self.assertIn(f"after:{int(datetime(2026, 9, 10, tzinfo=timezone.utc).timestamp())}", query)
 
-    def test_stale_lifecycle_regression_goes_to_review_never_overwrites_state(self):
+    def test_a_real_contradiction_goes_to_review_never_overwrites_state(self):
         prior = _row("123-1234567-1234567", "SHIPPED", None, [("o", "ORDERED", "2026-10-01T12:00:00+00:00"), ("s", "SHIPPED", "2026-10-02T12:00:00+00:00")])
         notion = AmazonNotion({prior["Order ID"]: notion_page(prior["Order ID"], prior, "page-1")})
-        gmail = AmazonGmail({"late": message("late", "auto-confirm", at="2026-10-03T12:00:00+00:00")})
+        gmail = AmazonGmail({"late": message("late", "auto-confirm", at="2026-10-03T12:00:00+00:00", body="Order 123-1234567-1234567\nGrand Total: $99.00")})
+        notion.rows[prior["Order ID"]] = notion_page(prior["Order ID"], {**prior, "Grand Total": "12.34"}, "page-1")
         counts = stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
         self.assertEqual(counts["review"], 1)
         self.assertEqual(AmazonNotion._row(notion.rows[prior["Order ID"]])["Status"], "REVIEW")

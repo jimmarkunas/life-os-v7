@@ -27,8 +27,9 @@ def strings_and_code(path):
 class HumanStateIsNeverDestroyed(unittest.TestCase):
     def test_every_trash_call_sits_behind_a_protection_check(self):
         users = {p.name: p.read_text() for p in CODE if '"in_trash": True' in p.read_text()}
-        self.assertEqual(sorted(users), ["audit.py", "retention.py"])             # a new destructive writer must be added here on purpose
+        self.assertEqual(sorted(users), ["audit.py", "reset.py", "retention.py"])             # a new destructive writer must be added here on purpose
         self.assertLess(users["audit.py"].index("guard.protection"), users["audit.py"].index('"in_trash": True'))
+        self.assertLess(users["reset.py"].index("_empty_review(r)"), users["reset.py"].index('"in_trash": True'))      # Amazon Orders: only a REVIEW row holding no data
         self.assertLess(users["retention.py"].index("hiring_pipeline.handoff_for"), users["retention.py"].index('"in_trash": True'))
 
     def test_retention_only_ever_selects_unapplied_undecided_rows(self):

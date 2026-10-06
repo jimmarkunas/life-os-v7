@@ -110,6 +110,7 @@ STAGES = {
     "amazon-orders": lazy("lifeos.amazon.stage", floor=200),
     "amazon-card": lazy("lifeos.amazon.card"),
     "amazon-retention": lazy("lifeos.amazon.retention"),
+    "amazon-review-reset": lazy("lifeos.amazon.reset"),
     "mail-alerts": lazy("lifeos.physmail.stage", floor=1000),
     "mail-card": lazy("lifeos.physmail.card"),
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
