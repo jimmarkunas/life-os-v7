@@ -30,12 +30,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Load the Gmail and Notion credentials from Bitwarden (EDGE-1.3, exactly these 3; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
       - name: Amazon Orders (Gmail to Notion; archive only after read-back)
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-          NOTION_AMAZON_TOKEN: ${{ secrets.NOTION_AMAZON_TOKEN }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
           AMAZON_SINCE: ${{ inputs.since }}
           STAGE: ${{ inputs.stage }}
