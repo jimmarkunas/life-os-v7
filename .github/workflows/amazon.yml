@@ -19,7 +19,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-amazon-orders
+  # The normal manual orders pass talks to Gmail like the domain jobs do, so it queues behind them (the same group as domains.yml) instead of colliding with MegIBOW and Mail. The long
+  # maintenance stages (backfill, retention, review-reset) keep their own group so a multi-hour run can never block the hourly system.
+  group: ${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}
   cancel-in-progress: false
 jobs:
   amazon:

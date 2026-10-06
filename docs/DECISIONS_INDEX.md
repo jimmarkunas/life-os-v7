@@ -148,3 +148,4 @@ This index is checked by a test: add a line here with every new decision.
 - D144 — HIRE-1.2: the Hiring Pipeline region is V7-owned, floating, and written in place (2026-10-06)
 - D145 — Amazon: multi-order mail is parsed per order, and mail for a REVIEW order ages out at 90 days (2026-10-06, Jim)
 - D146 — Amazon: a later lower status is a split shipment, and data-less REVIEW rows are reset (2026-10-06, Jim)
+- D147 — MegIBOW: a failed source is not an unresolved review item; manual Amazon orders queue with the domain jobs (2026-10-06)
