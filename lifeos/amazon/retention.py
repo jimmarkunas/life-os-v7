@@ -11,20 +11,22 @@ from . import events
 from .stage import AmazonError, SENDERS_QUERY, _config, _query_order, _schema
 
 RETENTION_DAYS = 30
-DEFAULT_LIMIT = 100
+DEFAULT_LIMIT = 200
 
 
 def _status(notion, source_id, message):
-    """Why a message is or is not safe to trash: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order recorded, this message not on it)."""
-    order_id = events.extract(message).get("order_id")
+    """-> (why, detail). why: recorded, no_order_id (unreadable), no_row (order never recorded), not_listed (order recorded, this message not on it).
+    detail (fixed vocabulary only): the parser's reason code for an unreadable message, or the order row's Status for a not_listed one."""
+    extracted = events.extract(message)
+    order_id = extracted.get("order_id")
     if not order_id:
-        return "no_order_id"
+        return "no_order_id", extracted.get("reason") or "NONE"
     rows = _query_order(notion, source_id, order_id)
     if not rows:
-        return "no_row"
+        return "no_row", ""
     if len(rows) == 1 and message["id"] in set(x for x in (rows[0].get("Source Message IDs") or "").splitlines() if x):
-        return "recorded"
-    return "not_listed"
+        return "recorded", ""
+    return "not_listed", str(rows[0].get("Status") or "NONE")[:30] if len(rows) == 1 else "DUPLICATE_ROWS"
 
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
@@ -45,10 +47,12 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
             if "TRASH" in message["label_ids"]:
                 continue
             counts["oldest_days"] = max(counts["oldest_days"], (now - datetime.fromisoformat(message["received_at"])).days)
-            why = _status(notion, source_id, message)
+            why, detail = _status(notion, source_id, message)
             if why != "recorded":
                 counts["kept_unrecorded"] += 1
                 counts[why] += 1
+                bucket = counts.setdefault("kept_detail", {})
+                bucket[f"{why}:{detail}"] = bucket.get(f"{why}:{detail}", 0) + 1
                 continue
             counts["recorded"] += 1
             if not live:
