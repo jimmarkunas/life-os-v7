@@ -81,3 +81,40 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertEqual(seen[0][0], "POST")
         self.assertTrue(seen[0][1].endswith("/messages/m-1/trash"))
+
+
+A, B = "111-1111111-1111111", "222-2222222-2222222"
+LINKS = f"https://www.amazon.com/your-orders/order-details?orderID={A}\nhttps://www.amazon.com/your-orders/order-details?orderID={B}"
+
+
+class MultiOrderTests(unittest.TestCase):
+    def test_a_message_whose_every_order_is_one_of_its_own_links_yields_one_event_per_order_without_a_total(self):
+        from lifeos.amazon import events
+        got = events.extract_all(message("s1", "shipment-tracking", body=LINKS))
+        self.assertEqual([(e["order_id"], e["status"], e["grand_total"]) for e in got], [(A, "SHIPPED", None), (B, "SHIPPED", None)])
+        self.assertEqual(len(events.extract_all(message("o1", "auto-confirm", body=LINKS + "\nGrand Total: $50.00"))), 2)       # a total cannot belong to one of two orders
+
+    def test_a_message_with_an_unlinked_order_number_or_too_many_stays_review(self):
+        from lifeos.amazon import events
+        for body in (LINKS + f"\nsee also 333-3333333-3333333", f"order {A} and order {B}", f"orderID={A}\nand {B}"):
+            got = events.extract_all(message("x", "shipment-tracking", body=body))
+            self.assertEqual([(e["status"], e["reason"]) for e in got], [("REVIEW", "ORDER_ID_AMBIGUOUS")])
+        many = "\n".join(f"orderID=10{n}-1111111-1111111" for n in range(6))
+        self.assertEqual(events.extract_all(message("y", "shipment-tracking", body=many))[0]["status"], "REVIEW")
+
+    def test_both_orders_are_recorded_and_the_message_is_trashed_only_when_both_list_it(self):
+        gmail = RetentionGmail({"m-1": message("m-1", "shipment-tracking", body=LINKS)})
+        notion = AmazonNotion()
+        stage.run(10, True, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(sorted(notion.rows), [A, B])
+        gmail.messages["m-1"]["label_ids"] = ["label-amazon"]
+        counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
+        self.assertEqual((counts["recorded"], counts["trashed"]), (1, 1))
+        gmail.messages["m-1"]["label_ids"] = ["label-amazon"]
+        from tests.kit.amazon import notion_page
+        page = notion.rows[B]
+        row = notion._row(page)
+        row["Source Message IDs"] = ""
+        notion.rows[B] = notion_page(B, row, page["id"])                  # one of the two orders does not list it: it stays
+        counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
+        self.assertEqual((counts["recorded"], counts["kept_unrecorded"], counts["trashed"]), (0, 1, 0))

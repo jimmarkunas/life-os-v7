@@ -307,18 +307,18 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         # A message that is already under the Amazon label and out of the Inbox needs no filing; it still counts as an event so replay is verified.
         already_filed = {m["id"] for m in messages if label_id in m["label_ids"] and "INBOX" not in m["label_ids"]}
         for message in messages:
-            parsed = events.extract(message)
-            if parsed.get("status") == "REVIEW":
-                counts["review"] += 1
-                why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
-                why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
-                if parsed.get("order_id"):
-                    review_by_order.setdefault(parsed["order_id"], []).append(message)
-                continue
-            counts["accepted"] += 1
-            order_id = parsed["order_id"]
-            events_by_order.setdefault(order_id, []).append(parsed)
-            accepted_ids.setdefault(order_id, []).append(message["id"])
+            for parsed in events.extract_all(message):                         # one event, or one per order for a message whose every order is one of its own links
+                if parsed.get("status") == "REVIEW":
+                    counts["review"] += 1
+                    why = counts.setdefault("review_why", {})                     # fixed reason codes only: the mail itself is never described
+                    why[parsed.get("reason") or "UNKNOWN"] = why.get(parsed.get("reason") or "UNKNOWN", 0) + 1
+                    if parsed.get("order_id"):
+                        review_by_order.setdefault(parsed["order_id"], []).append(message)
+                    continue
+                counts["accepted"] += 1
+                order_id = parsed["order_id"]
+                events_by_order.setdefault(order_id, []).append(parsed)
+                accepted_ids.setdefault(order_id, []).append(message["id"])
         if not events_by_order and not review_by_order:
             return counts
         plans = []
@@ -352,7 +352,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                 plans.append((order_id, existing, desired, False, accepted_ids.get(order_id, [])))
         if not live:
             return counts
-        failures = []
+        failures, filed_now = [], set()
         for order_id, existing, desired, review_only, file_ids in plans:
             try:
                 same = bool(existing) and (_readback_equal(existing, desired, review_only) if review_only
@@ -372,7 +372,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                 if review_only:
                     continue
                 for message_id in file_ids:
-                    if message_id in already_filed:
+                    if message_id in already_filed or message_id in filed_now:
                         counts["already_filed"] += 1
                         continue
                     try:
@@ -383,6 +383,7 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                     if label_id not in labels or "INBOX" in labels or "TRASH" in labels:
                         raise AmazonError("AMAZON_GMAIL_READBACK_MISMATCH")
                     counts["filed"] += 1
+                    filed_now.add(message_id)                                      # a message that carries several orders is filed once
             except AmazonError as error:
                 failures.append(str(error))
                 counts["failed"] += max(1, len(file_ids) or len(review_by_order.get(order_id, [])))
