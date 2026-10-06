@@ -637,3 +637,6 @@ The first dry run left 14 relay messages unresolved and 155 messages unmatched. 
 
 ## D156 — Recruiters: Last Contact is kept to the minute (2026-10-06)
 The first live run created 34 rows. A dry replay then planned 33 updates: Notion stores a date-time to the minute, while the message time had seconds, so every stored row looked older than its own message and a live update would have failed its read-back. Last Contact is now cut to the minute before it is compared or written, so an identical replay finds the rows existing and writes nothing.
+
+## D157 — Scale-Up link check: a counts-only look at why parked roles fail (2026-10-06)
+`diag.yml` stage `scale-up-links` re-reads each parked Scale-Up role's own public job page and reports, per employer, fixed codes only: URL-shape problem, page status (Revolut also after the browser-style retry), a structured job posting or Greenhouse embed, how many of the role's title words the page holds (bucketed), and the description problem. It writes nothing and prints no title, link or text. It exists to tell a wrong link from a page that does not carry the role's words from a page V7 cannot read, before any rule is changed.
