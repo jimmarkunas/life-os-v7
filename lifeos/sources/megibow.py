@@ -9,7 +9,7 @@ import collections
 import contextlib
 import os
 
-from lifeos.megibow import card, classify as C, evidence, project as P, render as R, review, store, warnings as W
+from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, warnings as W
 from lifeos.megibow.windows import CHI, chicago, monday, window_utc
 from lifeos.platform.gcal import GcalError, GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
@@ -19,7 +19,7 @@ from lifeos.platform.outlook import OutlookError
 FORWARD_DAYS = 60
 DASHBOARD_PAGE = "3cf3c5a0-5926-8008-acfa-c0b4765caa92"        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
 REVIEW_SOURCE = "23953290-4ca5-4d94-802c-656aae0ddfc7"        # the MegIBOW Review data source
-CUTOVER_DEFAULT = "2026-08-17"          # Jim, Oct 6: V7 counts every visible week from the first one (it was Oct 5); MEGIBOW_CUTOVER can still override
+CUTOVER_DEFAULT = "2026-10-05"          # V7 counts from here; the weeks before come from Jim's own sheet (megibow/history.py)
 
 
 class MegibowError(NotionError):
@@ -158,7 +158,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     # Monday rollover: freeze every finished week from the cut-over on, once, with read-back; only from a complete read
     this_monday = monday(today)
     counts["buckets"] = dict(collections.Counter(f"{o['status']}:{o['reason']}" for o in outcomes))
-    proj = P.project(outcomes, today, frozen, legacy, cutover)
+    proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS)
     proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     if live and connection is not None and not degraded:
         for week in proj["weeks"]:
@@ -167,7 +167,7 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
                 store.freeze(connection, week, proj["counts"][week], clean)
                 frozen[week], trusted[week] = dict(proj["counts"][week]), clean
                 counts["frozen"] += 1
-        proj = P.project(outcomes, today, frozen, legacy, cutover)
+        proj = P.project(outcomes, today, frozen, legacy, cutover, history.WEEKS)
         proj["review"] = [o for o in proj["review"] if o["week"] >= cutover]
     baseline = []
     for week in proj["weeks"][:-1]:

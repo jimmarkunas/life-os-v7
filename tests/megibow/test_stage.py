@@ -38,6 +38,8 @@ class FakeNotion:
             return {}
         if method == "PATCH" and path.startswith("/blocks/r"):
             self.rows[path.split("/")[-1]] = [c[0]["text"]["content"] for c in body["table_row"]["cells"]]
+            self.bold = getattr(self, "bold", {})
+            self.bold[path.split("/")[-1]] = all(c[0].get("annotations", {}).get("bold") for c in body["table_row"]["cells"])
             self.patches.append(path)
             return {}
         if method == "GET" and path.startswith("/data_sources/"):
@@ -138,9 +140,11 @@ class Stage(unittest.TestCase):
         counts = run(gm, gc, n)
         self.assertEqual(counts["status"][C.OUTREACH], 2)
         self.assertEqual(counts["status"][C.SCHEDULED], 1)
-        self.assertEqual(n.rows["r2"][-1], "2")           # Outreach, current week
-        self.assertEqual(n.rows["r3"][-1], "1")           # Scheduled
-        self.assertEqual(n.rows["r1"][-1], "3")           # total
+        self.assertEqual(n.rows["r1"][-1], "2")           # Outreach, current week
+        self.assertEqual(n.rows["r2"][-1], "1")           # Scheduled
+        self.assertEqual(n.rows["r6"][-1], "3")           # the total is the LAST row
+        self.assertTrue(n.bold["r6"])                     # and it is bold
+        self.assertFalse(any(n.bold.get(r) for r in ("r1", "r2", "r3", "r4", "r5")))
         self.assertTrue(n.callout.startswith("Last refreshed Wed Oct 7, 1:00 PM CT"))
 
     def test_review_row_created_once_and_answer_applied(self):
@@ -175,8 +179,8 @@ class Stage(unittest.TestCase):
         n = FakeNotion()
         n.legacy = "Legacy totals: Outreach 20, Scheduled 13, Networking Calls 11, Recruiter Calls 36, Company Calls 15"
         run(FakeGmail({}), FakeGcal([]), n)
-        self.assertEqual(n.rows["r1"][1], "95")
-        self.assertEqual(n.rows["r2"][1], "20")
+        self.assertEqual(n.rows["r6"][1], "95")
+        self.assertEqual(n.rows["r1"][1], "20")
         n.legacy = "Legacy totals: Outreach 20"
         self.assertIsNone(card.read_legacy(n, "cal"))
 
