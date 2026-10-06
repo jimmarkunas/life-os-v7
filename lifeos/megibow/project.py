@@ -26,7 +26,7 @@ def total(counts):
     return sum(counts.values())
 
 
-def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=None):
+def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=None, manual=None):
     """-> {weeks, counts{monday: {activity: n} | None}, cumulative, review[], current}. frozen: {monday: counts}; legacy: counts or None."""
     frozen = frozen or {}
     weeks = visible_weeks(today)
@@ -39,6 +39,11 @@ def project(outcomes, today, frozen=None, legacy=None, cutover=None, history=Non
         elif o["status"] == C.REVIEW and o["week"] >= weeks[0]:
             review.append(o)
     history = history or {}
+    for w, adds in (manual or {}).items():                           # Jim's own phone-call counts for a week V7 is counting (never a history week)
+        if w in live and (cutover is None or w >= cutover):
+            for a, n in adds.items():
+                if a in live[w]:
+                    live[w][a] += n
     counts = {}
     for w in weeks:
         if w == current:
