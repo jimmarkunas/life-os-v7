@@ -112,3 +112,6 @@ No secret is required: the dashboard page and the MegIBOW Review data source ids
 
 ## Network import (D135)
 Actions > network > Run workflow: stage `inspect` (counts of the attached file) or `import` (record it in the approved Hostinger tables). `import` is a dry run (counts only, no database connection) unless "Actually write" is ticked; the live run creates the three `v7_network_*` tables if missing, applies the file in chunks, and prints people/positions totals read back from the database. Running it again on the same file writes nothing.
+
+## Recruiters (RECR-1.2)
+Add the Actions secrets `NOTION_RECRUITERS_TOKEN` (the Notion integration shared with the Recruiters data source) and `NOTION_RECRUITERS_DATA_SOURCE_ID` (the data source id). The manual workflow `recruiters.yml` also uses the Gmail, Outlook and private database secrets that MegIBOW already uses. Run it dry first; tick `live` to write. Nothing is scheduled.

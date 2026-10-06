@@ -49,6 +49,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
+- `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`
 - `resolve-lensa` -> `lifeos.run:_lensa`
@@ -200,6 +201,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/impersonate.py`: Fetch a page the way a real Chrome does (TLS fingerprint and headers) for the few first-party sites that refuse plain scripted requests. Used only for registry sources th
 - `lifeos/platform/jira.py`: Minimal Jira Cloud REST client (stdlib only, platform: no product knowledge). Every error is a fixed code: never a URL, a response body or an issue field. Reads retry tra
 - `lifeos/platform/limits.py`: Provider limits, canonized once. Code imports these; docs/LIMITS.md explains them; tests keep them in sync. Rule: every outbound call path stays UNDER the provider's publ
+- `lifeos/platform/mail.py`: One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.
 - `lifeos/platform/names.py`: Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).
 - `lifeos/platform/notion_client.py`: Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge.
 - `lifeos/platform/outlook.py`: Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code sign-in once, then silent refresh), im
@@ -213,6 +215,12 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/tinyfish.py`: TinyFish Fetch API client (real-browser fetch with anti-bot). Key comes from the TINYFISH_API_KEY secret.
 - `lifeos/platform/tinyfish_search.py`: TinyFish Search API client (free; 30 requests/minute). Key from TINYFISH_API_KEY. Fixed codes only in errors.
 - `lifeos/platform/usage.py`: Hard spending/rate guard for TinyFish (Jim's wallet is $35 total and must never be used up).
+### lifeos/recruiters/
+- `lifeos/recruiters/classify.py`: Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
+- `lifeos/recruiters/identity.py`: Deterministic identity for a recruiter contact: name cleaning, normalized natural key, Monday-to-Sunday week. No fuzzy matching, no guessing.
+- `lifeos/recruiters/notion.py`: The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
+- `lifeos/recruiters/qualify.py`: Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
+- `lifeos/recruiters/stage.py`: RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
 ### lifeos/sources/
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
@@ -249,6 +257,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, JOBRIGHT_EMAIL, JOBRIGHT_PASSWORD, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_API_TOKEN, NOTION_INTERVIEW_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NTFY_TOPIC, OPEN_JOBS_CONTACT, TINYFISH_API_KEY
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NETWORK_HANDOFF_PAGE_ID, NOTION_API_TOKEN
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, OUTLOOK_CLIENT_ID
+- `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NOTION_RECRUITERS_DATA_SOURCE_ID, NOTION_RECRUITERS_TOKEN, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets FIT_PROFILE_EXTRA_JSON, FIT_PROFILE_JSON, LIFEOS_ACQ_DB_NAME, LIFEOS_ACQ_DB_PASSWORD, LIFEOS_ACQ_DB_USER, LIFEOS_ACQ_SSH_HOST, LIFEOS_ACQ_SSH_KNOWN_HOSTS, LIFEOS_ACQ_SSH_PORT, LIFEOS_ACQ_SSH_PRIVATE_KEY, LIFEOS_ACQ_SSH_USER, NTFY_TOPIC
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, NTFY_TOPIC
 
@@ -400,3 +409,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D151: Delivery tracking: a read-only mail census before any carrier work (2026-10-06, DEL-1.1)
 - D152: Amazon Orders: a row with no Grand Total is cleared (2026-10-06, Jim)
 - D153: Delivery census also reads tracking links (2026-10-06, DEL-1.1)
+- D154: Recruiters runtime slice 1 (RECR-1.2): read-only mail to the existing Recruiters data source (2026-10-06)
