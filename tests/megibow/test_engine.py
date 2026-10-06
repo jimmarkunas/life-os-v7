@@ -198,3 +198,11 @@ class Warnings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CutoverDefaultTests(unittest.TestCase):
+    def test_the_default_cutover_is_the_first_visible_week_so_no_visible_week_is_dashed(self):
+        from datetime import date
+        from lifeos.sources import megibow
+        from lifeos.megibow.windows import visible_weeks
+        self.assertEqual(date.fromisoformat(megibow.CUTOVER_DEFAULT), visible_weeks(date(2026, 10, 6))[0])
