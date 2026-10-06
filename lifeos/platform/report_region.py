@@ -293,13 +293,16 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
     Owned blocks (and everything under them) appear only as ids, so the owner's own edits never register. A callout whose first child is a heading in `skip_titles`
     (a region another system writes on its own schedule) is recorded by id only. Separate pages and views are never entered."""
     own = {i.replace("-", "").lower() for i in own_ids}
-    nodes, layout, titles, left = {}, {}, {}, [budget]
+    nodes, layout, titles, left, kinds = {}, {}, {}, [budget], {}
 
     def walk(parent_id):
         left[0] -= 1
         if left[0] < 0:
             raise fail("PAGE_DIGEST_INCOMPLETE")
-        kids = children(client, parent_id, fail)
+        try:
+            kids = children(client, parent_id, fail)
+        except NotionError as error:
+            raise fail(f"PAGE_WALK_{error}:{kinds.get(parent_id, 'page')}") from None             # the kind of block that could not be listed, never its id or text
         layout[parent_id] = [k["id"] for k in kids]
         for position, kid in enumerate(kids):
             key = kid["id"].replace("-", "").lower()
@@ -308,6 +311,7 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
                 continue
             flat = {k: v for k, v in kid.items() if k not in ("has_children",)}
             nodes[kid["id"]] = _hash(_stable(flat))
+            kinds[kid["id"]] = kid.get("type")
             if kid.get("type") == "heading_3":
                 titles[plain(kid).strip()] = titles.get(plain(kid).strip(), 0) + 1
             if kid.get("has_children") and kid.get("type") not in LEAVES:
