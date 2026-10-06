@@ -286,3 +286,12 @@ class AttentionRegions(AmazonRegions):
         self.roots.append(root)
         self.metas["attention-callout"] = root
         self.children["attention-callout"] = [{"id": "attention-view", "type": "child_database", "has_children": False, "child_database": {}}]
+
+
+class MailRegions(AttentionRegions):
+    """AttentionRegions plus the Mail Alerts callout: a heading, one old status line to replace, and a non-text block that must survive every write."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        kids = [self._text_block("mail-status-old", "paragraph", "old mail status"), {"id": "mail-table-old", "type": "table", "has_children": False, "table": {}}]
+        self._add_region("mail-callout", "Mail Alerts", kids, heading_type="heading_3")
