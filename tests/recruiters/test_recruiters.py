@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import pathlib
 import re
@@ -199,7 +201,7 @@ class StageTests(unittest.TestCase):
         notion = FakeRecruiters()
         broken = ReadOnlyGmail([signed()])
         broken.list_ids_complete = lambda *a, **k: (_ for _ in ()).throw(platform_mail.GmailError("GMAIL_LISTING_INCOMPLETE"))
-        with self.assertRaises(store.RecruitersError):
+        with self.assertRaises(store.RecruitersError), contextlib.redirect_stdout(io.StringIO()):          # the degraded run prints its counts line; keep it out of the test log
             stage.run(0, True, environ={}, gmail=broken, outlook_accounts=[], notion=notion, now=NOW)
         self.assertEqual(notion.writes, [])
 
