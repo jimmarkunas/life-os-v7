@@ -105,6 +105,7 @@ STAGES = {
     "agenda-card": lazy("lifeos.agenda.card"),
     "scale-up-holds": lazy("lifeos.jobs.holds"),
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
+    "alerts-open": lazy("lifeos.jobs.alertstate"),
     "safety-sql-smoke": lazy("lifeos.jobs.safety", "run_sql_smoke"),
     "safety-fit-capture": lazy("lifeos.jobs.safety", "run_fit_capture"),
     "safety-fit-golden": lazy("lifeos.jobs.safety", "run_fit_golden"),

@@ -6,6 +6,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `agenda-card` -> `lifeos.agenda.card:run`
 - `agenda-snapshot` -> `lifeos.agenda.snapshot:run`
 - `alerts` -> `lifeos.jobs.alerts:run`
+- `alerts-open` -> `lifeos.jobs.alertstate:run`
 - `amazon-backfill` -> `lifeos.amazon.backfill:run`
 - `amazon-card` -> `lifeos.amazon.card:run`
 - `amazon-census` -> `lifeos.delivery.census:run`
@@ -120,6 +121,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jira/store.py`: Private storage for the Jira snapshot: one row per project (see platform/snapshot_store).
 ### lifeos/jobs/
 - `lifeos/jobs/alerts.py`: Jobs OS alert detectors and the alerts stage (D53). Counts only. Detectors are pure functions of counts so they test without a database; state (which alerts are open, whe
+- `lifeos/jobs/alertstate.py`: Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), and per source the new jobs in the last 24 hours against the 14-day daily
 - `lifeos/jobs/ats_detail.py`: Direct job readers for ATS pages that are JavaScript shells. The job URL already names the tenant and the job, so each reader asks the ATS's public JSON (or the JSON embe
 - `lifeos/jobs/audit.py`: Precision audit: no-network pass over READY and PUBLISHED rows with the quality guards.
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
@@ -428,3 +430,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D159: Network matching (NET-2.2): leads for jobs, applied opportunities and upcoming interviews, counts only (2026-10-06)
 - D160: Network surface (NET-2.3): one owned "Network Leads (n)" block per Job Ledger page (2026-10-07)
 - D162: Network surface: acceptance record and hourly wiring at 40 pages (2026-10-07)
+- D163: A board read in full is idle, not stopped (2026-10-06)
