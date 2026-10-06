@@ -202,3 +202,13 @@ class ReviewResetTests(unittest.TestCase):
         self.assertEqual((dry["review_rows"], dry["empty"], dry["kept_with_data"], dry["trashed"], calls), (2, 1, 1, 0, []))
         live = reset.run(100, True, environ=TOKEN, notion=notion)
         self.assertEqual((live["trashed"], live["failed"], calls), (1, 0, [("PATCH", "/pages/page-empty", {"in_trash": True})]))
+
+
+class WindowsLineEndingTests(unittest.TestCase):
+    def test_total_lines_are_read_when_the_mail_uses_carriage_returns(self):
+        from lifeos.amazon import events
+        single = events.extract(message("w1", "auto-confirm", body="Order #114-5655798-1950618\r\n\r\nTotal\r\n21.2 USD\r\n\r\nx"))
+        self.assertEqual(single["grand_total"], "21.20")
+        two = "Order 1 of 2\r\nOrder #114-5645978-6137859\r\n\r\n    Order Total: $0.00\r\n\r\nOrder 2 of 2\r\nOrder #114-9093037-6606664\r\n\r\n    Order Total: $7.50\r\n\r\nbye"
+        got = events.extract_all(message("w2", "auto-confirm", body=two))
+        self.assertEqual([(e["order_id"], e["grand_total"]) for e in got], [("114-5645978-6137859", "0.00"), ("114-9093037-6606664", "7.50")])
