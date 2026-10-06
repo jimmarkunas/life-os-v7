@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "inspect (counts of the file), import (record it in Hostinger) or audit (read-only counts of the stored tables) or match (NET-2.2: read-only counts of network leads for admitted jobs; writes nothing)"
+        description: "inspect (counts of the file), import (record it in Hostinger) or audit (read-only counts of the stored tables) or match (NET-2.2: read-only counts of network leads; writes nothing) or surface (NET-2.3: the Network Leads block on Job Ledger pages; dry unless Actually write)"
         type: choice
-        options: ["inspect", "import", "audit", "match"]
+        options: ["inspect", "import", "audit", "match", "surface"]
         default: "inspect"
       live:
-        description: "import only: actually write to Hostinger (unticked = dry run, counts only)"
+        description: "import or surface only: actually write (import: Hostinger tables; surface: the two surface tables and the owned Network Leads block). Unticked = dry run, counts only"
         type: boolean
         default: false
 permissions:
@@ -29,6 +29,7 @@ jobs:
         env:
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
           NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
@@ -39,4 +40,4 @@ jobs:
           LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}
-        run: python -m lifeos.run "network-$STAGE" $([ "$STAGE" = "import" ] && [ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run "network-$STAGE" $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ]; } && [ "$LIVE" = "true" ] && echo --live)
