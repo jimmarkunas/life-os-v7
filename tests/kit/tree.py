@@ -6,9 +6,7 @@ from lifeos.platform.notion_client import NotionError
 
 
 def rich(text, link=None):
-    part = {"plain_text": text, "text": {"content": text}}
-    if link:
-        part["text"]["link"] = {"url": link}
+    part = {"plain_text": text, "text": {"content": text, "link": {"url": link} if link else None}}      # Notion reports "link": null on plain text
     return [part]
 
 
@@ -58,7 +56,7 @@ class Tree:
             if kind not in body:
                 raise AssertionError("a block keeps its type")
             if kind == "table_row":
-                block[kind] = {"cells": [[{"plain_text": r["text"]["content"], "text": r["text"]} for r in cell] for cell in body[kind]["cells"]]}
+                block[kind] = {"cells": [[{"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}} for r in cell] for cell in body[kind]["cells"]]}
             else:
                 block[kind] = {**block[kind], "rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
             self._tripped(method, path)
@@ -81,7 +79,7 @@ class Tree:
                 self.n += 1
                 row_id = f"new-{self.n}"
                 block = self.add(row_id, "table_row", parts[1], content={"cells": []})
-                block["table_row"]["cells"] = [[{"plain_text": part["text"]["content"], "text": part["text"]} for part in cell] for cell in child["table_row"]["cells"]]
+                block["table_row"]["cells"] = [[{"plain_text": part["text"]["content"], "text": {"link": None, **part["text"]}} for part in cell] for cell in child["table_row"]["cells"]]
                 made.append(deepcopy(block))
             self._tripped(method, path)
             return {"results": made}

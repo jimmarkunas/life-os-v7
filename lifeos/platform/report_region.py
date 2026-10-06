@@ -230,7 +230,8 @@ def cells_of(row):
 
 
 def _links_of(row):
-    return [[(part.get("text") or {}).get("link", {}).get("url") if isinstance(part, dict) else None for part in cell] for cell in (row.get("table_row") or {}).get("cells") or []]
+    return [[((part.get("text") or {}).get("link") or {}).get("url") if isinstance(part, dict) else None for part in cell]      # Notion sends "link": null for plain text
+            for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
 def _meta(client, block_id):

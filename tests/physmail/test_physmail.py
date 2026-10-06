@@ -5,6 +5,7 @@ import json
 import pathlib
 import re
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -188,6 +189,21 @@ class StageTests(unittest.TestCase):
             with self.assertRaises(stage.PhysMailError):
                 self.run_stage(env={}, gmail=gmail)
         self.assertEqual(self.store.row, before)
+
+    def test_a_new_arrival_notice_pushes_to_the_phone_once_with_counts_only(self):
+        pushed = []
+        with mock.patch("lifeos.platform.alerts.ntfy", lambda topic, title, body, severity, post=None: (pushed.append((topic, title, body)) or True)):
+            env = {"PHYSICAL_MAIL_ANCHOR": "11", "NTFY_TOPIC": "t"}
+            counts, _ = self.run_stage([mail("n1", "New Mail (3)")], env=env)
+            self.assertEqual((counts["notified"], pushed), (True, [("t", "LIFE OS Physical Mail", "3 new mail items received")]))
+            self.run_stage([mail("n1", "New Mail (3)")], env={"NTFY_TOPIC": "t"})                     # the same notice again: no second push
+            self.run_stage([actions("a1", "Mail #4801 scanned")], env={"NTFY_TOPIC": "t"})             # an action notice is not a received alert
+            self.assertEqual(len(pushed), 1)
+            self.run_stage([mail("n2", "New Mail (1)")], env={"NTFY_TOPIC": "t"}, live=False)           # a dry run never pushes
+            self.assertEqual(len(pushed), 1)
+            self.run_stage([mail("n3", "New Mail (1)")], env={"NTFY_TOPIC": "t"})
+            self.assertEqual(pushed[-1][2], "1 new mail item received")
+        self.assertNotIn("4801", str(pushed))
 
     def test_review_evidence_reaches_the_state_not_a_guess(self):
         counts, _ = self.run_stage([actions("r1", "Mail #4801 opened")])
