@@ -458,10 +458,8 @@
    "manual": true,
    "secrets": [
     "GMAIL_OAUTH_CLIENT_ID",
-    "GMAIL_OAUTH_CLIENT_SECRET",
-    "GMAIL_OAUTH_REFRESH_TOKEN",
-    "NOTION_AMAZON_DATA_SOURCE_ID",
-    "NOTION_AMAZON_TOKEN"
+    "LIFEOS_BWS_RUNTIME_TOKEN",
+    "NOTION_AMAZON_DATA_SOURCE_ID"
    ]
   },
   "bills.yml": {

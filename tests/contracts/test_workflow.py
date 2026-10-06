@@ -79,6 +79,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(f"'{domains['concurrency']['group']}'", group)                       # orders: the very group the domain jobs hold
         self.assertIn("'life-os-v7-amazon-orders'", group)                                  # backfill, retention, review-reset: their own
         self.assertIs(amazon["concurrency"]["cancel-in-progress"], False)
+        self.assertEqual(group, "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}")      # EDGE-1.3 left the queueing exactly as it was
+        self.assertEqual(amazon["jobs"]["amazon"]["timeout-minutes"], 330)
         self.assertNotIn("schedule", amazon[True])
 
     def test_amazon_manual_workflow_is_dry_by_default_and_adds_no_hourly_input(self):
@@ -88,6 +90,27 @@ class WorkflowTests(unittest.TestCase):
         manual = yaml.safe_load((root / ".github/workflows/amazon.yml").read_text())
         self.assertNotIn("amazon", hourly[True]["workflow_dispatch"]["inputs"])
         self.assertIs(manual[True]["workflow_dispatch"]["inputs"]["live"]["default"], False)
+
+    def test_amazon_reads_its_three_migrated_credentials_from_bitwarden_through_the_pinned_action(self):
+        """EDGE-1.3 Phase B: exactly the Gmail client secret, Gmail refresh token and Notion Amazon token come from Bitwarden; the client id and data-source id stay GitHub secrets."""
+        import re
+        from pathlib import Path
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/amazon.yml").read_text()
+        manual = yaml.safe_load(text)
+        inputs = manual[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual(list(manual[True]), ["workflow_dispatch"])                                       # manual only: no schedule, push or other trigger
+        self.assertEqual(inputs["stage"]["options"], ["orders", "backfill", "retention", "review-reset", "census"])
+        self.assertEqual((inputs["since"]["default"], inputs["live"]["default"]), ("2015-01-01", False))   # dry run stays the default
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])
+        for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
+            self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"])   # the reviewed v3.0.1 commit
+        mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
+        self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
+                                                   "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN"]))
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 3)
+        self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
+        self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
 
 if __name__ == "__main__":
