@@ -98,13 +98,15 @@ class Gmail:
                 break
         return ids[:limit]
 
-    def list_ids_complete(self, query, limit):
-        """Return the complete matching ID set, or fail when it exceeds the caller's bound."""
+    def list_ids_complete(self, query, limit, include_spam=False):
+        """Return the complete matching ID set, or fail when it exceeds the caller's bound. Spam and Trash are listed only when asked."""
         if not isinstance(limit, int) or limit < 1:
             raise GmailError("GMAIL_LIST_LIMIT_INVALID")
         ids, token, seen_tokens, seen_ids = [], None, set(), set()
         for _ in range(MAX_LIST_PAGES):
             params = {"q": query, "maxResults": min(500, limit + 1 - len(ids))}
+            if include_spam:
+                params["includeSpamTrash"] = "true"
             if token:
                 if token in seen_tokens:
                     raise GmailError("GMAIL_LISTING_INCOMPLETE")
@@ -153,6 +155,25 @@ class Gmail:
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
         return {"id": str(message_id), "sender": values.get("from", ""), "subject": values.get("subject", ""),
                 "received_at": received, "body_text": _find_text(full["payload"]), "label_ids": labels}
+
+    MAIL_HEADERS = ("From", "Subject", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe", "X-Auto-Response-Suppress", "Reply-To")
+
+    def mail_record(self, message_id):
+        """Read-only: headers that matter for classification, readable body text, labels and received time. Decoded content stays in memory."""
+        full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=full")
+        if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
+        values = {}
+        for header in full["payload"].get("headers") or []:
+            if isinstance(header, dict) and isinstance(header.get("name"), str) and isinstance(header.get("value"), str):
+                values.setdefault(header["name"].lower(), header["value"])
+        try:
+            received = datetime.fromtimestamp(int(full.get("internalDate")) / 1000, timezone.utc).isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            raise GmailError("GMAIL_MESSAGE_INCOMPLETE") from None
+        labels = full.get("labelIds") if isinstance(full.get("labelIds"), list) else []
+        return {"id": str(message_id), "received_at": received, "headers": {k: values[k] for k in (h.lower() for h in self.MAIL_HEADERS) if k in values},
+                "body_text": _find_text(full["payload"]), "label_ids": labels, "thread": str(full.get("threadId") or "")}
 
     SENT_HEADERS = ("From", "To", "Cc", "Subject", "Date", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe")
 

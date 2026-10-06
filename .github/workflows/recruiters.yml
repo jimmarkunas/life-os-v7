@@ -1,0 +1,38 @@
+name: recruiters
+# RECR-1.2. Manual only: Gmail and Outlook (Inbox and Junk, last 14 days) are read, never changed; recruiter rows go to the existing Recruiters data source. Dry run by default.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Write Recruiters rows (unticked = dry run, counts only)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-domains                       # reads the same mailboxes as the domain jobs, so it queues behind them instead of colliding
+  cancel-in-progress: false
+jobs:
+  recruiters:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Recruiters (read-only mail to the Recruiters data source; counts only)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          NOTION_RECRUITERS_TOKEN: ${{ secrets.NOTION_RECRUITERS_TOKEN }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
+        run: python -m lifeos.run recruiters --limit 0 $([ "${{ inputs.live }}" = "true" ] && echo --live)

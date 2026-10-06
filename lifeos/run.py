@@ -115,6 +115,7 @@ STAGES = {
     "mail-card": lazy("lifeos.physmail.card"),
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
+    "recruiters": lazy("lifeos.recruiters.stage"),
     "attention": lazy("lifeos.attention.stage", floor=200),
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
