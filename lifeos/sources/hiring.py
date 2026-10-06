@@ -25,7 +25,7 @@ def _text(prop, kind):
     return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in parts).strip()
 
 
-def read_applied(client):
+def read_applied(client, stats=None):
     """Every Job Ledger row with Applied ticked: [{"company", "role", "applied_on"}]. Anything short of a provably complete read raises (the caller marks the Ledger unavailable)."""
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
@@ -40,6 +40,8 @@ def read_applied(client):
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
             out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None})
         if not page["has_more"]:
+            if stats is not None:
+                stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
             return [r for r in out if r["company"] and r["role"]]
         cursor = page.get("next_cursor")
         if not isinstance(cursor, str) or not cursor or cursor in seen:
@@ -79,8 +81,9 @@ def read_events(calendar, now):
 def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
+    ledger_stats = {}
     try:
-        applied = read_applied(ledger_client or Client(environ))
+        applied = read_applied(ledger_client or Client(environ), ledger_stats)
     except Exception:
         ok["ledger"] = False
     root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
@@ -101,7 +104,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         result = C.compile_rows(applied, parents, events, prior, ok, now)
         text, cells, counts = render.render(result, prior, now)
         counts.update({"applied": len(applied), "opportunities": len(parents), "events": len(events), "unsupported": result["unsupported"],
-                       "unmatched_events": result["unmatched_events"], "saved": 0, "blocks_written": 0, "sources": dict(ok)})
+                       "unmatched_events": result["unmatched_events"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         new = snapshot.build(result, prior, now)
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched

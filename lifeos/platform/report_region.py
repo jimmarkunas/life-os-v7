@@ -18,6 +18,16 @@ TEXT_KINDS = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do")
 VOLATILE = {"last_edited_time", "last_edited_by", "request_id", "expiry_time"}      # metadata that changes without the content changing
 
 
+def clean_id(raw):
+    """A block id as Notion wants it. Accepts the id itself (with or without dashes) or a copied Notion link, whose `#` fragment is the block id; anything else comes back
+    unchanged so the caller's own check rejects it. Never logs or raises."""
+    value = (raw or "").strip()
+    if "#" in value:
+        value = value.rsplit("#", 1)[1].strip()
+    bare = value.replace("-", "")
+    return bare.lower() if len(bare) == 32 and all(c in "0123456789abcdefABCDEF" for c in bare) else (raw or "").strip()
+
+
 def plain(block):
     inner = block.get(block.get("type")) or {}
     return "".join((part.get("plain_text") or (part.get("text") or {}).get("content") or "")
@@ -74,6 +84,7 @@ def _tree(client, block, fail):
 
 def region_digest(client, block_id, fail):
     """One hash per field of a protected callout and one per child block, so a change can be located (names only)."""
+    block_id = clean_id(block_id)
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if isinstance(meta, dict) and meta.get("type") == "heading_3" and same_id(meta.get("id"), block_id):
         return floating_digest(client, meta, fail)                                   # the Hiring Pipeline region is a heading, a paragraph and a table, not a callout
@@ -95,7 +106,7 @@ def changed(before, after):
 
 def protected(client, ids, fail):
     """ids: {region heading: block id}. Every id must be configured; -> {region: digest}."""
-    ids = {region: block_id for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
+    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     try:
@@ -248,25 +259,33 @@ def floating_region(client, block_id, title, fail):
     """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
     Accepted shape ONLY: a heading_3 whose text is exactly `title`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
     columns; the block after them (if any) is neither a paragraph nor a table. Anything else raises: no write is ever attempted on an ambiguous region."""
-    meta = _meta(client, block_id)
+    def at(stage, call):
+        try:
+            return call()
+        except NotionError as error:
+            if type(error).__name__ == type(fail("X")).__name__:
+                raise
+            raise fail(f"FLOATING_{stage}_{error}") from None             # the failing call's name and Notion's status, never an id or text
+
+    meta = at("HEADING_GET", lambda: _meta(client, block_id))
     if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or plain(meta).strip() != title:
         raise fail("FLOATING_HEADING_INVALID")
     ancestors = []
-    page_id = page_of(client, meta, fail, ancestors)
+    page_id = at("PARENT_WALK", lambda: page_of(client, meta, fail, ancestors))
     if "callout" in ancestors:
         raise fail("FLOATING_WRAPPED_IN_CALLOUT")
     parent = meta["parent"]
     parent_id = parent.get("block_id") or parent.get("page_id")
-    siblings = children(client, parent_id, fail)
-    at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
-    if len(at) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
+    siblings = at("SIBLINGS", lambda: children(client, parent_id, fail))
+    found = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
+    if len(found) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
         raise fail("FLOATING_HEADING_AMBIGUOUS")
-    i = at[0]
+    i = found[0]
     status, table = (siblings[i + 1:i + 2] or [None])[0], (siblings[i + 2:i + 3] or [None])[0]
     after = (siblings[i + 3:i + 4] or [None])[0]
     if not status or status.get("type") != "paragraph" or not table or table.get("type") != "table" or (after and after.get("type") in ("paragraph", "table")):
         raise fail("FLOATING_SHAPE_INVALID")
-    rows = children(client, table["id"], fail)
+    rows = at("TABLE_ROWS", lambda: children(client, table["id"], fail))
     spec = table.get("table") or {}
     if spec.get("table_width") != 4 or spec.get("has_column_header") is not True or not rows or any(r.get("type") != "table_row" for r in rows):
         raise fail("FLOATING_TABLE_INVALID")
@@ -293,13 +312,16 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
     Owned blocks (and everything under them) appear only as ids, so the owner's own edits never register. A callout whose first child is a heading in `skip_titles`
     (a region another system writes on its own schedule) is recorded by id only. Separate pages and views are never entered."""
     own = {i.replace("-", "").lower() for i in own_ids}
-    nodes, layout, titles, left = {}, {}, {}, [budget]
+    nodes, layout, titles, left, kinds = {}, {}, {}, [budget], {}
 
     def walk(parent_id):
         left[0] -= 1
         if left[0] < 0:
             raise fail("PAGE_DIGEST_INCOMPLETE")
-        kids = children(client, parent_id, fail)
+        try:
+            kids = children(client, parent_id, fail)
+        except NotionError as error:
+            raise fail(f"PAGE_WALK_{error}:{kinds.get(parent_id, 'page')}") from None             # the kind of block that could not be listed, never its id or text
         layout[parent_id] = [k["id"] for k in kids]
         for position, kid in enumerate(kids):
             key = kid["id"].replace("-", "").lower()
@@ -308,6 +330,7 @@ def page_digest(client, page_id, own_ids, fail, skip_titles=(), budget=400):
                 continue
             flat = {k: v for k, v in kid.items() if k not in ("has_children",)}
             nodes[kid["id"]] = _hash(_stable(flat))
+            kinds[kid["id"]] = kid.get("type")
             if kid.get("type") == "heading_3":
                 titles[plain(kid).strip()] = titles.get(plain(kid).strip(), 0) + 1
             if kid.get("has_children") and kid.get("type") not in LEAVES:
