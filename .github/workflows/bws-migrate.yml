@@ -1,9 +1,10 @@
 name: bws-migrate
-# EDGE-1.3 Phase A: ONE-TIME, MANUAL copy of 25 GitHub Actions secrets into the Bitwarden project "LIFE OS GitHub Actions".
+# EDGE-1.3: ONE-TIME, MANUAL, RESUMABLE copy of 25 GitHub Actions secrets into the Bitwarden project "LIFE OS GitHub Actions".
 # Temporary: delete this file (and tests/contracts/test_bws_migration.py) once the migration is read back and Phase B has landed.
-# It changes nothing else: no production workflow reads Bitwarden yet, no GitHub secret is deleted or overwritten, no Bitwarden secret is overwritten.
-# Fail closed: all 25 sources must be non-empty, the migration machine account must see exactly the intended project, and none of the 25 destination keys
-# may already exist, all checked before the first write. Output is key names and secret UUIDs only; never a value.
+# It changes nothing else: no production workflow reads Bitwarden yet, no GitHub secret is deleted or overwritten, no Bitwarden secret is ever overwritten or deleted.
+# Resume: a destination key that already exists is compared with its GitHub source IN MEMORY (shell builtins only); equal = ALREADY_PRESENT, different = stop before any write.
+# Fail closed: all 25 sources non-empty, exactly the intended project visible, no duplicate or mismatched destination, all checked before the first write; pending keys are then
+# created one request at a time with a fixed pause (rate-limit pressure), and the project is read back and every value re-verified. Output is key names, UUIDs and fixed codes only.
 on:
   workflow_dispatch:
     inputs:
@@ -64,6 +65,9 @@ jobs:
           [ "${RUNNER_DEBUG:-}" != "1" ] || { echo "refused: runner debug logging is on"; exit 1; }
           PROJECT="3244a340-8b60-45f0-9f33-b4db0082127e"
           PREFIX="lifeos/github-actions/"
+          PAUSE=3          # seconds before every per-secret request (read or create): no rapid-fire bursts against the Bitwarden API
+          RETRY_WAIT=30    # seconds before the single retry of a create that was identified as a rate-limit response
+          RATE_LIMIT_RE='(^|[^0-9])429([^0-9]|$)|too many requests|rate limit'
           NAMES=(
             FIT_PROFILE_EXTRA_JSON FIT_PROFILE_JSON GCAL_SERVICE_ACCOUNT_JSON GMAIL_OAUTH_CLIENT_SECRET GMAIL_OAUTH_REFRESH_TOKEN
             JIRA_API_TOKEN JIRA_EMAIL JOBRIGHT_EMAIL JOBRIGHT_PASSWORD LIFEOS_ACQ_DB_NAME LIFEOS_ACQ_DB_PASSWORD LIFEOS_ACQ_DB_USER
@@ -72,6 +76,52 @@ jobs:
             OPEN_JOBS_CONTACT TINYFISH_API_KEY
           )
           [ "${#NAMES[@]}" -eq 25 ] || { echo "refused: expected 25 sources"; exit 1; }
+          declare -A CNT ID
+
+          # Destination listing: key and id only (the CLI's list JSON can carry values, so it is cut down at once). Fills CNT (how many) and ID (last seen).
+          load_destination() {
+            local lines key id
+            CNT=(); ID=()
+            lines=$(bws secret list "$PROJECT" -o json 2>/dev/null | jq -r '.[] | "\(.key)\t\(.id)"') || { echo "LIST_FAILED"; return 1; }
+            while IFS=$'\t' read -r key id; do
+              [ -n "$key" ] || continue
+              CNT["$key"]=$(( ${CNT["$key"]:-0} + 1 )); ID["$key"]="$id"
+            done <<< "$lines"
+            echo "destination holds ${#CNT[@]} distinct key(s)"
+            [ -z "$lines" ] || printf '%s\n' "$lines"
+          }
+
+          # Stored value of one destination secret, by id, into STORED, newlines kept exactly. It stays in this shell's memory and is never printed.
+          fetch_stored() {
+            local out
+            sleep "$PAUSE"
+            out=$(bws secret get "$1" -o json 2>/dev/null) || return 1
+            [ "$(printf '%s' "$out" | jq -r '.value | type' 2>/dev/null)" = "string" ] || return 1
+            STORED=$(printf '%s' "$out" | jq -j '.value'; printf x)
+            STORED=${STORED%x}
+          }
+
+          # One create, one retry only when the response is identified as a rate limit. The CLI's output (which may hold a value) is kept in memory and
+          # only fixed codes leave this function: CREATED_ID on success, FAIL_CLASS = RATE_LIMIT, UNPARSEABLE_RESPONSE or UNKNOWN_ERROR otherwise.
+          create_one() {
+            local out attempt
+            for attempt in 1 2; do
+              sleep "$PAUSE"
+              if out=$(bws secret create -o json -- "$PREFIX$1" "${!1}" "$PROJECT" 2>&1); then
+                if [[ "$out" =~ \"id\"[[:space:]]*:[[:space:]]*\"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\" ]]; then
+                  CREATED_ID="${BASH_REMATCH[1]}"; return 0
+                fi
+                FAIL_CLASS=UNPARSEABLE_RESPONSE; return 1
+              fi
+              if [[ "${out,,}" =~ $RATE_LIMIT_RE ]]; then
+                FAIL_CLASS=RATE_LIMIT
+                if [ "$attempt" -eq 1 ]; then echo "RATE_LIMIT on $1: waiting ${RETRY_WAIT}s before the single retry"; sleep "$RETRY_WAIT"; continue; fi
+              else
+                FAIL_CLASS=UNKNOWN_ERROR
+              fi
+              return 1
+            done
+          }
 
           echo "PREFLIGHT 1/4 source values present"
           missing=0
@@ -87,29 +137,52 @@ jobs:
           [ "$(printf '%s\n' "$ids" | grep -c .)" -eq 1 ] && [ "$ids" = "$PROJECT" ] || { echo "preflight failed: accessible projects are not exactly the intended one"; exit 1; }
           echo "project access ok (1 project, the intended one)"
 
-          echo "PREFLIGHT 3/4 destination secret names and ids"
-          existing=$(bws secret list "$PROJECT" -o json 2>/dev/null | jq -r '.[] | "\(.key)\t\(.id)"') || { echo "preflight failed: bws secret list"; exit 1; }
-          echo "destination holds $(printf '%s' "$existing" | grep -c . || true) secret(s)"
-          printf '%s\n' "$existing" | grep . || true
-
-          echo "PREFLIGHT 4/4 no destination key may already exist"
-          conflicts=0
+          echo "PREFLIGHT 3/4 destination secret names and ids; no approved key may appear twice"
+          load_destination || { echo "preflight failed: bws secret list"; exit 1; }
+          dupes=0
           for n in "${NAMES[@]}"; do
-            if printf '%s\n' "$existing" | cut -f1 | grep -Fxq "$PREFIX$n"; then echo "CONFLICT $PREFIX$n"; conflicts=$((conflicts + 1)); fi
+            if [ "${CNT[$PREFIX$n]:-0}" -gt 1 ]; then echo "DUPLICATE $PREFIX$n"; dupes=$((dupes + 1)); fi
           done
-          [ "$conflicts" -eq 0 ] || { echo "stopped before any write: $conflicts destination key(s) already exist"; exit 1; }
-          echo "no conflicts"
+          [ "$dupes" -eq 0 ] || { echo "stopped before any write: $dupes duplicated destination key(s)"; exit 1; }
+
+          echo "PREFLIGHT 4/4 each existing destination must equal its source (in memory; never printed); nothing is overwritten"
+          PENDING=(); present=0; mismatched=0
+          for n in "${NAMES[@]}"; do
+            if [ "${CNT[$PREFIX$n]:-0}" -eq 0 ]; then PENDING+=("$n"); continue; fi
+            fetch_stored "${ID[$PREFIX$n]}" || { echo "preflight failed: READ_FAILED $PREFIX$n"; exit 1; }
+            if [[ "$STORED" == "${!n}" ]]; then
+              echo "$n -> ${ID[$PREFIX$n]} -> ALREADY_PRESENT"; present=$((present + 1))
+            else
+              echo "MISMATCH $PREFIX$n"; mismatched=$((mismatched + 1))
+            fi
+          done
+          STORED=""
+          [ "$mismatched" -eq 0 ] || { echo "stopped before any write: $mismatched destination(s) differ from their source"; exit 1; }
+          echo "already present and equal: $present; pending: ${#PENDING[@]}"
 
           echo "MIGRATING"
           created=0
-          for n in "${NAMES[@]}"; do
-            # -- keeps a value that starts with dashes (the SSH key) from being read as an option. stderr is dropped and stdout is cut down to the id at once.
-            if id=$(bws secret create -o json -- "$PREFIX$n" "${!n}" "$PROJECT" 2>/dev/null | jq -r '.id // empty') && [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-              echo "$n -> $id -> CREATED"
-              created=$((created + 1))
+          for n in "${PENDING[@]}"; do
+            if create_one "$n"; then
+              echo "$n -> $CREATED_ID -> CREATED"; created=$((created + 1))
             else
-              echo "PARTIAL CANDIDATE: BLOCKED ON $n ($created of 25 created before it; nothing deleted or overwritten; check this key by name before any rerun)"
+              echo "PARTIAL CANDIDATE: BLOCKED ON $n ($FAIL_CLASS; $created created this run, $present already present; nothing deleted or overwritten; rerun resumes)"
               exit 1
             fi
           done
-          echo "DONE: $created of 25 created"
+
+          echo "READ-BACK"
+          sleep "$PAUSE"
+          load_destination > /dev/null || { echo "read-back failed: bws secret list"; exit 1; }
+          problems=0; verified=()
+          for n in "${NAMES[@]}"; do
+            key="$PREFIX$n"
+            if [ "${CNT[$key]:-0}" -eq 0 ]; then echo "MISSING $key"; problems=$((problems + 1)); continue; fi
+            if [ "${CNT[$key]}" -gt 1 ]; then echo "DUPLICATE $key"; problems=$((problems + 1)); continue; fi
+            if ! fetch_stored "${ID[$key]}"; then echo "READ_FAILED $key"; problems=$((problems + 1)); continue; fi
+            if [[ "$STORED" == "${!n}" ]]; then verified+=("$n -> ${ID[$key]} -> VERIFIED"); else echo "MISMATCH $key"; problems=$((problems + 1)); fi
+          done
+          STORED=""
+          [ "$problems" -eq 0 ] || { echo "read-back failed: $problems problem(s); nothing was repaired"; exit 1; }
+          printf '%s\n' "${verified[@]}"
+          echo "VERIFIED ${#verified[@]} OF 25"
