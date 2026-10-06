@@ -20,7 +20,8 @@ def _status(notion, source_id, message):
     extracted = events.extract(message)
     order_id = extracted.get("order_id")
     if not order_id:
-        return "no_order_id", extracted.get("reason") or "NONE"
+        reason = extracted.get("reason") or "NONE"
+        return "no_order_id", reason + (":" + events.ambiguity_shape(message) if reason == "ORDER_ID_AMBIGUOUS" else "")
     rows = _query_order(notion, source_id, order_id)
     if not rows:
         return "no_row", ""

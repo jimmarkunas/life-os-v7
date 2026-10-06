@@ -46,6 +46,15 @@ def _received(value):
         return None
 
 
+def ambiguity_shape(message):
+    """Counts-only description of a message that names several orders, for diagnosis: how many distinct order numbers, how many in the subject, how many in order links.
+    No order number, subject or body text is ever returned."""
+    body = message.get("body_text") if isinstance(message.get("body_text"), str) else ""
+    subject = message.get("subject") if isinstance(message.get("subject"), str) else ""
+    linked = set(re.findall(r"orderID=(\d{3}-\d{7}-\d{7})", body))
+    return f"ids={len(set(ORDER_ID_RE.findall(body)))},subject={len(set(ORDER_ID_RE.findall(subject)))},linked={len(linked)}"
+
+
 def extract(message):
     """Return a normalized event dict or a fixed REVIEW result; never return body text."""
     if not isinstance(message, dict):
