@@ -1,4 +1,39 @@
-# Edge gateway (Oracle VM + OpenClaw): scope and roadmap (scoping only, no code, nothing provisioned)
+# Edge gateway (Oracle VM + OpenClaw): live contract
+
+**Status: LIVE FOUNDATION / CURRENT CONTRACT — October 6, 2026.** The Oracle host and OpenClaw gateway now exist. This live amendment supersedes the historical scoping text below wherever they conflict; older sections remain rationale only.
+
+## Current role
+
+OpenClaw is LIFE OS's bounded edge capability/control plane. It may provide model routing, messaging transports, browser/node/computer access, local inference, and approved operations. V7/domain owners retain business rules, canonical persistence, permissions, and scheduling.
+
+Current capability lanes:
+- everyday cloud: `openrouter/free`; no automatic paid fallback;
+- specialist: Gemini 3.8 Flash, explicit only when quota is available;
+- premium: GPT-6 Sol, explicit only; GPT-6 Astra is prohibited for LIFE OS routing;
+- local: paired Mac worker via Ollama; Oracle remains lightweight;
+- Notion: official CLI/browser-auth path;
+- GitHub: authenticated CLI/API path;
+- Claude Code and other MCP clients: use `openclaw mcp serve` or a bounded adapter;
+- ChatGPT: use the same named-capability contract through an approved LIFE OS connector/adapter, not raw SSH.
+
+## Current hard boundaries
+
+- No second LIFE OS recurring scheduler, duplicate canonical datastore, or business-rule engine.
+- No unrestricted shell/elevated/filesystem authority for ordinary assistant sessions.
+- No autonomous permanent deletion of personal files; file stewardship is read/inventory/hash/propose/quarantine-first.
+- No secret values in GitHub or Notion; choose one central secrets manager and expose only scoped runtime references.
+- No durable meeting archive on Oracle; durable Meeting Evidence belongs in Notion.
+- Interview capture remains invisible/botless. Keep Granola as the current acquisition layer; visible OpenClaw meeting participants are not the Interview OS capture path.
+- Local Whisper/whisper.cpp remains the future Granola-replacement candidate, not the first meeting slice.
+
+## Security package now in progress
+
+`EDGE-1.3` owns central secrets selection, least-privilege exec/file policy, approval gates, plugin allowlisting, bounded storage/backup, and separate everyday-assistant vs maintenance-agent authority. `EDGE-1.4` then publishes the capability registry used by Claude/ChatGPT and domain consumers. Channels/tasks follow only after the hardening proof.
+
+---
+
+## Historical scoping below — reference only
+
 
 Status: scoped for Jim's review. Nothing here is built or provisioned, and this document changes no schema, secret, workflow, test or `docs/DECISIONS.md`. It treats the Oracle VM as **a new deployment target for the OpenClaw boundary that the Platform Canon already describes**, not as "LIFE OS in the cloud".
 
