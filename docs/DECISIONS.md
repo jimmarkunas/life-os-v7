@@ -626,3 +626,6 @@ About 97 orders from 2024 and 2025 had no Grand Total because retention trashed 
 
 ## D152 — Amazon Orders: a row with no Grand Total is cleared (2026-10-06, Jim)
 After the 2024–2025 backfill, 55 rows still had no total: 52 with no order date (shipment or delivery mail whose confirmation is gone) and 3 dated orders. Jim's call: get rid of all of them. `amazon.yml` stage `review-reset` now moves every Amazon Orders row whose Grand Total is empty, whatever its status, to the Notion trash (recoverable for 30 days; each move is read back). This widens D146, which only cleared empty REVIEW rows. A row that has a total is never touched. Mail that can still fill a trashed row in recreates it on the next backfill.
+
+## D153 — Delivery census also reads tracking links (2026-10-06, DEL-1.1)
+The first census (D151) read only message text and found 3 tracking numbers in 121 shipment messages, probably because carrier mail keeps the number inside a link. The census now also reads the links of each message's HTML for a carrier-shaped number or a tracking query parameter, and counts messages whose number is only in a link (`in_links_only`). Still read-only and counts only.

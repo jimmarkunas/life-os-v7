@@ -17,6 +17,11 @@ class FakeGmail:
             raise census.GmailError("GMAIL_MESSAGE_INCOMPLETE")
         return {"body_text": body}
 
+    def message(self, i):
+        return ("", self.html.get(i, ""), 0)
+
+    html = {}
+
     def trash(self, *a):
         raise AssertionError("the census never writes")
 
@@ -34,6 +39,19 @@ class NumbersTests(unittest.TestCase):
 
     def test_a_repeat_in_one_message_counts_once(self):
         self.assertEqual(len(census.numbers_in("1Z999AA10123456784 again 1Z999AA10123456784")), 1)
+
+
+class LinkTests(unittest.TestCase):
+    def test_numbers_inside_links_are_found_by_shape_and_by_parameter(self):
+        html = '<a href="https://example.com/t?tracknum=1Z999AA10123456784&amp;x=1">Track</a> <a href="https://example.com/r?u=https%3A%2F%2Fx.example.com%2F%3Ftrknbr%3D123456789012">Track</a>'
+        self.assertEqual(census.link_numbers(html), [("UPS", "1Z999AA10123456784"), ("FEDEX", "123456789012")])
+        self.assertEqual(census.link_numbers('<a href="https://example.com/orders?id=1234567890123456">x</a>'), [])
+
+    def test_a_number_only_in_a_link_is_counted_once_and_labelled(self):
+        gm = FakeGmail({"a": "Your package shipped", "b": "1Z999AA10123456784"})
+        gm.html = {"a": '<a href="https://example.com/t?tracknum=1Z888BB20123456785">Track</a>', "b": '<a href="https://example.com/t?tracknum=1Z999AA10123456784">Track</a>'}
+        counts = census.run(0, False, gmail=gm)
+        self.assertEqual((counts["with_numbers"], counts["in_links_only"], counts["numbers"], counts["distinct"]), (2, 1, 2, 2))
 
 
 class RunTests(unittest.TestCase):
