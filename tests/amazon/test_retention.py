@@ -51,6 +51,15 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual((counts["no_row"], counts["no_order_id"], counts["not_listed"]), (1, 0, 0))     # m-2's order was never recorded
         self.assertEqual(counts["oldest_days"], 0)
 
+    def test_kept_mail_is_counted_by_fixed_reason_never_by_content(self):
+        gmail, notion = recorded_store()
+        counts = retention.run(100, False, environ=TOKEN, gmail=gmail, notion=notion, now=NOW)
+        self.assertEqual(counts["kept_detail"], {"no_row:": 1})
+        self.assertNotIn("999-9999999-9999999", str(counts))
+
+    def test_the_default_batch_is_two_hundred(self):
+        self.assertEqual(retention.DEFAULT_LIMIT, 200)
+
     def test_live_trashes_only_mail_whose_order_row_lists_it(self):
         gmail, notion = recorded_store()
         counts = retention.run(100, True, environ=TOKEN, gmail=gmail, notion=notion)
