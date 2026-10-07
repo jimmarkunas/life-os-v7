@@ -120,7 +120,7 @@ Approved Phase-1 boundaries:
 - PBDS-5 pilot = site shell + homepage + Fusion92 / CORE CMS case study + Modere complex proof/data + representative shared interaction.
 - Portfolio V2 rollout explicitly includes **Domestika / Awwwards** and **Bytalos** case studies, both source-grounded.
 - Once V2 owns an accepted public route family, superseded V1 public-site code for that family is retired.
-- PBDS-6 / PBDS-7 broader brand expansion and successor handoff remain subject to the next pruning decision; do not infer scope before approval.
+- **PBDS-6 Phase 1 is bounded to:** Presentation consolidation; Client Document adapter (editable DOCX/Word + fixed PDF, with one-pagers folded in); LinkedIn post graphics + LinkedIn banners; and a reusable Diagram Gallery. Broader GTV/speaker/social/campaign/future-surface expansion is Phase 2 / demand-driven. **PBDS-7 stays Phase 1** with a reduced cold-AI proof across Web + Presentation + Client Document, then Bytalos Design System starts immediately.
 
 Detailed PBDS requirements live in the canonical PBDS roadmap and `jimmarkunas/portfolio/docs/PBDS_V2_ARCHITECTURE_CONTRACT.md`.
 
