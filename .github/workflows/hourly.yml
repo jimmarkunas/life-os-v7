@@ -110,25 +110,9 @@ on:
 env:
   PIPELINE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tick)) && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
   GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
-  GMAIL_OAUTH_CLIENT_SECRET: ${{ secrets.GMAIL_OAUTH_CLIENT_SECRET }}
-  GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
-  TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
-  NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-  JOBRIGHT_EMAIL: ${{ secrets.JOBRIGHT_EMAIL }}
-  JOBRIGHT_PASSWORD: ${{ secrets.JOBRIGHT_PASSWORD }}
-  LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ secrets.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-  LIFEOS_ACQ_DB_PASSWORD: ${{ secrets.LIFEOS_ACQ_DB_PASSWORD }}
-  LIFEOS_ACQ_SSH_HOST: ${{ secrets.LIFEOS_ACQ_SSH_HOST }}
   LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-  LIFEOS_ACQ_SSH_USER: ${{ secrets.LIFEOS_ACQ_SSH_USER }}
-  LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ secrets.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-  LIFEOS_ACQ_DB_NAME: ${{ secrets.LIFEOS_ACQ_DB_NAME }}
-  LIFEOS_ACQ_DB_USER: ${{ secrets.LIFEOS_ACQ_DB_USER }}
-  FIT_PROFILE_JSON: ${{ secrets.FIT_PROFILE_JSON }}
-  FIT_PROFILE_EXTRA_JSON: ${{ secrets.FIT_PROFILE_EXTRA_JSON }}
   V7_FIT_GATE: ${{ vars.V7_FIT_GATE }}
-  OPEN_JOBS_CONTACT: ${{ secrets.OPEN_JOBS_CONTACT }}
   HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
   LIVE: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
@@ -149,6 +133,27 @@ jobs:
       extract: ${{ steps.extract.outcome }}
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count); flag a stale pipeline
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -180,6 +185,27 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - uses: ./.github/actions/python
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
@@ -196,6 +222,27 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - uses: ./.github/actions/python
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
@@ -209,6 +256,27 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - uses: ./.github/actions/python
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
@@ -229,6 +297,27 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - uses: ./.github/actions/python
       - id: dice
         continue-on-error: true
@@ -249,6 +338,28 @@ jobs:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
+            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
+            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
+            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
       - uses: ./.github/actions/python
       - name: Semantic layer (optional, shadow) - local embedding model, cached
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
@@ -376,8 +487,6 @@ jobs:
         name: Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)
         if: ${{ env.PIPELINE == 'true' }}
         run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}
         run: |
@@ -414,9 +523,14 @@ jobs:
       FIT_PROFILE_JSON: ""
       FIT_PROFILE_EXTRA_JSON: ""
       OPEN_JOBS_CONTACT: ""
-      NOTION_INTERVIEW_TOKEN: ${{ secrets.NOTION_INTERVIEW_TOKEN }}
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
       - uses: ./.github/actions/python
       - id: iprobe
         continue-on-error: true
@@ -446,9 +560,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           failed=""
           for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do

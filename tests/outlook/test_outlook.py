@@ -318,7 +318,10 @@ class WorkflowTests(unittest.TestCase):
 
     def test_manual_only_and_only_the_outlook_and_database_secrets(self):
         self.assertNotRegex(self.text, r"\n  (schedule|push|pull_request):")
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", self.text))),
+        direct = set(re.findall(r"secrets\.(\w+)", self.text))
+        loaded = set(re.findall(r"^\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} > (\w+)$", self.text, re.M))                  # EDGE-1.3: migrated values arrive through the Bitwarden loader, not as GitHub secrets
+        self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", direct)
+        self.assertEqual(sorted((direct - {"LIFEOS_BWS_RUNTIME_TOKEN"}) | loaded),
                          sorted(["OUTLOOK_CLIENT_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
 
