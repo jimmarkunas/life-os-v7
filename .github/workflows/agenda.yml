@@ -18,10 +18,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 9; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_agenda
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 9; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
@@ -32,13 +35,20 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
-      - uses: ./.github/actions/python
       - id: asnap
         continue-on-error: true
         name: Agenda snapshot (read-only Google Calendar)
         env:
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run agenda-snapshot --limit 0 $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
@@ -47,6 +57,14 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run agenda-card --limit 0 $([ "${{ inputs.live }}" = "true" ] && echo --live)
       - name: Agenda warning
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}

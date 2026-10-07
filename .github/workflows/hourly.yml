@@ -133,10 +133,12 @@ jobs:
       extract: ${{ steps.extract.outcome }}
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+      - id: bws_prep
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -158,6 +160,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_prep.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_prep.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python3 -m lifeos.platform.gate
       - uses: ./.github/actions/python
       - name: Test-only dependency (PyYAML, for the workflow contract tests; skipped if unavailable)
@@ -165,17 +183,85 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_prep.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_prep.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.sources.newsletters.sweep $([ "$LIVE" = "true" ] && echo --live)
       - name: Step 3b - reconcile (repair, manual only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.reconcile && inputs.live }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_prep.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_prep.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.sources.newsletters.ingest --reconcile --live --limit 300
       - name: Step 2 - store check
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.check_store }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_prep.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_prep.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.jobs.store
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail
         if: ${{ github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_prep.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_prep.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_prep.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_prep.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_prep.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_prep.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_prep.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.sources.newsletters.ingest $([ "$LIVE" = "true" ] && echo --live)
 
   jobright:
@@ -185,10 +271,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_jobright
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -206,10 +295,26 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - uses: ./.github/actions/python
       - id: jobright
         name: Step 5 - resolve Jobright jobs (free Chromium, saves when live)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_jobright) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_jobright.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_jobright.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_jobright.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_jobright.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_jobright.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_jobright.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jobright.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_jobright.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_jobright.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_jobright.outputs.TINYFISH_API_KEY }}
         run: |
           pip install -r requirements-browser.txt
           python -m playwright install --with-deps chromium
@@ -222,10 +327,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_linkedin
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -243,10 +351,26 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - uses: ./.github/actions/python
       - id: linkedin
         name: Step 5 - resolve LinkedIn jobs (no login, no browser)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_linkedin) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_linkedin.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_linkedin.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_linkedin.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_linkedin.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_linkedin.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_linkedin.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_linkedin.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_linkedin.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_linkedin.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_linkedin.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run resolve-linkedin --limit 150 $([ "$LIVE" = "true" ] && echo --live)
 
   lensa:
@@ -256,10 +380,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_lensa
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -277,15 +404,48 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - uses: ./.github/actions/python
       - id: lensa
         name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_lensa.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_lensa.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_lensa.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_lensa.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_lensa.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
       - id: discover
         continue-on-error: true
         name: Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (runs after Lensa on the same search pace)
         if: ${{ always() && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_lensa.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_lensa.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_lensa.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_lensa.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_lensa.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
   dice:
@@ -297,10 +457,13 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_dice
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -318,12 +481,28 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - uses: ./.github/actions/python
       - id: dice
         continue-on-error: true
         timeout-minutes: 4
         name: Step 5 - resolve Dice job alert links
         if: ${{ env.PIPELINE == 'true' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_dice.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_dice.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_dice.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_dice.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_dice.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_dice.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_dice.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_dice.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_dice.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run resolve-dice --limit 15 $([ "$LIVE" = "true" ] && echo --live)
       - name: Dice warning (does not fail the run)
         if: ${{ always() && steps.dice.outcome == 'failure' }}
@@ -338,10 +517,22 @@ jobs:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - name: Semantic layer (optional, shadow) - local embedding model, cached
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-v1
+      - name: Install semantic layer
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
+      - id: bws_finish
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
             31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
@@ -360,25 +551,49 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - uses: ./.github/actions/python
-      - name: Semantic layer (optional, shadow) - local embedding model, cached
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
-        uses: actions/cache@v4
-        with:
-          path: .cache/fastembed
-          key: fastembed-bge-small-v1
-      - name: Install semantic layer
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
-        run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
       - id: web
         continue-on-error: true
         name: Step 5b - US Remote web acquisition (due ATS boards)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: openjobs
         continue-on-error: true
         name: Step 5d - Open Jobs change feed (tail of new generations)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.openjobs) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run openjobs $([ "$LIVE" = "true" ] && echo --live)
       - id: web_scale_up
         continue-on-error: true
@@ -386,6 +601,22 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
         env:
           WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run web-scale-up --limit 12 $([ "$LIVE" = "true" ] && echo --live)
       - id: titlewatch
         continue-on-error: true
@@ -393,6 +624,22 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
         env:
           WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run web-titlewatch $([ "$LIVE" = "true" ] && echo --live)
       - id: sponsors
         continue-on-error: true
@@ -400,11 +647,44 @@ jobs:
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.sponsors) }}
         env:
           SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run sponsors $([ "$LIVE" = "true" ] && echo --live)
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
       - id: fit
         continue-on-error: true
@@ -413,31 +693,132 @@ jobs:
         env:
           FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
           FIT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run audit $([ "$LIVE" = "true" ] && echo --live)
       - id: publish
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run publish --limit ${{ inputs.publish_limit || '60' }} $([ "$LIVE" = "true" ] && echo --live)
       - id: holds
         continue-on-error: true
         name: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run expire-holds $([ "$LIVE" = "true" ] && echo --live)
       - id: finalize
         continue-on-error: true
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.sources.newsletters.finalize $([ "$LIVE" = "true" ] && echo --live)
       - id: network_surface
         continue-on-error: true
         name: Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure never fails the Jobs run but always warns)
         if: ${{ env.PIPELINE == 'true' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run network-surface --limit 41 $([ "$LIVE" = "true" ] && echo --live)
       - name: Network surface warning (never fails the run; DEGRADED is explicit evidence)
         if: ${{ always() && steps.network_surface.outcome == 'failure' }}
@@ -448,6 +829,22 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && !startsWith(inputs.report, 'board:') }}
         env:
           REVIEW_COMPANY: ${{ inputs.report }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run fit-review $([ "$LIVE" = "true" ] && echo --live)
       - id: explain
         continue-on-error: true
@@ -455,6 +852,22 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && !startsWith(inputs.report, 'board:') }}
         env:
           EXPLAIN_COMPANY: ${{ inputs.report }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run explain
       - id: boardcheck
         continue-on-error: true
@@ -462,21 +875,88 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.report, 'board:') }}
         env:
           BOARD_COMPANY: ${{ inputs.report }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run board-check $([ "$LIVE" = "true" ] && echo --live)
       - id: funnel
         continue-on-error: true
         name: Funnel report (dispatch only, read-only, counts only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'funnel' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run funnel
       - id: probe
         continue-on-error: true
         name: Probe - source shapes (dispatch only, counts only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run probe
       - id: maintain
         continue-on-error: true
         name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: |
           python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
           if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
@@ -486,6 +966,24 @@ jobs:
         continue-on-error: true
         name: Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)
         if: ${{ env.PIPELINE == 'true' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
       - name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}
@@ -525,22 +1023,28 @@ jobs:
       OPEN_JOBS_CONTACT: ""
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_interview
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
-      - uses: ./.github/actions/python
       - id: iprobe
         continue-on-error: true
         name: Interview shape probe (counts only, writes nothing)
         if: ${{ inputs.interview_probe }}
+        env:
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview-probe
       - id: irun
         continue-on-error: true
         name: Interview stage (live only when Actually move mail is ticked)
         if: ${{ inputs.interview }}
+        env:
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: iacc
         continue-on-error: true
@@ -548,6 +1052,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
         env:
           INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_JSON }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
       - name: Interview warning (does not fail the run)
         if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
@@ -560,13 +1065,17 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; the job fails if retrieval fails, no fallback)
+      - id: bws_report
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
+        env:
+          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
           for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do

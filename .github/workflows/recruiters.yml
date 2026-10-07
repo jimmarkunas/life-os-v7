@@ -18,10 +18,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 10; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_recruiters
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 10; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
             672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
@@ -33,11 +36,20 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
-      - uses: ./.github/actions/python
       - name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run recruiters --limit 0 $([ "${{ inputs.live }}" = "true" ] && echo --live)

@@ -28,10 +28,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 8; the job fails if retrieval fails, no fallback)
+      - uses: ./.github/actions/python
+      - id: bws_network
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 8; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
           secrets: |
             d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
             00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
@@ -41,7 +44,6 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-      - uses: ./.github/actions/python
       - name: Network (reads the attached CSV through Notion; prints counts only)
         env:
           NETWORK_HANDOFF_PAGE_ID: ${{ secrets.NETWORK_HANDOFF_PAGE_ID }}
@@ -50,4 +52,12 @@ jobs:
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}
           PAGES: ${{ inputs.pages }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_network.outputs.NOTION_API_TOKEN }}
         run: python -m lifeos.run "network-$STAGE" $([ "$STAGE" = "surface" ] && echo --limit "$PAGES") $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ]; } && [ "$LIVE" = "true" ] && echo --live)
