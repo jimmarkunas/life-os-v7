@@ -508,14 +508,8 @@
    ],
    "manual": true,
    "secrets": [
-    "LIFEOS_ACQ_DB_NAME",
-    "LIFEOS_ACQ_DB_PASSWORD",
-    "LIFEOS_ACQ_DB_USER",
-    "LIFEOS_ACQ_SSH_HOST",
-    "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
     "LIFEOS_ACQ_SSH_PORT",
-    "LIFEOS_ACQ_SSH_PRIVATE_KEY",
-    "LIFEOS_ACQ_SSH_USER"
+    "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
   "domains.yml": {
