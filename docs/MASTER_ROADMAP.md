@@ -106,6 +106,24 @@ The edge lane is operator/configuration work and may proceed in parallel when it
 
 Any V7 production-code consumer of those capabilities waits for its owning domain's turn. `MEET-1.1` remains behind the Interview progression prerequisite. This lane does not create a second scheduler, datastore, or source of truth.
 
+### Parallel PBDS / Portfolio lane
+
+PBDS remains parallel/non-blocking to LIFE OS core delivery, but its approved sequence is now canonical and must not drift:
+
+`PBDS-FREEZE-A/B → PBDS-INT shared interaction consolidation → PBDS-5 clean Portfolio V2 app + pilot + rollout`
+
+Approved Phase-1 boundaries:
+- Portfolio V2 is a **clean new application boundary** in `jimmarkunas/portfolio`, not an in-place V1 refactor.
+- V2 must not import V1 UI/styles/page composition/motion wrappers/runtime architecture.
+- V1 remains the public production site during build; production remains one verified static artifact with explicit route ownership and no permanent second public portfolio.
+- PBDS owns shared brand foundations/components/patterns; a bounded shared-interaction package owns only mechanics with 2+ real consumers across Portfolio/Presentations; output adapters retain their own geometry/timing semantics.
+- PBDS-5 pilot = site shell + homepage + Fusion92 / CORE CMS case study + Modere complex proof/data + representative shared interaction.
+- Portfolio V2 rollout explicitly includes **Domestika / Awwwards** and **Bytalos** case studies, both source-grounded.
+- Once V2 owns an accepted public route family, superseded V1 public-site code for that family is retired.
+- PBDS-6 / PBDS-7 broader brand expansion and successor handoff remain subject to the next pruning decision; do not infer scope before approval.
+
+Detailed PBDS requirements live in the canonical PBDS roadmap and `jimmarkunas/portfolio/docs/PBDS_V2_ARCHITECTURE_CONTRACT.md`.
+
 ## Jim's own to-dos
 
 - Check MEGI-1.1 after Monday's rollover and confirm Done only after the remaining proof passes.
