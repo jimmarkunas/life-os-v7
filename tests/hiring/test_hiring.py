@@ -506,7 +506,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail"} <= needs)
         for name in ("outlook", "megibow"):                                                     # the two that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))
-        step = doc["jobs"]["hiring"]["steps"][2]
+        step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))      # EDGE-1.3: a Bitwarden loader step precedes it
         self.assertIn("lifeos.run hiring", step["run"])
         self.assertTrue(step["continue-on-error"])
         self.assertIs(doc[True]["workflow_dispatch"]["inputs"]["hiring"]["default"], False)
@@ -617,7 +617,8 @@ class GuardrailTests(unittest.TestCase):
         hourly = (ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertNotIn("lifeos.run hiring", hourly)
         self.assertNotIn("HIRING_CARD_BLOCK_ID", hourly)
-        self.assertNotIn("hiring", subprocess_diff_hourly().lower())                      # later slices may change hourly.yml; the Hiring Pipeline never has
+        changed = [l for l in subprocess_diff_hourly().splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---"))]   # context lines may name neighbouring keys
+        self.assertNotIn("hiring", "\n".join(changed).lower())                      # later slices may change hourly.yml; the Hiring Pipeline never has
         domains = (ROOT / ".github/workflows/domains.yml").read_text()
         self.assertNotIn("schedule:", domains)
         self.assertNotIn("cron", domains)

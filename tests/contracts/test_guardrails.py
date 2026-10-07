@@ -283,7 +283,9 @@ class InterviewJobIsIsolated(unittest.TestCase):
         for name in ("NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "GMAIL_OAUTH_CLIENT_SECRET", "TINYFISH_API_KEY", "LIFEOS_ACQ_DB_PASSWORD", "FIT_PROFILE_JSON"):
             self.assertIn(f'{name}: ""', block, name)
         self.assertNotIn("secrets.NOTION_API_TOKEN", block)
-        self.assertIn("secrets.NOTION_INTERVIEW_TOKEN", block)
+        self.assertNotIn("secrets.NOTION_INTERVIEW_TOKEN", block)
+        self.assertIn("steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN", block)                 # EDGE-1.3: its own token, as a masked output of its own loader
+        self.assertEqual(set(re.findall(r"outputs\.(\w+)", block)), {"NOTION_INTERVIEW_TOKEN"})   # and no other Jobs value reaches this job
 
     def test_dispatch_only_and_failure_is_a_warning(self):
         block = self.block()
