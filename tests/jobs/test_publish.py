@@ -147,3 +147,48 @@ class LedgerReseedTests(unittest.TestCase):
         self.assertFalse(publish._seeded(self.Conn(cur)))
         self.assertEqual(cur.sql[0][1], (publish.SEED_MARKER,))
         self.assertNotEqual(publish.SEED_MARKER, "0" * 64)
+
+
+class PickOrderTests(unittest.TestCase):
+    """JOBS-1.1A: the per-run cap takes the newest actionable jobs first: Posting Date when supported, else First Surfaced, First Surfaced breaking ties."""
+
+    class Conn:
+        def __init__(self, db):
+            self.db = db
+
+        def cursor(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            self.cur = self.db.execute(sql.replace("%s", "?"), params)
+
+        def fetchall(self):
+            return self.cur.fetchall()
+
+        def fetchone(self):
+            return self.cur.fetchone()
+
+    def database(self):
+        import sqlite3
+        db = sqlite3.connect(":memory:")
+        db.executescript(
+            "CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, dedupe_key TEXT, title TEXT, company TEXT, final_apply_url TEXT, source TEXT, provider TEXT, lane TEXT, first_seen TEXT,"
+            " posted_date TEXT, salary_text TEXT, apply_kind TEXT, location_text TEXT, route_evidence TEXT, status TEXT, notion_page_id TEXT);"
+            "CREATE TABLE v7_job_descriptions (job_id INT, summary TEXT, responsibilities TEXT, requirements TEXT, qualifications TEXT, full_text TEXT);"
+            "CREATE TABLE v7_job_fit (job_id INT, score INT, line TEXT, admission TEXT, admission_reason TEXT, work_mode TEXT, lane TEXT, eligible TEXT);"
+            "CREATE TABLE v7_ledger_urls (url_hash TEXT);")
+        for job_id, first_seen, posted in ((1, "2026-09-01 08:00:00", None), (2, "2026-10-05 08:00:00", "2026-10-04"), (3, "2026-10-06 08:00:00", None), (4, "2026-09-02 08:00:00", "2026-10-06")):
+            db.execute("INSERT INTO v7_jobs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'READY',NULL)", (job_id, f"k{job_id}", "PM", "Acme", f"https://acme.example/{job_id}", "s", "p", "US Remote", first_seen, posted, None, None, None, None))
+            db.execute("INSERT INTO v7_job_descriptions VALUES (?,?,?,?,?,?)", (job_id, "s", "", "", "", "t"))
+        return db
+
+    def test_newest_posting_or_first_surfaced_comes_first_and_the_cap_never_starves_current_jobs(self):
+        conn = self.Conn(self.database())
+        self.assertEqual([row[0] for row in publish._pick(conn, 60)[0]], [3, 4, 2, 1])        # 10-06 surfaced, 10-06 posted (surfaced earlier), 10-04 posted, 09-01 oldest
+        self.assertEqual([row[0] for row in publish._pick(conn, 2)[0]], [3, 4])               # a cap of two keeps the two newest, not the two oldest

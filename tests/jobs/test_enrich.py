@@ -385,3 +385,47 @@ class LocationFromThePageTests(unittest.TestCase):
         enrich.save(Conn(cur), 5, result)
         update = next(s for s in cur.sql if "SET location_text" in s)
         self.assertIn("location_text IS NULL OR location_text=''", update)
+
+
+class PostingDateIsNeverDowngradedTests(unittest.TestCase):
+    """JOBS-1.1A: Posting Date is supported vacancy evidence only. A later read that finds no date must not erase it; a read that finds an employer date supersedes it."""
+
+    class Replay:
+        """enrich.save against SQLite: only the posting-date UPDATE runs (the other statements are MySQL-only); dates go in as ISO text."""
+
+        def __init__(self, db):
+            self.db = db
+
+        def cursor(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            if sql.startswith("UPDATE v7_jobs SET status=%s, posted_date"):
+                self.db.execute(sql.replace("%s", "?"), tuple(p.isoformat() if hasattr(p, "isoformat") else p for p in params))
+
+    def saved(self, stored_date, stored_source, posted, outcome="ready"):
+        import datetime
+        import sqlite3
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, status TEXT, posted_date TEXT, posted_source TEXT, final_apply_url TEXT, posted_age_days INT, link_proof TEXT, unresolved_reason TEXT, updated_at TEXT)")
+        db.execute("INSERT INTO v7_jobs (id, status, posted_date, posted_source) VALUES (5, 'RESOLVED', ?, ?)", (stored_date, stored_source))
+        desc = {"full_text": "t" * 300, "summary": "s", "responsibilities": "", "requirements": "", "qualifications": "", "fingerprint": "f"}
+        with mock.patch.object(enrich, "_now", return_value=datetime.datetime(2026, 10, 7, 12, 0)):
+            enrich.save(self.Replay(db), 5, {"outcome": outcome, "description": desc, "source_kind": "page_text", "posted": posted, "final_url": "https://x"})
+        return db.execute("SELECT status, posted_date, posted_source FROM v7_jobs WHERE id=5").fetchone()
+
+    def test_a_read_with_no_date_keeps_the_supported_posting_date(self):
+        self.assertEqual(self.saved("2026-10-01", "employer", None), ("READY", "2026-10-01", "employer"))
+        self.assertEqual(self.saved("2026-10-01", "employer", None, "stale"), ("EXCLUDED_STALE", "2026-10-01", "employer"))
+        self.assertEqual(self.saved(None, None, None), ("READY", None, None))                               # nothing supported stays unresolved: no date is invented
+
+    def test_an_employer_date_supersedes_the_stored_one(self):
+        import datetime
+        self.assertEqual(self.saved("2026-09-20", "employer", datetime.date(2026, 10, 2)), ("READY", "2026-10-02", "employer"))
+        self.assertEqual(self.saved(None, None, datetime.date(2026, 10, 2)), ("READY", "2026-10-02", "employer"))

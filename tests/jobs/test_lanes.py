@@ -149,6 +149,16 @@ class Parsing(unittest.TestCase):
         self.assertEqual(lanes.detect_work_mode("Denver, CO", "", "On-site role"), "onsite")
         self.assertEqual(lanes.detect_work_mode("Denver, CO"), "unknown")
 
+    def test_a_negated_or_occasional_site_mention_is_not_onsite_evidence(self):
+        """JOBS-1.1A: only a real statement counts. 'No onsite requirement' and 'occasional on-site meetings' leave the mode unresolved (a US Remote Review, not an exclusion)."""
+        self.assertEqual(lanes.detect_work_mode("United States", "Senior Product Manager", "No onsite requirement. Work from home anywhere in the US."), "unknown")
+        self.assertEqual(lanes.detect_work_mode("New York, NY", "Product Manager", "Remote friendly. Occasional on-site team meetings (quarterly)."), "unknown")
+        self.assertEqual(lanes.detect_work_mode("Chicago, IL", "Program Manager", "This role is not an in-office job and has no onsite days."), "unknown")
+        self.assertEqual(lanes.detect_work_mode("Austin, TX", "Program Manager", "Join our in-office culture."), "onsite")         # an explicit statement still counts
+        self.assertEqual(lanes.detect_work_mode("Denver, CO", "", "On-site role"), "onsite")
+        self.assertEqual(lanes.detect_work_mode("United States", "PM", "No onsite requirement. This is a fully remote position."), "remote")
+        self.assertEqual(lanes.detect_work_mode("Austin, TX", "PM", "Hybrid role, three days per week in the office; no onsite parking."), "hybrid")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -150,7 +150,7 @@ def _pick(connection, limit, gated=False):
             " d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text, f.score, f.line, f.admission, f.admission_reason, f.work_mode, j.salary_text, j.apply_kind, f.lane, f.eligible, j.location_text, j.route_evidence"
             " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else "") +
-            " ORDER BY j.first_seen LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))
+            " ORDER BY COALESCE(j.posted_date, DATE(j.first_seen)) DESC, j.first_seen DESC LIMIT %s", (min(limit, limits.NOTION_PER_RUN),))   # newest actionable first: the per-run cap must not starve current jobs behind stale ones
         rows = cursor.fetchall()
         known = set()
         for row in rows:

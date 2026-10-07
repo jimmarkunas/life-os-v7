@@ -177,6 +177,9 @@ def parse_pay(text):
     return best if best else (None, None)
 
 
+_NOT_SITE = re.compile(r"\b(?:no|not|never|without)\W{1,3}(?:an?\W+)?(?:on-?site|in[- ]office)\b|\boccasional(?:ly)?\W+(?:on-?site|in[- ]office)\b", re.I)    # "no onsite requirement", "occasional on-site meetings"
+
+
 def detect_work_mode(location, title="", text="", window=1500):
     """remote | hybrid | onsite | unknown. The location and title decide; the description only confirms explicit statements (in its first `window` characters)."""
     head = f"{location or ''} {title or ''}".lower()
@@ -187,7 +190,7 @@ def detect_work_mode(location, title="", text="", window=1500):
         return "remote"
     if re.search(r"\b(?:fully|100%|completely) remote\b|\bremote[- ]first\b|\bwork from anywhere\b|\bthis is a remote (?:role|position)\b", body):
         return "remote"
-    if re.search(r"\bon-?site\b|\bin[- ]office\b|\bonsite\b", head + " " + body):
+    if re.search(r"\bon-?site\b|\bin[- ]office\b|\bonsite\b", _NOT_SITE.sub(" ", head + " " + body)):
         return "onsite"
     return "unknown"
 
