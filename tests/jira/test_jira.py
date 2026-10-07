@@ -402,9 +402,12 @@ class WorkflowTests(unittest.TestCase):
         snap = steps[steps.index("id: jsnap"):steps.index("id: jcard")]
         roll = steps[steps.index("id: jroll\n"):steps.index("Jira warning")]
         self.assertNotIn("NOTION_JIRA_TOKEN", snap)
-        self.assertIn("secrets.LIFEOS_ACQ_DB_PASSWORD", snap)
+        self.assertIn("outputs.LIFEOS_ACQ_DB_PASSWORD", snap)                  # EDGE-1.3: a migrated value reaches a step only as that step's own masked loader output
         self.assertNotIn("secrets.", roll)
-        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_EMAIL", "JIRA_GTV_EPIC"])
+        self.assertNotIn("outputs.LIFEOS_ACQ", roll)                           # the sprint rollover still gets no database value
+        self.assertNotIn("outputs.NOTION", roll)
+        self.assertEqual(sorted(re.findall(r"secrets\.(\w+)", head)), ["JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_GTV_EPIC"])
+        self.assertNotIn("outputs.", head)                                     # nothing is exported job-wide
 
     def test_no_jira_value_appears_anywhere_in_tracked_workflow_or_code(self):
         self.assertNotRegex(self.text, r"atlassian\.net|api\.atlassian\.com")
