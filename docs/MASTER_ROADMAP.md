@@ -109,7 +109,7 @@ Do not reorder that chain unless Jim explicitly changes it. Accepted production 
 
 The edge lane is operator/configuration work and may proceed in parallel when it does not overlap the active repo-heavy package:
 
-`EDGE-1.1/1.2/1.3 accepted (Oct 11, with EDGE-P2.1 security residuals deferred) → [EDGE-1.4 thin capability contract ∥ COMM-1.2/1.3/1.4/1.5 attention adapters → COMM-1.6/1.7 Daily Report attention] → COMM-1.1 richer channels/tasks`
+`EDGE-1.1 live (awaiting Jim); EDGE-1.2/1.3 accepted Oct 11 (EDGE-P2.1 residuals deferred) → [EDGE-1.4 thin capability contract ∥ COMM-1.2/1.3/1.4/1.5 attention adapters → COMM-1.6/1.7 Daily Report attention] → COMM-1.1 richer channels/tasks`
 
 Any V7 production-code consumer of those capabilities waits for its owning domain's turn. `MEET-1.1` remains behind the Interview progression prerequisite. This lane does not create a second scheduler, datastore, or source of truth.
 
