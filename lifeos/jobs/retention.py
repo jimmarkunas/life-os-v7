@@ -4,6 +4,7 @@ Hostinger: job descriptions go at 90 days; job rows that were never published or
 Notion, OUR pages only (matched by stored page id; pre-existing ledger rows are never touched):
   an UNAPPLIED job with no Saturn Decision whose age is 30+ days (employer Posting Date, else First Surfaced; never Created At)
   and for which progression.resolve says NOT_PROTECTED  ->  trashed (recoverable 30 days), marked PURGED here, and a 90-day tombstone is written.
+A job read off its employer's own board (source web:<board>) is open while the board lists it (D111): it is retired only once a complete listing of that board no longer has it (D167).
 Applied jobs are never destructively retired by Jobs until the Interview progression handoff (INT-7.1A) exists: they resolve UNKNOWN and are kept.
 No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
 """
@@ -102,7 +103,7 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "lanes": 0, "handoff": "not_configured", "target": ledger.OK}
+    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "kept_open": 0, "lanes": 0, "handoff": "not_configured", "target": ledger.OK}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
     counts["target"] = ledger.verify(client)                         # never query or trash against a data source that is not the Job Ledger
     if counts["target"] != ledger.OK:
@@ -126,18 +127,29 @@ def purge_notion(live, now, environ=None):
     pages = [page for lane in sorted(names) for page in candidates(client, now, lane)]            # slow: no DB connection open
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
-        ours = {}
+        ours, open_on_board = {}, set()
         for page_id, posted, first in pages:
-            cursor.execute("SELECT id, dedupe_key, fuzzy_key, company, title FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
+            cursor.execute("SELECT id, dedupe_key, fuzzy_key, company, title, source FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
             row = cursor.fetchone()
-            if row:
-                ours[page_id] = (row, posted, first)
+            if not row:
+                continue
+            ours[page_id] = (row[:5], posted, first)
+            if lanes.first_party_source(row[5]):
+                # D167 (D111): a role on its employer's own board is open, so its posting age does not retire it. It is retired only once a complete
+                # listing of that board no longer has it (the web pass marks it REMOVED). No board record at all cannot prove it closed: keep it.
+                cursor.execute("SELECT SUM(state='CURRENT'), SUM(state='REMOVED') FROM v7_source_items WHERE job_id=%s", (row[0],))
+                current, removed = cursor.fetchone() or (0, 0)
+                if int(current or 0) > 0 or int(removed or 0) == 0:
+                    open_on_board.add(page_id)
     counts["ours"] = len(ours)
+    counts["kept_open"] = len(open_on_board)
     if not live:
         return counts
     writes, today = 0, now.date()
     for page_id, ((job_id, key, fuzzy, company, title), posted, first) in ours.items():
         # the filter already excluded Applied and Saturn Decision rows; the handoff can still protect an unapplied pursuit
+        if page_id in open_on_board:
+            continue
         if hiring_pipeline.handoff_for(company, title, opportunities).protected:
             counts["protected"] += 1
             continue

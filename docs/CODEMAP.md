@@ -434,3 +434,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D164: Failure pushes cover the domain jobs, the watchdog owns the incident record, and "sent" is only acceptance (2026-10-11, Jim)
 - D165: The weekly purge asked Notion for lane `Scale-Up` but the Ledger option is `Scale-up`, so every Sunday query was refused with HTTP 400 (2026-10-11, Jim)
 - D166: Alerts name the stage, the weekly purge reports its own result, and a daily check-in proves the alert path is alive (2026-10-11, Jim)
+- D167: Retention keeps a first-party board role while its board still lists it (2026-10-11, Jim)
