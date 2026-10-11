@@ -25,7 +25,10 @@ def _now():
 
 
 def query_filter(cutoff, lane):
-    """Unapplied, no Saturn Decision, our lane, and old by the employer Posting Date (else First Surfaced). The legacy Lifecycle field is not read."""
+    """Unapplied, no Saturn Decision, our lane, and old by the Posting Date or the First Surfaced date. The legacy Lifecycle field is not read.
+    Notion allows a compound filter two levels deep (an `and` holding one `or`); the earlier shape nested a third level and Notion refused every
+    weekly query with HTTP 400. The two date tests are therefore one flat `or`, which can also return a row with a recent Posting Date and an old
+    First Surfaced; `action` re-checks each candidate against the employer Posting Date (else First Surfaced) before anything is retired."""
     day = cutoff.date().isoformat()
     return {"and": [
         {"property": "Applied", "checkbox": {"equals": False}},
@@ -33,8 +36,7 @@ def query_filter(cutoff, lane):
         {"property": "Saturn Decision", "select": {"is_empty": True}},
         {"property": "Visible Lane", "select": {"equals": lane}},
         {"or": [{"property": "Posting Date", "date": {"before": day}},
-                {"and": [{"property": "Posting Date", "date": {"is_empty": True}},
-                         {"property": "First Surfaced", "date": {"before": day}}]}]},
+                {"property": "First Surfaced", "date": {"before": day}}]},
     ]}
 
 

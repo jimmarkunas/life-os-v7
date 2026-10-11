@@ -295,3 +295,34 @@ class MailRegions(AttentionRegions):
         super().__init__(**kwargs)
         kids = [self._text_block("mail-status-old", "paragraph", "old mail status"), {"id": "mail-table-old", "type": "table", "has_children": False, "table": {}}]
         self._add_region("mail-callout", "Mail Alerts", kids, heading_type="heading_3")
+
+
+def filter_depth(node):
+    """Levels of compound filters (`and` / `or`) in a Notion filter: a bare property filter is 0, an `and` of properties is 1."""
+    if not isinstance(node, dict):
+        return 0
+    inner = [filter_depth(child) for key in ("and", "or") for child in node.get(key, [])]
+    return (1 + max(inner, default=0)) if ("and" in node or "or" in node) else 0
+
+
+class LedgerWithFilterLimit:
+    """A fake Job Ledger client that refuses what Notion refuses: a compound filter nested more than two levels is HTTP 400.
+    `pages` are returned for every query; `queries` records each filter it accepted."""
+
+    def __init__(self, pages=(), properties=None):
+        from lifeos.jobs import ledger
+        self.source, self.pages, self.queries, self.log = "ledger", list(pages), [], []
+        self.properties = {n: {"type": k} for n, k in (properties or ledger.REQUIRED).items()}
+
+    def call(self, method, path, body=None):
+        from lifeos.platform.notion_client import NotionError
+        self.log.append((method, path))
+        if method == "GET":
+            return {"properties": self.properties}
+        if method == "PATCH":
+            return {}
+        if filter_depth((body or {}).get("filter")) > 2:
+            raise NotionError("NOTION_HTTP_400")
+        self.queries.append(body["filter"])
+        return {"results": self.pages, "has_more": False}
+

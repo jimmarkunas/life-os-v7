@@ -432,3 +432,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D162: Network surface: acceptance record and hourly wiring at 40 pages (2026-10-07)
 - D163: A board read in full is idle, not stopped (2026-10-06)
 - D164: Failure pushes cover the domain jobs, the watchdog owns the incident record, and "sent" is only acceptance (2026-10-11, Jim)
+- D165: The weekly retention query was nested three levels deep, so every Sunday purge failed with Notion HTTP 400 (2026-10-11, Jim)
