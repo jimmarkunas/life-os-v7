@@ -14,11 +14,11 @@ def page(page_id, posted=None, first=None):
     return {"id": page_id, "properties": {"Posting Date": date(posted), "First Surfaced": date(first)}}
 
 
-def database(rows):
-    """store.connect() stand-in: the lane query returns one lane, the per-page lookup returns the stored job row."""
+def database(rows, lanes=("US Remote",)):
+    """store.connect() stand-in: the lane query returns the given lanes, the per-page lookup returns the stored job row."""
     def handler(sql, args, cursor):
         if sql.startswith("SELECT DISTINCT lane"):
-            cursor.fetchall = lambda: [("US Remote",)]
+            cursor.fetchall = lambda: [(lane,) for lane in lanes]
         elif sql.startswith("SELECT id, dedupe_key"):
             cursor.row = rows.get(args[0])
     return mock.patch.object(retention.store, "connect", lambda: FakeConn(handler=handler))
@@ -42,9 +42,9 @@ class FilterShape(unittest.TestCase):
 
 
 class Purge(unittest.TestCase):
-    def run_purge(self, pages, rows, live):
-        client = LedgerWithFilterLimit(pages)
-        with database(rows), mock.patch.object(retention.notion_client, "Client", lambda environ=None: client):
+    def run_purge(self, pages, rows, live, lanes=("US Remote",), client=None):
+        client = client or LedgerWithFilterLimit(pages)
+        with database(rows, lanes), mock.patch.object(retention.notion_client, "Client", lambda environ=None: client):
             return client, retention.purge_notion(live, NOW, environ={"HIRING_PIPELINE_PAGE_ID": ""})
 
     def test_a_dry_run_reaches_the_candidates_instead_of_failing_with_http_400(self):
@@ -60,6 +60,20 @@ class Purge(unittest.TestCase):
         trashed = [path for method, path in client.log if method == "PATCH"]
         self.assertEqual(trashed, ["/pages/old", "/pages/undated-old"])                # a recent Posting Date keeps a reposted job; a recent First Surfaced keeps an undated one
         self.assertEqual((counts["retired"], counts["failed"]), (2, 0))
+
+    def test_the_ledgers_own_spelling_of_a_lane_is_asked_for_not_the_databases(self):
+        # The database says `Scale-Up`, the Ledger option is `Scale-up`; Notion refused the former with HTTP 400 on both Sundays (run 38153372055).
+        client, counts = self.run_purge([], {}, False, lanes=("Newsletter", "Scale-Up", "US Remote"))
+        asked = sorted(f["and"][3]["select"]["equals"] for f in client.queries)
+        self.assertEqual((asked, counts["lanes"]), (["Newsletter", "Scale-up", "US Remote"], 3))
+
+    def test_a_lane_the_ledger_has_no_option_for_is_not_asked_about(self):
+        client, counts = self.run_purge([], {}, False, lanes=("US Remote", "Dice", ""))
+        self.assertEqual((len(client.queries), counts["lanes"]), (1, 1))
+
+    def test_unreadable_lane_options_fail_closed_and_ask_nothing(self):
+        client, counts = self.run_purge([], {}, False, client=LedgerWithFilterLimit(lane_options=()))
+        self.assertEqual((counts["target"], client.queries), ("lane_options_unreadable", []))
 
     def test_a_refused_query_names_the_lane_and_what_notion_named_but_nothing_else(self):
         class Refuses(LedgerWithFilterLimit):

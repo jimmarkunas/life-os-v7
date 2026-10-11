@@ -102,7 +102,7 @@ def candidates(client, now, lane):
 
 
 def purge_notion(live, now, environ=None):
-    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "handoff": "not_configured", "target": ledger.OK}
+    counts = {"candidates": 0, "ours": 0, "retired": 0, "failed": 0, "protected": 0, "lanes": 0, "handoff": "not_configured", "target": ledger.OK}
     client = notion_client.Client(environ) if environ is not None else notion_client.Client()
     counts["target"] = ledger.verify(client)                         # never query or trash against a data source that is not the Job Ledger
     if counts["target"] != ledger.OK:
@@ -113,9 +113,16 @@ def purge_notion(live, now, environ=None):
         opportunities, counts["handoff"] = hiring_pipeline.snapshot(client, pipeline_id)
         if counts["handoff"] != "ok":
             return counts if not live else {**counts, "retired": 0}                  # unreadable handoff = UNKNOWN: fail closed
+    options = {option.casefold(): option for option in ledger.select_options(client, "Visible Lane")}
+    if not options:
+        return {**counts, "target": "lane_options_unreadable"}              # cannot name a lane the Ledger knows: fail closed, ask nothing
     with store.connect() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT DISTINCT lane FROM v7_jobs WHERE notion_page_id IS NOT NULL")
-        names = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}    # rows carry the lane they were published under
+        wanted = {name for (raw,) in cursor.fetchall() for name in (raw, lanes.lane_for(raw))}    # rows carry the lane they were published under
+    # D165: the Ledger spells the option `Scale-up` while the database says `Scale-Up`, and Notion refuses a filter naming an option it does not have
+    # (HTTP 400, validation_error). Ask only for the Ledger's own spelling; a lane with no such option cannot have rows there.
+    names = {options[name.casefold()] for name in wanted if name and name.casefold() in options}
+    counts["lanes"] = len(names)
     pages = [page for lane in sorted(names) for page in candidates(client, now, lane)]            # slow: no DB connection open
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
