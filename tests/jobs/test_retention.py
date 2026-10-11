@@ -14,7 +14,7 @@ def page(page_id, posted=None, first=None):
     return {"id": page_id, "properties": {"Posting Date": date(posted), "First Surfaced": date(first)}}
 
 
-def database(rows, lanes=("US Remote",), boards=None):
+def database(rows, lanes=("US Remote",), boards=None, markers=None, log=None):
     """store.connect() stand-in: the lane query returns the given lanes, the per-page lookup returns the stored job row (id, keys, company, title,
     source), and the board lookup returns (items still CURRENT, items REMOVED) for a job id."""
     def handler(sql, args, cursor):
@@ -22,6 +22,10 @@ def database(rows, lanes=("US Remote",), boards=None):
             cursor.fetchall = lambda: [(lane,) for lane in lanes]
         elif sql.startswith("SELECT id, dedupe_key"):
             cursor.row = rows.get(args[0])
+        elif sql.startswith("SELECT alert_key"):
+            cursor.fetchall = lambda: list((markers or {}).items())
+        elif log is not None and sql.startswith("INSERT INTO v7_alerts"):
+            log.append(args[0])
         elif sql.startswith("SELECT SUM(state"):
             cursor.row = (boards or {}).get(args[0], (None, None))
     return mock.patch.object(retention.store, "connect", lambda: FakeConn(handler=handler))
@@ -118,6 +122,71 @@ class Purge(unittest.TestCase):
             with self.assertRaises(retention.notion_client.NotionError) as caught:
                 retention.purge_notion(False, NOW, environ={"HIRING_PIPELINE_PAGE_ID": ""})
         self.assertEqual(str(caught.exception), "NOTION_HTTP_400 lane=US Remote validation_error body.filter.and[3]")
+
+
+HOURS = lambda n: dt.timedelta(hours=n)
+
+
+class CatchUp(unittest.TestCase):
+    """D168: the purge is about weekly, catches up after a missed or failed run, and a quiet fail-closed run is a failure."""
+
+    def test_due_only_when_no_recent_success_and_no_recent_attempt(self):
+        d = retention.due
+        self.assertTrue(d(NOW, None, None))                                         # never ran
+        self.assertFalse(d(NOW, NOW - HOURS(24 * 6), None))                          # succeeded 6 days ago
+        self.assertTrue(d(NOW, NOW - HOURS(24 * 6 + 13), None))                      # 6.5 days: due again
+        self.assertFalse(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(2)))                # missed a week, but tried 2 hours ago
+        self.assertTrue(d(NOW, NOW - HOURS(24 * 8), NOW - HOURS(7)))                 # a failed attempt is retried after 6 hours
+        self.assertTrue(d(NOW, NOW - HOURS(1), NOW - HOURS(1), force=True))          # a manual run ignores both
+
+    def run_stage(self, markers, live=True, force=False, notion=None):
+        log, calls = [], []
+        notion = notion or {"target": "ok", "handoff": "ok", "retired": 0}
+        with database({}, markers=markers, log=log), mock.patch.object(retention.store, "ensure_schema", lambda c: None), \
+                mock.patch.object(retention, "purge_database", lambda live, now: calls.append("db") or {}), \
+                mock.patch.object(retention, "purge_notion", lambda live, now, environ=None: calls.append("notion") or notion):
+            try:
+                result = retention.run(live, now=NOW, force=force)
+            except retention.notion_client.NotionError as error:
+                result = str(error)
+        return result, calls, log
+
+    def test_a_recent_success_skips_everything_and_writes_nothing(self):
+        result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(24 * 3)})
+        self.assertEqual((result["purge"], calls, log), ("not_due", [], []))
+
+    def test_a_live_run_marks_the_attempt_first_and_the_success_after(self):
+        result, calls, log = self.run_stage({})
+        self.assertEqual((calls, log), (["db", "notion"], [retention.TRY_KEY, retention.OK_KEY]))
+
+    def test_a_failed_purge_leaves_only_the_attempt_marker_so_it_retries_after_six_hours(self):
+        log, calls = [], []
+        with database({}, log=log), mock.patch.object(retention.store, "ensure_schema", lambda c: None), \
+                mock.patch.object(retention, "purge_database", lambda live, now: {}), \
+                mock.patch.object(retention, "purge_notion", lambda live, now, environ=None: (_ for _ in ()).throw(retention.notion_client.NotionError("NOTION_HTTP_400"))):
+            with self.assertRaises(retention.notion_client.NotionError):
+                retention.run(True, now=NOW, force=False)
+        self.assertEqual(log, [retention.TRY_KEY])
+        result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(24 * 8), retention.TRY_KEY: NOW - HOURS(2)})
+        self.assertEqual(result["purge"], "not_due")                                  # inside the six-hour back-off
+        result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(24 * 8), retention.TRY_KEY: NOW - HOURS(7)})
+        self.assertEqual(calls, ["db", "notion"])                                     # after it, the catch-up runs
+
+    def test_a_fail_closed_purge_is_a_failure_with_a_fixed_code_and_no_success_marker(self):
+        for notion in ({"target": "target_mismatch", "handoff": "ok"}, {"target": "ok", "handoff": "unreadable"}, {"target": "lane_options_unreadable", "handoff": "ok"}):
+            result, calls, log = self.run_stage({}, notion=notion)
+            self.assertTrue(str(result).startswith("PURGE_INCOMPLETE target="), result)
+            self.assertEqual(log, [retention.TRY_KEY])
+
+    def test_a_dry_run_marks_nothing_and_an_unforced_dry_tick_does_not_run(self):
+        result, calls, log = self.run_stage({}, live=False, force=True)
+        self.assertEqual((calls, log), (["db", "notion"], []))
+        result, calls, log = self.run_stage({}, live=False, force=False)
+        self.assertEqual((result, calls), ({"purge": "skipped_dry_run"}, []))
+
+    def test_a_manual_run_ignores_the_schedule(self):
+        result, calls, log = self.run_stage({retention.OK_KEY: NOW - HOURS(1)}, force=True)
+        self.assertEqual(calls, ["db", "notion"])
 
 
 if __name__ == "__main__":

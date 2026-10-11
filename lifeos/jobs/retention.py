@@ -18,6 +18,9 @@ RETIRE_DAYS = 30
 DESC_DAYS = 90
 JOB_ROW_DAYS = 365
 MAX_PAGES = 20
+PURGE_EVERY = timedelta(days=6, hours=12)       # weekly, with slack so a late tick does not skip a week
+RETRY_AFTER = timedelta(hours=6)                # a failed attempt is tried again after this, until one succeeds
+OK_KEY, TRY_KEY = "purge_ok", "purge_try"       # marker rows in v7_alerts (status RESOLVED, so the alerts stage never reads them): last success, last attempt
 KNOWN_LANES = ("Newsletter", "US Web", "US Remote", "Scale-Up", "Scale-up", "Skilled Worker")
 WRITES_PER_RUN = 150
 
@@ -170,8 +173,48 @@ def purge_notion(live, now, environ=None):
     return counts
 
 
-def run(live, environ=None):
-    now = _now()
+def due(now, last_ok, last_try, force=False):
+    """The purge runs about weekly and catches up: due when there is no success in the last 6.5 days and no attempt in the last 6 hours."""
+    if force:
+        return True
+    if last_ok is not None and now - last_ok < PURGE_EVERY:
+        return False
+    return last_try is None or now - last_try >= RETRY_AFTER
+
+
+def _markers(cursor):
+    cursor.execute("SELECT alert_key, last_seen FROM v7_alerts WHERE alert_key IN (%s, %s)", (OK_KEY, TRY_KEY))
+    return {key: seen for key, seen in cursor.fetchall()}
+
+
+def _mark(cursor, key, now):
+    cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info','RESOLVED',%s,%s,NULL) "
+                   "ON DUPLICATE KEY UPDATE status='RESOLVED', last_seen=VALUES(last_seen)", (key, now, now))
+
+
+def incomplete(notion):
+    """A purge that fail-closed (wrong target, unreadable hand-off or lane options) did nothing; that is a failure, never a quiet success."""
+    return notion.get("target") != ledger.OK or notion.get("handoff") not in ("ok", "not_configured")
+
+
+def run(live, environ=None, now=None, force=None):
+    now = now or _now()
+    force = (os.environ.get("PURGE_FORCE") == "true") if force is None else force          # a manual dispatch with Maintenance ticked
+    if not live and not force:
+        return {"purge": "skipped_dry_run"}
     with store.connect() as connection:
         store.ensure_schema(connection)
-    return {"database": purge_database(live, now), "notion": purge_notion(live, now, environ)}
+        with connection.cursor() as cursor:
+            markers = _markers(cursor)
+            last_ok, last_try = markers.get(OK_KEY), markers.get(TRY_KEY)
+            if not due(now, last_ok, last_try, force):
+                return {"purge": "not_due", "days_since_ok": None if last_ok is None else (now - last_ok).days}
+            if live:
+                _mark(cursor, TRY_KEY, now)                                                  # throttle: a failing purge retries every 6 hours, not every tick
+    result = {"database": purge_database(live, now), "notion": purge_notion(live, now, environ)}
+    if incomplete(result["notion"]):
+        raise notion_client.NotionError(f"PURGE_INCOMPLETE target={result['notion'].get('target')} handoff={result['notion'].get('handoff')}")
+    if live:
+        with store.connect() as connection, connection.cursor() as cursor:
+            _mark(cursor, OK_KEY, now)
+    return result

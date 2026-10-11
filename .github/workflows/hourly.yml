@@ -962,7 +962,7 @@ jobs:
         run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
       - id: purge
         continue-on-error: true
-        name: Step 8b - retention purge (weekly, Sunday 03 UTC; pushes its own result to the phone, counts and fixed codes only)
+        name: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -982,19 +982,21 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
           NTFY_TOPIC: ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
+          PURGE_FORCE: ${{ inputs.maintenance }}
         run: |
-          # D166: the purge once failed two Sundays running with only "finish" in the push. It now says what it did, success or failure.
-          if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
-            status=0
-            out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
-            echo "$out"
-            last=$(printf '%s\n' "$out" | tail -n 1)
-            if [ "$status" = "0" ]; then
-              python3 -m lifeos.platform.alerts push --severity info --title "V7 weekly purge done" --body "$last" || true
-            else
-              python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly purge FAILED" --body "$last" || true
-              exit 1
-            fi
+          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
+          status=0
+          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
+          echo "$out"
+          last=$(printf '%s\n' "$out" | tail -n 1)
+          if [ "$status" = "0" ]; then
+            case "$last" in
+              *not_due*|*skipped_dry_run*) ;;
+              *) python3 -m lifeos.platform.alerts push --severity info --title "V7 weekly purge done" --body "$last" || true ;;
+            esac
+          else
+            python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly purge FAILED" --body "$last" || true
+            exit 1
           fi
       - id: alerts
         continue-on-error: true
