@@ -4,7 +4,9 @@ An Alert is a counts-only fact with a stable key. `reconcile` compares the alert
 open, keep, resolve and notify: an alert notifies when it opens, again as a reminder while it stays open (6 h for PAGE, 24 h for INFO), and once
 when it resolves. Detectors live in each OS; sinks are small adapters (phone push through ntfy, a GitHub issue). Text is redacted before it leaves.
 
-CLI for jobs with no database (the report job, the watchdog):  python -m lifeos.platform.alerts push --severity page --title T --body B"""
+"Sent" means the push service answered 2xx: it proves acceptance, not that the phone showed it (that is the phone's notification settings).
+
+CLI for jobs with no database (the report job, the watchdog); exits 1 when the push was not accepted:  python -m lifeos.platform.alerts push --severity page --title T --body B"""
 from dataclasses import dataclass
 import argparse
 import datetime as dt
@@ -103,7 +105,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), args.severity)
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
-    return 0
+    return 0 if ok else 1                                     # a push the provider did not accept turns the step red, never a silent success
 
 
 if __name__ == "__main__":
