@@ -29,3 +29,10 @@ def missing(client):
     """Names of required properties that are absent or the wrong type (counts-only diagnostics: names are schema, not content)."""
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
     return sorted(n for n, k in REQUIRED.items() if (props.get(n) or {}).get("type") != k)
+
+
+def select_options(client, prop):
+    """The option names of one select property, as the Ledger spells them (a filter naming an option that does not exist is refused with HTTP 400)."""
+    props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
+    return [option["name"] for option in ((props.get(prop) or {}).get("select") or {}).get("options") or [] if option.get("name")]
+

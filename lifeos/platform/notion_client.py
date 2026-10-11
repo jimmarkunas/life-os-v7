@@ -1,6 +1,7 @@
 """Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge."""
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -12,7 +13,23 @@ VERSION = "2025-09-03"
 
 
 class NotionError(RuntimeError):
-    """Fixed codes only - never tokens, ids, or response bodies."""
+    """Fixed codes only - never tokens, ids, or response bodies. `detail` (when Notion refused a request) is Notion's own error code plus the
+    request-body paths it names, e.g. "validation_error body.filter.and[4].or[1]": words from a fixed vocabulary, never free text from the message."""
+    detail = ""
+
+
+_BODY_PATH = re.compile(r"body(?:\.[A-Za-z_]+|\[\d+\])+")
+
+
+def _detail(error):
+    try:
+        body = json.loads(error.read() or b"{}")
+    except Exception:                                                                        # noqa: BLE001 - diagnostics must never hide the real error
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    code = body.get("code") if re.fullmatch(r"[a-z_]{1,40}", str(body.get("code") or "")) else ""
+    return " ".join(part for part in [code, *_BODY_PATH.findall(str(body.get("message") or ""))[:3]] if part)
 
 
 
@@ -79,7 +96,9 @@ class Client:
                 if error.code == 429 and attempt < attempts - 1:
                     self._sleep(min(float(error.headers.get("Retry-After") or 2), 30))
                     continue
-                raise NotionError(f"NOTION_HTTP_{error.code}") from None
+                refused = NotionError(f"NOTION_HTTP_{error.code}")
+                refused.detail = _detail(error)
+                raise refused from None
             except (urllib.error.URLError, TimeoutError, OSError, ValueError):
                 raise NotionError("NOTION_NETWORK") from None
         raise NotionError("NOTION_RATE_LIMITED")

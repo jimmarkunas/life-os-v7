@@ -72,6 +72,18 @@ class Delivery(unittest.TestCase):
         plan = alerts.reconcile([A, I], {}, NOW)
         self.assertEqual(alerts.deliver(plan, "t", send=lambda *a: a[3] == alerts.PAGE), {"sent": 1, "failed": 1})
 
+    def test_the_push_cli_exits_1_when_the_push_is_not_accepted(self):
+        import contextlib, io
+        old = alerts.ntfy
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                alerts.ntfy = lambda *a: False
+                self.assertEqual(alerts.main(["push", "--title", "T"]), 1)
+                alerts.ntfy = lambda *a: True
+                self.assertEqual(alerts.main(["push", "--title", "T"]), 0)
+        finally:
+            alerts.ntfy = old
+
 
 if __name__ == "__main__":
     unittest.main()

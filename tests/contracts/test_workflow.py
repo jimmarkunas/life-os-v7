@@ -192,6 +192,7 @@ class IsolatedJobTests(unittest.TestCase):
 DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
       "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER"}
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
+    "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN"},
     "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"},
@@ -231,8 +232,21 @@ class DomainsWorkflowTests(unittest.TestCase):
 
     def test_a_failing_domain_step_is_a_warning_never_a_failed_run(self):
         for name, job in self.doc["jobs"].items():
+            if name == "report":                                                                                   # the failure-push job (see the next test) is the alarm, not a domain stage
+                continue
             work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).startswith("bitwarden/")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
+
+    def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):
+        job = self.doc["jobs"]["report"]
+        self.assertEqual(set(job["needs"]), set(self.doc["jobs"]) - {"report"})                                    # it watches every domain job
+        condition = job["if"]
+        for part in ("always()", "github.event_name == 'workflow_run'", "display_title == 'tick'", "contains(needs.*.result, 'failure')"):
+            self.assertIn(part, condition)
+        (step,) = [s for s in job["steps"] if "run" in s]
+        self.assertIn("lifeos.platform.alerts push --severity page", step["run"])
+        self.assertFalse(step.get("continue-on-error"))                                                           # a push the provider refuses turns the job red
+        self.assertEqual(sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(job["needs"]))         # every domain job is named in the failed list
 
 
 DB = {f"LIFEOS_ACQ_{n}" for n in ("DB_NAME", "DB_PASSWORD", "DB_USER", "SSH_HOST", "SSH_KNOWN_HOSTS", "SSH_PRIVATE_KEY", "SSH_USER")}
@@ -284,15 +298,15 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-calendar', 'cancel-in-progress': False},
         timeouts={'calendar': 15}, digest="58ec7d506d5fd3d5"),
     "domains": dict(
-        jobs={"jira": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}, "outlook": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}, "bills": DB | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}},
+        jobs={"jira": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}, "outlook": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}, "bills": DB | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "report": {"NTFY_TOPIC"}},
         direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID'],
         on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
-        timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20}, digest="3037f37a81cbe71f"),
+        timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'report': 5}, digest="52884bcc2819c794"),
     "hourly": dict(
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="6519361f93e0b85f"),
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="5a110f69cfc781f8"),
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -312,7 +326,7 @@ CONSUMERS = {
         jobs={"watch": {"NTFY_TOPIC"}},
         direct=['GITHUB_TOKEN', 'LIFEOS_BWS_RUNTIME_TOKEN'],
         on=['schedule', 'workflow_dispatch'], crons=['17 * * * *', '47 * * * *'], perms={'contents': 'read', 'actions': 'read', 'issues': 'write'}, conc=None,
-        timeouts={'watch': 3}, digest="2fc9f408876a9e05"),
+        timeouts={'watch': 3}, digest="5286d288256224dc"),
     "safety": dict(
         jobs={"safety": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NTFY_TOPIC"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
@@ -389,10 +403,13 @@ CONSUMER_STEPS = {
         "megibow": {
             'MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)': DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
         },
+        "report": {
+            'Domain jobs report here (the run is already red; this pushes the phone)': {"NTFY_TOPIC"},
+        },
     },
     "hourly": {
         "prep": {
-            'Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count); flag a stale pipeline': DB | HRL,
+            'Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)': DB | HRL,
             'Stage 1 - sweep': DB | HRL,
             'Step 3b - reconcile (repair, manual only)': DB | HRL,
             'Step 2 - store check': DB | HRL,
@@ -429,7 +446,8 @@ CONSUMER_STEPS = {
             'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)': DB | HRL,
             'Funnel report (dispatch only, read-only, counts only)': DB | HRL,
             'Probe - source shapes (dispatch only, counts only)': DB | HRL,
-            'Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)': DB | HRL,
+            'Step 8 - Last Seen sync (daily)': DB | HRL,
+            'Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)': DB | HRL | {"NTFY_TOPIC"},
             'Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)': DB | HRL | {"NTFY_TOPIC"},
         },
         "interview": {

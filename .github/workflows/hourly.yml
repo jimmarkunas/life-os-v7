@@ -156,7 +156,7 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count); flag a stale pipeline
+      - name: Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TICK: ${{ inputs.tick }}
@@ -509,6 +509,8 @@ jobs:
         run: echo "::warning title=Dice::the Dice link resolver failed or timed out; the Jobs pipeline is unaffected"
 
   finish:
+    outputs:
+      failed: ${{ steps.lanes.outputs.failed }}      # the failed stage names (fixed words), so the phone push says which stage
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -936,9 +938,9 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run probe
-      - id: maintain
+      - id: sync_seen
         continue-on-error: true
-        name: Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)
+        name: Step 8 - Last Seen sync (daily)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -957,10 +959,44 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+        run: python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
+      - id: purge
+        continue-on-error: true
+        name: Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.maintenance) }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+          NTFY_TOPIC: ${{ steps.bws_finish.outputs.NTFY_TOPIC }}
+          PURGE_FORCE: ${{ inputs.maintenance }}
         run: |
-          python -m lifeos.run sync-seen $([ "$LIVE" = "true" ] && echo --live)
-          if [ "${{ inputs.maintenance }}" = "true" ] || [ "$(date -u +%u%H)" = "703" ]; then
-            python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live)
+          # D168: the stage decides when it is due (about weekly, 6.5 days after the last success, retried every 6 hours after a failure), so a failed Sunday no longer waits a week.
+          status=0
+          out=$(python -m lifeos.run purge $([ "$LIVE" = "true" ] && echo --live) 2>&1) || status=$?
+          echo "$out"
+          last=$(printf '%s\n' "$out" | tail -n 1)
+          if [ "$status" = "0" ]; then
+            case "$last" in
+              *not_due*|*skipped_dry_run*) ;;
+              *) python3 -m lifeos.platform.alerts push --severity info --title "V7 weekly purge done" --body "$last" || true ;;
+            esac
+          else
+            python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly purge FAILED" --body "$last" || true
+            exit 1
           fi
       - id: alerts
         continue-on-error: true
@@ -985,13 +1021,15 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run alerts $([ "$LIVE" = "true" ] && echo --live)
-      - name: Lane failures fail the run (other stages still ran)
+      - id: lanes
+        name: Lane failures fail the run (other stages still ran)
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} maintain=${{ steps.maintain.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
+          echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
           if [ -n "$failed" ]; then echo "FAILED STAGES:$failed"; exit 1; fi
 
   interview:
@@ -1076,13 +1114,14 @@ jobs:
       - name: Resolver lanes and the finish job report here (the run fails if any lane failed)
         env:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
+          STAGES: ${{ needs.finish.outputs.failed }}
         run: |
           failed=""
           for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
-            python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed. Open the Actions tab."
+            python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed${STAGES:+; stages: $STAGES}. Open the Actions tab."
             echo "FAILED LANES:$failed"; exit 1
           fi
 
