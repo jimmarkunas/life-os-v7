@@ -17,6 +17,7 @@ RETIRE_DAYS = 30
 DESC_DAYS = 90
 JOB_ROW_DAYS = 365
 MAX_PAGES = 20
+KNOWN_LANES = ("Newsletter", "US Web", "US Remote", "Scale-Up", "Scale-up", "Skilled Worker")
 WRITES_PER_RUN = 150
 
 
@@ -86,7 +87,11 @@ def candidates(client, now, lane):
         body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=RETIRE_DAYS), lane)}
         if cursor:
             body["start_cursor"] = cursor
-        data = client.call("POST", f"/data_sources/{client.source}/query", body)
+        try:
+            data = client.call("POST", f"/data_sources/{client.source}/query", body)
+        except notion_client.NotionError as error:                    # D165: a bare HTTP 400 hid which request Notion refused; name the lane and what Notion named
+            tag = lane if lane in KNOWN_LANES else "other"
+            raise notion_client.NotionError(" ".join(part for part in (str(error), f"lane={tag}", error.detail) if part)) from None
         for page in data.get("results", []):
             props = page.get("properties") or {}
             found.append((page["id"], _date(props.get("Posting Date")), _date(props.get("First Surfaced"))))

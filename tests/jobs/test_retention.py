@@ -61,6 +61,20 @@ class Purge(unittest.TestCase):
         self.assertEqual(trashed, ["/pages/old", "/pages/undated-old"])                # a recent Posting Date keeps a reposted job; a recent First Surfaced keeps an undated one
         self.assertEqual((counts["retired"], counts["failed"]), (2, 0))
 
+    def test_a_refused_query_names_the_lane_and_what_notion_named_but_nothing_else(self):
+        class Refuses(LedgerWithFilterLimit):
+            def call(self, method, path, body=None):
+                if method == "POST":
+                    error = retention.notion_client.NotionError("NOTION_HTTP_400")
+                    error.detail = "validation_error body.filter.and[3]"
+                    raise error
+                return super().call(method, path, body)
+        client = Refuses()
+        with database({}), mock.patch.object(retention.notion_client, "Client", lambda environ=None: client):
+            with self.assertRaises(retention.notion_client.NotionError) as caught:
+                retention.purge_notion(False, NOW, environ={"HIRING_PIPELINE_PAGE_ID": ""})
+        self.assertEqual(str(caught.exception), "NOTION_HTTP_400 lane=US Remote validation_error body.filter.and[3]")
+
 
 if __name__ == "__main__":
     unittest.main()
