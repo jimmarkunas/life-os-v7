@@ -21,6 +21,8 @@ FAIL_WINDOW_HOURS = 24         # failed ticks counted over this window
 FAIL_OPEN = 3                  # this many failed ticks in the window opens the "failing" incident; zero closes it
 FAIL_TITLE = "V7 pipeline: hourly runs failing repeatedly (3+ failed in 24 hours)"
 FAIL_LABEL = "pipeline-failing"
+DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time (7 AM in winter); the :17 watchdog run sends it
+DOMAINS_TITLE = "domains (after tick)"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
 
 
@@ -63,6 +65,26 @@ def failing(runs, now, window_hours=FAIL_WINDOW_HOURS):
     if failed >= FAIL_OPEN:
         return True
     return False if failed == 0 else None
+
+
+def digest_due(now):
+    return now.hour == DIGEST_HOUR_UTC and now.minute < 30
+
+
+def health(runs, domain_runs, now, window_hours=24):
+    """-> (title, body): the daily check-in, counts only. Its absence is the alarm: if the watchdog or the phone path is dead, no check-in arrives."""
+    cutoff = now - dt.timedelta(hours=window_hours)
+    recent = [r for r in runs if r.get("display_title") == TICK_TITLE and r.get("conclusion") in ("success", "failure")
+              and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff]
+    failed = sum(1 for r in recent if r["conclusion"] == "failure")
+    good = [r for r in recent if r["conclusion"] == "success"]
+    since = int((now - max(_t(r["updated_at"]) for r in good)).total_seconds() // 60) if good else None
+    domains = sum(1 for r in domain_runs if r.get("display_title") == DOMAINS_TITLE and r.get("conclusion") == "failure"
+                  and (_t(r.get("updated_at") or r.get("created_at")) or cutoff) > cutoff)
+    ok = failed == 0 and domains == 0 and since is not None and since < 90
+    last = "no good run" if since is None else f"last good run {since} min ago"
+    return (f"V7 daily check: {'OK' if ok else 'DEGRADED'}",
+            f"Last 24 h: {len(recent)} hourly runs, {len(good)} ok, {failed} failed; {last}; {domains} failed domain run(s).")
 
 
 def _api(path, method="GET", body=None):
@@ -111,7 +133,7 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None):
         return None
 
 
-def watch(now=None):
+def watch(now=None, push=None):
     """Independent watchdog (its own workflow): the gate only runs when an hourly run starts, so a total stall (no GitHub schedule, no timer tick)
     would stay silent. Two incidents, both raised from outside the pipeline: no successful run for 2.5 hours, and three or more failed ticks in 24 hours.
     Never touches job data."""
@@ -128,7 +150,15 @@ def watch(now=None):
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page"),
                       ("V7 hourly runs recovered", "No failed run in 24 hours.", "info")),
     ]
-    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes}")
+    sent = None
+    if digest_due(now):
+        try:
+            domain_runs = _api("actions/workflows/domains.yml/runs?per_page=60")["workflow_runs"]
+        except Exception:                                          # the check-in must still go out, and say what it could not read
+            domain_runs = []
+        title, body = health(runs, domain_runs, now)
+        sent = (push or _push)(title, body, "info")
+    print(f"watchdog: stale={is_stale} failing={fail_signal} changes={changes} checkin={sent}")
     return 0
 
 

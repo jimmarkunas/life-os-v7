@@ -150,5 +150,53 @@ class Incident(unittest.TestCase):
         self.assertEqual(pushed, ["V7 hourly runs failing repeatedly"])
 
 
+class DailyCheckin(unittest.TestCase):
+    def test_it_is_due_once_a_day_in_the_first_half_hour_only(self):
+        at = lambda h, m: dt.datetime(2026, 10, 11, h, m, tzinfo=dt.timezone.utc)
+        self.assertEqual([gate.digest_due(at(13, 17)), gate.digest_due(at(13, 47)), gate.digest_due(at(12, 17)), gate.digest_due(at(14, 17))], [True, False, False, False])
+
+    def test_a_healthy_day_says_ok_with_counts_only(self):
+        title, body = gate.health([ago(0.3, "success", rid=1), ago(5, "success", rid=2), ago(6, "cancelled", rid=3)], [ago(2, "success", title=gate.DOMAINS_TITLE)], NOW)
+        self.assertEqual(title, "V7 daily check: OK")
+        self.assertIn("2 hourly runs, 2 ok, 0 failed", body)
+
+    def test_any_failed_tick_or_domain_run_or_a_stale_success_says_degraded(self):
+        self.assertIn("DEGRADED", gate.health([ago(1, "success"), ago(3)], [], NOW)[0])
+        self.assertIn("DEGRADED", gate.health([ago(1, "success")], [ago(4, "failure", title=gate.DOMAINS_TITLE)], NOW)[0])
+        title, body = gate.health([ago(3, "success")], [], NOW)
+        self.assertEqual((title, "180 min ago" in body), ("V7 daily check: DEGRADED", True))
+        self.assertIn("no good run", gate.health([], [], NOW)[1])
+
+    def test_watch_sends_the_checkin_at_the_hour_and_not_otherwise(self):
+        for hour, expect in ((13, ["V7 daily check: OK"]), (9, [])):
+            now, pushed = dt.datetime(2026, 10, 11, hour, 17, tzinfo=dt.timezone.utc), []
+            fresh = lambda: {"workflow_runs": [{"id": 1, "display_title": "tick", "conclusion": "success", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                "updated_at": (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}]}
+            old = gate._api
+            gate._api = lambda path, *a, **k: fresh() if "workflows/" in path else {}
+            try:
+                gate.watch(now, push=lambda *a: pushed.append(a[0]) or True)
+            finally:
+                gate._api = old
+            self.assertEqual(pushed, expect)
+
+
+class PurgeIsNamed(unittest.TestCase):
+    """D166: the Sunday purge failed twice and the push only said 'finish'. The workflow now names the stage and pushes the purge result itself."""
+    text = (__import__("pathlib").Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
+
+    def test_the_lane_step_lists_purge_and_hands_the_stage_names_to_the_report_job(self):
+        self.assertIn("purge=${{ steps.purge.outcome }}", self.text)
+        self.assertIn("sync_seen=${{ steps.sync_seen.outcome }}", self.text)
+        self.assertIn("failed: ${{ steps.lanes.outputs.failed }}", self.text)
+        self.assertIn("STAGES: ${{ needs.finish.outputs.failed }}", self.text)
+
+    def test_the_purge_step_pushes_success_and_failure(self):
+        step = self.text.split("- id: purge")[1].split("- id: alerts")[0]
+        self.assertIn('--title "V7 weekly purge FAILED"', step)
+        self.assertIn('--title "V7 weekly purge done"', step)
+        self.assertIn("exit 1", step)
+
+
 if __name__ == "__main__":
     unittest.main()

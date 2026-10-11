@@ -306,7 +306,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="6519361f93e0b85f"),
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="126b2787395aca61"),
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -446,7 +446,8 @@ CONSUMER_STEPS = {
             'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)': DB | HRL,
             'Funnel report (dispatch only, read-only, counts only)': DB | HRL,
             'Probe - source shapes (dispatch only, counts only)': DB | HRL,
-            'Step 8 - Last Seen sync (daily) and retention purge (weekly, Sunday 03 UTC)': DB | HRL,
+            'Step 8 - Last Seen sync (daily)': DB | HRL,
+            'Step 8b - retention purge (weekly, Sunday 03 UTC; pushes its own result to the phone, counts and fixed codes only)': DB | HRL | {"NTFY_TOPIC"},
             'Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)': DB | HRL | {"NTFY_TOPIC"},
         },
         "interview": {
