@@ -203,10 +203,11 @@ def save(connection, job_id, result):
                 cursor.execute("UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')", (result["location"][:2000], job_id))
             posted = result.get("posted")
             age = (now.date() - posted).days if posted else None
-            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "
+            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=COALESCE(%s, posted_date), "      # JOBS-1.1A: a read that finds no date never erases the employer date already accepted
+                           "posted_source=CASE WHEN %s IS NULL THEN posted_source ELSE 'employer' END, final_apply_url=%s, "
                            "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
-                           ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted,
-                            "employer" if posted else None, result.get("final_url") or None, age, result.get("proof"), now, job_id))
+                           ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted, posted,
+                            result.get("final_url") or None, age, result.get("proof"), now, job_id))
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
