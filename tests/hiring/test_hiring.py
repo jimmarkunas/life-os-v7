@@ -502,7 +502,7 @@ class RuntimePathTests(unittest.TestCase):
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         needs = set(doc["jobs"]["hiring"]["needs"])
-        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow"})            # after every Daily Report writer, mail included
+        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "report"})            # after every Daily Report writer, mail included (the failure-push job writes nothing)
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail"} <= needs)
         for name in ("outlook", "megibow"):                                                     # the two that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))

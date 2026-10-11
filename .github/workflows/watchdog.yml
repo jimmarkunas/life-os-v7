@@ -9,6 +9,11 @@ on:
         description: "Send a test push to the phone (proves NTFY_TOPIC and the ntfy app)"
         type: boolean
         default: false
+      test_severity:
+        description: "Severity of the test push: page is what a real failure sends (high priority); info is the quiet kind"
+        type: choice
+        options: [page, info]
+        default: page
 permissions:
   contents: read
   actions: read
@@ -31,4 +36,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Test push (dispatch only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_push }}
-        run: python3 -m lifeos.platform.alerts push --severity info --title "V7 test push" --body "If you can read this on your phone, alerts work."
+        env:
+          TEST_SEVERITY: ${{ inputs.test_severity }}
+        run: python3 -m lifeos.platform.alerts push --severity "$TEST_SEVERITY" --title "V7 test push ($TEST_SEVERITY)" --body "If this appeared on your lock screen, alerts work. If it is only in the ntfy app, check the phone's notification settings."

@@ -669,3 +669,30 @@ jobs:
       - name: MegIBOW warning (does not fail the Jobs run)
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
+
+  report:
+    # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
+    # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
+    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow]
+    if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - id: bws_report
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Domain jobs report here (the run is already red; this pushes the phone)
+        env:
+          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
+        run: |
+          failed=""
+          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }}; do
+            [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
+          done
+          python3 -m lifeos.platform.alerts push --severity page --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."

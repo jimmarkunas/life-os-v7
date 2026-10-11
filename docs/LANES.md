@@ -39,6 +39,10 @@ for a decision or written. **Applied jobs are never destructively retired by Job
 Saturn Decision exists) until the Interview progression handoff (INT-7.1A) supplies evidence; a job that reaches an interview stage is therefore always kept.
 Only our own pages are touched (matched by stored page id). Hostinger: descriptions 90 days, never-published job rows 365 days, tombstones 90 days.
 
+**First-party boards (D167, Jim Oct 11):** a role read off its employer's own board (source `web:<board>`, not the Open Jobs feed or an aggregator) is open while the board lists it (D111), so the posting-age rule does not retire it. It is retired only when a complete listing of that board no longer has it (the web pass marks it REMOVED) and it is 30+ days old; a role with no board record is kept, because nothing proves it closed. Feed, aggregator and newsletter roles keep the 30-day rule.
+
+**Schedule (D168):** the purge is about weekly, not tied to Sunday: it runs when the last success is 6.5 days old, and a failed attempt is retried every 6 hours until it succeeds. The last success and attempt are kept as two rows in `v7_alerts` (`purge_ok`, `purge_try`).
+
 ## Scale-Up on the shared web substrate
 `lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (36 listable: 19 public ATS boards, 17 first-party careers pages read by `html_readers`, D33; 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
 geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
