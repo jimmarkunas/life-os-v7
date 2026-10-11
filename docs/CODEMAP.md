@@ -201,6 +201,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/platform/
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
 - `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
+- `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a
 - `lifeos/platform/egress.py`: Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used
 - `lifeos/platform/gate.py`: Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate keeps the effective cadence at about one run per hou
 - `lifeos/platform/gcal.py`: Minimal Google Calendar client (stdlib + the system openssl for the JWT signature; platform: no product knowledge). Service-account auth: the account only ever sees the o
@@ -436,3 +437,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D166: Alerts name the stage, the weekly purge reports its own result, and a daily check-in proves the alert path is alive (2026-10-11, Jim)
 - D167: Retention keeps a first-party board role while its board still lists it (2026-10-11, Jim)
 - D168: The purge catches up: about weekly, retried every six hours after a failure, and a quiet fail-closed run is a failure (2026-10-11, Jim)
+- D169: The Daily Command Center write is proven from page markdown: the write is confined by construction and a change to another region is blamed on its owner only when the owner's own stamp moved (2026-10-11, Jim)

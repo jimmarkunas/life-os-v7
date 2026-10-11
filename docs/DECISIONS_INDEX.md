@@ -169,3 +169,4 @@ This index is checked by a test: add a line here with every new decision.
 - D166 — Alerts name the stage, the weekly purge reports its own result, and a daily check-in proves the alert path is alive (2026-10-11, Jim)
 - D167 — Retention keeps a first-party board role while its board still lists it (2026-10-11, Jim)
 - D168 — The purge catches up: about weekly, retried every six hours after a failure, and a quiet fail-closed run is a failure (2026-10-11, Jim)
+- D169 — The Daily Command Center write is proven from page markdown: the write is confined by construction and a change to another region is blamed on its owner only when the owner's own stamp moved (2026-10-11, Jim)
