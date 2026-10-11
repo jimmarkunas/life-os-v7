@@ -385,3 +385,76 @@ class LocationFromThePageTests(unittest.TestCase):
         enrich.save(Conn(cur), 5, result)
         update = next(s for s in cur.sql if "SET location_text" in s)
         self.assertIn("location_text IS NULL OR location_text=''", update)
+
+
+class PostedDateSupersession(unittest.TestCase):
+    """JOBS-1.1A: an accepted employer Posting Date is stronger evidence than a later read that finds no date. The exact UPDATE enrich.save sends is run
+    against a real row, then the stored date goes through the lane decision the Fit stage makes (stored posted_date -> facts_for -> decide_all)."""
+    TODAY = __import__("datetime").date(2026, 10, 11)
+    DESC = {"full_text": "t" * 300, "summary": "s", "responsibilities": "", "requirements": "", "qualifications": "", "fingerprint": "f"}
+
+    def saved(self, seed_date, seed_source, posted, outcome="ready"):
+        import sqlite3
+        from tests.kit.mysqlite import translate
+
+        class Cur:
+            def __init__(self):
+                self.calls, self.rowcount = [], 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, params=()):
+                self.calls.append((sql, tuple(params)))
+
+        class Conn:
+            def __init__(self, cur):
+                self.cur = cur
+
+            def cursor(self):
+                return self.cur
+
+        cur = Cur()
+        enrich.save(Conn(cur), 7, {"outcome": outcome, "description": self.DESC, "source_kind": "jsonld", "posted": posted, "final_url": "https://example.com/j/1"})
+        raw = sqlite3.connect(":memory:")
+        raw.execute("CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, status TEXT, posted_date TEXT, posted_source TEXT, final_apply_url TEXT, posted_age_days INTEGER,"
+                    " link_proof TEXT, unresolved_reason TEXT, updated_at TEXT)")
+        raw.execute("INSERT INTO v7_jobs (id, status, posted_date, posted_source, posted_age_days) VALUES (7, 'RESOLVED', ?, ?, 40)", (seed_date, seed_source))
+        for sql, params in cur.calls:
+            if sql.startswith("UPDATE v7_jobs SET status"):                         # the production statement, with its production arguments
+                raw.execute(translate(sql), tuple(str(x) if hasattr(x, "isoformat") else x for x in params))
+        row = raw.execute("SELECT status, posted_date, posted_source FROM v7_jobs WHERE id=7").fetchone()
+        raw.close()
+        return row
+
+    def decision(self, stored_date):
+        import datetime as dt
+        from lifeos.jobs import lanes
+        posted = dt.date.fromisoformat(stored_date) if stored_date else None
+        facts = lanes.facts_for(85, "Program Manager", "Remote, US", "A fully remote role in the United States.", "$150,000 - $170,000", posted, dt.datetime(2026, 10, 10))
+        return lanes.decide_all("US Remote", facts, self.TODAY)[0]
+
+    def test_a_later_read_with_no_date_keeps_the_accepted_employer_date_and_the_job_stays_excluded(self):
+        status, posted, source = self.saved("2026-09-01", "employer", posted=None)
+        self.assertEqual((posted, source), ("2026-09-01", "employer"))
+        self.assertEqual((self.decision(posted).status, self.decision(posted).reason), ("EXCLUDE", "older than 14 days"))   # US Remote: 14 days
+
+    def test_erasing_the_date_would_have_admitted_the_same_job_as_new(self):
+        self.assertEqual(self.decision(None).status, "ADMIT")                       # why the stored date matters: with it gone the job is aged by First Surfaced
+
+    def test_a_job_with_no_date_stays_undated_and_a_date_is_never_invented(self):
+        status, posted, source = self.saved(None, None, posted=None)
+        self.assertEqual((posted, source), (None, None))
+
+    def test_a_newer_employer_date_supersedes_the_older_one(self):
+        status, posted, source = self.saved("2026-09-01", "employer", posted=__import__("datetime").date(2026, 10, 5))
+        self.assertEqual((posted, source), ("2026-10-05", "employer"))
+        self.assertEqual(self.decision(posted).status, "ADMIT")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
