@@ -212,8 +212,9 @@ def run(limit, live, environ=os.environ):
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
             page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
-        except NotionError:
+        except NotionError as error:
             counts["failed"] += 1
+            counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]       # a fixed code (and Notion's own error code), so a job that fails every run says why
             if counts["failed"] >= 3:          # systemic (auth/schema/limit): stop instead of hammering
                 break
             continue
