@@ -39,7 +39,7 @@ class Reader(AmazonNotion):
 
 ROWS = [order(1, "SHIPPED", "2026-10-03T15:00:00+00:00", summary="Garden hose"), order(2, "ORDERED", "2026-10-04T10:00:00+00:00", summary="USB cable"),
         order(3, "DELIVERED", "2026-10-03T17:58:00+00:00", summary="2 Device Accessories items"),
-        order(4, "DELIVERED", "2026-10-01T18:18:00+00:00", summary="Old office item"), order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None),
+        order(4, "DELIVERED", "2026-09-26T18:18:00+00:00", summary="Old office item"), order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None),
         order(6, "SHIPPED", "2026-06-08T10:00:00+00:00", summary="June order")]
 
 
@@ -48,15 +48,15 @@ def texts(blocks):
 
 
 class RenderTests(unittest.TestCase):
-    def test_summary_sections_and_the_48_hour_delivered_window(self):
+    def test_summary_sections_and_the_seven_day_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 48 hours) · 1 need review · 1 older than 30 days not shown")
+        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 7 days) · 1 need review · 1 older than 30 days not shown")
         self.assertIn("In transit", text)
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
         self.assertTrue(any(t.startswith("2 Device Accessories items · Delivered") for t in text))
-        self.assertFalse(any("Old office item" in t for t in text))                           # delivered 3 days ago is outside the 48-hour window
+        self.assertFalse(any("Old office item" in t for t in text))                           # delivered 8 days ago is outside the 7-day window
         self.assertFalse(any("June order" in t for t in text))                                # an open order untouched for four months is counted, never listed
         self.assertEqual((counts["in_transit"], counts["delivered"], counts["review"], counts["older_open"], counts["status"]), (2, 1, 1, 1, "fresh"))
 
@@ -77,7 +77,7 @@ class RenderTests(unittest.TestCase):
 
     def test_nothing_open_is_a_real_empty_state_with_its_own_sentence(self):
         blocks, _ = card.render([], NOW)
-        self.assertIn("No open orders and nothing delivered in the last 48 hours", texts(blocks))
+        self.assertIn("No open orders and nothing delivered in the last 7 days", texts(blocks))
 
     def test_long_lists_are_capped_and_counted(self):
         rows = [order(i, "SHIPPED", f"2026-10-03T{10 + i % 10}:00:00+00:00") for i in range(14)]
@@ -94,8 +94,8 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(parts[-1]["text"]["link"]["url"], "https://app.notion.com/p/" + "a" * 32)
         self.assertNotIn("link", str(card.render(ROWS, NOW)[0][0]))
 
-    def test_delivered_leaves_after_48_hours_and_an_old_open_order_is_counted(self):
-        edge = [order(1, "DELIVERED", "2026-10-02T19:00:00+00:00", summary="Inside"), order(2, "DELIVERED", "2026-10-02T17:00:00+00:00", summary="Outside"),
+    def test_delivered_stays_seven_days_and_an_old_open_order_is_counted(self):
+        edge = [order(1, "DELIVERED", "2026-09-27T19:00:00+00:00", summary="Inside"), order(2, "DELIVERED", "2026-09-27T17:00:00+00:00", summary="Outside"),
                 order(3, "ORDERED", "2026-09-05T14:00:00+00:00", summary="Thirty days"), order(4, "ORDERED", "2026-09-03T14:00:00+00:00", summary="Thirty one days")]
         blocks, counts = card.render(edge, NOW)
         text = " | ".join(texts(blocks))
@@ -132,7 +132,7 @@ class RunTests(unittest.TestCase):
         reader = Reader(ROWS)
         card.run(0, False, environ=ENV, reader=reader, client=AmazonRegions(), now=NOW)
         flat = str(reader.bodies[0])
-        for needle in ("ORDERED", "SHIPPED", "Needs Review", "DELIVERED", "on_or_after", "2026-10-01"):
+        for needle in ("ORDERED", "SHIPPED", "Needs Review", "DELIVERED", "on_or_after", "2026-09-26"):
             self.assertIn(needle, flat)
 
     def test_the_link_comes_from_the_data_sources_parent_database_and_a_missing_parent_only_drops_the_link(self):
