@@ -170,3 +170,4 @@ This index is checked by a test: add a line here with every new decision.
 - D167 — Retention keeps a first-party board role while its board still lists it (2026-10-11, Jim)
 - D168 — The purge catches up: about weekly, retried every six hours after a failure, and a quiet fail-closed run is a failure (2026-10-11, Jim)
 - D170 — The Amazon card counts open orders older than 30 days instead of listing them and links to the orders database; delivered orders stay 7 days (2026-10-12, Jim)
+- D171 — Recruiters runs on every tick as a domain job (2026-10-12, Jim)
