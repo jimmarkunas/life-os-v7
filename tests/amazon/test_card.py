@@ -38,8 +38,9 @@ class Reader(AmazonNotion):
 
 
 ROWS = [order(1, "SHIPPED", "2026-10-03T15:00:00+00:00", summary="Garden hose"), order(2, "ORDERED", "2026-10-04T10:00:00+00:00", summary="USB cable"),
-        order(3, "DELIVERED", "2026-09-30T17:58:00+00:00", summary="2 Device Accessories items"),
-        order(4, "DELIVERED", "2026-09-14T18:18:00+00:00", summary="Old office item"), order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None)]
+        order(3, "DELIVERED", "2026-10-03T17:58:00+00:00", summary="2 Device Accessories items"),
+        order(4, "DELIVERED", "2026-10-01T18:18:00+00:00", summary="Old office item"), order(5, "REVIEW", "2026-10-01T10:00:00+00:00", review=True, summary=None),
+        order(6, "SHIPPED", "2026-06-08T10:00:00+00:00", summary="June order")]
 
 
 def texts(blocks):
@@ -47,16 +48,17 @@ def texts(blocks):
 
 
 class RenderTests(unittest.TestCase):
-    def test_summary_sections_and_the_seven_day_delivered_window(self):
+    def test_summary_sections_and_the_48_hour_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
         text = texts(blocks)
-        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 7 days) · 1 need review")
+        self.assertEqual(text[0], "Updated 1:30 PM CT · 2 in transit · 1 delivered (last 48 hours) · 1 need review · 1 older than 30 days not shown")
         self.assertIn("In transit", text)
         self.assertTrue(any(t.startswith("USB cable · Ordered") for t in text))
         self.assertTrue(any(t.startswith("Garden hose · Shipped") for t in text))
         self.assertTrue(any(t.startswith("2 Device Accessories items · Delivered") for t in text))
-        self.assertFalse(any("Old office item" in t for t in text))                           # delivered 20 days ago is outside the window
-        self.assertEqual((counts["in_transit"], counts["delivered"], counts["review"], counts["status"]), (2, 1, 1, "fresh"))
+        self.assertFalse(any("Old office item" in t for t in text))                           # delivered 3 days ago is outside the 48-hour window
+        self.assertFalse(any("June order" in t for t in text))                                # an open order untouched for four months is counted, never listed
+        self.assertEqual((counts["in_transit"], counts["delivered"], counts["review"], counts["older_open"], counts["status"]), (2, 1, 1, 1, "fresh"))
 
     def test_the_item_links_to_its_amazon_order_and_a_missing_total_is_said_not_zero(self):
         blocks, _ = card.render([order(9, "SHIPPED", "2026-10-03T15:00:00+00:00", total=None)], NOW)
@@ -75,7 +77,7 @@ class RenderTests(unittest.TestCase):
 
     def test_nothing_open_is_a_real_empty_state_with_its_own_sentence(self):
         blocks, _ = card.render([], NOW)
-        self.assertIn("No open orders and nothing delivered in the last 7 days", texts(blocks))
+        self.assertIn("No open orders and nothing delivered in the last 48 hours", texts(blocks))
 
     def test_long_lists_are_capped_and_counted(self):
         rows = [order(i, "SHIPPED", f"2026-10-03T{10 + i % 10}:00:00+00:00") for i in range(14)]
@@ -83,6 +85,25 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(sum(1 for b in blocks if b["type"] == "bulleted_list_item"), card.MAX_LISTED)
         self.assertIn("…and 4 more", texts(blocks))
         self.assertEqual(counts["in_transit"], 14)
+
+
+    def test_the_summary_links_to_the_orders_database_only_when_there_is_a_link(self):
+        blocks, _ = card.render(ROWS, NOW, url="https://app.notion.com/p/" + "a" * 32)
+        parts = blocks[0]["paragraph"]["rich_text"]
+        self.assertEqual([p["text"]["content"] for p in parts[-2:]], [" · ", "All orders"])
+        self.assertEqual(parts[-1]["text"]["link"]["url"], "https://app.notion.com/p/" + "a" * 32)
+        self.assertNotIn("link", str(card.render(ROWS, NOW)[0][0]))
+
+    def test_delivered_leaves_after_48_hours_and_an_old_open_order_is_counted(self):
+        edge = [order(1, "DELIVERED", "2026-10-02T19:00:00+00:00", summary="Inside"), order(2, "DELIVERED", "2026-10-02T17:00:00+00:00", summary="Outside"),
+                order(3, "ORDERED", "2026-09-05T14:00:00+00:00", summary="Thirty days"), order(4, "ORDERED", "2026-09-03T14:00:00+00:00", summary="Thirty one days")]
+        blocks, counts = card.render(edge, NOW)
+        text = " | ".join(texts(blocks))
+        self.assertIn("Inside", text)
+        self.assertNotIn("Outside", text)
+        self.assertIn("Thirty days", text)
+        self.assertNotIn("Thirty one days", text)
+        self.assertEqual((counts["delivered"], counts["in_transit"], counts["older_open"]), (1, 1, 1))
 
 
 class RunTests(unittest.TestCase):
@@ -111,8 +132,19 @@ class RunTests(unittest.TestCase):
         reader = Reader(ROWS)
         card.run(0, False, environ=ENV, reader=reader, client=AmazonRegions(), now=NOW)
         flat = str(reader.bodies[0])
-        for needle in ("ORDERED", "SHIPPED", "Needs Review", "DELIVERED", "on_or_after", "2026-09-26"):
+        for needle in ("ORDERED", "SHIPPED", "Needs Review", "DELIVERED", "on_or_after", "2026-10-01"):
             self.assertIn(needle, flat)
+
+    def test_the_link_comes_from_the_data_sources_parent_database_and_a_missing_parent_only_drops_the_link(self):
+        class WithParent(Reader):
+            def call(self, method, path, body=None):
+                result = super().call(method, path, body)
+                return {**result, "parent": {"type": "database_id", "database_id": "12345678-1234-1234-1234-123456789abc"}} if path.startswith("/data_sources/") else result
+        self.assertEqual(card._orders_url(WithParent(ROWS), "source-example"), "https://app.notion.com/p/12345678123412341234123456789abc")
+        self.assertIsNone(card._orders_url(Reader(ROWS), "source-example"))
+        notion = AmazonRegions()
+        card.run(0, True, environ=ENV, reader=WithParent(ROWS), client=notion, now=NOW)
+        self.assertIn("All orders", report_region.plain(notion.children["amazon-callout"][1]))
 
     def test_dry_run_and_missing_config_write_nothing(self):
         notion, counts = self.run_card(live=False)
