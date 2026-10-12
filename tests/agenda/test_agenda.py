@@ -340,6 +340,23 @@ class CalendarDeepLinkTests(unittest.TestCase):
         self.assertEqual(links(block), [("Example sync", self.CAL), ("Join", self.MEET)])
         self.assertEqual(card._plain(block), "Now · 9:30 AM–10:45 AM — Example sync · Join · Room 2")
 
+    def test_a_location_that_is_a_web_address_becomes_a_small_link_named_for_its_site(self):
+        # Oct 12: a live-session address was the whole location and printed as a long plain-text line that wrapped under the event
+        snap = saved_snapshot([self.compacted(timed("t7", "Example session", "2026-03-08T09:30:00-05:00", "2026-03-08T10:45:00-05:00", htmlLink=self.CAL,
+                                                    location="https://www.example.com/live/AbC123"))])
+        block = event_blocks(snap)[0]
+        self.assertEqual(links(block), [("Example session", self.CAL), ("example.com", "https://www.example.com/live/AbC123")])
+        self.assertEqual(card._plain(block), "Now · 9:30 AM–10:45 AM — Example session · example.com")
+
+    def test_words_around_an_address_stay_plain_and_an_address_the_join_link_carries_is_not_repeated(self):
+        mixed = card._location_parts("Room 2, https://example.com/a/b.")
+        self.assertEqual("".join(p["text"]["content"] for p in mixed), " · Room 2, example.com.")
+        self.assertEqual([p["text"]["content"] for p in mixed if p["text"].get("link")], ["example.com"])
+        self.assertEqual(card._location_parts(self.MEET, self.MEET), [])
+        long_one = "https://example.com/" + "a" * 2000
+        self.assertFalse([p for p in card._location_parts(long_one) if p["text"].get("link")])        # too long for Notion's link: stays text
+        self.assertEqual(card._location_parts("   "), [])
+
     def test_all_day_event_links_to_the_calendar_and_has_no_join_without_a_meeting(self):
         snap = saved_snapshot([self.compacted(all_day(htmlLink=self.CAL))])
         block = event_blocks(snap)[0]

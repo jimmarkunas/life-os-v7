@@ -2,9 +2,10 @@
 import hashlib
 import json
 import os
+import re
 from copy import deepcopy
 from datetime import datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
@@ -156,6 +157,36 @@ def _text(content, url=None):
     return parts
 
 
+URL = re.compile(r"https?://[^\s<>\"']+")
+
+
+def _location_parts(location, meeting_link=None):
+    """The location as ` · text`, with any web address in it as a small link named for its site (a location that is only a link, such as a live-session address, printed its
+    whole address as plain text that wrapped onto a second line). Plain words stay plain; an address the Join link already carries is not repeated; a very long address stays text."""
+    pieces, last = [], 0
+    for found in URL.finditer(location):
+        url = found.group(0).rstrip(".,;)")
+        pieces.append((location[last:found.start()], None))
+        host = (urlparse(url).hostname or "").removeprefix("www.")
+        if url == meeting_link:
+            pass                                                                        # the Join link already carries it
+        elif len(url) <= 1900 and host:
+            pieces.append((host, url))
+        else:
+            pieces.append((url, None))
+        last = found.start() + len(url)
+    pieces.append((location[last:], None))
+    pieces = [(content.strip() if url is None else content, url) for content, url in pieces if url or content.strip()]
+    if not pieces:
+        return []
+    parts = _text(" · ")
+    for index, (content, url) in enumerate(pieces):
+        if index and (url or content[0] not in ".,;)"):
+            parts += _text(" ")                                                         # the space is plain, never inside a link's underline
+        parts += _text(content, url)
+    return parts
+
+
 def _paragraph(content):
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": _text(content)}}
 
@@ -197,7 +228,7 @@ def _event_block(event, marker=None):
     if event.get("meeting_link"):
         parts += _text(" · ") + _text("Join", event["meeting_link"])                      # the conference (Teams / Meet) is its own small link
     if event.get("location"):
-        parts += _text(f" · {event['location']}")
+        parts += _location_parts(event["location"], event.get("meeting_link"))
     return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": parts}}
 
 
