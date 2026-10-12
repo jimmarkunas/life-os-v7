@@ -502,9 +502,9 @@ class RuntimePathTests(unittest.TestCase):
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         needs = set(doc["jobs"]["hiring"]["needs"])
-        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "report"})            # after every Daily Report writer, mail included (the failure-push job writes nothing)
+        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "recruiters", "report"})            # after every Daily Report writer, mail included (the failure-push job and the Recruiters ingest write nothing on the page)
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail"} <= needs)
-        for name in ("outlook", "megibow"):                                                     # the two that never write the Daily Report page
+        for name in ("outlook", "megibow", "recruiters"):                                          # the three that never write the Daily Report page
             self.assertNotIn("hiring", doc["jobs"][name].get("needs", []))
         step = next(s for s in doc["jobs"]["hiring"]["steps"] if "lifeos.run hiring" in s.get("run", ""))      # EDGE-1.3: a Bitwarden loader step precedes it
         self.assertIn("lifeos.run hiring", step["run"])

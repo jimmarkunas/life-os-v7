@@ -33,6 +33,10 @@ on:
         description: "Attention only: the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      recruiters:
+        description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
       calendar_sync:
         description: "Calendar sync only (Outlook invites to your Google calendar, counts only); dry run unless Actually write is ticked"
         type: boolean
@@ -680,10 +684,59 @@ jobs:
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
         run: echo "::warning title=MegIBOW::the MegIBOW stage failed or a source was unread; the table shows DEGRADED and the Jobs pipeline is unaffected"
 
+  recruiters:
+    # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
+    # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.recruiters }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_recruiters
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 10; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
+      - id: recruiters
+        continue-on-error: true
+        name: Recruiters (read-only mail to the Recruiters data source; counts only)
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+        run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Recruiters warning (does not fail the Jobs run)
+        if: ${{ always() && steps.recruiters.outcome == 'failure' }}
+        run: echo "::warning title=Recruiters::the Recruiters stage failed or a source was unread; the Jobs pipeline is unaffected"
+
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow]
+    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, recruiters]
     if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -702,7 +755,7 @@ jobs:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }}; do
+          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --severity page --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."
