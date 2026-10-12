@@ -80,14 +80,15 @@ class Detect(unittest.TestCase):
         self.assertEqual(got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]})
 
     def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
-        from lifeos.jobs import publish
-        emoji = "\U0001F600" * 1500                                                      # 1500 characters, 3000 UTF-16 units
-        blocks = publish.body_blocks("diag", {"summary": emoji + "\nSecond line", "requirements": "bad\x01char and nul\x00 here"})
+        def block(kind, text):
+            return {"object": "block", "type": kind, kind: {"rich_text": [{"type": "text", "text": {"content": text}}]}}
+        too_long = "a" * 1996 + "\U0001F600" * 4                                       # 2000 characters, 2004 UTF-16 units (the Oct 12 publish failure)
+        blocks = [block("paragraph", "marker"), block("heading_2", "Summary"), block("paragraph", too_long), block("paragraph", "bad\x01char and nul\x00 here")]
         got = alertstate.body_shape(blocks)
         self.assertEqual((got["over_2000_chars"], got["over_2000_units"]), (0, 1))
         self.assertEqual((got["control"], got["nul"], got["surrogate"]), (1, 1, 0))
-        self.assertEqual(got["child2"], {"type": "paragraph", "items": 1, "chars": 1500, "units": 3000, "empty": False, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0})
-        self.assertNotIn("Second line", json.dumps(got))                                    # counts only
+        self.assertEqual(got["child2"], {"type": "paragraph", "items": 1, "chars": 2000, "units": 2004, "empty": False, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0})
+        self.assertNotIn("bad", json.dumps(got))                                            # counts only
 
     def test_publish_bodies_reads_only_and_falls_back_to_the_full_text(self):
         class Cur:

@@ -34,8 +34,20 @@ def _detail(error):
 
 
 def rich_text(content):
-    return [{"type": "text", "text": {"content": content[i:i + limits.NOTION_MAX_RICH_TEXT_CHARS]}}
-            for i in range(0, max(len(content), 1), limits.NOTION_MAX_RICH_TEXT_CHARS)][:100]
+    return [{"type": "text", "text": {"content": piece}} for piece in _pieces(content, limits.NOTION_MAX_RICH_TEXT_CHARS)][:100]
+
+
+def _pieces(content, limit):
+    """Pieces of at most `limit` UTF-16 units (Notion counts units, not Python characters: a character outside the basic plane is two), never splitting a character. An empty text is one empty piece."""
+    pieces, start, units = [], 0, 0
+    for index, char in enumerate(content):
+        width = 2 if ord(char) > 0xFFFF else 1
+        if units + width > limit:
+            pieces.append(content[start:index])
+            start, units = index, 0
+        units += width
+    pieces.append(content[start:])
+    return pieces
 
 
 class Client:

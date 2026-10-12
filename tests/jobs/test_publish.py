@@ -16,6 +16,14 @@ class BodyTests(unittest.TestCase):
         self.assertEqual([b["heading_2"]["rich_text"][0]["text"]["content"] for b in blocks if b["type"] == "heading_2"],
                          ["Summary", "Requirements", "Qualifications"])
 
+    def test_the_limit_counts_utf16_units_not_python_characters(self):
+        text = "a" * 1997 + "\U0001F600" * 3                                      # 2000 characters, 2003 UTF-16 units: one Notion piece would be refused
+        parts = [p["text"]["content"] for p in notion_client.rich_text(text)]
+        self.assertEqual("".join(parts), text)                                      # nothing lost or reordered
+        self.assertTrue(len(parts) == 2 and all(len(c.encode("utf-16-le")) // 2 <= limits.NOTION_MAX_RICH_TEXT_CHARS for c in parts))
+        self.assertEqual([len(p["text"]["content"]) for p in notion_client.rich_text("x" * 4500)], [2000, 2000, 500])      # plain text splits as before
+        self.assertEqual(notion_client.rich_text(""), [{"type": "text", "text": {"content": ""}}])
+
     def test_long_text_is_split_under_the_rich_text_limit(self):
         parts = notion_client.rich_text("x" * 4500)
         self.assertEqual([len(p["text"]["content"]) for p in parts], [2000, 2000, 500])
