@@ -183,3 +183,4 @@ This index is checked by a test: add a line here with every new decision.
 - D180 — The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)
 - D181 — A sub-task under a finished parent no longer blocks the sprint rollover, and a rollover that keeps failing pages the phone (2026-10-12, Jim)
 - D182 — A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)
+- D183 — V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
