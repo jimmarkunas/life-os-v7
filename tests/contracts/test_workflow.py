@@ -223,6 +223,19 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_no_secret_is_declared_at_the_top(self):
         self.assertEqual([k for k, v in (self.doc.get("env") or {}).items() if "secrets." in str(v)], [])
 
+    def test_the_calendar_mass_delete_brake_is_skipped_only_by_a_manual_input_and_that_run_touches_nothing_else(self):
+        inputs = self.doc[True]["workflow_dispatch"]["inputs"]
+        self.assertIs(inputs["allow_mass_delete"]["default"], False)                         # off unless a person ticks it for one run
+        self.assertIs(inputs["calendar_sync"]["default"], False)
+        job = self.doc["jobs"]["outlook"]
+        self.assertIn("inputs.calendar_sync", job["if"])
+        steps = {s.get("id"): s for s in job["steps"]}
+        self.assertEqual(steps["calsync"]["env"]["CALENDAR_ALLOW_MASS_DELETE"], "${{ inputs.allow_mass_delete && 'true' || '' }}")      # a tick (no inputs) is always ''
+        self.assertEqual(steps["outnews"]["if"], "${{ !inputs.calendar_sync || inputs.all }}")                         # a calendar-only run never files newsletters
+        for name, other in self.doc["jobs"].items():
+            if name != "outlook":
+                self.assertNotIn("CALENDAR_ALLOW_MASS_DELETE", str(other))
+
     def test_each_job_sees_only_its_own_secrets(self):
         self.assertEqual(set(self.doc["jobs"]), set(DOMAIN_SECRETS))
         for name, job in self.doc["jobs"].items():
