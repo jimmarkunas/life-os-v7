@@ -179,4 +179,5 @@ This index is checked by a test: add a line here with every new decision.
 - D176 — The accepted Posting Date follows D4: the most trusted source, then the earliest date (2026-10-12, Jim)
 - D177 — A READY job with a stored EXCLUDE decision is judged again, and a failed publish names its cause (2026-10-12, Jim)
 - D178 — An Open Jobs feed read without error is idle, not stopped (2026-10-12, Jim)
+- D179 — Notion rich text is split by UTF-16 units, not Python characters (2026-10-12, Jim)
 - D180 — The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)
