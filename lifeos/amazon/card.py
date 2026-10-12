@@ -15,7 +15,7 @@ from . import stage
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.AMAZON_REGION
 MODULE = router.OWNERS[TITLE]
-DELIVERED_HOURS = 48                    # Jim, Oct 11: a delivered order leaves the card 48 hours after delivery
+DELIVERED_DAYS = 7                      # Jim, Oct 12: delivered orders stay for 7 days (the 48-hour idea was dropped)
 OPEN_STALE_DAYS = 30                    # an open order with no event for this long can no longer be advanced by mail (D139 trashes order mail after 30 days): counted, not listed
 MAX_LISTED = 10
 MAX_PAGES = 10
@@ -113,7 +113,7 @@ def _orders_url(reader, source_id):
 
 
 def sections(rows, now):
-    cutoff = now - timedelta(hours=DELIVERED_HOURS)
+    cutoff = now - timedelta(days=DELIVERED_DAYS)
     review = [r for r in rows if r.get("Needs Review") is True or r.get("Status") == "REVIEW"]
     open_all = [r for r in rows if r.get("Status") in ("ORDERED", "SHIPPED") and r not in review]
     open_ = [r for r in open_all if (_when(r.get("Latest Event At")) or now) >= now - timedelta(days=OPEN_STALE_DAYS)]
@@ -126,18 +126,18 @@ def render(rows, now, degraded=False, url=None):
     """-> (blocks, counts). Pure."""
     open_, delivered, review, older = sections(rows, now)
     head = (f"DEGRADED · Amazon sync failed at {now.strftime('%-I:%M %p')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%-I:%M %p')} CT")
-    summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_HOURS} hours) · {len(review)} need review"
+    summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days) · {len(review)} need review"
     if older:
         summary += f" · {older} older than {OPEN_STALE_DAYS} days not shown"
     blocks = [_paragraph(summary, url)]
-    for title, items, label in (("In transit", open_, None), (f"Delivered, last {DELIVERED_HOURS} hours", delivered, "Delivered"), ("Needs review", review, "Review")):
+    for title, items, label in (("In transit", open_, None), (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"), ("Needs review", review, "Review")):
         if items:
             blocks.append(_paragraph(title))
             blocks += [_bullet(row, (row.get("Status", "").title() if label is None else label)) for row in items[:MAX_LISTED]]
             if len(items) > MAX_LISTED:
                 blocks.append(_paragraph(f"…and {len(items) - MAX_LISTED} more"))
     if not (open_ or delivered or review):
-        blocks.append(_paragraph(f"No open orders and nothing delivered in the last {DELIVERED_HOURS} hours"))
+        blocks.append(_paragraph(f"No open orders and nothing delivered in the last {DELIVERED_DAYS} days"))
     counts = {"in_transit": len(open_), "delivered": len(delivered), "review": len(review), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
     return blocks, counts
 
@@ -157,7 +157,7 @@ def run(limit, live, environ=os.environ, reader=None, client=None, now=None):
     else:
         source_id = (environ.get("NOTION_AMAZON_DATA_SOURCE_ID") or "").strip().replace("collection://", "")
     stage._schema(reader, source_id)
-    rows = read_rows(reader, source_id, (now - timedelta(hours=DELIVERED_HOURS + 24)).date().isoformat())
+    rows = read_rows(reader, source_id, (now - timedelta(days=DELIVERED_DAYS + 1)).date().isoformat())
     degraded = (environ.get("AMAZON_SYNC_OUTCOME") or "").strip().lower() in ("failure", "cancelled")
     blocks, counts = render(rows, now, degraded, _orders_url(reader, source_id))
     client = client or _writer(environ)
