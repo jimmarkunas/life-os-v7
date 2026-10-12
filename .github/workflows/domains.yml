@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: bws_jira
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 10; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -104,6 +104,7 @@ jobs:
             7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - id: jrollauto
         continue-on-error: true
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
@@ -112,6 +113,22 @@ jobs:
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover-scheduled $([ "$LIVE" = "true" ] && echo --live)
+      - id: jrollwatch
+        continue-on-error: true
+        name: Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)
+        if: ${{ always() && steps.jrollauto.outcome != 'skipped' }}
+        env:
+          JIRA_ROLLOVER_OUTCOME: ${{ steps.jrollauto.outcome }}
+          NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
+        run: python -m lifeos.run jira-rollover-watch $([ "$LIVE" = "true" ] && echo --live)
       - id: jsnap
         continue-on-error: true
         name: Jira snapshot (counts only; saved to the private database only when live)
@@ -166,7 +183,7 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
 

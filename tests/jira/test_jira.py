@@ -29,7 +29,8 @@ def sprint(sid, state, start, end, name="Synthetic Sprint"):
 class FakeJira:
     """A tiny Jira: sprints, issues per sprint, and a log of every mutating call."""
 
-    def __init__(self, sprints, issues=(), scrum=True, lag=0):
+    def __init__(self, sprints, issues=(), scrum=True, lag=0, subtasks=None):
+        self.subtasks = dict(subtasks or {})                     # sub-task key -> parent key
         self.sprints_by_id = {s["id"]: dict(s) for s in sprints}
         self.members = {}
         for key, sid, status in issues:
@@ -47,7 +48,8 @@ class FakeJira:
 
     def sprint_issues(self, sprint_id, jql, fields):
         done = "!= Done" in jql
-        return [{"key": k, "fields": {}} for k, st in self.members.get(sprint_id, {}).items() if (st != "Done") or not done]
+        return [{"key": k, "fields": ({"issuetype": {"subtask": True}, "parent": {"key": self.subtasks[k]}} if k in self.subtasks else {})}
+                for k, st in self.members.get(sprint_id, {}).items() if (st != "Done") or not done]
 
     def create_sprint(self, board_id, name, start, end):
         self.next_id += 1
@@ -62,6 +64,7 @@ class FakeJira:
             self.lag -= 1
             return
         moving = {}
+        keys = list(keys) + [child for child, parent in self.subtasks.items() if parent in keys]     # Jira moves a parent's sub-tasks with it
         for sid, items in self.members.items():
             for key in keys:
                 if key in items and sid != sprint_id:
@@ -204,6 +207,27 @@ class RolloverTests(unittest.TestCase):
             run(stuck, True, at(5, 6))
         self.assertIn("JIRA_CARRY_VERIFY_FAILED", str(error.exception))
         self.assertNotIn("closed", stuck.log)
+
+    def test_a_subtask_whose_parent_is_done_is_stranded_not_carried(self):
+        # Oct 12 incident: MEJ-10 (to do) under MEJ-122 (done) stays in the closed sprint, so carrying it failed the verification every hour
+        issues = [("K-1", 1, "To Do"), ("K-9", 1, "Done"), ("K-10", 1, "To Do")]
+        client = FakeJira(week(), issues, subtasks={"K-10": "K-9"})
+        dry = run(client, False, at(5, 7))
+        self.assertEqual((dry["would_carry"], dry["would_strand"], dry["failed"]), (1, 1, 0))
+        result = run(client, True, at(5, 6))
+        self.assertEqual((result["carried"], result["stranded"], result["closed"], result["started"], result["failed"]), (1, 1, 1, 1, 0))
+        self.assertEqual(sorted(client.members[client.next_id]), ["K-1"])
+
+    def test_a_subtask_whose_parent_is_unfinished_is_carried_with_it(self):
+        client = FakeJira(week(), [("K-1", 1, "In Progress"), ("K-2", 1, "To Do")], subtasks={"K-2": "K-1"})
+        result = run(client, True, at(5, 6))
+        self.assertEqual((result["carried"], result["stranded"], result["closed"]), (2, 0, 1))
+        self.assertEqual(sorted(client.members[client.next_id]), ["K-1", "K-2"])
+
+    def test_split_unfinished_covers_the_edges(self):
+        sub = lambda key, parent=None: {"key": key, "fields": {"issuetype": {"subtask": True}, "parent": {"key": parent} if parent else None}}      # noqa: E731
+        self.assertEqual(rollover.split_unfinished([{"key": "K-1"}, {"fields": {}}, {"key": "K-2", "fields": None}]), (["K-1", "K-2"], []))
+        self.assertEqual(rollover.split_unfinished([{"key": "K-1", "fields": {}}, sub("K-2", "K-1"), sub("K-3", "K-8"), sub("K-4")]), (["K-1", "K-2"], ["K-3", "K-4"]))
 
     def test_output_is_counts_and_codes_only(self):
         client = FakeJira(week(), [("PRIVATE-1", 1, "To Do")])
@@ -391,7 +415,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failures_are_warnings_and_never_fail_the_run(self):
         job = self.job()
         self.assertNotIn("\n    continue-on-error:", job)
-        self.assertEqual(job.count("continue-on-error: true"), 5)
+        self.assertEqual(job.count("continue-on-error: true"), 6)
         self.assertIn("::warning", job)
 
     def test_database_secrets_reach_only_the_snapshot_and_card_steps(self):
