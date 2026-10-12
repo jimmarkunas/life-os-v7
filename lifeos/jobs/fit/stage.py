@@ -81,6 +81,14 @@ def _title_description(cursor, job_id, title):
                    (job_id, "title_only", d["full_text"], d["summary"], d["responsibilities"], d["requirements"], d["qualifications"], d["fingerprint"], _now()))
 
 
+def rejudge_excluded(cursor):
+    """A READY job whose stored decision is EXCLUDE is judged again: its Fit row is dropped so the pass below re-scores it, and the gate then moves it to EXCLUDED_FIT (or admits it
+    if the facts changed). The gate acts only on a job scored in that pass, so a job that came back to READY with an old EXCLUDE (an age or place rule since changed) was never re-picked
+    and sat READY for days (40 on Oct 12). Same mechanism as the D111 title and place correction. -> rows dropped."""
+    cursor.execute("DELETE f FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'")
+    return int(cursor.rowcount or 0)
+
+
 def promote_kept(cursor):
     """D124: a job on Jim's keep list or found by title search that is still RESOLVED, has a stored link, and whose stored Fit decision is ADMIT or REVIEW
     becomes READY. Its own page answers 403 to Enrich, so nothing else would ever move it. Judged on the stored decision, so it does not wait for a re-score.
@@ -128,6 +136,7 @@ def run(limit, live, environ=os.environ):
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
             counts.update(promote_kept(cursor) if live and gate else {"promoted": 0})
+            counts["rejudged"] = rejudge_excluded(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
             query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
