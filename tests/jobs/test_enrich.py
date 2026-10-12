@@ -372,6 +372,9 @@ class LocationFromThePageTests(unittest.TestCase):
                 sql % tuple("x" for _ in params)
                 self.sql.append(sql)
 
+            def fetchone(self):
+                return None                                           # no stored row to compare with
+
         class Conn:
             def __init__(self, cur):
                 self.cur = cur
@@ -387,19 +390,27 @@ class LocationFromThePageTests(unittest.TestCase):
         self.assertIn("location_text IS NULL OR location_text=''", update)
 
 
-class PostedDateSupersession(unittest.TestCase):
-    """JOBS-1.1A: an accepted employer Posting Date is stronger evidence than a later read that finds no date. The exact UPDATE enrich.save sends is run
-    against a real row, then the stored date goes through the lane decision the Fit stage makes (stored posted_date -> facts_for -> decide_all)."""
+class PostedDateAuthority(unittest.TestCase):
+    """JOBS-1.1A: the accepted Posting Date follows D4 (sources in order of trust; the earliest credible date is the original posting date, a repost cannot make an old job look new, D6).
+    The exact SELECT and UPDATE enrich.save sends are run against a real row, then the stored date goes through the lane decision the Fit stage makes
+    (stored posted_date -> facts_for -> decide_all)."""
     TODAY = __import__("datetime").date(2026, 10, 11)
     DESC = {"full_text": "t" * 300, "summary": "s", "responsibilities": "", "requirements": "", "qualifications": "", "fingerprint": "f"}
 
-    def saved(self, seed_date, seed_source, posted, outcome="ready"):
+    def saved(self, seed_date, seed_source, posted, outcome="ready", source=None, seed_age=40):
         import sqlite3
         from tests.kit.mysqlite import translate
 
+        raw = sqlite3.connect(":memory:")
+        raw.execute("CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, status TEXT, posted_date TEXT, posted_source TEXT, final_apply_url TEXT, posted_age_days INTEGER,"
+                    " link_proof TEXT, unresolved_reason TEXT, updated_at TEXT)")
+        raw.execute("INSERT INTO v7_jobs (id, status, posted_date, posted_source, posted_age_days) VALUES (7, 'RESOLVED', ?, ?, ?)", (seed_date, seed_source, seed_age))
+
         class Cur:
+            rowcount = 0
+
             def __init__(self):
-                self.calls, self.rowcount = [], 0
+                self.last = None
 
             def __enter__(self):
                 return self
@@ -408,25 +419,22 @@ class PostedDateSupersession(unittest.TestCase):
                 return False
 
             def execute(self, sql, params=()):
-                self.calls.append((sql, tuple(params)))
+                if sql.startswith("SELECT posted_date") or sql.startswith("UPDATE v7_jobs SET status"):          # the production statements, with their production arguments
+                    self.last = raw.execute(translate(sql), tuple(str(x) if hasattr(x, "isoformat") else x for x in params))
+
+            def fetchone(self):
+                return self.last.fetchone()
 
         class Conn:
-            def __init__(self, cur):
-                self.cur = cur
-
             def cursor(self):
-                return self.cur
+                return Cur()
 
-        cur = Cur()
-        enrich.save(Conn(cur), 7, {"outcome": outcome, "description": self.DESC, "source_kind": "jsonld", "posted": posted, "final_url": "https://example.com/j/1"})
-        raw = sqlite3.connect(":memory:")
-        raw.execute("CREATE TABLE v7_jobs (id INTEGER PRIMARY KEY, status TEXT, posted_date TEXT, posted_source TEXT, final_apply_url TEXT, posted_age_days INTEGER,"
-                    " link_proof TEXT, unresolved_reason TEXT, updated_at TEXT)")
-        raw.execute("INSERT INTO v7_jobs (id, status, posted_date, posted_source, posted_age_days) VALUES (7, 'RESOLVED', ?, ?, 40)", (seed_date, seed_source))
-        for sql, params in cur.calls:
-            if sql.startswith("UPDATE v7_jobs SET status"):                         # the production statement, with its production arguments
-                raw.execute(translate(sql), tuple(str(x) if hasattr(x, "isoformat") else x for x in params))
-        row = raw.execute("SELECT status, posted_date, posted_source FROM v7_jobs WHERE id=7").fetchone()
+        result = {"outcome": outcome, "description": self.DESC, "source_kind": "jsonld", "posted": posted, "final_url": "https://example.com/j/1"}
+        if source:
+            result["posted_source"] = source
+        with mock.patch.object(enrich, "_now", return_value=__import__("datetime").datetime(2026, 10, 11, 12, 0)):
+            enrich.save(Conn(), 7, result)
+        row = raw.execute("SELECT status, posted_date, posted_source, posted_age_days FROM v7_jobs WHERE id=7").fetchone()
         raw.close()
         return row
 
@@ -437,22 +445,59 @@ class PostedDateSupersession(unittest.TestCase):
         facts = lanes.facts_for(85, "Program Manager", "Remote, US", "A fully remote role in the United States.", "$150,000 - $170,000", posted, dt.datetime(2026, 10, 10))
         return lanes.decide_all("US Remote", facts, self.TODAY)[0]
 
+    def day(self, y, m, d):
+        return __import__("datetime").date(y, m, d)
+
     def test_a_later_read_with_no_date_keeps_the_accepted_employer_date_and_the_job_stays_excluded(self):
-        status, posted, source = self.saved("2026-09-01", "employer", posted=None)
-        self.assertEqual((posted, source), ("2026-09-01", "employer"))
+        status, posted, source, age = self.saved("2026-09-01", "employer", posted=None)
+        self.assertEqual((posted, source, age), ("2026-09-01", "employer", 40))
         self.assertEqual((self.decision(posted).status, self.decision(posted).reason), ("EXCLUDE", "older than 14 days"))   # US Remote: 14 days
 
     def test_erasing_the_date_would_have_admitted_the_same_job_as_new(self):
         self.assertEqual(self.decision(None).status, "ADMIT")                       # why the stored date matters: with it gone the job is aged by First Surfaced
 
     def test_a_job_with_no_date_stays_undated_and_a_date_is_never_invented(self):
-        status, posted, source = self.saved(None, None, posted=None)
-        self.assertEqual((posted, source), (None, None))
+        status, posted, source, age = self.saved(None, None, posted=None)
+        self.assertEqual((posted, source, age), (None, None, 40))
 
-    def test_a_newer_employer_date_supersedes_the_older_one(self):
-        status, posted, source = self.saved("2026-09-01", "employer", posted=__import__("datetime").date(2026, 10, 5))
-        self.assertEqual((posted, source), ("2026-10-05", "employer"))
-        self.assertEqual(self.decision(posted).status, "ADMIT")
+    def test_a_reposts_later_employer_date_never_replaces_the_original_and_the_job_stays_excluded(self):
+        status, posted, source, age = self.saved("2026-09-01", "employer", posted=self.day(2026, 10, 9))     # the employer page now says it was posted two days ago
+        self.assertEqual((posted, source), ("2026-09-01", "employer"))
+        self.assertEqual(age, 40)                                                       # the age is that of the retained date: 2026-10-11 minus 2026-09-01
+        self.assertEqual((self.decision(posted).status, self.decision(posted).reason), ("EXCLUDE", "older than 14 days"))
+        self.assertEqual(self.decision("2026-10-09").status, "ADMIT")                  # what the replaced date would have done
+
+    def test_the_original_date_wins_between_two_employer_reads_so_an_earlier_date_replaces_a_later_one(self):
+        status, posted, source, age = self.saved("2026-10-05", "employer", posted=self.day(2026, 9, 20))
+        self.assertEqual((posted, source, age), ("2026-09-20", "employer", 21))
+        self.assertEqual(self.decision(posted).status, "EXCLUDE")
+
+    def test_the_same_date_read_again_changes_nothing(self):
+        self.assertEqual(self.saved("2026-10-05", "employer", posted=self.day(2026, 10, 5))[1:3], ("2026-10-05", "employer"))
+
+    def test_a_weaker_source_never_replaces_the_employer_date_even_when_it_is_earlier(self):
+        for weak in ("aggregator", "newsletter", "email"):
+            with self.subTest(weak):
+                status, posted, source, age = self.saved("2026-10-05", "employer", posted=self.day(2026, 9, 1), source=weak)
+                self.assertEqual((posted, source), ("2026-10-05", "employer"))
+                self.assertEqual(age, 6)
+
+    def test_a_weaker_source_fills_a_missing_date_and_a_stronger_one_later_replaces_it(self):
+        status, posted, source, age = self.saved(None, None, posted=self.day(2026, 10, 1), source="aggregator")
+        self.assertEqual((posted, source, age), ("2026-10-01", "aggregator", 10))
+        status, posted, source, age = self.saved("2026-10-01", "aggregator", posted=self.day(2026, 10, 8))      # the employer's own date, later than the aggregator's, is the stronger evidence
+        self.assertEqual((posted, source), ("2026-10-08", "employer"))
+
+    def test_a_date_stored_before_the_source_was_recorded_counts_as_the_employers(self):
+        status, posted, source, age = self.saved("2026-09-01", None, posted=self.day(2026, 10, 9))
+        self.assertEqual((posted, source), ("2026-09-01", "employer"))
+
+    def test_the_rule_is_one_pure_function_with_the_d4_order(self):
+        d = self.day
+        self.assertEqual(enrich.accepted_date(d(2026, 9, 1), "employer", d(2026, 10, 9)), (d(2026, 9, 1), "employer"))
+        self.assertEqual(enrich.accepted_date(None, None, None), (None, None))
+        self.assertEqual(enrich.accepted_date(d(2026, 9, 1), "employer", None), (d(2026, 9, 1), "employer"))
+        self.assertEqual(list(enrich.TRUST), ["employer", "aggregator", "newsletter", "email"])
 
 
 if __name__ == "__main__":
