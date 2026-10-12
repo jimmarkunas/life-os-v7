@@ -143,10 +143,42 @@ class SyncTests(unittest.TestCase):
     def test_a_half_empty_outlook_answer_cannot_wipe_the_mirror(self):
         g = FakeGcal()
         go([ev(str(i), start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000") for i in range(8)], g)
-        with self.assertRaises(BridgeError) as error:
+        import contextlib
+        import io
+        printed = io.StringIO()
+        with self.assertRaises(BridgeError) as error, contextlib.redirect_stdout(printed):
             go([], g)
         self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")
         self.assertEqual(len(g.items), 8)
+        self.assertEqual(printed.getvalue().split(":", 1)[0], "calendar-sync guard")                 # the refusal says what it saw: counts, nothing private
+        line = json.loads(printed.getvalue().split(":", 1)[1])
+        self.assertEqual((line["outlook"], line["google"], line["delete"], line["create"], line["applied"]), (0, 8, 8, 0, 0))
+        self.assertEqual(set(line), {"outlook", "skipped", "google", "create", "update", "already_in_google", "delete", "same", "applied", "failed"})
+
+    def many(self, uids, count):
+        return [ev(f"{uids}{i}", start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000") for i in range(count)]
+
+    def test_a_full_outlook_answer_whose_event_ids_all_changed_is_replaced_not_refused(self):
+        g = FakeGcal()
+        go(self.many("old", 8), g)
+        out = go(self.many("new", 8), g)                                   # same eight events, every id different (what happened on Oct 7)
+        self.assertEqual((out["create"], out["delete"], out["same"], out["applied"], out["failed"]), (8, 8, 0, 16, 0))
+        self.assertEqual(len(g.items), 8)
+        self.assertEqual(set(g.items), {sync.to_google("personal", e)[0] for e in self.many("new", 8)})      # only the new copies remain
+
+    def test_the_brake_still_refuses_when_outlook_answers_with_too_few_events_to_replace_what_is_there(self):
+        g = FakeGcal()
+        go(self.many("old", 14), g)                                         # floor = 7
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(BridgeError):
+                go(self.many("new", 7), g)                                  # 7 answered, 14 to delete: not enough to trust
+            with self.assertRaises(BridgeError):
+                go(self.many("old", 3), g)                                  # a partial answer with the same ids: 11 to delete
+        self.assertEqual(len(g.items), 14)
+        out = go(self.many("new", 8), g)                                    # 8 answered (more than half of what is there): replaced
+        self.assertEqual((out["delete"], out["create"]), (14, 8))
 
     def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()

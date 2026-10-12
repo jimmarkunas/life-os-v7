@@ -116,10 +116,13 @@ def run(limit, live, environ=os.environ, connect=None, outlook_factory=None, gca
     for gid in covered:
         del wanted[gid]
     create, update, delete, same = plan(wanted, existing)
-    if len(delete) > max(MASS_DELETE_FLOOR, len(existing) // 2) and not environ.get("CALENDAR_ALLOW_MASS_DELETE"):
-        raise BridgeError("CALENDAR_MASS_DELETE_GUARD")        # a half-empty Outlook answer must never wipe the mirror
     out = {"outlook": seen, "skipped": skipped, "google": len(existing), "create": len(create), "update": len(update),
            "already_in_google": len(covered), "delete": len(delete), "same": len(same), "applied": 0, "failed": 0}
+    floor = max(MASS_DELETE_FLOOR, len(existing) // 2)
+    answered = len(wanted) + len(covered)                      # events Outlook returned that belong in the mirror (covered ones were taken out of `wanted` above)
+    if len(delete) > floor and answered <= floor and not environ.get("CALENDAR_ALLOW_MASS_DELETE"):
+        print("calendar-sync guard:", json.dumps(out))         # counts only, so a refusal says what it saw (the code alone hid why it fired every run for five days)
+        raise BridgeError("CALENDAR_MASS_DELETE_GUARD")        # a half-empty Outlook answer must never wipe the mirror; a full answer whose event ids all changed (D172) is replaced, not refused
     if not live:
         return out
     for gid in create:
