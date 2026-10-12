@@ -80,5 +80,5 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None):
                 counts["failed"] += 1
     except (GmailError, AmazonError) as error:
         counts["failed"] += 1
-        counts["error"] = str(error)[:60]
+        counts["error"] = str(error).split(" -> ", 1)[-1][:60]               # the HTTP code and reason, not the URL that used to fill the 60 characters and cut the code off
     return counts

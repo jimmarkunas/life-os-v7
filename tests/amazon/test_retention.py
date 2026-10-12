@@ -57,6 +57,19 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(counts["kept_detail"], {"no_row:": 1})
         self.assertNotIn("999-9999999-9999999", str(counts))
 
+    def test_a_gmail_error_is_logged_with_its_http_code_and_reason_never_the_url(self):
+        from lifeos.platform.gmail import GmailError
+
+        class Refusing(RetentionGmail):
+            def list_ids(self, query, limit=5000):
+                raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 403 userRateLimitExceeded")
+
+        gmail, notion = recorded_store()
+        refusing = Refusing(gmail.messages)
+        counts = retention.run(100, False, environ=TOKEN, gmail=refusing, notion=notion, now=NOW)
+        self.assertEqual((counts["failed"], counts["error"]), (1, "HTTP 403 userRateLimitExceeded"))
+        self.assertNotIn("googleapis", str(counts))
+
     def test_the_default_batch_is_two_hundred(self):
         self.assertEqual(retention.DEFAULT_LIMIT, 200)
 
