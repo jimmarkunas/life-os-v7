@@ -10,7 +10,7 @@ from lifeos.platform.jira import JiraError
 from .boards import boards, owned
 
 LOCAL_TZ = "America/Chicago"
-UNFINISHED_FIELDS = "summary,status,issuetype"
+UNFINISHED_FIELDS = "summary,status,issuetype,parent"
 AUTO_AFTER_HOUR = 0                      # scheduled rollover runs on the first hourly tick after midnight Monday local; manual runs only need the sprint to have ended
 
 
@@ -61,6 +61,22 @@ def _state(client, sprint_id, expected, code):
         raise JiraError(code)
 
 
+def split_unfinished(issues):
+    """-> (keys to carry, keys stranded). Jira keeps a sub-task in its parent's sprint, so a sub-task moves with its parent. When the parent is unfinished too, the sub-task follows it and is carried and
+    verified with it. When the parent is Done it stays behind in the closed sprint and can never appear in the next one: carrying it would fail the verification every hour (Oct 12: one such sub-task kept a
+    board on its old sprint), so it is left out and counted as stranded."""
+    present = {i["key"] for i in issues if i.get("key")}
+    carry, stranded = [], []
+    for issue in issues:
+        key = issue.get("key")
+        if not key:
+            continue
+        fields = issue.get("fields") or {}
+        subtask = bool((fields.get("issuetype") or {}).get("subtask"))
+        (stranded if subtask and (fields.get("parent") or {}).get("key") not in present else carry).append(key)
+    return carry, stranded
+
+
 def plan(client, project, board_id, now, tz, keys=(), auto=False):
     if str(client.board(board_id).get("type", "")).lower() != "scrum":
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
@@ -73,12 +89,12 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False):
         if not end or now < datetime.combine(end.astimezone(tz).date() + timedelta(days=1), clock(AUTO_AFTER_HOUR), tzinfo=tz):
             return {"not_due": True}
     # every unfinished item in the sprint moves, whatever its project: cross-assigned work must not be stranded in a closed sprint
-    unfinished = [i["key"] for i in client.sprint_issues(sprint_id, "statusCategory != Done", UNFINISHED_FIELDS) if i.get("key")]
+    unfinished, stranded = split_unfinished(client.sprint_issues(sprint_id, "statusCategory != Done", UNFINISHED_FIELDS))
     end_local, start, end = target_week(sprint, tz)
     matching = [s for s in future if int(s.get("id", -1)) != sprint_id and _matches(s, start, end, tz)]
     if len(matching) > 1:
         raise JiraError("JIRA_TARGET_AMBIGUOUS")
-    return {"sprint_id": sprint_id, "catchup": catchup, "unfinished": unfinished, "end_local": end_local,
+    return {"sprint_id": sprint_id, "catchup": catchup, "unfinished": unfinished, "stranded": len(stranded), "end_local": end_local,
             "start": start, "end": end, "target_id": int(matching[0]["id"]) if matching else None,
             "name": sprint_name(project, start, end)}
 
@@ -107,7 +123,7 @@ def execute(client, project, board_id, p, now, sleep=time.sleep, keys=()):
     after = owned(client.sprints(board_id, "active"), project, keys)
     if len(after) != 1 or int(after[0].get("id", -1)) != target_id:
         raise JiraError("JIRA_FINAL_VERIFY_FAILED")
-    return {"created": created, "carried": len(p["unfinished"])}
+    return {"created": created, "carried": len(p["unfinished"]), "stranded": p["stranded"]}
 
 
 def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=False):
@@ -117,7 +133,7 @@ def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=F
             return {"not_due": 1}
         if not live:
             return {"reuse": int(p["target_id"] is not None), "would_create": int(p["target_id"] is None),
-                    "would_carry": len(p["unfinished"]), "catchup": int(p["catchup"])}
+                    "would_carry": len(p["unfinished"]), "would_strand": p["stranded"], "catchup": int(p["catchup"])}
         try:
             return {**execute(client, project, board_id, p, now, sleep, keys), "closed": 1, "started": 1}
         except JiraError as error:
@@ -133,8 +149,8 @@ def run(limit, live, environ=os.environ, client=None, now=None, sleep=time.sleep
     client = client or Jira.from_env(environ)
     tz = ZoneInfo(LOCAL_TZ)
     now = now or datetime.now(tz)
-    total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0,
-             "catchup": 0, "not_due": 0, "skipped_readonly": 0, "created": 0, "carried": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
+    total = {"projects": len(configured), "ok": 0, "failed": 0, "reuse": 0, "would_create": 0, "would_carry": 0, "would_strand": 0,
+             "catchup": 0, "not_due": 0, "skipped_readonly": 0, "created": 0, "carried": 0, "stranded": 0, "closed": 0, "started": 0, "writes": 0, "why": {}}
     keys = [entry[0] for entry in configured]
     for position, (project, board_id, _, readonly) in enumerate(configured, 1):
         if readonly:

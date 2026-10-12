@@ -37,6 +37,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-probe` -> `lifeos.jira.snapshot:probe`
 - `jira-rollover` -> `lifeos.jira.rollover:run`
 - `jira-rollover-scheduled` -> `lifeos.jira.rollover:run`
+- `jira-rollover-watch` -> `lifeos.jira.watch:run`
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
@@ -123,6 +124,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jira/rollover.py`: Weekly sprint rollover (ported from V1's proven script). Read-only unless live; fails closed on ambiguity; never closes a sprint before its end, never closes it before th
 - `lifeos/jira/snapshot.py`: Read-only Jira execution snapshot per board, kept in the private database (never in this public repo) for the report. Output is counts only: ticket keys, summaries and sp
 - `lifeos/jira/store.py`: Private storage for the Jira snapshot: one row per project (see platform/snapshot_store).
+- `lifeos/jira/watch.py`: A scheduled sprint rollover that keeps failing must reach the phone (D181). The rollover step is a warning by design (a Jira hiccup never fails the Jobs run), so a board'
 ### lifeos/jobs/
 - `lifeos/jobs/alerts.py`: Jobs OS alert detectors and the alerts stage (D53). Counts only. Detectors are pure functions of counts so they test without a database; state (which alerts are open, whe
 - `lifeos/jobs/alertstate.py`: Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), per source the new jobs in the last 24 hours against the 14-day daily bas
@@ -278,6 +280,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 
 ## Database tables (Hostinger) and the file that owns each
 - `v7_calendar_sync`: `lifeos/calendar_bridge/watch.py`
+- `v7_jira_rollover`: `lifeos/jira/watch.py`
 - `v7_jobs`: `lifeos/jobs/store.py`
 - `v7_job_sources`: `lifeos/jobs/store.py`
 - `v7_job_descriptions`: `lifeos/jobs/store.py`
@@ -454,3 +457,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D178: An Open Jobs feed read without error is idle, not stopped (2026-10-12, Jim)
 - D179: Notion rich text is split by UTF-16 units, not Python characters (2026-10-12, Jim)
 - D180: The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)
+- D181: A sub-task under a finished parent no longer blocks the sprint rollover, and a rollover that keeps failing pages the phone (2026-10-12, Jim)

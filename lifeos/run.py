@@ -99,6 +99,7 @@ STAGES = {
     "bills-card": lazy("lifeos.bills.card"),
     "jira-rollover": lazy("lifeos.jira.rollover"),
     "jira-rollover-scheduled": lazy("lifeos.jira.rollover", auto=True),
+    "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),

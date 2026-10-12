@@ -181,3 +181,4 @@ This index is checked by a test: add a line here with every new decision.
 - D178 — An Open Jobs feed read without error is idle, not stopped (2026-10-12, Jim)
 - D179 — Notion rich text is split by UTF-16 units, not Python characters (2026-10-12, Jim)
 - D180 — The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)
+- D181 — A sub-task under a finished parent no longer blocks the sprint rollover, and a rollover that keeps failing pages the phone (2026-10-12, Jim)
