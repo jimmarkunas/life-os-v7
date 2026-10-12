@@ -324,7 +324,7 @@ class HourlyJobTests(unittest.TestCase):
             self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))),                  # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
-                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID"] + [f"LIFEOS_ACQ_{n}" for n in (
+                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID", "NTFY_TOPIC"] + [f"LIFEOS_ACQ_{n}" for n in (
                              "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
 
 
