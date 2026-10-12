@@ -37,6 +37,14 @@ on:
         description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      calendar_sync:
+        description: "Calendar sync only (Outlook invites to your Google calendar, counts only); dry run unless Actually write is ticked"
+        type: boolean
+        default: false
+      allow_mass_delete:
+        description: "Calendar sync only: skip the mass-delete brake for THIS run (use only when Outlook answered in full but every event id changed; the brake refuses to delete more than half of V7's copies)"
+        type: boolean
+        default: false
       megibow:
         description: "MegIBOW only: Jim's weekly job-search table (sent mail and calendars to the Notion block); dry run (counts) unless Actually write is ticked"
         type: boolean
@@ -162,7 +170,7 @@ jobs:
     # Outlook (read-only) on every scheduled or tick run: job newsletters into Jobs OS, and meeting invites into your Google calendar. Its own
     # job like Jira and Interview: every other credential is blanked, the Outlook/calendar/database secrets reach only the steps that need
     # them, and a failure is a warning that never fails the Jobs run.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.calendar_sync }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -185,6 +193,7 @@ jobs:
             6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
       - id: outnews
         continue-on-error: true
+        if: ${{ !inputs.calendar_sync || inputs.all }}
         name: Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)
         env:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
@@ -203,6 +212,7 @@ jobs:
         env:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          CALENDAR_ALLOW_MASS_DELETE: ${{ inputs.allow_mass_delete && 'true' || '' }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
