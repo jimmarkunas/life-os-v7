@@ -458,3 +458,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D179: Notion rich text is split by UTF-16 units, not Python characters (2026-10-12, Jim)
 - D180: The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)
 - D181: A sub-task under a finished parent no longer blocks the sprint rollover, and a rollover that keeps failing pages the phone (2026-10-12, Jim)
+- D182: A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)

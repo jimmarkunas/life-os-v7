@@ -150,6 +150,11 @@ STAGES = {
 }
 
 
+# D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
+# finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
+PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED"}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=sorted(STAGES))
@@ -162,6 +167,10 @@ def main(argv=None):
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
+    failed = counts.get("failed") if isinstance(counts, dict) else None
+    if args.stage in PARTIAL_FAILURE and isinstance(failed, int) and failed > 0:
+        print(f"{args.stage.upper()} FAILED: {PARTIAL_FAILURE[args.stage]}", file=sys.stderr)
+        return 1
     return 0
 
 
