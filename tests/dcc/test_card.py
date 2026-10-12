@@ -34,7 +34,7 @@ def page(calendar="Calendar (Updated 10:06 PM CT)", jira="JIRA Execution (Update
     notion.children["mail-callout"][1] = text_block(notion, "mail-status-old", "paragraph", mail)
     notion.children["amazon-callout"][0] = text_block(notion, "heading-amazon-callout", "heading_3", "Amazon Orders")
     notion.children["amazon-callout"][1] = text_block(notion, "amazon-status-old", "paragraph", amazon)
-    notion.children["attention-callout"].insert(0, text_block(notion, "attention-status", "paragraph", attention))
+    notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": attention, "text": {"content": attention}}]}        # Jim's headless callout keeps its status in its own text (D131)
     return notion
 
 
