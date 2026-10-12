@@ -143,10 +143,17 @@ class SyncTests(unittest.TestCase):
     def test_a_half_empty_outlook_answer_cannot_wipe_the_mirror(self):
         g = FakeGcal()
         go([ev(str(i), start=f"2026-10-{8 + i:02d}T15:00:00.0000000", end=f"2026-10-{8 + i:02d}T16:00:00.0000000") for i in range(8)], g)
-        with self.assertRaises(BridgeError) as error:
+        import contextlib
+        import io
+        printed = io.StringIO()
+        with self.assertRaises(BridgeError) as error, contextlib.redirect_stdout(printed):
             go([], g)
         self.assertEqual(str(error.exception), "CALENDAR_MASS_DELETE_GUARD")
         self.assertEqual(len(g.items), 8)
+        self.assertEqual(printed.getvalue().split(":", 1)[0], "calendar-sync guard")                 # the refusal says what it saw: counts, nothing private
+        line = json.loads(printed.getvalue().split(":", 1)[1])
+        self.assertEqual((line["outlook"], line["google"], line["delete"], line["create"], line["applied"]), (0, 8, 8, 0, 0))
+        self.assertEqual(set(line), {"outlook", "skipped", "google", "create", "update", "already_in_google", "delete", "same", "applied", "failed"})
 
     def test_events_v7_did_not_write_are_never_edited_or_deleted(self):
         g = FakeGcal()
