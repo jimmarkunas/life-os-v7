@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -12,7 +13,7 @@ import time
 FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
           "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")
 DB_REMOTE = "127.0.0.1:3306"
-TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_DB_CONNECT_FAILED")
+TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_SSH_BANNER", "STORE_SSH_TCP_TIMEOUT", "STORE_DB_CONNECT_FAILED")
 RETRY_WAITS = (0, 4, 12)         # seconds before attempt 1, 2, 3: a Hostinger network blip (D92) must not fail a whole stage; auth and host-key errors are never retried
 
 
@@ -35,7 +36,11 @@ def _ssh_code(error):
     for code, needles in (("HOSTKEY", ("host key verification failed", "host identification")),
                           ("AUTH", ("permission denied", "no more authentication")),
                           ("REFUSED", ("connection refused",)),
-                          ("NETWORK", ("timed out", "unreachable", "no route")),
+                          # The server answered the TCP connection and then dropped it (sshd connection limit, rate limit) ...
+                          ("BANNER", ("banner exchange", "kex_exchange_identification", "connection reset by", "connection closed by")),
+                          # ... or never answered it at all (a firewall or route that drops the packets): different causes, so different codes (MON-1.5).
+                          ("TCP_TIMEOUT", ("timed out",)),
+                          ("NETWORK", ("unreachable", "no route")),
                           ("KEY_INVALID", ("load key", "libcrypto"))):
         if any(n in detail for n in needles):
             return "STORE_SSH_" + code
@@ -79,6 +84,7 @@ def connect():
                         raise StoreError("STORE_DB_CONNECT_FAILED") from None
                     break
                 except StoreError as error:
+                    print(f"store: attempt {attempt + 1} of {len(RETRY_WAITS)} {error}", file=sys.stderr)          # the fixed code of every failed attempt, so a lane that gives up shows whether all three failed alike
                     with suppress(Exception):
                         subprocess.run(exit_cmd, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)    # a half-open tunnel must not block the next attempt
                     if str(error) not in TRANSIENT or attempt == len(RETRY_WAITS) - 1:
