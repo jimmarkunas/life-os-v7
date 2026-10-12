@@ -17,10 +17,11 @@ MODULE = router.OWNERS[TITLE]
 FRESH_MINUTES = 90                                        # V7's own daily check uses the same figure
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
-# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "floating": the Hiring Pipeline's status paragraph.
+# (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "own": the callout's own text (the headless Attention callout, D131);
+# "floating": the Hiring Pipeline's status paragraph.
 AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
-         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"), ("Attention", "ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION, "line"),
+         ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"), ("Attention", "ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION, "own"),
          ("Hiring Pipeline", "HIRING_CARD_BLOCK_ID", router.HIRING_REGION, "floating"))
 PROTECTED = tuple((name, region) for _, name, region, _ in AREAS)
 
@@ -39,6 +40,11 @@ def _writer(environ):
 
 def _text_of(client, block_id, kind, region):
     """-> (status text, [every other text line of the card]) or raises NotionError."""
+    if kind == "own":
+        meta = client.call("GET", f"/blocks/{report_region.clean_id(block_id)}")
+        if not isinstance(meta, dict) or meta.get("type") != "callout":
+            raise _fail("CARD_UNREADABLE")
+        return report_region.plain({"type": "callout", "callout": meta.get("callout") or {}}).strip(), []
     if kind == "floating":
         found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail)
         return report_region.plain(found["status"]).strip(), []
