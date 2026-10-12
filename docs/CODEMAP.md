@@ -441,3 +441,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D170: The Amazon card counts open orders older than 30 days instead of listing them and links to the orders database; delivered orders stay 7 days (2026-10-12, Jim)
 - D171: Recruiters runs on every tick as a domain job (2026-10-12, Jim)
 - D172: The calendar mass-delete brake refuses a too-small Outlook answer, not a full answer whose event ids all changed (2026-10-12, Jim)
+- D174: The Daily Command Center reads V7 cards by their first line, and writes only its own region (2026-10-12, Jim)
