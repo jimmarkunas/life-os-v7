@@ -82,6 +82,7 @@
   "D180": "The store tunnel names how it failed (MON-1.5 evidence step) (2026-10-12, Jim)",
   "D181": "A sub-task under a finished parent no longer blocks the sprint rollover, and a rollover that keeps failing pages the phone (2026-10-12, Jim)",
   "D182": "A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)",
+  "D183": "V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -188,7 +189,8 @@
    "lifeos/calendar_bridge/watch.py": "A calendar sync that keeps failing must reach the phone (D173). The sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for "
   },
   "dcc": {
-   "lifeos/dcc/card.py": "The Daily Command Center, written by V7 (D175): one callout on the Daily Report, built by rules from what the other V7 cards say on the page."
+   "lifeos/dcc/card.py": "The Daily Command Center, written by V7 (D175): one callout on the Daily Report, built by rules from what the other V7 cards say on the page.",
+   "lifeos/dcc/header.py": "The date and time line under the Daily Report's title (D183), written by V7."
   },
   "delivery": {
    "lifeos/delivery/census.py": "DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored."

@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from lifeos.dcc import header
 from lifeos.platform import report_region, router
 from lifeos.platform.notion_client import Client, NotionError
 
@@ -173,4 +174,8 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed
+    try:
+        counts["header"] = header.run(client, report_region.clean_id(block_id), now, live, _fail)                      # D183: never changes the Command Center's own result
+    except NotionError as error:
+        counts["header"] = str(error)[:60]
     return counts
