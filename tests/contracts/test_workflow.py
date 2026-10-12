@@ -195,7 +195,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "jira": DB | {"JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_BOARDS", "JIRA_CARD_BLOCK_ID", "JIRA_CARD_PROJECTS", "JIRA_EMAIL",
                   "JIRA_GTV_CONTEXT_URL", "JIRA_GTV_EPIC", "JIRA_SITE_URL", "NOTION_JIRA_TOKEN"},
-    "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "OUTLOOK_CLIENT_ID"},
+    "outlook": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "bills": DB | {"BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_BILLS_DATA_SOURCE_ID", "NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"},
     "agenda": DB | {"CALENDAR_CARD_BLOCK_ID", "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "attention": DB | {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
@@ -312,7 +312,7 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-calendar', 'cancel-in-progress': False},
         timeouts={'calendar': 15}, digest="58ec7d506d5fd3d5"),
     "domains": dict(
-        jobs={"jira": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}, "outlook": DB | {"GCAL_SERVICE_ACCOUNT_JSON"}, "bills": DB | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "report": {"NTFY_TOPIC"}},
+        jobs={"jira": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"}, "outlook": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID'],
         on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
         timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'recruiters': 20, 'report': 5}, digest="f2717a48530179c2"),
@@ -387,7 +387,7 @@ CONSUMER_STEPS = {
         },
         "outlook": {
             'Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)': DB,
-            'Calendar sync (Outlook invites to Google; counts only; writes only when live)': DB | {"GCAL_SERVICE_ACCOUNT_JSON"},
+            'Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)': DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"},
         },
         "bills": {
             'Bills Paid processor (before the snapshot; writes Notion only when live; counts only)': DB | {"NOTION_BILLS_TOKEN"},
