@@ -169,3 +169,4 @@ This index is checked by a test: add a line here with every new decision.
 - D166 — Alerts name the stage, the weekly purge reports its own result, and a daily check-in proves the alert path is alive (2026-10-11, Jim)
 - D167 — Retention keeps a first-party board role while its board still lists it (2026-10-11, Jim)
 - D168 — The purge catches up: about weekly, retried every six hours after a failure, and a quiet fail-closed run is a failure (2026-10-11, Jim)
+- D171 — Recruiters runs on every tick as a domain job (2026-10-12, Jim)
