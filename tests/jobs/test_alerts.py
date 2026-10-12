@@ -2,7 +2,7 @@ import datetime as dt
 import json
 import unittest
 
-from lifeos.jobs import alerts as jobs_alerts
+from lifeos.jobs import alerts as jobs_alerts, alertstate
 from lifeos.platform import alerts
 
 NOW = dt.datetime(2026, 10, 25, 12, 0)
@@ -55,6 +55,19 @@ class Detect(unittest.TestCase):
             def cursor(self):
                 return Cur()
         self.assertEqual(jobs_alerts.gather(Conn(), NOW)["stopped_sources"], [("lensa", 50.0), ("web:figma", 28.6)])
+
+    def test_stuck_breakdown_groups_by_state_and_keeps_only_counts_and_codes(self):
+        class Cur:
+            def execute(self, sql, params=()):
+                sql % tuple("x" for _ in params)                       # the statement must survive %-formatting
+                assert "SELECT" in sql and "UPDATE" not in sql and "DELETE" not in sql
+
+            def fetchall(self):
+                old = NOW - dt.timedelta(hours=50)
+                return [("READY", 1, 0, "none", None, 3, old), ("READY", 1, 0, "none", None, 2, NOW - dt.timedelta(hours=30)),
+                        ("RESOLVED", 0, 0, "none", "no_job_id 12", 4, old)]
+        got = alertstate.stuck(Cur(), NOW)
+        self.assertEqual(got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]})
 
     def test_expiry_pages_a_week_before_and_after(self):
         exp = {"timer_token": {"label": "Timer token", "expires": "2026-10-31", "renew": "renew it"}}
