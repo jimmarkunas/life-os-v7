@@ -179,6 +179,29 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
 
 
+TRUST = {"employer": 1, "aggregator": 2, "newsletter": 3, "email": 4}      # D4: sources of a posting date in order of trust (employer/ATS structured data first); lower is stronger
+
+
+def _as_date(value):
+    return date.fromisoformat(str(value)[:10]) if value else None
+
+
+def accepted_date(old, old_source, new, new_source="employer"):
+    """-> (posting date, source) to store (D4). A read that finds no date keeps what is stored; a source weaker than the stored one never replaces it, a stronger one does; between the
+    same source the EARLIEST date wins (it is the original posting date, so a repost's later date cannot make an old job look new, D6). Nothing here invents a date."""
+    old_source = old_source or ("employer" if old else None)               # a date stored before the source was recorded came from the employer read
+    if new is None:
+        return old, old_source
+    if old is None:
+        return new, new_source
+    rank, held = TRUST.get(new_source, len(TRUST) + 1), TRUST.get(old_source, 1)
+    if rank > held:
+        return old, old_source
+    if rank < held:
+        return new, new_source
+    return min(old, new), old_source
+
+
 BOARD_HOST_COMPANY = r"(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)"
 
 
@@ -201,12 +224,13 @@ def save(connection, job_id, result):
                 cursor.execute("UPDATE v7_jobs SET company=%s WHERE id=%s AND company REGEXP %s", (result["company"][:200], job_id, BOARD_HOST_COMPANY))
             if result.get("location"):
                 cursor.execute("UPDATE v7_jobs SET location_text=%s WHERE id=%s AND (location_text IS NULL OR location_text='')", (result["location"][:2000], job_id))
-            posted = result.get("posted")
+            cursor.execute("SELECT posted_date, posted_source FROM v7_jobs WHERE id=%s", (job_id,))
+            known = cursor.fetchone() or (None, None)
+            posted, source = accepted_date(_as_date(known[0]), known[1], result.get("posted"), result.get("posted_source") or "employer")
             age = (now.date() - posted).days if posted else None
-            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=COALESCE(%s, posted_date), "      # JOBS-1.1A: a read that finds no date never erases the employer date already accepted
-                           "posted_source=CASE WHEN %s IS NULL THEN posted_source ELSE 'employer' END, final_apply_url=%s, "
+            cursor.execute("UPDATE v7_jobs SET status=%s, posted_date=%s, posted_source=%s, final_apply_url=%s, "      # JOBS-1.1A: the accepted Posting Date follows D4, never a later or weaker read
                            "posted_age_days=COALESCE(%s, posted_age_days), link_proof=COALESCE(%s, link_proof), unresolved_reason=NULL, updated_at=%s WHERE id=%s",
-                           ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted, posted,
+                           ("READY" if outcome == "ready" else "EXCLUDED_STALE", posted, source,
                             result.get("final_url") or None, age, result.get("proof"), now, job_id))
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",

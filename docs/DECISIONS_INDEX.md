@@ -175,3 +175,4 @@ This index is checked by a test: add a line here with every new decision.
 - D172 — The calendar mass-delete brake refuses a too-small Outlook answer, not a full answer whose event ids all changed (2026-10-12, Jim)
 - D173 — A calendar sync that has not worked for three hours pages the phone (2026-10-12, Jim)
 - D174 — The Daily Command Center reads V7 cards by their first line, and writes only its own region (2026-10-12, Jim)
+- D176 — The accepted Posting Date follows D4: the most trusted source, then the earliest date (2026-10-12, Jim)
