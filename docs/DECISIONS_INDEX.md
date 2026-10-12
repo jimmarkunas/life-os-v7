@@ -177,3 +177,4 @@ This index is checked by a test: add a line here with every new decision.
 - D174 — The Daily Command Center reads V7 cards by their first line, and writes only its own region (2026-10-12, Jim)
 - D175 — V7 writes the Daily Command Center (2026-10-12, Jim)
 - D176 — The accepted Posting Date follows D4: the most trusted source, then the earliest date (2026-10-12, Jim)
+- D177 — A READY job with a stored EXCLUDE decision is judged again, and a failed publish names its cause (2026-10-12, Jim)
