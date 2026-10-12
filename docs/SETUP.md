@@ -115,3 +115,6 @@ Actions > network > Run workflow: stage `inspect` (counts of the attached file) 
 
 ## Recruiters (RECR-1.2)
 Add the Actions secrets `NOTION_RECRUITERS_TOKEN` (the Notion integration shared with the Recruiters data source) and `NOTION_RECRUITERS_DATA_SOURCE_ID` (the data source id). The manual workflow `recruiters.yml` also uses the Gmail, Outlook and private database secrets that MegIBOW already uses. Run it dry first; tick `live` to write. Nothing is scheduled.
+
+## Daily Command Center card (D175)
+V7 writes the Daily Command Center callout on the Daily Report (the last card of every tick). Add the callout's block ID as the Actions secret `DCC_CARD_BLOCK_ID`; the card reuses the existing `NOTION_JIRA_TOKEN` Daily Report integration and reads the other cards' block IDs that already exist. Its first child must be the heading "ChatGPT · Daily Command Center" (renaming it needs `router.DCC_REGION` changed too). Until the secret exists the stage reports `not_configured` and changes nothing. Before the first live run, remove the Command Center section from the ChatGPT task's instructions so only one writer remains. Manual run: `domains.yml` with the `dcc` input (dry run unless Actually write is ticked).
