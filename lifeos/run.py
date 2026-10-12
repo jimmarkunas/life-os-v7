@@ -125,6 +125,7 @@ STAGES = {
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
     "outlook-newsletters": lazy("lifeos.sources.newsletters.outlook"),
+    "dcc-card": lazy("lifeos.dcc.card"),
     "calendar-sync": lazy("lifeos.calendar_bridge.watch"),
     "network-inspect": lazy("lifeos.network.inspect"),
     "network-import": lazy("lifeos.network.importer"),

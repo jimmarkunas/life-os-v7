@@ -1,4 +1,6 @@
-# Daily Command Center and V7: the card contract (D174)
+# Daily Command Center and V7: the card contract (D174; the writer changed to V7 in D175)
+
+> **D175 (Oct 12):** V7 now writes the Daily Command Center itself (stage `dcc-card`). Sections 1 and 4 and the paste-ready block below describe the earlier ChatGPT-written version and no longer apply to writing; sections 2 and 3 still describe the stamps V7's cards carry and how freshness is judged, and V7's own Command Center follows them.
 
 The ChatGPT-native `LIFE OS Daily Runs` task (D58) and V7 are independent schedulers. They meet on one Notion page, the Daily Report, and only through what is written on it. This file is the agreement: what V7 promises about every card it writes, and how the Daily Command Center (DCC) reads those cards and writes its own region. Nothing here lets either side start, call or depend on the other.
 
