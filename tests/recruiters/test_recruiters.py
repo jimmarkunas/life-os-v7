@@ -329,44 +329,80 @@ class LinkedInNotificationTests(unittest.TestCase):
 
 
 class EnrichmentTests(unittest.TestCase):
-    """D185: an existing row that only lacks company / role / request is enriched under the same page; a human's value and a Done row are never touched."""
+    """D185: an existing row made from THIS message that only lacks company / role / request is enriched under the same page; another message, a human's value and a Done row are never touched."""
 
-    def test_a_blank_row_is_enriched_in_place_and_a_replay_changes_nothing(self):
-        notion = FakeRecruiters([page("Riley Sample", pid="page-riley", last="2026-10-07T15:00:00+00:00", review=True)])
+    SRC = "https://mail.google.com/mail/u/0/#all/t1"                   # what the Gmail reader builds from the (fake) thread id of every message in these tests
+    OTHER = "https://mail.google.com/mail/u/0/#all/t-earlier"
+
+    def test_a_blank_row_from_the_same_message_is_enriched_in_place_and_a_replay_changes_nothing(self):
+        notion = FakeRecruiters([page("Riley Sample", pid="page-riley", last="2026-10-07T15:00:00+00:00", review=True, url=self.SRC)])
         counts = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
         self.assertEqual((counts["updated"], counts["created"], counts["failed"], len(notion.pages)), (1, 0, 0, 1))
         row = store.read(notion.pages[0])
-        self.assertEqual((row["page_id"], row["company"], row["role"], row["what"], row["done"], row["active"], row["needs_review"]),
-                         ("page-riley", "NW", "Technical Project Manager", WANT, False, True, True))      # Needs review is the human's to clear
+        self.assertEqual((row["page_id"], row["company"], row["role"], row["what"], row["done"], row["active"], row["needs_review"], row["source_url"]),
+                         ("page-riley", "NW", "Technical Project Manager", WANT, False, True, True, self.SRC))      # Needs review is the human's to clear
         self.assertEqual(sorted(notion.writes[0][1]), ["Recruiter Company", "Role", "What they want"])
         again = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
         self.assertEqual((again["updated"], again["created"], again["existing"], len(notion.writes), len(notion.pages)), (0, 0, 1, 1, 1))
 
+    def test_another_message_from_the_same_recruiter_and_week_is_never_merged_into_the_row(self):
+        earlier = page("Riley Sample", pid="earlier", url=self.OTHER, last="2026-10-06T10:00:00+00:00", review=True)
+        notion = FakeRecruiters([earlier])
+        counts = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
+        self.assertEqual((counts["created"], counts["updated"], counts["existing"], len(notion.pages)), (1, 0, 0, 2))
+        original = store.read(notion.pages[0])
+        self.assertEqual((original["page_id"], original["company"], original["role"], original["what"], original["source_url"], original["last_contact"]),
+                         ("earlier", "", "", "", self.OTHER, "2026-10-06T10:00:00+00:00"))                       # untouched, original link kept
+        self.assertEqual([kind for kind, _ in notion.writes], ["create"])
+        created = store.read(notion.pages[1])
+        self.assertEqual((created["company"], created["role"], created["source_url"]), ("NW", "Technical Project Manager", self.SRC))
+
+    def test_a_missing_source_link_on_either_side_never_enriches(self):
+        candidate = {"week_ending": "2026-10-11", "person": "Riley Sample", "company": "NW", "role": "Technical Project Manager", "client": "", "medium": "Email", "what": WANT,
+                     "last_contact": "2026-10-07T15:00:00+00:00", "source_url": self.SRC, "needs_review": False}
+        for row_url, cand_url in ((None, self.SRC), (self.SRC, ""), (None, "")):
+            rows = [store.read(page("Riley Sample", pid="p", url=row_url))]
+            self.assertEqual(store.plan(rows, {**candidate, "source_url": cand_url})[0], "create", (row_url, cand_url))
+        notion = FakeRecruiters([page("Riley Sample", pid="p", url=None)])
+        counts = run([opportunity()], notion, live=True)
+        self.assertEqual((counts["created"], counts["updated"], len(notion.pages), store.read(notion.pages[0])["company"]), (1, 0, 2, ""))
+
     def test_a_nonblank_what_they_want_company_or_role_is_never_replaced(self):
-        notion = FakeRecruiters([page("Riley Sample", company="NW", role="", what="Jim: call back Friday", pid="p")])
+        notion = FakeRecruiters([page("Riley Sample", company="NW", role="", what="Jim: call back Friday", pid="p", url=self.SRC)])
         run([opportunity()], notion, live=True)
         row = store.read(notion.pages[0])
         self.assertEqual((row["company"], row["role"], row["what"]), ("NW", "Technical Project Manager", "Jim: call back Friday"))
         self.assertEqual(sorted(notion.writes[0][1]), ["Role"])
-        different = FakeRecruiters([page("Riley Sample", company="Other Corp", role="", pid="q")])
+        different = FakeRecruiters([page("Riley Sample", company="Other Corp", role="", pid="q", url=self.SRC)])
         counts = run([opportunity()], different, live=True)
         self.assertEqual((counts["created"], counts["updated"], len(different.pages)), (1, 0, 2))      # another company is another key, not an enrichment
         self.assertEqual(store.read(different.pages[0])["company"], "Other Corp")
 
     def test_an_existing_row_under_the_corrected_key_wins_over_a_blank_row(self):
-        notion = FakeRecruiters([page("Riley Sample", pid="blank"), page("Riley Sample", "NW", "Technical Project Manager", what=WANT, pid="full", last="2026-10-12T15:00:00+00:00")])
+        notion = FakeRecruiters([page("Riley Sample", pid="blank", url=self.SRC),
+                                 page("Riley Sample", "NW", "Technical Project Manager", what=WANT, pid="full", last="2026-10-12T15:00:00+00:00", url=self.SRC)])
         counts = run([opportunity(received="2026-10-07T15:00:00+00:00")], notion, live=True)
         self.assertEqual((counts["existing"], counts["updated"], counts["created"], notion.writes), (1, 0, 0, []))
 
-    def test_two_enrichable_rows_are_ambiguous_and_nothing_is_written(self):
-        notion = FakeRecruiters([page("Riley Sample", pid="a"), page("Riley Sample", role="Other", pid="b"), page("riley sample", pid="c")])
+    def test_two_competing_matches_for_the_same_message_are_ambiguous_and_unchanged(self):
+        notion = FakeRecruiters([page("Riley Sample", pid="a", url=self.SRC), page("Riley Sample", role="Other", pid="b", url=self.SRC),
+                                 page("riley sample", pid="c", url=self.SRC)])
+        before = [store.read(p) for p in notion.pages]
         counts = run([opportunity()], notion, live=True)
         self.assertEqual((counts["ambiguous"], counts["created"], counts["updated"], notion.writes), (1, 0, 0, []))
+        self.assertEqual([store.read(p) for p in notion.pages], before)
+        mixed = FakeRecruiters([page("Riley Sample", pid="a", url=self.SRC), page("Riley Sample", pid="b", url=self.OTHER)])
+        counts = run([opportunity()], mixed, live=True)                                                        # only one of the two is from this message: it is the one enriched
+        self.assertEqual((counts["updated"], counts["ambiguous"], store.read(mixed.pages[0])["company"], store.read(mixed.pages[1])["company"]), (1, 0, "NW", ""))
 
-    def test_a_done_blank_row_is_kept_and_not_duplicated_when_parsing_improves(self):
-        notion = FakeRecruiters([page("Riley Sample", done=True, active=False, pid="done")])
+    def test_a_done_row_from_the_same_message_is_kept_and_a_done_row_from_another_is_not_touched(self):
+        notion = FakeRecruiters([page("Riley Sample", done=True, active=False, pid="done", url=self.SRC)])
         counts = run([opportunity()], notion, live=True)
         self.assertEqual((counts["done_kept"], counts["created"], counts["updated"], notion.writes, len(notion.pages)), (1, 0, 0, [], 1))
+        other = FakeRecruiters([page("Riley Sample", done=True, active=False, what="Jim called", pid="done2", url=self.OTHER)])
+        counts = run([opportunity()], other, live=True)
+        row = store.read(other.pages[0])
+        self.assertEqual((counts["done_kept"], counts["created"], len(other.pages), row["done"], row["what"], row["company"], row["source_url"]), (0, 1, 2, True, "Jim called", "", self.OTHER))
 
     def test_a_new_row_carries_the_request_and_is_read_back(self):
         notion = FakeRecruiters()
@@ -376,7 +412,7 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual(run([opportunity()], notion, live=True)["existing"], 1)
 
     def test_a_write_that_does_not_read_back_is_a_failure_and_changes_no_state(self):
-        notion = FakeRecruiters([page("Riley Sample", pid="p")], drop_writes=True)
+        notion = FakeRecruiters([page("Riley Sample", pid="p", url=self.SRC)], drop_writes=True)
         counts = run([opportunity()], notion, live=True)
         self.assertEqual((counts["updated"], counts["failed"]), (0, 1))
 

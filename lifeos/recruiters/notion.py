@@ -1,8 +1,9 @@
 """The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
 
 Create only after absence is proven for the week; update only a row that is the single match and not Done; two matches is an ambiguity and nothing is changed.
-A row that has the same person and week and whose only difference is a BLANK Recruiter Company or Role is the same row, enriched under the same page (D185): only blank fields are
-filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to exactly that page.
+A row that has the same person and week, the SAME non-empty Source URL as the message, and whose only difference is a BLANK Recruiter Company or Role is the same row, enriched
+under the same page (D185): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to
+exactly that page. A different or missing source link is a different message: nothing is merged and the original link is never overwritten.
 Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate. V7 never writes Done, never reopens a Done row and never replaces
 a non-blank What they want."""
 from datetime import datetime
@@ -82,10 +83,16 @@ def _blank(value):
 
 
 def enrichable(rows, candidate):
-    """Rows for the candidate's person and week with no exact key match whose only differences are blank company / role fields the candidate can fill."""
+    """Rows for the candidate's person and week with no exact key match whose only differences are blank company / role fields the candidate can fill, and that were made from
+    THIS message: the row's Source URL must equal the candidate's, exactly and non-empty. Same recruiter and same week is not the same message (two roles, two threads)."""
     out = []
+    source = str(candidate.get("source_url") or "")
+    if not source:
+        return out
     for r in rows:
         if r["week_ending"] != candidate["week_ending"] or norm(r["person"]) != norm(candidate["person"]):
+            continue
+        if r["source_url"] != source:
             continue
         fills = 0
         for field in ("company", "role"):
