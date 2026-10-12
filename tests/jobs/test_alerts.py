@@ -28,7 +28,7 @@ class Detect(unittest.TestCase):
         self.assertTrue(all(a.severity == alerts.PAGE for a in got))
         self.assertIn("41.2 a day", [a for a in got if a.key.endswith("lensa")][0].detail)
 
-    def test_gather_flags_only_a_busy_source_that_went_quiet(self):
+    def gather_stopped(self, feed_rows):
         class Cur:
             def __init__(self):
                 self.last = ""
@@ -49,12 +49,22 @@ class Detect(unittest.TestCase):
             def fetchall(self):
                 if "last_complete_at" in self.last:                     # boards read in full inside the window
                     return [("braze",)]
-                return [("lensa", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400)]
+                if "v7_feed" in self.last:                              # the Open Jobs feed: OK when its last run read it without error
+                    return feed_rows
+                return [("lensa", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400), ("web:openjobs", 0, 3400)]
 
         class Conn:
             def cursor(self):
                 return Cur()
-        self.assertEqual(jobs_alerts.gather(Conn(), NOW)["stopped_sources"], [("lensa", 50.0), ("web:figma", 28.6)])
+        return jobs_alerts.gather(Conn(), NOW)["stopped_sources"]
+
+    def test_gather_flags_only_a_busy_source_that_went_quiet(self):
+        self.assertEqual(self.gather_stopped([("openjobs",)]), [("lensa", 50.0), ("web:figma", 28.6)])
+
+    def test_a_feed_read_without_error_is_idle_but_a_degraded_feed_still_pages(self):
+        self.assertNotIn("web:openjobs", [name for name, _ in self.gather_stopped([("openjobs",)])])
+        self.assertIn(("web:openjobs", 242.9), self.gather_stopped([]))                         # no OK feed row: the read failed (DEGRADED) or never ran
+
 
     def test_stuck_breakdown_groups_by_state_and_keeps_only_counts_and_codes(self):
         class Cur:
