@@ -79,6 +79,30 @@ class Detect(unittest.TestCase):
         got = alertstate.stuck(Cur(), NOW)
         self.assertEqual(got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]})
 
+    def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
+        from lifeos.jobs import publish
+        emoji = "\U0001F600" * 1500                                                      # 1500 characters, 3000 UTF-16 units
+        blocks = publish.body_blocks("diag", {"summary": emoji + "\nSecond line", "requirements": "bad\x01char and nul\x00 here"})
+        got = alertstate.body_shape(blocks)
+        self.assertEqual((got["over_2000_chars"], got["over_2000_units"]), (0, 1))
+        self.assertEqual((got["control"], got["nul"], got["surrogate"]), (1, 1, 0))
+        self.assertEqual(got["child2"], {"type": "paragraph", "items": 1, "chars": 1500, "units": 3000, "empty": False, "control": 0, "nul": 0, "surrogate": 0, "private_use": 0})
+        self.assertNotIn("Second line", json.dumps(got))                                    # counts only
+
+    def test_publish_bodies_reads_only_and_falls_back_to_the_full_text(self):
+        class Cur:
+            sql = ""
+
+            def execute(self, sql, params=()):
+                sql % tuple("x" for _ in params)
+                Cur.sql = sql
+
+            def fetchall(self):
+                return [(None, None, None, None, "A plain description line"), ("Short summary", None, None, None, "ignored")]
+        got = alertstate.publish_bodies(Cur())
+        self.assertEqual([g["blocks"] for g in got], [3, 3])                                   # marker, heading, one paragraph each
+        self.assertTrue(Cur.sql.startswith("SELECT") and "UPDATE" not in Cur.sql and "DELETE" not in Cur.sql)
+
     def test_expiry_pages_a_week_before_and_after(self):
         exp = {"timer_token": {"label": "Timer token", "expires": "2026-10-31", "renew": "renew it"}}
         self.assertEqual(self.keys(QUIET, exp, dt.datetime(2026, 10, 23)), [])
