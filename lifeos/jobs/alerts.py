@@ -57,6 +57,8 @@ def gather(connection, now):
         rows = cursor.fetchall()
         cursor.execute("SELECT source_id FROM v7_sources WHERE last_complete_at > %s", (window,))
         healthy = {f"web:{row[0]}" for row in cursor.fetchall()}     # a board read in full inside the window is idle, not stopped
+        cursor.execute("SELECT feed_id FROM v7_feed WHERE status='OK'")
+        healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}    # D178: the Open Jobs feed whose last run read it without error is idle, not stopped (a failed read stores DEGRADED, and that still pages)
         stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
                    if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy]
     return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "stopped_sources": sorted(stopped)}
