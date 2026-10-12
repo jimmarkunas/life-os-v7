@@ -122,7 +122,9 @@ class RunTests(unittest.TestCase):
         self.assertEqual(report_region.plain(kids[1]), "Updated 10:20 PM CT · 6 of 7 areas current · 1 need a look")
         self.assertNotIn("Protected DCC content", "\n".join(lines_of(notion)))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
-        self.assertEqual((counts["fresh"], counts["not_current"], counts["blocks_written"]), (6, 1, 5))          # Hiring Pipeline has no block id here, so it is unset
+        self.assertEqual((counts["fresh"], counts["not_current"], counts["blocks_written"]), (6, 1, 5))
+        self.assertEqual(counts["states"]["Hiring Pipeline"], "unset")                           # the log names each area's state, never its text
+        self.assertEqual({v for k, v in counts["states"].items() if k != "Hiring Pipeline"}, {"fresh"})          # Hiring Pipeline has no block id here, so it is unset
         others = {k["id"] for key in before for k in notion.children.get(key, [])}
         self.assertFalse({p.split("/")[2] for m, p in notion.log if m == "DELETE"} & others)                    # only the old Command Center text was removed
 
