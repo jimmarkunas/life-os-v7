@@ -159,11 +159,12 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     areas = read_areas(client, environ)
     if not any("status" in area for area in areas.values()):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
-    states = [classify(area, now)[0] for area in areas.values()]
+    by_area = {label: classify(area, now)[0] for label, area in areas.items()}
+    states = list(by_area.values())
     blocks = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "dcc", live)
-    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "status": "fresh", "blocks_written": 0}
+    counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
     if live:
         counts["blocks_written"], counts["removed"] = len(blocks), removed
     return counts
