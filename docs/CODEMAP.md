@@ -21,6 +21,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills-snapshot` -> `lifeos.bills.snapshot:run`
 - `board-check` -> `lifeos.sources.web.boardcheck:run`
 - `calendar-sync` -> `lifeos.calendar_bridge.watch:run`
+- `dcc-card` -> `lifeos.dcc.card:run`
 - `discover-jobs` -> `lifeos.sources.web.discover_jobs:run`
 - `enrich` -> `lifeos.jobs.enrich:run`
 - `expire-holds` -> `lifeos.jobs.hold:run`
@@ -94,6 +95,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/calendar_bridge/
 - `lifeos/calendar_bridge/sync.py`: Outlook calendar -> the person's own Google calendar (one-way). Every Google event V7 writes carries a private marker and a deterministic id derived from the Outlook even
 - `lifeos/calendar_bridge/watch.py`: A calendar sync that keeps failing must reach the phone (D173). The sync step is a warning by design (a provider hiccup never fails the run), so it refused every run for 
+### lifeos/dcc/
+- `lifeos/dcc/card.py`: The Daily Command Center, written by V7 (D175): one callout on the Daily Report, built by rules from what the other V7 cards say on the page.
 ### lifeos/delivery/
 - `lifeos/delivery/census.py`: DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.
 ### lifeos/hiring/
@@ -265,7 +268,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, recruiters, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
@@ -445,3 +448,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D172: The calendar mass-delete brake refuses a too-small Outlook answer, not a full answer whose event ids all changed (2026-10-12, Jim)
 - D173: A calendar sync that has not worked for three hours pages the phone (2026-10-12, Jim)
 - D174: The Daily Command Center reads V7 cards by their first line, and writes only its own region (2026-10-12, Jim)
+- D175: V7 writes the Daily Command Center (2026-10-12, Jim)
