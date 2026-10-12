@@ -1,7 +1,8 @@
 """Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
 
 DIRECT_HUMAN       a human who says, in first person or in a signature, that they are a recruiter / sourcer / talent partner (in-house included).
-HUMAN_NAMED_RELAY  a job-board message that exposes an actual human name through a fixed pattern.
+HUMAN_NAMED_RELAY  a job-board message that exposes an actual human name through a fixed pattern. On LinkedIn, where any member can message anyone, a name alone is not
+                   enough (D185): the notification must also show recruiting evidence in the sender's own part of it, else the verdict is UNVERIFIED and no row is written.
 OTHER              automation, bulk or list mail, auto-replies, role addresses, hiring managers and anything without qualifying evidence.
 Strong automation evidence is checked first and subject words never override it. Returns (shape, reason code, evidence)."""
 import re
@@ -26,6 +27,9 @@ SOLICITATION = tuple(re.compile(p, re.I) for p in (
     r"\bshare (?:your|an) (?:updated )?(?:resume|cv)\b", r"\b(?:direct client|end client|implementation partner|prime vendor)\b", r"\bjob (?:opportunity|opening)\b",
     r"\bI have an? (?:urgent |immediate )?(?:position|requirement|opening|role)\b"))
 RELAY_SUBJECT_NAME = re.compile(r"^(?:re:\s*)?(?:new )?message from\s+(?P<name>[^:\-|]+)", re.I)
+RELAY_UNVERIFIED = "RELAY_RECRUITING_UNVERIFIED"
+RELAY_FOOTER = re.compile(r"This email was intended for|Learn why we included this|You are receiving|Unsubscribe|^-{10,}", re.I | re.M)      # the footer describes Jim, never the sender
+HEADLINE = re.compile(r"^(?P<name>[^()\n]{2,60}?)\s*\((?P<headline>[^\n]{3,200})\)\s*$")                                              # LinkedIn digest: "Name (their headline)"
 
 
 def _domain(address):
@@ -79,6 +83,31 @@ def signature_tail(body):
     return "\n".join([line.strip() for line in str(body or "").splitlines() if line.strip()][-14:])
 
 
+def _is_linkedin(address):
+    domain = _domain(address)
+    return domain == "linkedin.com" or domain.endswith(".linkedin.com")
+
+
+def relay_proof(message):
+    """Positive recruiting evidence in the sender's own part of a LinkedIn notification: 'HEADLINE_TITLE' (their headline names a recruiter / sourcer / talent role),
+    'FIRST_PERSON' ("I'm a recruiter ..."), 'SIGNATURE' or 'SOLICITATION' (two fixed staffing-request signals in the message text shown), else ''.
+    A name, a professional profile, "messaged you" and the LinkedIn delivery itself are not evidence."""
+    text = str(message.get("body", ""))[:3000]
+    cut = RELAY_FOOTER.search(text)
+    own = text[:cut.start()] if cut else text
+    for line in [l.strip() for l in own.splitlines() if l.strip()]:
+        found = HEADLINE.match(line) if len(line) <= 260 else None
+        if found and re.search(rf"\b{TITLE}\b", found.group("headline"), re.I):
+            return "HEADLINE_TITLE"
+    if first_person(own):
+        return "FIRST_PERSON"
+    if signature_line(own):
+        return "SIGNATURE"
+    if sum(1 for rx in SOLICITATION if rx.search(message.get("subject", "") + "\n" + own)) >= 2:
+        return "SOLICITATION"
+    return ""
+
+
 def _relay(message):
     subject, body = message.get("subject", ""), message.get("body", "")
     if not (RELAY_PHRASE.search(subject) or RELAY_PHRASE.search(body[:1500]) or " via " in message.get("sender_name", "")):
@@ -90,4 +119,9 @@ def _relay(message):
     if not name:
         found = RELAY_SUBJECT_NAME.match(subject.strip())
         name = found.group("name").strip() if found else ""
+    if name and _is_linkedin(message["sender_address"]):
+        proof = relay_proof(message)
+        if not proof:
+            return HUMAN_NAMED_RELAY, RELAY_UNVERIFIED, {"name": name, "relay": True, "proof": ""}
+        return HUMAN_NAMED_RELAY, "RELAY_NAMED", {"name": name, "relay": True, "proof": proof}
     return HUMAN_NAMED_RELAY, "RELAY_NAMED" if name else "RELAY_NAME_UNREADABLE", {"name": name, "relay": True}

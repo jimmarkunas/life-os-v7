@@ -84,6 +84,7 @@
   "D182": "A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)",
   "D183": "V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)",
   "D184": "A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)",
+  "D185": "Recruiters: a LinkedIn notification needs recruiting evidence, and a recruiter's company, role and request are read from fixed patterns (2026-10-12, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -338,6 +339,7 @@
   "recruiters": {
    "lifeos/recruiters/classify.py": "Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).",
    "lifeos/recruiters/identity.py": "Deterministic identity for a recruiter contact: name cleaning, normalized natural key, Monday-to-Sunday week. No fuzzy matching, no guessing.",
+   "lifeos/recruiters/intent.py": "'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (D54: no language model, D185).",
    "lifeos/recruiters/notion.py": "The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).",
    "lifeos/recruiters/qualify.py": "Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> (\"CANDIDATE\", fields) | (\"UNRESOLVED\", code) | (\"EXCLUDED\", code).",
    "lifeos/recruiters/stage.py": "RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source."
