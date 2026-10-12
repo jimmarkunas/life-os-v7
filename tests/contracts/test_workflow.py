@@ -33,6 +33,43 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch", data[True])
         self.assertIn("live", data[True]["workflow_dispatch"]["inputs"])
 
+    def test_a_failed_publish_step_is_named_by_the_lane_list_and_does_not_stop_the_later_stages(self):
+        """D182: `lifeos.run publish` exits 1 when a page was not created; the step is continue-on-error, so the finish job still runs everything after it,
+        the lanes step names `publish`, and the report job's existing push carries it. No alert path is added."""
+        import os
+        import subprocess
+        import tempfile
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
+        data = yaml.safe_load(path.read_text())
+        steps = data["jobs"]["finish"]["steps"]
+        index = next(i for i, step in enumerate(steps) if step.get("id") == "publish")
+        publish = steps[index]
+        self.assertTrue(publish.get("continue-on-error"))
+        self.assertIn("python -m lifeos.run publish", publish["run"])
+        self.assertNotIn("|| true", publish["run"])                                    # nothing swallows the exit code
+        for later in steps[index + 1:]:
+            self.assertNotIn("steps.publish", str(later.get("if", "")), later.get("name"))      # a failed publish never skips a later stage
+        lanes = next(step for step in steps if step.get("id") == "lanes")
+        self.assertEqual(lanes.get("if"), "${{ always() }}")
+        self.assertEqual(data["jobs"]["finish"]["outputs"]["failed"], "${{ steps.lanes.outputs.failed }}")
+
+        def lane_result(failed_step):
+            script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: "failure" if m.group(1) == f"steps.{failed_step}.outcome" else "success", lanes["run"])
+            with tempfile.TemporaryDirectory() as directory:
+                output = pathlib.Path(directory, "out")
+                done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
+                return done.returncode, done.stdout.strip(), output.read_text().strip()
+
+        self.assertEqual(lane_result("publish"), (1, "FAILED STAGES: publish", "failed=publish"))
+        self.assertEqual(lane_result("none"), (0, "", "failed="))
+
+        report = next(step for step in data["jobs"]["report"]["steps"] if "Resolver lanes" in step.get("name", ""))
+        self.assertIn("finish", data["jobs"]["report"]["needs"])
+        self.assertEqual(report["env"]["STAGES"], "${{ needs.finish.outputs.failed }}")
+        self.assertIn("alerts push --severity page", report["run"])
+        self.assertIn("stages: $STAGES", report["run"])
+        self.assertFalse(report.get("continue-on-error"))                              # a push the provider refuses turns the job red
+
     def test_dice_resolver_is_pipeline_only_and_adds_no_dispatch_input(self):
         from pathlib import Path
         path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
