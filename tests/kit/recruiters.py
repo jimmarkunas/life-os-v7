@@ -5,13 +5,15 @@ from lifeos.recruiters import notion as store
 CELL = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
 
-def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:00+00:00", done=False, what="", client="", review=False, active=True, pid=None):
-    return {"id": pid or f"page-{person}-{company}-{role}".replace(" ", "-"), "properties": {
+def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:00+00:00", done=False, what="", client="", review=False, active=True, pid=None,
+         url=None, created_by="bot-1", edited_by="bot-1"):
+    return {"id": pid or f"page-{person}-{company}-{role}".replace(" ", "-"), "created_by": {"object": "user", "id": created_by},
+            "last_edited_by": {"object": "user", "id": edited_by}, "properties": {
         "Recruiter / Person": {"type": "title", "title": CELL(person)}, "Recruiter Company": {"type": "rich_text", "rich_text": CELL(company)},
         "Client": {"type": "rich_text", "rich_text": CELL(client)}, "Role": {"type": "rich_text", "rich_text": CELL(role)}, "Medium": {"type": "rich_text", "rich_text": CELL("Email")},
         "What they want": {"type": "rich_text", "rich_text": CELL(what)}, "Last Contact": {"type": "date", "date": {"start": last}}, "Week Ending": {"type": "date", "date": {"start": week}},
         "Done": {"type": "checkbox", "checkbox": done}, "Active": {"type": "checkbox", "checkbox": active}, "Needs review": {"type": "checkbox", "checkbox": review},
-        "Source URL": {"type": "url", "url": None}}}
+        "Source URL": {"type": "url", "url": url}}}
 
 
 class FakeRecruiters:
@@ -45,7 +47,7 @@ class FakeRecruiters:
                 props[name][kind] = [{"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}]
         for name in store.SCHEMA:
             props.setdefault(name, {"type": store.SCHEMA[name], store.SCHEMA[name]: [] if store.SCHEMA[name] in ("title", "rich_text") else None})
-        self.pages.append({"id": f"page-new-{len(self.pages)}", "properties": props})
+        self.pages.append({"id": f"page-new-{len(self.pages)}", "created_by": {"id": "bot-1"}, "last_edited_by": {"id": "bot-1"}, "properties": props})
         return {}
 
     def update_page_properties(self, page_id, properties):
@@ -58,6 +60,7 @@ class FakeRecruiters:
             target["properties"][name] = {"type": kind, **value}
             if kind in ("title", "rich_text"):
                 target["properties"][name][kind] = [{"type": "text", "plain_text": value[kind][0]["text"]["content"], "text": value[kind][0]["text"]}]
+        target["last_edited_by"] = {"id": "bot-1"}
         return {}
 
 
