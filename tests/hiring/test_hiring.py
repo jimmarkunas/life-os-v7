@@ -229,7 +229,7 @@ class RegionWriterTests(unittest.TestCase):
         self.assertTrue(done["verified"])
         self.assertEqual((done["rows_changed"], done["rows_added"], done["rows_removed"]), (1, 1, 0))
         self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "2 active")                         # D185: the update time is in the heading, as Calendar's is
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "2 active")                         # D188: the update time is in the heading, as Calendar's is
         self.assertEqual(t.snapshot(skip={"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"} | set(t.kids["0000000000000000000000000000a003"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("0000000000000000000000000000a003-r")})
         self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated 2:00 PM CT)")
 

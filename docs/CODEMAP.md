@@ -275,6 +275,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
+- `pr-tests.yml`: jobs unit-tests; manual no; secrets -
 - `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, LIFEOS_BWS_RUNTIME_TOKEN
@@ -462,4 +463,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D182: A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)
 - D183: V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184: A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
-- D185: The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
+- D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
+- D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
+- D188: The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)

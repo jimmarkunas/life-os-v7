@@ -5,6 +5,7 @@ import inspect
 import io
 import json
 import unittest
+import warnings
 from unittest.mock import patch
 
 from lifeos import run
@@ -38,7 +39,8 @@ class PartialFailureExitTests(unittest.TestCase):
     @staticmethod
     def _main(stage, counts):
         out, err = io.StringIO(), io.StringIO()
-        with patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with warnings.catch_warnings(), patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            warnings.simplefilter("ignore", ResourceWarning)                    # another test's unclosed sqlite connection can be collected (and warned about) inside this one's stderr capture
             code = run.main([stage, "--live"])
         return code, out.getvalue(), err.getvalue()
 
@@ -107,8 +109,10 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
                 self.result = []
             elif sql.startswith("SELECT COUNT(*)"):
                 self.result = [(1,)]                                   # the ledger seed marker exists: no cold-start read
+            elif sql.startswith("SELECT j.id, f.admission, f.score"):           # the ordering keys publish reads first (D186): id, admission, score, posted, first surfaced
+                self.result = [(r[0], r[17], r[15], r[9], r[8]) for r in self.rows]
             elif "FROM v7_jobs j JOIN v7_job_descriptions" in sql:
-                self.result = self.rows
+                self.result = [r for r in self.rows if r[0] in params]
             else:
                 self.result = []                                       # not in the ledger, no same-opening page
 

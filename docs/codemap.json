@@ -84,7 +84,9 @@
   "D182": "A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)",
   "D183": "V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)",
   "D184": "A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)",
-  "D185": "The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)",
+  "D185": "JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)",
+  "D186": "JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)",
+  "D188": "The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -613,6 +615,13 @@
     "LIFEOS_BWS_RUNTIME_TOKEN",
     "OUTLOOK_CLIENT_ID"
    ]
+  },
+  "pr-tests.yml": {
+   "jobs": [
+    "unit-tests"
+   ],
+   "manual": false,
+   "secrets": []
   },
   "recruiters.yml": {
    "jobs": [
