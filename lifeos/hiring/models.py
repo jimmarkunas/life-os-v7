@@ -10,7 +10,7 @@ NOTES_LABEL, NO_NOTES = "Opportunity Notes", "Needs Notes"
 SUBMITTED, RECRUITER_SCREEN, HM_SCHEDULED, INTERVIEWING, ASSESSMENT = (
     "Submitted", "Recruiter Screen", "Hiring-Manager Interview Scheduled", "Interviewing", "Assessment")
 RANK = {SUBMITTED: 1, RECRUITER_SCREEN: 2, ASSESSMENT: 2, HM_SCHEDULED: 3, INTERVIEWING: 4}
-AWAIT_DAYS = 14                                                # D186: a role waiting on an outcome or a response this long says so and asks for a follow-up (it is still listed)
+AWAIT_DAYS = 14                                                # D189: a role waiting on an outcome or a response this long says so and asks for a follow-up (it is still listed)
 APPLIED_DAYS = 30                                              # a submitted role with no newer evidence is listed for 30 days after Applied On, then counted in the status line, never dropped silently
 
 KINDS = ("assessment", "hiring_manager", "recruiter_screen", "interview")         # calendar evidence kinds, most specific first

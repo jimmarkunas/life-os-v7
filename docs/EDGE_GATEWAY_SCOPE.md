@@ -1,6 +1,6 @@
 # Edge gateway (Oracle VM + OpenClaw): live contract
 
-**Status: LIVE FOUNDATION / CURRENT CONTRACT — October 6, 2026.** The Oracle host and OpenClaw gateway now exist. This live amendment supersedes the historical scoping text below wherever they conflict; older sections remain rationale only.
+**Status: EDGE-1.4 ORACLE-LOCAL CONTRACT ACCEPTED — October 13, 2026.** Jim accepted Luna's Oracle-local service integrations and capability registry as Done; EDGE-1.5 autonomous-agent intelligence is now In Progress. Off-host generic proxying is excluded from Phase 1; Apple Reminders remains COMM-1.1/JFM-198. The Oracle host and OpenClaw gateway exist; the historical scoping text below remains rationale only.
 
 ## Current role
 
@@ -13,8 +13,8 @@ Current capability lanes:
 - local: paired Mac worker via Ollama; Oracle remains lightweight;
 - Notion: official CLI/browser-auth path;
 - GitHub: authenticated CLI/API path;
-- Claude Code and other MCP clients: use `openclaw mcp serve` or a bounded adapter;
-- ChatGPT: use the same named-capability contract through an approved LIFE OS connector/adapter, not raw SSH.
+- Claude Code and other consumers on Oracle: invoke the existing Gateway agent with `openclaw agent` (see Capability registry). `openclaw mcp serve` exposes channel functions only (conversations, messages, permission responses), not arbitrary registered business tools such as `ntn`, `gh` or the wrappers, and is not a capability connector;
+- ChatGPT and off-host Claude: use their native connected-app integrations for services already available directly. Jim removed generic Claude/ChatGPT → Luna → duplicate connected-app proxying from EDGE-1.4 Phase 1 on October 13. A future off-host edge/device-specific capability requires a concrete user outcome and separate narrow authorization; never use raw SSH or a shared full-operator Gateway token.
 
 ## Current hard boundaries
 
@@ -25,6 +25,31 @@ Current capability lanes:
 - No durable meeting archive on Oracle; durable Meeting Evidence belongs in Notion.
 - Interview capture remains invisible/botless. Keep Granola as the current acquisition layer; visible OpenClaw meeting participants are not the Interview OS capture path.
 - Local Whisper/whisper.cpp remains the future Granola-replacement candidate, not the first meeting slice.
+
+## Capability registry (Oracle-local, verified October 13, 2026)
+
+Derived from the live Oracle exec allowlist (ten rules), the Oracle-local wrappers in `~/.local/bin`, and the accepted evidence in the EDGE-1.4 roadmap row. The allowlist, each wrapper's own gate and the roadmap row win over this table. A command is **accepted** only where the status column says so; "allowlisted" is not "live-proven", and unexercised operations are not accepted.
+
+**Invocation (Oracle-local, proven).** `openclaw agent --agent main --message "<request>" [--session-key agent:main:<key>] --json` runs a normal Gateway run of the Luna `main` agent over the loopback Gateway. Luna's only tool path is the allowlisted shell tool: inside Code Mode `exec` code, `await exec({command, title}); text(r)` (there is no `tools` global). Shell pipes, `;`, `&&`, `$(...)` and any command or flag outside the table are refused with `exec denied: allowlist miss` before any wrapper runs. Gates are enforced at the tool boundary, not by prompt: operator-only verbs (`auth`, `approve`) are not allowlisted, and gated writes return `APPROVAL_REQUIRED` until Jim approves that exact operation out of band. Record each run's id and model receipt (`terminalReceipt.effective`); `fallbackUsed` must be false and no paid escalation is automatic.
+
+| Capability | Allowlisted commands | Authority | Approval | Status (evidence) | Consumer |
+| --- | --- | --- | --- | --- | --- |
+| GitHub | `gh api <path>` (GET only; `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field`, `--input`, `--hostname` refused); `repo view`; `issue list\|view\|status`; `pr list\|view\|status\|checks\|diff`; `run list\|view`; `release list\|view`; `search repos\|issues\|prs\|code\|commits`; `auth status` | Read | None | **Accepted** for `gh api` GET reads (OC-2.5; canonical roadmap row read through Luna, EDGE-1.5). Other subcommands allowlisted, no recorded live run | Luna; Claude Code on Oracle |
+| Notion | `ntn pages get <id>`; `ntn api v1/search`; `ntn api v1/(pages\|blocks\|databases\|data_sources)/<id>[/children]`; `ntn whoami`; `ntn api ls` | Read | None | **Accepted** for `pages get` (Oct 11 consumer proof; `pages trash`/`edit` refused). Other reads allowlisted, no recorded live run | Luna; Claude Code on Oracle |
+| Jira | Read: `whoami`, `projects`, `get KEY`, `transitions KEY`, `search '<JQL>'`. Write: `create`, `update`, `comment`, `transition` (`openclaw-jira.mjs`) | Read; gated write | Every write needs Jim's per-operation out-of-band approval (single-use operation hash) | **Accepted**: `whoami`, `projects`, `get`; one approved summary-only `update` with replay denial (Oct 11); `projects` re-verified Oct 13 (3 projects). `search`, `transitions` allowlisted, no recorded run. `create`, `comment`, `transition` **unexercised** | Luna; Claude Code on Oracle |
+| Gmail | Read: `profile`, `labels`, `search '<query>'`, `get ID`, `thread ID`. Write: `label ID --add/--remove`, `archive ID`, `trash ID`, `draft ...`, `send ...` (`openclaw-gmail.mjs`) | Read; gated write | `send` (new, reply, forward) needs Jim's exact-message approval, a single-use SHA-256-bound permit. Other writes need per-action authorization. No delete, batch, settings, schedule or attachments | **Accepted**: `profile`, `search`; one approved `label --add STARRED` (Oct 11); unapproved `send` refused, 0 sent. `labels`, `get`, `thread` allowlisted, no recorded run. `archive`, `trash`, `draft`, other labels and approved outbound mail **unexercised** | Luna; Claude Code on Oracle |
+| Outlook | `profile`, `folders`, `get`, `search` (each with mandatory `--account work\|personal`) (`openclaw-outlook.mjs`) | Read-only; no write verb exists | None | **Live verification PASS** (Oct 12, both accounts); Jim/ChatGPT acceptance pending | Luna; Claude Code on Oracle |
+| Google Calendar | `calendars`; `events [--calendar ID] --from <RFC3339> --to <RFC3339> [--max N] [query]`; `get [--calendar ID] <event id>` (`openclaw-gcal.mjs`) | Read-only | None | **Accepted** (Oct 12); `calendars` re-verified Oct 13 (4 calendars). **Unexercised**: non-primary calendar, `get` on an attendee-bearing event. Use timezone-aware RFC 3339 day boundaries | Luna; Claude Code on Oracle |
+| Google Drive | `files [--folder ID] [--max N] [query]`; `meta <id>`; `read <id>` (`openclaw-drive.mjs`) | Read-only, whole Drive (Jim, Oct 12) | None | **Accepted** (Oct 12). **Unexercised**: `--folder` filtering, shared-drive `read`, Docs/Sheets/Slides export through Luna | Luna; Claude Code on Oracle |
+| Todoist | Read: `projects`, `tasks [--inbox\|--project ID] [--filter today\|overdue\|upcoming] [--max N]`, `get <id>`. Write: `add --content TEXT [--description TEXT] [--due STRING]` (`openclaw-todoist.mjs`) | Read; Inbox-only capture | `add` only when Jim asked for that capture; Inbox only, deduped, capped at 10 per hour. No update, complete, move, delete, label, comment or share | **Accepted** reads and Inbox-only `add` (Oct 12); `projects` re-verified Oct 13 (3 projects). **Unexercised**: `--description`, `--due`, `--project`, `--filter` | Luna; Claude Code on Oracle |
+| Edge status | `openclaw nodes status --json`; `openclaw health --json` | Read | None | Allowlisted; no canonical acceptance run recorded (**unverified** as a consumer capability) | Luna |
+| Apple Reminders | None. The paired iPhone declares the node command `reminders.list`; it is not an allowlisted Luna capability | Read (declared), not authorized | Separate Jim authorization and node-authority decision (JFM-198); `reminders.add` is not authorized | **Declared, live read unverified**; iPhone offline at preflight | None |
+
+**Consumer status.**
+- **Oracle-local (Claude Code on Oracle through `openclaw agent` to Luna to the allowlisted wrappers): proven.** Oct 11 consumer proof (Notion read; three write/escalation attempts refused). Re-verified Oct 13: Jira, Calendar and Todoist read capabilities through Luna with zero tool failures, and `openclaw-todoist.mjs complete` refused with `exec denied: allowlist miss`; model receipt requested = effective, no reroute, no fallback.
+- **Off-host and ChatGPT: not approved and not proven.** The Gateway binds to loopback; the Gateway HTTP endpoints are not enabled; the shared Gateway token is full operator access, not a narrow consumer credential. An off-host client needs Jim's approval of a named client, the narrowest operator scope and a revocation path; ChatGPT additionally needs an approved LIFE OS connector or adapter, never raw SSH or the Gateway token.
+- **`openclaw mcp serve`:** channel functions only; not a capability connector.
+- **Apple Reminders:** see the table; it remains a separate authorization gate.
 
 ## Security package now in progress
 
@@ -189,3 +214,4 @@ Any LIFE OS read, the Notion integration, any model, any other channel, any writ
 5. **First model.** None in EDGE-1; a local model on a Mac only in EDGE-4 (recommended).
 6. **Health.** A heartbeat checked by extending the existing alarm-only watchdog (a small amendment to D52), or an external monitor with V7 uninvolved.
 7. **Notion records: done.** One line was added to the `OPENCLAW-0` row of the Product Backlog (October 4, 2026), recording the edge VM, its stalled status and this scope.
+

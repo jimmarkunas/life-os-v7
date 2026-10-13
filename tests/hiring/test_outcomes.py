@@ -1,4 +1,4 @@
-"""D187: rejection and offer mail for the companies in the Hiring Pipeline is found by fixed wording, matched to one opportunity or not at all, and shown as a line to confirm."""
+"""D190: rejection and offer mail for the companies in the Hiring Pipeline is found by fixed wording, matched to one opportunity or not at all, and shown as a line to confirm."""
 import json
 import unittest
 from datetime import datetime, timedelta

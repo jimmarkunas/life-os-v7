@@ -791,7 +791,7 @@ jobs:
         run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: houtcomes
         continue-on-error: true
-        name: Hiring outcome mail (D187; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)
+        name: Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}

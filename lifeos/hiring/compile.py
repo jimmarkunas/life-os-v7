@@ -2,7 +2,7 @@
 
 Inputs (all already read and checked complete by the source adapter):
   applied  [{"company", "role", "applied_on": iso date or None}]          canonical Job Ledger Applied rows
-  parents  [{"id", "company", "role", "rounds", "retired"?}]              Hiring Pipeline opportunity pages (read only); a retired one closes the matching pursuit (D186)
+  parents  [{"id", "company", "role", "rounds", "retired"?}]              Hiring Pipeline opportunity pages (read only); a retired one closes the matching pursuit (D189)
   events   [{"id", "title", "start": iso with offset}]                    accepted Calendar events in the window
   prior    the stored snapshot (or None)
   ok       {"ledger": bool, "parents": bool, "calendar": bool}            which sources were read completely this run
@@ -110,7 +110,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
         return {**out, "rows": rows, "reasons": sorted(reasons)}
     prior_rows = {r["key"]: r for r in (prior or {}).get("rows", [])}
     opps = _opportunities(applied, [p for p in parents if not p.get("retired")], reasons, out)
-    for page in (p for p in parents if p.get("retired")):         # D186: a page under Retired Opportunities closes that pursuit, unless an Active page for the same company and role says it is live again
+    for page in (p for p in parents if p.get("retired")):         # D189: a page under Retired Opportunities closes that pursuit, unless an Active page for the same company and role says it is live again
         for opp in opps:
             if opp["parent_state"] == "none" and M.same(opp["company"], opp["role"], page["company"], page["role"]):
                 opp["closed"] = True
@@ -152,7 +152,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
         elif opp["ledger"]:
             row["stage"] = M.SUBMITTED
         hit = (outcomes or {}).get(key)
-        if hit and row["stage"] is not None:                      # D187: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
+        if hit and row["stage"] is not None:                      # D190: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
             last = row["event_start"] or row["applied_on"]
             if last is None or datetime.fromisoformat(hit["received"]) > _moment(last):
                 row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company")}

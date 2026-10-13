@@ -56,7 +56,7 @@ def row_cells(row, now):
         waited = (local(now).date() - local(row["applied_on"]).date()).days if row.get("applied_on") else 0
         update, action = (f"Applied {local(row['applied_on']).strftime('%b %-d')}" if row.get("applied_on") else "Application submitted"), (f"No response in {waited} days · follow up?" if waited >= M.AWAIT_DAYS else "Awaiting response")
     outcome = row.get("outcome")
-    if outcome:                                                      # D187: outcome mail says what to do; V7 never closes anything itself
+    if outcome:                                                      # D190: outcome mail says what to do; V7 never closes anything itself
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
         if outcome["kind"] == "OFFER":
             action = f"{'Offer' if sure else 'Possible offer'} email {day} · review and respond"

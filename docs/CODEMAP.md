@@ -106,7 +106,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
 - `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
-- `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D187): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
+- `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 - `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
 ### lifeos/interview/
@@ -277,6 +277,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
+- `pr-tests.yml`: jobs unit-tests; manual no; secrets -
 - `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, LIFEOS_BWS_RUNTIME_TOKEN
@@ -464,5 +465,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D182: A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)
 - D183: V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184: A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
-- D186: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
-- D187: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)
+- D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
+- D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
+- D189: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
+- D190: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)

@@ -51,7 +51,7 @@ def read_applied(client, stats=None):
 
 
 def read_parents(client, root_id):
-    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D186: a page under Retired Opportunities means that pursuit is closed."""
+    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed."""
     found, status = hiring_pipeline.snapshot(client, root_id)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
@@ -102,7 +102,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         snapshot.STORE.ensure(conn)
         prior = snapshot.load(conn)
         try:
-            heard, _ = outcome_mail.load(conn)                        # D187: what the mail scan last found; unavailable never stops the pipeline
+            heard, _ = outcome_mail.load(conn)                        # D190: what the mail scan last found; unavailable never stops the pipeline
         except Exception:                                             # noqa: BLE001
             heard = {}
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard)

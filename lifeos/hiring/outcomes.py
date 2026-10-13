@@ -1,4 +1,4 @@
-"""Outcome mail for the Hiring Pipeline (D187): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
+"""Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 
 The pipeline's stages come from the Job Ledger, the Notes pages and the Calendar, so an interview that ended in a rejection email stayed "Awaiting outcome" forever. This stage reads mail
 (read only: nothing is marked, moved, labelled, deleted, sent or forwarded) for the companies already in the pipeline, decides by fixed wording whether a message is a rejection or an offer, and
