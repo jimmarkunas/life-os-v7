@@ -83,6 +83,16 @@ class RecoveryDB(JobsDB):
         return self.raw.execute("SELECT status, unresolved_reason, final_apply_url, notion_page_id, resolve_attempts, recovered_at, dedupe_key FROM v7_jobs WHERE id=?", (job_id,)).fetchone()
 
 
+class WholeSecondsDB(RecoveryDB):
+    """A DATETIME column (no fractional seconds) keeps whole seconds on write, as the production MariaDB does, while a comparison still sees the exact value it is given; sqlite alone keeps the microseconds and hides the difference."""
+    def cursor(self):
+        cur = super().cursor()
+        execute = cur.execute
+        floor = lambda a: a.replace(microsecond=0) if isinstance(a, datetime) else a
+        cur.execute = lambda sql, args=(): execute(sql, tuple(floor(a) for a in args) if sql.lstrip().upper().startswith(("UPDATE", "INSERT")) else args)
+        return cur
+
+
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
         self.db = RecoveryDB()
@@ -116,6 +126,23 @@ class RecoveryTests(unittest.TestCase):
             with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"), self.assertRaises(store.StoreError) as caught:
                 hold.run(0, True, now=NOW)
             self.assertEqual(str(caught.exception), "HOLD_READBACK_MISMATCH", change)
+
+    def test_a_clock_with_microseconds_still_passes_the_read_back_for_recovery_and_exclusion(self):
+        """Production passes datetime.now() (microseconds) and stores it in DATETIME columns, which keep whole seconds: the read-back must compare what the store holds."""
+        now = NOW + timedelta(microseconds=456789)
+        db = WholeSecondsDB()
+        self.addCleanup(db.raw.close)
+        db.job(1)                                                                  # day 6.2: recovered
+        db.job(2, days_held=7.2)                                                   # past day 7, never recovered: excluded
+        with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"):
+            out = hold.run(0, True, now=now)
+        self.assertEqual((out["recovered"], out["excluded"]), (1, 1))
+        self.assertEqual((db.row(1)[0], db.row(1)[5]), ("NEW", NOW))             # stored at whole seconds
+        self.assertEqual(db.row(2)[:2], ("EXCLUDED_UNRESOLVED", "hold_expired"))
+        rows = [db.row(1), db.row(2)]
+        with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"):
+            again = hold.run(0, True, now=now + timedelta(minutes=20, microseconds=11111))     # the next tick replays over what the first one persisted
+        self.assertEqual((again["recovered"], again["excluded"], [db.row(1), db.row(2)]), (0, 0, rows))
 
     def test_a_job_that_cannot_be_recovered_is_excluded_and_never_published(self):
         self.db.job(1)
