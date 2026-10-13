@@ -29,16 +29,22 @@ def worthwhile(lane, posted, first_seen, reason, now):
 
 def recover(cursor, now, live):
     """Requeue the worthwhile HOLD jobs of day 6, once each (a dry run only counts). -> (candidates, requeued)."""
-    cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL AND source_url IS NOT NULL "
+    cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL AND source_url IS NOT NULL "
                    "AND updated_at < %s AND updated_at >= %s ORDER BY updated_at, id", (now - timedelta(days=RECOVER_DAYS), now - timedelta(days=RECOVER_DAYS, hours=RECOVERY_HOURS)))
-    picked = [row[0] for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now) and (row[5] or row[6] in RESOLVED_BY)]
-    requeued = 0
-    for job_id in picked[:RECOVER_PER_RUN] if live else ():
+    picked = [(row[0], row[7]) for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now) and (row[5] or row[6] in RESOLVED_BY)]
+    done = []
+    for job_id, key in picked[:RECOVER_PER_RUN] if live else ():
         cursor.execute("UPDATE v7_jobs SET status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END, unresolved_reason='recovery_retry', recovered_at=%s, updated_at=%s, "
                        "resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",       # one attempt left on either counter
                        (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
-        requeued += int(cursor.rowcount or 0)
-    return len(picked), requeued
+        if cursor.rowcount:
+            done.append((job_id, key))
+    if done:                                                                  # read-back: the same jobs (id and dedupe key), in the state, reason, time and counters written
+        cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END AND unresolved_reason='recovery_retry' "
+                       "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
+        if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
+            raise store.StoreError("HOLD_READBACK_MISMATCH")
+    return len(picked), len(done)
 
 
 DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (status IN ('NEW', 'RESOLVED') AND recovered_at < %s))"       # (hold cutoff, recovery deadline)
@@ -52,8 +58,8 @@ def run(limit, live, now=None):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             candidates, requeued = recover(cursor, now, live)
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason IS NULL), 0) FROM v7_jobs WHERE " + DUE, due_at)
-            due, no_reason = (int(x or 0) for x in cursor.fetchone())
+            cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason IS NULL), 0), COALESCE(SUM(recovered_at IS NOT NULL), 0) FROM v7_jobs WHERE " + DUE, due_at)
+            due, no_reason, failed_due = (int(x or 0) for x in cursor.fetchone())
             cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='HOLD'")
             holding = int(cursor.fetchone()[0] or 0)
             cursor.execute("SELECT COALESCE(unresolved_reason, 'none'), COALESCE(source, 'unknown'), COUNT(*) FROM v7_jobs WHERE status='HOLD' GROUP BY 1, 2")
@@ -67,5 +73,8 @@ def run(limit, live, now=None):
                 cursor.execute("UPDATE v7_jobs SET status=%s, unresolved_reason=CASE WHEN recovered_at IS NULL THEN %s ELSE %s END, updated_at=%s WHERE " + DUE,
                                (EXCLUDED, REASON, FAILED_RECOVERY, now, *due_at))
                 excluded = int(cursor.rowcount or 0)
+                cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason=%s), 0) FROM v7_jobs WHERE status=%s AND updated_at=%s AND unresolved_reason IN (%s, %s)", (FAILED_RECOVERY, EXCLUDED, now, REASON, FAILED_RECOVERY))
+                if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:         # read-back: every due job is now terminal with its reason, as many as were counted
+                    raise store.StoreError("HOLD_READBACK_MISMATCH")
     return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "by_source_reason": matrix, "saved": bool(live),
             "recovery_candidates": candidates, "recovered": requeued}
