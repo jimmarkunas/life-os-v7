@@ -1,6 +1,6 @@
 # Edge gateway (Oracle VM + OpenClaw): live contract
 
-**Status: LIVE FOUNDATION / CURRENT CONTRACT — October 6, 2026.** The Oracle host and OpenClaw gateway now exist. This live amendment supersedes the historical scoping text below wherever they conflict; older sections remain rationale only.
+**Status: EDGE-1.4 ORACLE-LOCAL CONTRACT ACCEPTED — October 13, 2026.** Jim accepted Luna's Oracle-local service integrations and capability registry as Done; EDGE-1.5 autonomous-agent intelligence is now In Progress. Off-host generic proxying is excluded from Phase 1; Apple Reminders remains COMM-1.1/JFM-198. The Oracle host and OpenClaw gateway exist; the historical scoping text below remains rationale only.
 
 ## Current role
 
@@ -14,7 +14,7 @@ Current capability lanes:
 - Notion: official CLI/browser-auth path;
 - GitHub: authenticated CLI/API path;
 - Claude Code and other consumers on Oracle: invoke the existing Gateway agent with `openclaw agent` (see Capability registry). `openclaw mcp serve` exposes channel functions only (conversations, messages, permission responses), not arbitrary registered business tools such as `ntn`, `gh` or the wrappers, and is not a capability connector;
-- ChatGPT: use the same named-capability contract through an approved LIFE OS connector/adapter, not raw SSH.
+- ChatGPT and off-host Claude: use their native connected-app integrations for services already available directly. Jim removed generic Claude/ChatGPT → Luna → duplicate connected-app proxying from EDGE-1.4 Phase 1 on October 13. A future off-host edge/device-specific capability requires a concrete user outcome and separate narrow authorization; never use raw SSH or a shared full-operator Gateway token.
 
 ## Current hard boundaries
 
