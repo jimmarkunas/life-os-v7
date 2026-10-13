@@ -104,9 +104,24 @@ class Routing(unittest.TestCase):
 
 class CrossLane(unittest.TestCase):
     def test_one_fit_floor_for_every_lane(self):
-        for policy, facts in ((US, us), (SCALE, uk)):
-            self.assertEqual(qualify(policy, facts(fit=67), TODAY).status, REVIEW)
-            self.assertEqual(qualify(policy, facts(fit=68), TODAY).status, ADMIT)
+        """D191: ADMIT needs Fit 72 in every active lane; 71 is stored as Review, never admitted on Fit grounds."""
+        skilled = lambda **kw: uk(route={"Skilled Worker": POSITIVE}, **kw)
+        for policy, facts in ((US, us), (SCALE, uk), (SW, skilled)):
+            for fit in (60, 67, 68, 71):
+                decision = qualify(policy, facts(fit=fit), TODAY)
+                self.assertEqual((decision.status, decision.reason), (REVIEW, f"Fit {fit} below 72"), (policy.name, fit))
+            for fit in (72, 73, 100):
+                self.assertEqual(qualify(policy, facts(fit=fit), TODAY).status, ADMIT, (policy.name, fit))
+            self.assertEqual(qualify(policy, facts(fit=None), TODAY).reason, "Fit unscorable")       # no invented number
+        from lifeos.jobs import fit
+        self.assertEqual((lanes.FIT_FLOOR, fit.UNIVERSAL_FIT_FLOOR, fit.GO_THRESHOLD), (72, 72, 72))       # one value: the lanes and the Go / No-Go bar cannot drift apart
+
+    def test_a_clear_score_never_overrides_an_independent_gate(self):
+        self.assertEqual(qualify(US, us(fit=95, closed=True), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=95, work_mode="onsite"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=95, market="UK"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=95, pay_min=50_000, pay_currency="$"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=72, work_mode="unknown"), TODAY).status, REVIEW)               # 72 passes Fit but another question is still open
 
     def test_target_does_not_lower_fit(self):
         self.assertEqual(SCALE.bucket, "Target")
@@ -170,12 +185,13 @@ class MarketTests(unittest.TestCase):
 
 
 class ReviewBand(unittest.TestCase):
-    def test_60_to_67_is_review_and_below_60_is_excluded(self):
+    def test_60_to_71_is_review_and_below_60_is_excluded(self):
         for policy, facts in ((US, us), (SCALE, uk)):
             self.assertEqual(qualify(policy, facts(fit=59), TODAY).status, EXCLUDE)
             self.assertEqual(qualify(policy, facts(fit=60), TODAY).status, REVIEW)
             self.assertEqual(qualify(policy, facts(fit=67), TODAY).status, REVIEW)
-            self.assertEqual(qualify(policy, facts(fit=68), TODAY).status, ADMIT)
+            self.assertEqual(qualify(policy, facts(fit=71), TODAY).status, REVIEW)
+            self.assertEqual(qualify(policy, facts(fit=72), TODAY).status, ADMIT)
 
 
 class LondonAndRemote(unittest.TestCase):
@@ -218,6 +234,8 @@ class TwoDoubts(unittest.TestCase):
         self.assertEqual(qualify(US, us(fit=66), TODAY).status, REVIEW)                                  # near-miss alone
         self.assertEqual(qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, REVIEW)             # clear fit, unknown mode
         self.assertEqual(qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW)
+        self.assertEqual(qualify(US, us(fit=71, work_mode="unknown"), TODAY).status, REVIEW)             # D191 moved the admission floor, not this rule: 68-71 with a second doubt stays Review
+        self.assertEqual(qualify(US, us(fit=67, work_mode="unknown"), TODAY).status, EXCLUDE)
 
     def test_nothing_else_changes(self):
         self.assertEqual(qualify(US, us(fit=59, work_mode="unknown"), TODAY).status, EXCLUDE)

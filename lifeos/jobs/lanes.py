@@ -1,6 +1,6 @@
 """Lane policy: one data-driven qualification for every acquisition lane (docs/LANES.md).
 
-Professional Fit is shared and lives in lifeos.jobs.fit (floor 68 for every lane; below it a job goes to Review, D81). A lane only adds opportunity policy:
+Professional Fit is shared and lives in lifeos.jobs.fit (floor 72 for every lane, D191; below it a job goes to Review, D81). A lane only adds opportunity policy:
 market, work mode, explicit pay, posting age, route and geography evidence. Unresolved evidence is REVIEW, never guessed;
 definitive negative evidence (and a closed vacancy) is EXCLUDE.
 """
@@ -8,8 +8,11 @@ from dataclasses import dataclass, field
 from datetime import date
 import re
 
-FIT_FLOOR = 68
-REVIEW_FLOOR = 60                       # D84: Fit 60-67 is Review (near miss); below 60 is excluded
+from lifeos.jobs.fit import UNIVERSAL_FIT_FLOOR
+
+FIT_FLOOR = UNIVERSAL_FIT_FLOOR          # D191: ADMIT needs Fit 72 in every lane; below it the job is stored as Review (or Exclude by the rules below), never admitted
+NEAR_MISS_FLOOR = 68                    # D100: unchanged. A Fit under this with a second open question is Exclude, not Review
+REVIEW_FLOOR = 60                       # D84: below 60 is excluded
 POSITIVE, NEGATIVE, UNRESOLVED = "POSITIVE", "NEGATIVE", "UNRESOLVED"
 ADMIT, REVIEW, EXCLUDE, DISABLED = "ADMIT", "REVIEW", "EXCLUDE", "DISABLED"
 PRECEDENCE = ("Scale-Up", "Skilled Worker", "US Remote")      # the visible lane when a job is eligible for several
@@ -39,14 +42,14 @@ POLICIES = {
     "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, route="Scale-up",
                            geography_required=True, london_only=True, bucket="Target"),
     # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
-    # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 68 like every lane.
+    # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 72 like every lane.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
                                  geography_required=True, market_required=True, bucket="Target"),
 }
 
 
 # D115: roles Jim chose to see whatever the model scores. (company substring, title regex), both case-insensitive. A listed role that no hard exclusion rule
-# hits and that clears every other lane test is never excluded for Fit: a score under 68 is Review ("Fit N below 68 (on Jim's keep list)"), so it reaches the
+# hits and that clears every other lane test is never excluded for Fit: a score under 72 is Review ("Fit N below 72 (on Jim's keep list)"), so it reaches the
 # board for Jim to decide. The score itself is stored untouched.
 KEEP_LIST = (
     ("revolut", r"^product designer \(platform\)$"),
@@ -94,8 +97,8 @@ def qualify(policy, facts, today):
     """D100: Review is for ONE open question on a job that otherwise clearly fits. A near-miss Fit (60-67) with any other evidence also unresolved
     (work mode, posting date, route, geography) is not Review, it is EXCLUDE: two doubts on a weak fit is a miss, not a question for Jim."""
     decision = _qualify(policy, facts, today)
-    if decision.status == REVIEW and facts.fit is not None and facts.fit < FIT_FLOOR and not (decision.reason or "").startswith("Fit ") and not facts.kept:
-        return Decision(EXCLUDE, f"Fit {facts.fit} below {FIT_FLOOR} and {decision.reason}")
+    if decision.status == REVIEW and facts.fit is not None and facts.fit < NEAR_MISS_FLOOR and not (decision.reason or "").startswith("Fit ") and not facts.kept:
+        return Decision(EXCLUDE, f"Fit {facts.fit} below {NEAR_MISS_FLOOR} and {decision.reason}")
     if facts.title_only and decision.status == ADMIT:                  # D123: a score from a title alone is never a Go; Jim decides from the link
         return Decision(REVIEW, TITLE_ONLY_REASON)
     return decision

@@ -163,9 +163,12 @@ class LaneTests(unittest.TestCase):
         return lanes.decide("Scale-Up", self.facts(fit, **kw), self.TODAY)[0]
 
     def test_a_title_only_role_is_never_a_go_whatever_it_scores(self):
-        for fit in (95, 70, 68):
+        for fit in (95, 72):
             decision = self.decide(fit, title_only=True, kept=True)
             self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, lanes.TITLE_ONLY_REASON), fit)
+        for fit in (71, 70, 68):                                                                  # below the 72 floor (D191): Review for the floor, still never a Go
+            decision = self.decide(fit, title_only=True, kept=True)
+            self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, f"Fit {fit} below 72 (on Jim's keep list)"), fit)
         self.assertEqual(self.decide(95).status, lanes.ADMIT)                                  # a read posting at the same score is a Go
 
     def test_a_low_score_or_an_unresolved_place_never_excludes_a_watched_title(self):
