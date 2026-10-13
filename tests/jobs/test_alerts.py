@@ -79,6 +79,24 @@ class Detect(unittest.TestCase):
         got = alertstate.stuck(Cur(), NOW)
         self.assertEqual(got, {"READY|link=1|page=0|fit=none|none": [5, 50], "RESOLVED|link=0|page=0|fit=none|no_job_id N": [4, 50]})
 
+    def test_hold_recovery_state_is_read_only_counts_and_codes_with_central_times(self):
+        class Cur:
+            asked = []
+
+            def execute(self, sql, params=()):
+                sql % tuple("x" for _ in params)
+                assert sql.startswith("SELECT") and "UPDATE" not in sql and "DELETE" not in sql
+                Cur.asked.append(sql)
+
+            def fetchall(self):
+                if len(Cur.asked) == 1:
+                    return [("NEW", "recovery_retry", 2, dt.datetime(2026, 10, 13, 18, 4, 21), dt.datetime(2026, 10, 13, 19, 30, 0)),
+                            ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", 1, dt.datetime(2026, 10, 13, 18, 4, 21), dt.datetime(2026, 10, 13, 18, 4, 21))]
+                return [("hold_expired", 7), ("unresolved_after_recovery", 1)]
+        got = alertstate.hold_recovery(Cur(), NOW)
+        self.assertEqual(got["recovered"]["NEW|recovery_retry"], {"jobs": 2, "first": "2026-10-13 13:04 CT", "last": "2026-10-13 14:30 CT"})     # stored UTC, shown in Central
+        self.assertEqual(got["excluded_48h"], {"hold_expired": 7, "unresolved_after_recovery": 1})
+
     def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
         def block(kind, text):
             return {"object": "block", "type": kind, kind: {"rich_text": [{"type": "text", "text": {"content": text}}]}}

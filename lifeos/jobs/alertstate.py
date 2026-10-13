@@ -2,8 +2,9 @@
 the jobs the stuck_jobs alert counts, grouped by status, whether a link and a Notion page exist, the Fit admission and the stop reason code, and the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts). Counts only. Writes nothing."""
 import datetime as dt
 import unicodedata
+from zoneinfo import ZoneInfo
 
-from lifeos.jobs import alerts, funnel, store
+from lifeos.jobs import alerts, funnel, hold, store
 
 
 def stuck(cursor, now):
@@ -63,6 +64,18 @@ def publish_bodies(cursor):
     return out
 
 
+def _central(moment):
+    return moment.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M CT") if moment else None
+
+
+def hold_recovery(cursor, now):
+    """D185 state, counts and fixed codes only: the jobs ever given their one recovery attempt by status and reason (with the first and last attempt in Central time), and the jobs excluded in the last 48 hours by reason."""
+    cursor.execute("SELECT status, COALESCE(unresolved_reason, 'none'), COUNT(*), MIN(recovered_at), MAX(recovered_at) FROM v7_jobs WHERE recovered_at IS NOT NULL GROUP BY 1, 2")
+    recovered = {f"{status}|{funnel.reason_code(reason)}": {"jobs": int(n), "first": _central(first), "last": _central(last)} for status, reason, n, first, last in cursor.fetchall()}
+    cursor.execute("SELECT COALESCE(unresolved_reason, 'none'), COUNT(*) FROM v7_jobs WHERE status=%s AND updated_at > %s GROUP BY 1", (hold.EXCLUDED, now - dt.timedelta(hours=48)))
+    return {"recovered": dict(sorted(recovered.items())), "excluded_48h": {funnel.reason_code(reason): int(n) for reason, n in sorted(cursor.fetchall())}}
+
+
 def run(limit, live):
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     with store.connect() as connection:
@@ -77,6 +90,7 @@ def run(limit, live):
                        for name, recent, base, latest in cursor.fetchall()}
             stuck_rows = stuck(cursor, now)
             bodies = publish_bodies(cursor)
+            recovery = hold_recovery(cursor, now)
     return {"open_alerts": {key: {"severity": value["severity"], "last_notified": str(value["last_notified"])} for key, value in sorted(open_alerts.items())},
             "published_24h": counts["published_24h"], "stuck_jobs": counts["stuck_jobs"], "sources_failing": counts["sources_failing"],
-            "stuck": stuck_rows, "publish_bodies": bodies, "sources": dict(sorted(sources.items()))}
+            "stuck": stuck_rows, "hold_recovery": recovery, "publish_bodies": bodies, "sources": dict(sorted(sources.items()))}
