@@ -51,7 +51,7 @@ def read_applied(client, stats=None):
 
 
 def read_parents(client, root_id):
-    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D186: a page under Retired Opportunities means that pursuit is closed."""
+    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed."""
     found, status = hiring_pipeline.snapshot(client, root_id)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")

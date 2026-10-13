@@ -222,7 +222,7 @@ def table_state(tree, table="0000000000000000000000000000a003"):
 
 
 class LifecycleTests(unittest.TestCase):
-    """D186: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
+    """D189: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
     def retired(self, page_id, company, role):
         return {**parent(page_id, company, role, 1), "retired": True}
 
