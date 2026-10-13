@@ -13,7 +13,7 @@ CT = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
 
 
-def msg(subject="Your application", body="", sender="Recruiting Team", address="jobs@example.invalid", days_ago=3, mid="m1"):
+def msg(subject="Your application", body="", sender="Recruiting Team", address="jobs@example.com", days_ago=3, mid="m1"):
     return {"provider": "gmail", "id": mid, "received": (NOW - timedelta(days=days_ago)).isoformat(), "sender_name": sender, "sender_address": address,
             "subject": subject, "body": body, "folder": "INBOX", "markers": {}, "url": ""}
 
@@ -42,7 +42,7 @@ class WordingTests(unittest.TestCase):
     def test_the_company_must_appear_in_order_in_the_sender_subject_domain_or_opening_of_the_body(self):
         self.assertTrue(outcomes.mentions(msg(subject="Update from Walmart Global Tech"), "Walmart"))
         self.assertTrue(outcomes.mentions(msg(sender="Walmart Talent"), "Walmart Inc."))
-        self.assertTrue(outcomes.mentions(msg(address="no-reply@walmart.com"), "Walmart"))
+        self.assertTrue(outcomes.mentions(msg(address="jobs@linkedin.com"), "LinkedIn"))
         self.assertTrue(outcomes.mentions(msg(body="Dear Jim, thank you for your interest in Smith Consulting."), "Smith Consulting"))
         self.assertFalse(outcomes.mentions(msg(subject="Update", body="Consulting at Smith"), "Smith Consulting"))
         self.assertFalse(outcomes.mentions(msg(subject="Unrelated"), "Walmart"))
@@ -170,7 +170,7 @@ class RunTests(unittest.TestCase):
         self.assertIn('"Walmart"', gmail.queries[0])                                       # Gmail is asked only about the pipeline's companies
         self.assertIn("newer_than:37d", gmail.queries[0])
         text = json.dumps(counts)
-        for private in ("Walmart", "Uber", "example.invalid", "Unfortunately"):
+        for private in ("Walmart", "Uber", "example.com", "Unfortunately"):
             self.assertNotIn(private, text)
 
     def test_a_dry_run_reads_and_saves_nothing(self):
