@@ -177,9 +177,9 @@ class PublicationOrderTests(unittest.TestCase):
         if described:
             self.db.insert("v7_job_descriptions", job_id=job_id, source_kind="ats", full_text="A real description.", fingerprint="f", fetched_at=first)
 
-    def pick(self, n, gated=True):
+    def pick(self, n, gated=True, hour=1):
         from lifeos.jobs import publish
-        rows, known = publish._pick(self.db, n, gated)
+        rows, known = publish._pick(self.db, n, gated, hour)             # hour 1: a run with no reserved place below four, so the strongest-first line is what is asserted
         return [row[0] for row in rows]
 
     def publish(self, ids):
@@ -240,6 +240,34 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(chosen, publish.order(list(reversed(rows)), 60))          # the same line whatever order the store returns the rows in
         self.assertEqual(chosen[45:], list(range(1, 16)))                          # the reserved places are the 15 oldest of the rest, oldest first
 
+    def test_small_runs_reserve_a_place_for_the_oldest_one_run_in_four_and_the_normal_line_is_unchanged(self):
+        """Limits 1, 2 and 3 have no whole quarter. Sustained strong arrivals (n new, high-ranked jobs before every run) must still let each older valid job through."""
+        for n in (1, 2, 3):
+            self.db.raw.close()
+            self.setUp()
+            old = list(range(1, 6))
+            for job_id in old:
+                self.ready(job_id, 69, age_days=30 - job_id)                       # five valid, low-value, old jobs
+            served, next_id = {}, 100
+            for run in range(1, 41):
+                for _ in range(n):
+                    self.ready(next_id, 95, age_days=0)
+                    next_id += 1
+                ids = self.pick(n, hour=run)                                       # hourly runs on consecutive clock hours
+                self.assertEqual(len(ids), n)
+                self.publish(ids)
+                served.update({job_id: run for job_id in ids if job_id in old and job_id not in served})
+                if run % 4:                                                       # no reserved place: the n strongest are published
+                    self.assertTrue(all(job_id >= 100 for job_id in ids), (n, run, ids))
+            self.assertEqual(sorted(served), old, n)                               # every old job was served ...
+            self.assertEqual([served[j] for j in old], [4, 8, 12, 16, 20], n)      # ... oldest first, one per four runs, and within 20 hourly runs
+            self.assertEqual(self.db.raw.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='READY' AND id<6").fetchone()[0], 0)
+        rows = [(i, "ADMIT" if i % 3 else "REVIEW", 60 + i % 40, None, datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i)) for i in range(1, 400)]
+        for n in (4, 5, 8, 15, 60):                                               # four places or more: the quarter is unchanged and the hour has no effect
+            self.assertEqual(len({tuple(publish.order(rows, n, hour)) for hour in range(8)}), 1, n)
+        self.assertEqual(publish.order(rows, 60)[45:], list(range(1, 16)))
+        self.assertEqual(publish.order(rows, 0, hour=0), [])                       # a zero-place run publishes nothing, whatever the hour
+
     def test_the_gate_off_keeps_every_ready_job_in_the_line(self):
         self.ready(1, 80, admission="EXCLUDE")                                 # shadow mode records the decision but does not gate; nothing is dropped here
         self.ready(2, 70)
@@ -268,7 +296,8 @@ class PublicationOrderTests(unittest.TestCase):
 
         with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
                 mock.patch.object(publish.store, "connect", return_value=self.db), mock.patch.object(publish.store, "ensure_schema"), \
-                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}):
+                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}), \
+                mock.patch.object(publish, "_now", return_value=datetime.datetime(2026, 10, 13, 9, 0)):
             counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
         self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))
         self.assertEqual(created, ["k2", "k1"])                                               # strongest first: the admitted 91, then the admitted 70

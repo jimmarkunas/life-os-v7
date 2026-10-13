@@ -44,9 +44,9 @@ class HoldExpiryTests(unittest.TestCase):
         out, seen = self.go(True)
         self.assertEqual((out["due"], out["excluded"]), (3, 2))
         sql, args = [(s, a) for s, a in seen if s.startswith("UPDATE")][0]
-        self.assertIn("WHERE status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)", sql)
+        self.assertIn("WHERE ((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL))", sql)
         self.assertEqual(args[0], "EXCLUDED_UNRESOLVED")
-        self.assertEqual(args[4], datetime(2026, 10, 3, 12, 0))                   # exactly seven days before now
+        self.assertEqual(args[4:], (datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 10, 0, 0)))      # exactly seven days before now; and 12 hours before now for a recovered job
         self.assertTrue(args[0].startswith("EXCLUDED_"))                         # the finalize stage treats EXCLUDED_* as an outcome
 
     def test_nothing_due_means_no_write_even_when_live(self):
@@ -65,7 +65,7 @@ LINK = "https://boards.example.com/acme/jobs/4711"
 
 
 class RecoveryDB(JobsDB):
-    def job(self, job_id, status="HOLD", days_held=6.5, reason="no_match_title", lane="Newsletter", age_days=8, link=None, source="lensa", recovered=None):
+    def job(self, job_id, status="HOLD", days_held=6.2, reason="no_match_title", lane="Newsletter", age_days=8, link=None, source="lensa", recovered=None):
         first = NOW - timedelta(days=age_days)
         self.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status=status, title="Product Manager", company="Acme", source_url=f"https://aggregator.example.com/j/{job_id}",
                     final_apply_url=link, unresolved_reason=reason, first_seen=first, last_seen=first, updated_at=NOW - timedelta(days=days_held), lane=lane, source=source,
@@ -152,6 +152,45 @@ class RecoveryTests(unittest.TestCase):
         for source in hold.RESOLVED_BY:                                           # the guard names exactly the sources whose NEW jobs a resolve stage reads
             self.assertIn(f'"{source}"', stages)
 
+    def test_a_hold_is_recovered_only_in_the_twelve_hours_after_day_six_so_the_latest_exclusion_is_day_seven(self):
+        self.db.job(1, days_held=6.4)                                              # inside [6 d, 6 d 12 h)
+        self.db.job(2, days_held=6.6)                                              # the window has passed: left alone, excluded at day 7 as before
+        self.assertEqual(self.go()["recovered"], 1)
+        self.assertEqual((self.db.row(1)[0], self.db.row(2)[0]), ("NEW", "HOLD"))
+        self.assertEqual(self.go(NOW + timedelta(hours=10))["excluded"], 1)       # job 2 reaches seven days
+        self.assertEqual(self.db.row(2)[:2], ("EXCLUDED_UNRESOLVED", "hold_expired"))
+        latest = NOW + timedelta(hours=12)                                         # job 1 was recovered at 6.4 days: its deadline is 6.9 days
+        self.assertLessEqual(latest - (NOW - timedelta(days=6.4)), timedelta(days=7))
+
+    def test_a_recovered_job_that_its_queue_never_reaches_is_excluded_at_the_deadline_never_left_indefinitely_NEW_or_RESOLVED(self):
+        """The resolver picks NEW jobs by attempts used, and a recovered job has the most, so a saturated queue (more NEW jobs than the stage limit) never reaches it. Production
+        queue (the real pick, limit 400): job 1 is never selected while 500 fresher jobs wait; at the deadline the hold stage ends it as unresolved_after_recovery."""
+        self.db.job(1, days_held=6.4)                                              # recovered to NEW (no link)
+        self.db.job(2, days_held=6.4, link=LINK, reason="jd_thin", source="web:su-example")      # recovered to RESOLVED (link, unread page)
+        self.assertEqual(self.go()["recovered"], 2)
+        for job_id in range(100, 600):
+            self.db.job(job_id, status="NEW", days_held=0.1, reason=None, age_days=1)
+            self.db.raw.execute("UPDATE v7_jobs SET resolve_attempts=0 WHERE id=?", (job_id,))
+        picked = [row[0] for row in resolve_stage.pick(self.db, "lensa", limits.RESOLVE_MAX_ATTEMPTS * 70)]
+        self.assertEqual(len(picked), 420)
+        self.assertNotIn(1, picked[:400])                                          # saturated: the recovered job is not among the 400 the stage reads
+        self.assertEqual(self.go(NOW + timedelta(hours=hold.RECOVERY_HOURS))["excluded"], 0)       # inside its twelve hours (to the minute) it is left alone to be attempted
+        self.assertEqual([self.db.row(1)[0], self.db.row(2)[0]], ["NEW", "RESOLVED"])
+        deadline = NOW + timedelta(hours=hold.RECOVERY_HOURS, minutes=1)
+        out = self.go(deadline)
+        self.assertEqual((out["due"], out["excluded"]), (2, 2))
+        self.assertEqual([self.db.row(i)[:4] for i in (1, 2)], [("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", None, None), ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", LINK, None)])
+        self.assertEqual(self.db.row(1)[6], "k1")                                  # identity untouched
+        self.assertEqual(jobs_alerts.gather(self.db, deadline)["unresolved_terminal"], 2)     # surfaced by the existing alert
+        self.assertEqual(self.go(NOW + timedelta(hours=13))["excluded"], 0)        # replay: nothing is excluded or counted twice
+
+    def test_a_recovered_job_that_moved_on_is_not_touched_by_the_deadline(self):
+        self.db.job(1, days_held=6.4)
+        self.go()
+        self.db.raw.execute("UPDATE v7_jobs SET status='READY' WHERE id=1")        # attempted and read: it carries on to Fit and publish
+        self.assertEqual(self.go(NOW + timedelta(hours=30))["excluded"], 0)
+        self.assertEqual(self.db.row(1)[0], "READY")
+
     def test_recovery_is_bounded_per_run(self):
         for job_id in range(1, hold.RECOVER_PER_RUN + 6):
             self.db.job(job_id)
@@ -160,9 +199,9 @@ class RecoveryTests(unittest.TestCase):
 
     def test_recovery_drains_a_large_window_at_the_bounded_rate_and_stale_holds_do_not_crowd_it(self):
         for job_id in range(1, 301):
-            self.db.job(job_id, age_days=30, days_held=6.9)                          # 300 stale holds first in line (the oldest updated_at): never worthwhile
+            self.db.job(job_id, age_days=30, days_held=6.4)                          # 300 stale holds first in line (the oldest updated_at): never worthwhile
         for job_id in range(301, 361):
-            self.db.job(job_id, days_held=6.5)                                       # 60 worthwhile holds behind them
+            self.db.job(job_id, days_held=6.2)                                       # 60 worthwhile holds behind them
         got = [self.go(NOW + timedelta(minutes=5 * tick))["recovered"] for tick in range(4)]
         self.assertEqual(got, [25, 25, 10, 0])                                       # bounded per tick, each job once, drained in three ticks
         recovered = self.db.raw.execute("SELECT COUNT(*), MIN(id) FROM v7_jobs WHERE recovered_at IS NOT NULL").fetchone()
