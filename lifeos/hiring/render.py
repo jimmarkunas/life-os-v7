@@ -61,8 +61,8 @@ def row_cells(row, now):
         if outcome["kind"] == "OFFER":
             action = f"{'Offer' if sure else 'Possible offer'} email {day} · review and respond"
         else:
-            where = "move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "untick Applied in the Ledger"
-            action = f"{'Rejection' if sure else 'Possible rejection'} email {day} · confirm, then {where}"
+            where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"   # never advise unticking Applied: it is the application record
+            action = f"{'Rejection' if sure else 'Possible rejection'} email {day} · {where}"
     if row.get("carried"):
         update += " (last accepted)"
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)

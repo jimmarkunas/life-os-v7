@@ -103,10 +103,17 @@ class ShownTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["stage"], "Interviewing")
         self.assertEqual(len(result["rows"]), 1)                                  # still listed: V7 closes nothing
 
-    def test_a_company_only_rejection_is_possible_and_a_row_without_a_notes_page_says_to_untick_applied(self):
+    def test_a_company_only_rejection_is_possible_and_a_row_without_a_notes_page_keeps_applied_as_history(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "company"}, parent=False)
         self.assertTrue(self.action(result).startswith("Possible rejection email"))
-        self.assertTrue(self.action(result).endswith("confirm, then untick Applied in the Ledger"))
+        self.assertTrue(self.action(result).endswith("· confirm (Applied stays as history)"))
+
+    def test_no_outcome_line_ever_advises_unticking_applied_or_changing_the_application_record(self):
+        for kind in ("REJECTED", "OFFER"):
+            for match in ("role", "company"):
+                for parent in (True, False):
+                    text = self.action(self.compiled({"kind": kind, "received": (NOW - timedelta(days=2)).isoformat(), "match": match}, parent=parent))
+                    self.assertNotRegex(text.lower(), r"untick|uncheck|clear applied|remove applied|applied in the ledger", (kind, match, parent))
 
     def test_an_offer_says_to_review_and_respond(self):
         result = self.compiled({"kind": "OFFER", "received": (NOW - timedelta(days=1)).isoformat(), "match": "role"})
