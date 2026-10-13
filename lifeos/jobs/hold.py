@@ -52,7 +52,7 @@ DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (st
 
 def run(limit, live, now=None):
     from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
-    now = now or _now()
+    now = (now or _now()).replace(microsecond=0)                           # the DATETIME columns keep whole seconds, so the read-back compares the value they store
     due_at = (now - timedelta(days=HOLD_DAYS), now - timedelta(hours=RECOVERY_HOURS))
     with store.connect() as connection:
         store.ensure_schema(connection)
