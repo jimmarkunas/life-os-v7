@@ -30,7 +30,7 @@ def worthwhile(lane, posted, first_seen, reason, now):
 def recover(cursor, now, live):
     """Requeue the worthwhile HOLD jobs of day 6, once each (a dry run only counts). -> (candidates, requeued)."""
     cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL AND source_url IS NOT NULL "
-                   "AND updated_at < %s AND updated_at >= %s ORDER BY updated_at, id LIMIT 200", (now - timedelta(days=RECOVER_DAYS), now - timedelta(days=HOLD_DAYS)))
+                   "AND updated_at < %s AND updated_at >= %s ORDER BY updated_at, id", (now - timedelta(days=RECOVER_DAYS), now - timedelta(days=HOLD_DAYS)))
     picked = [row[0] for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now)]
     requeued = 0
     for job_id in picked[:RECOVER_PER_RUN] if live else ():

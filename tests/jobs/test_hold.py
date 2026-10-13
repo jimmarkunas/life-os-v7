@@ -146,6 +146,16 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.go()["recovered"], hold.RECOVER_PER_RUN)
         self.assertEqual(self.go()["recovered"], 5)                                # the rest on the next tick
 
+    def test_recovery_drains_a_large_window_at_the_bounded_rate_and_stale_holds_do_not_crowd_it(self):
+        for job_id in range(1, 301):
+            self.db.job(job_id, age_days=30, days_held=6.9)                          # 300 stale holds first in line (the oldest updated_at): never worthwhile
+        for job_id in range(301, 361):
+            self.db.job(job_id, days_held=6.5)                                       # 60 worthwhile holds behind them
+        got = [self.go(NOW + timedelta(minutes=5 * tick))["recovered"] for tick in range(4)]
+        self.assertEqual(got, [25, 25, 10, 0])                                       # bounded per tick, each job once, drained in three ticks
+        recovered = self.db.raw.execute("SELECT COUNT(*), MIN(id) FROM v7_jobs WHERE recovered_at IS NOT NULL").fetchone()
+        self.assertEqual(recovered, (60, 301))
+
     def test_the_production_entry_points_recover_exclude_and_alert_over_the_real_store(self):
         """`python -m lifeos.run expire-holds --live` twice (a failed attempt in between), then the alerts stage: the same composition production runs, counts only."""
         import contextlib

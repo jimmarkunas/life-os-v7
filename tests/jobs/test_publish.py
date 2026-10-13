@@ -233,6 +233,13 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(sorted(served), [1, 2, 3, 4, 5])                      # every old job was served ...
         self.assertEqual(served, {1: 1, 2: 2, 3: 3, 4: 4, 5: 5})              # ... one per run, oldest first, while the strong new jobs still took the other places
 
+    def test_the_order_holds_for_a_large_backlog(self):
+        rows = [(i, "ADMIT" if i % 3 else "REVIEW", 60 + i % 40, None, datetime.datetime(2026, 9, 1) + datetime.timedelta(minutes=i)) for i in range(1, 20001)]
+        chosen = publish.order(rows, 60)
+        self.assertEqual((len(chosen), len(set(chosen))), (60, 60))
+        self.assertEqual(chosen, publish.order(list(reversed(rows)), 60))          # the same line whatever order the store returns the rows in
+        self.assertEqual(chosen[45:], list(range(1, 16)))                          # the reserved places are the 15 oldest of the rest, oldest first
+
     def test_the_gate_off_keeps_every_ready_job_in_the_line(self):
         self.ready(1, 80, admission="EXCLUDE")                                 # shadow mode records the decision but does not gate; nothing is dropped here
         self.ready(2, 70)
