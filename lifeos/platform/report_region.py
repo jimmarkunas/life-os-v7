@@ -34,6 +34,12 @@ def plain(block):
                    for part in inner.get("rich_text") or [] if isinstance(part, dict))
 
 
+def titled(text, title):
+    """True when `text` is the region's heading: exactly `title`, or `title (stamp)` the way the Calendar, Jira and Hiring Pipeline headings carry their update time."""
+    text = (text or "").strip()
+    return text == title or (text.startswith(title + " (") and text.endswith(")"))
+
+
 def same_id(left, right):
     return isinstance(left, str) and isinstance(right, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
 
@@ -258,7 +264,7 @@ def page_of(client, meta, fail, ancestors=None):
 
 def floating_region(client, block_id, title, fail):
     """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
-    Accepted shape ONLY: a heading_3 whose text is exactly `title`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
+    Accepted shape ONLY: a heading_3 whose text is `title` or `title (stamp)`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
     columns; the block after them (if any) is neither a paragraph nor a table. Anything else raises: no write is ever attempted on an ambiguous region."""
     def at(stage, call):
         try:
@@ -269,7 +275,7 @@ def floating_region(client, block_id, title, fail):
             raise fail(f"FLOATING_{stage}_{error}") from None             # the failing call's name and Notion's status, never an id or text
 
     meta = at("HEADING_GET", lambda: _meta(client, block_id))
-    if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or plain(meta).strip() != title:
+    if not isinstance(meta, dict) or meta.get("type") != "heading_3" or not same_id(meta.get("id"), block_id) or not titled(plain(meta), title):
         raise fail("FLOATING_HEADING_INVALID")
     ancestors = []
     page_id = at("PARENT_WALK", lambda: page_of(client, meta, fail, ancestors))
@@ -279,7 +285,7 @@ def floating_region(client, block_id, title, fail):
     parent_id = parent.get("block_id") or parent.get("page_id")
     siblings = at("SIBLINGS", lambda: children(client, parent_id, fail))
     found = [i for i, b in enumerate(siblings) if same_id(b.get("id"), block_id)]
-    if len(found) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and plain(b).strip() == title) != 1:
+    if len(found) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and titled(plain(b), title)) != 1:
         raise fail("FLOATING_HEADING_AMBIGUOUS")
     i = found[0]
     status, table = (siblings[i + 1:i + 2] or [None])[0], (siblings[i + 2:i + 3] or [None])[0]

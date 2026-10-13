@@ -224,20 +224,22 @@ def table_state(tree, table="0000000000000000000000000000a003"):
 class RegionWriterTests(unittest.TestCase):
     def test_the_exact_heading_status_table_shape_is_written_in_place_and_read_back(self):
         t = page(extra_rows=1)
-        before = t.snapshot(skip={"0000000000000000000000000000a002", "0000000000000000000000000000a003", "0000000000000000000000000000a003-r0", "0000000000000000000000000000a003-r1"})
+        before = t.snapshot(skip={"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003", "0000000000000000000000000000a003-r0", "0000000000000000000000000000a003-r1"})
         done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
         self.assertTrue(done["verified"])
         self.assertEqual((done["rows_changed"], done["rows_added"], done["rows_removed"]), (1, 1, 0))
         self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "Updated 2:00 PM CT · 2 active")
-        self.assertEqual(t.snapshot(skip={"0000000000000000000000000000a002", "0000000000000000000000000000a003"} | set(t.kids["0000000000000000000000000000a003"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("0000000000000000000000000000a003-r")})
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "2 active")                         # D188: the update time is in the heading, as Calendar's is
+        self.assertEqual(t.snapshot(skip={"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"} | set(t.kids["0000000000000000000000000000a003"]) | {k for k in t.blocks if k.startswith("new-")}), {k: v for k, v in before.items() if not k.startswith("0000000000000000000000000000a003-r")})
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated 2:00 PM CT)")
 
-    def test_the_header_row_and_the_heading_are_never_written(self):
+    def test_the_header_row_is_never_written_and_the_heading_only_ever_gets_its_stamp(self):
         t = page(extra_rows=3)
-        card.present(t, ENV, "Updated", WANT[:1], True)
+        card.present(t, ENV, "Updated 2:00 PM CT · 1 active", WANT[:1], True)
         patched = [path for method, path in writes(t) if method == "PATCH"]
-        self.assertFalse(any("0000000000000000000000000000a001" in p or "0000000000000000000000000000a003-r0" in p for p in patched))
+        self.assertFalse(any("0000000000000000000000000000a003-r0" in p for p in patched))
+        self.assertEqual(sum("0000000000000000000000000000a001" in p for p in patched), 1)                          # one PATCH of the heading: its title and the stamp
+        self.assertEqual(t.blocks["0000000000000000000000000000a001"]["type"], "heading_3")
         self.assertEqual(len(t.kids["0000000000000000000000000000a003"]), 2)                                         # header + one row; the surplus rows were removed
 
     def test_a_dry_run_validates_and_writes_nothing(self):
@@ -350,12 +352,43 @@ class RegionWriterTests(unittest.TestCase):
         with self.assertRaises(snapshot.HiringError):
             card.present(t, ENV, "x", WANT[:1], True)
 
-    def test_the_heading_is_immutable_during_a_write(self):
+    def test_the_stamp_follows_the_status_and_the_heading_keeps_its_block_title_and_place(self):
         t = page()
-        t.trip = ("0000000000000000000000000000a002", lambda tree: tree.blocks["0000000000000000000000000000a001"]["heading_3"].update({"rich_text": rich("📈 Hiring Pipeline ")}))
-        with self.assertRaises(snapshot.HiringError) as error:
-            card.present(t, ENV, "x", WANT[:1], True)
-        self.assertIn(str(error.exception), ("HIRING_HEADING_CHANGED", "HIRING_FLOATING_HEADING_INVALID"))
+        for text, heading, paragraph in (("Updated 2:00 PM CT · 3 active · 1 more not shown", "📈 Hiring Pipeline (Updated 2:00 PM CT)", "3 active · 1 more not shown"),
+                                         ("DEGRADED · Hiring Pipeline Calendar unreadable at 3:00 PM CT · showing last accepted state (Oct 6, 2:00 PM CT) · 3 active",
+                                          "📈 Hiring Pipeline (DEGRADED at 3:00 PM CT)", "Hiring Pipeline Calendar unreadable · showing last accepted state (Oct 6, 2:00 PM CT) · 3 active")):
+            self.assertTrue(card.present(t, ENV, text, WANT[:1], True)["verified"])
+            self.assertEqual((R.plain(t.blocks["0000000000000000000000000000a001"]), R.plain(t.blocks["0000000000000000000000000000a002"])), (heading, paragraph))
+            self.assertEqual(t.kids["right"][:3], ["0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"])
+
+    def test_split_status_covers_every_line_the_renderer_can_produce(self):
+        self.assertEqual(M.split_status("Updated 2:00 PM CT · 5 active"), ("Updated 2:00 PM CT", "5 active"))
+        self.assertEqual(M.split_status("Updated 2:00 PM CT · no submitted or interviewing opportunities"), ("Updated 2:00 PM CT", "no submitted or interviewing opportunities"))
+        self.assertEqual(M.split_status("DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT · Job Ledger unreadable · no accepted state yet"),
+                         ("DEGRADED at 2:00 PM CT", "Hiring Pipeline unavailable · Job Ledger unreadable · no accepted state yet"))
+        self.assertEqual(M.split_status("DEGRADED · something unexpected"), ("DEGRADED", "something unexpected"))
+        self.assertEqual(M.heading_text(""), M.TITLE)
+
+    def test_a_second_heading_with_the_title_or_a_stamped_title_is_a_second_region(self):
+        for second in ("📈 Hiring Pipeline", "📈 Hiring Pipeline (Updated 1:00 PM CT)"):
+            t = page()
+            t.add("extra-h", "heading_3", "cols", text=second)
+            with self.assertRaises(snapshot.HiringError):
+                card.present(t, ENV, "Updated 2:00 PM CT · 1 active", WANT[:1], True)
+
+    def test_the_command_center_reads_the_stamp_from_the_heading(self):
+        from lifeos.dcc import card as dcc
+        t = page()
+        card.present(t, ENV, "Updated 2:00 PM CT · 3 active", WANT[:1], True)
+        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
+        self.assertEqual(status, "Updated 2:00 PM CT · 3 active")
+        self.assertEqual(dcc.classify({"status": status}, NOW)[0], "fresh")
+        card.present(t, ENV, "DEGRADED · Hiring Pipeline Calendar unreadable at 2:05 PM CT · showing last accepted state (Oct 6, 2:00 PM CT) · 3 active", WANT[:1], True)
+        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
+        self.assertEqual(dcc.classify({"status": status}, NOW)[0], "degraded")
+        old = page()                                                                    # a heading with no stamp yet (before the first write) reads as the status alone
+        old.blocks["0000000000000000000000000000a002"]["paragraph"]["rich_text"] = rich("Updated 1:55 PM CT · 3 active")
+        self.assertEqual(dcc._text_of(old, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)[0], "Updated 1:55 PM CT · 3 active")
 
     def test_the_region_chatgpt_writes_is_outside_the_proof_but_never_touched(self):
         t = page()
@@ -369,7 +402,8 @@ class RegionWriterTests(unittest.TestCase):
         with self.assertRaises(snapshot.HiringError) as error:
             card.present(t, ENV, "Updated 2:00 PM CT", WANT, True)
         self.assertEqual(str(error.exception), "HIRING_WRITE_FAILED")
-        self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("DEGRADED · Hiring Pipeline update failed"))
+        self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("Hiring Pipeline update failed"))
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (DEGRADED)")
 
     def test_a_read_back_that_does_not_match_fails(self):
         t = page(extra_rows=1)
@@ -390,7 +424,8 @@ class RegionWriterTests(unittest.TestCase):
         rows_before = table_state(t)
         card.present(t, ENV, "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT", None, True)
         self.assertEqual(table_state(t), rows_before)
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "DEGRADED · Hiring Pipeline unavailable at 2:00 PM CT")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "Hiring Pipeline unavailable")
+        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (DEGRADED at 2:00 PM CT)")
 
 
 class ReciprocalProtectionTests(unittest.TestCase):
@@ -525,7 +560,7 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
         self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing · Interview Tomorrow 10:00 AM CT", None),
                                            ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Notes", "https://www.notion.so/aaaa1111000040008000000000000001")]])
-        self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a002"]), "Updated 2:00 PM CT · 1 active")
+        self.assertEqual((R.plain(t.blocks["0000000000000000000000000000a001"]), R.plain(t.blocks["0000000000000000000000000000a002"])), ("📈 Hiring Pipeline (Updated 2:00 PM CT)", "1 active"))
         t.log.clear()
         again = run(t, store, events=events)
         self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))
@@ -546,7 +581,7 @@ class RuntimePathTests(unittest.TestCase):
         for kwargs in ({"ledger_broken": True}, {"pages_ok": False}, {"calendar_broken": True}):
             counts = run(t, store, now=NOW + timedelta(hours=1), **kwargs)
             self.assertEqual(counts["status"], "degraded", kwargs)
-            self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("DEGRADED"), kwargs)
+            self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a001"]).startswith("📈 Hiring Pipeline (DEGRADED at"), kwargs)
             self.assertIn("(last accepted)" if "calendar_broken" in kwargs else "Interviewing", " ".join(c[0] for c in table_state(t)[0]))
         self.assertEqual(store.row["accepted_at"], NOW.isoformat())                              # carried, never refreshed by a degraded run
 

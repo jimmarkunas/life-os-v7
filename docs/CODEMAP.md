@@ -466,3 +466,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
 - D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
 - D191: The Fit admission floor is 72 in every lane (2026-10-13, Jim)
+- D188: The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
