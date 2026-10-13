@@ -5,6 +5,7 @@ import inspect
 import io
 import json
 import unittest
+import warnings
 from unittest.mock import patch
 
 from lifeos import run
@@ -38,7 +39,8 @@ class PartialFailureExitTests(unittest.TestCase):
     @staticmethod
     def _main(stage, counts):
         out, err = io.StringIO(), io.StringIO()
-        with patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with warnings.catch_warnings(), patch.dict(run.STAGES, {stage: lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            warnings.simplefilter("ignore", ResourceWarning)                    # another test's unclosed sqlite connection can be collected (and warned about) inside this one's stderr capture
             code = run.main([stage, "--live"])
         return code, out.getvalue(), err.getvalue()
 
