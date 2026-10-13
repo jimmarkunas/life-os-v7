@@ -17,6 +17,24 @@ RUNTIME = re.compile(r"^(lifeos/|\.github/(?!workflows/pr-tests\.yml$)|requireme
 JIRA_KEY = re.compile(r"\bJFM-\d+\b")           # the delivery project; roadmap ids such as JOBS-1.1A or EDGE-1.3 are not Jira keys
 
 
+class Incomplete(Exception):
+    """GitHub's answer was cut off by its own limits: never release evidence, so it is reported as DEGRADED instead."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
+def pages(api, path, code, limit=5):
+    """Items of a paginated list (100 a page), page by page; a list still full after `limit` pages raises instead of ending short."""
+    for page in range(1, limit + 1):
+        got = api(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
+        yield from got
+        if len(got) < 100:
+            return
+    raise Incomplete(code)
+
+
 def verify(env):
     """None when this run is verified production evidence, else a fixed reason code."""
     jobs = dict(pair.split("=", 1) for pair in env.get("RELEASE_JOBS", "").split(",") if "=" in pair)
@@ -32,21 +50,29 @@ def run(env=os.environ, api=_api):
     if reason:
         return f"UNVERIFIED:{reason}"
     head, base, pending = env["GITHUB_SHA"], None, None
-    for d in api(f"deployments?environment={ENVIRONMENT}&per_page=30"):                        # newest first
-        if any(s["state"] == "success" for s in api(f"deployments/{d['id']}/statuses?per_page=100")):
+    for d in pages(api, f"deployments?environment={ENVIRONMENT}", "DEPLOYMENTS"):              # newest first
+        if any(s["state"] == "success" for s in pages(api, f"deployments/{d['id']}/statuses", "STATUSES")):
             if d["sha"] == head:
                 return "ALREADY_RECORDED"
             base = d["sha"]                                                                    # the last recorded release
             break
         pending = pending or (d if d["sha"] == head else None)                                # left without a success status: complete it
     base = base or api(f"commits/{head}")["parents"][0]["sha"]                                # no release recorded yet: judge the head commit alone
-    diff = api(f"compare/{base}...{head}")
+    diff = api(f"compare/{base}...{head}?per_page=100")
+    commits = list(diff["commits"])
+    for page in range(2, 6):
+        if len(commits) < diff["total_commits"]:
+            commits += api(f"compare/{base}...{head}?per_page=100&page={page}")["commits"]
+    if len(commits) < diff["total_commits"]:
+        raise Incomplete("COMPARE_COMMITS")
     if not any(RUNTIME.match(f["filename"]) for f in diff["files"]):
+        if len(diff["files"]) >= 300:                                                          # GitHub lists at most 300 files: a longer change may hide a runtime file
+            raise Incomplete("COMPARE_FILES")
         return "NO_RUNTIME_CHANGE"
     if env.get("RELEASE_PUBLISH") != "true":
         return "OBSERVED"
     url = f"{env['GITHUB_SERVER_URL']}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
-    keys = sorted(set(JIRA_KEY.findall("\n".join(c["commit"]["message"] for c in diff["commits"]))))
+    keys = sorted(set(JIRA_KEY.findall("\n".join(c["commit"]["message"] for c in commits))))
     deployment = pending or api("deployments", "POST", {
         "ref": head, "environment": ENVIRONMENT, "production_environment": True, "transient_environment": False, "auto_merge": False, "required_contexts": [],
         "description": "Runtime change executed by a fully successful live tick; not product acceptance", "payload": {"run_url": url, "jira": keys}})

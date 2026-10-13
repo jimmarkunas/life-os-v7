@@ -1,5 +1,6 @@
 import contextlib
 import io
+import re
 import unittest
 
 from lifeos.platform import release
@@ -19,6 +20,11 @@ def commit(sha, message, *files):
 HISTORY = [commit("a" * 40, "JFM-100 earlier release (#1)", "lifeos/x.py"), commit("b" * 40, "docs: note", "docs/NOTES.md"), commit(HEAD, "docs: more", "docs/MORE.md")]
 
 
+def page_of(path, items):
+    page = int((re.search(r"[?&]page=(\d+)", path) or [0, 1])[1])
+    return items[(page - 1) * 100:page * 100]
+
+
 class GitHub:
     """An in-memory GitHub API for one linear history: deployments, their statuses, a commit's parents, and compare."""
 
@@ -31,22 +37,22 @@ class GitHub:
     def __call__(self, path, method="GET", body=None):
         self.calls.append((method, path, body))
         if path.startswith("deployments?"):
-            return sorted(self.deployments, key=lambda d: -d["id"])
+            return page_of(path, sorted(self.deployments, key=lambda d: -d["id"]))
         if path == "deployments" and method == "POST":
             made = {"id": 900 + len(self.deployments), "sha": body["ref"]}
             self.deployments.append(made)
             return made
-        if path.endswith("/statuses?per_page=100"):
-            return self.statuses.get(int(path.split("/")[1]), [])
+        if "/statuses?" in path:
+            return page_of(path, self.statuses.get(int(path.split("/")[1]), []))
         if path.endswith("/statuses") and method == "POST":
             self.statuses.setdefault(int(path.split("/")[1]), []).append(body)
             return body
         if path.startswith("commits/"):
             return {"parents": [{"sha": self.history[self.at(path[8:]) - 1]["sha"]}]}
         if path.startswith("compare/"):
-            base, head = path[8:].split("...")
+            base, head = path[8:].split("?")[0].split("...")
             span = self.history[self.at(base) + 1:self.at(head) + 1]
-            return {"commits": span, "files": [f for c in span for f in c["files"]]}
+            return {"commits": page_of(path, span), "total_commits": len(span), "files": [f for c in span for f in c["files"]][:300]}      # GitHub: 300 files at most
         raise AssertionError(path)
 
     def writes(self):
@@ -95,7 +101,9 @@ class Release(unittest.TestCase):
         self.assertEqual(api.writes(), [])
 
     def test_with_no_release_recorded_yet_only_the_head_commit_is_judged(self):
-        self.assertEqual(release.run(GOOD, GitHub(changed("lifeos/a.py"))), "RECORDED")
+        first = GitHub(changed("lifeos/a.py", message="JFM-77 D192: release tracking (#252)"))                    # the squash-merge title carries the release-tracking ticket
+        self.assertEqual(release.run(GOOD, first), "RECORDED")
+        self.assertEqual(first.calls[-2][2]["payload"]["jira"], ["JFM-77"])
         self.assertEqual(release.run(GOOD, GitHub(changed("docs/a.md"))), "NO_RUNTIME_CHANGE")
 
     def test_jira_keys_come_from_the_commits_in_the_deployed_range_not_from_a_custom_field(self):
@@ -185,6 +193,42 @@ class Degraded(unittest.TestCase):
         for env, api in (({**GOOD, "RELEASE_LIVE": "false"}, released(changed("lifeos/a.py"))), (GOOD, released(changed("docs/a.md")))):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(release.main(env, api), 0)
+
+
+class Limits(unittest.TestCase):
+    """GitHub's page and file limits must never turn into a short, wrong answer: more pages are read, or the result is DEGRADED."""
+
+    def degraded(self, api):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(release.main(GOOD, api), 1)
+        self.assertEqual(api.writes(), [])
+        return out.getvalue().strip()
+
+    def test_a_recorded_release_beyond_the_first_page_of_deployments_is_still_the_baseline(self):
+        api = GitHub(changed("lifeos/a.py"), [{"id": 1, "sha": "a" * 40}] + [{"id": n, "sha": "f" * 40} for n in range(2, 131)], {1: [{"state": "success"}]})
+        self.assertEqual(release.run(GOOD, api), "RECORDED")
+        self.assertTrue(any("page=2" in p and p.startswith("deployments?") for _, p, _ in api.calls))
+
+    def test_a_deployment_list_or_status_list_cut_off_by_the_page_limit_is_degraded_not_assumed_empty(self):
+        self.assertEqual(self.degraded(GitHub(changed("lifeos/a.py"), [{"id": n, "sha": "f" * 40} for n in range(1, 601)])), "release: DEGRADED:Incomplete:DEPLOYMENTS")
+        self.assertEqual(self.degraded(GitHub(changed("lifeos/a.py"), [{"id": 1, "sha": "a" * 40}], {1: [{"state": "in_progress"}] * 600})), "release: DEGRADED:Incomplete:STATUSES")
+
+    def test_jira_keys_beyond_the_first_100_commits_of_the_range_are_read(self):
+        history = [HISTORY[0]] + [commit(f"{n:040x}", "docs: x", "docs/x.md") for n in range(1, 120)] + [commit(HEAD, "JFM-5 late key (#8)", "lifeos/a.py")]
+        api = released(history)
+        self.assertEqual(release.run(GOOD, api), "RECORDED")
+        self.assertEqual(api.calls[-2][2]["payload"]["jira"], ["JFM-5"])
+
+    def test_a_range_longer_than_the_pages_read_is_degraded_not_judged_on_part_of_it(self):
+        history = [HISTORY[0]] + [commit(f"{n:040x}", "docs: x", "docs/x.md") for n in range(1, 600)] + [commit(HEAD, "JFM-5 (#8)", "lifeos/a.py")]
+        self.assertEqual(self.degraded(released(history)), "release: DEGRADED:Incomplete:COMPARE_COMMITS")
+
+    def test_a_300_file_list_with_no_runtime_file_is_degraded_but_one_runtime_file_is_enough(self):
+        docs = [f"docs/{n}.md" for n in range(300)]
+        self.assertEqual(self.degraded(released(changed(*docs))), "release: DEGRADED:Incomplete:COMPARE_FILES")
+        self.assertEqual(release.run(GOOD, released(changed("lifeos/a.py", *docs[:290]))), "RECORDED")
+        self.assertEqual(release.run(GOOD, released(changed(*docs[:298]))), "NO_RUNTIME_CHANGE")           # under the cap the list is complete
 
 
 if __name__ == "__main__":
