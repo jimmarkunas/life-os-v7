@@ -146,6 +146,15 @@ def existing_v7_tables(connection):
 WIDEN = (("v7_jobs", "location_text", 2000),)
 
 
+def _alter(cursor, statement):
+    """Run one additive ALTER; a parallel lane that added the same column or key first (MySQL 1060 / 1061) is not a failure."""
+    try:
+        cursor.execute(statement)
+    except Exception as error:                                            # pymysql's OperationalError: the server code is its first argument
+        if not (error.args and error.args[0] in (1060, 1061)):
+            raise
+
+
 def ensure_schema(connection):
     before = existing_v7_tables(connection)
     with connection.cursor() as cursor:
@@ -156,9 +165,9 @@ def ensure_schema(connection):
             cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
                            "AND table_name = %s AND column_name = %s", (table, column))
             if not cursor.fetchone()[0]:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
                 if index:
-                    cursor.execute(f"ALTER TABLE {table} {index}")
+                    _alter(cursor, f"ALTER TABLE {table} {index}")
     with connection.cursor() as cursor:                                   # D104: a column that was created too narrow is widened once
         for table, column, width in WIDEN:
             cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
