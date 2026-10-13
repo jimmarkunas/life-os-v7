@@ -6,7 +6,7 @@ from lifeos.jobs import store
 
 QUERIES = {
     "board_host_labels_by_family_and_pattern": (
-        "SELECT CASE WHEN j.source = 'web:openjobs' THEN 'openjobs' WHEN j.source LIKE 'web:%' THEN 'other_web' ELSE SUBSTRING_INDEX(COALESCE(j.source,'-'),':',1) END source_family, "
+        "SELECT CASE WHEN j.source = 'web:openjobs' THEN 'openjobs' WHEN j.source LIKE 'web:%%' THEN 'other_web' ELSE SUBSTRING_INDEX(COALESCE(j.source,'-'),':',1) END source_family, "
         "CASE WHEN j.company REGEXP '(^| )(wd[0-9]+|myworkdayjobs)( |$)' THEN 'workday_slug' WHEN j.company REGEXP '(^| )(com|io|net|org)( |$)' THEN 'host_word' ELSE 'co_only' END label_pattern, "
         "(j.notion_page_id IS NOT NULL) published, COUNT(*) n, COUNT(DISTINCT j.company) distinct_labels "
         "FROM v7_jobs j WHERE j.company REGEXP '(^| )(com|io|net|org|co|wd[0-9]+|myworkdayjobs)( |$)' GROUP BY 1,2,3 ORDER BY n DESC LIMIT 60"),
