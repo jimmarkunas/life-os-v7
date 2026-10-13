@@ -11,13 +11,15 @@ from tests.kit.jobsdb import JobsDB
 NOW = datetime(2026, 10, 10, 12, 0)
 
 
-def conn(due=3, no_reason=1, holding=9, updated=2):
+def conn(due=3, no_reason=1, holding=9, updated=3, readback=None):
     seen = []
 
     def handler(sql, args, cursor):
         seen.append((sql, args))
-        if sql.startswith("SELECT COUNT(*), COALESCE"):
-            cursor.row = (due, no_reason)
+        if sql.startswith("SELECT COUNT(*), COALESCE") and "unresolved_reason IN" in sql:
+            cursor.row = (updated if readback is None else readback, 0)             # the read-back after the terminal UPDATE
+        elif sql.startswith("SELECT COUNT(*), COALESCE"):
+            cursor.row = (due, no_reason, 0)
         elif sql.startswith("SELECT COUNT(*) FROM v7_jobs WHERE status='HOLD'"):
             cursor.row = (holding,)
         elif sql.startswith("SELECT COALESCE(unresolved_reason"):
@@ -42,12 +44,18 @@ class HoldExpiryTests(unittest.TestCase):
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):
         out, seen = self.go(True)
-        self.assertEqual((out["due"], out["excluded"]), (3, 2))
+        self.assertEqual((out["due"], out["excluded"]), (3, 3))
         sql, args = [(s, a) for s, a in seen if s.startswith("UPDATE")][0]
         self.assertIn("WHERE ((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL))", sql)
         self.assertEqual(args[0], "EXCLUDED_UNRESOLVED")
         self.assertEqual(args[4:], (datetime(2026, 10, 3, 12, 0), datetime(2026, 10, 10, 0, 0)))      # exactly seven days before now; and 12 hours before now for a recovered job
         self.assertTrue(args[0].startswith("EXCLUDED_"))                         # the finalize stage treats EXCLUDED_* as an outcome
+
+    def test_a_terminal_update_that_the_read_back_cannot_confirm_fails_closed(self):
+        for kw in (dict(readback=2), dict(updated=2), dict(readback=0)):                # fewer rows persisted than counted, or than the UPDATE reported
+            with self.assertRaises(store.StoreError) as caught:
+                self.go(True, **kw)
+            self.assertEqual(str(caught.exception), "HOLD_READBACK_MISMATCH")
 
     def test_nothing_due_means_no_write_even_when_live(self):
         out, seen = self.go(True, due=0, no_reason=0)
@@ -97,6 +105,17 @@ class RecoveryTests(unittest.TestCase):
         resolve_stage.apply_result(self.db, 1, {"outcome": "landed", "url": LINK, "kind": "ats"})
         self.assertEqual(self.db.row(1)[:3], ("RESOLVED", None, LINK))            # the normal path: Enrich still has to read the page and the JD before it can be READY
         self.assertEqual(self.db.row(2)[:3], ("HOLD", "no_match_title", None))
+
+    def test_a_recovery_the_store_does_not_hold_after_the_write_fails_closed(self):
+        """The UPDATE reports its row, but the store ends in another state, reason, counter or identity: the stage raises instead of reporting a recovery."""
+        for change in ("status='HOLD'", "unresolved_reason='hold_expired'", "resolve_attempts=0", "dedupe_key='other'"):
+            db = RecoveryDB()
+            self.addCleanup(db.raw.close)
+            db.job(1)
+            db.raw.execute(f"CREATE TRIGGER undo AFTER UPDATE OF recovered_at ON v7_jobs BEGIN UPDATE v7_jobs SET {change} WHERE id=NEW.id; END")
+            with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"), self.assertRaises(store.StoreError) as caught:
+                hold.run(0, True, now=NOW)
+            self.assertEqual(str(caught.exception), "HOLD_READBACK_MISMATCH", change)
 
     def test_a_job_that_cannot_be_recovered_is_excluded_and_never_published(self):
         self.db.job(1)
