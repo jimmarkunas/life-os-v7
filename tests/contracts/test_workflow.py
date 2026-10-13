@@ -199,6 +199,29 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
 
 
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class PullRequestTestsWorkflow(unittest.TestCase):
+    """pr-tests.yml is the secret-free pull request check: pull_request only, read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 60 s suite limits."""
+    path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
+
+    def test_it_is_pull_request_only_read_only_and_holds_no_secret(self):
+        text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
+        self.assertEqual(list(doc[True]), ["pull_request"])
+        self.assertEqual(doc["permissions"], {"contents": "read"})
+        for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
+            self.assertNotIn(word, text)
+        self.assertEqual([j for j in doc["jobs"]], ["unit-tests"])
+
+    def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
+        doc = yaml.safe_load(self.path.read_text())
+        steps = doc["jobs"]["unit-tests"]["steps"]
+        self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@v5", "./.github/actions/python"])
+        run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
+        self.assertIn("python -m unittest discover -s tests -t .", run)
+        self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
+        self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -539,6 +562,7 @@ CONSUMER_STEPS = {
 }
 CUT_OVER = ("agenda", "bills", "calendar", "domains", "hourly", "network", "outlook", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
+SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -615,6 +639,6 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertEqual({jn: j.get("timeout-minutes") for jn, j in doc["jobs"].items()}, want["timeouts"], name)
             self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], want["digest"], name)   # live/dry-run switches and stage commands included
 
-    def test_only_the_twelve_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table(self):
-        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(CONSUMERS))
+    def test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table(self):
+        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE)))
         self.assertEqual(sorted(CUT_OVER + PILOTS), sorted(CONSUMERS))
