@@ -204,7 +204,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
         counts["messages"], counts["sources_failed"] = len(records), failed
         outcomes, stats = find(records, roster)
         counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER))
-        if failed:
+        if failed or counts["unreadable"]:                       # a listing that is complete but had a message that could not be read is just as incomplete
             counts["status"] = "degraded"                         # a source that could not be read in full is never a trustworthy "no outcome": nothing is saved, the last accepted outcomes stay
             print("hiring-outcomes:", json.dumps(counts, sort_keys=True))
             raise fail("DEGRADED_SOURCE_INCOMPLETE")
