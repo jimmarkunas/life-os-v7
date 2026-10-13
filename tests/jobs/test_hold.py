@@ -139,6 +139,10 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual((out["recovered"], out["excluded"]), (1, 1))
         self.assertEqual((db.row(1)[0], db.row(1)[5]), ("NEW", NOW))             # stored at whole seconds
         self.assertEqual(db.row(2)[:2], ("EXCLUDED_UNRESOLVED", "hold_expired"))
+        rows = [db.row(1), db.row(2)]
+        with mock.patch.object(hold.store, "connect", return_value=db), mock.patch.object(hold.store, "ensure_schema"):
+            again = hold.run(0, True, now=now + timedelta(minutes=20, microseconds=11111))     # the next tick replays over what the first one persisted
+        self.assertEqual((again["recovered"], again["excluded"], [db.row(1), db.row(2)]), (0, 0, rows))
 
     def test_a_job_that_cannot_be_recovered_is_excluded_and_never_published(self):
         self.db.job(1)
