@@ -614,6 +614,13 @@
     "OUTLOOK_CLIENT_ID"
    ]
   },
+  "pr-tests.yml": {
+   "jobs": [
+    "unit-tests"
+   ],
+   "manual": false,
+   "secrets": []
+  },
   "recruiters.yml": {
    "jobs": [
     "recruiters"
