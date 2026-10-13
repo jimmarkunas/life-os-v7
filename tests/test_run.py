@@ -107,8 +107,10 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
                 self.result = []
             elif sql.startswith("SELECT COUNT(*)"):
                 self.result = [(1,)]                                   # the ledger seed marker exists: no cold-start read
+            elif sql.startswith("SELECT j.id, f.admission, f.score"):           # the ordering keys publish reads first (D186): id, admission, score, posted, first surfaced
+                self.result = [(r[0], r[17], r[15], r[9], r[8]) for r in self.rows]
             elif "FROM v7_jobs j JOIN v7_job_descriptions" in sql:
-                self.result = self.rows
+                self.result = [r for r in self.rows if r[0] in params]
             else:
                 self.result = []                                       # not in the ledger, no same-opening page
 
