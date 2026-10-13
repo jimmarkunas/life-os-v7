@@ -155,3 +155,115 @@ class LedgerReseedTests(unittest.TestCase):
         self.assertFalse(publish._seeded(self.Conn(cur)))
         self.assertEqual(cur.sql[0][1], (publish.SEED_MARKER,))
         self.assertNotEqual(publish.SEED_MARKER, "0" * 64)
+
+
+class PublicationOrderTests(unittest.TestCase):
+    """D186: which READY jobs a run publishes first, proved on the production selection SQL (sqlite in MySQL dialect)."""
+
+    NOW = datetime.datetime(2026, 10, 13, 9, 0)
+
+    def setUp(self):
+        from tests.kit.jobsdb import JobsDB
+        self.db = JobsDB()
+        self.addCleanup(self.db.raw.close)
+
+    def ready(self, job_id, score, admission="ADMIT", age_days=1, posted_days=None, page=None, described=True):
+        first = self.NOW - datetime.timedelta(days=age_days)
+        self.db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status="READY", title="Product Manager", company="Acme", final_apply_url=f"https://boards.example.com/a/{job_id}",
+                       first_seen=first, last_seen=first, updated_at=first, posted_date=(self.NOW - datetime.timedelta(days=posted_days)).date() if posted_days is not None else None,
+                       source="web", lane="US Remote", notion_page_id=page)
+        self.db.insert("v7_job_fit", job_id=job_id, score=score, decision="Go", line="fits", confidence="high", model_version="v3", profile_hash="p", jd_fingerprint="f",
+                       scored_at=first, admission=admission)
+        if described:
+            self.db.insert("v7_job_descriptions", job_id=job_id, source_kind="ats", full_text="A real description.", fingerprint="f", fetched_at=first)
+
+    def pick(self, n, gated=True):
+        from lifeos.jobs import publish
+        rows, known = publish._pick(self.db, n, gated)
+        return [row[0] for row in rows]
+
+    def publish(self, ids):
+        for job_id in ids:
+            self.db.raw.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=? WHERE id=?", (f"page-{job_id}", job_id))
+
+    def test_a_high_value_new_job_is_served_ahead_of_a_lower_value_older_one(self):
+        self.ready(1, 70, age_days=9)                          # older, lower value
+        self.ready(2, 91, age_days=0)                          # new, high value
+        self.ready(3, 80, age_days=5)
+        self.assertEqual(self.pick(1), [2])
+        self.assertEqual(self.pick(3), [2, 3, 1])              # the whole line, strongest first
+
+    def test_review_never_outranks_an_admitted_job_and_missing_evidence_never_lifts_a_job(self):
+        self.ready(1, 68, age_days=3)                                          # admitted, ordinary
+        self.ready(2, None, admission="REVIEW", age_days=0)                    # review: no score, no posting date
+        self.ready(3, 95, admission="REVIEW", age_days=0)                      # review with a high score still waits behind the admitted
+        self.ready(4, 68, age_days=3, posted_days=None)                        # same score and date as job 1: the tie goes to the lower id
+        self.assertEqual(self.pick(4), [1, 4, 3, 2])
+
+    def test_a_newer_posting_wins_among_equal_scores_and_ties_are_deterministic(self):
+        self.ready(1, 80, age_days=6, posted_days=6)
+        self.ready(2, 80, age_days=6, posted_days=1)                           # same score, fresher posting
+        self.ready(3, 80, age_days=6, posted_days=1)                           # identical to 2: first surfaced, then id
+        self.assertEqual(self.pick(3), [2, 3, 1])
+        self.assertEqual(self.pick(3), self.pick(3))
+
+    def test_hard_exclusions_not_ready_published_and_unread_jobs_are_never_selected(self):
+        self.ready(1, 99, admission="EXCLUDE")                                 # the gate's hard exclusion stays absolute whatever the score
+        self.ready(2, 99, page="page-2")                                       # already has its page
+        self.ready(3, 99, described=False)                                     # no JD
+        self.ready(4, 60, admission="REVIEW")
+        self.db.raw.execute("UPDATE v7_jobs SET status='HOLD' WHERE id=4")      # not READY
+        self.ready(5, 70)
+        self.assertEqual(self.pick(10), [5])
+        self.assertEqual(self.pick(0), [])
+
+    def test_an_older_valid_job_is_eventually_served_while_new_strong_jobs_keep_arriving(self):
+        n = 4                                                                  # one place in four is reserved for the oldest waiting job
+        for job_id in range(1, 6):
+            self.ready(job_id, 69, age_days=20 - job_id)                       # five old, low-value, valid jobs
+        served, next_id = {}, 10
+        for run in range(1, 8):
+            for _ in range(n):                                                 # a stream of new strong jobs, enough to fill every run by value alone
+                self.ready(next_id, 95, age_days=0)
+                next_id += 1
+            ids = self.pick(n)
+            self.assertEqual(len(ids), n)
+            self.publish(ids)
+            served.update({job_id: run for job_id in ids if job_id < 6})
+        self.assertEqual(sorted(served), [1, 2, 3, 4, 5])                      # every old job was served ...
+        self.assertEqual(served, {1: 1, 2: 2, 3: 3, 4: 4, 5: 5})              # ... one per run, oldest first, while the strong new jobs still took the other places
+
+    def test_the_gate_off_keeps_every_ready_job_in_the_line(self):
+        self.ready(1, 80, admission="EXCLUDE")                                 # shadow mode records the decision but does not gate; nothing is dropped here
+        self.ready(2, 70)
+        self.assertEqual(self.pick(10, gated=False), [2, 1])
+
+    def test_the_real_publish_run_creates_pages_in_priority_order_and_records_each_one(self):
+        """The production composition: publish.run -> _pick -> Notion create -> the store writes, over the real SQL. Only the Notion client and the two follow-up stages are doubled."""
+        from unittest import mock
+        from lifeos.jobs import fit_sync, publish, readback
+        self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)       # the Ledger was read once: no cold-start read
+        self.ready(1, 70, age_days=9)
+        self.ready(2, 91, age_days=0)
+        self.ready(3, 80, age_days=5, admission="REVIEW")
+        created = []
+
+        class Client:
+            calls = 0
+            source = "ledger"
+
+            def __init__(self, environ=None):
+                pass
+
+            def create(self, props, blocks):
+                created.append(props["Stable Job Key"]["rich_text"][0]["text"]["content"])
+                return "page-" + created[-1]
+
+        with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
+                mock.patch.object(publish.store, "connect", return_value=self.db), mock.patch.object(publish.store, "ensure_schema"), \
+                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}):
+            counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
+        self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))
+        self.assertEqual(created, ["k2", "k1"])                                               # strongest first: the admitted 91, then the admitted 70
+        status = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
+        self.assertEqual(status, {1: "PUBLISHED", 2: "PUBLISHED", 3: "READY"})                # the Review job (80) waits behind both admitted jobs

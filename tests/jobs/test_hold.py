@@ -1,13 +1,12 @@
-import sqlite3
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from unittest import mock
 
 from lifeos.jobs import alerts as jobs_alerts, hold, store
 from lifeos.jobs.resolve import stage as resolve_stage
 from lifeos.platform import alerts, limits
 from tests.kit.db import FakeConn
-from tests.kit.mysqlite import MySQLite
+from tests.kit.jobsdb import JobsDB
 
 NOW = datetime(2026, 10, 10, 12, 0)
 
@@ -62,38 +61,15 @@ class HoldExpiryTests(unittest.TestCase):
 
 
 # D185: recovery, proved on real SQL (sqlite in MySQL dialect) through the production writers; no title, company or link leaves the store.
-sqlite3.register_adapter(datetime, lambda value: value.isoformat(" "))
-sqlite3.register_converter("DATETIME", lambda b: datetime.fromisoformat(b.decode()))
-sqlite3.register_converter("DATE", lambda b: date.fromisoformat(b.decode()))
 LINK = "https://boards.example.com/acme/jobs/4711"
 
 
-class RecoveryDB(MySQLite):
-    def __init__(self):
-        super().__init__()
-        self.raw = sqlite3.connect(":memory:", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
-        self.raw.create_function("IF", 3, lambda cond, a, b: a if cond else b)         # MySQL's IF, for the production resolve statements
-        for statement in store.SCHEMA:
-            self.cursor().execute(statement)
-        for table, column, ddl, _ in store.COLUMNS:
-            if column not in [r[1] for r in self.raw.execute(f"PRAGMA table_info({table})")]:          # v7_spend.browser_seconds is in both the CREATE and the list
-                self.raw.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-
-    def commit(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
+class RecoveryDB(JobsDB):
     def job(self, job_id, status="HOLD", days_held=6.5, reason="no_match_title", lane="Newsletter", age_days=8, link=None, source="lensa", recovered=None):
         first = NOW - timedelta(days=age_days)
-        self.raw.execute("INSERT INTO v7_jobs (id, dedupe_key, status, title, company, source_url, final_apply_url, unresolved_reason, first_seen, last_seen, updated_at, lane, source, resolve_attempts, recovered_at)"
-                         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (job_id, f"k{job_id}", status, "Product Manager", "Acme", f"https://aggregator.example.com/j/{job_id}", link, reason, first, first,
-                          NOW - timedelta(days=days_held), lane, source, limits.RESOLVE_MAX_ATTEMPTS, recovered))
+        self.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status=status, title="Product Manager", company="Acme", source_url=f"https://aggregator.example.com/j/{job_id}",
+                    final_apply_url=link, unresolved_reason=reason, first_seen=first, last_seen=first, updated_at=NOW - timedelta(days=days_held), lane=lane, source=source,
+                    resolve_attempts=limits.RESOLVE_MAX_ATTEMPTS, recovered_at=recovered)
 
     def row(self, job_id):
         return self.raw.execute("SELECT status, unresolved_reason, final_apply_url, notion_page_id, resolve_attempts, recovered_at, dedupe_key FROM v7_jobs WHERE id=?", (job_id,)).fetchone()
@@ -169,6 +145,33 @@ class RecoveryTests(unittest.TestCase):
             self.db.job(job_id)
         self.assertEqual(self.go()["recovered"], hold.RECOVER_PER_RUN)
         self.assertEqual(self.go()["recovered"], 5)                                # the rest on the next tick
+
+    def test_the_production_entry_points_recover_exclude_and_alert_over_the_real_store(self):
+        """`python -m lifeos.run expire-holds --live` twice (a failed attempt in between), then the alerts stage: the same composition production runs, counts only."""
+        import contextlib
+        import io
+        import json
+        from lifeos import run
+        from lifeos.jobs import retention
+        self.db.job(1)
+
+        def stage(now):
+            out = io.StringIO()
+            with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"), \
+                    mock.patch.object(retention, "_now", return_value=now), contextlib.redirect_stdout(out):
+                self.assertEqual(run.main(["expire-holds", "--live"]), 0)
+            self.assertFalse([word for word in ("Acme", "Product Manager", "example.com") if word in out.getvalue()])      # counts only: no company, title or link in the log
+            return json.loads(out.getvalue().split(":", 1)[1])
+
+        self.assertEqual(stage(NOW)["recovered"], 1)
+        self.assertEqual(self.db.row(1)[0], "NEW")
+        self.db.raw.execute("UPDATE v7_jobs SET status='HOLD', updated_at=? WHERE id=1", (NOW + timedelta(hours=1),))        # the failed attempt, as the resolver leaves it
+        later = NOW + timedelta(hours=2)
+        counts = stage(later)
+        self.assertEqual((counts["recovered"], counts["excluded"]), (0, 1))
+        with mock.patch.object(hold.store, "connect", return_value=self.db), mock.patch.object(hold.store, "ensure_schema"):
+            report = jobs_alerts.run(0, False, now=later)
+        self.assertEqual(report["active"], 2)                                      # quiet_24h and unresolved_terminal in an otherwise empty store
 
 
 if __name__ == "__main__":

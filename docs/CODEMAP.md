@@ -463,3 +463,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D183: V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184: A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
 - D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
+- D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
