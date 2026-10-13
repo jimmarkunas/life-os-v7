@@ -65,7 +65,7 @@ def publish_bodies(cursor):
 
 
 def _central(moment):
-    return moment.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M CT") if moment else None
+    return moment.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %I:%M %p CT").replace(" 0", " ") if moment else None
 
 
 def hold_recovery(cursor, now):

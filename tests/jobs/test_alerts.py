@@ -94,7 +94,7 @@ class Detect(unittest.TestCase):
                             ("EXCLUDED_UNRESOLVED", "unresolved_after_recovery", 1, dt.datetime(2026, 10, 13, 18, 4, 21), dt.datetime(2026, 10, 13, 18, 4, 21))]
                 return [("hold_expired", 7), ("unresolved_after_recovery", 1)]
         got = alertstate.hold_recovery(Cur(), NOW)
-        self.assertEqual(got["recovered"]["NEW|recovery_retry"], {"jobs": 2, "first": "2026-10-13 13:04 CT", "last": "2026-10-13 14:30 CT"})     # stored UTC, shown in Central
+        self.assertEqual(got["recovered"]["NEW|recovery_retry"], {"jobs": 2, "first": "2026-10-13 1:04 PM CT", "last": "2026-10-13 2:30 PM CT"})     # stored UTC, shown in Central
         self.assertEqual(got["excluded_48h"], {"hold_expired": 7, "unresolved_after_recovery": 1})
 
     def test_body_shape_counts_what_notion_can_refuse_and_never_returns_text(self):
