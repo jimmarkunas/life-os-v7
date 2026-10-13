@@ -222,6 +222,50 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
 
+class ReleaseReportingWorkflow(unittest.TestCase):
+    """The GitHub deployment record is one step of the hourly report job: it cannot be reached by PR CI, a manual run or a routine tick, and changed no other hourly command."""
+    root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    BEFORE = "5a110f69cfc781f8"          # the digest of every hourly `run` command before the release step existed
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = {p.stem: yaml.safe_load(p.read_text()) for p in cls.root.glob("*.yml")}
+        cls.step = [s for s in cls.doc["hourly"]["jobs"]["report"]["steps"] if "lifeos.platform.release" in s.get("run", "")][0]
+
+    def test_only_the_hourly_report_job_may_write_deployments_and_nothing_declares_an_environment(self):
+        for name, doc in self.doc.items():
+            self.assertNotIn("deployments", doc.get("permissions") or {}, name)
+            for job, body in doc["jobs"].items():
+                self.assertNotIn("environment", body, (name, job))             # a job-level environment would label a routine run a deployment
+                self.assertEqual("deployments" in (body.get("permissions") or {}), (name, job) == ("hourly", "report"), (name, job))
+        self.assertEqual(self.doc["hourly"]["jobs"]["report"]["permissions"], {"contents": "read", "deployments": "write"})
+        self.assertEqual(self.doc["hourly"]["permissions"], {"contents": "read"})
+
+    def test_the_step_is_the_last_one_never_fails_the_run_and_runs_only_after_the_lane_check_passed(self):
+        steps = self.doc["hourly"]["jobs"]["report"]["steps"]
+        self.assertIs(steps[-1], self.step)
+        self.assertIs(self.step["continue-on-error"], True)
+        self.assertNotIn("if", self.step)                                       # default success(): the lane step exits 1 on a failed lane, which skips this step
+        self.assertEqual(self.step["run"], "python3 -m lifeos.platform.release")
+
+    def test_the_step_is_given_the_tick_live_stage_and_every_job_result_as_evidence(self):
+        env = self.step["env"]
+        self.assertEqual(env["RELEASE_TICK"], "${{ github.event_name == 'schedule' || inputs.tick }}")
+        self.assertEqual(env["RELEASE_LIVE"], "${{ env.LIVE }}")
+        self.assertEqual(env["RELEASE_FAILED"], "${{ needs.finish.outputs.failed }}")
+        self.assertEqual(env["RELEASE_PUBLISH"], "${{ vars.V7_DEPLOY_REPORTING }}")          # off until Jim sets the repo variable
+        self.assertEqual(sorted(re.findall(r"(\w+)=\$\{\{ needs\.(\w+)\.result", env["RELEASE_JOBS"])), sorted((j, j) for j in self.doc["hourly"]["jobs"]["report"]["needs"]))
+        self.assertEqual(set(env), {"GITHUB_TOKEN", "RELEASE_PUBLISH", "RELEASE_TICK", "RELEASE_LIVE", "RELEASE_FAILED", "RELEASE_JOBS"})
+
+    def test_every_other_hourly_command_is_byte_for_byte_what_it_was(self):
+        runs = [s["run"] for j in self.doc["hourly"]["jobs"].values() for s in j["steps"] if "run" in s and s is not self.step]
+        self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], self.BEFORE)
+
+    def test_pull_request_ci_cannot_write_a_deployment(self):
+        self.assertEqual(self.doc["pr-tests"]["permissions"], {"contents": "read"})
+        self.assertNotIn("release", pathlib.Path(self.root, "pr-tests.yml").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -382,7 +426,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="5a110f69cfc781f8"),
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="551a8aaa92d64205"),      # was 5a110f69cfc781f8 before the release step (pinned separately in ReleaseReportingWorkflow)
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],

@@ -223,6 +223,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/outlook.py`: Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code sign-in once, then silent refresh), im
 - `lifeos/platform/outlook_tokens.py`: Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the token. The database is private; this repo and its logs are 
 - `lifeos/platform/redact.py`: Public-safe redaction (ported, trimmed, from V2 core/security.py), with meeting credentials added.
+- `lifeos/platform/release.py`: Report a verified production tick to GitHub Deployments, so Jira (GitHub for Atlassian) can show it under the delivery ticket. Stdlib only.
 - `lifeos/platform/report_region.py`: Write the text of one V7-owned callout on the Daily Report, safely (the mechanics proven by the Calendar and Bills cards).
 - `lifeos/platform/rest.py`: One retrying JSON call for the API clients (Jira, Google Calendar, Outlook). The caller builds a fresh Request for every attempt (so a refreshed token is used); transient
 - `lifeos/platform/router.py`: The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: independent modules with one of three outcomes, and strict ownership of Daily Report regions.
@@ -466,3 +467,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
 - D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
 - D191: The Fit admission floor is 72 in every lane (2026-10-13, Jim)
+- D192: A verified live tick of `main` is recorded as a GitHub production deployment, so Jira shows the release (2026-10-13, Jim)
