@@ -1,0 +1,31 @@
+name: pr-tests
+# Secret-free pull request check: the same unit-test command as the `prep` job of hourly.yml, on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
+# the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 45 seconds, a failure at 60 seconds (hang guard: timeout-minutes).
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-pr-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true                  # a newer push to the same PR replaces its older check; it shares no group with any tick or manual run
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python
+      - name: Test-only dependency (PyYAML, for the workflow contract tests)
+        run: pip install pyyaml
+      - name: Unit tests (warn at 45 s, fail at 60 s)
+        run: |
+          start=$(date +%s)
+          status=0
+          python -m unittest discover -s tests -t . || status=$?
+          elapsed=$(( $(date +%s) - start ))
+          echo "unit tests: exit ${status}, ${elapsed} s" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          if [ "$elapsed" -ge 60 ]; then echo "::error::The unit-test suite took ${elapsed} s; the limit is 60 s"; exit 1; fi
+          if [ "$elapsed" -ge 45 ]; then echo "::warning::The unit-test suite took ${elapsed} s; the warning level is 45 s"; fi
