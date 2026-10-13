@@ -4,7 +4,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
 ## OpenClaw / Oracle edge
-Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and `docs/MASTER_ROADMAP.md`.
+Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and `docs/MASTER_ROADMAP.md`. Its "Capability registry" section lists the named capabilities, their approval gates and how to invoke them (Oracle-local `openclaw agent`; off-host not yet approved).
 - OpenClaw is a bounded capability/control plane; V7/domain owners retain business rules, canonical persistence and scheduling.
 - Do not create a second scheduler or duplicate datastore around OpenClaw.
 - Secret values do not belong in this repository or Notion; use the approved central secrets service/runtime references.
@@ -36,3 +36,4 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 
 ## Reporting
 Counts only. Say what you could not verify (real data, live runs). One PR per task; do not merge.
+
