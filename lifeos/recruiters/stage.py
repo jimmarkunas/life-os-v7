@@ -83,6 +83,9 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     if degraded:
         print("recruiters:", json.dumps(counts, sort_keys=True))        # counts only: so a degraded run still says what it saw
         raise store.RecruitersError("RECRUITERS_DEGRADED_SOURCE_INCOMPLETE")
+    if live and counts["failed"]:                                     # a write or its read-back failed: not a success, whatever the other rows did (stage-local: D182's publish-only exit is untouched)
+        print("recruiters:", json.dumps(counts, sort_keys=True))
+        raise store.RecruitersError("RECRUITERS_RECORDS_FAILED")
     return counts
 
 

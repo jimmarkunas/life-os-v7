@@ -125,6 +125,15 @@ def signed(**kw):
     return mail(body=SIGNED, **kw)
 
 
+def failed_run(call):
+    """A live stage that counted a failed write or read-back raises the fixed code after printing its counts; -> the printed counts."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), unittest.TestCase().assertRaises(store.RecruitersError) as caught:
+        call()
+    assert str(caught.exception) == "RECRUITERS_RECORDS_FAILED", caught.exception
+    return json.loads(out.getvalue().split("recruiters:", 1)[1].strip().splitlines()[0])
+
+
 class StageTests(unittest.TestCase):
     def test_dry_run_writes_nothing_and_counts_only(self):
         notion = FakeRecruiters()
@@ -185,7 +194,7 @@ class StageTests(unittest.TestCase):
 
     def test_a_create_without_authoritative_read_back_is_a_failure(self):
         notion = FakeRecruiters(drop_writes=True)
-        counts = run([signed()], notion, live=True)
+        counts = failed_run(lambda: run([signed()], notion, live=True))
         self.assertEqual((counts["created"], counts["failed"]), (0, 1))
 
     def test_a_notion_query_failure_creates_nothing(self):
@@ -413,7 +422,7 @@ class EnrichmentTests(unittest.TestCase):
 
     def test_a_write_that_does_not_read_back_is_a_failure_and_changes_no_state(self):
         notion = FakeRecruiters([page("Riley Sample", pid="p", url=self.SRC)], drop_writes=True)
-        counts = run([opportunity()], notion, live=True)
+        counts = failed_run(lambda: run([opportunity()], notion, live=True))
         self.assertEqual((counts["updated"], counts["failed"]), (0, 1))
 
 
@@ -461,7 +470,7 @@ class QuarantineTests(unittest.TestCase):
 
     def test_a_quarantine_that_does_not_read_back_is_a_failure(self):
         notion = FakeRecruiters([self.row(pid="mark")], drop_writes=True)
-        counts = stage.run(0, True, environ={}, gmail=ReadOnlyGmail([notification()]), outlook_accounts=[], notion=notion, now=NOW, quarantine_sources=(self.URL,))
+        counts = failed_run(lambda: stage.run(0, True, environ={}, gmail=ReadOnlyGmail([notification()]), outlook_accounts=[], notion=notion, now=NOW, quarantine_sources=(self.URL,)))
         self.assertEqual((counts["quarantined"], counts["failed"]), (0, 1))
 
     def test_an_unverified_notification_creates_nothing_and_is_counted_with_its_code(self):
@@ -470,6 +479,62 @@ class QuarantineTests(unittest.TestCase):
         self.assertEqual((counts["unresolved"], counts["human_relay"], counts["created"], notion.writes, notion.pages), (1, 0, 0, [], []))
         self.assertEqual(counts["unresolved_why"], {"RELAY_RECRUITING_UNVERIFIED": 1})
         self.assertNotIn("Morgan", json.dumps(counts))
+
+
+class EntryPointTests(unittest.TestCase):
+    """The production composition: `python -m lifeos.run recruiters` -> STAGES -> stage.run, with only Gmail, Outlook and Notion faked. A failed live write or read-back exits 1 with a fixed code."""
+
+    def go(self, records, notion, live=True, source_failed=False):
+        from unittest import mock
+        from lifeos import run as entry
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in (mock.patch.object(stage.Gmail, "from_env", classmethod(lambda cls, *a, **k: ReadOnlyGmail(records))),
+                          mock.patch.object(platform_mail, "outlook_accounts", lambda environ: []), mock.patch.object(stage, "_client", lambda environ: notion),
+                          mock.patch.object(stage, "datetime", mock.Mock(now=lambda tz=None: NOW))):
+                stack.enter_context(patch)
+            if source_failed:
+                stack.enter_context(mock.patch.object(platform_mail, "gmail_records", mock.Mock(side_effect=platform_mail.MailError("MAIL_SOURCE"))))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            code = entry.main(["recruiters", "--limit", "0"] + (["--live"] if live else []))
+        line = out.getvalue().split("recruiters:", 1)
+        return code, (json.loads(line[1].strip().splitlines()[0]) if len(line) > 1 else None), err.getvalue()
+
+    def test_create_with_read_back_succeeds_and_a_replay_writes_nothing_more(self):
+        notion = FakeRecruiters()
+        code, counts, err = self.go([signed()], notion)
+        self.assertEqual((code, err, counts["created"], counts["failed"], len(notion.pages)), (0, "", 1, 0, 1))
+        code, counts, err = self.go([signed()], notion)
+        self.assertEqual((code, err, counts["created"], counts["existing"], counts["failed"], len(notion.writes)), (0, "", 0, 1, 0, 1))
+
+    def test_a_create_that_does_not_read_back_exits_1_with_a_fixed_code_and_truthful_counts(self):
+        notion = FakeRecruiters(drop_writes=True)
+        code, counts, err = self.go([signed()], notion)
+        self.assertEqual((code, err), (1, "RECRUITERS FAILED: RECRUITERS_RECORDS_FAILED\n"))
+        self.assertEqual((counts["created"], counts["failed"], counts["would_create"], len(notion.pages)), (0, 1, 1, 0))      # nothing is reported created; the failure is counted
+        self.assertNotIn("Pat", json.dumps(counts) + err)
+
+    def test_an_update_that_does_not_read_back_exits_1_too(self):
+        notion = FakeRecruiters([page("Pat Example", "Acme Staffing", role="Data Engineer", last="2026-10-06T15:00:00+00:00", what="wants a call", review=False)], drop_writes=True)
+        code, counts, err = self.go([signed(received="2026-10-08T09:00:00+00:00")], notion)
+        self.assertEqual((code, err, counts["updated"], counts["failed"]), (1, "RECRUITERS FAILED: RECRUITERS_RECORDS_FAILED\n", 0, 1))
+
+    def test_an_incomplete_source_stays_fail_closed_and_writes_nothing(self):
+        notion = FakeRecruiters()
+        code, counts, err = self.go([signed()], notion, source_failed=True)
+        self.assertEqual((code, err, len(notion.writes)), (1, "RECRUITERS FAILED: RECRUITERS_DEGRADED_SOURCE_INCOMPLETE\n", 0))
+        self.assertEqual((counts["sources_failed"], counts["notion"]), (1, "not_written_degraded"))
+
+    def test_a_dry_run_writes_nothing_and_never_fails_on_a_write(self):
+        notion = FakeRecruiters(drop_writes=True)
+        code, counts, err = self.go([signed()], notion, live=False)
+        self.assertEqual((code, err, counts["would_create"], counts["failed"], notion.writes), (0, "", 1, 0, []))
+
+    def test_a_linkedin_digest_with_no_recruiting_evidence_creates_no_row_and_succeeds(self):
+        notion = FakeRecruiters()
+        code, counts, err = self.go([notification()], notion)
+        self.assertEqual((code, err, len(notion.pages), counts["unresolved_why"]), (0, "", 0, {"RELAY_RECRUITING_UNVERIFIED": 1}))
 
 
 class ContractTests(unittest.TestCase):
