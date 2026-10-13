@@ -208,5 +208,91 @@ class RunTests(unittest.TestCase):
         self.assertEqual(mail.WINDOW_DAYS, 14)                                           # the Recruiters scan's own window is unchanged
 
 
+class EntryPointTests(unittest.TestCase):
+    """D190 through the production entry point `lifeos.run.main(["hiring-outcomes", ...])` -> STAGES -> outcomes.run -> the shared snapshot store (real SQL against an in-memory table);
+    only Gmail, Outlook and the database connection are faked."""
+
+    PIPELINE = {"schema": 1, "taken_at": NOW.isoformat(), "accepted_at": NOW.isoformat(), "rows": RunTests.PRIOR["rows"]}
+
+    class Tables:
+        def __init__(self, mismatch=False):
+            self.rows, self.statements, self.mismatch = {}, [], mismatch
+
+        def handler(self, sql, args, cur):
+            self.statements.append(sql.split()[0])
+            if sql.startswith("INSERT INTO"):
+                self.rows[(sql.split()[2], args[0])] = args[-1]
+            elif sql.startswith("SHOW TABLES"):
+                cur.row = (args[0],) if any(k[0] == args[0] for k in self.rows) else None
+            elif sql.startswith("SELECT payload"):
+                table = sql.split("FROM")[1].split()[0]
+                got = self.rows.get((table, args[0]))
+                cur.row = ((got.replace("REJECTED", "OFFER") if self.mismatch and table == "v7_hiring_outcomes" else got),) if got else None
+
+    def go(self, records=(), live=True, broken=False, tables=None, accounts=None, prior=True):
+        import contextlib
+        import io
+        from lifeos import run as entry
+        from lifeos.platform import db
+        from tests.kit.db import FakeConn
+        tables = tables or self.Tables()
+        if prior:
+            tables.rows.setdefault(("v7_hiring_pipeline", 1), json.dumps(self.PIPELINE))
+        conn, fake, out, err = FakeConn(handler=tables.handler), FakeGmail(list(records), broken), io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(db, "connect", lambda: conn))
+            stack.enter_context(mock.patch.object(outcomes.Gmail, "from_env", classmethod(lambda cls, *a, **k: fake)))
+            stack.enter_context(mock.patch.object(mail, "outlook_accounts", lambda environ: accounts or []))
+            stack.enter_context(mock.patch.object(outcomes, "datetime", mock.Mock(now=lambda tz=None: NOW, fromisoformat=datetime.fromisoformat)))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            code = entry.main(["hiring-outcomes", "--limit", "0"] + (["--live"] if live else []))
+        line = [l for l in out.getvalue().splitlines() if l.startswith("hiring-outcomes:")]
+        return code, (json.loads(line[0].split(":", 1)[1]) if line else None), err.getvalue().strip(), fake, tables, conn
+
+    REC = [msg(subject="Your Walmart application", body=REJECTION, days_ago=3)]
+
+    def test_a_live_scan_stores_the_outcome_with_read_back_and_a_second_scan_within_12_hours_reads_no_mail(self):
+        code, counts, err, _, tables, conn = self.go(self.REC)
+        self.assertEqual((code, err, counts["status"], counts["saved"], counts["rejected"]), (0, "", "fresh", 1, 1))
+        stored = json.loads(tables.rows[("v7_hiring_outcomes", 1)])
+        self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["kind", "match", "received"])            # bounded evidence only: no company, sender, subject or text
+        code, counts, err, fake, tables, _ = self.go(self.REC, tables=tables)
+        self.assertEqual((code, counts["status"], counts["saved"], fake.queries), (0, "not_due", 0, []))
+
+    def test_a_dry_run_makes_zero_writes_and_creates_no_table(self):
+        code, counts, err, _, tables, _ = self.go(self.REC, live=False)
+        self.assertEqual((code, counts["matched"], counts["saved"]), (0, 1, 0))
+        self.assertNotIn(("v7_hiring_outcomes", 1), tables.rows)
+        self.assertNotIn("INSERT", tables.statements)
+        self.assertNotIn("CREATE", tables.statements)
+
+    def test_an_incomplete_gmail_or_outlook_scan_fails_closed_and_keeps_the_last_accepted_outcomes(self):
+        seeded = self.Tables()
+        seeded.rows[("v7_hiring_outcomes", 1)] = json.dumps({"schema": 1, "taken_at": NOW.isoformat(), "scanned_at": (NOW - timedelta(hours=30)).isoformat(), "outcomes": {WALMART["key"]: {"kind": "REJECTED", "received": NOW.isoformat(), "match": "role"}}})
+        before = seeded.rows[("v7_hiring_outcomes", 1)]
+        for kwargs in ({"broken": True}, {"accounts": [("work", None)]}, {"accounts": [("work", BrokenOutlook())]}):
+            code, counts, err, _, tables, _ = self.go(self.REC, tables=seeded, **kwargs)
+            self.assertEqual((code, counts["status"], counts["saved"], err), (1, "degraded", 0, "HIRING-OUTCOMES FAILED: OUTCOMES_DEGRADED_SOURCE_INCOMPLETE"), kwargs)
+            self.assertEqual(tables.rows[("v7_hiring_outcomes", 1)], before)
+
+    def test_a_snapshot_write_that_does_not_read_back_cannot_report_success(self):
+        code, counts, err, _, tables, _ = self.go(self.REC, tables=self.Tables(mismatch=True))
+        self.assertEqual(code, 1)
+        self.assertIsNone(counts)                                                    # no counts line claims a save
+        self.assertEqual(err, "HIRING-OUTCOMES FAILED: OUTCOMES_READBACK_MISMATCH")
+
+    def test_the_stage_has_no_notion_or_ledger_write_path_and_never_names_the_applied_property(self):
+        import pathlib
+        text = (pathlib.Path(outcomes.__file__)).read_text()
+        for banned in ("Client(", "query_data_source", "update_page", ".call(", "PATCH", "\"Applied\"", "'Applied'"):
+            self.assertNotIn(banned, text, banned)
+
+
+class BrokenOutlook:
+    def __getattr__(self, name):
+        raise mail.MailError("MAIL_OUTLOOK_LISTING_INCOMPLETE")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import json
 import pathlib
 import re
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 from zoneinfo import ZoneInfo
 
@@ -678,6 +678,50 @@ def subprocess_diff_hourly():
         return subprocess.run(["git", "-C", str(ROOT), "diff", base, "--", ".github/workflows/hourly.yml"], capture_output=True, text=True).stdout
     except OSError:
         return ""
+
+
+class OutcomeConsumerTests(unittest.TestCase):
+    """D190 end of the chain: what the outcome-mail stage stored reaches the Hiring Pipeline region as a tentative line, with every other block, the Applied state and the Ledger untouched."""
+    KEY = "acme|manager|program|senior"
+    FOUND = {KEY: {"kind": "REJECTED", "received": (NOW - timedelta(days=1)).astimezone(timezone.utc).isoformat(), "match": "role"}}
+
+    def go(self, loader, parents=PARENTS):
+        t, store = page(extra_rows=0), FakeStore()
+        with mock.patch.object(stage.outcome_mail, "load", loader):
+            counts = run(t, store, parents=parents)
+        return t, store, counts
+
+    def test_stored_outcome_mail_is_shown_as_a_line_to_confirm_and_only_the_pinned_region_blocks_are_written(self):
+        t, store, counts = self.go(lambda conn: (self.FOUND, "2026-10-06T00:00:00+00:00"))
+        self.assertEqual((counts["mail_outcomes"], counts["status"]), (1, "fresh"))
+        action = table_state(t)[0][2][0]
+        self.assertEqual(action, "Rejection email Oct 5 · confirm, then move the Notes page to Retired")
+        self.assertEqual(len(table_state(t)), 1)                                                   # still listed: V7 closes nothing
+        self.assertEqual({entry[1].split("/")[2] for entry in writes(t)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"})
+        self.assertEqual(R.plain(t.blocks["cal-p"]), "9:00 AM standup")                           # the neighbouring card is untouched
+
+    def test_a_role_without_a_notes_page_keeps_applied_as_history(self):
+        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, None), parents=[])
+        action = table_state(t)[0][2][0]
+        self.assertEqual(action, "Possible rejection email Oct 5 · confirm (Applied stays as history)")
+
+    def test_the_ledger_is_only_ever_read_and_the_applied_state_is_never_written(self):
+        class ReadOnlyLedger(FakeLedger):
+            def __getattr__(self, name):
+                raise AssertionError(f"ledger write attempted: {name}")
+        t, store = page(extra_rows=0), FakeStore()
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, None)), mock.patch.object(snapshot, "STORE", store), \
+                mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (list(PARENTS), "ok")):
+            stage.run(0, True, RUN_ENV, ledger_client=ReadOnlyLedger([("Acme", "Senior Program Manager", "2026-10-02")]), pipeline_client=object(), calendar=FakeCalendar([]),
+                      connection=object(), client=t, now=NOW)
+        self.assertEqual([e for e in t.log if "Applied" in json.dumps(e)], [])
+
+    def test_unavailable_outcome_mail_never_stops_the_pipeline_or_invents_an_outcome(self):
+        def broken(conn):
+            raise RuntimeError("store down")
+        t, store, counts = self.go(broken)
+        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "fresh"))
+        self.assertNotIn("email", table_state(t)[0][2][0].lower())
 
 
 class GuardrailTests(unittest.TestCase):
