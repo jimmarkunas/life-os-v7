@@ -236,6 +236,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/recruiters/
 - `lifeos/recruiters/classify.py`: Three explicit source shapes, decided from the normalized mail record alone (D54: no language model).
 - `lifeos/recruiters/identity.py`: Deterministic identity for a recruiter contact: name cleaning, normalized natural key, Monday-to-Sunday week. No fuzzy matching, no guessing.
+- `lifeos/recruiters/intent.py`: 'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (D54: no language model, D193).
 - `lifeos/recruiters/notion.py`: The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
 - `lifeos/recruiters/qualify.py`: Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 - `lifeos/recruiters/stage.py`: RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
@@ -468,6 +469,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D185: JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
 - D186: JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
 - D191: The Fit admission floor is 72 in every lane (2026-10-13, Jim)
+- D193: Recruiters: a LinkedIn notification needs recruiting evidence, and a recruiter's company, role and request are read from fixed patterns (2026-10-12, Jim)
 - D188: The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
 - D189: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
 - D190: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)

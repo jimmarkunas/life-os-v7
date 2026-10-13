@@ -188,6 +188,7 @@ This index is checked by a test: add a line here with every new decision.
 - D185 — JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
 - D186 — JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
 - D191 — The Fit admission floor is 72 in every lane (2026-10-13, Jim)
+- D193 — Recruiters: a LinkedIn notification needs recruiting evidence, and a recruiter's company, role and request are read from fixed patterns (2026-10-12, Jim)
 - D188 — The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
 - D189 — A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
 - D190 — Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)
