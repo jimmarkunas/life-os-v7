@@ -275,7 +275,8 @@
    "lifeos/jobs/safety.py": "SAFE-1.1: two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes only.",
    "lifeos/jobs/sponsors.py": "UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?",
    "lifeos/jobs/store.py": "Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db.",
-   "lifeos/jobs/tombstone.py": "Suppression tombstones (machine state only): after a canonical job is retired, keep the minimum identity for 90 days so the same stale or reposted vacancy is not immediat"
+   "lifeos/jobs/tombstone.py": "Suppression tombstones (machine state only): after a canonical job is retired, keep the minimum identity for 90 days so the same stale or reposted vacancy is not immediat",
+   "lifeos/jobs/working_audit.py": "JOBS-1.1A one-time audit (Jim-approved queries A-C): counts-only, read-only SELECTs on the Jobs working store. Writes nothing; prints no company, title, link or text."
   },
   "megibow": {
    "lifeos/megibow/card.py": "The MegIBOW block writer (D134). Writes only inside the one machine-owned callout whose id is MEGIBOW_BLOCK_ID: the callout's own text (status line, warnings) and the cel",
@@ -411,6 +412,7 @@
   "jira-rollover-scheduled": "lifeos.jira.rollover:run",
   "jira-rollover-watch": "lifeos.jira.watch:run",
   "jira-snapshot": "lifeos.jira.snapshot:run",
+  "jobs-working-audit": "lifeos.jobs.working_audit:run",
   "mail-alerts": "lifeos.physmail.stage:run",
   "mail-card": "lifeos.physmail.card:run",
   "megibow": "lifeos.sources.megibow:run",
