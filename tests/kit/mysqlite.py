@@ -38,6 +38,10 @@ class Cursor:
         self.conn.maybe_fail(sql)
         self.cur.executemany(translate(sql), [tuple(r) for r in rows])
 
+    @property
+    def rowcount(self):
+        return self.cur.rowcount
+
     def fetchone(self):
         return self.cur.fetchone()
 
