@@ -143,6 +143,5 @@ def run_fit_golden(limit, live, environ=os.environ, rows=None, golden=None, toda
     counts = {"saved": len(expected), "checked": len(now), "missing": len(expected) - len(now), "same": len(now) - len(changed), "changed": len(changed),
               "changed_ids": changed[:20], "flips": sorted({f"{expected[i][0]}/{expected[i][1]}->{now[i][0]}/{now[i][1]}" for i in changed})}
     if changed:
-        raise SafetyError(f"FIT_GOLDEN_CHANGED:{len(changed)}of{len(now)}:" + ",".join(counts["flips"][:6])
-                          + ":ids=" + ",".join(f"{i}:{expected[i][0]}/{expected[i][1]}->{now[i][0]}/{now[i][1]}" for i in changed))   # TEMPORARY (PR #250): numeric ids + fixed codes only; removed before merge
+        raise SafetyError(f"FIT_GOLDEN_CHANGED:{len(changed)}of{len(now)}:" + ",".join(counts["flips"][:6]))
     return counts
