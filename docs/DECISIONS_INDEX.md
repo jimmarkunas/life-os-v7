@@ -188,3 +188,4 @@ This index is checked by a test: add a line here with every new decision.
 - D185 — JOBS-1.1A: a worthwhile HOLD job gets one bounded recovery attempt, and a failed one is surfaced once (2026-10-13, Jim)
 - D186 — JOBS-1.1A: publish serves the strongest actionable READY jobs first, with a reserved share for the oldest (2026-10-13, Jim)
 - D191 — The Fit admission floor is 72 in every lane (2026-10-13, Jim)
+- D192 — A runtime release is recorded as a GitHub production deployment, so Jira shows it (2026-10-13, Jim)

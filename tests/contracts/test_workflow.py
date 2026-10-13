@@ -222,6 +222,59 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
 
+class ReleaseReportingWorkflow(unittest.TestCase):
+    """The GitHub deployment record is the hourly report job's last two steps: it cannot be reached by PR CI, a manual run or a routine tick, cannot fail the run, and changed no other hourly command."""
+    root = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+    BEFORE = "5a110f69cfc781f8"          # the digest of every hourly `run` command before the release steps existed
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = {p.stem: yaml.safe_load(p.read_text()) for p in cls.root.glob("*.yml")}
+        cls.steps = cls.doc["hourly"]["jobs"]["report"]["steps"]
+        cls.step = [s for s in cls.steps if "lifeos.platform.release" in s.get("run", "")][0]
+        cls.alert = [s for s in cls.steps if "release reporting DEGRADED" in s.get("run", "")][0]
+
+    def test_only_the_hourly_report_job_may_write_deployments_and_nothing_declares_an_environment(self):
+        for name, doc in self.doc.items():
+            self.assertNotIn("deployments", doc.get("permissions") or {}, name)
+            for job, body in doc["jobs"].items():
+                self.assertNotIn("environment", body, (name, job))             # a job-level environment would label a routine run a deployment
+                self.assertEqual("deployments" in (body.get("permissions") or {}), (name, job) == ("hourly", "report"), (name, job))
+        self.assertEqual(self.doc["hourly"]["jobs"]["report"]["permissions"], {"contents": "read", "deployments": "write"})
+        self.assertEqual(self.doc["hourly"]["permissions"], {"contents": "read"})
+
+    def test_the_release_step_holds_no_secret_never_fails_the_run_and_runs_only_after_the_lane_check_passed(self):
+        self.assertEqual(self.steps[-2:], [self.step, self.alert])
+        self.assertEqual((self.step["id"], self.step["continue-on-error"]), ("release", True))
+        self.assertNotIn("if", self.step)                                       # default success(): the lane step exits 1 on a failed lane, which skips this step
+        self.assertEqual(self.step["run"], "python3 -m lifeos.platform.release")
+        self.assertEqual(set(self.step["env"]), {"GITHUB_TOKEN", "RELEASE_PUBLISH", "RELEASE_TICK", "RELEASE_LIVE", "RELEASE_FAILED", "RELEASE_JOBS"})
+
+    def test_the_step_is_given_the_tick_live_stage_and_every_job_result_as_evidence(self):
+        env = self.step["env"]
+        self.assertEqual(env["RELEASE_TICK"], "${{ github.event_name == 'schedule' || inputs.tick }}")
+        self.assertEqual(env["RELEASE_LIVE"], "${{ env.LIVE }}")
+        self.assertEqual(env["RELEASE_FAILED"], "${{ needs.finish.outputs.failed }}")
+        self.assertEqual(env["RELEASE_PUBLISH"], "${{ vars.V7_DEPLOY_REPORTING }}")          # off until Jim sets the repo variable
+        self.assertEqual(sorted(re.findall(r"(\w+)=\$\{\{ needs\.(\w+)\.result", env["RELEASE_JOBS"])), sorted((j, j) for j in self.doc["hourly"]["jobs"]["report"]["needs"]))
+        self.assertNotIn("interview", env["RELEASE_JOBS"])                       # the Interview job and the domain jobs are not part of the evidence (see release.py)
+
+    def test_a_failed_release_report_is_made_visible_by_the_existing_phone_alert_without_failing_the_run(self):
+        self.assertEqual(self.alert["if"], "${{ steps.release.outcome == 'failure' }}")      # outcome, not conclusion: continue-on-error turns the conclusion green
+        self.assertIs(self.alert["continue-on-error"], True)
+        self.assertEqual(self.alert["env"], {"NTFY_TOPIC": "${{ steps.bws_report.outputs.NTFY_TOPIC }}"})
+        self.assertIn("lifeos.platform.alerts push --severity info", self.alert["run"])
+        self.assertIn("::warning title=Release reporting DEGRADED", self.alert["run"])
+
+    def test_every_other_hourly_command_is_byte_for_byte_what_it_was(self):
+        runs = [s["run"] for j in self.doc["hourly"]["jobs"].values() for s in j["steps"] if "run" in s and s is not self.step and s is not self.alert]
+        self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], self.BEFORE)
+
+    def test_pull_request_ci_cannot_write_a_deployment(self):
+        self.assertEqual(self.doc["pr-tests"]["permissions"], {"contents": "read"})
+        self.assertNotIn("release", pathlib.Path(self.root, "pr-tests.yml").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -382,7 +435,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="5a110f69cfc781f8"),
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="1a65c31800ed2f17"),      # was 5a110f69cfc781f8 before the two release steps (pinned separately in ReleaseReportingWorkflow)
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -540,6 +593,7 @@ CONSUMER_STEPS = {
         },
         "report": {
             'Resolver lanes and the finish job report here (the run fails if any lane failed)': {"NTFY_TOPIC"},
+            'Release reporting DEGRADED (GitHub Deployments failed; the tick itself is unaffected, so this only pushes the phone)': {"NTFY_TOPIC"},
         },
     },
     "network": {
