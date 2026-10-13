@@ -146,6 +146,28 @@ def existing_v7_tables(connection):
 WIDEN = (("v7_jobs", "location_text", 2000),)
 
 
+def _column_present(cursor, table, column):
+    cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                   "AND table_name = %s AND column_name = %s", (table, column))
+    return bool(cursor.fetchone()[0])
+
+
+def _key_present(cursor, table, key):
+    cursor.execute("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() "
+                   "AND table_name = %s AND index_name = %s", (table, key))
+    return bool(cursor.fetchone()[0])
+
+
+def _alter(cursor, statement, present):
+    """Run one additive ALTER. A parallel lane that added the same column or key first (MySQL 1060 / 1061) is not a failure, but only
+    when `present()` then confirms the column or key exists; anything else, or a collision that leaves it missing, is raised."""
+    try:
+        cursor.execute(statement)
+    except Exception as error:                                            # pymysql's OperationalError: the server code is its first argument
+        if not (error.args and error.args[0] in (1060, 1061) and present()):
+            raise
+
+
 def ensure_schema(connection):
     before = existing_v7_tables(connection)
     with connection.cursor() as cursor:
@@ -153,12 +175,10 @@ def ensure_schema(connection):
             cursor.execute(statement)
     with connection.cursor() as cursor:
         for table, column, ddl, index in COLUMNS:
-            cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
-                           "AND table_name = %s AND column_name = %s", (table, column))
-            if not cursor.fetchone()[0]:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+            if not _column_present(cursor, table, column):
+                _alter(cursor, f"ALTER TABLE {table} ADD COLUMN {column} {ddl}", lambda: _column_present(cursor, table, column))
                 if index:
-                    cursor.execute(f"ALTER TABLE {table} {index}")
+                    _alter(cursor, f"ALTER TABLE {table} {index}", lambda: _key_present(cursor, table, index.split()[2]))
     with connection.cursor() as cursor:                                   # D104: a column that was created too narrow is widened once
         for table, column, width in WIDEN:
             cursor.execute("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() "
