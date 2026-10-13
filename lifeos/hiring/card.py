@@ -1,7 +1,8 @@
 """Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 
-HIRING_CARD_BLOCK_ID, HIRING_STATUS_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the existing heading_3, status paragraph and table; all three must match the live shape. The writer may change only the status paragraph and the table rows under it; the heading is immutable. Before a live
-write the whole page outside those two blocks is digested; after it the region is re-read and the digest must be identical. Any mismatch, any wrong shape, any ambiguity
+HIRING_CARD_BLOCK_ID, HIRING_STATUS_BLOCK_ID and HIRING_TABLE_BLOCK_ID name the existing heading_3, status paragraph and table; all three must match the live shape. The writer may change only the heading's
+update stamp (D188: `📈 Hiring Pipeline (Updated 2:00 PM CT)`, the way Calendar and Jira carry theirs; the title, the block and its place never change), the status paragraph and the table rows under it. Before a live
+write the whole page outside those three blocks is digested; after it the region is re-read and the digest must be identical. Any mismatch, any wrong shape, any ambiguity
 raises: nothing is created, moved or guessed. Fixed codes only."""
 import json
 import re
@@ -55,9 +56,9 @@ def validate(client, environ):
         raise fail("WRONG_PAGE")
     if [R.cells_of(region["rows"][0])] != [list(M.HEADERS)]:
         raise fail("HEADERS_CHANGED")
-    own = [region["status"]["id"], region["table"]["id"]]
+    own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
     digest = _step("DIGEST", lambda: R.page_digest(client, region["page_id"], own, fail, SKIP))
-    if digest["h3"].get(M.TITLE) != 1:
+    if any(R.titled(text, M.TITLE) for text in digest["h3"]):         # the owned heading is outside the digest: any other heading with the title is a second region
         raise fail("HEADING_NOT_UNIQUE")
     try:
         router.check_write(MODULE, [M.TITLE])
@@ -72,24 +73,29 @@ def present(client, environ, text, cells, live):
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
     if not live:
         return counts
-    own = [region["status"]["id"], region["table"]["id"]]
+    own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
+    stamp, paragraph = M.split_status(text)
+    heading = M.heading_text(stamp)
     try:
-        counts.update(R.write_floating(client, region, text, cells, fail))
+        counts.update(R.write_floating(client, region, paragraph, cells, fail))
+        if R.plain(region["heading"]).strip() != heading:
+            client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
     except Exception:
         try:                                                     # a half-written table must not look current: say so, best effort
-            client.call("PATCH", f"/blocks/{region['status']['id']}", {"paragraph": {"rich_text": [{"type": "text", "text": {"content": "DEGRADED · Hiring Pipeline update failed · the table may be incomplete"}}]}})
+            client.call("PATCH", f"/blocks/{region['status']['id']}", {"paragraph": {"rich_text": [{"type": "text", "text": {"content": "Hiring Pipeline update failed · the table may be incomplete"}}]}})
+            client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": M.heading_text("DEGRADED")}}]}})
         except Exception:
             pass
         raise fail("WRITE_FAILED") from None
     after_region = R.floating_region(client, region["heading"]["id"], M.TITLE, fail)                       # authoritative read-back
     after = R.page_digest(client, after_region["page_id"], own, fail, SKIP)
-    if before["nodes"].get(region["heading"]["id"]) != after["nodes"].get(region["heading"]["id"]):
-        raise fail("HEADING_CHANGED")
+    if after_region["heading"]["id"] != region["heading"]["id"] or R.plain(after_region["heading"]).strip() != heading:
+        raise fail("HEADING_CHANGED")                               # same block, same place, exactly the title and the stamp this run wrote
     if before["nodes"] != after["nodes"] or before["layout"] != after["layout"]:
         print("hiring: protected content changed", json.dumps(R.page_changed(before, after)))
         raise fail("PROTECTED_REGION_CHANGED")
     rows = after_region["rows"]
-    if R.plain(after_region["status"]) != text or [R.cells_of(r) for r in rows[:1]] != [list(M.HEADERS)]:
+    if R.plain(after_region["status"]) != paragraph or [R.cells_of(r) for r in rows[:1]] != [list(M.HEADERS)]:
         raise fail("READBACK_MISMATCH")
     if cells is not None:
         got = [(R.cells_of(r), [x[0] if x else None for x in R._links_of(r)]) for r in rows[1:]]

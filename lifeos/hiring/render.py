@@ -46,13 +46,23 @@ def row_cells(row, now):
         past, label = when(row["event_start"], now)
         kind = KIND_LABEL.get(row["event_kind"], "interview")
         if past:
-            update, action = f"{kind.capitalize()} held {label}", f"Awaiting outcome of the {kind} held {label}"
+            days = (local(now).date() - local(row["event_start"]).date()).days
+            update, action = f"{kind.capitalize()} held {label}", (f"No news in {days} days · follow up?" if days >= M.AWAIT_DAYS else f"Awaiting outcome of the {kind} held {label}")
         else:
             update, action = f"{kind.capitalize()} {label}", f"Prepare for the {kind} · {label}"
     elif row.get("rounds"):
         update, action = f"{row['rounds']} round(s) logged in Notes", "Awaiting next step"
     else:
-        update, action = (f"Applied {local(row['applied_on']).strftime('%b %-d')}" if row.get("applied_on") else "Application submitted"), "Awaiting response"
+        waited = (local(now).date() - local(row["applied_on"]).date()).days if row.get("applied_on") else 0
+        update, action = (f"Applied {local(row['applied_on']).strftime('%b %-d')}" if row.get("applied_on") else "Application submitted"), (f"No response in {waited} days · follow up?" if waited >= M.AWAIT_DAYS else "Awaiting response")
+    outcome = row.get("outcome")
+    if outcome:                                                      # D190: outcome mail says what to do; V7 never closes anything itself
+        sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
+        if outcome["kind"] == "OFFER":
+            action = f"{'Offer' if sure else 'Possible offer'} email {day} · review and respond"
+        else:
+            where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"   # never advise unticking Applied: it is the application record
+            action = f"{'Rejection' if sure else 'Possible rejection'} email {day} · {where}"
     if row.get("carried"):
         update += " (last accepted)"
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
