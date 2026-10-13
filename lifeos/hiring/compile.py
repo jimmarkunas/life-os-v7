@@ -2,7 +2,7 @@
 
 Inputs (all already read and checked complete by the source adapter):
   applied  [{"company", "role", "applied_on": iso date or None}]          canonical Job Ledger Applied rows
-  parents  [{"id", "company", "role", "rounds"}]                          ACTIVE Hiring Pipeline opportunity pages (read only)
+  parents  [{"id", "company", "role", "rounds", "retired"?}]              Hiring Pipeline opportunity pages (read only); a retired one closes the matching pursuit (D186)
   events   [{"id", "title", "start": iso with offset}]                    accepted Calendar events in the window
   prior    the stored snapshot (or None)
   ok       {"ledger": bool, "parents": bool, "calendar": bool}            which sources were read completely this run
@@ -98,13 +98,17 @@ def _key(company, role):
 
 
 def compile_rows(applied, parents, events, prior, ok, now):
-    reasons, out = set(), {"unsupported": 0, "unmatched_events": 0, "untitled_pages": 0}
+    reasons, out = set(), {"unsupported": 0, "unmatched_events": 0, "untitled_pages": 0, "closed": 0}
     if not ok["ledger"] or not ok["parents"]:                     # the two sources that decide WHO is in the pipeline: without both, only safe prior state may show
         reasons.add("LEDGER_UNAVAILABLE" if not ok["ledger"] else "OPPORTUNITIES_UNAVAILABLE")
         rows = [dict(r, carried=True) for r in prior["rows"]] if prior and prior.get("rows") else None
         return {**out, "rows": rows, "reasons": sorted(reasons)}
     prior_rows = {r["key"]: r for r in (prior or {}).get("rows", [])}
-    opps = _opportunities(applied, parents, reasons, out)
+    opps = _opportunities(applied, [p for p in parents if not p.get("retired")], reasons, out)
+    for page in (p for p in parents if p.get("retired")):         # D186: a page under Retired Opportunities closes that pursuit, unless an Active page for the same company and role says it is live again
+        for opp in opps:
+            if opp["parent_state"] == "none" and M.same(opp["company"], opp["role"], page["company"], page["role"]):
+                opp["closed"] = True
     if ok["calendar"]:
         for event in events:
             kind = event_kind(event["title"])
@@ -121,6 +125,9 @@ def compile_rows(applied, parents, events, prior, ok, now):
         reasons.add("CALENDAR_UNAVAILABLE")
     rows = []
     for opp in opps:
+        if opp.get("closed"):
+            out["closed"] += 1
+            continue
         key = _key(opp["company"], opp["role"])
         before = prior_rows.get(key) or {}
         row = {"key": key, "company": opp["company"], "role": opp["role"], "applied_on": opp["applied_on"], "parent": opp["parent"], "parent_state": opp["parent_state"],

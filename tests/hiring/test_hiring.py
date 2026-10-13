@@ -221,6 +221,46 @@ def table_state(tree, table="0000000000000000000000000000a003"):
     return out
 
 
+class LifecycleTests(unittest.TestCase):
+    """D186: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
+    def retired(self, page_id, company, role):
+        return {**parent(page_id, company, role, 1), "retired": True}
+
+    def test_a_retired_page_closes_the_pursuit_it_names_and_only_that_one(self):
+        got = compile_([applied("Walmart", "Senior Manager"), applied("Walmart", "Director"), applied("Acme", "PM")],
+                       [self.retired("r1", "Walmart", "Senior Manager")])
+        self.assertEqual(sorted((r["company"], r["role"]) for r in got["rows"]), [("Acme", "PM"), ("Walmart", "Director")])
+        self.assertEqual(got["closed"], 1)
+
+    def test_an_active_page_for_the_same_role_means_it_is_live_again_and_wins(self):
+        got = compile_([applied("Walmart", "Senior Manager")], [self.retired("r1", "Walmart", "Senior Manager"), parent("a1", "Walmart", "Senior Manager", 1)])
+        self.assertEqual([(r["company"], r["stage"]) for r in got["rows"]], [("Walmart", "Interviewing")])
+        self.assertEqual(got["closed"], 0)
+
+    def test_a_retired_page_with_no_matching_opportunity_changes_nothing(self):
+        got = compile_([applied("Acme", "PM")], [self.retired("r1", "Old", "Role")])
+        self.assertEqual((len(got["rows"]), got["closed"]), (1, 0))
+
+    def test_a_retired_notes_only_pursuit_with_a_calendar_event_is_closed_and_the_event_is_not_unmatched(self):
+        got = compile_([], [self.retired("r1", "Walmart", "Senior Manager")], events=[{"id": "e1", "title": "Interview - Walmart", "start": at(-20)}])
+        self.assertEqual(got["rows"] or [], [])
+
+    def test_waiting_on_an_outcome_says_so_after_fourteen_days_and_not_before(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-13), "parent": None, "parent_state": "none", "rounds": 0}
+        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held " + (NOW - timedelta(days=13)).strftime("%b %-d"))
+        row["event_start"] = at(-14)
+        self.assertEqual(cells(row)[2], "No news in 14 days · follow up?")
+        row["event_start"] = at(-30)
+        self.assertEqual(cells(row)[2], "No news in 30 days · follow up?")
+        self.assertTrue(cells(row)[1].startswith("Interviewing · Interview held"))            # the stage and the date it happened are unchanged
+
+    def test_a_submitted_role_waiting_fourteen_days_asks_for_a_follow_up(self):
+        row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=13)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
+        self.assertEqual(cells(row)[2], "Awaiting response")
+        row["applied_on"] = (NOW - timedelta(days=14)).date().isoformat()
+        self.assertEqual(cells(row)[2], "No response in 14 days · follow up?")
+
+
 class RegionWriterTests(unittest.TestCase):
     def test_the_exact_heading_status_table_shape_is_written_in_place_and_read_back(self):
         t = page(extra_rows=1)
@@ -533,6 +573,14 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(store.row))["rows"], store.row["rows"])
         self.assertEqual(store.row["accepted_at"], NOW.isoformat())
 
+    def test_a_retired_page_drops_the_row_from_the_region_and_is_counted(self):
+        t, store = page(extra_rows=1), FakeStore()
+        retired = [hiring_pipeline.Opportunity("r", "Acme - Senior Program Manager", hiring_pipeline.RETIRED, 1, "Acme", "Senior Program Manager")]
+        counts = run(t, store, parents=retired)
+        self.assertEqual((counts["closed"], counts["retired_pages"], counts["opportunities"], counts["rows"]), (1, 1, 0, 0))
+        self.assertEqual(table_state(t), [])
+        self.assertIn("no submitted or interviewing", R.plain(t.blocks["0000000000000000000000000000a002"]))
+
     def test_a_failed_snapshot_save_stops_before_the_page_is_touched(self):
         t = page(extra_rows=1)
         with self.assertRaises(snapshot.HiringError) as error:
@@ -582,7 +630,7 @@ class RuntimePathTests(unittest.TestCase):
                 stage.read_parents(object(), "root")
         retired = [hiring_pipeline.Opportunity("r", "Old - Role", hiring_pipeline.RETIRED, 1, "Old", "Role")]
         with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (retired + PARENTS, "ok")):
-            self.assertEqual([p["company"] for p in stage.read_parents(object(), "root")], ["Acme"])
+            self.assertEqual([(p["company"], p["retired"]) for p in stage.read_parents(object(), "root")], [("Old", True), ("Acme", False)])
 
 
 def subprocess_diff_hourly():

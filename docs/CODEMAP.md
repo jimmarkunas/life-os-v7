@@ -462,3 +462,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D182: A publish run that failed a page exits 1, so a partial failure is no longer a green stage (2026-10-12, Jim)
 - D183: V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184: A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
+- D186: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)

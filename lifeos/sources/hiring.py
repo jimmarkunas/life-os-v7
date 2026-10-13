@@ -51,11 +51,11 @@ def read_applied(client, stats=None):
 
 
 def read_parents(client, root_id):
-    """ACTIVE opportunity pages (read only) -> [{"id", "company", "role", "rounds"}]. Retired pages are not read as closed: that is an open product question."""
+    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D186: a page under Retired Opportunities means that pursuit is closed."""
     found, status = hiring_pipeline.snapshot(client, root_id)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
-    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds} for o in found if o.section == hiring_pipeline.ACTIVE]
+    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
 
 
 def read_events(calendar, now):
@@ -103,7 +103,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         prior = snapshot.load(conn)
         result = C.compile_rows(applied, parents, events, prior, ok, now)
         text, cells, counts = render.render(result, prior, now)
-        counts.update({"applied": len(applied), "opportunities": len(parents), "events": len(events), "unsupported": result["unsupported"],
+        counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         new = snapshot.build(result, prior, now)
         if live and new is not None:
