@@ -48,7 +48,9 @@ def _text_of(client, block_id, kind, region):
         return report_region.plain({"type": "callout", "callout": meta.get("callout") or {}}).strip(), []
     if kind == "floating":
         found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail)
-        return report_region.plain(found["status"]).strip(), []
+        heading, status = report_region.plain(found["heading"]).strip(), report_region.plain(found["status"]).strip()
+        stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""        # D188: the update time lives in the heading, as Calendar's does
+        return (f"{stamp} · {status}" if stamp and status else stamp or status), []
     kids = report_region.children(client, report_region.clean_id(block_id), _fail)
     texts = [report_region.plain(b).strip() for b in kids if b.get("type") not in ("table", "child_database", "child_page", "link_to_page")]
     texts = [t for t in texts if t]
