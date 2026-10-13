@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from lifeos.jobs import store
+from lifeos.jobs import hold, store
 from lifeos.platform import alerts
 
 EXPIRIES = Path(__file__).with_name("expiries.json")
@@ -29,6 +29,9 @@ def detect(counts, now, expiries=None):
     if counts.get("stuck_jobs", 0) >= STUCK_JOBS:
         out.append(alerts.Alert("stuck_jobs", alerts.INFO, "Jobs stuck before publish", f"{counts['stuck_jobs']} job(s) waiting over 24 hours.",
                                 "check enrich and fit counts in the latest run"))
+    if counts.get("unresolved_terminal", 0) > 0:                                  # D185: worthwhile jobs that stayed unresolved after their one recovery attempt
+        out.append(alerts.Alert("unresolved_terminal", alerts.INFO, "Jobs ended unresolved after recovery", f"{counts['unresolved_terminal']} worthwhile job(s) stayed unresolved after one recovery attempt in 24 hours.",
+                                "run fit-review for the company, or check the resolver counts for that source"))
     for name, per_day in counts.get("stopped_sources", []):
         out.append(alerts.Alert(f"source_stopped_{name}", alerts.PAGE, f"Job source stopped: {name}",
                                 f"No new jobs in {STOP_WINDOW_HOURS} hours; it normally brings about {per_day:g} a day.",
@@ -50,6 +53,8 @@ def gather(connection, now):
         failing = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status IN ('READY','RESOLVED') AND updated_at < %s", (cutoff,))
         stuck = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='EXCLUDED_UNRESOLVED' AND unresolved_reason=%s AND updated_at > %s", (hold.FAILED_RECOVERY, cutoff))
+        unresolved = cursor.fetchone()[0]
         window = now - dt.timedelta(hours=STOP_WINDOW_HOURS)
         start = window - dt.timedelta(days=STOP_BASELINE_DAYS)
         cursor.execute("SELECT source, SUM(first_seen > %s), SUM(first_seen <= %s) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source",
@@ -61,7 +66,7 @@ def gather(connection, now):
         healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}    # D178: the Open Jobs feed whose last run read it without error is idle, not stopped (a failed read stores DEGRADED, and that still pages)
         stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
                    if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy]
-    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "stopped_sources": sorted(stopped)}
+    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped)}
 
 
 def load_state(connection):
