@@ -9,7 +9,7 @@ Inputs (all already read and checked complete by the source adapter):
 
 Output: {"rows": [...] | None, "reasons": [fixed codes], "unsupported": n, "unmatched_events": n}. rows None means UNAVAILABLE (nothing safe to show); any reason means the presentation is DEGRADED.
 A row stores structure (stage, event kind and start, parent state), never display text, so a past event can never keep an "upcoming" label."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from lifeos.platform import names
 from . import models as M
@@ -93,11 +93,16 @@ def _opportunities(applied, parents, reasons, out):
     return opps
 
 
+def _moment(value):
+    moment = datetime.fromisoformat(value if "T" in value else value + "T00:00:00-05:00")
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def _key(company, role):
     return "|".join(_tokens(company)) + "|" + "|".join(sorted(_tokens(role)))
 
 
-def compile_rows(applied, parents, events, prior, ok, now):
+def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
     reasons, out = set(), {"unsupported": 0, "unmatched_events": 0, "untitled_pages": 0, "closed": 0}
     if not ok["ledger"] or not ok["parents"]:                     # the two sources that decide WHO is in the pipeline: without both, only safe prior state may show
         reasons.add("LEDGER_UNAVAILABLE" if not ok["ledger"] else "OPPORTUNITIES_UNAVAILABLE")
@@ -146,6 +151,11 @@ def compile_rows(applied, parents, events, prior, ok, now):
             row["stage"] = M.INTERVIEWING
         elif opp["ledger"]:
             row["stage"] = M.SUBMITTED
+        hit = (outcomes or {}).get(key)
+        if hit and row["stage"] is not None:                      # D187: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
+            last = row["event_start"] or row["applied_on"]
+            if last is None or datetime.fromisoformat(hit["received"]) > _moment(last):
+                row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company")}
         if row["stage"] is None:                                  # a notes page with no round and no event: nothing supports a stage, so nothing is claimed
             out["unsupported"] += 1
             continue

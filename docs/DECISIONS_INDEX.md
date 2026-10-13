@@ -186,3 +186,4 @@ This index is checked by a test: add a line here with every new decision.
 - D183 — V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184 — A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
 - D186 — A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
+- D187 — Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)

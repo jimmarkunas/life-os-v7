@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, render, snapshot
+from lifeos.hiring import card, compile as C, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db
 from lifeos.platform.gcal import GoogleCalendar
@@ -101,9 +101,13 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         conn = connection if connection is not None else stack.enter_context(db.connect())
         snapshot.STORE.ensure(conn)
         prior = snapshot.load(conn)
-        result = C.compile_rows(applied, parents, events, prior, ok, now)
+        try:
+            heard, _ = outcome_mail.load(conn)                        # D187: what the mail scan last found; unavailable never stops the pipeline
+        except Exception:                                             # noqa: BLE001
+            heard = {}
+        result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard)
         text, cells, counts = render.render(result, prior, now)
-        counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
+        counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         new = snapshot.build(result, prior, now)
         if live and new is not None:

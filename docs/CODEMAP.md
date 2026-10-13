@@ -30,6 +30,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `fit-review` -> `lifeos.jobs.review:run`
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `hiring` -> `lifeos.sources.hiring:run`
+- `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
@@ -105,6 +106,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
 - `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
+- `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D187): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 - `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
 ### lifeos/interview/
@@ -463,3 +465,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D183: V7 writes a dated line under the Daily Report's title (2026-10-12, Jim)
 - D184: A calendar event's location that is a web address shows as a small link (2026-10-12, Jim)
 - D186: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
+- D187: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)

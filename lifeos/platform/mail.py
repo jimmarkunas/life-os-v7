@@ -32,9 +32,9 @@ def _markers(headers, address):
             "noreply": bool(NOREPLY.search(address.split("@")[0] if address else ""))}
 
 
-def gmail_records(gmail, now, limit=MAX_MESSAGES):
-    """Gmail Inbox and Spam, last WINDOW_DAYS days. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
-    query = f"{{in:inbox in:spam}} newer_than:{WINDOW_DAYS}d"
+def gmail_records(gmail, now, limit=MAX_MESSAGES, days=WINDOW_DAYS, terms=""):
+    """Gmail Inbox and Spam, last `days` days (default WINDOW_DAYS), optionally only messages matching Gmail search `terms`. Returns (records, unreadable). A listing that cannot be proven complete raises MailError."""
+    query = f"{{in:inbox in:spam}} newer_than:{days}d" + (f" {terms}" if terms else "")
     try:
         ids = gmail.list_ids_complete(query, limit, include_spam=True)
     except GmailError:
@@ -54,9 +54,9 @@ def gmail_records(gmail, now, limit=MAX_MESSAGES):
     return out, unreadable
 
 
-def outlook_records(client, account, now, limit=MAX_MESSAGES):
-    """Outlook Inbox and Junk Email of one account, last WINDOW_DAYS days. Returns (records, unreadable). An incomplete listing raises MailError."""
-    since = (now - timedelta(days=WINDOW_DAYS)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def outlook_records(client, account, now, limit=MAX_MESSAGES, days=WINDOW_DAYS):
+    """Outlook Inbox and Junk Email of one account, last `days` days (default WINDOW_DAYS). Returns (records, unreadable). An incomplete listing raises MailError."""
+    since = (now - timedelta(days=days)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out, unreadable = [], 0
     for folder, label in (("inbox", "INBOX"), ("junkemail", "JUNK")):
         try:
