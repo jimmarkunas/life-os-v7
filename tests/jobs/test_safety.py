@@ -80,6 +80,7 @@ class FitGoldenTests(unittest.TestCase):
         with self.assertRaises(safety.SafetyError) as caught:
             self.run_with({"1": ["No-Go", "EXCLUDE"], "2": ["No-Go", "EXCLUDE"]})
         self.assertIn("FIT_GOLDEN_CHANGED:1of2:Go/ADMIT->No-Go/EXCLUDE", str(caught.exception))
+        self.assertIn(":ids=1:Go/ADMIT->No-Go/EXCLUDE", str(caught.exception))   # TEMPORARY (PR #250)
 
     def test_an_empty_saved_set_is_an_error_not_a_pass(self):
         with self.assertRaises(safety.SafetyError):
