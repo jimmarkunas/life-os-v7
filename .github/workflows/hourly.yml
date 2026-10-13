@@ -1127,7 +1127,8 @@ jobs:
             python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed${STAGES:+; stages: $STAGES}. Open the Actions tab."
             echo "FAILED LANES:$failed"; exit 1
           fi
-      - name: Record the verified production release with GitHub Deployments (Jira shows it; observe-only until repo variable V7_DEPLOY_REPORTING is true; never fails the run)
+      - id: release
+        name: Record a verified runtime release with GitHub Deployments (Jira shows it; observe-only until repo variable V7_DEPLOY_REPORTING is true; never fails the run)
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1137,3 +1138,11 @@ jobs:
           RELEASE_FAILED: ${{ needs.finish.outputs.failed }}
           RELEASE_JOBS: prep=${{ needs.prep.result }},jobright=${{ needs.jobright.result }},linkedin=${{ needs.linkedin.result }},lensa=${{ needs.lensa.result }},dice=${{ needs.dice.result }},finish=${{ needs.finish.result }}
         run: python3 -m lifeos.platform.release
+      - name: Release reporting DEGRADED (GitHub Deployments failed; the tick itself is unaffected, so this only pushes the phone)
+        if: ${{ steps.release.outcome == 'failure' }}
+        continue-on-error: true
+        env:
+          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
+        run: |
+          echo "::warning title=Release reporting DEGRADED::the GitHub Deployments record failed; production ran normally"
+          python3 -m lifeos.platform.alerts push --severity info --title "V7 release reporting DEGRADED" --body "GitHub Deployments reporting failed on this tick; the pipeline ran normally. Open the run."
