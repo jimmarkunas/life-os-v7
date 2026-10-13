@@ -87,8 +87,8 @@
    "EXCLUDE"
   ],
   "5086": [
-   "Go",
-   "ADMIT"
+   "No-Go",
+   "REVIEW"
   ],
   "5831": [
    "No-Go",
@@ -99,7 +99,7 @@
    "EXCLUDE"
   ],
   "5871": [
-   "Go",
+   "No-Go",
    "EXCLUDE"
   ],
   "5884": [
@@ -115,11 +115,11 @@
    "EXCLUDE"
   ],
   "6755": [
-   "Go",
+   "No-Go",
    "REVIEW"
   ],
   "6760": [
-   "Go",
+   "No-Go",
    "REVIEW"
   ],
   "6773": [
@@ -187,7 +187,7 @@
    "EXCLUDE"
   ],
   "10540": [
-   "Go",
+   "No-Go",
    "EXCLUDE"
   ],
   "10566": [

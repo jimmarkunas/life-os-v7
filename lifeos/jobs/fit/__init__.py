@@ -4,4 +4,5 @@ The engine here is generic and public. Everything personal (evidence, correction
 is injected at run time as a profile (profile.py) and never committed (D16).
 """
 MODEL_VERSION = "6"
-GO_THRESHOLD = 68
+UNIVERSAL_FIT_FLOOR = 72                  # Jim-approved admission floor for every lane (Jobs OS canon); lanes.py and the Go / No-Go bar both read this one value
+GO_THRESHOLD = UNIVERSAL_FIT_FLOOR
