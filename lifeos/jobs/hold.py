@@ -17,6 +17,7 @@ RECOVER_PER_RUN = 25
 EXCLUDED = "EXCLUDED_UNRESOLVED"
 REASON = "hold_expired"
 FAILED_RECOVERY = "unresolved_after_recovery"      # the alert counts this reason
+RESOLVED_BY = ("jobright", "lensa", "linkedin-alerts", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
 
 
 def worthwhile(lane, posted, first_seen, reason, now):
@@ -29,9 +30,9 @@ def worthwhile(lane, posted, first_seen, reason, now):
 
 def recover(cursor, now, live):
     """Requeue the worthwhile HOLD jobs of day 6, once each (a dry run only counts). -> (candidates, requeued)."""
-    cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL AND source_url IS NOT NULL "
+    cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL AND source_url IS NOT NULL "
                    "AND updated_at < %s AND updated_at >= %s ORDER BY updated_at, id", (now - timedelta(days=RECOVER_DAYS), now - timedelta(days=HOLD_DAYS)))
-    picked = [row[0] for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now)]
+    picked = [row[0] for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now) and (row[5] or row[6] in RESOLVED_BY)]
     requeued = 0
     for job_id in picked[:RECOVER_PER_RUN] if live else ():
         cursor.execute("UPDATE v7_jobs SET status=CASE WHEN final_apply_url IS NULL THEN 'NEW' ELSE 'RESOLVED' END, unresolved_reason='recovery_retry', recovered_at=%s, updated_at=%s, "

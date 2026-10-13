@@ -134,11 +134,23 @@ class RecoveryTests(unittest.TestCase):
         self.db.job(3, days_held=5)                                                # not yet day 6
         self.db.job(4, days_held=8)                                                # already past the seven days: excluded exactly as before
         self.db.job(5, lane="Nowhere")                                             # an unknown lane is not worthwhile
+        self.db.job(7, source="web:su-example")                                    # no link and no resolve stage reads this source: a NEW job would wait for nothing, so it is not requeued
         out = self.go()
         self.assertEqual(out["recovered"], 0)
-        self.assertEqual([self.db.row(i)[0] for i in (1, 2, 3, 4, 5)], ["HOLD", "HOLD", "HOLD", "EXCLUDED_UNRESOLVED", "HOLD"])
+        self.assertEqual([self.db.row(i)[0] for i in (1, 2, 3, 4, 5, 7)], ["HOLD", "HOLD", "HOLD", "EXCLUDED_UNRESOLVED", "HOLD", "HOLD"])
         self.assertEqual(self.db.row(4)[1], "hold_expired")
         self.assertIsNone(self.db.row(1)[5])
+
+    def test_a_job_with_a_link_is_recovered_whatever_its_source_and_every_resolved_source_has_a_resolve_stage(self):
+        self.db.job(1, source="web:su-example", link=LINK, reason="jd_thin")      # the page was unreadable: Enrich reads every RESOLVED job, whatever its source
+        self.assertEqual(self.go()["recovered"], 1)
+        self.assertEqual(self.db.row(1)[0], "RESOLVED")
+        import inspect
+        from lifeos import run
+        from lifeos.jobs.resolve.aggregators import dice
+        stages = inspect.getsource(run) + inspect.getsource(dice)
+        for source in hold.RESOLVED_BY:                                           # the guard names exactly the sources whose NEW jobs a resolve stage reads
+            self.assertIn(f'"{source}"', stages)
 
     def test_recovery_is_bounded_per_run(self):
         for job_id in range(1, hold.RECOVER_PER_RUN + 6):

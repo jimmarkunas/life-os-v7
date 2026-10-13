@@ -64,3 +64,6 @@ Active / Retired Opportunities hold one page per pursuit ("Company - Role"), an 
 only on a deterministic company AND role match to an ACTIVE opportunity (`Handoff`: state HIRING_ACTIVE / INTERVIEW_ACTIVE, page-id evidence).
 No match proves nothing, so this source can protect a pursuit but never unprotect one; Applied jobs stay UNKNOWN and are never retired. When the page
 is configured but unreadable, retention retires nothing. When it is not configured, retention behaves as before and reports `handoff: not_configured`.
+
+## Publication order (D186)
+Which READY jobs publish is unchanged: with the gate on only ADMIT and REVIEW decisions (EXCLUDE never), and in shadow mode (gate off) every READY job with a JD and no page, including one whose stored decision is EXCLUDE. Only the order changes when more are ready than one run publishes: ADMIT before REVIEW, then higher Fit, then the newer Posting Date, then First Surfaced and id, with one place in four reserved for the oldest waiting jobs. A missing score or date never lifts a job.
