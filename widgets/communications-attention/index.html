@@ -57,10 +57,10 @@
     // PUBLIC DESIGN DEMO ONLY. No fetch(), real identifiers, credentials, data endpoint or outbound network calls.
     // Future real data must use a separately proven authenticated private origin, not GitHub Pages.
     const CHANNELS=[
-      {id:'messages',name:'Messages',icon:'▤',unread_count:5,count_reliable:true,latest_contact:'Sample Contact A',health:'CURRENT',connection_state:'CONNECTED'},
-      {id:'telegram',name:'Telegram',icon:'➤',unread_count:3,count_reliable:true,latest_contact:'Sample Contact B',health:'CURRENT',connection_state:'CONNECTED',web_url:'https://web.telegram.org/'}, 
-      {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'DISCONNECTED',connection_state:'ISSUE',web_url:'https://web.whatsapp.com/'}, 
-      {id:'discord',name:'Discord',icon:'◉',unread_count:0,count_reliable:true,latest_contact:'Sample Contact C',health:'CURRENT',connection_state:'CONNECTED',web_url:'https://discord.com/channels/@me'}
+      {id:'messages',name:'Messages',icon:'▤',unread_count:5,count_reliable:true,latest_contact:'Sample Contact A',health:'CURRENT',connection_state:'CONNECTED',native_url:'messages://'},
+      {id:'telegram',name:'Telegram',icon:'➤',unread_count:3,count_reliable:true,latest_contact:'Sample Contact B',health:'CURRENT',connection_state:'CONNECTED',native_url:'tg://'}, 
+      {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'DISCONNECTED',connection_state:'ISSUE',native_url:'whatsapp://'}, 
+      {id:'discord',name:'Discord',icon:'◉',unread_count:0,count_reliable:true,latest_contact:'Sample Contact C',health:'CURRENT',connection_state:'CONNECTED',native_url:'discord://'}
     ];
     function el(tag,cls,value){const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e}
     let refreshCount=0;
@@ -72,22 +72,19 @@
         const row=el('div','channel'),left=el('div','channel-name');
         left.append(el('span','ch-icon '+source.id,source.icon));
         const label=source.name+' ('+count+')';
-        let action;
-        if(source.web_url){
-          action=el('a','name-link',label);
-          action.href=source.web_url;
-          action.target='_blank';
-          action.rel='noopener noreferrer';
-          action.title='Official '+source.name+' web fallback; native Mac launch not yet verified';
-          action.setAttribute('aria-label','Open '+source.name+' in a new browser tab');
-        }else{
-          action=el('button','name-link',label);
-          action.type='button';
-          action.title='Native Messages launch from this Notion embed is not yet verified';
-          action.addEventListener('click',()=>{
-            document.getElementById('status').textContent='Messages: open Messages.app from your Mac Dock. A reliable Notion launch link is not verified.';
-          });
-        }
+        // All four schemes are registered with macOS on Jim's Mac (verified Oct 14).
+        // A genuine user-clicked anchor permits a browser to request native app launch;
+        // Notion iframe permissions and the OS prompt still require real-client proof.
+        const action=el('a','name-link',label);
+        action.href=source.native_url;
+        action.target='_blank';
+        action.rel='noopener noreferrer';
+        action.title='Open installed '+source.name+' Mac app (browser permission may be required)';
+        action.setAttribute('aria-label','Open installed '+source.name+' Mac app');
+        action.addEventListener('click',()=>{
+          document.getElementById('status').textContent=
+            source.name+': native app launch requested. If Notion or macOS blocks it, open '+source.name+' from your Mac Dock.';
+        });
         const actionGroup=el('span','channel-action');
         actionGroup.append(action);
         // Connection health is independently declared; never infer 'connected' from an unread count.
@@ -110,7 +107,7 @@
       if(isRefresh)refreshCount++;
       const now=new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
       document.getElementById('stamp').textContent=(isRefresh?'Preview refreshed ':'Preview loaded ')+now+(isRefresh?' · #'+refreshCount:'');
-      document.getElementById('status').textContent='SYNTHETIC DEMO · '+(isRefresh?'Refreshed; sample values are unchanged':'No live data source connected')+' · Native Mac app launching unverified';
+      document.getElementById('status').textContent='SYNTHETIC DEMO · '+(isRefresh?'Refreshed; sample values are unchanged':'No live data source connected')+' · Notion-to-Mac launch needs real-client confirmation';
     }
     document.getElementById('refresh').addEventListener('click',()=>draw(true));
     draw();
