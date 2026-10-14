@@ -355,7 +355,7 @@ UUIDS = {
     "NTFY_TOPIC": "83c553e9-23a6-45aa-9006-b4db015f00ac",
     "OPEN_JOBS_CONTACT": "7b62e076-8a46-4228-9977-b4db015f0463",
     "TINYFISH_API_KEY": "f45f29e2-acbc-4be7-9749-b4db015f0817",
-    "TAILSCALE_OAUTH_CLIENT_ID": "5368e61c-82c9-43f7-833d-b4e3005159b9",        # COMM-1.4b (LIFE-31 comment 10138): record ids only, never values
+    "TAILSCALE_OAUTH_CLIENT_ID": "454e12df-637f-4f65-9ec1-b4e30052942f",        # COMM-1.4b (LIFE-31 comments 10138, 10139): record ids only, never values
     "TAILSCALE_OAUTH_CLIENT_SECRET": "e54f0a84-84c3-47d8-8b5b-b4e30052d6e9",
     "IMESSAGE_ALERTS_HOST": "6590208b-506d-4238-ab10-b4e30051b25f",
 }
