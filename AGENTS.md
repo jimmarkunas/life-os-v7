@@ -4,8 +4,8 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
 ## Development entrypoint (all authorized coding agents)
-- Read the canonical [LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), especially **Jira-first development lifecycle**, before changing LIFE OS development work. This guide is subordinate to that policy.
-- Start from the exact current Jira `LIFE` issue and linked `LOS` product idea if applicable. Without Jira access, require the authorized Tech Lead's freshly verified issue handoff. Notion owns detailed requirements; the frozen `docs/MASTER_ROADMAP.md` does **not** own live status or build order.
+- Read the canonical [LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), especially **Deterministic agent work selection** and **Jira-first development lifecycle**. This guide is subordinate to that policy.
+- When an authorized coding session starts/resumes or an accepted package closes, **self-resume or self-pull** the next eligible `LIFE` issue from live Jira under the approved lane, dependency, rank, ownership and permission gates; read linked `LOS` context only if relevant. Do not wait for ChatGPT to choose a ticket. If Jira access or queue readiness is missing, return `QUEUE_NOT_READY` with the exact gap; a Tech Lead's fresh handoff can authorize only a specified one-off package, not autonomous pull. Historical `docs/MASTER_ROADMAP.md` never selects next work.
 - Respect the policy's single-writer, permission, proof and Jim-approval gates. GitHub PR/CI success never marks LIFE Done automatically; an agent entrypoint grants no extra Jira or OpenClaw permissions.
 
 ## OpenClaw / Oracle edge
