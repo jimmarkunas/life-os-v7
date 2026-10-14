@@ -214,8 +214,8 @@
    "lifeos/hiring/snapshot.py": "The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back)."
   },
   "imessage": {
-   "lifeos/imessage/attention_mcp.py": "COMM-1.4: the one read-only iMessage attention tool, served over MCP stdio on the Mac Mini through the signed launchd helper in `mac/` (local proof only).",
-   "lifeos/imessage/openclaw_imessage.py": "COMM-1.4: Luna's one iMessage command on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly `openclaw-imessage attention`."
+   "lifeos/imessage/attention_mcp.py": "COMM-1.4: the read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the one process with Full Disk Access).",
+   "lifeos/imessage/openclaw_imessage.py": "COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:"
   },
   "interview": {
    "lifeos/interview/acceptance.py": "Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.",
