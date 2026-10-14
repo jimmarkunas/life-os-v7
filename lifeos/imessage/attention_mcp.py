@@ -1,4 +1,4 @@
-"""COMM-1.4: the one read-only iMessage attention tool, served over MCP stdio on the Mac Mini (candidate; not deployed until Jim approves the helper boundary).
+"""COMM-1.4: the one read-only iMessage attention tool, served over MCP stdio on the Mac Mini through the signed launchd helper in `mac/` (local proof only).
 
 Runs on the Mac with the system /usr/bin/python3 (3.9, stdlib only). One tool, no arguments: no caller-controlled path, query, command or flag exists. It opens
 the local Messages database read-only and selects one aggregate, COUNT(*): no text, handle, chat or GUID column is ever read, returned, logged or stored.
@@ -89,6 +89,7 @@ def handle(msg, snap=snapshot):
 
 
 def main():
+    sys.stdin.reconfigure(errors="replace")                            # undecodable bytes from a socket client are a refused line, never a crash
     for line in sys.stdin:
         try:
             msg = json.loads(line)

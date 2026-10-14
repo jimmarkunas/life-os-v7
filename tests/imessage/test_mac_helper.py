@@ -1,0 +1,114 @@
+import hashlib
+import json
+import os
+import pathlib
+import plistlib
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+MAC = ROOT / "lifeos/imessage/mac"
+INSTALL = (MAC / "install.sh").read_text()
+LAUNCHER = (MAC / "launcher.c").read_text()
+TOOL = ROOT / "lifeos/imessage/attention_mcp.py"
+
+
+def var(name):
+    return re.search(r'^%s="([^"]*)"' % name, INSTALL, re.M).group(1)
+
+
+class Installer(unittest.TestCase):
+    def test_pinned_hashes_match_the_reviewed_sources(self):
+        for name, path in (("SHA_TOOL", TOOL), ("SHA_LAUNCHER", MAC / "launcher.c"), ("SHA_PLIST", MAC / "ai.lifeos.imessage-attention.plist")):
+            self.assertEqual(var(name), hashlib.sha256(path.read_bytes()).hexdigest(), name + " is stale: re-pin install.sh")
+
+    def test_only_local_read_only_mechanics(self):
+        for banned in (r"\bssh\b", r"\btailscale\b", r"openclaw\.json", r"\bopenclaw (config|nodes|approvals|gateway)\b", r"\btccutil\b", r"system\.run", r"\bnc\b", r"\bsocat\b", r"launchctl\s+load",
+                       r"^\s*curl\b[^\n]* -(d|X|T|F|-data\S*|-upload-file)\b"):
+            self.assertIsNone(re.search(banned, INSTALL, re.M), banned)
+        for line in INSTALL.splitlines():
+            if "/usr/bin/sqlite3 " in line:
+                self.assertIn("-readonly", line)
+
+    def test_paths_agree_across_installer_launcher_and_agent(self):
+        agent = plistlib.loads((MAC / "ai.lifeos.imessage-attention.plist").read_bytes())
+        directory = var("DIR")
+        self.assertEqual(agent["Program"], directory + "/lifeos-imessage-attention")
+        self.assertEqual(agent["Label"], var("LABEL"))
+        self.assertIn('#define TOOL "%s/attention_mcp.py"' % directory, LAUNCHER)
+
+
+class LaunchAgent(unittest.TestCase):
+    def test_on_demand_owner_only_unix_socket_and_nothing_else(self):
+        agent = plistlib.loads((MAC / "ai.lifeos.imessage-attention.plist").read_bytes())
+        self.assertEqual(set(agent), {"Label", "Program", "ProgramArguments", "inetdCompatibility", "Sockets", "ProcessType"})
+        self.assertEqual(agent["ProgramArguments"], [agent["Program"]])
+        self.assertEqual(agent["inetdCompatibility"], {"Wait": False})
+        self.assertEqual(agent["Sockets"], {"Listener": {"SockType": "stream", "SockFamily": "Unix", "SockPathName": "__SOCKET__", "SockPathMode": 0o600}})
+
+
+class Launcher(unittest.TestCase):
+    def test_takes_no_caller_input_and_runs_one_fixed_isolated_command(self):
+        self.assertIn("int main(void)", LAUNCHER)
+        self.assertNotIn("getenv", LAUNCHER)
+        self.assertNotRegex(LAUNCHER, r"\b(system|popen|execvp|execlp)\s*\(")
+        self.assertIn('char *argv[] = {"/usr/bin/python3", "-I", "-S", "-B", TOOL, NULL};', LAUNCHER)
+
+
+class SocketMode(unittest.TestCase):
+    def test_tool_serves_one_connection_as_launchd_hands_it_over(self):
+        parent, child = socket.socketpair()
+        env = dict(os.environ, HOME=tempfile.mkdtemp())
+        proc = subprocess.Popen([sys.executable, "-I", str(TOOL)], stdin=child, stdout=child, stderr=subprocess.PIPE, env=env)
+        child.close()
+        parent.sendall(b"\xff\xfe garbage\n" + json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "imessage_attention", "arguments": {}}}).encode() + b"\n")
+        parent.shutdown(socket.SHUT_WR)
+        data = b""
+        while True:
+            chunk = parent.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        parent.close()
+        self.assertEqual(proc.wait(timeout=10), 0)
+        self.assertEqual(proc.stderr.read(), b"")
+        proc.stderr.close()
+        (reply,) = [json.loads(x) for x in data.decode().splitlines()]
+        state = reply["result"]["structuredContent"]
+        self.assertEqual((state["health"], state["attention"], state["count"]), ("DISCONNECTED", "UNKNOWN", None))
+
+
+class InstallerProbe(unittest.TestCase):
+    """The installer's own client, run against a launchd-like server: one tool process per connection, the connection as its stdin/stdout."""
+
+    def test_probe_passes_every_check_against_the_real_tool_without_messages_access(self):
+        script = re.search(r"<<'PY'\n(.*?)\nPY\n", INSTALL, re.S).group(1)
+        home = tempfile.mkdtemp()
+        path = os.path.join(home, "s.sock")
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(path)
+        server.listen(4)
+        server.settimeout(10)
+        env = dict(os.environ, HOME=home)
+        probe = subprocess.Popen([sys.executable, "-I", "-", path, "pre"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        probe.stdin.write(script)
+        probe.stdin.close()
+        for _ in range(2):                                            # the probe opens exactly two connections
+            conn, _ = server.accept()
+            subprocess.run([sys.executable, "-I", str(TOOL)], stdin=conn, stdout=conn, env=env, timeout=10, check=True)
+            conn.close()
+        server.close()
+        out = json.loads(probe.stdout.read())
+        probe.stdout.close()
+        self.assertEqual(probe.wait(timeout=10), 0)
+        self.assertEqual(len(out["checks"]), 6)
+        self.assertEqual({status for _, status in out["checks"]}, {"PASS"}, out["checks"])
+        self.assertEqual((out["state"]["health"], out["state"]["attention"], out["state"]["count"]), ("DISCONNECTED", "UNKNOWN", None))
+
+
+if __name__ == "__main__":
+    unittest.main()
