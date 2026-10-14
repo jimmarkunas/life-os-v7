@@ -1,0 +1,192 @@
+<title>Hiring Decision Center</title>
+<style>
+/* Layout: one compact column (about 520px, the width of the Notion dashboard column): summary counts first, then what needs a decision, follow-ups, the active list, and a short closed history. Dark first; a light palette follows the system or the viewer's choice. */
+:root {
+  color-scheme: dark;
+  --bg: #11151b; --surface: #181e26; --raised: #1f2630; --line: #2b3441; --fg: #e7ebf0; --muted: #9aa6b5;
+  --accent: #7ba7ff; --accent-ink: #0c1626; --good: #5fcf9a; --warn: #f0b45a; --bad: #f2777a; --focus: #ffd479;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { color-scheme: light; --bg: #f4f6f9; --surface: #ffffff; --raised: #edf1f6; --line: #d5dce6; --fg: #17202c; --muted: #566274; --accent: #2457c5; --accent-ink: #ffffff; --good: #17794d; --warn: #8a5a00; --bad: #b3262c; --focus: #9a6700; }
+}
+:root[data-theme="light"] { color-scheme: light; --bg: #f4f6f9; --surface: #ffffff; --raised: #edf1f6; --line: #d5dce6; --fg: #17202c; --muted: #566274; --accent: #2457c5; --accent-ink: #ffffff; --good: #17794d; --warn: #8a5a00; --bad: #b3262c; --focus: #9a6700; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-inline: 16px; padding-block: 16px 28px; }
+.app { max-width: 520px; margin-inline: auto; display: grid; gap: 14px; }
+h1, h2 { margin: 0; text-wrap: balance; }
+h1 { font-size: 17px; font-weight: 650; }
+h2 { font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.stamp { font: 12px var(--mono); color: var(--muted); }
+.banner { font-size: 12px; color: var(--warn); border: 1px dashed var(--warn); border-radius: 6px; padding: 6px 10px; }
+.counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.count { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.count b { display: block; font: 600 20px var(--mono); font-variant-numeric: tabular-nums; }
+.count span { font-size: 11px; color: var(--muted); }
+.count.hot b { color: var(--warn); }
+section { display: grid; gap: 8px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.card.decide { border-left: 3px solid var(--warn); }
+.card.offer { border-left: 3px solid var(--good); }
+.card.closed { background: transparent; }
+.name { font-weight: 600; overflow-wrap: anywhere; }
+.line { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.evidence { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.pill { display: inline-block; font: 600 11px var(--mono); padding: 1px 7px; border-radius: 99px; background: var(--raised); color: var(--muted); }
+.pill.warn { color: var(--warn); } .pill.good { color: var(--good); } .pill.bad { color: var(--bad); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button { font: 600 13px var(--font); border-radius: 6px; border: 1px solid var(--line); background: var(--raised); color: var(--fg); padding: 6px 12px; cursor: pointer; min-height: 32px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:disabled { cursor: not-allowed; opacity: .55; }
+.later { font-size: 11px; color: var(--muted); }
+.confirm { display: grid; gap: 8px; background: var(--raised); border-radius: 6px; padding: 10px; }
+.confirm label { font-size: 12px; color: var(--muted); }
+.confirm input { font: 13px var(--font); width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.status { font-size: 12px; border-radius: 6px; padding: 6px 10px; }
+.status.pending { background: var(--raised); color: var(--muted); }
+.status.fail { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--bad); }
+.status.ok { background: color-mix(in srgb, var(--good) 14%, var(--surface)); color: var(--good); }
+.empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+.proto { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+.proto select { font: 12px var(--font); background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+@media (max-width: 400px) { .counts { grid-template-columns: repeat(2, 1fr); } }
+@media (prefers-reduced-motion: no-preference) { .card { transition: opacity .2s; } }
+</style>
+
+<main class="app">
+  <div class="top"><h1>Hiring Pipeline</h1><span class="stamp" id="stamp"></span></div>
+  <div class="banner">Prototype with invented data. Not connected to Notion, mail or the Job Ledger.</div>
+  <div class="counts" id="counts" aria-label="Decision counts"></div>
+
+  <section aria-labelledby="h-decide"><h2 id="h-decide">Needs your decision</h2><div id="decide" class="stack"></div></section>
+  <section aria-labelledby="h-follow"><h2 id="h-follow">Follow-ups due</h2><div id="follow" class="stack"></div></section>
+  <section aria-labelledby="h-active"><h2 id="h-active">Active opportunities</h2><div id="active" class="stack"></div></section>
+  <section aria-labelledby="h-closed"><h2 id="h-closed">Closed history</h2><div id="closed" class="stack"></div></section>
+
+  <div class="proto" role="group" aria-label="Prototype controls">
+    <label for="outcome">Next confirm will</label>
+    <select id="outcome"><option value="ok">succeed</option><option value="write">fail to write</option><option value="readback">fail the read-back</option></select>
+    <span>(demonstrates the three states; the real action is the verified Ledger write)</span>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var NOW = "Updated 2:00 PM CT";
+  var rows = [
+    { id: "fab-sm", company: "Fabrikam Retail", role: "Senior Manager, Operations", stage: "Interviewing", update: "Interview held Oct 1", state: "decide",
+      evidence: { kind: "Rejection email Oct 12", match: "role match", mail: "https://example.com/mail/1" }, notes: "https://example.com/notes/1", ledger: "https://example.com/ledger/1" },
+    { id: "fab-dd", company: "Fabrikam Retail", role: "Director, Delivery", stage: "Submitted", update: "Applied Oct 2", state: "waiting", notes: null, ledger: "https://example.com/ledger/2" },
+    { id: "con-pm", company: "Contoso Freight", role: "Program Manager", stage: "Interviewing", update: "Interview tomorrow 10:00 AM CT", state: "prepare", notes: "https://example.com/notes/3", ledger: "https://example.com/ledger/3" },
+    { id: "nor-tp", company: "Northwind Labs", role: "Technical Program Manager", stage: "Submitted", update: "Applied Sep 18", state: "follow", days: 26, notes: null, ledger: "https://example.com/ledger/4" },
+    { id: "tai-dl", company: "Tailspin Health", role: "Delivery Lead", stage: "Interviewing", update: "Interview held Oct 6", state: "offer",
+      evidence: { kind: "Possible offer email Oct 13", match: "company match", mail: "https://example.com/mail/5" }, notes: "https://example.com/notes/5", ledger: "https://example.com/ledger/5" }
+  ];
+  var closed = [{ company: "Adventure Works", role: "Project Manager", decision: "Rejected", when: "Oct 8", reason: "Employer rejection email confirmed", ledger: "https://example.com/ledger/6" }];
+  var busy = null, open = null, message = {};
+
+  function el(tag, attrs, kids) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) { if (k === "text") node.textContent = attrs[k]; else if (k === "class") node.className = attrs[k]; else node.setAttribute(k, attrs[k]); });
+    (kids || []).forEach(function (kid) { if (kid) node.appendChild(kid); });
+    return node;
+  }
+  function link(text, href) { return el("a", { href: href, target: "_blank", rel: "noopener noreferrer", text: text }); }
+  function title(r) { return el("div", { class: "name", text: r.company + " — " + r.role }); }
+  function evidence(r) {
+    var parts = [el("span", { class: "pill " + (r.state === "offer" ? "good" : "warn"), text: r.evidence.match })];
+    parts.push(link("Email", r.evidence.mail));
+    if (r.notes) parts.push(link("Notes", r.notes)); else parts.push(el("span", { text: "Needs Notes" }));
+    parts.push(link("Ledger row", r.ledger));
+    return el("div", { class: "evidence" }, parts);
+  }
+  function later(text) { return el("span", { class: "later", text: text }); }
+
+  function decideCard(r) {
+    if (r.state === "offer") {
+      return el("div", { class: "card offer" }, [title(r), el("div", { class: "line", text: r.evidence.kind + " · review and respond" }), evidence(r)]);
+    }
+    var card = el("div", { class: "card decide" }, [title(r), el("div", { class: "line", text: r.evidence.kind + " · " + r.stage + " · " + r.update }), evidence(r)]);
+    var msg = message[r.id];
+    if (open === r.id) {
+      var input = el("input", { id: "reason", type: "text", maxlength: "200", value: "Employer rejection email confirmed" });
+      var go = el("button", { class: "primary", type: "button", id: "go", text: "Confirm Rejected" });
+      var cancel = el("button", { type: "button", text: "Cancel" });
+      go.addEventListener("click", function () { submit(r, input.value); });
+      cancel.addEventListener("click", function () { open = null; render(); });
+      card.appendChild(el("div", { class: "confirm" }, [
+        el("div", { class: "line", text: "This records Rejected on the Job Ledger row for this exact company and role. Applied stays as history; Notes and interview pages are not touched." }),
+        el("label", { for: "reason", text: "Reason (kept in the decision history, 200 characters at most)" }), input,
+        el("div", { class: "actions" }, [go, cancel])]));
+    } else {
+      var start = el("button", { class: "primary", type: "button", text: "Confirm Rejected" });
+      start.addEventListener("click", function () { open = r.id; message[r.id] = null; render(); });
+      var pass = el("button", { type: "button", disabled: "disabled", text: "Pass on job" });
+      var dismiss = el("button", { type: "button", disabled: "disabled", text: "Not a rejection" });
+      card.appendChild(el("div", { class: "actions" }, [start, pass, dismiss, later("Pass and Not a rejection arrive in the next slice")]));
+    }
+    if (busy === r.id) card.appendChild(el("div", { class: "status pending", role: "status", text: "Writing the decision to the Job Ledger and reading it back. The pursuit stays listed until that is verified." }));
+    if (msg) card.appendChild(el("div", { class: "status fail", role: "alert", text: msg }));
+    return card;
+  }
+  function plain(r, extra) {
+    var kids = [title(r), el("div", { class: "line", text: r.stage + " · " + r.update })];
+    if (extra) kids.push(el("div", { class: "line", text: extra }));
+    var links = [];
+    links.push(r.notes ? link("Notes", r.notes) : el("span", { text: "Needs Notes" }));
+    links.push(link("Ledger row", r.ledger));
+    kids.push(el("div", { class: "evidence" }, links));
+    return el("div", { class: "card" }, kids);
+  }
+
+  function submit(r, reason) {
+    var why = String(reason || "").trim();
+    if (!why || why.length > 200) { message[r.id] = "Not recorded. Enter a reason of 1 to 200 characters."; render(); return; }
+    busy = r.id; message[r.id] = null; render();
+    setTimeout(function () {
+      var mode = document.getElementById("outcome").value;
+      busy = null;
+      if (mode !== "ok") {
+        message[r.id] = mode === "write" ? "Not recorded: the Job Ledger refused the write. Nothing changed and the pursuit is still active. You can retry." : "Not recorded: the saved row did not match what was written. The pursuit is still active. Check the Job Ledger row before retrying.";
+        render(); return;
+      }
+      rows = rows.filter(function (x) { return x.id !== r.id; });
+      closed.unshift({ company: r.company, role: r.role, decision: "Rejected", when: "today", reason: why, ledger: r.ledger, fresh: true });
+      open = null; render();
+      var status = document.getElementById("closed").querySelector(".status.ok");
+      if (status) status.focus && status.focus();
+    }, 1200);
+  }
+
+  function render() {
+    var decide = rows.filter(function (r) { return r.state === "decide" || r.state === "offer"; });
+    var follow = rows.filter(function (r) { return r.state === "follow"; });
+    var active = rows.filter(function (r) { return r.state !== "decide" && r.state !== "offer" && r.state !== "follow"; });
+    var counts = document.getElementById("counts"); counts.textContent = "";
+    [["Active", rows.length, false], ["Decide", decide.length, decide.length > 0], ["Follow up", follow.length, follow.length > 0], ["Closed", closed.length, false]].forEach(function (c) {
+      counts.appendChild(el("div", { class: "count" + (c[2] ? " hot" : "") }, [el("b", { text: String(c[1]) }), el("span", { text: c[0] })]));
+    });
+    document.getElementById("stamp").textContent = NOW + " · " + rows.length + " active";
+    fill("decide", decide.map(decideCard), "Nothing is waiting on you.");
+    fill("follow", follow.map(function (r) { return plain(r, "No response in " + r.days + " days · follow up?"); }), "No follow-ups due.");
+    fill("active", active.map(function (r) { return plain(r, r.state === "prepare" ? "Prepare for the interview" : "Awaiting response"); }), "No other active opportunities.");
+    fill("closed", closed.map(function (c) {
+      var bits = [el("div", { class: "name", text: c.company + " — " + c.role }),
+        el("div", { class: "line" }, [el("span", { class: "pill bad", text: c.decision }), document.createTextNode(" " + c.when + " · " + c.reason)])];
+      if (c.fresh) bits.push(el("div", { class: "status ok", role: "status", tabindex: "-1", text: "Recorded and verified on the Job Ledger. The pursuit left the active list after the read-back matched." }));
+      var reopen = el("button", { type: "button", disabled: "disabled", text: "Reopen" });
+      bits.push(el("div", { class: "actions" }, [link("Ledger row", c.ledger), reopen, later("Reopen arrives in the next slice")]));
+      return el("div", { class: "card closed" }, bits);
+    }), "Nothing closed yet.");
+  }
+  function fill(id, nodes, none) {
+    var box = document.getElementById(id); box.textContent = ""; box.style.display = "grid"; box.style.gap = "8px";
+    if (!nodes.length) box.appendChild(el("div", { class: "empty", text: none }));
+    nodes.forEach(function (n) { box.appendChild(n); });
+  }
+  render();
+})();
+</script>

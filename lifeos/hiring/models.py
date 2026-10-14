@@ -15,6 +15,7 @@ RANK = {SUBMITTED: 1, RECRUITER_SCREEN: 2, ASSESSMENT: 2, HM_SCHEDULED: 3, INTER
 AWAIT_DAYS = 14                                                # D189: a role waiting on an outcome or a response this long says so and asks for a follow-up (it is still listed)
 APPLIED_DAYS = 30                                              # a submitted role with no newer evidence is listed for 30 days after Applied On, then counted in the status line, never dropped silently
 
+CLOSED_DECISIONS = ("Rejected", "Passed")                      # D194: a Job Ledger Hiring Decision a person confirmed; it closes the pursuit whatever Notes pages say (Applied stays as history)
 KINDS = ("assessment", "hiring_manager", "recruiter_screen", "interview")         # calendar evidence kinds, most specific first
 
 

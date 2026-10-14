@@ -1,15 +1,14 @@
 """Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence
 into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region.
 
-Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source: no mail, no Calendar write, no Jira, no
-Job Ledger or Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
+Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source except one: the Hiring Decision action (D194, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
 Counts and fixed codes only."""
 import contextlib
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, outcomes as outcome_mail, render, snapshot
+from lifeos.hiring import card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db
 from lifeos.platform.gcal import GoogleCalendar
@@ -38,7 +37,8 @@ def read_applied(client, stats=None):
         for row in page["results"]:
             props = row.get("properties") or {}
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
-            out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None})
+            out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None,
+                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name")})            # D194: the stable row id and a confirmed Hiring Decision, read only
         if not page["has_more"]:
             if stats is not None:
                 stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
@@ -48,6 +48,24 @@ def read_applied(client, stats=None):
             raise NotionError("HIRING_LEDGER_INCOMPLETE")
         seen.add(cursor)
     raise NotionError("HIRING_LEDGER_INCOMPLETE")
+
+
+def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
+    """D194, one confirmed action end to end: exact Ledger write with read-back, THEN the Hiring Pipeline projection is refreshed (so a row leaves the active queue only after the
+    decision was verified). Any decision error is raised before the projection is touched. A refresh that fails after a verified write is reported as `projection: FAILED`; the decision stands."""
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    client = ledger_client or Client(environ)
+    if ledger.verify(client) != ledger.OK:
+        raise NotionError("HIRING_LEDGER_TARGET")
+    done = decision.confirm_rejected(client, request, live, now)
+    done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh and its write was verified
+    try:
+        counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)
+        done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified", "target_listed")}
+        done["cleared"] = bool(live) and counts["status"] == "fresh" and counts["verified"] is True and counts["target_listed"] is False
+    except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
+        done["projection"] = "FAILED"
+    return done
 
 
 def read_parents(client, root_id):
@@ -78,7 +96,7 @@ def read_events(calendar, now):
     return events
 
 
-def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None):
+def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
     ledger_stats = {}
@@ -109,6 +127,9 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         text, cells, counts = render.render(result, prior, now)
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
+        if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)
+            shown = {c[0][0] for c in (cells or [])}
+            counts["target_listed"] = None if cells is None else any(M.label(r["company"], r["role"]) in shown for r in result["rows"] or [] if M.same(r["company"], r["role"], *target))
         new = snapshot.build(result, prior, now)
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched

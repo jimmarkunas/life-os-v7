@@ -105,6 +105,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/hiring/
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
+- `lifeos/hiring/decision.py`: D194 Hiring Decision, the first action: a person confirms an employer rejection (Confirm Rejected).
 - `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
 - `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
@@ -473,3 +474,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D188: The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
 - D189: A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
 - D190: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)
+- D194: Hiring Decision: Confirm Rejected closes a pursuit on the Job Ledger row (2026-10-14, Jim)
