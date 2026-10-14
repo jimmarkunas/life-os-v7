@@ -1,0 +1,11 @@
+# COMM-1.4b: one process per connection; the connection is stdin/stdout. No log output (stderr discarded), a hard deadline, no new privileges.
+[Unit]
+Description=LIFE OS iMessage alert metadata (one connection)
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/lib/lifeos-imessage/alerts_endpoint.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+RuntimeMaxSec=45
+NoNewPrivileges=yes

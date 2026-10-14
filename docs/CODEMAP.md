@@ -31,6 +31,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
+- `imessage-alerts` -> `lifeos.imessage.stage:run`
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
@@ -111,8 +112,10 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 - `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
 ### lifeos/imessage/
+- `lifeos/imessage/alerts_endpoint.py`: COMM-1.4b: the private, read-only iMessage alert-METADATA endpoint on Oracle (Jim's approval, LIFE-31, Oct 13 2026).
 - `lifeos/imessage/attention_mcp.py`: COMM-1.4: the read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the one process with Full Disk Access).
 - `lifeos/imessage/openclaw_imessage.py`: COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:
+- `lifeos/imessage/stage.py`: COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31; Jim's approval of Oct 13, 2026).
 ### lifeos/interview/
 - `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
