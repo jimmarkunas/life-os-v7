@@ -9,7 +9,7 @@ import unittest
 from datetime import timedelta
 from unittest import mock
 
-from lifeos.hiring import compile as C, decision as D, models as M
+from lifeos.hiring import compile as C, decision as D, models as M, render
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform.notion_client import NotionError
 from tests.hiring import test_hiring as T
@@ -126,9 +126,9 @@ class Chain:
         with self._patched():
             return T.stage.run(0, True, T.RUN_ENV, ledger_client=self.source, pipeline_client=Untouchable(), calendar=T.FakeCalendar([]), connection=object(), client=self.tree, now=NOW)
 
-    def confirm(self, req=None, live=True, now=NOW):
+    def confirm(self, req=None, live=True, now=NOW, calendar=None):
         with self._patched():
-            return T.stage.confirm_rejected(req or request(), live, T.RUN_ENV, ledger_client=self.source, now=now, pipeline_client=Untouchable(), calendar=T.FakeCalendar([]), connection=object(), client=self.tree)
+            return T.stage.confirm_rejected(req or request(), live, T.RUN_ENV, ledger_client=self.source, now=now, pipeline_client=Untouchable(), calendar=calendar or T.FakeCalendar([]), connection=object(), client=self.tree)
 
 
 class ConfirmRejectedTests(unittest.TestCase):
@@ -140,6 +140,7 @@ class ConfirmRejectedTests(unittest.TestCase):
         done = chain.confirm()
         self.assertEqual((done["status"], done["verified"], done["entries"]), ("recorded", True, 1))
         self.assertEqual(done["projection"], {"status": "fresh", "rows": 2, "closed": 1, "verified": True})
+        self.assertIs(done["cleared"], True)
         self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))                                # gone from the Daily Report table only after the verified write
         self.assertEqual(sorted(seen(chain.tree)), sorted([f"{COMPANY} — {SIBLING_ROLE}", f"{OTHER_COMPANY} — Program Manager"]))
         self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])      # one bounded write, two properties, one row
@@ -202,7 +203,7 @@ class ConfirmRejectedTests(unittest.TestCase):
     def test_a_dry_run_validates_everything_and_writes_nothing(self):
         chain = Chain()
         done = chain.confirm(live=False)
-        self.assertEqual((done["status"], done["verified"]), ("dry_run", False))
+        self.assertEqual((done["status"], done["verified"], done["cleared"]), ("dry_run", False, False))
         self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
 
 
@@ -259,6 +260,43 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         with self.assertRaises(NotionError):
             chain.confirm()
         self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+
+    def changed_after(self, call, edit, code="DECISION_STALE_IDENTITY"):
+        chain = Chain()
+        chain.source.on_get = {call: edit}
+        with self.assertRaises(NotionError) as error:
+            chain.confirm()
+        self.assertEqual(str(error.exception), code)
+        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+
+    def test_a_row_that_changes_after_the_query_but_before_the_exact_fetch_authorizes_nothing(self):
+        def unapply(source):
+            source.pages[TARGET]["properties"]["Applied"] = {"checkbox": False}
+        def retitle(source):
+            source.pages[TARGET]["properties"]["Job"] = {"title": rich("Vice President, Something Else")}
+        def recompany(source):
+            source.pages[TARGET]["properties"]["Company"] = {"rich_text": rich("Contoso Freight")}
+        def trash(source):
+            source.pages[TARGET]["in_trash"] = True
+        for edit in (unapply, retitle, recompany, trash):
+            self.changed_after(1, edit)                              # the first exact fetch already disagrees with what the query matched
+
+    def test_a_row_that_disagrees_only_on_the_first_exact_fetch_is_refused_as_stale_not_merely_changed(self):
+        chain = Chain()
+        chain.source.on_get = {1: lambda source: source.pages[TARGET]["properties"].update(Applied={"checkbox": False}),
+                               2: lambda source: source.pages[TARGET]["properties"].update(Applied={"checkbox": True})}          # a transient edit: the second read looks right again
+        with self.assertRaises(NotionError) as error:
+            chain.confirm()
+        self.assertEqual(str(error.exception), "DECISION_STALE_IDENTITY")
+        self.assertEqual((chain.source.patches(), T.writes(chain.tree)), ([], []))
+
+    def test_a_row_that_changes_between_the_first_fetch_and_the_write_authorizes_nothing_even_with_an_unchanged_edit_time(self):
+        def unapply(source):
+            source.pages[TARGET]["properties"]["Applied"] = {"checkbox": False}
+        def retitle(source):
+            source.pages[TARGET]["properties"]["Job"] = {"title": rich("Vice President, Something Else")}
+        for edit in (unapply, retitle):
+            self.changed_after(2, edit)                              # the second fetch, immediately before the write: two consistent reads can no longer authorize a wrong closure
 
     def test_an_archived_row_is_refused(self):
         chain = Chain()
@@ -328,7 +366,13 @@ class FailedWriteTests(unittest.TestCase):
         chain = Chain()
         with mock.patch.object(T.stage, "run", side_effect=RuntimeError("down")):
             done = chain.confirm()
-        self.assertEqual((done["status"], done["verified"], done["projection"]), ("recorded", True, "FAILED"))
+        self.assertEqual((done["status"], done["verified"], done["projection"], done["cleared"]), ("recorded", True, "FAILED", False))
+        self.assertEqual(chain.source.decision(), {"name": "Rejected"})
+
+    def test_a_degraded_projection_after_a_verified_write_is_never_reported_as_cleared(self):
+        chain = Chain()
+        done = chain.confirm(calendar=T.FakeCalendar([], broken=True))                              # Calendar unreadable: the projection is DEGRADED
+        self.assertEqual((done["status"], done["verified"], done["projection"]["status"], done["cleared"]), ("recorded", True, "degraded", False))
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
 
 
@@ -355,11 +399,22 @@ class CompilerTests(unittest.TestCase):
             got = self.rows([self.applied("Acme", "PM", value, "i1")])
             self.assertEqual((len(got["rows"]), got["closed"]), (1, 0), value)
 
-    def test_one_decided_row_among_duplicate_ledger_rows_closes_the_pursuit_and_aims_nothing_at_either_row(self):
+    def test_a_decision_on_one_of_two_applications_for_one_company_and_role_closes_nothing_and_is_flagged(self):
         got = self.rows([self.applied("Acme", "PM", None, "i1"), self.applied("Acme", "PM", "Rejected", "i2")])
-        self.assertEqual((got["rows"], got["closed"]), ([], 1))
-        open_ = self.rows([self.applied("Acme", "PM", None, "i1"), self.applied("Acme", "PM", None, "i2")])
-        self.assertIsNone(open_["rows"][0]["ledger_id"])
+        self.assertEqual((len(got["rows"]), got["closed"], got["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))           # still listed, with a degraded signal, until the application identity is proven
+        self.assertIsNone(got["rows"][0]["ledger_id"])
+        first = self.rows([self.applied("Acme", "PM", "Passed", "i1"), self.applied("Acme", "PM", None, "i2"), self.applied("Acme", "PM", None, "i3")])
+        self.assertEqual((len(first["rows"]), first["closed"], first["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))     # whichever duplicate carries it, and however many there are
+        both = self.rows([self.applied("Acme", "PM", "Rejected", "i1"), self.applied("Acme", "PM", "Rejected", "i2")])
+        self.assertEqual((len(both["rows"]), both["closed"], both["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))        # even when both say so: two applications are not one decision
+        rendered = render.render(got, None, NOW)[0]
+        self.assertTrue(rendered.startswith("DEGRADED"))
+        self.assertIn("one of several applications", rendered)
+
+    def test_duplicate_applications_without_any_decision_stay_one_quiet_opportunity(self):
+        got = self.rows([self.applied("Acme", "PM", None, "i1"), self.applied("Acme", "PM", None, "i2")])
+        self.assertEqual((len(got["rows"]), got["closed"], got["reasons"]), (1, 0, []))
+        self.assertIsNone(got["rows"][0]["ledger_id"])
 
     def test_the_legacy_retired_notes_closure_still_works_beside_the_new_one(self):
         retired = {"id": "r1", "company": "Acme", "role": "Old", "rounds": 1, "retired": True}

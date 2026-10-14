@@ -58,9 +58,11 @@ def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
     done = decision.confirm_rejected(client, request, live, now)
+    done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh and its write was verified
     try:
         counts = run(0, live, environ, ledger_client=client, now=now, **refresh)
         done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified")}
+        done["cleared"] = bool(live) and counts["status"] == "fresh" and counts["verified"] is True
     except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
         done["projection"] = "FAILED"
     return done

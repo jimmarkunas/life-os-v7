@@ -74,11 +74,15 @@ def _opportunities(applied, parents, reasons, out):
         for opp in opps:
             if M.same(opp["company"], opp["role"], row["company"], row["role"]):
                 opp["applied_on"] = max(filter(None, (opp["applied_on"], row["applied_on"])), default=None)
-                opp["ledger_id"] = None                           # two ledger rows are not one stable record: no decision can be aimed at either
-                opp["decision"] = row.get("decision") if row.get("decision") in M.CLOSED_DECISIONS else opp["decision"]
+                opp["ledger_id"], opp["dup"] = None, True         # two ledger rows are not one stable application: no decision can be aimed at either
+                opp["decision"] = opp["decision"] if opp["decision"] in M.CLOSED_DECISIONS else row.get("decision")
                 break
         else:
             opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "ledger_id": row.get("id"), "decision": row.get("decision"), "parent": None, "parent_state": "none", "rounds": 0, "events": []})
+    for opp in opps:
+        if opp.get("dup") and opp["decision"] in M.CLOSED_DECISIONS:   # D194: a closing decision on one of several applications for this company and role is never read as closing the others: the pursuit stays listed and the presentation says why
+            opp["decision"] = None
+            reasons.add("DECISION_AMBIGUOUS")
     for parent in parents:
         near = [o for o in opps if M.same(o["company"], o["role"], parent["company"], parent["role"])]
         if not near:

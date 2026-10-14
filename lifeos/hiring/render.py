@@ -15,7 +15,7 @@ KIND_LABEL = {"assessment": "assessment", "hiring_manager": "hiring-manager inte
 REASON_TEXT = {"LEDGER_UNAVAILABLE": "Job Ledger unreadable", "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable", "CALENDAR_UNAVAILABLE": "Calendar unreadable",
                "IDENTITY_AMBIGUOUS": "an opportunity matches more than one page", "CALENDAR_AMBIGUOUS": "a calendar event matches more than one opportunity",
                "EVENT_NOT_ON_CALENDAR": "a scheduled event is no longer on the Calendar", "PARENT_IDENTITY_UNREADABLE": "an opportunity page title is unreadable",
-               "SNAPSHOT_STALE": "evidence is stale"}
+               "SNAPSHOT_STALE": "evidence is stale", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
 
 
 def local(value):
