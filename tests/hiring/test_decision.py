@@ -59,10 +59,14 @@ class Source:
 
     def query_data_source(self, source_id=None, body=None):
         self.log.append(("QUERY", "data_sources"))
-        assert body["filter"] == {"property": "Applied", "checkbox": {"equals": True}}
+        flt = body["filter"]
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
-        return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"]], "has_more": False}
+        if flt == {"property": "Applied", "checkbox": {"equals": True}}:
+            return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"]], "has_more": False}
+        word = flt["and"][0]["rich_text"]["contains"]                                                       # the unapplied-row probe: the company's first word, not yet Applied
+        assert flt == {"and": [{"property": "Company", "rich_text": {"contains": word}}, {"property": "Applied", "checkbox": {"equals": False}}]}
+        return {"results": [copy.deepcopy(p) for p in self.pages.values() if not p["properties"]["Applied"]["checkbox"] and word in "".join(r["plain_text"] for r in p["properties"]["Company"]["rich_text"]).lower()], "has_more": False}
 
     def get_page(self, page_id):
         self.gets += 1

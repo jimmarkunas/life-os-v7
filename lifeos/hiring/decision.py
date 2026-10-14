@@ -47,7 +47,10 @@ def parse(request):
     if not (_page_id(request.get("id")) and fields["company"] and fields["role"] and isinstance(request.get("op"), str) and OP.match(request["op"])
             and isinstance(reason, str) and reason.strip() and len(reason.strip()) <= REASON_MAX and reason.strip().isprintable()):
         raise fail("REQUEST_INVALID")
-    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), "action": request["action"], **fields}
+    ack = request.get("not_this_application") or []
+    if not isinstance(ack, list) or not all(_page_id(x) for x in ack):
+        raise fail("REQUEST_INVALID")
+    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), "action": request["action"], "ack": sorted({_page_id(x) for x in ack}), **fields}
 
 
 def check_schema(client):
@@ -57,11 +60,11 @@ def check_schema(client):
         raise fail("SCHEMA_MISSING")
 
 
-def applied_pages(client):
-    """Every page with Applied ticked, read completely or not at all."""
+def _scan(client, flt):
+    """Every Ledger page matching a filter, read completely or not at all."""
     out, cursor, seen = [], None, set()
     for _ in range(MAX_PAGES):
-        page = client.query_data_source(None, {"page_size": 100, "filter": {"property": "Applied", "checkbox": {"equals": True}}, **({"start_cursor": cursor} if cursor else {})})
+        page = client.query_data_source(None, {"page_size": 100, "filter": flt, **({"start_cursor": cursor} if cursor else {})})
         if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
             raise fail("LEDGER_INCOMPLETE")
         out += page["results"]
@@ -72,6 +75,21 @@ def applied_pages(client):
             raise fail("LEDGER_INCOMPLETE")
         seen.add(cursor)
     raise fail("LEDGER_INCOMPLETE")
+
+
+def applied_pages(client):
+    """Every page with Applied ticked."""
+    return _scan(client, {"property": "Applied", "checkbox": {"equals": True}})
+
+
+def unapplied_matches(client, want):
+    """Page ids of Ledger rows for this company AND role that are NOT marked Applied (a read through the Notion API filtered by the company's first word, then matched with platform.names). The Applied read proves
+    only that no eligible application exists, never that no Ledger row does: a row that may be this application is surfaced, never ignored."""
+    words = names.tokens(want["company"])
+    if not words:
+        raise fail("REQUEST_INVALID")
+    rows = _scan(client, {"and": [{"property": "Company", "rich_text": {"contains": words[0]}}, {"property": "Applied", "checkbox": {"equals": False}}]})
+    return sorted(_page_id(r.get("id")) for r in rows if M.same(_text(r["properties"].get("Company"), "rich_text"), _text(r["properties"].get("Job"), "title"), want["company"], want["role"]))
 
 
 def target(pages, want):

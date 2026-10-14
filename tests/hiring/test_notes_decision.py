@@ -437,16 +437,36 @@ class OwnershipAndIdentityTests(unittest.TestCase):
         world.project()
         self.assertNotIn(f"{COMPANY} — {SIBLING_ROLE}", world.listed())
 
-    def test_an_unapplied_ledger_row_for_the_same_company_and_role_is_not_an_application_and_is_never_written(self):
+    def test_an_unapplied_ledger_row_for_the_same_company_and_role_blocks_the_notes_route_until_acknowledged(self):
         world = World(ledger_rows=[(TD.TARGET, COMPANY, ROLE)])
-        world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                    # a posting the Jobs engine surfaced, never applied for through the Ledger
+        world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                    # a posting the Jobs engine surfaced; the Applied read alone would call this "no Ledger identity"
         before = copy.deepcopy(world.source.pages)
-        done = world.decide(world.request())
-        self.assertEqual((done["status"], done["route"], done["cleared"]), ("recorded", "notes", True))     # the Applied read shows no eligible application, so the Notes page is the pursuit
-        self.assertEqual((world.source.pages, world.source.patches()), (before, []))                      # the unapplied row: untouched, still unapplied, no decision
+        for req in (world.request(), world.request(not_this_application=[TD.SIBLING]), world.request(not_this_application=[TD.TARGET, TD.SIBLING])):
+            with self.assertRaises(NotionError) as error:                                                # none, the wrong row, or more rows than exist: all refused, never guessed
+                world.decide(req)
+            self.assertEqual(str(error.exception), "DECISION_LEDGER_UNAPPLIED")
+        self.assertEqual((world.ws.writes(), T.writes(world.tree), world.source.pages, world.source.patches()), ([], [], before, []))
+        done = world.decide(world.request(not_this_application=[TD.TARGET]))                             # the person names exactly that row as not this application
+        self.assertEqual((done["status"], done["route"], done["cleared"]), ("recorded", "notes", True))
+        self.assertEqual((world.source.pages, world.source.patches()), (before, []))                      # the row: untouched, still unapplied, no decision
         with self.assertRaises(NotionError) as error:                                                    # and it is never a target
-            world.decide(world.request(op=OP2, id=TD.TARGET))
+            world.decide(world.request(op=OP2, id=TD.TARGET, not_this_application=[TD.TARGET]))
         self.assertEqual(str(error.exception), "DECISION_STALE_IDENTITY")
+
+    def test_other_unapplied_rows_do_not_matter_and_the_applied_route_is_unchanged(self):
+        world = World(ledger_rows=[(TD.TARGET, "Fabrikam Logistics", ROLE), (TD.SIBLING, COMPANY, "Vice President, Something Else")])    # same first word, other company; same company, other role
+        for pid in (TD.TARGET, TD.SIBLING):
+            world.source.pages[pid]["properties"]["Applied"] = {"checkbox": False}
+        self.assertEqual(world.decide(world.request())["status"], "recorded")
+        applied = World(ledger_rows=[(TD.TARGET, COMPANY, ROLE)])
+        self.assertEqual(applied.decide(applied.request(id=TD.TARGET))["status"], "recorded")            # an Applied row still closes on the Ledger with no probe
+
+    def test_a_malformed_acknowledgement_is_refused(self):
+        world = World()
+        for bad in ("abc", ["not-an-id"], [123]):
+            with self.assertRaises(NotionError) as error:
+                world.decide(world.request(not_this_application=bad))
+            self.assertEqual(str(error.exception), "DECISION_REQUEST_INVALID")
 
 
 class ReopenTests(unittest.TestCase):

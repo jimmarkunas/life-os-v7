@@ -69,6 +69,8 @@ def decide(request, live, environ=os.environ, ledger_client=None, now=None, **re
     kind, target = decision.route(read_applied(client), read_parents(pipe, root), want)
     if decision._page_id(target["id"]) != want["id"]:
         raise decision.fail("STALE_IDENTITY")
+    if kind == "notes" and want["action"] == decision.ACTION and decision.unapplied_matches(client, want) != want["ack"]:
+        raise decision.fail("LEDGER_UNAPPLIED")                        # a Ledger row for this company and role that is not marked Applied may be this application: mark it Applied (then it closes on the Ledger), or acknowledge exactly those row ids as not this application
     done = decision.confirm_rejected(client, request, live, now) if kind == "ledger" else decision.move_page(pipe, root, request, live, now, lambda: read_parents(pipe, root))
     done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh, its write verified and the exact pursuit is gone
     try:
