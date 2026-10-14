@@ -39,6 +39,13 @@ class WordingTests(unittest.TestCase):
         for text in ("Thanks for applying - we will be in touch.", "Your interview is confirmed for Thursday.", "Move forward with your application by completing the assessment.", "Jobs like this one"):
             self.assertIsNone(outcomes.kind_of(text), text)
 
+    def test_decided_not_to_move_forward_with_your_application_is_a_rejection_and_the_positive_forms_are_not(self):
+        for text in ("After careful review, we have decided not to move forward with your application.", "We've decided not to proceed forward at this time.", "We have decided not to go forward with your candidacy."):
+            self.assertEqual(outcomes.kind_of(text), outcomes.REJECTED, text)
+        for text in ("We have decided to move forward with your application.", "We have decided to move forward with your candidacy and would like to schedule an interview.",
+                     "Please decide whether to move forward with the assessment.", "We have received your application and decided nothing yet."):
+            self.assertIsNone(outcomes.kind_of(text), text)
+
     def test_the_company_must_appear_in_order_in_the_sender_subject_domain_or_opening_of_the_body(self):
         self.assertTrue(outcomes.mentions(msg(subject="Update from Walmart Global Tech"), "Walmart"))
         self.assertTrue(outcomes.mentions(msg(sender="Walmart Talent"), "Walmart Inc."))
@@ -52,6 +59,16 @@ class WordingTests(unittest.TestCase):
 class FindTests(unittest.TestCase):
     def test_a_rejection_after_the_interview_is_matched_to_that_row_and_marks_a_role_match(self):
         found, stats = outcomes.find([msg(subject="Your application to Walmart", body=REJECTION + " Senior Manager, Operations and Implementation role.", days_ago=3)], [WALMART, SMITH, UBER])
+        self.assertEqual(list(found), [WALMART["key"]])
+        self.assertEqual((found[WALMART["key"]]["kind"], found[WALMART["key"]]["match"]), (outcomes.REJECTED, "role"))
+        self.assertEqual((stats["outcome_messages"], stats["ambiguous"], stats["unmatched"]), (1, 0, 0))
+
+    def test_a_decided_not_to_move_forward_rejection_is_matched_to_its_opportunity_and_routine_mail_is_not(self):
+        letter = "Dear Candidate, thank you for applying to Walmart. After careful review, we have decided not to move forward with your application. Senior Manager, Operations and Implementation."
+        routine = "Dear Candidate, thank you for applying to Walmart. We have decided to move forward with your application and will be in touch."
+        found, stats = outcomes.find([msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3, mid="a"),
+                                      msg(subject="Application received", sender="Walmart Talent", body=routine, days_ago=1, mid="b"),
+                                      msg(subject="Application received", sender="Uber Talent", body="Thanks for applying to Uber.", days_ago=1, mid="c")], [WALMART, UBER])
         self.assertEqual(list(found), [WALMART["key"]])
         self.assertEqual((found[WALMART["key"]]["kind"], found[WALMART["key"]]["match"]), (outcomes.REJECTED, "role"))
         self.assertEqual((stats["outcome_messages"], stats["ambiguous"], stats["unmatched"]), (1, 0, 0))
@@ -261,6 +278,16 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["kind", "match", "received"])            # bounded evidence only: no company, sender, subject or text
         code, counts, err, fake, tables, _ = self.go(self.REC, tables=tables)
         self.assertEqual((code, counts["status"], counts["saved"], fake.queries), (0, "not_due", 0, []))
+
+    def test_a_decided_not_to_move_forward_rejection_is_stored_through_the_entry_point_and_a_routine_message_stores_nothing(self):
+        letter = "Dear Candidate, thank you for applying to Walmart. After careful review, we have decided not to move forward with your application."
+        code, counts, err, _, tables, _ = self.go([msg(subject="Your application update", sender="Walmart Talent", body=letter, days_ago=3)])
+        self.assertEqual((code, err, counts["status"], counts["saved"], counts["rejected"], counts["matched"]), (0, "", "fresh", 1, 1, 1))
+        self.assertEqual(next(iter(json.loads(tables.rows[("v7_hiring_outcomes", 1)])["outcomes"].values()))["kind"], "REJECTED")
+        routine = "Dear Candidate, thank you for applying to Walmart. We have decided to move forward with your application."
+        code, counts, _, _, tables, _ = self.go([msg(subject="Your application update", sender="Walmart Talent", body=routine, days_ago=3)])
+        self.assertEqual((code, counts["status"], counts["matched"], counts["rejected"]), (0, "fresh", 0, 0))
+        self.assertEqual(json.loads(tables.rows[("v7_hiring_outcomes", 1)])["outcomes"], {})
 
     def test_a_dry_run_makes_zero_writes_and_creates_no_table(self):
         code, counts, err, _, tables, _ = self.go(self.REC, live=False)
