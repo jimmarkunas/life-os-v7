@@ -30,9 +30,9 @@ class Installer(unittest.TestCase):
         for banned in (r"\bssh\b", r"\btailscale\b", r"openclaw\.json", r"\bopenclaw (config|nodes|approvals|gateway)\b", r"\btccutil\b", r"system\.run", r"\bnc\b", r"\bsocat\b", r"launchctl\s+load",
                        r"^\s*curl\b[^\n]* -(d|X|T|F|-data\S*|-upload-file)\b"):
             self.assertIsNone(re.search(banned, INSTALL, re.M), banned)
-        for line in INSTALL.splitlines():
-            if "/usr/bin/sqlite3 " in line:
-                self.assertIn("-readonly", line)
+        calls = re.findall(r"/usr/bin/sqlite3 (\S+)", INSTALL)
+        self.assertTrue(calls)
+        self.assertEqual({c for c in calls if c != "/usr/bin/csreq"}, {"-readonly"})       # every database call is read-only
 
     def test_paths_agree_across_installer_launcher_and_agent(self):
         agent = plistlib.loads((MAC / "ai.lifeos.imessage-attention.plist").read_bytes())
@@ -80,6 +80,72 @@ class SocketMode(unittest.TestCase):
         (reply,) = [json.loads(x) for x in data.decode().splitlines()]
         state = reply["result"]["structuredContent"]
         self.assertEqual((state["health"], state["attention"], state["count"]), ("DISCONNECTED", "UNKNOWN", None))
+
+
+class Gate(unittest.TestCase):
+    """The installer's own `gate`, run in bash: only exactly N PASS lines and nothing else lets a phase continue."""
+
+    def gate(self, phase, required, results):
+        defs = INSTALL[:INSTALL.index("\npreflight\ncase")]
+        script = defs + '\nsummary() { say "$1"; }\nRESULTS=(' + " ".join("'%s'" % r for r in results) + ")\ngate %s %d\necho CONTINUED\n" % (phase, required)
+        run = subprocess.run(["bash", "-c", script, "install.sh"], capture_output=True, text=True, timeout=10)
+        return run.returncode, run.stdout
+
+    def test_all_required_checks_passing_continues(self):
+        self.assertEqual(self.gate("post", 2, ["a: PASS", "b: PASS"]), (0, "CONTINUED\n"))
+
+    def test_a_failure_stops_with_rollback_and_manual_revoke(self):
+        code, out = self.gate("post", 2, ["a: PASS", "b: FAIL"])
+        self.assertEqual(code, 1)
+        self.assertIn("RESULT: LOCAL PROOF FAILED (post: 1 of 2 required checks passed; 1 failed or unverified)", out)
+        self.assertIn('install.sh" uninstall', out)
+        self.assertIn("revoke the helper's Full Disk Access by hand", out)
+        self.assertNotIn("CONTINUED", out)
+        self.assertNotIn("PASSED", out)
+
+    def test_unverified_or_missing_checks_also_stop(self):
+        self.assertEqual(self.gate("post", 2, ["a: PASS", "b: UNVERIFIED"])[0], 1)
+        self.assertEqual(self.gate("post", 3, ["a: PASS", "b: PASS"])[0], 1)
+
+    def test_an_unexpected_stop_after_install_still_reports_failure_and_rollback(self):
+        defs = INSTALL[:INSTALL.index("\npreflight\ncase")]
+        run = subprocess.run(["bash", "-c", defs + "\nINSTALLED=1\nfalse\necho UNREACHED\n", "install.sh"], capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("RESULT: LOCAL PROOF FAILED (an installer step stopped unexpectedly", run.stdout)
+        self.assertIn('install.sh" uninstall', run.stdout)
+        self.assertNotIn("UNREACHED", run.stdout)
+
+    def test_pre_grant_failure_says_do_not_grant(self):
+        code, out = self.gate("pre", 1, ["a: FAIL"])
+        self.assertEqual(code, 1)
+        self.assertIn("Do NOT grant Full Disk Access", out)
+
+    def test_success_is_claimed_only_after_the_final_gate(self):
+        for flow, required in (("install", 26), ("verify", 17)):
+            line = re.search(r"^  %s\) (.*)$" % flow, INSTALL, re.M).group(1)
+            self.assertLess(line.index("gate post %d" % required), line.index("LOCAL PROOF PASSED (%d of %d" % (required, required)))
+        self.assertIn("gate pre 14", INSTALL)
+
+
+class GrantDetection(unittest.TestCase):
+    """The installer's awk rules over `client|auth_value` rows of the macOS Full Disk Access list."""
+
+    def awk(self, kind, rows):
+        program = re.findall(r"/usr/bin/awk -F'\|' (?:-v id=\"\$app_id\" -v app=\"\$OPENCLAW_APP/\" )?'([^']*)'", INSTALL)[0 if kind == "openclaw" else 1]
+        return subprocess.run(["awk", "-F|", "-v", "id=ai.example.openclaw-mac", "-v", "app=/Applications/OpenClaw.app/", program], input="\n".join(rows) + "\n",
+                              capture_output=True, text=True, timeout=10).returncode
+
+    def test_openclaw_grant_is_caught_by_bundle_id_path_or_name(self):
+        self.assertEqual(self.awk("openclaw", ["com.apple.Terminal|2", "/usr/local/libexec/lifeos-imessage/lifeos-imessage-attention|2"]), 0)
+        for row in ("ai.example.openclaw-mac|2", "/Applications/OpenClaw.app/Contents/Resources/node-worker/arm64/bin/node|2", "com.vendor.OpenClaw|2"):
+            self.assertEqual(self.awk("openclaw", ["com.apple.Terminal|2", row]), 1, row)
+        self.assertEqual(self.awk("openclaw", ["ai.example.openclaw-mac|0"]), 0)
+
+    def test_any_python_grant_is_caught(self):
+        self.assertEqual(self.awk("python", ["com.apple.Terminal|2"]), 0)
+        for row in ("/usr/bin/python3|2", "com.apple.python3|2", "/Library/Developer/CommandLineTools/usr/bin/python3|2", "org.python.python|3"):
+            self.assertEqual(self.awk("python", [row]), 1, row)
+        self.assertEqual(self.awk("python", ["/usr/bin/python3|0"]), 0)
 
 
 class InstallerProbe(unittest.TestCase):

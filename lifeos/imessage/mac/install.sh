@@ -3,6 +3,7 @@
 #   bash install.sh install <commit>   build + sign + install, test without Full Disk Access, wait for Jim's grant, test with it, print the proof summary
 #   bash install.sh verify             rerun the live tests only
 #   bash install.sh uninstall          full rollback (the Full Disk Access entry is removed by hand)
+# Every mandatory check must PASS: a FAIL, an UNVERIFIED or a missing check ends with "LOCAL PROOF FAILED", the rollback command and a nonzero exit.
 # Local IPC only: one owner-only Unix socket held by launchd. No network listener, timer, credentials, Oracle or OpenClaw change. Prints aggregates and fixed codes only.
 set -euo pipefail
 
@@ -17,6 +18,9 @@ DOMAIN="gui/$(id -u)"
 DB="$HOME/Library/Messages/chat.db"
 TCCDB="/Library/Application Support/com.apple.TCC/TCC.db"
 REPO="https://raw.githubusercontent.com/jimmarkunas/life-os-v7"
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+OPENCLAW_APP="/Applications/OpenClaw.app"
+FDA="kTCCServiceSystemPolicyAllFiles"
 # sha256 of the three source files at the published commit (a test keeps these in step with the repository)
 SHA_TOOL="25125791dbfc72b2e1111b5e21eb9141cba37d30a9090896392172c65bedd2b4"
 SHA_LAUNCHER="cc275afab87d5f1d817055641ca04985bbe1c4e3ae2ad54f49a9ca8954b4005c"
@@ -30,7 +34,7 @@ record() { RESULTS+=("$1: $2"); say "  [$2] $1"; }
 preflight() {
   [ "$(uname -s)" = "Darwin" ] || die "not macOS"
   [ "$(id -u)" -ne 0 ] || die "run as Jim's user, not root (sudo is asked for only to install root-owned files)"
-  for t in /usr/bin/cc /usr/bin/codesign /usr/bin/python3 /usr/bin/shasum /usr/bin/plutil /bin/launchctl /usr/bin/curl; do [ -x "$t" ] || die "missing $t"; done
+  for t in /usr/bin/cc /usr/bin/codesign /usr/bin/python3 /usr/bin/shasum /usr/bin/plutil /bin/launchctl /usr/bin/curl /usr/bin/sqlite3 /usr/bin/csreq /usr/bin/xxd /usr/bin/defaults; do [ -x "$t" ] || die "missing $t"; done
   [ "${#SOCK}" -lt 104 ] || die "socket path too long"
   case "$HOME" in *[\&\<\>]*) die "unsupported characters in home path";; esac
 }
@@ -109,12 +113,39 @@ run_probe() {   # run_probe pre|post
   while IFS= read -r line; do RESULTS+=("$1 $line"); done <<<"$CHECKS"
 }
 
-fda_grants() {   # only booleans about three recipients; Terminal's existing grant is what lets this read the system privacy database
-  local rows
-  rows="$(/usr/bin/sqlite3 -readonly "$TCCDB" "SELECT client || '|' || auth_value FROM access WHERE service = 'kTCCServiceSystemPolicyAllFiles'" 2>/dev/null)" || { record "Full Disk Access list readable" "UNVERIFIED"; return; }
-  grep -qx "$BIN|2" <<<"$rows" && record "Full Disk Access granted to exactly $BIN" PASS || record "Full Disk Access granted to exactly $BIN" FAIL
-  grep -qiE '^[^|]*openclaw[^|]*\|2$' <<<"$rows" && record "OpenClaw.app has no Full Disk Access" FAIL || record "OpenClaw.app has no Full Disk Access" PASS
-  grep -qiE '^(/usr/bin/python3|com\.apple\.python3|[^|]*/python3[^|/]*)\|2$' <<<"$rows" && record "python3 has no Full Disk Access" FAIL || record "python3 has no Full Disk Access" PASS
+fda_check() {   # fda_check pre|post: reads the system privacy database (Terminal's existing grant allows it); prints only fixed check names, never the list
+  local rows app_id cdhash req_hex req_text reqf
+  rows="$(/usr/bin/sqlite3 -readonly "$TCCDB" "SELECT client || '|' || auth_value FROM access WHERE service = '$FDA'" 2>/dev/null)" \
+    && record "Full Disk Access list readable" PASS \
+    || { record "Full Disk Access list readable (run this from Terminal, which already has Full Disk Access)" UNVERIFIED; return 0; }
+  app_id="$(/usr/bin/defaults read "$OPENCLAW_APP/Contents/Info" CFBundleIdentifier 2>/dev/null)" || app_id=""
+  if [ -z "$app_id" ]; then
+    record "OpenClaw.app has no Full Disk Access (its bundle identifier could not be read)" UNVERIFIED
+  elif /usr/bin/awk -F'|' -v id="$app_id" -v app="$OPENCLAW_APP/" '($1 == id || index($1, app) == 1 || tolower($1) ~ /openclaw/) && $2 != 0 { bad = 1 } END { exit bad }' <<<"$rows"; then
+    record "OpenClaw.app has no Full Disk Access" PASS
+  else
+    record "OpenClaw.app has no Full Disk Access" FAIL
+  fi
+  /usr/bin/awk -F'|' 'tolower($1) ~ /python/ && $2 != 0 { bad = 1 } END { exit bad }' <<<"$rows" \
+    && record "Python has no Full Disk Access (any python entry would void the isolation proof)" PASS \
+    || record "Python has no Full Disk Access (any python entry would void the isolation proof)" FAIL
+  [ "$1" = post ] || return 0
+  grep -qxF "$BIN|2" <<<"$rows" && record "Full Disk Access granted to $BIN" PASS || record "Full Disk Access granted to $BIN" FAIL
+  cdhash="$(/usr/bin/codesign -dv "$BIN" 2>&1 | sed -n 's/^CDHash=//p' | tr 'A-F' 'a-f')"
+  req_hex="$(/usr/bin/sqlite3 -readonly "$TCCDB" "SELECT hex(csreq) FROM access WHERE service = '$FDA' AND client = '$BIN' AND client_type = 1" 2>/dev/null)" || req_hex=""
+  reqf="$(mktemp)"
+  req_text=""
+  if [ -n "$req_hex" ] && printf '%s' "$req_hex" | /usr/bin/xxd -r -p > "$reqf"; then
+    req_text="$(/usr/bin/csreq -r "$reqf" -t 2>/dev/null | tr 'A-F' 'a-f')" || req_text=""
+  fi
+  rm -f "$reqf"
+  if [ -z "$cdhash" ] || [ -z "$req_text" ]; then
+    record "the grant is bound to this helper build (macOS recorded no readable code requirement for it)" UNVERIFIED
+  elif grep -qF "$cdhash" <<<"$req_text"; then
+    record "the grant is bound to this helper build (code hash matches)" PASS
+  else
+    record "the grant is bound to this helper build (code requirement names another build)" FAIL
+  fi
 }
 
 identity() {
@@ -131,7 +162,7 @@ identity() {
 
 install_helper() {
   [ -n "${REF:-}" ] || die "usage: bash install.sh install <commit>"
-  TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT; local tmp="$TMPD"
+  TMPD="$(mktemp -d)"; local tmp="$TMPD"
   say "1/5 Downloading the three reviewed source files at $REF (hash-checked)"
   fetch lifeos/imessage/attention_mcp.py "$SHA_TOOL" "$tmp/attention_mcp.py"
   fetch lifeos/imessage/mac/launcher.c "$SHA_LAUNCHER" "$tmp/launcher.c"
@@ -140,6 +171,7 @@ install_helper() {
   /usr/bin/cc -O2 -Wall -Werror -o "$tmp/lifeos-imessage-attention" "$tmp/launcher.c"
   /usr/bin/codesign --force --sign - --identifier "$LABEL" --options runtime "$tmp/lifeos-imessage-attention"
   say "3/5 Installing root-owned files into $DIR (macOS will ask for your password)"
+  INSTALLED=1
   sudo /usr/bin/install -d -o root -g wheel -m 755 "$DIR"
   sudo /usr/bin/install -o root -g wheel -m 755 "$tmp/lifeos-imessage-attention" "$BIN"
   sudo /usr/bin/install -o root -g wheel -m 644 "$tmp/attention_mcp.py" "$TOOL"
@@ -150,12 +182,11 @@ install_helper() {
   /bin/launchctl bootstrap "$DOMAIN" "$AGENT"
   say "5/5 Checks before any privacy grant"
   identity
+  say "Privacy grants before the helper's grant (booleans only):"
+  fda_check pre
   say "Live test WITHOUT Full Disk Access:"
   run_probe pre
-  if grep -q ': FAIL$' <<<"$(printf '%s\n' "${RESULTS[@]}")"; then
-    summary
-    die "a check failed before any privacy grant (if the helper read Messages without its own grant, isolation failed). Do not grant Full Disk Access; run: bash install.sh uninstall"
-  fi
+  gate pre 14
 }
 
 grant() {
@@ -172,7 +203,7 @@ grant() {
 
 verify() {
   say "Privacy grants (system privacy database, booleans only):"
-  fda_grants
+  fda_check post
   say "Live test WITH Full Disk Access (Messages database must be unchanged):"
   local before after
   before="$(/usr/bin/shasum -a 256 "$DB" 2>/dev/null | cut -d' ' -f1)" || before=""
@@ -182,13 +213,38 @@ verify() {
     || record "Messages database byte-identical before and after the read (Messages itself may have written; rerun verify)" FAIL
 }
 
-summary() {
+summary() {   # summary <RESULT line>
   say ""
   say "=== COMM-1.4 LOCAL PROOF (paste this block back; it holds no message content or identities) ==="
   say "macOS $(sw_vers -productVersion) | helper $(/usr/bin/codesign -dv "$BIN" 2>&1 | sed -n 's/^CDHash=//p') | ref ${REF:-n/a}"
   for line in "${RESULTS[@]}"; do say "$line"; done
   say "final state: ${STATE:-none}"
+  say "$1"
   say "==="
+}
+
+rollback_help() {   # rollback_help pre|post
+  say "Roll back with:  bash \"$SELF\" uninstall"
+  if [ "$1" = pre ]; then
+    say "Do NOT grant Full Disk Access to the helper."
+  else
+    say "Then, if you granted it, revoke the helper's Full Disk Access by hand (this installer never changes privacy settings):"
+    say "  System Settings > Privacy & Security > Full Disk Access, select lifeos-imessage-attention, click -."
+  fi
+}
+
+gate() {   # gate <phase> <required PASS count>: anything but exactly that many PASS lines and no other status stops with a nonzero exit
+  local all pass other
+  all="$(printf '%s\n' "${RESULTS[@]}")"
+  pass="$(grep -c ': PASS$' <<<"$all" || true)"
+  other="$(grep -vc ': PASS$' <<<"$all" || true)"
+  if [ "$other" -eq 0 ] && [ "$pass" -eq "$2" ]; then
+    return 0
+  fi
+  REPORTED=1
+  summary "RESULT: LOCAL PROOF FAILED ($1: $pass of $2 required checks passed; $other failed or unverified)"
+  rollback_help "$1"
+  exit 1
 }
 
 uninstall() {
@@ -200,10 +256,22 @@ uninstall() {
   say "Last step by hand: System Settings > Privacy & Security > Full Disk Access, select lifeos-imessage-attention, click -."
 }
 
+on_exit() {   # any stop after files were installed, other than a reported gate, still ends with the failure line and the rollback
+  local rc=$?
+  [ -z "${TMPD:-}" ] || rm -rf "$TMPD"
+  if [ "$rc" -ne 0 ] && [ "$INSTALLED" -eq 1 ] && [ "$REPORTED" -eq 0 ]; then
+    say "RESULT: LOCAL PROOF FAILED (an installer step stopped unexpectedly, exit $rc)"
+    rollback_help post
+  fi
+}
+
+INSTALLED=0
+REPORTED=0
+trap on_exit EXIT
 preflight
 case "${1:-}" in
-  install) REF="${2:-}"; install_helper; grant; verify; summary ;;
-  verify) identity; verify; summary ;;
+  install) REF="${2:-}"; install_helper; grant; verify; gate post 26; summary "RESULT: LOCAL PROOF PASSED (26 of 26 required checks)" ;;
+  verify) INSTALLED=1; identity; verify; gate post 17; summary "RESULT: LOCAL PROOF PASSED (17 of 17 required checks)" ;;
   uninstall) uninstall ;;
   *) die "usage: bash install.sh install <commit> | verify | uninstall" ;;
 esac
