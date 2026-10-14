@@ -1,15 +1,14 @@
 """Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence
 into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region.
 
-Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source: no mail, no Calendar write, no Jira, no
-Job Ledger or Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
+Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source except one: the Hiring Decision action (D194, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
 Counts and fixed codes only."""
 import contextlib
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, outcomes as outcome_mail, render, snapshot
+from lifeos.hiring import card, compile as C, decision, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db
 from lifeos.platform.gcal import GoogleCalendar
@@ -38,7 +37,8 @@ def read_applied(client, stats=None):
         for row in page["results"]:
             props = row.get("properties") or {}
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
-            out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None})
+            out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None,
+                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name")})            # D194: the stable row id and a confirmed Hiring Decision, read only
         if not page["has_more"]:
             if stats is not None:
                 stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
@@ -48,6 +48,22 @@ def read_applied(client, stats=None):
             raise NotionError("HIRING_LEDGER_INCOMPLETE")
         seen.add(cursor)
     raise NotionError("HIRING_LEDGER_INCOMPLETE")
+
+
+def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
+    """D194, one confirmed action end to end: exact Ledger write with read-back, THEN the Hiring Pipeline projection is refreshed (so a row leaves the active queue only after the
+    decision was verified). Any decision error is raised before the projection is touched. A refresh that fails after a verified write is reported as `projection: FAILED`; the decision stands."""
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    client = ledger_client or Client(environ)
+    if ledger.verify(client) != ledger.OK:
+        raise NotionError("HIRING_LEDGER_TARGET")
+    done = decision.confirm_rejected(client, request, live, now)
+    try:
+        counts = run(0, live, environ, ledger_client=client, now=now, **refresh)
+        done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified")}
+    except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
+        done["projection"] = "FAILED"
+    return done
 
 
 def read_parents(client, root_id):
