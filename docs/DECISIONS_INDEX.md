@@ -192,3 +192,4 @@ This index is checked by a test: add a line here with every new decision.
 - D188 — The Hiring Pipeline heading carries its update time, like Calendar and Jira (2026-10-13, Jim)
 - D189 — A Retired Hiring Pipeline page closes the pursuit, and a role waiting two weeks asks for a follow-up (2026-10-13, Jim)
 - D190 — Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)
+- D194 — Hiring Decision: Confirm Rejected closes a pursuit on the Job Ledger row (2026-10-14, Jim)

@@ -91,6 +91,7 @@
   "D190": "Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)",
   "D191": "The Fit admission floor is 72 in every lane (2026-10-13, Jim)",
   "D193": "Recruiters: a LinkedIn notification needs recruiting evidence, and a recruiter's company, role and request are read from fixed patterns (2026-10-12, Jim)",
+  "D194": "Hiring Decision: Confirm Rejected closes a pursuit on the Job Ledger row (2026-10-14, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
@@ -206,6 +207,7 @@
   "hiring": {
    "lifeos/hiring/card.py": "Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).",
    "lifeos/hiring/compile.py": "The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.",
+   "lifeos/hiring/decision.py": "D194 Hiring Decision, the first action: a person confirms an employer rejection (Confirm Rejected).",
    "lifeos/hiring/models.py": "Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.",
    "lifeos/hiring/outcomes.py": "Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.",
    "lifeos/hiring/render.py": "Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.",

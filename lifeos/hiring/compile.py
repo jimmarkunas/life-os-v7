@@ -1,7 +1,7 @@
 """The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
 
 Inputs (all already read and checked complete by the source adapter):
-  applied  [{"company", "role", "applied_on": iso date or None}]          canonical Job Ledger Applied rows
+  applied  [{"company", "role", "applied_on": iso date or None, "id"?, "decision"?}]   canonical Job Ledger Applied rows; a confirmed Rejected or Passed decision closes the pursuit (D194)
   parents  [{"id", "company", "role", "rounds", "retired"?}]              Hiring Pipeline opportunity pages (read only); a retired one closes the matching pursuit (D189)
   events   [{"id", "title", "start": iso with offset}]                    accepted Calendar events in the window
   prior    the stored snapshot (or None)
@@ -74,9 +74,15 @@ def _opportunities(applied, parents, reasons, out):
         for opp in opps:
             if M.same(opp["company"], opp["role"], row["company"], row["role"]):
                 opp["applied_on"] = max(filter(None, (opp["applied_on"], row["applied_on"])), default=None)
+                opp["ledger_id"], opp["dup"] = None, True         # two ledger rows are not one stable application: no decision can be aimed at either
+                opp["decision"] = opp["decision"] if opp["decision"] in M.CLOSED_DECISIONS else row.get("decision")
                 break
         else:
-            opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "parent": None, "parent_state": "none", "rounds": 0, "events": []})
+            opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "ledger_id": row.get("id"), "decision": row.get("decision"), "parent": None, "parent_state": "none", "rounds": 0, "events": []})
+    for opp in opps:
+        if opp.get("dup") and opp["decision"] in M.CLOSED_DECISIONS:   # D194: a closing decision on one of several applications for this company and role is never read as closing the others: the pursuit stays listed and the presentation says why
+            opp["decision"] = None
+            reasons.add("DECISION_AMBIGUOUS")
     for parent in parents:
         near = [o for o in opps if M.same(o["company"], o["role"], parent["company"], parent["role"])]
         if not near:
@@ -130,13 +136,13 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
         reasons.add("CALENDAR_UNAVAILABLE")
     rows = []
     for opp in opps:
-        if opp.get("closed"):
+        if opp.get("closed") or opp.get("decision") in M.CLOSED_DECISIONS:      # D189 Retired page, or D194 confirmed Hiring Decision on the Ledger row
             out["closed"] += 1
             continue
         key = _key(opp["company"], opp["role"])
         before = prior_rows.get(key) or {}
         row = {"key": key, "company": opp["company"], "role": opp["role"], "applied_on": opp["applied_on"], "parent": opp["parent"], "parent_state": opp["parent_state"],
-               "stage": None, "event_kind": None, "event_start": None, "rounds": opp["rounds"], "carried": False}
+               "ledger_id": opp.get("ledger_id"), "stage": None, "event_kind": None, "event_start": None, "rounds": opp["rounds"], "carried": False}
         event = _pick(opp["events"], now)
         if event:
             row.update(stage=_stage(event["kind"], event["start"], now), event_kind=event["kind"], event_start=event["start"])
