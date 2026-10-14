@@ -1,7 +1,7 @@
 # LIFE OS V7 — Claude Code entrypoint
 
-Read [AGENTS.md](AGENTS.md) and the [canonical LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), including its **Jira-first development lifecycle**, before starting development.
+Read [AGENTS.md](AGENTS.md) and the [canonical LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), especially **Deterministic agent work selection** and **Jira-first development lifecycle**, before starting development.
 
-Start from the exact current Jira `LIFE` issue and any linked `LOS` idea, or a freshly verified issue handoff from the authorized Tech Lead if Jira tools are unavailable. Read the owning Notion domain requirements only as needed. The GitHub `docs/MASTER_ROADMAP.md` is a dated technical reference, not live planning status.
+As an authorized coding session, self-resume the active claimed `LIFE` issue or self-pull the next *eligible* live Jira issue for your approved lane after accepted completion. Verify dependencies, owner, readiness and order rather than accepting creation-date Rank or a stale roadmap. If Jira is unavailable or the queue lacks authoritative readiness, return `QUEUE_NOT_READY` with the exact gap. A verified Tech Lead handoff can authorize a specific one-off task only; it cannot replace autonomous Jira access.
 
 Obey the policy's repository affinity, one-writer, permission, acceptance and Jim-approval gates. This pointer does not grant Jira write access, OpenClaw permissions or merge authority.
