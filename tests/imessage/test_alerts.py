@@ -219,6 +219,29 @@ class Stage(unittest.TestCase):
         counts, pushes = self.runs(db, DAY + dt.timedelta(hours=1), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
         self.assertEqual((counts["deliver"], counts["pushed"], len(pushes)), (1, 1, 1))
 
+    def test_a_lost_receipt_after_an_accepted_push_never_pushes_again(self):
+        db = StageDB()
+        db.fail_on = ("SET status=%s WHERE alert_key=%s AND status=%s", 1)      # the receipt after the accepted push fails (the claim also sets last_notified)
+        with self.assertRaises(RuntimeError):
+            self.runs(db, DAY, payload([ev("a")]))
+        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.PENDING))
+        counts, pushes = self.runs(db, DAY + dt.timedelta(hours=1), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
+        self.assertEqual((pushes, counts["ambiguous"], counts["failed"], counts["deliver"]), ([], 1, 1, 0))
+        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.SENT))
+        counts, pushes = self.runs(db, DAY + dt.timedelta(hours=2), payload([ev("a")], observed="2026-10-14T17:00:00Z"))
+        self.assertEqual((pushes, counts["ambiguous"], counts["failed"]), ([], 0, 0))
+
+    def test_a_database_failure_before_the_push_sends_nothing_and_the_next_run_sends_once(self):
+        db = StageDB()
+        db.fail_on = ("INSERT INTO v7_alerts", 1)
+        sent = []
+        with self.assertRaises(RuntimeError):
+            stage.run(0, True, {"IMESSAGE_ALERTS_HOST": "h", "NTFY_TOPIC": "t"}, DAY, lambda h, n: (json.dumps(payload([ev("a")])) + "\n").encode(),
+                      lambda: contextlib.nullcontext(db), lambda *a: sent.append(a) or True)
+        self.assertEqual(sent, [])
+        counts, pushes = self.runs(db, DAY + dt.timedelta(minutes=5), payload([ev("a")], observed="2026-10-14T15:05:00Z"))
+        self.assertEqual((len(pushes), counts["pushed"], counts["failed"]), (1, 1, 0))
+
     def test_undelivered_events_expire_after_a_day(self):
         db = StageDB()
         self.runs(db, DAY, payload([ev("a")]), accept=False)

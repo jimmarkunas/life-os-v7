@@ -12,7 +12,10 @@ Policy (Communications, not the platform's reminder cadence):
   event is never pushed again. A push the service did not accept stays queued and is retried next run (up to 24 h), never marked sent.
 - Coverage: the lookback runs from the last COMPLETE scan (the `imsg_scan_ok` marker row) plus an hour of overlap, 2-72 h. A gap over 72 h, a scan that hit the
   reader's limit, an unreachable, stale or off-contract endpoint are all reported as a failure (counts `failed`), never passed as complete.
-Rows use their own statuses (IMSG_Q queued, IMSG_S sent, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs alert stage owns and would resolve."""
+- Delivery is claim-then-send, so a database failure can never cause a duplicate push: events are recorded first; the ones about to go out are marked IMSG_P
+  (pending) and committed BEFORE the push; the receipt then sets IMSG_S (accepted) or back to IMSG_Q (rejected: retried next run). A row still IMSG_P at the next
+  run means the outcome is unknown (the receipt was lost): it is closed as sent WITHOUT a second push and reported as `ambiguous` and `failed`.
+Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs alert stage owns."""
 import datetime as dt
 import json
 import math
@@ -28,7 +31,7 @@ SCHEMA = "lifeos.imessage.alerts.v1"
 TZ = ZoneInfo("America/Chicago")
 QUIET_FROM, QUIET_UNTIL = 22, 8
 PREFIX, MARK = "imsg:", "imsg_scan_ok"
-QUEUED, SENT, EXPIRED, MARKER = "IMSG_Q", "IMSG_S", "IMSG_X", "IMSG_M"
+QUEUED, PENDING, SENT, EXPIRED, MARKER = "IMSG_Q", "IMSG_P", "IMSG_S", "IMSG_X", "IMSG_M"
 FIRST, MIN_LOOKBACK, MAX_LOOKBACK = 2, 2, 72
 DELIVER_FOR, KEEP = dt.timedelta(hours=24), dt.timedelta(days=14)
 CODE = {"TIME_CRITICAL": "tc", "ACTION_REQUIRED": "ar"}
@@ -118,7 +121,8 @@ def plan(payload, rows, now):
         push = (("Urgent text message" if tc else "Text needs a reply"),
                 ("%d text%s may need you now" % (tc, "" if tc == 1 else "s") if tc else "%d text%s need%s a reply" % (n, "" if n == 1 else "s", "s" if n == 1 else ""))
                 + ". Open Messages.", alerts.PAGE if tc else alerts.INFO)
-    return {"new": new, "seen": seen, "deliver": deliver, "expire": expire, "purge": purge, "push": push,
+    ambiguous = sorted(k for k, r in rows.items() if r["status"] == PENDING)
+    return {"new": new, "seen": seen, "deliver": deliver, "expire": expire, "purge": purge, "push": push, "ambiguous": ambiguous,
             "attention": sum(1 for e in events if e["severity"] == "ATTENTION"), "queued_quiet": len(queued) - len(deliver)}
 
 
@@ -144,17 +148,14 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.con
         p = plan(payload, rows, now)
         accepted = False
         if live:
-            if p["push"]:
-                accepted = send(environ.get("NTFY_TOPIC", ""), *p["push"])
-            with connection.cursor() as cursor:
+            with connection.cursor() as cursor:                     # 1. record everything this scan learned, before any push
                 for key, code in p["new"].items():
                     cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,%s,%s,%s,%s,NULL)",
                                    (key, code, QUEUED, now, now))
                 for key in p["seen"]:
                     cursor.execute("UPDATE v7_alerts SET last_seen=%s WHERE alert_key=%s", (now, key))
-                if accepted:
-                    for key in p["deliver"]:
-                        cursor.execute("UPDATE v7_alerts SET status=%s, last_notified=%s WHERE alert_key=%s", (SENT, now, key))
+                for key in p["ambiguous"]:                          # a lost receipt from an earlier run: never pushed twice
+                    cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s AND status=%s", (SENT, key, PENDING))
                 for key in p["expire"]:
                     cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s", (EXPIRED, key))
                 for key in p["purge"]:
@@ -163,9 +164,17 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.con
                     observed = _when(payload["observed_at"])
                     cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info',%s,%s,%s,NULL) "
                                    "ON DUPLICATE KEY UPDATE last_seen=VALUES(last_seen)", (MARK, MARKER, observed, observed))
+                for key in p["deliver"]:                            # 2. claim what is about to go out
+                    cursor.execute("UPDATE v7_alerts SET status=%s, last_notified=%s WHERE alert_key=%s AND status=%s", (PENDING, now, key, QUEUED))
             connection.commit()
+            if p["push"]:                                           # 3. push, then 4. the receipt
+                accepted = send(environ.get("NTFY_TOPIC", ""), *p["push"])
+                with connection.cursor() as cursor:
+                    for key in p["deliver"]:
+                        cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s AND status=%s", (SENT if accepted else QUEUED, key, PENDING))
+                connection.commit()
     complete = payload is not None and payload["complete"] and not gap
     return {"lookback_hours": hours, "coverage_gap": int(gap), "health": payload["health"] if payload else ("NO_ENDPOINT" if not host else "UNAVAILABLE"),
             "scanned": payload["scanned"] if payload else 0, "complete": int(complete), "new": len(p["new"]), "deliver": len(p["deliver"]),
-            "queued_quiet": p["queued_quiet"], "attention": p["attention"], "expired": len(p["expire"]), "pushed": int(accepted),
-            "failed": int(not complete or (live and bool(p["push"]) and not accepted))}
+            "queued_quiet": p["queued_quiet"], "attention": p["attention"], "expired": len(p["expire"]), "pushed": int(accepted), "ambiguous": len(p["ambiguous"]),
+            "failed": int(not complete or bool(p["ambiguous"]) or (live and bool(p["push"]) and not accepted))}
