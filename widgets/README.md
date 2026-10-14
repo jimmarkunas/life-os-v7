@@ -2,10 +2,13 @@
 
 Small, static widgets hosted with GitHub Pages for embedding in Notion and other dashboards.
 
-> **Reference copy — not a live deployment.** This directory is a sanitized source copy of the separate
-> `github-widgets` repository. The live widgets and their Notion embeds are served from that repository's own
-> GitHub Pages site, which remains the single deployed implementation. Nothing here is built, served or
-> scheduled by this repository; change the widgets in `github-widgets`, then refresh this copy.
+> **Canonical source: LIFE OS V7.** This `widgets/` directory in `life-os-v7` owns the canonical source code for
+> LIFE OS widgets. Make all future widget development here, not independently in `github-widgets`.
+>
+> **Hosting during the transition:** the existing `github-widgets` repository remains the GitHub Pages hosting
+> destination, and the existing Notion embeds that point at it must keep working. This copy is not yet connected
+> to any automated deployment process: nothing here is built, served or scheduled by V7, so the Pages site stays
+> the only live instance until a separately approved deployment path replaces the manual update.
 
 ## Widgets
 
