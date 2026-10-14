@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- COMM-1.4 local proof. On demand only: launchd holds one owner-only Unix socket and starts the signed launcher per connection.
+     No RunAtLoad, KeepAlive, StartInterval or network socket. __SOCKET__ is filled in by install.sh. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.lifeos.imessage-attention</string>
+    <key>Program</key>
+    <string>/usr/local/libexec/lifeos-imessage/lifeos-imessage-attention</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/libexec/lifeos-imessage/lifeos-imessage-attention</string>
+    </array>
+    <key>inetdCompatibility</key>
+    <dict>
+        <key>Wait</key>
+        <false/>
+    </dict>
+    <key>Sockets</key>
+    <dict>
+        <key>Listener</key>
+        <dict>
+            <key>SockType</key>
+            <string>stream</string>
+            <key>SockFamily</key>
+            <string>Unix</string>
+            <key>SockPathName</key>
+            <string>__SOCKET__</string>
+            <key>SockPathMode</key>
+            <integer>384</integer>
+        </dict>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

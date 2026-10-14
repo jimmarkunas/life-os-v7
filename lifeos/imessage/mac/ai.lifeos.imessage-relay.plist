@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- COMM-1.4 relay. On demand only: launchd holds one TCP listener on 127.0.0.1 (never a tailnet or LAN address) and starts the relay per connection.
+     Tailscale Serve forwards to it with PROXY protocol v2. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.lifeos.imessage-relay</string>
+    <key>Program</key>
+    <string>/usr/local/libexec/lifeos-imessage/lifeos-imessage-relay</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/libexec/lifeos-imessage/lifeos-imessage-relay</string>
+    </array>
+    <key>inetdCompatibility</key>
+    <dict>
+        <key>Wait</key>
+        <false/>
+    </dict>
+    <key>Sockets</key>
+    <dict>
+        <key>Listener</key>
+        <dict>
+            <key>SockType</key>
+            <string>stream</string>
+            <key>SockFamily</key>
+            <string>IPv4</string>
+            <key>SockNodeName</key>
+            <string>127.0.0.1</string>
+            <key>SockServiceName</key>
+            <string>47321</string>
+        </dict>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
