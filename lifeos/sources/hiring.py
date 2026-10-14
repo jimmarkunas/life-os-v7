@@ -50,15 +50,27 @@ def read_applied(client, stats=None):
     raise NotionError("HIRING_LEDGER_INCOMPLETE")
 
 
-def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
-    """D194, one confirmed action end to end: exact Ledger write with read-back, THEN the Hiring Pipeline projection is refreshed (so a row leaves the active queue only after the
-    decision was verified). Any decision error is raised before the projection is touched. A refresh that fails after a verified write is reported as `projection: FAILED`; the decision stands."""
+def _pipeline_client(environ):
+    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+
+
+def decide(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
+    """D194/D195, one confirmed action end to end for ONE correlated pursuit: `decision.route` picks the Ledger application (exact write with read-back) or, when there is none, the one Active Notes page
+    (moved into Retired Opportunities, or back on Reopen); several matches or a Ledger-closed Reopen are refused with nothing written. THEN the Hiring Pipeline projection is refreshed, so a pursuit leaves the
+    queue only after the decision was verified, and `cleared` needs the exact pursuit absent from the rendered table. Any decision error is raised before the projection is touched; a refresh that fails after a
+    verified write is reported as `projection: FAILED` with the decision standing."""
     now = (now or datetime.now(TZ)).astimezone(TZ)
     client = ledger_client or Client(environ)
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
-    done = decision.confirm_rejected(client, request, live, now)
-    done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh and its write was verified
+    want, root, pipe = decision.parse(request), (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), refresh.get("pipeline_client") or _pipeline_client(environ)
+    if not root:
+        raise NotionError("HIRING_PAGES_UNREADABLE")
+    kind, target = decision.route(read_applied(client), read_parents(pipe, root), want)
+    if decision._page_id(target["id"]) != want["id"]:
+        raise decision.fail("STALE_IDENTITY")
+    done = decision.confirm_rejected(client, request, live, now) if kind == "ledger" else decision.move_page(pipe, root, request, live, now)
+    done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh, its write verified and the exact pursuit is gone
     try:
         counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)
         done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified", "target_listed")}
@@ -66,6 +78,9 @@ def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=
     except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
         done["projection"] = "FAILED"
     return done
+
+
+confirm_rejected = decide                                              # the D194 name
 
 
 def read_parents(client, root_id):
@@ -108,7 +123,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
     try:
         if not root:
             raise NotionError("HIRING_PAGES_UNREADABLE")
-        parents = read_parents(pipeline_client or Client({"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"}), root)
+        parents = read_parents(pipeline_client or _pipeline_client(environ), root)
     except Exception:
         ok["parents"] = False
     try:

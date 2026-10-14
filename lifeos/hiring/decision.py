@@ -8,10 +8,14 @@ import json
 import re
 from datetime import datetime
 
+from lifeos.platform import names
 from lifeos.platform.notion_client import NotionError, rich_text
 from . import models as M
 
-ACTION, REJECTED, PASSED = "CONFIRM_REJECTED", "Rejected", "Passed"
+ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
+ACTIVE_TITLE, RETIRED_TITLE = "Active Opportunities", "Retired Opportunities"      # the container pages under the Hiring Pipeline page that the page reader already understands (D189)
+MOVE_VERSION = "2026-03-11"                                                          # the Move page API's documented Notion-Version; the pinned version is not assumed to carry it
+RECORD = re.compile(r"Hiring decision \(V7\) · (Rejected|Reopened) · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
 DECISION, HISTORY, DISMISSED = "Hiring Decision", "Hiring Decision History", "Dismissed Outcome Ref"
 HISTORY_MAX, REASON_MAX, MAX_PAGES = 6000, 200, 40            # history longer than this is refused, never cut; a reason longer than this is refused, never shortened
 OP = re.compile(r"[A-Za-z0-9_-]{8,64}\Z")
@@ -36,14 +40,14 @@ def _page_id(value):
 
 def parse(request):
     """The validated request, or a fixed code. Nothing is written for a request that is not an explicit, complete confirmation."""
-    if not isinstance(request, dict) or request.get("action") != ACTION or request.get("confirmed") is not True:
+    if not isinstance(request, dict) or request.get("action") not in (ACTION, REOPEN) or request.get("confirmed") is not True:
         raise fail("NOT_CONFIRMED")
     reason = request.get("reason")
     fields = {k: (request.get(k).strip() if isinstance(request.get(k), str) else "") for k in ("company", "role")}
     if not (_page_id(request.get("id")) and fields["company"] and fields["role"] and isinstance(request.get("op"), str) and OP.match(request["op"])
             and isinstance(reason, str) and reason.strip() and len(reason.strip()) <= REASON_MAX and reason.strip().isprintable()):
         raise fail("REQUEST_INVALID")
-    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), **fields}
+    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), "action": request["action"], **fields}
 
 
 def check_schema(client):
@@ -116,9 +120,110 @@ def snapshot(page):
     return kept, ((props.get(DECISION) or {}).get("select") or {}).get("name"), _text(props.get(HISTORY), "rich_text")
 
 
+def route(applied, parents, want):
+    """-> ("ledger", row) | ("notes", page) for ONE correlated pursuit, or a fixed code and nothing written. A Ledger application, when there is exactly one, carries the decision and its Notes page is never
+    moved; a pursuit with no Ledger application is closed through its one Active Notes page; several Ledger rows, several Notes pages, or a Notes page that is both Active and Retired is a review, never a guess.
+    Reopen acts only on the record that closed the pursuit: a Ledger-closed application is never reopened (or resurrected) through its Notes page."""
+    same = lambda r: M.same(r["company"], r["role"], want["company"], want["role"])
+    led, act, ret = [r for r in applied if same(r)], [p for p in parents if not p.get("retired") and same(p)], [p for p in parents if p.get("retired") and same(p)]
+    if len(led) > 1 or len(act) > 1 or len(ret) > 1 or (act and ret):
+        raise fail("AMBIGUOUS")
+    page = ret or act                                                  # at most one: the page the pursuit lives on, wherever it is now (a retry after a move that landed must still reach move_page's own checks)
+    if want["action"] == REOPEN:
+        if any(r.get("decision") in M.CLOSED_DECISIONS for r in led):
+            raise fail("LEDGER_CLOSED")
+        if page:
+            return "notes", page[0]
+        raise fail("NOT_CLOSED")
+    if led:
+        return "ledger", led[0]
+    if page:
+        return "notes", page[0]
+    raise fail("NO_MATCH")
+
+
+def listing(client, block_id):
+    """Every child block of a page, read completely or not at all."""
+    out, cursor, seen = [], None, set()
+    for _ in range(MAX_PAGES):
+        data = client.call("GET", f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else ""))
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list) or not isinstance(data.get("has_more"), bool):
+            raise fail("PAGES_INCOMPLETE")
+        out += data["results"]
+        cursor = data.get("next_cursor")
+        if not data["has_more"]:
+            return out
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise fail("PAGES_INCOMPLETE")
+        seen.add(cursor)
+    raise fail("PAGES_INCOMPLETE")
+
+
+def _digest(block):
+    kind = block.get("type")
+    text = (block.get(kind) or {}).get("title") if kind == "child_page" else "".join(r.get("plain_text", "") for r in (block.get(kind) or {}).get("rich_text") or [])
+    return block.get("id"), kind, text
+
+
+def move_page(client, root_id, request, live, now):
+    """Notes-only: the ONE exact Active opportunity page moves into the existing Retired Opportunities container (Confirm Rejected), or back into the Active one (Reopen), with one appended record block
+    (action, date, reason, operation id) that earlier records are never edited for. Nothing else on the page is written: its blocks, interview child pages and human notes are read before and after and must be
+    identical but for the one new last block. The page is checked on a fresh fetch (id, not archived, title company AND role), re-read just before the write, and read back: new parent, same title, same children."""
+    want = parse(request)
+    reopen = want["action"] == REOPEN
+    dest_title = ACTIVE_TITLE if reopen else RETIRED_TITLE
+    found = {}
+    for block in listing(client, root_id):
+        if block.get("type") == "child_page" and (block.get("child_page") or {}).get("title") in (ACTIVE_TITLE, RETIRED_TITLE):
+            found.setdefault(block["child_page"]["title"], []).append(block["id"])
+    if len(found.get(dest_title, [])) != 1:
+        raise fail("CONTAINER_MISSING" if not found.get(dest_title) else "CONTAINER_AMBIGUOUS")
+    dest, retired = _page_id(found[dest_title][0]), _page_id((found.get(RETIRED_TITLE) or [""])[0])
+
+    def fetch():
+        page = client.call("GET", f"/pages/{want['id']}")
+        company, role = names.split_title("".join(r.get("plain_text", "") for r in ((page.get("properties") or {}).get("title") or {}).get("title") or []))
+        if page.get("archived") or page.get("in_trash") or _page_id(page.get("id")) != want["id"] or not M.same(company, role, want["company"], want["role"]):
+            raise fail("STALE_IDENTITY")
+        return page, [_digest(b) for b in listing(client, want["id"])]
+
+    def parent(page):
+        return _page_id((page.get("parent") or {}).get("page_id")) if (page.get("parent") or {}).get("type") == "page_id" else None
+    page, kids = fetch()
+    ours = {m.group(3): m.group(1) for _, _, text in kids for m in [RECORD.match(text or "")] if m}
+    label = "Reopened" if reopen else REJECTED
+    if parent(page) == dest and ours.get(want["op"]) == label:
+        return {"status": "already_recorded", "verified": True, "route": "notes", "entries": len(ours)}
+    if parent(page) == dest or (reopen and parent(page) != retired) or (want["op"] in ours and ours[want["op"]] != label):
+        raise fail("CONFLICT" if not reopen else "NOT_CLOSED")
+    if not live:
+        return {"status": "dry_run", "verified": False, "route": "notes", "entries": len(ours)}
+    again, kids_again = fetch()
+    if again.get("last_edited_time") != page.get("last_edited_time") or kids_again != kids or parent(again) != parent(page):
+        raise fail("CONCURRENT_CHANGE")
+    record = f"Hiring decision (V7) · {label} · {now.date().isoformat()} · {want['reason']} · op {want['op']}"
+    try:
+        if want["op"] not in ours:
+            client.call_once("PATCH", f"/blocks/{want['id']}/children", {"children": [{"type": "callout", "callout": {"rich_text": rich_text(record), "icon": {"type": "emoji", "emoji": "📌"}, "color": "gray_background"}}]})
+        client.call_once("POST", f"/pages/{want['id']}/move", {"parent": {"type": "page_id", "page_id": dest}}, version=MOVE_VERSION)
+    except NotionError:
+        raise fail("WRITE_FAILED") from None
+    try:
+        back, kids_back = fetch()
+        landed = [m for m in listing(client, root_id) if m.get("type") == "child_page" and (m.get("child_page") or {}).get("title") == dest_title]
+    except NotionError:
+        raise fail("READBACK_FAILED") from None
+    new = [] if want["op"] in ours else [(kids_back[-1][0], "callout", record)] if kids_back else []
+    if parent(back) != dest or kids_back != kids + new or len(landed) != 1 or new and kids_back[-1][2] != record:
+        raise fail("READBACK_MISMATCH")
+    return {"status": "recorded", "verified": True, "route": "notes", "entries": len(ours) + (0 if want["op"] in ours else 1)}
+
+
 def confirm_rejected(client, request, live, now):
     """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError. Never success from an HTTP response alone: the exact row is fetched again and compared."""
     want = parse(request)
+    if want["action"] != ACTION:
+        raise fail("NOT_CONFIRMED")
     check_schema(client)
     row = target(applied_pages(client), want)
     page = client.get_page(row["id"])

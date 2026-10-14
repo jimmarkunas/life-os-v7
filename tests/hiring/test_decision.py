@@ -31,7 +31,7 @@ class Source:
     source = "e5" * 16                                   # the canonical Ledger data source: every row's parent names it
 
     def __init__(self, rows=None, schema=True):
-        rows = rows or [(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, SIBLING_ROLE), (OTHER, OTHER_COMPANY, "Program Manager")]
+        rows = [(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, SIBLING_ROLE), (OTHER, OTHER_COMPANY, "Program Manager")] if rows is None else rows
         self.pages = {pid: self.make(pid, c, r) for pid, c, r in rows}
         self.log, self.edits, self.gets = [], 0, 0
         self.schema, self.fail_write, self.drop_write, self.tamper, self.fail_read, self.fail_second_read = schema, False, False, False, False, False
@@ -230,9 +230,9 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         self.refused(chain, request(), "DECISION_AMBIGUOUS")
 
     def test_a_missing_row_or_a_row_that_is_no_longer_applied_has_no_match(self):
-        chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]))
+        chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]), parents=())               # no Notes page either: nothing to close (with one, the pursuit routes through its Notes page, D195)
         self.refused(chain, request(), "DECISION_NO_MATCH")
-        gone = Chain()
+        gone = Chain(parents=())
         gone.source.pages[TARGET]["properties"]["Applied"] = {"checkbox": False}
         self.refused(gone, request(), "DECISION_NO_MATCH")
 
@@ -474,11 +474,12 @@ class CompilerTests(unittest.TestCase):
 class BoundaryTests(unittest.TestCase):
     ROOT = T.ROOT
 
-    def test_the_only_ledger_write_is_one_call_naming_the_two_decision_properties(self):
+    def test_the_only_writes_are_the_decision_properties_one_record_block_and_one_page_move(self):
         text = (self.ROOT / "lifeos/hiring/decision.py").read_text()
         self.assertEqual(len(re.findall(r"update_page_properties\(", text)), 1)
         self.assertEqual(re.findall(r"update_page_properties\(row\[\"id\"\], \{(\w+): .*?, (\w+): ", text), [("DECISION", "HISTORY")])
-        for banned in ("tinyfish", "gmail", "outlook", ".create(", "/blocks", "lifeos.jobs", "lifeos.interview", "lifeos.jira", '"DELETE"', '"POST"', "Applied\": {\"checkbox\": "):
+        self.assertEqual(re.findall(r"client\.call_once\(\"(\w+)\", f\"(/[a-z]+/\{want\['id'\]\}/[a-z]+)\"", text), [("PATCH", "/blocks/{want['id']}/children"), ("POST", "/pages/{want['id']}/move")])
+        for banned in ("tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira", '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": "):
             self.assertNotIn(banned.lower(), text.lower(), banned)
         self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/hiring.py").read_text())
 

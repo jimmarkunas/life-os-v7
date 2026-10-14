@@ -92,6 +92,7 @@
   "D191": "The Fit admission floor is 72 in every lane (2026-10-13, Jim)",
   "D193": "Recruiters: a LinkedIn notification needs recruiting evidence, and a recruiter's company, role and request are read from fixed patterns (2026-10-12, Jim)",
   "D194": "Hiring Decision: Confirm Rejected closes a pursuit on the Job Ledger row (2026-10-14, Jim)",
+  "D195": "Hiring Decision: a Notes-only pursuit is closed through its Notion opportunity page (2026-10-14, Jim)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
