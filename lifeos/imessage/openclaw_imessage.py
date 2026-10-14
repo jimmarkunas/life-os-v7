@@ -36,11 +36,12 @@ def endpoint(path=ENDPOINT):
 
 
 def fetch(host, port):
-    """One connection: send the fixed request, read at most MAX_REPLY + 1 bytes. OSError means the Mac is unreachable or silent."""
+    """One connection: send the fixed request, read at most MAX_REPLY + 1 bytes. OSError means the Mac is unreachable or silent.
+    No half-close: Tailscale Serve's TCP forwarder tears the whole connection down on the client's FIN, which would drop the reply. The relay reads exactly
+    the fixed request and closes after answering, so the reply ends at EOF."""
     with socket.create_connection((host, port), timeout=TIMEOUT) as s:
         s.settimeout(TIMEOUT)
         s.sendall(REQUEST)
-        s.shutdown(socket.SHUT_WR)
         data = b""
         while len(data) <= MAX_REPLY:
             chunk = s.recv(MAX_REPLY + 1 - len(data))

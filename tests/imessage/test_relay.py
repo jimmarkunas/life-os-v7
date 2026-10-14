@@ -71,7 +71,8 @@ class Inetd:
 
 
 class FakeServe:
-    """Tailscale Serve's TCP forwarder with PROXY v2, emulated: prepend the (authenticated) source, then copy bytes both ways."""
+    """Tailscale Serve's TCP forwarder with PROXY v2, emulated as observed live: prepend the (authenticated) source, copy both directions at once,
+    and tear the whole connection down when the client half-closes (Serve does not keep a half-open connection)."""
 
     def __init__(self, target_port, src):
         self.target_port, self.src = target_port, src
@@ -85,27 +86,36 @@ class FakeServe:
                 client, _ = self.listener.accept()
             except OSError:
                 return
-            try:
-                self.forward(client)
-            except OSError:
-                pass
+            threading.Thread(target=self.forward, args=(client,), daemon=True).start()
 
     def forward(self, client):
-        with client, socket.create_connection(("127.0.0.1", self.target_port), timeout=10) as up:
+        try:
+            up = socket.create_connection(("127.0.0.1", self.target_port), timeout=10)
             up.sendall(proxy_v2(self.src))
-            data = b""
-            while True:
-                chunk = client.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-            up.sendall(data)
-            up.shutdown(socket.SHUT_WR)
-            while True:
-                chunk = up.recv(4096)
-                if not chunk:
-                    break
-                client.sendall(chunk)
+        except OSError:
+            client.close()
+            return
+
+        def pump(src, dst):
+            try:
+                while True:
+                    chunk = src.recv(4096)
+                    if not chunk:
+                        break
+                    dst.sendall(chunk)
+            except OSError:
+                pass
+            for s in (client, up):                                # either side ending ends both, like Serve
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+        back = threading.Thread(target=pump, args=(up, client), daemon=True)
+        back.start()
+        pump(client, up)
+        back.join(10)
+        client.close()
+        up.close()
 
 
 @unittest.skipUnless(CC, "no C compiler (set LIFEOS_TEST_CC)")
@@ -166,6 +176,23 @@ class Relay(unittest.TestCase):
         self.assertEqual(w.attention(path=self.endpoint(other.port))["health"], "DISCONNECTED")      # an unauthorized source gets nothing
         serve.listener.close()
         other.listener.close()
+
+    def test_a_half_closing_client_loses_the_reply_through_serve(self):
+        serve = FakeServe(self.port, ORACLE_V4)
+        with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
+            s.sendall(b"attention\n")
+            s.shutdown(socket.SHUT_WR)                            # what the first wrapper did: Serve drops the connection before the relay answers
+            self.assertEqual(s.recv(4096), b"")
+        serve.listener.close()
+
+    def test_forged_identity_through_serve_is_refused(self):
+        serve = FakeServe(self.port, ORACLE_V4)                    # Serve's genuine header comes first; a forged one is just a wrong request
+        for payload in (proxy_v2(ORACLE_V4) + b"attention\n", proxy_v2(OTHER_V4) + b"attention\n", b"send\n", b"attentionXXXXXX\n"):
+            with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
+                s.settimeout(15)
+                s.sendall(payload)
+                self.assertEqual(s.recv(4096), b"", payload)
+        serve.listener.close()
 
     def endpoint(self, port):
         path = os.path.join(self.tmp, "endpoint-%d" % port)
