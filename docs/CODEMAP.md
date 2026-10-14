@@ -109,6 +109,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 - `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
+### lifeos/imessage/
+- `lifeos/imessage/attention_mcp.py`: COMM-1.4: the one read-only iMessage attention tool, served over MCP stdio by the Mac Mini's OpenClaw node (nodeHost.mcp.servers -> mcp.tools.call.v1).
 ### lifeos/interview/
 - `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
