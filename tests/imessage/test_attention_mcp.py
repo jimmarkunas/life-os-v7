@@ -99,10 +99,11 @@ class Protocol(unittest.TestCase):
     def call(self, params):
         return m.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params}, snap=self.SNAP)
 
-    def test_lists_exactly_one_argumentless_tool(self):
+    def test_lists_exactly_the_four_read_only_tools(self):
         tools = m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        self.assertEqual([t["name"] for t in tools], ["imessage_attention"])
+        self.assertEqual([t["name"] for t in tools], ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation"])
         self.assertEqual(tools[0]["inputSchema"], {"type": "object", "properties": {}, "additionalProperties": False})
+        self.assertTrue(all(t["annotations"]["readOnlyHint"] and not t["annotations"]["destructiveHint"] for t in tools))
 
     def test_approved_call_returns_the_contract(self):
         result = self.call({"name": "imessage_attention", "arguments": {}})["result"]
@@ -118,7 +119,7 @@ class Protocol(unittest.TestCase):
         for params in ({"name": "imessage_attention", "arguments": {"path": "/etc/passwd"}}, {"name": "imessage_attention", "arguments": {"query": "SELECT text FROM message"}},
                        {"name": "imessage_attention", "arguments": "; rm -rf ~"}, {"name": "imessage_attention", "arguments": []}, ["imessage_attention"], "imessage_attention"):
             reply = self.call(params)
-            self.assertEqual(reply["error"], {"code": -32602, "message": "only imessage_attention with no arguments"})
+            self.assertEqual(reply["error"], {"code": -32602, "message": "unsupported tool or arguments"})
 
     def test_unknown_methods_are_refused_and_notifications_unanswered(self):
         self.assertEqual(m.handle({"jsonrpc": "2.0", "id": 2, "method": "resources/read"})["error"]["code"], -32601)

@@ -18,6 +18,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from lifeos.imessage import attention_mcp, openclaw_imessage as w
+from tests.imessage import test_reader as reader
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MAC = ROOT / "lifeos/imessage/mac"
@@ -125,13 +126,14 @@ class Relay(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         cls.home = os.path.join(cls.tmp, "home")
         os.makedirs(os.path.join(cls.home, "Library/Messages"))
-        db = os.path.join(cls.home, "Library/Messages/chat.db")                      # a synthetic Messages database the real helper tool reads
-        con = sqlite3.connect(db)
-        con.execute("CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, date INTEGER, is_from_me INTEGER, is_read INTEGER, item_type INTEGER)")
-        con.execute("INSERT INTO message (guid, text, date, is_from_me, is_read, item_type) VALUES ('guid-SECRET', 'body SECRET', ?, 0, 0, 0)",
-                    (attention_mcp._ticks(datetime.now(timezone.utc) - timedelta(hours=1)),))
-        con.commit()
-        con.close()
+        os.makedirs(os.path.join(cls.home, "Library/Application Support"))
+        f = reader.Fixture()                                                        # a synthetic Messages database (and Contacts) the real helper tool reads
+        f.add(10, timedelta(hours=1), text=None, attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"))
+        f.add(11, timedelta(hours=2), handle=2, text="haha SECRET")
+        f.add(10, timedelta(hours=3), mine=1, text="on my way SECRET")
+        f.con.close()
+        shutil.copy(f.db, os.path.join(cls.home, "Library/Messages/chat.db"))
+        shutil.copytree(f.contacts(), os.path.join(cls.home, "Library/Application Support/AddressBook"))
         cls.helper_sock = os.path.join(cls.tmp, "h.sock")
         cls.helper = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         cls.helper.bind(cls.helper_sock)
@@ -159,7 +161,7 @@ class Relay(unittest.TestCase):
     def test_the_installers_negative_checks_all_pass_against_the_real_relay(self):
         run = subprocess.run([sys.executable, "-I", "-", str(self.port), ORACLE_V4], input=heredoc("PROBE_PY"), capture_output=True, text=True, timeout=60)
         rows = [line.split("\t") for line in run.stdout.splitlines()]
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 12)
         self.assertEqual({status for _, status in rows}, {"PASS"}, rows)
 
     def test_forged_identity_inside_the_request_is_refused(self):
@@ -194,6 +196,26 @@ class Relay(unittest.TestCase):
                 self.assertEqual(s.recv(4096), b"", payload)
         serve.listener.close()
 
+    def test_every_command_through_serve_relay_and_the_real_reader(self):
+        serve = FakeServe(self.port, ORACLE_V4)
+        path = self.endpoint(serve.port)
+        counts = w.run(["counts"], path=path)
+        self.assertEqual((counts["health"], counts["count_reliable"], counts["counts"]["unread"]["last_24_hours"]), ("CURRENT", False, {"messages": 2, "conversations": 2}))
+        recent = w.run(["recent", "--hours", "24"], path=path)
+        self.assertEqual([(m["sender"]["name"], m["text"]) for m in recent["messages"]],
+                         [("Alice Example", "Mom is in the hospital, call me now SECRET"), ("Example Corp", "haha SECRET")])
+        urgent = w.run(["urgent"], path=path)
+        self.assertEqual((urgent["summary"]["TIME_CRITICAL"], urgent["flagged"][0]["level"], urgent["flagged"][0]["sender"]["name"]), (1, "TIME_CRITICAL", "Alice Example"))
+        thread = w.run(["conversation", recent["messages"][0]["chat"]], path=path)
+        self.assertEqual(([m["from_me"] for m in thread["messages"]], thread["chat"]), ([False, True], "c10"))
+        self.assertEqual(w.run(["attention"], path=path)["attention"], "NEEDS_ATTENTION")       # the accepted contract is unchanged
+        for refused in (b"recent 73\n", b"recent 0\n", b"conversation 0\n", b"recent 1; id\n", b"conversation c10\n", b"counts all\n", b"send 1\n"):
+            with socket.create_connection(("127.0.0.1", serve.port), timeout=10) as s:
+                s.settimeout(15)
+                s.sendall(refused)
+                self.assertEqual(s.recv(4096), b"", refused)
+        serve.listener.close()
+
     def endpoint(self, port):
         path = os.path.join(self.tmp, "endpoint-%d" % port)
         with open(path, "w") as f:
@@ -224,7 +246,7 @@ class RelayHelperFailures(unittest.TestCase):
         return run.returncode, run.stdout
 
     def test_oversized_multiline_partial_or_missing_helper_replies_forward_nothing(self):
-        for reply in (b"x" * 3000 + b"\n", b"{}\n{}\n", b'{"partial": ', b"", None):
+        for reply in (b"x" * 262145 + b"\n", b"{}\n{}\n", b'{"partial": ', b"", None):
             code, out = self.relay_with(reply)
             self.assertEqual((code, out), (1, b""), reply)
 
@@ -234,7 +256,7 @@ class RelayHelperFailures(unittest.TestCase):
 
 class RelayInstaller(unittest.TestCase):
     def test_pinned_hashes_match_the_reviewed_sources(self):
-        for name, path in (("SHA_RELAY", MAC / "relay.c"), ("SHA_AGENT", MAC / "ai.lifeos.imessage-relay.plist")):
+        for name, path in (("SHA_RELAY", MAC / "relay.c"), ("SHA_AGENT", MAC / "ai.lifeos.imessage-relay.plist"), ("SHA_TOOL", ROOT / "lifeos/imessage/attention_mcp.py")):
             self.assertEqual(re.search(r'^%s="([0-9a-f]{64})"' % name, RELAY_SH, re.M).group(1), hashlib.sha256(path.read_bytes()).hexdigest(), name)
 
     def test_agent_is_on_demand_with_one_loopback_tcp_listener(self):
@@ -251,7 +273,12 @@ class RelayInstaller(unittest.TestCase):
             self.assertIsNone(re.search(banned, code, re.M | re.I), banned)
         self.assertIn('"$TS" serve --bg --tcp "$TAILNET_PORT" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL_PORT"', code)
         self.assertIn('"$TS" serve --tcp "$TAILNET_PORT" off', code)
-        self.assertIn("gate 15", code)
+        self.assertIn("gate 19", code)
+        self.assertIn("gate 21", code)
+        update = code[code.index("update_relay() {"):code.index("rollback() {")]
+        self.assertNotRegex(update, r"\$HELPER\b[^_]")                     # update never writes the signed launcher
+        self.assertNotRegex(update, r"bootout|bootstrap|serve --|serve reset")   # nor reloads agents or touches Serve
+        self.assertIn('sudo /bin/cp -p "$TOOL" "$TOOL.prev"', update)
 
     def test_serve_state_classification(self):
         script = heredoc("SERVE_PY")
@@ -326,7 +353,7 @@ class Wrapper(unittest.TestCase):
     def test_no_answer_or_no_endpoint_is_disconnected(self):
         self.assertEqual(self.check(b""), ("UNKNOWN", "DISCONNECTED"))
 
-        def offline(host, port):
+        def offline(host, port, request, limit):
             raise socket.timeout()
         endpoint = os.path.join(tempfile.mkdtemp(), "endpoint")
         with open(endpoint, "w") as f:
@@ -339,9 +366,11 @@ class Wrapper(unittest.TestCase):
 
     def test_only_the_single_attention_argument_runs(self):
         script = str(ROOT / "lifeos/imessage/openclaw_imessage.py")
-        for args in ([], ["send"], ["attention", "--path", "/etc"], ["attention", "x"]):
+        for args in ([], ["send"], ["attention", "--path", "/etc"], ["attention", "x"], ["recent", "--hours", "0"], ["recent", "--hours", "73"],
+                     ["recent", "--hours", "024"], ["conversation", "c0"], ["conversation", "../x"], ["conversation"], ["counts", "all"], ["urgent", "24"],
+                     ["mark_read", "c1"], ["recent", "--hours", "1; id"]):
             run = subprocess.run([sys.executable, "-I", script] + args, capture_output=True, text=True, timeout=10)
-            self.assertEqual((run.returncode, run.stdout, run.stderr), (2, "usage: openclaw-imessage attention\n", ""), args)
+            self.assertEqual((run.returncode, run.stdout.split(":")[0], run.stderr), (2, "usage", ""), args)
 
 
 if __name__ == "__main__":

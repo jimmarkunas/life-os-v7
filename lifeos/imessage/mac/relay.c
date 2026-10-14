@@ -3,8 +3,9 @@
    launchd starts it per connection on 127.0.0.1 (inetd style: the connection is stdin/stdout). Tailscale Serve forwards each tailnet connection here
    with a PROXY protocol v2 header carrying the WireGuard-authenticated source address. The relay:
      1. requires a well-formed v2 PROXY header for TCP over IPv4/IPv6 whose source is exactly the Oracle Gateway (fixed at build time, never in Git);
-     2. requires the request to be exactly "attention\n";
-     3. sends the one fixed tools/call to the helper's socket and returns its single reply line, at most MAX_REPLY bytes.
+     2. requires one request line from the fixed grammar: "attention", "counts", "recent <1-72>" or "conversation <1-999999999>" (digits only, no
+        leading zero), at most MAX_REQUEST bytes;
+     3. builds the matching tools/call itself from the validated integer and returns the helper's single reply line, at most MAX_REPLY bytes.
    Anything else closes the connection with no output. No arguments, no environment input, no caller-chosen path, command or query; a fixed deadline. */
 #include <arpa/inet.h>
 #include <pwd.h>
@@ -23,10 +24,10 @@
 #endif
 
 #define SOCKET_IN_HOME "/Library/Application Support/LifeOS/imessage-attention.sock"
-#define REQUEST "attention\n"
-#define CALL "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"imessage_attention\", \"arguments\": {}}}\n"
+#define CALL_HEAD "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": "
 #define MAX_PROXY_TAIL 216                                    /* v2 address block plus room for Serve's TLVs; anything larger is refused */
-#define MAX_REPLY 2048
+#define MAX_REQUEST 32
+#define MAX_REPLY 262144                                      /* 50 messages of at most 2000 characters, JSON-escaped */
 #define DEADLINE_SECONDS 8
 
 static const unsigned char SIG[12] = {0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A};
@@ -67,26 +68,50 @@ static int source_is_oracle(void) {
     return 0;
 }
 
-static int request_is_attention(void) {
-    char req[sizeof REQUEST];
-    size_t n = 0;
-    while (n < sizeof REQUEST - 1) {                          /* read only up to the fixed request length: longer input never matches */
-        if (read(0, req + n, 1) != 1)
-            return 0;
-        if (req[n++] == '\n')
-            break;
+static long number(const char *digits, long high) {         /* 1..high from plain decimal digits, no sign, no leading zero; -1 otherwise */
+    long n = 0;
+    if (digits[0] < '1' || digits[0] > '9')
+        return -1;
+    for (const char *c = digits; *c; c++) {
+        if (*c < '0' || *c > '9' || (n = n * 10 + (*c - '0')) > high)
+            return -1;
     }
-    return n == sizeof REQUEST - 1 && memcmp(req, REQUEST, n) == 0;
+    return n;
 }
 
+static int request_to_call(char *call, size_t size) {       /* read one request line and write the matching fixed call; 0 when it is not in the grammar */
+    char req[MAX_REQUEST + 1];
+    size_t n = 0;
+    long arg;
+    for (;;) {
+        if (n == MAX_REQUEST || read(0, req + n, 1) != 1)
+            return 0;                                         /* longer than any valid request, or the caller stopped: refused */
+        if (req[n] == '\n')
+            break;
+        n++;
+    }
+    req[n] = '\0';
+    if (strcmp(req, "attention") == 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_attention\", \"arguments\": {}}}\n") < (int)size;
+    if (strcmp(req, "counts") == 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_counts\", \"arguments\": {}}}\n") < (int)size;
+    if (strncmp(req, "recent ", 7) == 0 && (arg = number(req + 7, 72)) > 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_recent\", \"arguments\": {\"hours\": %ld}}}\n", arg) < (int)size;
+    if (strncmp(req, "conversation ", 13) == 0 && (arg = number(req + 13, 999999999L)) > 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_conversation\", \"arguments\": {\"chat\": %ld}}}\n", arg) < (int)size;
+    return 0;
+}
+
+static char reply[MAX_REPLY + 1];
+
 int main(void) {
-    char reply[MAX_REPLY + 1];
+    char call[256];
     size_t got = 0;
     struct sockaddr_un addr;
     struct passwd *me = getpwuid(getuid());
     signal(SIGPIPE, SIG_IGN);
     alarm(DEADLINE_SECONDS);
-    if (!source_is_oracle() || !request_is_attention() || me == NULL || me->pw_dir == NULL)
+    if (!source_is_oracle() || !request_to_call(call, sizeof call) || me == NULL || me->pw_dir == NULL)
         return 1;
     memset(&addr, 0, sizeof addr);
     addr.sun_family = AF_UNIX;
@@ -98,7 +123,7 @@ int main(void) {
         return 1;
 #endif
     int helper = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (helper < 0 || connect(helper, (struct sockaddr *)&addr, sizeof addr) != 0 || write_full(helper, CALL, sizeof CALL - 1) != 0)
+    if (helper < 0 || connect(helper, (struct sockaddr *)&addr, sizeof addr) != 0 || write_full(helper, call, strlen(call)) != 0)
         return 1;
     shutdown(helper, SHUT_WR);
     for (;;) {
