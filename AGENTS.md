@@ -3,6 +3,11 @@
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
+## Development entrypoint (all authorized coding agents)
+- Read the canonical [LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), especially **Jira-first development lifecycle**, before changing LIFE OS development work. This guide is subordinate to that policy.
+- Start from the exact current Jira `LIFE` issue and linked `LOS` product idea if applicable. Without Jira access, require the authorized Tech Lead's freshly verified issue handoff. Notion owns detailed requirements; the frozen `docs/MASTER_ROADMAP.md` does **not** own live status or build order.
+- Respect the policy's single-writer, permission, proof and Jim-approval gates. GitHub PR/CI success never marks LIFE Done automatically; an agent entrypoint grants no extra Jira or OpenClaw permissions.
+
 ## OpenClaw / Oracle edge
 Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and the relevant WBS evidence row in `docs/MASTER_ROADMAP.md`. The scope's "Capability registry" section lists the named capabilities, their approval gates and how to invoke them (Oracle-local `openclaw agent`; off-host not yet approved).
 - OpenClaw is a bounded capability/control plane; V7/domain owners retain business rules, canonical persistence and scheduling.
