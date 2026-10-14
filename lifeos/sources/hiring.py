@@ -55,7 +55,7 @@ def _pipeline_client(environ):
 
 
 def decide(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
-    """D194/D195, one confirmed action end to end for ONE correlated pursuit: `decision.route` picks the Ledger application (exact write with read-back) or, when there is none, the one Active Notes page
+    """D194/D195, one confirmed action end to end for ONE correlated pursuit: `decision.route` picks the Ledger application (exact write with read-back) or, when there is no ELIGIBLE APPLIED Ledger row (an unapplied row is not an application), the one Active Notes page
     (moved into Retired Opportunities, or back on Reopen); several matches or a Ledger-closed Reopen are refused with nothing written. THEN the Hiring Pipeline projection is refreshed, so a pursuit leaves the
     queue only after the decision was verified, and `cleared` needs the exact pursuit absent from the rendered table. Any decision error is raised before the projection is touched; a refresh that fails after a
     verified write is reported as `projection: FAILED` with the decision standing."""
@@ -69,7 +69,7 @@ def decide(request, live, environ=os.environ, ledger_client=None, now=None, **re
     kind, target = decision.route(read_applied(client), read_parents(pipe, root), want)
     if decision._page_id(target["id"]) != want["id"]:
         raise decision.fail("STALE_IDENTITY")
-    done = decision.confirm_rejected(client, request, live, now) if kind == "ledger" else decision.move_page(pipe, root, request, live, now)
+    done = decision.confirm_rejected(client, request, live, now) if kind == "ledger" else decision.move_page(pipe, root, request, live, now, lambda: read_parents(pipe, root))
     done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh, its write verified and the exact pursuit is gone
     try:
         counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)

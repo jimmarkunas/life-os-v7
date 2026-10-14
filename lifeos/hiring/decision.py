@@ -15,7 +15,7 @@ from . import models as M
 ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
 ACTIVE_TITLE, RETIRED_TITLE = "Active Opportunities", "Retired Opportunities"      # the container pages under the Hiring Pipeline page that the page reader already understands (D189)
 MOVE_VERSION = "2026-03-11"                                                          # the Move page API's documented Notion-Version; the pinned version is not assumed to carry it
-RECORD = re.compile(r"Hiring decision \(V7\) · (Rejected|Reopened) · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
+RECORD = re.compile(r"Hiring decision \(V7\) · (Pending )?(Rejected|Reopened) · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
 DECISION, HISTORY, DISMISSED = "Hiring Decision", "Hiring Decision History", "Dismissed Outcome Ref"
 HISTORY_MAX, REASON_MAX, MAX_PAGES = 6000, 200, 40            # history longer than this is refused, never cut; a reason longer than this is refused, never shortened
 OP = re.compile(r"[A-Za-z0-9_-]{8,64}\Z")
@@ -165,13 +165,16 @@ def _digest(block):
     return block.get("id"), kind, text
 
 
-def move_page(client, root_id, request, live, now):
-    """Notes-only: the ONE exact Active opportunity page moves into the existing Retired Opportunities container (Confirm Rejected), or back into the Active one (Reopen), with one appended record block
-    (action, date, reason, operation id) that earlier records are never edited for. Nothing else on the page is written: its blocks, interview child pages and human notes are read before and after and must be
-    identical but for the one new last block. The page is checked on a fresh fetch (id, not archived, title company AND role), re-read just before the write, and read back: new parent, same title, same children."""
+def move_page(client, root_id, request, live, now, parents):
+    """Notes-only: the ONE exact opportunity page moves into the existing Retired Opportunities container (Confirm Rejected), or back into the Active one (Reopen). Placement is the D189 closure signal and the only
+    status: the compiler and renderer read the section a page is in, never any text on it. Two append-only RECORD callouts (annotations, read only here for idempotency, never as status) keep the confirmed reason and
+    date: `Pending` (intent) before the move and the plain label after the move is verified. States, from what is on the page: no record = nothing written; Pending only = partially applied; Pending + plain label = complete.
+    A different operation while any Pending is open is `DECISION_PENDING`; the same operation reconciles (only the missing steps run, no record twice). A move is attempted only while the page is still in the expected
+    section (checked on both fetches against `parents()`, the page reader: column or container) and its read-back is checked before the plain label is written. Read-back covers the page's parent, title and its TOP-LEVEL
+    blocks (ids, types, plain text) before and after; nested content is not compared (Notion's move carries the page with its content)."""
     want = parse(request)
     reopen = want["action"] == REOPEN
-    dest_title = ACTIVE_TITLE if reopen else RETIRED_TITLE
+    label, dest_title = ("Reopened", ACTIVE_TITLE) if reopen else (REJECTED, RETIRED_TITLE)
     found = {}
     for block in listing(client, root_id):
         if block.get("type") == "child_page" and (block.get("child_page") or {}).get("title") in (ACTIVE_TITLE, RETIRED_TITLE):
@@ -189,23 +192,58 @@ def move_page(client, root_id, request, live, now):
 
     def parent(page):
         return _page_id((page.get("parent") or {}).get("page_id")) if (page.get("parent") or {}).get("type") == "page_id" else None
+
+    def in_source():
+        here = [p for p in parents() if _page_id(p["id"]) == want["id"]]
+        if len(here) != 1 or bool(here[0].get("retired")) != reopen:
+            raise fail("STALE_SOURCE")                                                                  # moved out of the section it was routed from (a column under its heading, or its container)
     page, kids = fetch()
-    ours = {m.group(3): m.group(1) for _, _, text in kids for m in [RECORD.match(text or "")] if m}
-    label = "Reopened" if reopen else REJECTED
-    if parent(page) == dest and ours.get(want["op"]) == label:
-        return {"status": "already_recorded", "verified": True, "route": "notes", "entries": len(ours)}
-    if parent(page) == dest or (reopen and parent(page) != retired) or (want["op"] in ours and ours[want["op"]] != label):
+    marks = {}
+    for _, _, text in kids:
+        m = RECORD.match(text or "")
+        if m:
+            marks.setdefault(m.group(4), set()).add(("pending" if m.group(1) else "done", m.group(2)))
+    mine = marks.get(want["op"], set())
+    if any(lab != label for _, lab in mine):
+        raise fail("CONFLICT")
+    if any(("pending", lab) in s and ("done", lab) not in s for op, s in marks.items() for lab in [l for _, l in s] if op != want["op"]):
+        raise fail("PENDING")                                                                            # another operation is half applied: reconcile it (same operation id) before anything else
+    if ("done", label) in mine:
+        if parent(page) != dest:
+            raise fail("CONFLICT")
+        return {"status": "already_recorded", "verified": True, "route": "notes", "entries": len(marks)}
+    if not mine and (parent(page) == dest or (reopen and parent(page) != retired)):
         raise fail("CONFLICT" if not reopen else "NOT_CLOSED")
+    if parent(page) != dest:
+        in_source()
     if not live:
-        return {"status": "dry_run", "verified": False, "route": "notes", "entries": len(ours)}
+        return {"status": "dry_run", "verified": False, "route": "notes", "entries": len(marks)}
     again, kids_again = fetch()
     if again.get("last_edited_time") != page.get("last_edited_time") or kids_again != kids or parent(again) != parent(page):
         raise fail("CONCURRENT_CHANGE")
-    record = f"Hiring decision (V7) · {label} · {now.date().isoformat()} · {want['reason']} · op {want['op']}"
+    if parent(again) != dest:
+        in_source()                                                                                      # still in the expected section immediately before the write
+    new = []
+
+    def append(text):
+        client.call_once("PATCH", f"/blocks/{want['id']}/children", {"children": [{"type": "callout", "callout": {"rich_text": rich_text(text), "icon": {"type": "emoji", "emoji": "📌"}, "color": "gray_background"}}]})
+        new.append(("callout", text))
+    tail = f"{now.date().isoformat()} · {want['reason']} · op {want['op']}"
     try:
-        if want["op"] not in ours:
-            client.call_once("PATCH", f"/blocks/{want['id']}/children", {"children": [{"type": "callout", "callout": {"rich_text": rich_text(record), "icon": {"type": "emoji", "emoji": "📌"}, "color": "gray_background"}}]})
-        client.call_once("POST", f"/pages/{want['id']}/move", {"parent": {"type": "page_id", "page_id": dest}}, version=MOVE_VERSION)
+        if not mine:
+            append(f"Hiring decision (V7) · Pending {label} · {tail}")
+        if parent(page) != dest:
+            client.call_once("POST", f"/pages/{want['id']}/move", {"parent": {"type": "page_id", "page_id": dest}}, version=MOVE_VERSION)
+    except NotionError:
+        raise fail("WRITE_FAILED") from None
+    try:
+        moved, _ = fetch()
+    except NotionError:
+        raise fail("READBACK_FAILED") from None
+    if parent(moved) != dest:
+        raise fail("READBACK_MISMATCH")                                                                  # the move did not happen: no completion record is written, the page stays Pending
+    try:
+        append(f"Hiring decision (V7) · {label} · {tail}")
     except NotionError:
         raise fail("WRITE_FAILED") from None
     try:
@@ -213,10 +251,9 @@ def move_page(client, root_id, request, live, now):
         landed = [m for m in listing(client, root_id) if m.get("type") == "child_page" and (m.get("child_page") or {}).get("title") == dest_title]
     except NotionError:
         raise fail("READBACK_FAILED") from None
-    new = [] if want["op"] in ours else [(kids_back[-1][0], "callout", record)] if kids_back else []
-    if parent(back) != dest or kids_back != kids + new or len(landed) != 1 or new and kids_back[-1][2] != record:
+    if parent(back) != dest or len(landed) != 1 or kids_back[:len(kids)] != kids or [(k, t) for _, k, t in kids_back[len(kids):]] != new:
         raise fail("READBACK_MISMATCH")
-    return {"status": "recorded", "verified": True, "route": "notes", "entries": len(ours) + (0 if want["op"] in ours else 1)}
+    return {"status": "recorded", "verified": True, "route": "notes", "entries": len(marks | {want["op"]: 1})}
 
 
 def confirm_rejected(client, request, live, now):

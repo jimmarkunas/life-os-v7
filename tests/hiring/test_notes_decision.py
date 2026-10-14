@@ -120,6 +120,12 @@ class Workspace:
             raise NotionError("NOTION_NETWORK")
         return {}
 
+    def relocate(self, bid, new_parent):
+        """A person drags the page somewhere else (a column, a container, or out of the pipeline) between two V7 reads. The edit time is left alone, as Notion would for a parent a reader sees only by walking."""
+        self.kids[self.parent_of[bid]].remove(bid)
+        self.kids[new_parent].append(bid)
+        self.parent_of[bid] = new_parent
+
     def writes(self):
         return [e for e in self.log if e[0] in ("PATCH", "POST")]
 
@@ -209,12 +215,13 @@ class NotesOnlyCloseTests(unittest.TestCase):
         self.assertEqual(sorted(world.listed()), sorted([f"{COMPANY} — {SIBLING_ROLE}", "Contoso Freight — Program Manager"]))     # the same company's other role is untouched
         self.assertEqual(ws.where(ws.target), ws.retired[0])
         kids = ws.digest(ws.target)
-        self.assertEqual(kids[:-1], before[ws.target])                                                # every existing block, human note and interview child page: identical and in order
-        self.assertEqual(kids[-1][1:], ("callout", f"Hiring decision (V7) · Rejected · {NOW.date().isoformat()} · Employer rejection email confirmed · op {OP}"))
-        self.assertEqual(ws.digest(interview), round_before)                                          # the interview page's own content is untouched
+        self.assertEqual(kids[:-2], before[ws.target])                                                # the page's top-level blocks, as before, in order (ids, types, plain text; nested content is not compared here)
+        tail = f"{NOW.date().isoformat()} · Employer rejection email confirmed · op {OP}"
+        self.assertEqual([k[1:] for k in kids[-2:]], [("callout", f"Hiring decision (V7) · Pending Rejected · {tail}"), ("callout", f"Hiring decision (V7) · Rejected · {tail}")])
+        self.assertEqual(ws.digest(interview), round_before)                                          # the fake keeps the interview page's own blocks as they were (a property of the stand-in, not a V7 check)
         for page in (ws.sibling, ws.other):
             self.assertEqual((ws.digest(page), ws.where(page)), (before[page], ws.col_active))
-        self.assertEqual([e[:2] + (e[2],) for e in ws.writes()], [("PATCH", "blocks", ws.target), ("POST", "pages", ws.target)])         # one record block, one move, nothing else
+        self.assertEqual([e[:2] + (e[2],) for e in ws.writes()], [("PATCH", "blocks", ws.target), ("POST", "pages", ws.target), ("PATCH", "blocks", ws.target)])     # intent record, the move, then the completion record
         self.assertEqual(ws.versions, [D.MOVE_VERSION])
         sections = world.sections()
         self.assertEqual(sections[ws.target], (hiring_pipeline.RETIRED, 1))                            # the existing reader sees it as Retired, interview round counted
@@ -228,7 +235,7 @@ class NotesOnlyCloseTests(unittest.TestCase):
         again = world.decide(world.request())
         self.assertEqual((again["status"], again["verified"], again["cleared"]), ("already_recorded", True, True))
         self.assertEqual(len(world.ws.writes()), writes)
-        self.assertEqual(sum(1 for _, _, text in world.ws.digest(world.ws.target) if text.startswith("Hiring decision (V7)")), 1)
+        self.assertEqual(sum(1 for _, _, text in world.ws.digest(world.ws.target) if text.startswith("Hiring decision (V7)")), 2)           # Pending + complete, once
 
     def test_a_dry_run_validates_and_writes_nothing(self):
         world = World()
@@ -293,27 +300,48 @@ class NotesOnlyFailureTests(unittest.TestCase):
         world = self.broken("DECISION_WRITE_FAILED", lambda ws: ws.fail.add("append"))
         self.assertEqual((world.ws.where(world.ws.target), world.ws.writes()), (world.ws.col_active, [("PATCH", "blocks", world.ws.target)]))
 
-    def test_a_refused_move_leaves_the_record_and_the_same_operation_finishes_it_without_a_second_record(self):
+    def records(self, ws):
+        return [text for _, _, text in ws.digest(ws.target) if text.startswith("Hiring decision (V7)")]
+
+    def test_a_refused_move_leaves_only_a_pending_record_and_the_same_operation_finishes_it_without_a_second_one(self):
         world = self.broken("DECISION_WRITE_FAILED", lambda ws: ws.fail.add("move"))
         ws = world.ws
-        self.assertEqual(sum(1 for _, _, t in ws.digest(ws.target) if t.startswith("Hiring decision (V7)")), 1)
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected"])          # partially applied, and nowhere reading as a completed rejection
         ws.fail.clear()
         done = world.decide(world.request())
         self.assertEqual((done["status"], done["cleared"], ws.where(ws.target)), ("recorded", True, ws.retired[0]))
-        self.assertEqual(sum(1 for _, _, t in ws.digest(ws.target) if t.startswith("Hiring decision (V7)")), 1)
-        self.assertEqual(len([e for e in ws.writes() if e[0] == "PATCH"]), 1)
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected", "Rejected"])
+        self.assertEqual([e[0] for e in ws.writes()].count("PATCH"), 2)                                # one intent, one completion; never a second intent
 
-    def test_a_move_that_landed_but_whose_response_was_lost_is_an_error_then_verified_by_the_same_operation(self):
+    def test_a_different_operation_cannot_act_while_an_earlier_one_is_half_applied(self):
+        world = self.broken("DECISION_WRITE_FAILED", lambda ws: ws.fail.add("move"))
+        ws = world.ws
+        ws.fail.clear()
+        writes, records = list(ws.writes()), self.records(ws)
+        for other in (world.request(op=OP2), world.request(op=OP2, reason="A different reason")):
+            with self.assertRaises(NotionError) as error:
+                world.decide(other)
+            self.assertEqual(str(error.exception), "DECISION_PENDING")
+        self.assertEqual((ws.writes(), self.records(ws), ws.where(ws.target)), (writes, records, ws.col_active))      # zero additional records, zero moves
+
+    def test_a_move_that_landed_but_whose_response_was_lost_is_an_error_then_finished_by_the_same_operation(self):
         world = self.broken("DECISION_WRITE_FAILED", lambda ws: setattr(ws, "lose_move", True))
         ws = world.ws
-        self.assertEqual(ws.where(ws.target), ws.retired[0])                                          # it did land
+        self.assertEqual(ws.where(ws.target), ws.retired[0])                                          # it did land, and is still only Pending
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected"])
+        with self.assertRaises(NotionError) as error:                                                 # even landed, another operation waits for the first to be reconciled
+            world.decide(world.request(op=OP2))
+        self.assertEqual(str(error.exception), "DECISION_PENDING")
         ws.lose_move = False
         done = world.decide(world.request())
-        self.assertEqual((done["status"], done["verified"], done["cleared"]), ("already_recorded", True, True))
+        self.assertEqual((done["status"], done["verified"], done["cleared"]), ("recorded", True, True))
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected", "Rejected"])
+        self.assertEqual(world.decide(world.request())["status"], "already_recorded")
         self.assertNotIn(f"{COMPANY} — {ROLE}", world.listed())
 
-    def test_an_acknowledged_move_that_did_not_happen_is_a_failed_read_back(self):
-        self.broken("DECISION_READBACK_MISMATCH", lambda ws: setattr(ws, "drop_move", True))
+    def test_an_acknowledged_move_that_did_not_happen_is_a_failed_read_back_with_no_completion_record(self):
+        world = self.broken("DECISION_READBACK_MISMATCH", lambda ws: setattr(ws, "drop_move", True))
+        self.assertEqual([r.split(" · ")[1] for r in self.records(world.ws)], ["Pending Rejected"])    # never written as complete
 
     def test_a_move_that_lost_a_block_is_a_failed_read_back(self):
         def lose(ws):
@@ -351,6 +379,76 @@ class NotesOnlyFailureTests(unittest.TestCase):
         self.assertEqual((done["status"], done["verified"], done["projection"]["status"], done["cleared"]), ("recorded", True, "degraded", False))
 
 
+class SourceLocationTests(unittest.TestCase):
+    """The page must still be in the section it was routed from, whether a column (block_id parent) or a container (page_id parent), on the first fetch and again just before the write."""
+
+    def refused(self, world, code="DECISION_STALE_SOURCE", req=None):
+        with self.assertRaises(NotionError) as error:
+            world.decide(req or world.request())
+        self.assertEqual((str(error.exception), world.ws.writes(), T.writes(world.tree)), (code, [], []))
+
+    def test_a_page_moved_to_the_retired_column_or_out_of_the_pipeline_after_routing_is_refused_with_zero_writes(self):
+        for where, call, code in (("retired_column", 1, "DECISION_STALE_SOURCE"), ("retired_column", 2, "DECISION_STALE_SOURCE"),            # a block_id parent that stays a block_id parent: only the section check can see it
+                                  ("unrelated_page", 1, "DECISION_STALE_SOURCE"), ("unrelated_page", 2, "DECISION_CONCURRENT_CHANGE")):   # a new page_id parent just before the write: the parent comparison sees it first
+            world = World()
+            dest = world.ws.col_retired if where == "retired_column" else world.ws.add("child_page", None, "Some other page")
+            world.ws.on_get = {call: lambda ws, d=dest: ws.relocate(ws.target, d)}
+            self.refused(world, code)
+
+    def test_a_page_that_is_out_of_its_section_only_at_the_first_fetch_is_refused_by_that_check_alone(self):
+        world = World()
+        world.ws.on_get = {1: lambda ws: ws.relocate(ws.target, ws.col_retired), 2: lambda ws: ws.relocate(ws.target, ws.col_active)}         # a transient move: the re-read before the write looks right again
+        self.refused(world)
+
+    def test_a_reopen_of_a_page_that_is_no_longer_in_the_retired_container_after_routing_is_refused_with_zero_writes(self):
+        world = World()
+        world.decide(world.request())
+        world.ws.log.clear()
+        world.tree.log.clear()
+        world.ws.on_get = {world.ws.gets + 1: lambda ws: ws.relocate(ws.target, ws.col_active)}
+        self.refused(world, "DECISION_NOT_CLOSED", req=world.reopen())
+
+    def test_a_page_in_the_active_container_is_closed_and_reopened_there(self):
+        world = World()
+        ws = world.ws
+        ws.relocate(ws.target, ws.active[0])                                                             # a page_id parent, as the machine-created opportunities have
+        self.assertEqual(world.sections()[ws.target], (hiring_pipeline.ACTIVE, 1))
+        self.assertEqual(world.decide(world.request())["cleared"], True)
+        self.assertEqual(ws.where(ws.target), ws.retired[0])
+        self.assertEqual(world.decide(world.reopen())["status"], "recorded")
+        self.assertEqual(ws.where(ws.target), ws.active[0])
+
+    def test_a_column_page_is_closed_from_its_block_parent(self):
+        world = World()
+        self.assertEqual(world.ws.parent_page(world.ws.target)["type"], "block_id")
+        self.assertEqual(world.decide(world.request())["cleared"], True)
+
+
+class OwnershipAndIdentityTests(unittest.TestCase):
+    def test_placement_is_the_only_status_and_a_record_on_a_page_never_closes_or_reopens_it(self):
+        world = World()
+        ws = world.ws
+        for text in (f"Hiring decision (V7) · Rejected · 2026-10-01 · old · op {OP}", f"Hiring decision (V7) · Pending Rejected · 2026-10-01 · old · op {OP2}"):
+            ws.add("callout", ws.target, text)                                                           # records on an Active page: annotations only
+        world.project()
+        self.assertIn(f"{COMPANY} — {ROLE}", world.listed())
+        self.assertEqual(world.sections()[ws.target][0], hiring_pipeline.ACTIVE)
+        ws.relocate(ws.sibling, ws.retired[0])                                                           # a page retired by hand, with no record at all, is closed (D189)
+        world.project()
+        self.assertNotIn(f"{COMPANY} — {SIBLING_ROLE}", world.listed())
+
+    def test_an_unapplied_ledger_row_for_the_same_company_and_role_is_not_an_application_and_is_never_written(self):
+        world = World(ledger_rows=[(TD.TARGET, COMPANY, ROLE)])
+        world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                    # a posting the Jobs engine surfaced, never applied for through the Ledger
+        before = copy.deepcopy(world.source.pages)
+        done = world.decide(world.request())
+        self.assertEqual((done["status"], done["route"], done["cleared"]), ("recorded", "notes", True))     # the Applied read shows no eligible application, so the Notes page is the pursuit
+        self.assertEqual((world.source.pages, world.source.patches()), (before, []))                      # the unapplied row: untouched, still unapplied, no decision
+        with self.assertRaises(NotionError) as error:                                                    # and it is never a target
+            world.decide(world.request(op=OP2, id=TD.TARGET))
+        self.assertEqual(str(error.exception), "DECISION_STALE_IDENTITY")
+
+
 class ReopenTests(unittest.TestCase):
     def test_reopen_returns_the_pursuit_to_the_active_container_and_keeps_every_record(self):
         world = World()
@@ -361,8 +459,9 @@ class ReopenTests(unittest.TestCase):
         self.assertEqual((done["status"], done["verified"], done["cleared"]), ("recorded", True, False))      # reopened: the pursuit is listed again, so nothing is "cleared"
         self.assertEqual(ws.where(ws.target), ws.active[0])
         kids = ws.digest(ws.target)
-        self.assertEqual(kids[:-1], closed_kids)                                                      # the earlier Rejected record and all human content are untouched
-        self.assertEqual(kids[-1][2], f"Hiring decision (V7) · Reopened · {NOW.date().isoformat()} · Rejection was a mistake · op {OP2}")
+        self.assertEqual(kids[:-2], closed_kids)                                                      # the earlier records and the page's other top-level blocks are as they were
+        tail = f"{NOW.date().isoformat()} · Rejection was a mistake · op {OP2}"
+        self.assertEqual([k[2] for k in kids[-2:]], [f"Hiring decision (V7) · Pending Reopened · {tail}", f"Hiring decision (V7) · Reopened · {tail}"])
         self.assertIn(f"{COMPANY} — {ROLE}", world.listed())
         self.assertEqual(world.sections()[ws.target], (hiring_pipeline.ACTIVE, 1))
         self.assertEqual(done["projection"]["target_listed"], True)
