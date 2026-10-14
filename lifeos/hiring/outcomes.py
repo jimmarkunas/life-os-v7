@@ -29,7 +29,7 @@ REJECTED, OFFER = "REJECTED", "OFFER"
 REJECT = re.compile("|".join((
     r"\bnot (?:be )?moving forward\b", r"\bwill not be (?:proceeding|continuing|advancing|moving)\b", r"\bwon'?t be (?:moving|proceeding|continuing)\b",
     r"\b(?:move|moving|proceed|proceeding|go|going)\s+forward with (?:other|another|different)\b", r"\bpursu(?:e|ing) (?:other|another) (?:candidate|applicant|individual)s?\b",
-    r"\bregret to inform\b", r"\bnot (?:been )?selected\b", r"\bposition (?:has been|was) filled\b", r"\bunable to (?:offer|move forward|proceed)\b",
+    r"\bdecided not to (?:move|proceed|go) forward\b", r"\bregret to inform\b", r"\bnot (?:been )?selected\b", r"\bposition (?:has been|was) filled\b", r"\bunable to (?:offer|move forward|proceed)\b",
     r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b", r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b")), re.I)
 OFFERED = re.compile("|".join((r"\bpleased to (?:offer|extend)\b", r"\boffer of employment\b", r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b", r"\boffer letter\b")), re.I)
 
