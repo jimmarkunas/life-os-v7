@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, decision, outcomes as outcome_mail, render, snapshot
+from lifeos.hiring import card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db
 from lifeos.platform.gcal import GoogleCalendar
@@ -60,9 +60,9 @@ def confirm_rejected(request, live, environ=os.environ, ledger_client=None, now=
     done = decision.confirm_rejected(client, request, live, now)
     done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh and its write was verified
     try:
-        counts = run(0, live, environ, ledger_client=client, now=now, **refresh)
-        done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified")}
-        done["cleared"] = bool(live) and counts["status"] == "fresh" and counts["verified"] is True
+        counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)
+        done["projection"] = {k: counts[k] for k in ("status", "rows", "closed", "verified", "target_listed")}
+        done["cleared"] = bool(live) and counts["status"] == "fresh" and counts["verified"] is True and counts["target_listed"] is False
     except Exception:                                                  # noqa: BLE001 - the verified decision must still be reported
         done["projection"] = "FAILED"
     return done
@@ -96,7 +96,7 @@ def read_events(calendar, now):
     return events
 
 
-def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None):
+def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
     ledger_stats = {}
@@ -127,6 +127,9 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         text, cells, counts = render.render(result, prior, now)
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
+        if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)
+            shown = {c[0][0] for c in (cells or [])}
+            counts["target_listed"] = None if cells is None else any(M.label(r["company"], r["role"]) in shown for r in result["rows"] or [] if M.same(r["company"], r["role"], *target))
         new = snapshot.build(result, prior, now)
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched

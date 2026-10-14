@@ -15,7 +15,7 @@ from lifeos.platform.notion_client import NotionError
 from tests.hiring import test_hiring as T
 from tests.kit.tree import rich
 
-TARGET, SIBLING, OTHER = "a1" * 16, "b2" * 16, "c3" * 16
+TARGET, SIBLING, OTHER, LEDGER = "a1" * 16, "b2" * 16, "c3" * 16, "e5" * 16
 COMPANY, ROLE = "Fabrikam Retail", "Senior Manager, Operations"
 SIBLING_ROLE, OTHER_COMPANY = "Director, Delivery", "Contoso Freight"
 OP = "op-0123456789"
@@ -28,7 +28,7 @@ def request(**changes):
 
 class Source:
     """A stateful synthetic Job Ledger data source: the pages, their edit times and the exact calls made. Failure switches cover every step of the write."""
-    source = "src"
+    source = "e5" * 16                                   # the canonical Ledger data source: every row's parent names it
 
     def __init__(self, rows=None, schema=True):
         rows = rows or [(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, SIBLING_ROLE), (OTHER, OTHER_COMPANY, "Program Manager")]
@@ -39,10 +39,12 @@ class Source:
 
     @staticmethod
     def make(page_id, company, role, decision=None, history=""):
-        props = {"Company": {"rich_text": rich(company)}, "Job": {"title": rich(role)}, "Applied": {"checkbox": True}, "Applied On": {"date": {"start": "2026-10-02"}},
+        props = {"Company": {"rich_text": rich(company)}, "Job": {"title": rich(role)}, "Applied": {"checkbox": True}, "Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": None}},
+                 "Stable Job Key": {"rich_text": rich(f"key-{page_id[:6]}")},
                  "Saturn Decision": {"select": {"name": "Submitted"}}, "Hiring Decision": {"select": {"name": decision} if decision else None},
                  "Hiring Decision History": {"rich_text": rich(history) if history else []}, "Dismissed Outcome Ref": {"rich_text": []}}
-        return {"id": page_id, "archived": False, "in_trash": False, "last_edited_time": "2026-10-05T00:00:00.000Z", "properties": props}
+        return {"id": page_id, "archived": False, "in_trash": False, "last_edited_time": "2026-10-05T00:00:00.000Z", "properties": props,
+                "parent": {"type": "data_source_id", "data_source_id": LEDGER, "database_id": "d4" * 16}}
 
     def call(self, method, path, body=None):
         self.log.append((method, path.split("/")[1]))
@@ -80,7 +82,9 @@ class Source:
         page = self.pages[page_id]
         for name, value in properties.items():
             page["properties"][name] = {"select": value["select"]} if "select" in value else {"rich_text": [{"plain_text": r["text"]["content"]} for r in value["rich_text"]]}
-        if self.tamper:
+        if callable(self.tamper):
+            self.tamper(page)
+        elif self.tamper:
             page["properties"]["Applied"] = {"checkbox": False}
         self.edits += 1
         page["last_edited_time"] = f"2026-10-06T00:00:{self.edits:02d}.000Z"
@@ -139,7 +143,7 @@ class ConfirmRejectedTests(unittest.TestCase):
         before = copy.deepcopy(chain.source.pages)
         done = chain.confirm()
         self.assertEqual((done["status"], done["verified"], done["entries"]), ("recorded", True, 1))
-        self.assertEqual(done["projection"], {"status": "fresh", "rows": 2, "closed": 1, "verified": True})
+        self.assertEqual(done["projection"], {"status": "fresh", "rows": 2, "closed": 1, "verified": True, "target_listed": False})
         self.assertIs(done["cleared"], True)
         self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))                                # gone from the Daily Report table only after the verified write
         self.assertEqual(sorted(seen(chain.tree)), sorted([f"{COMPANY} — {SIBLING_ROLE}", f"{OTHER_COMPANY} — Program Manager"]))
@@ -298,6 +302,23 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
         for edit in (unapply, retitle):
             self.changed_after(2, edit)                              # the second fetch, immediately before the write: two consistent reads can no longer authorize a wrong closure
 
+    def test_a_fetched_page_that_is_not_a_row_of_the_canonical_ledger_is_refused_at_both_fetches(self):
+        for parent in ({"type": "data_source_id", "data_source_id": "f6" * 16}, {"type": "page_id", "page_id": TARGET}, {"type": "data_source_id"}, {}, None):
+            for call in (1, 2):
+                self.changed_after(call, lambda source, parent=parent: source.pages[TARGET].update(parent=parent), "DECISION_NOT_LEDGER_ROW")
+        chain = Chain()
+        chain.source.pages[TARGET]["parent"] = {"type": "data_source_id", "data_source_id": ("E5" * 16)[:32].upper(), "database_id": "d4" * 16}      # the same id in another case is still the Ledger
+        chain.confirm()
+        self.assertEqual(chain.source.decision(), {"name": "Rejected"})
+
+    def test_a_row_whose_stable_key_or_dismissal_ref_or_full_date_changes_before_the_write_is_not_written(self):
+        edits = (lambda source: source.pages[TARGET]["properties"].update({"Stable Job Key": {"rich_text": rich("other-key")}}),
+                 lambda source: source.pages[TARGET]["properties"].update({"Dismissed Outcome Ref": {"rich_text": rich("mail-ref-1")}}),
+                 lambda source: source.pages[TARGET]["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": "2026-10-09", "time_zone": None}}}),
+                 lambda source: source.pages[TARGET]["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": "America/Chicago"}}}))
+        for edit in edits:
+            self.changed_after(2, edit, "DECISION_CONCURRENT_CHANGE")                           # nothing moved the edit time: the exact fields themselves are compared
+
     def test_an_archived_row_is_refused(self):
         chain = Chain()
         chain.source.pages[TARGET]["archived"] = True
@@ -330,6 +351,14 @@ class FailedWriteTests(unittest.TestCase):
 
     def test_a_write_that_also_changed_the_application_record_is_a_failed_read_back(self):
         self.broken("DECISION_READBACK_MISMATCH", tamper=True)
+
+    def test_a_write_that_also_changed_the_stable_key_dismissal_ref_or_full_date_is_a_failed_read_back(self):
+        edits = (lambda page: page["properties"].update({"Stable Job Key": {"rich_text": rich("other-key")}}),
+                 lambda page: page["properties"].update({"Dismissed Outcome Ref": {"rich_text": rich("mail-ref-1")}}),
+                 lambda page: page["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": "2026-10-09", "time_zone": None}}}),
+                 lambda page: page["properties"].update({"Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": "America/Chicago"}}}))
+        for edit in edits:
+            self.broken("DECISION_READBACK_MISMATCH", tamper=edit)
 
     def test_an_unreadable_row_after_the_write_is_a_failed_read_back(self):
         self.broken("DECISION_READBACK_FAILED", fail_second_read=True)
@@ -368,6 +397,19 @@ class FailedWriteTests(unittest.TestCase):
             done = chain.confirm()
         self.assertEqual((done["status"], done["verified"], done["projection"], done["cleared"]), ("recorded", True, "FAILED", False))
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
+
+    def test_a_fresh_verified_projection_that_still_lists_the_pursuit_is_recorded_but_never_cleared(self):
+        chain = Chain()
+        real = C.compile_rows
+
+        def forgetful(applied, *args, **kw):                         # a compiler that does not honour the decision: the table stays fresh and verified, and still lists the pursuit
+            return real([dict(a, decision=None) for a in applied], *args, **kw)
+        with mock.patch.object(T.stage.C, "compile_rows", forgetful):
+            done = chain.confirm()
+        self.assertEqual((done["status"], done["verified"]), ("recorded", True))                      # the canonical decision stands
+        self.assertEqual((done["projection"]["status"], done["projection"]["verified"], done["projection"]["target_listed"]), ("fresh", True, True))
+        self.assertIs(done["cleared"], False)
+        self.assertIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
 
     def test_a_degraded_projection_after_a_verified_write_is_never_reported_as_cleared(self):
         chain = Chain()

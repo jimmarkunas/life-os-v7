@@ -96,9 +96,12 @@ def entries(text):
     return out
 
 
-def current(page, want):
-    """The fetched page itself, not the query that found it, must still be the requested application: this page id, not archived, Applied ticked, and company AND role as requested."""
-    props = page.get("properties") or {}
+def current(page, want, source):
+    """The fetched page itself, not the query that found it, must still be the requested application: a row of the canonical Ledger (its parent is that data source), this page id, not
+    archived, Applied ticked, and company AND role as requested."""
+    props, parent = page.get("properties") or {}, page.get("parent") or {}
+    if parent.get("type") != "data_source_id" or not _page_id(parent.get("data_source_id")) or _page_id(parent["data_source_id"]) != _page_id(source):
+        raise fail("NOT_LEDGER_ROW")
     if (page.get("archived") or page.get("in_trash") or _page_id(page.get("id")) != want["id"] or (props.get("Applied") or {}).get("checkbox") is not True
             or not M.same(_text(props.get("Company"), "rich_text"), _text(props.get("Job"), "title"), want["company"], want["role"])):
         raise fail("STALE_IDENTITY")
@@ -107,8 +110,9 @@ def current(page, want):
 def snapshot(page):
     """What a read-back must find unchanged, and the decision and history as they stand."""
     props = page.get("properties") or {}
-    kept = {"Applied": (props.get("Applied") or {}).get("checkbox"), "Applied On": ((props.get("Applied On") or {}).get("date") or {}).get("start"),
-            "Saturn Decision": ((props.get("Saturn Decision") or {}).get("select") or {}).get("name"), "Company": _text(props.get("Company"), "rich_text"), "Job": _text(props.get("Job"), "title")}
+    kept = {"Applied": (props.get("Applied") or {}).get("checkbox"), "Applied On": (props.get("Applied On") or {}).get("date"),      # the whole date object: start, end and time zone
+            "Saturn Decision": ((props.get("Saturn Decision") or {}).get("select") or {}).get("name"), "Company": _text(props.get("Company"), "rich_text"), "Job": _text(props.get("Job"), "title"),
+            "Stable Job Key": _text(props.get("Stable Job Key"), "rich_text"), DISMISSED: _text(props.get(DISMISSED), "rich_text")}
     return kept, ((props.get(DECISION) or {}).get("select") or {}).get("name"), _text(props.get(HISTORY), "rich_text")
 
 
@@ -118,7 +122,7 @@ def confirm_rejected(client, request, live, now):
     check_schema(client)
     row = target(applied_pages(client), want)
     page = client.get_page(row["id"])
-    current(page, want)
+    current(page, want, client.source)
     kept, decision, history = snapshot(page)
     ops = [e["op"] for e in entries(history)]
     if want["op"] in ops:
@@ -134,7 +138,7 @@ def confirm_rejected(client, request, live, now):
     if not live:
         return {"status": "dry_run", "verified": False, "entries": len(ops)}
     again = client.get_page(row["id"])
-    current(again, want)                                                                        # still the requested application immediately before the write
+    current(again, want, client.source)                                                                        # still the requested application immediately before the write
     if again.get("last_edited_time") != page.get("last_edited_time") or snapshot(again) != (kept, decision, history):
         raise fail("CONCURRENT_CHANGE")
     try:
