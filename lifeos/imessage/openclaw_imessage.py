@@ -210,15 +210,21 @@ def classify(msg, context=()):
     return {"level": level, "reasons": reasons, "review": review, "next_action": action}
 
 
+def verdicts(msgs):
+    """(message, verdict) for every incoming message of a `recent` list, each judged with up to two earlier messages of its own conversation."""
+    out = []
+    for i, m in enumerate(msgs):
+        earlier = [x.get("text") for x in msgs[i + 1:] if x["chat"] == m["chat"]][:2]      # newest first, so later entries are earlier messages
+        out.append((m, classify(m, earlier)))
+    return out
+
+
 def urgent(recent):
     """`recent` result -> the classified view: every incoming message gets a level; flagged ones (above INFORMATIONAL, or to review) are listed."""
     if recent.get("messages") is None:
         return {k: recent[k] for k in ("channel", "health", "sync", "observed_at", "source")} | {"hours": recent.get("hours"), "summary": None, "flagged": None}
-    msgs = recent["messages"]
     summary, flagged = {level: 0 for level in LEVELS}, []
-    for i, m in enumerate(msgs):
-        earlier = [x.get("text") for x in msgs[i + 1:] if x["chat"] == m["chat"]][:2]      # newest first, so later entries are earlier messages
-        verdict = classify(m, earlier)
+    for m, verdict in verdicts(recent["messages"]):
         summary[verdict["level"]] += 1
         if verdict["level"] != "INFORMATIONAL" or verdict["review"]:
             flagged.append({k: m[k] for k in ("ref", "chat", "sent_at", "sender", "group", "chat_name", "unread", "text")} | verdict)
