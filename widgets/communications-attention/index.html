@@ -8,8 +8,8 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <title>LIFE OS — Communications Attention (Synthetic Demo)</title>
   <style>
-    :root{color-scheme:light dark;--fg:#25272b;--muted:#70757e;--hair:#e9eaf0;--hover:#f6f7f9;--link:#1d4f97;--alert:#a46812;--focus:#2966b5;--connected:#178a54;--connection-issue:#d24545;--connection-unknown:#7b8792}
-    @media(prefers-color-scheme:dark){:root{--fg:#efeff2;--muted:#a6abb5;--hair:#383b41;--hover:#24272d;--link:#8dbdff;--alert:#f6c978;--focus:#a9caff;--connected:#51c787;--connection-issue:#ff7474;--connection-unknown:#a6abb5}}
+    :root{color-scheme:light dark;--fg:#25272b;--muted:#70757e;--hair:#e9eaf0;--hover:#f6f7f9;--link:#2f76d2;--alert:#a46812;--focus:#2966b5;--connected:#178a54;--connection-issue:#d24545;--connection-unknown:#7b8792}
+    @media(prefers-color-scheme:dark){:root{--fg:#efeff2;--muted:#a6abb5;--hair:#383b41;--hover:#24272d;--link:#5ba8ff;--alert:#f6c978;--focus:#a9caff;--connected:#51c787;--connection-issue:#ff7474;--connection-unknown:#a6abb5}}
     *,:before,:after{box-sizing:border-box}
     html,body{margin:0;width:100%;min-height:100%;background:transparent;color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
     .wrap{width:100%;max-width:none;padding:12px 14px 10px}
@@ -23,23 +23,23 @@
     button:hover{color:var(--fg);background:var(--hover)}
     button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     .list{border-top:1px solid var(--hair)}
-    .channel{display:grid;grid-template-columns:minmax(175px,235px) minmax(0,1fr);align-items:center;column-gap:13px;min-height:45px;padding:9px 5px;border-bottom:1px solid var(--hair)}
+    .channel{display:grid;grid-template-columns:minmax(280px,66%) minmax(0,1fr);align-items:center;column-gap:13px;min-height:45px;padding:9px 5px;border-bottom:1px solid var(--hair)}
     .channel-name{display:flex;align-items:center;gap:10px;min-width:0;font-weight:600}
-    .channel-action{display:inline-flex;align-items:center;gap:9px;min-width:0}
-    .connection-dot{display:inline-block;flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:var(--connection-unknown);box-shadow:0 0 0 1px rgba(0,0,0,.09)}
+    .channel-action{display:grid;grid-template-columns:minmax(0,1fr) 10px;align-items:center;column-gap:10px;width:200px;max-width:100%;min-width:0}
+    .connection-dot{display:block;align-self:center;justify-self:center;width:10px;height:10px;margin:0;border-radius:50%;background:var(--connection-unknown);box-shadow:0 0 0 1px rgba(0,0,0,.09)}
     .connection-dot.connected{background:var(--connected)}
     .connection-dot.issue{background:var(--connection-issue)}
     .ch-icon{display:grid;place-items:center;width:24px;height:24px;min-width:24px;border-radius:7px;font-size:13px;font-weight:750;background:var(--hover)}
     .ch-icon.telegram{color:#229ed9}.ch-icon.whatsapp{color:#249d62}.ch-icon.discord{color:#7584e6}
     .name{color:var(--fg)}
-    .name-link{margin:0;padding:0;border:0;background:transparent;color:var(--link);text-decoration:underline;text-underline-offset:3px;font:inherit;font-weight:inherit;text-align:left;cursor:pointer}
-    .name-link:hover{color:var(--fg);background:transparent}
+    .name-link{display:block;min-width:0;margin:0;padding:0;border:0;background:transparent;color:var(--link);text-decoration:none;font:inherit;line-height:1.45;font-weight:inherit;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+    .name-link:hover{color:var(--link);background:transparent;text-decoration:none}
     .name-link:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     .latest{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;color:var(--fg)}
     .latest.empty{color:var(--muted)}
     footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--muted);padding:11px 5px 1px;font-size:11px}
-    @media(max-width:520px){.wrap{padding:9px 6px 8px}.channel{grid-template-columns:minmax(175px,47%) minmax(0,1fr);gap:3px 8px}.stamp{display:none}footer{font-size:10px}}
-    @media(max-width:380px){.ch-icon{display:none}.channel{grid-template-columns:minmax(148px,49%) minmax(0,1fr)}}
+    @media(max-width:520px){.wrap{padding:9px 6px 8px}.channel{grid-template-columns:minmax(175px,55%) minmax(0,1fr);gap:3px 8px}.stamp{display:none}footer{font-size:10px}}
+    @media(max-width:380px){.ch-icon{display:none}.channel{grid-template-columns:minmax(148px,56%) minmax(0,1fr)}}
     @media(prefers-reduced-motion:no-preference){button:active{transform:scale(.96)}}
   </style>
 </head>
