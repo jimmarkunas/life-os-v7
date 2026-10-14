@@ -5,6 +5,7 @@ import ipaddress
 import json
 import os
 import pathlib
+import socket
 import sqlite3
 import struct
 import tempfile
@@ -58,6 +59,7 @@ def recent(msgs, health="CURRENT"):
 
 class Endpoint(unittest.TestCase):
     def setUp(self):
+        self.uid = 0                                                           # tailscaled
         d = tempfile.mkdtemp()
         self.key = os.path.join(d, "event-key")
         with open(self.key, "w") as f:
@@ -68,7 +70,7 @@ class Endpoint(unittest.TestCase):
         original = ep.load_wrapper
         ep.load_wrapper = lambda path=None: wrapper
         try:
-            code = ep.main(io.BytesIO(payload), out, whois, "unused", self.key)
+            code = ep.main(io.BytesIO(payload), out, whois, "unused", self.key, uid=lambda: self.uid)
         finally:
             ep.load_wrapper = original
         return code, out.getvalue()
@@ -118,6 +120,32 @@ class Endpoint(unittest.TestCase):
                         v2(RUNNER) + b"alerts 2; id\n", v2(RUNNER) + b"alerts " + b"9" * 40 + b"\n", v2(RUNNER) + b"GET / HTTP/1.1\r\n"):
             self.assertEqual(self.call(payload, w), (1, b""), payload[-24:])
         self.assertEqual(w.calls, [])                                   # nothing was ever read from the Mac
+
+    def test_a_local_non_root_process_cannot_present_even_a_valid_looking_header(self):
+        w = FakeWrapper(recent([message(1)]))
+        for uid in (1001, 65534, None):
+            self.uid = uid
+            self.assertEqual(self.call(v2(RUNNER) + b"alerts 2\n", w), (1, b""), uid)
+        self.assertEqual(w.calls, [])
+
+    def test_peer_uid_reads_the_connecting_socket_from_proc_net_tcp(self):
+        table = ("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+                 "   0: 0100007F:B846 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1001        0 1 1\n"     # our listener (47174)
+                 "   1: 0100007F:D431 0100007F:B846 01 00000000:00000000 00:00000000 00000000     0        0 2 1\n"     # peer 54321 -> 47174, root
+                 "   2: 0100007F:B846 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1001        0 3 1\n")    # our accepted end
+        self.assertEqual(ep.peer_uid(table, ("127.0.0.1", 54321), ("127.0.0.1", 47174)), 0)
+        self.assertIsNone(ep.peer_uid(table, ("127.0.0.1", 54322), ("127.0.0.1", 47174)))
+        self.assertEqual(ep._hex("127.0.0.1", 47342), "0100007F:B8EE")
+
+    def test_peer_uid_on_a_real_loopback_connection_is_this_process_owner(self):
+        server = socket.create_server(("127.0.0.1", 0))
+        client = socket.create_connection(server.getsockname())
+        conn, _ = server.accept()
+        try:
+            self.assertEqual(ep.loopback_peer_uid(conn.fileno()), os.getuid())
+        finally:
+            for s in (conn, client, server):
+                s.close()
 
     def test_whois_failure_or_missing_key_fails_closed(self):
         self.assertFalse(ep.authorized(RUNNER, lambda ip: None))

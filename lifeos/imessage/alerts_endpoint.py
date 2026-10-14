@@ -2,6 +2,8 @@
 
 systemd starts one process per connection on 127.0.0.1 (socket activation, Accept=yes: the connection is stdin/stdout); Oracle's Tailscale Serve forwards one
 tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-authenticated source. The process:
+  0. requires the loopback peer to be tailscaled itself (the connecting local socket's owner, from /proc/net/tcp, must be root): a local non-root process
+     cannot present a forged PROXY header, because it is refused before one byte is read;
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
   2. requires the request to be exactly "alerts <lookback hours 1-72>";
   3. reads the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), classifies them in memory with the
@@ -16,6 +18,7 @@ import importlib.util
 import ipaddress
 import json
 import os
+import socket
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -30,6 +33,32 @@ MAX_REQUEST = 16
 LIMIT = 50
 SCHEMA = "lifeos.imessage.alerts.v1"
 PUSHED = ("ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
+
+
+def _hex(host, port):
+    return "%08X:%04X" % (int.from_bytes(ipaddress.IPv4Address(host).packed, "little"), port)
+
+
+def peer_uid(table, peer, local):
+    """The uid owning the local socket at the other end of this loopback connection: its row has local = our peer and remote = our listener."""
+    want = (_hex(*peer), _hex(*local))
+    for line in table.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) > 7 and (fields[1], fields[2]) == want:
+            return int(fields[7])
+    return None
+
+
+def loopback_peer_uid(fd=0, tcp="/proc/net/tcp"):
+    s = socket.socket(fileno=os.dup(fd))
+    try:
+        peer, local = s.getpeername()[:2], s.getsockname()[:2]
+    finally:
+        s.close()
+    if peer[0] != "127.0.0.1" or local[0] != "127.0.0.1":
+        return None
+    with open(tcp) as f:
+        return peer_uid(f.read(), peer, local)
 
 
 def read_exact(stream, n):
@@ -118,9 +147,14 @@ def scan(hours, wrapper, secret, now=None):
     return dict(out, health="DEGRADED" if reached else health, complete=health == "CURRENT" and not reached, scanned=len(msgs), limit_reached=reached)
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None):
+def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
+    try:
+        if uid() != 0:
+            return 1                                               # not tailscaled: a local process, refused before any header is read
+    except (OSError, ValueError):
+        return 1
     ip = proxy_source(stdin)
     if ip is None or not authorized(ip, lookup):
         return 1
