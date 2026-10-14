@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>LIFE OS — Communications Attention (Synthetic Demo)</title>
+  <style>
+    :root{color-scheme:light dark;--fg:#25272b;--muted:#70757e;--hair:#e9eaf0;--hover:#f6f7f9;--link:#1d4f97;--alert:#a46812;--focus:#2966b5;--connected:#178a54;--connection-issue:#d24545;--connection-unknown:#7b8792}
+    @media(prefers-color-scheme:dark){:root{--fg:#efeff2;--muted:#a6abb5;--hair:#383b41;--hover:#24272d;--link:#8dbdff;--alert:#f6c978;--focus:#a9caff;--connected:#51c787;--connection-issue:#ff7474;--connection-unknown:#a6abb5}}
+    *,:before,:after{box-sizing:border-box}
+    html,body{margin:0;width:100%;min-height:100%;background:transparent;color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+    .wrap{width:100%;max-width:none;padding:12px 14px 10px}
+    
+    header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 4px 11px}
+    h1{display:flex;align-items:center;gap:8px;margin:0;font-size:15px;font-weight:700;letter-spacing:-.015em}
+    .glyph{font-size:18px;line-height:1}
+    .controls{display:flex;align-items:center;gap:9px}
+    .stamp{font-size:11px;color:var(--muted);white-space:nowrap}
+    button{border:0;border-radius:5px;padding:5px 7px;color:var(--muted);background:none;font:inherit;font-size:12px;cursor:pointer}
+    button:hover{color:var(--fg);background:var(--hover)}
+    button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+    .list{border-top:1px solid var(--hair)}
+    .channel{display:grid;grid-template-columns:minmax(175px,235px) minmax(0,1fr);align-items:center;column-gap:13px;min-height:45px;padding:9px 5px;border-bottom:1px solid var(--hair)}
+    .channel-name{display:flex;align-items:center;gap:10px;min-width:0;font-weight:600}
+    .channel-action{display:inline-flex;align-items:center;gap:9px;min-width:0}
+    .connection-dot{display:inline-block;flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:var(--connection-unknown);box-shadow:0 0 0 1px rgba(0,0,0,.09)}
+    .connection-dot.connected{background:var(--connected)}
+    .connection-dot.issue{background:var(--connection-issue)}
+    .ch-icon{display:grid;place-items:center;width:24px;height:24px;min-width:24px;border-radius:7px;font-size:13px;font-weight:750;background:var(--hover)}
+    .ch-icon.telegram{color:#229ed9}.ch-icon.whatsapp{color:#249d62}.ch-icon.discord{color:#7584e6}
+    .name{color:var(--fg)}
+    .name-link{margin:0;padding:0;border:0;background:transparent;color:var(--link);text-decoration:underline;text-underline-offset:3px;font:inherit;font-weight:inherit;text-align:left;cursor:pointer}
+    .name-link:hover{color:var(--fg);background:transparent}
+    .name-link:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+    .latest{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;color:var(--fg)}
+    .latest.empty{color:var(--muted)}
+    footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--muted);padding:11px 5px 1px;font-size:11px}
+    @media(max-width:520px){.wrap{padding:9px 6px 8px}.channel{grid-template-columns:minmax(175px,47%) minmax(0,1fr);gap:3px 8px}.stamp{display:none}footer{font-size:10px}}
+    @media(max-width:380px){.ch-icon{display:none}.channel{grid-template-columns:minmax(148px,49%) minmax(0,1fr)}}
+    @media(prefers-reduced-motion:no-preference){button:active{transform:scale(.96)}}
+  </style>
+</head>
+<body>
+  <main class="wrap" aria-labelledby="heading">
+    <header>
+      <h1 id="heading"><span class="glyph" aria-hidden="true">💬</span>Communications Attention</h1>
+      <div class="controls"><span class="stamp" id="stamp">Synthetic preview</span><button id="refresh" type="button" aria-label="Refresh synthetic preview">↻ Refresh</button></div>
+    </header>
+    <div class="list" id="channels" aria-live="polite"></div>
+    <footer><span role="status" id="status">SYNTHETIC DEMO · No live data connection</span><span>🔒 Private data integration not enabled</span></footer>
+  </main>
+  <script>
+    'use strict';
+    // PUBLIC DESIGN DEMO ONLY. No fetch(), real identifiers, credentials, data endpoint or outbound network calls.
+    // Future real data must use a separately proven authenticated private origin, not GitHub Pages.
+    const CHANNELS=[
+      {id:'messages',name:'Messages',icon:'▤',unread_count:5,count_reliable:true,latest_contact:'Sample Contact A',health:'CURRENT',connection_state:'CONNECTED'},
+      {id:'telegram',name:'Telegram',icon:'➤',unread_count:3,count_reliable:true,latest_contact:'Sample Contact B',health:'CURRENT',connection_state:'CONNECTED',web_url:'https://web.telegram.org/'}, 
+      {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'DISCONNECTED',connection_state:'ISSUE',web_url:'https://web.whatsapp.com/'}, 
+      {id:'discord',name:'Discord',icon:'◉',unread_count:0,count_reliable:true,latest_contact:'Sample Contact C',health:'CURRENT',connection_state:'CONNECTED',web_url:'https://discord.com/channels/@me'}
+    ];
+    function el(tag,cls,value){const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e}
+    let refreshCount=0;
+    function draw(isRefresh=false){
+      const target=document.getElementById('channels');target.replaceChildren();
+      for(const source of CHANNELS){
+        const reliable=source.health==='CURRENT'&&source.count_reliable===true&&Number.isSafeInteger(source.unread_count)&&source.unread_count>=0;
+        const count=reliable?(source.unread_count>99?'99+':String(source.unread_count)):'—';
+        const row=el('div','channel'),left=el('div','channel-name');
+        left.append(el('span','ch-icon '+source.id,source.icon));
+        const label=source.name+' ('+count+')';
+        let action;
+        if(source.web_url){
+          action=el('a','name-link',label);
+          action.href=source.web_url;
+          action.target='_blank';
+          action.rel='noopener noreferrer';
+          action.title='Official '+source.name+' web fallback; native Mac launch not yet verified';
+          action.setAttribute('aria-label','Open '+source.name+' in a new browser tab');
+        }else{
+          action=el('button','name-link',label);
+          action.type='button';
+          action.title='Native Messages launch from this Notion embed is not yet verified';
+          action.addEventListener('click',()=>{
+            document.getElementById('status').textContent='Messages: open Messages.app from your Mac Dock. A reliable Notion launch link is not verified.';
+          });
+        }
+        const actionGroup=el('span','channel-action');
+        actionGroup.append(action);
+        // Connection health is independently declared; never infer 'connected' from an unread count.
+        // Unknown or unverified status is gray rather than silently claiming a good or bad connection.
+        const conn=source.connection_state==='CONNECTED'?'connected':source.connection_state==='ISSUE'?'issue':'unknown';
+        const connLabel=conn==='connected'?'Connected':conn==='issue'?'Connection issue':'Connection unverified';
+        const dot=el('span','connection-dot '+conn);
+        dot.setAttribute('role','img');
+        dot.setAttribute('aria-label',connLabel+' (synthetic example)');
+        dot.title=connLabel+' (synthetic example)';
+        actionGroup.append(dot);
+        left.append(actionGroup);
+        // Second and only other column: the newest verified incoming contact or honest unavailable. 
+        const healthy=source.health==='CURRENT';
+        const latestLabel=healthy&&source.latest_contact?source.latest_contact:'Latest contact unavailable';
+        const latest=el('span','latest'+(!healthy||!source.latest_contact?' empty':''),latestLabel);
+        latest.setAttribute('aria-label','Latest incoming contact: '+latestLabel);
+        row.append(left,latest);target.append(row);
+      }
+      if(isRefresh)refreshCount++;
+      const now=new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
+      document.getElementById('stamp').textContent=(isRefresh?'Preview refreshed ':'Preview loaded ')+now+(isRefresh?' · #'+refreshCount:'');
+      document.getElementById('status').textContent='SYNTHETIC DEMO · '+(isRefresh?'Refreshed; sample values are unchanged':'No live data source connected')+' · Native Mac app launching unverified';
+    }
+    document.getElementById('refresh').addEventListener('click',()=>draw(true));
+    draw();
+  </script>
+</body>
+</html>
