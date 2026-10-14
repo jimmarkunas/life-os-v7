@@ -121,10 +121,61 @@ class Gate(unittest.TestCase):
         self.assertIn("Do NOT grant Full Disk Access", out)
 
     def test_success_is_claimed_only_after_the_final_gate(self):
-        for flow, required in (("install", 26), ("verify", 17)):
+        for flow, required in (("install", 27), ("verify", 18)):
             line = re.search(r"^  %s\) (.*)$" % flow, INSTALL, re.M).group(1)
             self.assertLess(line.index("gate post %d" % required), line.index("LOCAL PROOF PASSED (%d of %d" % (required, required)))
-        self.assertIn("gate pre 14", INSTALL)
+        self.assertIn("gate pre 15", INSTALL)
+
+
+class AgentCheck(unittest.TestCase):
+    """The installer's structured LaunchAgent check, run in bash against the rendered template: comments cannot fail it, real keys cannot pass it."""
+    SOCK = "/tmp/example home/Library/Application Support/LifeOS/imessage-attention.sock"
+
+    def check(self, text):
+        path = os.path.join(tempfile.mkdtemp(), "agent.plist")
+        with open(path, "w") as f:
+            f.write(text.replace("__SOCKET__", self.SOCK))
+        defs = INSTALL[:INSTALL.index("\npreflight\ncase")].replace("/usr/bin/python3 -I - ", sys.executable + " -I - ")
+        script = defs + '\nAGENT="$1"; SOCK="$2"\nagent_exact && echo EXACT || echo REJECTED\n'
+        return subprocess.run(["bash", "-c", script, "install.sh", path, self.SOCK], capture_output=True, text=True, timeout=10).stdout.strip()
+
+    def test_the_published_template_passes_even_though_its_comment_names_forbidden_keys(self):
+        template = (MAC / "ai.lifeos.imessage-attention.plist").read_text()
+        self.assertIn("No RunAtLoad, KeepAlive, StartInterval", template)
+        self.assertEqual(self.check(template), "EXACT")
+
+    def test_any_real_extra_key_or_changed_socket_is_rejected(self):
+        template = (MAC / "ai.lifeos.imessage-attention.plist").read_text()
+        top = "    <key>ProcessType</key>"
+        for extra in ("<key>RunAtLoad</key><true/>", "<key>KeepAlive</key><true/>", "<key>StartInterval</key><integer>60</integer>"):
+            self.assertEqual(self.check(template.replace(top, "    " + extra + "\n" + top)), "REJECTED", extra)
+        for old, new in (("<integer>384</integer>", "<integer>438</integer>"), ("<string>Unix</string>", "<string>IPv4</string>"),
+                         ("<false/>", "<true/>"), ("<key>SockPathMode</key>", "<key>SockNodeName</key><string>0.0.0.0</string><key>SockPathMode</key>"),
+                         ("lifeos-imessage-attention</string>\n    <key>ProgramArguments", "other</string>\n    <key>ProgramArguments")):
+            self.assertIn(old, template)
+            self.assertEqual(self.check(template.replace(old, new, 1)), "REJECTED", new)
+        self.assertEqual(self.check("not a plist"), "REJECTED")
+
+
+class CodeHash(unittest.TestCase):
+    """The installer's CDHash parser over codesign's display output."""
+
+    def parse(self, output):
+        program = re.search(r"/usr/bin/awk -F= '([^']*)'", INSTALL).group(1)
+        return subprocess.run(["awk", "-F=", program], input=output, capture_output=True, text=True, timeout=10).stdout.strip()
+
+    def test_reads_the_cdhash_line_only(self):
+        digest = "0123456789ABCDEF0123456789abcdef01234567"
+        verbose = "Executable=/x\nIdentifier=ai.lifeos.imessage-attention\nCandidateCDHash sha256=ffff\nCandidateCDHashFull sha256=eeee\nCDHash=%s\nSignature=adhoc\n" % digest
+        self.assertEqual(self.parse(verbose), digest.lower())
+
+    def test_missing_or_malformed_hash_is_empty(self):
+        self.assertEqual(self.parse("Executable=/x\nIdentifier=ai.lifeos.imessage-attention\nSignature=adhoc\n"), "")
+        self.assertEqual(self.parse("CDHash=not-a-hash\n"), "")
+
+    def test_a_missing_hash_fails_identity_before_any_grant(self):
+        self.assertIn('[ -n "$CDHASH" ] && record "helper code hash read from its signature: $CDHASH" PASS || record "helper code hash read from its signature (none found)" FAIL', INSTALL)
+        self.assertNotIn("codesign -dv ", INSTALL)                     # plain -dv does not print CDHash
 
 
 class GrantDetection(unittest.TestCase):
