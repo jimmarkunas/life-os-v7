@@ -19,7 +19,7 @@ FRESH_MINUTES = 90                                        # V7's own daily check
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
 # (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "own": the callout's own text (the headless Attention callout, D131);
-# "floating": the Hiring Pipeline's status paragraph.
+# "floating": the Hiring Pipeline's heading stamp and table rows.
 AREAS = (("Calendar", "CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION, "head"), ("Jira", "JIRA_CARD_BLOCK_ID", router.JIRA_REGION, "head"),
          ("Bills", "BILLS_CARD_BLOCK_ID", router.BILLS_REGION, "line"), ("Mail Alerts", "MAIL_ALERTS_CARD_BLOCK_ID", router.MAIL_ALERTS_REGION, "line"),
          ("Amazon", "AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION, "line"), ("Attention", "ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION, "own"),
@@ -47,10 +47,10 @@ def _text_of(client, block_id, kind, region):
             raise _fail("CARD_UNREADABLE")
         return report_region.plain({"type": "callout", "callout": meta.get("callout") or {}}).strip(), []
     if kind == "floating":
-        found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail)
-        heading, status = report_region.plain(found["heading"]).strip(), report_region.plain(found["status"]).strip()
+        found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail, with_status=False)
+        heading, active = report_region.plain(found["heading"]).strip(), len(found["rows"]) - 1           # the Hiring Pipeline has no status paragraph: the heading and the table rows say it all
         stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""        # D188: the update time lives in the heading, as Calendar's does
-        return (f"{stamp} · {status}" if stamp and status else stamp or status), []
+        return (f"{stamp} · {active} active" if stamp and active else stamp), []
     kids = report_region.children(client, report_region.clean_id(block_id), _fail)
     texts = [report_region.plain(b).strip() for b in kids if b.get("type") not in ("table", "child_database", "child_page", "link_to_page")]
     texts = [t for t in texts if t]
