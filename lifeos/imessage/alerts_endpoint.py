@@ -6,6 +6,8 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
      cannot present a forged PROXY header, because it is refused before one byte is read;
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
   2. requires the request to be exactly "alerts <lookback hours 1-72>" or "comms <64 lowercase hex: a one-run key the runner just generated>";
+  comms3 (LIFE-30, Jim's approval Oct 15 2026, Jira 10215): the comms2 answer plus a `whatsapp` block read from the dedicated WhatsApp attention
+     service's 0600 Unix socket (~/.local/state/lifeos-whatsapp/attention.sock): counts, health and the newest sender's name scrambled the same way;
   comms2 (LIFE-29/LIFE-34, Jim's approval Oct 15 2026, Jira 10203/10206): the comms answer plus a `telegram` block from the local TDLib attention
      adapter (~/.local/lib/lifeos-telegram/attention.py): Main-list unread messages/chats, total and unmuted, health and auth state, and the newest
      incoming sender's name scrambled under the same one-run key; the adapter's plaintext name never leaves this process;
@@ -40,6 +42,9 @@ MAX_REQUEST = 72
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
+COMMS3_SCHEMA = "lifeos.imessage.comms.v3"
+WHATSAPP_SOCKET = os.path.expanduser("~/.local/state/lifeos-whatsapp/attention.sock")
+WA_HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED", "NOT_LINKED", "UNAVAILABLE")
 TELEGRAM = os.path.expanduser("~/.local/lib/lifeos-telegram/attention.py")
 TELEGRAM_TIMEOUT = 60
 TG_COUNTS = ("chats_main", "unread_messages", "unread_messages_unmuted", "unread_chats", "unread_chats_unmuted")
@@ -131,7 +136,7 @@ def request(stream):
     parts = raw.split(b" ")
     if len(parts) != 2:
         return None
-    if parts[0] in (b"comms", b"comms2") and len(parts[1]) == 64 and all(c in HEX for c in parts[1]):
+    if parts[0] in (b"comms", b"comms2", b"comms3") and len(parts[1]) == 64 and all(c in HEX for c in parts[1]):
         return parts[0].decode(), bytes.fromhex(parts[1].decode())
     if parts[0] != b"alerts" or not parts[1].isdigit() or parts[1][:1] == b"0":
         return None
@@ -234,6 +239,45 @@ def telegram(key, run=subprocess.run):
             "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
 
 
+def _attention_block(got, key, healths):
+    """A channel adapter's observation, re-shaped for the runner: counts and states pass through only when CURRENT, the name only scrambled."""
+    blank = {"health": "UNAVAILABLE", "auth": "ADAPTER_UNAVAILABLE", "error": None, "observed_at": None, "latest_state": "UNAVAILABLE", "latest": None,
+             **{k: None for k in TG_COUNTS}}
+    if not isinstance(got, dict) or got.get("health") not in healths:
+        return blank
+    current = got["health"] == "CURRENT"
+    counts = {k: got.get(k) if current and type(got.get(k)) is int and got.get(k) >= 0 else None for k in TG_COUNTS}
+    name = got.get("latest_name") if current and got.get("latest_state") == "PRESENT" and isinstance(got.get("latest_name"), str) else None
+    state = got.get("latest_state") if current and got.get("latest_state") in ("PRESENT", "NONE") else "UNAVAILABLE"
+    if state == "PRESENT" and not name:
+        state = "UNAVAILABLE"
+    return {**blank, **counts, "health": got["health"] if got["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE") else "UNAVAILABLE",
+            "auth": str(got.get("auth") or got["health"])[:40], "error": str(got.get("error") or "")[:40] or None,
+            "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
+
+
+def whatsapp(key, path=WHATSAPP_SOCKET):
+    """One snapshot from the always-on WhatsApp attention service; not running, slow or malformed is UNAVAILABLE, never zero."""
+    data = b""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(path)
+            while len(data) <= 4096:
+                chunk = s.recv(4097 - len(data))
+                if not chunk:
+                    break
+                data += chunk
+        got = json.loads(data) if len(data) <= 4096 else None
+    except (OSError, ValueError):
+        got = None
+    if isinstance(got, dict) and got.get("channel") != "whatsapp":
+        got = None
+    if isinstance(got, dict) and got.get("health") in ("DISCONNECTED", "NOT_LINKED"):
+        got = {**got, "auth": got["health"], "health": "UNAVAILABLE"}
+    return _attention_block(got, key, WA_HEALTH)
+
+
 def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
@@ -250,10 +294,12 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         return 1
     kind, arg = asked
     try:
-        if kind in ("comms", "comms2"):
+        if kind in ("comms", "comms2", "comms3"):
             payload = comms(load_wrapper(wrapper_path), arg, now)
-            if kind == "comms2":
+            if kind in ("comms2", "comms3"):
                 payload = {**payload, "schema": COMMS2_SCHEMA, "telegram": telegram(arg)}
+            if kind == "comms3":
+                payload = {**payload, "schema": COMMS3_SCHEMA, "whatsapp": whatsapp(arg)}
         else:
             with open(key_path) as f:
                 secret = bytes.fromhex(f.read().strip())
