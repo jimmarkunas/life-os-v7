@@ -273,6 +273,8 @@ def whatsapp(key, path=WHATSAPP_SOCKET):
         got = None
     if isinstance(got, dict) and got.get("channel") != "whatsapp":
         got = None
+    if isinstance(got, dict) and "chats_known" in got:
+        got = {**got, "chats_main": got["chats_known"]}                    # the service counts every non-archived chat it knows
     if isinstance(got, dict) and got.get("health") in ("DISCONNECTED", "NOT_LINKED"):
         got = {**got, "auth": got["health"], "health": "UNAVAILABLE"}
     return _attention_block(got, key, WA_HEALTH)
