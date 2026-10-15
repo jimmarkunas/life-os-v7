@@ -13,7 +13,8 @@ AMAZON_REGION = "Amazon Orders"                         # V7 owns it exclusively
 MAIL_ALERTS_REGION = "Mail Alerts"                      # V7 owns it exclusively (lifeos/physmail/card.py; Production Contract v2.15.12): LIFE OS Daily Runs neither reads the source nor writes it
 HIRING_REGION = "📈 Hiring Pipeline"                    # V7 owns it exclusively (lifeos/hiring/card.py). The ONE floating region: a heading_3, a status paragraph and a four-column table, never a callout
 DCC_REGION = "ChatGPT · Daily Command Center"      # the one region the Daily Command Center module may write; V7 stage `dcc-card` has been that module since D175 (the heading text is unchanged, so renaming it in Notion needs this constant changed too)
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", HIRING_REGION: "v7-hiring", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center"}
+COMMS_REGION = "Communications Attention"                # V7 owns only the Messages row and the heading time (lifeos/imessage/comms_card.py, LIFE-34); the rest of the callout is Jim's
+OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", HIRING_REGION: "v7-hiring", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center", COMMS_REGION: "v7-comms"}
 
 FLOATING = (HIRING_REGION,)                              # owned regions that are NOT callouts; every other owned region is one (single ownership is unchanged: one OWNERS entry each)
 

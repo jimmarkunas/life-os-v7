@@ -15,6 +15,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 from lifeos.imessage import attention_mcp, openclaw_imessage as w
@@ -128,9 +129,10 @@ class Relay(unittest.TestCase):
         os.makedirs(os.path.join(cls.home, "Library/Messages"))
         os.makedirs(os.path.join(cls.home, "Library/Application Support"))
         f = reader.Fixture()                                                        # a synthetic Messages database (and Contacts) the real helper tool reads
-        f.add(10, timedelta(hours=1), text=None, attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"))
-        f.add(11, timedelta(hours=2), handle=2, text="haha SECRET")
-        f.add(10, timedelta(hours=3), mine=1, text="on my way SECRET")
+        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):      # the real reader windows on the real clock, so the rows are dated from it
+            f.add(10, timedelta(hours=1), text=None, attributed=reader.typedstream("Mom is in the hospital, call me now SECRET"))
+            f.add(11, timedelta(hours=2), handle=2, text="haha SECRET")
+            f.add(10, timedelta(hours=3), mine=1, text="on my way SECRET")
         f.con.close()
         shutil.copy(f.db, os.path.join(cls.home, "Library/Messages/chat.db"))
         shutil.copytree(f.contacts(), os.path.join(cls.home, "Library/Application Support/AddressBook"))

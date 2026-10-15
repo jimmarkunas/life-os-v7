@@ -121,6 +121,7 @@ STAGES = {
     "recruiters": lazy("lifeos.recruiters.stage"),
     "attention": lazy("lifeos.attention.stage", floor=200),
     "imessage-alerts": lazy("lifeos.imessage.stage"),
+    "imessage-comms": lazy("lifeos.imessage.comms_card"),
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
     "hiring": lazy("lifeos.sources.hiring"),

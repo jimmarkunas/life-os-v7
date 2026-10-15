@@ -825,7 +825,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: bws_imessage
-        name: Load the iMessage alert credentials from Bitwarden (exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the iMessage alert credentials from Bitwarden (exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -842,6 +842,7 @@ jobs:
             454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
         with:
@@ -867,6 +868,25 @@ jobs:
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
         run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
+      - id: comms
+        continue-on-error: true
+        if: ${{ always() }}
+        # LIFE-34 (Jim's approval Oct 15 2026): the Messages row of the Daily Report's Communications callout. Oracle returns the 7-day unread count and the
+        # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
+        name: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
+        env:
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
+          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+        run: python -m lifeos.run imessage-comms --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Communications card warning (does not fail the run)
+        if: ${{ always() && steps.comms.outcome == 'failure' }}
+        run: echo "::warning title=Communications card::the Messages row was not updated; the Daily Report keeps its previous update time"
 
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per

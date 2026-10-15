@@ -151,6 +151,7 @@ class Endpoint(unittest.TestCase):
         self.assertIsNone(ep.peer_uid(table, ("127.0.0.1", 54322), ("127.0.0.1", 47174)))
         self.assertEqual(ep._hex("127.0.0.1", 47342), "0100007F:B8EE")
 
+    @unittest.skipUnless(os.path.exists("/proc/net/tcp"), "Linux only: the endpoint runs on Oracle and reads /proc/net/tcp")
     def test_peer_uid_on_a_real_loopback_connection_is_this_process_owner(self):
         server = socket.create_server(("127.0.0.1", 0))
         client = socket.create_connection(server.getsockname())
