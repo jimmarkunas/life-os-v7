@@ -255,7 +255,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.PENDING))
         counts, pushes = self.runs(db, DAY + dt.timedelta(hours=1), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
         self.assertEqual((pushes, counts["ambiguous"], counts["failed"], counts["deliver"]), ([], 1, 1, 0))
-        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.SENT))
+        self.assertEqual(db.rows()["imsg:" + "a" * 24 + ":ar"], ("ar", stage.UNKNOWN))                 # never claimed as delivered
         counts, pushes = self.runs(db, DAY + dt.timedelta(hours=2), payload([ev("a")], observed="2026-10-14T17:00:00Z"))
         self.assertEqual((pushes, counts["ambiguous"], counts["failed"]), ([], 0, 0))
 

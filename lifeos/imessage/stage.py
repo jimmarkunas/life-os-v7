@@ -14,8 +14,10 @@ Policy (Communications, not the platform's reminder cadence):
   reader's limit, an unreachable, stale or off-contract endpoint are all reported as a failure (counts `failed`), never passed as complete.
 - Delivery is claim-then-send, so a database failure can never cause a duplicate push: events are recorded first; the ones about to go out are marked IMSG_P
   (pending) and committed BEFORE the push; the receipt then sets IMSG_S (accepted) or back to IMSG_Q (rejected: retried next run). A row still IMSG_P at the next
-  run means the outcome is unknown (the receipt was lost): it is closed as sent WITHOUT a second push and reported as `ambiguous` and `failed`.
-Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs alert stage owns."""
+  run means the outcome is unknown (the receipt was lost): it is closed as IMSG_U (outcome unknown, never recorded as sent) WITHOUT a second push and
+  reported as `ambiguous` and `failed`.
+Rows use their own statuses (IMSG_Q queued, IMSG_P pending, IMSG_S sent, IMSG_U outcome unknown, IMSG_X expired, IMSG_M marker), never 'OPEN', which the Jobs
+alert stage owns."""
 import datetime as dt
 import json
 import math
@@ -31,7 +33,7 @@ SCHEMA = "lifeos.imessage.alerts.v1"
 TZ = ZoneInfo("America/Chicago")
 QUIET_FROM, QUIET_UNTIL = 22, 8
 PREFIX, MARK = "imsg:", "imsg_scan_ok"
-QUEUED, PENDING, SENT, EXPIRED, MARKER = "IMSG_Q", "IMSG_P", "IMSG_S", "IMSG_X", "IMSG_M"
+QUEUED, PENDING, SENT, UNKNOWN, EXPIRED, MARKER = "IMSG_Q", "IMSG_P", "IMSG_S", "IMSG_U", "IMSG_X", "IMSG_M"
 FIRST, MIN_LOOKBACK, MAX_LOOKBACK = 2, 2, 72
 DELIVER_FOR, KEEP = dt.timedelta(hours=24), dt.timedelta(days=14)
 CODE = {"TIME_CRITICAL": "tc", "ACTION_REQUIRED": "ar"}
@@ -113,7 +115,7 @@ def plan(payload, rows, now):
     queued.update(new)
     deliver = sorted(k for k, c in queued.items() if c == "tc" or not quiet(now))
     expire = sorted(k for k, r in rows.items() if r["status"] == QUEUED and now - r["first_seen"] > DELIVER_FOR)
-    purge = sorted(k for k, r in rows.items() if r["status"] in (SENT, EXPIRED) and now - r["last_seen"] > KEEP)
+    purge = sorted(k for k, r in rows.items() if r["status"] in (SENT, UNKNOWN, EXPIRED) and now - r["last_seen"] > KEEP)
     tc = sum(1 for k in deliver if queued[k] == "tc")
     push = None
     if deliver:
@@ -154,12 +156,12 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.con
                                    (key, code, QUEUED, now, now))
                 for key in p["seen"]:
                     cursor.execute("UPDATE v7_alerts SET last_seen=%s WHERE alert_key=%s", (now, key))
-                for key in p["ambiguous"]:                          # a lost receipt from an earlier run: never pushed twice
-                    cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s AND status=%s", (SENT, key, PENDING))
+                for key in p["ambiguous"]:                          # a lost receipt from an earlier run: never pushed twice, never recorded as sent
+                    cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s AND status=%s", (UNKNOWN, key, PENDING))
                 for key in p["expire"]:
                     cursor.execute("UPDATE v7_alerts SET status=%s WHERE alert_key=%s", (EXPIRED, key))
                 for key in p["purge"]:
-                    cursor.execute("DELETE FROM v7_alerts WHERE alert_key=%s AND status IN (%s, %s)", (key, SENT, EXPIRED))
+                    cursor.execute("DELETE FROM v7_alerts WHERE alert_key=%s AND status IN (%s, %s, %s)", (key, SENT, UNKNOWN, EXPIRED))
                 if payload is not None and payload["complete"] and not gap:
                     observed = _when(payload["observed_at"])
                     cursor.execute("INSERT INTO v7_alerts (alert_key, severity, status, first_seen, last_seen, last_notified) VALUES (%s,'info',%s,%s,%s,NULL) "
