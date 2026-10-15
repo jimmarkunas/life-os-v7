@@ -47,8 +47,12 @@ class Endpoint(unittest.TestCase):
     def test_count_and_scrambled_newest_incoming_sender_only(self):
         code, raw = self.call(v2(RUNNER) + b"comms " + KEY.hex().encode() + b"\n", Wrapper(msgs=newest_first()))
         self.assertEqual(code, 0)
+        p = json.loads(raw)
+        sealed = p.pop("latest")
+        self.assertEqual(set(sealed), {"nonce", "box", "tag"})
+        self.assertTrue(all(set(v) <= set("0123456789abcdef") for v in sealed.values()))       # the scrambled name is hex only
         for leak in (NAME, "Alice", "Older", SECRET_HANDLE, SECRET_TEXT, "m2", "c3"):
-            self.assertNotIn(leak, raw.decode())
+            self.assertNotIn(leak, json.dumps(p))
         self.assertEqual(card.validate(raw, KEY, NOW), (12, "PRESENT", NAME))          # the runner's key opens it; the newest incoming sender, not mine
         with self.assertRaises(card.CommsError):
             card.validate(raw, bytes(32), NOW)                                          # any other key cannot
