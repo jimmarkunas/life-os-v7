@@ -46,11 +46,11 @@ def plan(client, environ):
     at = [i for i, b in enumerate(sibs) if R.same_id(b["id"], ids["CARD"])]
     if len(at) != 1:
         raise fail("REPAIR_HEADING_UNEXPECTED")
-    table = next((b for b in sibs[at[0] + 1:at[0] + 3] if R.same_id(b["id"], ids["TABLE"])), None)
+    table = next((b for b in sibs[at[0] + 1:at[0] + 4] if R.same_id(b["id"], ids["TABLE"])), None)
     rows = R.children(client, table["id"], fail) if table and table.get("type") == "table" and (table.get("table") or {}).get("table_width") == 4 else []
     if not rows:
         raise fail("REPAIR_TABLE_UNEXPECTED")
-    near = sibs[at[0] + 1:at[0] + 3]
+    near = sibs[at[0] + 1:at[0] + 4]
     stray = [b for b in near if b.get("type") == "table" and b is not table]
     stray_rows = R.children(client, stray[0]["id"], fail) if len(stray) == 1 else []
     try:
@@ -59,7 +59,7 @@ def plan(client, environ):
         status = None
     sick = [r for r in rows[1:] if "•" in "".join(R.cells_of(r)[3:4])]
     facts = {"heading_ok": True, "table_ok": True, "stray_tables": len(stray), "stray_header_exact": bool(stray_rows) and (stray[0].get("table") or {}).get("table_width") == 3 and R.cells_of(stray_rows[0]) == STRAY_HEADER,
-             "stray_is_first": bool(stray) and stray[0] is near[0], "status_found": status is not None and status.get("type") == "paragraph", "status_in_trash": bool(status) and _gone(status),
+             "status_found": status is not None and status.get("type") == "paragraph", "status_in_trash": bool(status) and _gone(status),
              "status_in_place": bool(status) and not _gone(status) and bool(near) and R.same_id(near[0]["id"], ids["STATUS"]), "cells_to_fix": len(sick)}
     return facts, {"heading": heading, "ids": ids, "parent_id": parent_id, "stray": stray[0] if len(stray) == 1 else None, "status": status, "sick": sick}
 
@@ -72,7 +72,7 @@ def _safe(parts):
 def run(limit, live, environ=os.environ, client=None):
     client = client or card.writer(environ)
     facts, o = plan(client, environ)
-    ok = facts["stray_tables"] <= 1 and (facts["stray_tables"] == 0 or (facts["stray_header_exact"] and facts["stray_is_first"])) and facts["status_found"] and facts["cells_to_fix"] <= 1
+    ok = facts["stray_tables"] <= 1 and (facts["stray_tables"] == 0 or facts["stray_header_exact"]) and facts["status_found"] and facts["cells_to_fix"] <= 1
     if facts["cells_to_fix"]:
         cells = o["sick"][0]["table_row"]["cells"]
         links = [p["text"]["link"]["url"] for p in cells[3] if (p.get("text") or {}).get("link")]
@@ -95,7 +95,11 @@ def run(limit, live, environ=os.environ, client=None):
     if facts["status_in_trash"]:
         client.call("PATCH", f"/blocks/{status_id}", {"in_trash": False})                  # the original paragraph, by its pinned id: no replacement, nothing repinned
         stray_id = o["stray"]["id"] if o["stray"] else ""
-        if not _shaped(R.children(client, o["parent_id"], fail), o["ids"], stray_id):
+        landed = R.children(client, o["parent_id"], fail)
+        if not _shaped(landed, o["ids"], stray_id):
+            where = [i for i, b in enumerate(landed) if R.same_id(b["id"], status_id)]       # where Notion put it, as offsets only: never an id
+            top = [i for i, b in enumerate(landed) if R.same_id(b["id"], o["ids"]["CARD"])]
+            print("hiring-repair: restored status landed", json.dumps({"found": bool(where), "from_heading": (where[0] - top[0]) if where and top else None, "is_last": bool(where) and where[0] == len(landed) - 1, "siblings": len(landed)}, sort_keys=True))
             client.call("PATCH", f"/blocks/{status_id}", {"in_trash": True})               # restored somewhere else: put it back exactly as it was and stop
             raise fail("REPAIR_STATUS_MISPLACED")
     if o["stray"]:
