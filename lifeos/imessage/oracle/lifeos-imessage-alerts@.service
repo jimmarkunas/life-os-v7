@@ -7,5 +7,5 @@ ExecStart=/usr/bin/python3 -I %h/.local/lib/lifeos-imessage/alerts_endpoint.py
 StandardInput=socket
 StandardOutput=socket
 StandardError=null
-RuntimeMaxSec=45
+RuntimeMaxSec=90
 NoNewPrivileges=yes
