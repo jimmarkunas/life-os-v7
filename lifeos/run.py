@@ -125,6 +125,7 @@ STAGES = {
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
     "hiring": lazy("lifeos.sources.hiring"),
+    "hiring-repair": lazy("lifeos.hiring.repair"),
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
