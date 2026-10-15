@@ -6,6 +6,9 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
      cannot present a forged PROXY header, because it is refused before one byte is read;
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
   2. requires the request to be exactly "alerts <lookback hours 1-72>" or "comms <64 lowercase hex: a one-run key the runner just generated>";
+  comms2 (LIFE-29/LIFE-34, Jim's approval Oct 15 2026, Jira 10203/10206): the comms answer plus a `telegram` block from the local TDLib attention
+     adapter (~/.local/lib/lifeos-telegram/attention.py): Main-list unread messages/chats, total and unmuted, health and auth state, and the newest
+     incoming sender's name scrambled under the same one-run key; the adapter's plaintext name never leaves this process;
   comms (LIFE-34, Jim's approval Oct 15 2026): answers the reader's unread count for the last 7 days and the display name of the newest incoming
      sender, the name SCRAMBLED under the runner's one-run key (HMAC-SHA256 keystream, encrypt-then-MAC), so it is never plain text anywhere between the
      Mac and the runner's in-memory Notion write. Never a handle, number, text or reference; nothing is kept, so no key exists after the run;
@@ -36,6 +39,10 @@ MAX_PROXY_TAIL = 216
 MAX_REQUEST = 72
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
+COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
+TELEGRAM = os.path.expanduser("~/.local/lib/lifeos-telegram/attention.py")
+TELEGRAM_TIMEOUT = 60
+TG_COUNTS = ("chats_main", "unread_messages", "unread_messages_unmuted", "unread_chats", "unread_chats_unmuted")
 MAX_NAME = 80
 HEX = b"0123456789abcdef"
 MAX_EVENTS = 500
@@ -124,8 +131,8 @@ def request(stream):
     parts = raw.split(b" ")
     if len(parts) != 2:
         return None
-    if parts[0] == b"comms" and len(parts[1]) == 64 and all(c in HEX for c in parts[1]):
-        return "comms", bytes.fromhex(parts[1].decode())
+    if parts[0] in (b"comms", b"comms2") and len(parts[1]) == 64 and all(c in HEX for c in parts[1]):
+        return parts[0].decode(), bytes.fromhex(parts[1].decode())
     if parts[0] != b"alerts" or not parts[1].isdigit() or parts[1][:1] == b"0":
         return None
     hours = int(parts[1])
@@ -205,6 +212,28 @@ def scan(hours, wrapper, secret, now=None):
             "limit_reached": got["truncated"] or overflow}
 
 
+def telegram(key, run=subprocess.run):
+    """The TDLib adapter's one observation, re-shaped: counts and states pass through, the name only scrambled. A missing, slow or malformed adapter is
+    UNAVAILABLE with null counts, never a zero."""
+    blank = {"health": "UNAVAILABLE", "auth": "ADAPTER_UNAVAILABLE", "error": None, "observed_at": None, "latest_state": "UNAVAILABLE", "latest": None,
+             **{k: None for k in TG_COUNTS}}
+    try:
+        done = run(["/usr/bin/python3", "-I", TELEGRAM, "attention"], capture_output=True, text=True, timeout=TELEGRAM_TIMEOUT)
+        got = json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        got = None
+    if not isinstance(got, dict) or got.get("channel") != "telegram" or got.get("health") not in ("CURRENT", "DEGRADED", "UNAVAILABLE"):
+        return blank
+    current = got["health"] == "CURRENT"
+    counts = {k: got.get(k) if current and type(got.get(k)) is int and got.get(k) >= 0 else None for k in TG_COUNTS}
+    name = got.get("latest_name") if current and got.get("latest_state") == "PRESENT" and isinstance(got.get("latest_name"), str) else None
+    state = got.get("latest_state") if current and got.get("latest_state") in ("PRESENT", "NONE") else "UNAVAILABLE"
+    if state == "PRESENT" and not name:
+        state = "UNAVAILABLE"
+    return {**blank, **counts, "health": got["health"], "auth": str(got.get("auth") or "")[:40] or None, "error": str(got.get("error") or "")[:40] or None,
+            "observed_at": got.get("observed_at"), "latest_state": state, "latest": scramble(key, name[:MAX_NAME]) if name else None}
+
+
 def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
@@ -221,8 +250,10 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         return 1
     kind, arg = asked
     try:
-        if kind == "comms":
+        if kind in ("comms", "comms2"):
             payload = comms(load_wrapper(wrapper_path), arg, now)
+            if kind == "comms2":
+                payload = {**payload, "schema": COMMS2_SCHEMA, "telegram": telegram(arg)}
         else:
             with open(key_path) as f:
                 secret = bytes.fromhex(f.read().strip())

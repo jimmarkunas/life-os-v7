@@ -276,6 +276,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/web/run.py`: US Remote web acquisition, one bounded run: pick the due boards, list them (no database connection held), classify against the accepted state, drop unequivocal misses che
 - `lifeos/sources/web/suppress.py`: Cheap suppression BEFORE any description, Fit or Notion work. Only unequivocal misses are dropped: a title that names the target family always continues (so "Technical Pr
 - `lifeos/sources/web/titlewatch.py`: Title watch (D123): roles a company's own careers site lists but its board listing does not carry (Revolut shows 334 roles on its list page while others are live on revol
+### lifeos/telegram/
+- `lifeos/telegram/attention.py`: COMM-1.2 (LIFE-29, Jim's approval Oct 15 2026, Jira 10203): Jim's personal Telegram attention, read on Oracle through TDLib's JSON interface.
 
 ## Workflows (jobs, manual trigger, secrets used by name)
 - `agenda.yml`: jobs agenda; manual yes; secrets CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, JIRA_CARD_BLOCK_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
