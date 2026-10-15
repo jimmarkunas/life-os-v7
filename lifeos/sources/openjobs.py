@@ -130,15 +130,15 @@ def company_from(slug):
     return " ".join(w.capitalize() for w in re.split(r"[-_.]+", slug) if w)[:200] or "Unknown"
 
 
-def candidate(event):
-    """Upsert event -> (job dict for the web admit path, source suppression view) or None when it is not a US Remote candidate."""
+def candidate(event, today=None):
+    """Upsert event -> (job dict for the web admit path, source suppression view) or None when it is not a US Remote candidate. today: the as-of date for the freshness rule (default: the actual date)."""
     job = event["job"]
     view = {"title": job["title"] or "", "location": job["location"] or "", "posted": _day(job["published_at"]) or _day(job["first_seen_at"])}
     if not view["title"] or not job["url"]:
         return None, "no_title_or_url"
     if not suppress.TARGET.search(view["title"]):
         return None, "off_family"
-    why = suppress.reason(view, date.today(), LANE)
+    why = suppress.reason(view, today or date.today(), LANE)
     if why:
         return None, why
     content = job["content"] or ""
@@ -153,8 +153,8 @@ def candidate(event):
             "content": content or None, "ats": job.get("ats")}, None
 
 
-def process(header, fetcher=fetch):
-    """One generation -> (admits, removed keys, counts). Pure of the database."""
+def process(header, fetcher=fetch, today=None):
+    """One generation -> (admits, removed keys, counts). Pure of the database. today: the as-of date for the freshness rule (default: the actual date)."""
     counts = {"events": 0, "upserts": 0, "removes": 0, "admit": 0, "over_cap": 0, "why": {}}
     admits, removes = [], []
     names = [meta["file"] for meta in header["pages"]]
@@ -182,7 +182,7 @@ def process(header, fetcher=fetch):
                         event = json.loads(line)
                     except ValueError:
                         raise Degraded("page_json") from None
-                    job, why = candidate(event)
+                    job, why = candidate(event, today)
                     if why:
                         why_not(why)
                     elif len(admits) >= MAX_ADMIT:
@@ -238,7 +238,7 @@ def fix_workday_companies(cursor):
     return int(cursor.rowcount or 0)
 
 
-def run(limit, live, now=None, fetcher=fetch, repo=None):
+def run(limit, live, now=None, fetcher=fetch, repo=None, today=None):
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     repo = repo or Repo()
     if isinstance(repo, Repo):                          # the checkpoint table must exist before a dry run reads it (no rows written)
@@ -255,7 +255,7 @@ def run(limit, live, now=None, fetcher=fetch, repo=None):
         chain = plan_chain(head, checkpoint, lambda p: manifest(p, fetcher))[:MAX_GENERATIONS]
         held = repo.held() if chain else set()
         for header in chain:
-            admits, removes, c = process(header, fetcher)
+            admits, removes, c = process(header, fetcher, today)
             removes = [k for k in removes if k in held]
             counts["generations"] += 1
             counts["removed_held"] += len(removes)
