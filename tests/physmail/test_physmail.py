@@ -190,6 +190,17 @@ class StageTests(unittest.TestCase):
                 self.run_stage(env={}, gmail=gmail)
         self.assertEqual(self.store.row, before)
 
+    def test_a_gmail_failure_names_its_status_and_reason_never_the_url_or_message(self):
+        http = GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 429 rateLimitExceeded")
+        self.assertEqual(stage.gmail_code(http), "HTTP_429_RATELIMITEXCEEDED")
+        self.assertEqual(stage.gmail_code(GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 404 ")), "HTTP_404")
+        self.assertEqual(stage.gmail_code(GmailError("GMAIL_MESSAGE_INCOMPLETE")), "GMAIL_MESSAGE_INCOMPLETE")
+        self.assertEqual(stage.gmail_code(GmailError("GET https://gmail.googleapis.com/x -> timeout")), "GMAIL_ERROR")
+        self.run_stage([mail("n1", "New Mail (3)")])
+        with self.assertRaises(stage.PhysMailError) as caught:
+            self.run_stage(env={}, gmail=FakeGmail([mail("n2", "New Mail (1)")], read_error="n2"))
+        self.assertEqual(str(caught.exception), "PHYSMAIL_GMAIL_READ_FAILED_GMAIL_MESSAGE_INCOMPLETE")
+
     def test_a_new_arrival_notice_pushes_to_the_phone_once_with_counts_only(self):
         pushed = []
         with mock.patch("lifeos.platform.alerts.ntfy", lambda topic, title, body, severity, post=None: (pushed.append((topic, title, body)) or True)):
