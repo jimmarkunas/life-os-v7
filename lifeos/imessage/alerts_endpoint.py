@@ -5,8 +5,11 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
   0. requires the loopback peer to be tailscaled itself (the connecting local socket's owner, from /proc/net/tcp, must be root): a local non-root process
      cannot present a forged PROXY header, because it is refused before one byte is read;
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
-  2. requires the request to be exactly "alerts <lookback hours 1-72>";
-  3. reads ALL of the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), paging until the reader
+  2. requires the request to be exactly "alerts <lookback hours 1-72>" or "comms <64 lowercase hex: a one-run key the runner just generated>";
+  comms (LIFE-34, Jim's approval Oct 15 2026): answers the reader's unread count for the last 7 days and the display name of the newest incoming
+     sender, the name SCRAMBLED under the runner's one-run key (HMAC-SHA256 keystream, encrypt-then-MAC), so it is never plain text anywhere between the
+     Mac and the runner's in-memory Notion write. Never a handle, number, text or reference; nothing is kept, so no key exists after the run;
+  3. alerts: reads ALL of the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), paging until the reader
      proves the end, classifies them in memory with the wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the
      source reference under a key that never leaves Oracle), severity, reason codes, review flag, observation time, pages and completeness. Never text,
      names, handles, chat or message references.
@@ -30,8 +33,11 @@ EVENT_KEY = os.path.expanduser("~/.config/openclaw-imessage/event-key")       # 
 TAILSCALE = "/usr/bin/tailscale"
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 MAX_PROXY_TAIL = 216
-MAX_REQUEST = 16
+MAX_REQUEST = 72
 SCHEMA = "lifeos.imessage.alerts.v2"
+COMMS_SCHEMA = "lifeos.imessage.comms.v1"
+MAX_NAME = 80
+HEX = b"0123456789abcdef"
 MAX_EVENTS = 500
 PUSHED = ("ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
 
@@ -103,7 +109,8 @@ def authorized(ip, lookup=whois):
     return TAG in (node.get("Tags") or [])
 
 
-def lookback(stream):
+def request(stream):
+    """-> ("alerts", hours) | ("comms", 32-byte key) | None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -115,10 +122,57 @@ def lookback(stream):
     else:
         return None
     parts = raw.split(b" ")
-    if len(parts) != 2 or parts[0] != b"alerts" or not parts[1].isdigit() or parts[1][:1] == b"0":
+    if len(parts) != 2:
+        return None
+    if parts[0] == b"comms" and len(parts[1]) == 64 and all(c in HEX for c in parts[1]):
+        return "comms", bytes.fromhex(parts[1].decode())
+    if parts[0] != b"alerts" or not parts[1].isdigit() or parts[1][:1] == b"0":
         return None
     hours = int(parts[1])
-    return hours if 1 <= hours <= 72 else None
+    return ("alerts", hours) if 1 <= hours <= 72 else None
+
+
+def lookback(stream):
+    got = request(stream)
+    return got[1] if got and got[0] == "alerts" else None
+
+
+def _keystream(key, nonce, n):
+    out, i = b"", 0
+    while len(out) < n:
+        out += hmac.new(key, b"lifeos-comms-ks" + nonce + i.to_bytes(4, "big"), hashlib.sha256).digest()
+        i += 1
+    return out[:n]
+
+
+def scramble(key, text, nonce=None):
+    """Encrypt-then-MAC with two HMAC-SHA256 domains of the runner's one-run key (stdlib only)."""
+    nonce = nonce or os.urandom(16)
+    data = text.encode("utf-8")
+    box = bytes(a ^ b for a, b in zip(data, _keystream(key, nonce, len(data))))
+    tag = hmac.new(key, b"lifeos-comms-tag" + nonce + box, hashlib.sha256).digest()[:16]
+    return {"nonce": nonce.hex(), "box": box.hex(), "tag": tag.hex()}
+
+
+def comms(wrapper, key, now=None):
+    """The 7-day unread count and the newest incoming sender's name (scrambled). A source that is not CURRENT gives null, never a guess or a zero."""
+    now = now or datetime.now(timezone.utc)
+    counts = wrapper.run(["counts"], now) or {}
+    recent = wrapper.run(["recent", "--hours", "72"], now) or {}
+    unread = None
+    if counts.get("health") == "CURRENT" and isinstance(counts.get("counts"), dict):
+        unread = counts["counts"]["unread"]["last_7_days"]["messages"]
+    state, latest = "UNAVAILABLE", None
+    if recent.get("health") == "CURRENT" and isinstance(recent.get("messages"), list):
+        incoming = [m for m in recent["messages"] if not m["from_me"]]
+        state = "NONE" if not incoming else "PRESENT"
+        if incoming:
+            newest = max(incoming, key=lambda m: m["sent_at"])
+            name = " ".join(((newest["sender"] or {}).get("name") or "").split())[:MAX_NAME] or "Unknown contact"
+            latest = scramble(key, name)
+    health = "CURRENT" if unread is not None and state != "UNAVAILABLE" else "DEGRADED"
+    return {"schema": COMMS_SCHEMA, "observed_at": counts.get("observed_at") or recent.get("observed_at"), "health": health,
+            "unread_7d": unread, "latest_state": state, "latest": latest}
 
 
 def load_wrapper(path=WRAPPER):
@@ -162,15 +216,19 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
     ip = proxy_source(stdin)
     if ip is None or not authorized(ip, lookup):
         return 1
-    hours = lookback(stdin)
-    if hours is None:
+    asked = request(stdin)
+    if asked is None:
         return 1
+    kind, arg = asked
     try:
-        with open(key_path) as f:
-            secret = bytes.fromhex(f.read().strip())
-        if len(secret) < 32:
-            return 1
-        payload = scan(hours, load_wrapper(wrapper_path), secret, now)
+        if kind == "comms":
+            payload = comms(load_wrapper(wrapper_path), arg, now)
+        else:
+            with open(key_path) as f:
+                secret = bytes.fromhex(f.read().strip())
+            if len(secret) < 32:
+                return 1
+            payload = scan(arg, load_wrapper(wrapper_path), secret, now)
     except Exception:
         return 1                                                   # no partial answer and no exception text: the caller sees a refused connection
     stdout.write((json.dumps(payload, sort_keys=True) + "\n").encode())
