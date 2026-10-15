@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import events, orders
 
@@ -269,7 +269,7 @@ def _gmail_ids(gmail, limit, query):
         code = str(error)
         if code in {"GMAIL_LIST_LIMIT_EXCEEDED", "GMAIL_LIST_LIMIT_INVALID", "GMAIL_LISTING_INCOMPLETE"}:
             raise AmazonError("AMAZON_" + code) from None
-        raise AmazonError("AMAZON_GMAIL_LIST_FAILED") from None
+        raise AmazonError("AMAZON_GMAIL_LIST_FAILED_" + error_code(error)) from None
 
 
 def parsed_sender(message):
@@ -314,9 +314,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         for message_id in message_ids:
             try:
                 message = gmail.message_record(message_id)
-            except GmailError:
+            except GmailError as error:
                 if not skip_unreadable:
-                    raise AmazonError("AMAZON_GMAIL_READ_FAILED") from None
+                    raise AmazonError("AMAZON_GMAIL_READ_FAILED_" + error_code(error)) from None
                 counts["unreadable"] = counts.get("unreadable", 0) + 1       # backfill only: a message Gmail cannot return is counted, never recorded, never filed
                 continue
             messages.append(message)
@@ -407,8 +407,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
                     try:
                         gmail.apply_amazon(message_id, label_id)
                         labels = gmail.message_labels(message_id)
-                    except GmailError:
-                        raise AmazonError("AMAZON_GMAIL_FILE_FAILED") from None
+                    except GmailError as error:
+                        raise AmazonError("AMAZON_GMAIL_FILE_FAILED_" + error_code(error)) from None
                     if label_id not in labels or "INBOX" in labels or "TRASH" in labels:
                         raise AmazonError("AMAZON_GMAIL_READBACK_MISMATCH")
                     counts["filed"] += 1
@@ -428,8 +428,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, now=None, sinc
         if code.startswith("AMAZON_FAILED:"):
             raise
         raise AmazonError(f"AMAZON_FAILED:{max(1, counts['failed'])}of{counts['listed']}:{code}") from None
-    except GmailError:
-        raise AmazonError("AMAZON_GMAIL_FAILED") from None
+    except GmailError as error:
+        raise AmazonError("AMAZON_GMAIL_FAILED_" + error_code(error)) from None
     except NotionError:
         raise AmazonError("AMAZON_NOTION_FAILED") from None
     except Exception:

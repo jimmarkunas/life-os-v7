@@ -5,11 +5,10 @@ Source access is READ-ONLY: this package lists and reads messages and never modi
 (`PHYSICAL_MAIL_ANCHOR`, the number of items waiting on October 4, 2026, from the workflow input, never from code); every later run continues from the stored row,
 re-reading the last OVERLAP days, which changes nothing because events are keyed by message id."""
 import os
-import re
 from datetime import datetime, timedelta, timezone
 
 from lifeos.platform import db
-from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform.gmail import Gmail, GmailError, error_code
 from lifeos.platform.snapshot_store import Store
 from . import events, state as state_mod
 
@@ -17,14 +16,6 @@ STORE = Store("v7_physical_mail")
 KEY = 1
 OVERLAP = timedelta(days=3)
 
-
-def gmail_code(error):
-    """Gmail's own fixed code, or its HTTP status and short reason (HTTP_429_RATELIMITEXCEEDED): never a URL, message id or body."""
-    text = str(error)
-    http = re.search(r"HTTP (\d{3}) ?([A-Za-z]*)\s*$", text)
-    if http:
-        return "_".join(part for part in ("HTTP", http.group(1), (http.group(2) or "").upper()) if part)
-    return "GMAIL_ERROR" if "://" in text else text[:40].upper().replace(" ", "_")
 
 
 class PhysMailError(RuntimeError):
@@ -71,14 +62,14 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
         try:
             ids = gmail.list_ids_complete(window_query(since), limit)
         except GmailError as error:
-            raise PhysMailError("PHYSMAIL_" + gmail_code(error)) from None
+            raise PhysMailError("PHYSMAIL_" + error_code(error)) from None
         counts["listed"] = len(ids)
         extracted = []
         for message_id in ids:                                                 # the whole census is read before any write
             try:
                 extracted.append(events.extract(gmail.message_record(message_id)))
             except GmailError as error:
-                raise PhysMailError("PHYSMAIL_GMAIL_READ_FAILED_" + gmail_code(error)) from None
+                raise PhysMailError("PHYSMAIL_GMAIL_READ_FAILED_" + error_code(error)) from None
         merged, delta = state_mod.apply(stored, extracted, now)
         for key in ("arrivals_new", "actions_new", "review_new", "ignored", "before_anchor"):
             counts[key] = delta[key]

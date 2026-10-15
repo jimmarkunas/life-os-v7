@@ -154,6 +154,16 @@ class StageTests(unittest.TestCase):
         counts = stage.run(10, True, environ=TOKEN, gmail=Flaky(rows), notion=AmazonNotion(), now=NOW, skip_unreadable=True)
         self.assertEqual((counts["unreadable"], counts["accepted"], counts["orders_new"], counts["filed"]), (1, 1, 1, 1))
 
+    def test_a_rate_limited_read_names_its_reason_never_the_url_or_message(self):
+        class Limited(AmazonGmail):
+            def message_record(self, message_id):
+                raise GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 429 rateLimitExceeded")
+        with self.assertRaises(stage.AmazonError) as caught:
+            stage.run(10, True, environ=TOKEN, gmail=Limited({"m-1": message("m-1", "auto-confirm")}), notion=AmazonNotion(), now=NOW)
+        self.assertIn("AMAZON_GMAIL_READ_FAILED_HTTP_429_RATELIMITEXCEEDED", str(caught.exception))
+        self.assertNotIn("googleapis", str(caught.exception))
+        self.assertNotIn("m-1", str(caught.exception))
+
     def test_dry_run_has_counts_only_and_makes_no_writes(self):
         gmail = AmazonGmail({"m-1": message("m-1", "auto-confirm")})
         notion = AmazonNotion()
