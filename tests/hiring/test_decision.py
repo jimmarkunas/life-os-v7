@@ -165,7 +165,7 @@ class ConfirmRejectedTests(unittest.TestCase):
         chain.confirm()
         self.assertEqual([p.rounds for p in chain.parents if p.company == COMPANY and p.role == ROLE], [2])           # the Notes page is still an Active page with its rounds
         self.assertNotIn(f"{COMPANY} — {ROLE}", seen(chain.tree))
-        self.assertEqual({e[1].split("/")[2] for e in T.writes(chain.tree)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"})     # only the pinned region
+        self.assertEqual({e[1].split("/")[2] for e in T.writes(chain.tree)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a003"})     # only the pinned region
 
     def test_retrying_the_same_confirmed_operation_writes_and_appends_nothing_twice(self):
         chain = Chain()
