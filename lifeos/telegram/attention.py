@@ -293,6 +293,7 @@ def login():
     deadline = time.monotonic() + 600
     s.start(api_id, api_hash, db_key(create=True), deadline)
     while s.auth != "authorizationStateReady":
+        step = s.auth
         if s.auth == "authorizationStateWaitPhoneNumber":
             reply = s.call({"@type": "setAuthenticationPhoneNumber", "phone_number": input("Telegram phone number (international format): ").strip()}, deadline)
         elif s.auth == "authorizationStateWaitCode":
@@ -305,7 +306,8 @@ def login():
             return 1
         if reply.get("@type") == "error":
             print("Telegram refused that entry; try again.")
-        s.pump(lambda: s.auth not in (None,), time.monotonic() + 5)
+        else:
+            s.pump(lambda: s.auth != step, time.monotonic() + 20)          # wait for Telegram's next step before asking again
     print("Signed in. This Oracle session is now listed in Telegram > Settings > Devices as 'LIFE OS attention (Oracle)'.")
     s.close(time.monotonic() + 10)
     return 0
