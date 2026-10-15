@@ -51,6 +51,12 @@ export class Attention {
     this.flags(s, u);
   }
 
+  readElsewhere(jid) {                            // a "read by you on another device" receipt: opening a chat reads all of it
+    if (isOwnOrService(jid)) return;
+    const s = this.chat(jid);
+    s.unread = 0; s.marked = false;
+  }
+
   flags(s, c) {
     if (typeof c.archived === "boolean") s.archived = c.archived;
     if (c.muteEndTime !== undefined) s.muteEnd = Number(c.muteEndTime || 0);

@@ -14,7 +14,7 @@
 // WhatsApp sends a linked device the per-chat counts ONCE, at linking; afterwards only changes. So the per-chat counts are saved (0600 file, keyed
 // by an HMAC of the chat id under an Oracle-only key: no number, chat id, name or text on disk) and reloaded on restart; offline changes then arrive
 // as ordinary sync. The latest sender's name is never written to disk: after a restart it is UNAVAILABLE until the next real incoming message.
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from "baileys";
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, areJidsSameUser } from "baileys";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -30,7 +30,9 @@ const SAVED = path.join(STATE, "chats.json");
 const HASH_KEY = path.join(os.homedir(), ".config/lifeos-whatsapp/hash-key");
 import { Attention } from "./state.mjs";
 
-const quiet = pino({ level: "silent" });
+const quiet = process.env.LIFEOS_WA_DEBUG === "1"
+  ? pino({ level: "debug" }, { write: (line) => { try { const o = JSON.parse(line); process.stderr.write("baileys " + o.level + " " + String(o.msg || "").replace(/[0-9]{6,}/g, "<n>").slice(0, 120) + "\n"); } catch { /* skip */ } } })
+  : pino({ level: "silent" });
 
 function socketFor(auth) {
   return makeWASocket({ auth, logger: quiet, browser: Browsers.ubuntu("Chrome"), markOnlineOnConnect: false, syncFullHistory: false,
@@ -63,8 +65,20 @@ function persist(att) {
   att.dirty = false;
 }
 
+const DEBUG = process.env.LIFEOS_WA_DEBUG === "1";   // event TYPES, connection states and counts only: never ids, names, numbers or text
+const debug = (...parts) => { if (DEBUG) process.stderr.write(new Date().toISOString() + " " + parts.join(" ") + "\n"); };
+
 function wire(sock, att, saveCreds) {
   sock.ev.on("creds.update", saveCreds);
+  if (DEBUG) sock.ev.process((events) => {
+    for (const [name, data] of Object.entries(events)) {
+      const n = Array.isArray(data) ? data.length : Array.isArray(data?.messages) ? data.messages.length : Array.isArray(data?.chats) ? data.chats.length : "";
+      const extra = name === "chats.update" ? " unread=" + data.map((u) => (u.unreadCount === undefined ? "-" : String(u.unreadCount))).join(",")
+        : name === "connection.update" ? " " + JSON.stringify({ c: data.connection, code: data.lastDisconnect?.error?.output?.statusCode, pending: data.receivedPendingNotifications })
+        : name === "messages.upsert" ? " type=" + data.type : "";
+      debug("event", name, n, extra);
+    }
+  });
   const touch = () => { att.lastEvent = new Date().toISOString().replace(/\.\d+Z$/, "Z"); };
   sock.ev.on("messaging-history.set", ({ chats, contacts, messages, isLatest }) => {
     (contacts || []).forEach((c) => att.contact(c)); (chats || []).forEach((c) => att.absolute(c)); (messages || []).forEach((m) => att.message(m));
@@ -75,6 +89,16 @@ function wire(sock, att, saveCreds) {
   sock.ev.on("contacts.upsert", (cs) => cs.forEach((c) => att.contact(c)));
   sock.ev.on("contacts.update", (cs) => cs.forEach((c) => att.contact(c)));
   sock.ev.on("messages.upsert", ({ messages, type }) => { if (type === "notify") messages.forEach((m) => att.message(m)); touch(); });
+  // Reading on the phone reaches a linked device as READ receipts, not as an app-state change: one-to-one chats as a status update on messages
+  // that are not mine, groups as a receipt whose reader is me.
+  const READ = 4;
+  const me = (jid) => [sock.user?.id, sock.user?.lid].some((own) => own && jid && areJidsSameUser(jid, own));
+  sock.ev.on("messages.update", (us) => {
+    us.forEach((u) => { if (!u.key?.fromMe && Number(u.update?.status) >= READ) att.readElsewhere(u.key.remoteJid); }); touch();
+  });
+  sock.ev.on("message-receipt.update", (rs) => {
+    rs.forEach((r) => { if (r.receipt?.readTimestamp && me(r.receipt.userJid)) att.readElsewhere(r.key.remoteJid); }); touch();
+  });
 }
 
 async function serve() {
@@ -89,7 +113,10 @@ async function serve() {
     const sock = socketFor(state);
     wire(sock, att, saveCreds);
     sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-      if (connection === "open") { att.connection = "open"; delay = 2000; if (att.restored) setTimeout(() => { att.synced = true; }, 30000); }   // offline catch-up first
+      if (connection === "open") {
+        att.connection = "open"; delay = 2000;
+        if (att.restored) setTimeout(() => { att.synced = true; }, 30000);   // offline catch-up first
+      }
       if (connection === "close") {
         att.connection = "close"; att.synced = false;
         const code = lastDisconnect?.error?.output?.statusCode;

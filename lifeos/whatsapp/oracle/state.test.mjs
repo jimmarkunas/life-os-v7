@@ -76,6 +76,14 @@ test("a sender known by an internal id is named through the phone id, a contact'
   assert.equal(a.snapshot(NOW).latest_name, "Eve Example");
 });
 
+test("a read on the phone clears that chat, including one marked unread", () => {
+  const a = ready(new Attention());
+  a.absolute({ id: "group-1", unreadCount: 135 }); a.absolute({ id: "contact-1", unreadCount: 2 }); a.update({ id: "contact-2", unreadCount: -1 });
+  a.readElsewhere("group-1"); a.readElsewhere("contact-2");
+  const s = a.snapshot(NOW);
+  assert.deepEqual([s.unread_messages, s.unread_chats], [2, 1]);
+});
+
 test("chat ids can be stored hashed", () => {
   const a = new Attention((j) => "h:" + j.length);
   a.absolute({ id: "contact-1", unreadCount: 2 });
