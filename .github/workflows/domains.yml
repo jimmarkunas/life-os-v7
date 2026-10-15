@@ -538,7 +538,8 @@ jobs:
   hiring:
     # HIRE-1.2: V7 is the sole writer of the floating Daily Report "Hiring Pipeline" region (a heading, a status line and a four-column table; never a callout). It runs after EVERY other Daily Report writer,
     # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
-    needs: [jira, agenda, bills, amazon, attention, mail]
+    # imessage writes the Communications and Oracle Cloud callouts (LIFE-34, Oct 15 2026), so it is one of those writers; `always()` keeps Hiring running when it is skipped or fails.
+    needs: [jira, agenda, bills, amazon, attention, mail, imessage]
     if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
