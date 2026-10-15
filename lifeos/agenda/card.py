@@ -199,6 +199,20 @@ def _day_events(snapshot, day):
     return [event for event in snapshot["events"] if day in event.get("days", [])]
 
 
+def _line(event):
+    return (" ".join(event["title"].split()).casefold(), event["all_day"], event["start"], event["end"])
+
+
+def _merged(events):
+    """One line per title and time: a Gmail-created copy beside the event you made shows once, as the richer of the two (a meeting link, then the longer location; a tie keeps the first). Display only: the snapshot is unchanged."""
+    kept = {}
+    for event in events:
+        rank = (bool(event.get("meeting_link")), len(event.get("location") or ""))
+        if _line(event) not in kept or rank > kept[_line(event)][0]:
+            kept[_line(event)] = (rank, event)
+    return [event for event in events if kept[_line(event)][1] is event]
+
+
 def _instant(value):
     parsed = datetime.fromisoformat(value)
     return parsed.replace(tzinfo=TZ) if parsed.tzinfo is None else parsed.astimezone(TZ)
@@ -282,10 +296,10 @@ def render(snapshot, stale=False, now=None):
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
     counts = _snapshot_counts(snapshot, stale)
     blocks = []
-    today = _day_events(snapshot, snapshot["today"])
+    today, tomorrow = _merged(_day_events(snapshot, snapshot["today"])), _merged(_day_events(snapshot, snapshot["tomorrow"]))
+    counts["merged"] = counts["today"] + counts["tomorrow"] - len(today) - len(tomorrow)               # duplicate lines hidden
     marker_id, marker = _today_marker(today, now)
-    for label, day, events in (("Today", snapshot["today"], today),
-                               ("Tomorrow", snapshot["tomorrow"], _day_events(snapshot, snapshot["tomorrow"]))):
+    for label, day, events in (("Today", snapshot["today"], today), ("Tomorrow", snapshot["tomorrow"], tomorrow)):
         blocks.append(_heading(label))
         if events:
             blocks.extend(_event_block(event, marker if label == "Today" and event["id"] == marker_id else None) for event in events)
