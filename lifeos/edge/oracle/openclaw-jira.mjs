@@ -428,9 +428,11 @@ export async function propose(tokens, { call, dir = PROPOSAL_DIR, now = Date.now
     `Expires ${ctTime(now + PROPOSAL_TTL_MIN * 60000)} · works once`,
     `${SITE}/browse/${op.key}`,
   ];
+  // Plain `value` buttons, not `action` buttons: OpenClaw wraps `action` values as opaque tgcb1: data that only a
+  // registered plugin handler can claim, so the tap never reaches Luna ("This action is no longer available").
   const sent = notify(lines.join("\n"), [
-    { label: "Approve", action: { type: "callback", value: `lifeos-approve:${code}` }, style: "success" },
-    { label: "Reject", action: { type: "callback", value: `lifeos-reject:${code}` }, style: "danger" },
+    { label: "Approve", value: `lifeos-approve:${code}`, style: "success" },
+    { label: "Reject", value: `lifeos-reject:${code}`, style: "danger" },
   ]);
   return { ok: true, proposed: true, delivered: sent, demo, key: op.key, field: "duedate", from: current ?? null, to: op.fields.duedate, expiresAt: rec.expiresAt };
 }
@@ -455,13 +457,15 @@ export function claimProposal(code, { dir = PROPOSAL_DIR, now = Date.now(), as =
   return rec;
 }
 
-export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = APPROVAL_DIR, now = Date.now(), notify = telegramNotify } = {}) {
+// confirm/reject run inside Luna's turn for the button tap, and OpenClaw requires that turn to answer, so the
+// wrapper does not message Jim itself: it returns the exact `message` (also on failure) for Luna to send as her reply.
+export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = APPROVAL_DIR, now = Date.now() } = {}) {
   let rec;
   try {
     rec = claimProposal(code, { dir, now });
     if (rec.demo) {
-      notify(`✅ Approved (synthetic demo): ${rec.op.key} due ${ctDate(rec.baseline.duedate)} → ${ctDate(rec.op.fields.duedate)}. Nothing was changed in Jira.`);
-      return { ok: true, demo: true, executed: false, key: rec.op.key };
+      const message = `✅ Approved (synthetic demo): ${rec.op.key} due ${ctDate(rec.baseline.duedate)} → ${ctDate(rec.op.fields.duedate)}. Nothing was changed in Jira.`;
+      return { ok: true, demo: true, executed: false, key: rec.op.key, message };
     }
     const current = (await readIssue(call, rec.op.key, false)).due ?? null;
     if (current !== rec.baseline.duedate) throw new CliError("BASELINE_CHANGED", "the issue changed since the preview; ask for a fresh proposal");
@@ -471,20 +475,22 @@ export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = AP
     consumeApproval(gate.file, now);
     const result = await execWrite(call, rec.op);
     if (result.issue?.due !== rec.op.fields.duedate) throw new CliError("READBACK_MISMATCH", "Jira did not read back the approved due date");
-    notify(`✅ Done: ${rec.op.key} due date is now ${ctDate(result.issue.due)} (read back from Jira).\n${SITE}/browse/${rec.op.key}`);
-    return { ok: true, executed: true, key: rec.op.key, due: result.issue.due, opHash: rec.opHash };
+    const message = `✅ Done: ${rec.op.key} due date is now ${ctDate(result.issue.due)} (read back from Jira).\n${SITE}/browse/${rec.op.key}`;
+    return { ok: true, executed: true, key: rec.op.key, due: result.issue.due, opHash: rec.opHash, message };
   } catch (e) {
-    const what = rec ? `${rec.op.key} due date` : "the request";
-    if (e instanceof CliError) notify(`❌ Not applied: ${what}. ${e.detail}`);
-    else notify(`❌ Failed: ${what}. Jira was not confirmed as changed.`);
-    throw e instanceof CliError ? e : new CliError("WRITE_FAILED", "the Jira write did not complete", 1);
+    const what = rec ? `${rec.op.key} due date` : "this approval";
+    if (e instanceof CliError) throw new CliError(e.code, e.detail, e.exit, { ...e.extra, message: `❌ Not applied: ${what} — ${e.detail}.` });
+    throw new CliError("WRITE_FAILED", "the Jira write did not complete", 1, { message: `❌ Failed: ${what}. Jira was not confirmed as changed.` });
   }
 }
 
-export function reject(code, { dir = PROPOSAL_DIR, now = Date.now(), notify = telegramNotify } = {}) {
-  const rec = claimProposal(code, { dir, now, as: "rejected" });
-  notify(`Rejected: ${rec.op.key} due date stays ${ctDate(rec.baseline.duedate)}. Nothing was changed.`);
-  return { ok: true, rejected: true, key: rec.op.key };
+export function reject(code, { dir = PROPOSAL_DIR, now = Date.now() } = {}) {
+  try {
+    const rec = claimProposal(code, { dir, now, as: "rejected" });
+    return { ok: true, rejected: true, key: rec.op.key, message: `Rejected: ${rec.op.key} due date stays ${ctDate(rec.baseline.duedate)}. Nothing was changed.` };
+  } catch (e) {
+    throw new CliError(e.code, e.detail, e.exit, { ...e.extra, message: `❌ Not rejected — ${e.detail}.` });
+  }
 }
 
 // ---- operations -------------------------------------------------------------------------------
@@ -594,9 +600,9 @@ export async function run(argv, deps = {}) {
   const lazyCall = (...a) => connect()(...a);                                   // a demo proposal never touches Jira or its credentials
   if (sub === "propose") return propose(rest, { call: lazyCall, dir: deps.proposalDir, now, notify: deps.notify });
   if (sub === "confirm" && rest.length === 1) {
-    return confirm(rest[0], { call: lazyCall, dir: deps.proposalDir, approvalDir, now, notify: deps.notify });
+    return confirm(rest[0], { call: lazyCall, dir: deps.proposalDir, approvalDir, now });
   }
-  if (sub === "reject" && rest.length === 1) return reject(rest[0], { dir: deps.proposalDir, now, notify: deps.notify });
+  if (sub === "reject" && rest.length === 1) return reject(rest[0], { dir: deps.proposalDir, now });
   if (sub === "approve") {
     // Operator-only. Not in the exec allowlist, so the assistant cannot reach it.
     const wsub = rest[0];
