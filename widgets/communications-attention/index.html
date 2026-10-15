@@ -60,7 +60,8 @@
       {id:'messages',name:'Messages',icon:'▤',unread_count:5,count_reliable:true,latest_contact:'Sample Contact A',health:'CURRENT',connection_state:'CONNECTED',native_url:'messages://'},
       {id:'telegram',name:'Telegram',icon:'➤',unread_count:3,count_reliable:true,latest_contact:'Sample Contact B',health:'CURRENT',connection_state:'CONNECTED',native_url:'tg://'}, 
       {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'DISCONNECTED',connection_state:'ISSUE',native_url:'whatsapp://'}, 
-      {id:'discord',name:'Discord',icon:'◉',unread_count:0,count_reliable:true,latest_contact:'Sample Contact C',health:'CURRENT',connection_state:'CONNECTED',native_url:'discord://'}
+      // Link only: Discord exposes no unread count or latest-contact source to any approved adapter.
+      {id:'discord',name:'Discord',icon:'◉',link_only:true,native_url:'discord://'}
     ];
     function el(tag,cls,value){const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e}
     let refreshCount=0;
@@ -71,7 +72,7 @@
         const count=reliable?(source.unread_count>99?'99+':String(source.unread_count)):'—';
         const row=el('div','channel'),left=el('div','channel-name');
         left.append(el('span','ch-icon '+source.id,source.icon));
-        const label=source.name+' ('+count+')';
+        const label=source.link_only?source.name:source.name+' ('+count+')';
         // All four schemes are registered with macOS on Jim's Mac (verified Oct 14).
         // A genuine user-clicked anchor permits a browser to request native app launch;
         // Notion iframe permissions and the OS prompt still require real-client proof.
@@ -87,6 +88,11 @@
         });
         const actionGroup=el('span','channel-action');
         actionGroup.append(action);
+        if(source.link_only){
+          left.append(actionGroup);
+          row.append(left,el('span','latest empty'));target.append(row);
+          continue;
+        }
         // Connection health is independently declared; never infer 'connected' from an unread count.
         // Unknown or unverified status is gray rather than silently claiming a good or bad connection.
         const conn=source.connection_state==='CONNECTED'?'connected':source.connection_state==='ISSUE'?'issue':'unknown';
