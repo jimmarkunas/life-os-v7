@@ -6,11 +6,12 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
      cannot present a forged PROXY header, because it is refused before one byte is read;
   1. requires that header and asks tailscaled who the source is: only a node carrying TAG (the V7 hourly runner's ephemeral identity) is served;
   2. requires the request to be exactly "alerts <lookback hours 1-72>";
-  3. reads the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), classifies them in memory with the
-     wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the source reference under a key that never leaves Oracle),
-     severity, reason codes, review flag, observation time and completeness. Never text, names, handles, chat or message references.
+  3. reads ALL of the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), paging until the reader
+     proves the end, classifies them in memory with the wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the
+     source reference under a key that never leaves Oracle), severity, reason codes, review flag, observation time, pages and completeness. Never text,
+     names, handles, chat or message references.
 Anything else closes with no output. It writes nothing, logs nothing and never runs inside a Luna/OpenClaw session. A scan that reached the reader's 50-message
-limit cannot prove it saw everything, so it says so (complete false, health DEGRADED) instead of passing as complete."""
+or time cap (or any page failure) cannot prove it saw everything, so it says so (complete false, health DEGRADED) instead of passing as complete."""
 import hashlib
 import hmac
 import importlib.machinery
@@ -30,8 +31,8 @@ TAILSCALE = "/usr/bin/tailscale"
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 MAX_PROXY_TAIL = 216
 MAX_REQUEST = 16
-LIMIT = 50
-SCHEMA = "lifeos.imessage.alerts.v1"
+SCHEMA = "lifeos.imessage.alerts.v2"
+MAX_EVENTS = 500
 PUSHED = ("ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
 
 
@@ -134,17 +135,20 @@ def event_key(secret, ref):
 
 def scan(hours, wrapper, secret, now=None):
     now = now or datetime.now(timezone.utc)
-    recent = wrapper.run(["recent", "--hours", str(hours)], now)
-    msgs = recent.get("messages")
-    health = recent.get("health")
-    out = {"schema": SCHEMA, "observed_at": recent.get("observed_at"), "lookback_hours": hours, "limit": LIMIT, "sync": "UNVERIFIED", "events": []}
-    if msgs is None:
-        return dict(out, health=health if health in ("DEGRADED", "DISCONNECTED", "STALE") else "DEGRADED", complete=False, scanned=0, limit_reached=False)
-    reached = len(msgs) >= LIMIT
-    for m, verdict in wrapper.verdicts(msgs):
+    got = wrapper.scan(hours, now)
+    limit = wrapper.MAX_PAGES * wrapper.PAGE_SIZE
+    events = []
+    for m, verdict in wrapper.verdicts(got["messages"]):
         if verdict["level"] in PUSHED:
-            out["events"].append({"key": event_key(secret, m["ref"]), "severity": verdict["level"], "reasons": verdict["reasons"], "review": verdict["review"]})
-    return dict(out, health="DEGRADED" if reached else health, complete=health == "CURRENT" and not reached, scanned=len(msgs), limit_reached=reached)
+            events.append({"key": event_key(secret, m["ref"]), "severity": verdict["level"], "reasons": verdict["reasons"], "review": verdict["review"]})
+    overflow = len(events) > MAX_EVENTS
+    complete = got["complete"] and not overflow
+    health = got["health"] if got["health"] in ("CURRENT", "DEGRADED", "DISCONNECTED", "STALE") else "DEGRADED"
+    if not complete and health == "CURRENT":
+        health = "DEGRADED"
+    return {"schema": SCHEMA, "observed_at": got["observed_at"], "lookback_hours": hours, "limit": limit, "pages": got["pages"], "sync": "UNVERIFIED",
+            "events": events[:MAX_EVENTS], "health": health, "complete": complete, "scanned": len(got["messages"]),
+            "limit_reached": got["truncated"] or overflow}
 
 
 def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid):
