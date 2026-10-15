@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.physmail import card, chains, events, stage, state
 from lifeos.platform import report_region, router
-from lifeos.platform.gmail import GmailError
+from lifeos.platform.gmail import GmailError, error_code
 from tests.kit.notion import MailRegions
 
 AT = chr(64)
@@ -192,10 +192,10 @@ class StageTests(unittest.TestCase):
 
     def test_a_gmail_failure_names_its_status_and_reason_never_the_url_or_message(self):
         http = GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 429 rateLimitExceeded")
-        self.assertEqual(stage.gmail_code(http), "HTTP_429_RATELIMITEXCEEDED")
-        self.assertEqual(stage.gmail_code(GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 404 ")), "HTTP_404")
-        self.assertEqual(stage.gmail_code(GmailError("GMAIL_MESSAGE_INCOMPLETE")), "GMAIL_MESSAGE_INCOMPLETE")
-        self.assertEqual(stage.gmail_code(GmailError("GET https://gmail.googleapis.com/x -> timeout")), "GMAIL_ERROR")
+        self.assertEqual(error_code(http), "HTTP_429_RATELIMITEXCEEDED")
+        self.assertEqual(error_code(GmailError("GET https://gmail.googleapis.com/gmail/v1/users/me -> HTTP 404 ")), "HTTP_404")
+        self.assertEqual(error_code(GmailError("GMAIL_MESSAGE_INCOMPLETE")), "GMAIL_MESSAGE_INCOMPLETE")
+        self.assertEqual(error_code(GmailError("GET https://gmail.googleapis.com/x -> timeout")), "GMAIL_ERROR")
         self.run_stage([mail("n1", "New Mail (3)")])
         with self.assertRaises(stage.PhysMailError) as caught:
             self.run_stage(env={}, gmail=FakeGmail([mail("n2", "New Mail (1)")], read_error="n2"))

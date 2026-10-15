@@ -25,6 +25,15 @@ class GmailError(RuntimeError):
     pass
 
 
+def error_code(error):
+    """A GmailError as a fixed log code: Gmail's own code, or its HTTP status and short reason (HTTP_429_RATELIMITEXCEEDED); never a URL, id or body."""
+    text = str(error)
+    http = re.search(r"HTTP (\d{3}) ?([A-Za-z]*)\s*$", text)
+    if http:
+        return "_".join(part for part in ("HTTP", http.group(1), (http.group(2) or "").upper()) if part)
+    return "GMAIL_ERROR" if "://" in text else text[:40].upper().replace(" ", "_")
+
+
 def _reason(error):
     """Google's short error reason code (e.g. rateLimitExceeded), or '' - never free text."""
     try:
