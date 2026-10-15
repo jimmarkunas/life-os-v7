@@ -1,0 +1,481 @@
+{
+  "schema_version": "1.0.0",
+  "document_id": "CAREER-LIFECYCLE-2026-10-15",
+  "scope": "Jobs Apply/LinkedIn referrals, Recruiters action queue, Job Outreach, Active Opportunities, Hiring/Interview promotion, outcomes",
+  "canonical_authority": {
+    "product": "https://app.notion.com/p/3d43c5a0592680f7b8c7daf8c5c5480e",
+    "jobs": "https://app.notion.com/p/3d73c5a059268046946dc83c0ab6b147",
+    "work": "https://jimmarkunas.atlassian.net/browse/LIFE-47",
+    "development_policy": "https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md",
+    "note": "This JSON is a deterministic IMPLEMENTATION PROJECTION of existing Notion product decisions and Jim's current instruction; it does not supersede product authority or Jira delivery state."
+  },
+  "evidence_quality": {
+    "questionnaire": "The original ~39-60 question-by-question transcript has NOT been fully recovered. No invented individual answers.",
+    "basis": [
+      "Interview OS Oct 14 approved interaction contract",
+      "Jobs OS current contract",
+      "LIFE-47 comments 10166,10177,10179,10181",
+      "LIFE-20 RECR-1.3",
+      "LIFE-21 RECR-1.4",
+      "GitHub PR #253 D193",
+      "Jim current request for auto-removal of authoritative rejections"
+    ],
+    "conflicts": [
+      {
+        "id": "PRESENTATION",
+        "old": "Hosted HTML interactive widget",
+        "latest": "Native Notion two-table design from LIFE-47 comment 10177; actions on canonical linked records or proven private surface",
+        "resolution": "latest_applies"
+      },
+      {
+        "id": "AUTO_REJECTION",
+        "old": "D194 manual Confirm Rejected even with mail evidence",
+        "latest": "Jim requests automatic removal on exact authoritative rejection",
+        "resolution": "current_request_requires_bounded_safe_rule_and_live_acceptance"
+      }
+    ]
+  },
+  "canonical_data_owners": {
+    "job": "existing Notion Job Ledger",
+    "recruiter_actions": "existing Notion Recruiters & Human Outreach",
+    "human_connections": "existing LinkedIn Connections Google Sheet",
+    "opportunity": "existing Notion Hiring opportunity parent",
+    "interviews": "existing Notion interview children",
+    "messages": "Gmail/Outlook",
+    "events": "Google Calendar",
+    "scheduler": "existing LIFE OS Daily Runs / V7 executor only"
+  },
+  "current_frontend": {
+    "surface": "private Daily LIFE OS Report right column",
+    "presentation": "Notion native tables; no public HTML embed",
+    "active_opportunities": {
+      "columns": [
+        "Company — Role",
+        "Stage",
+        "Next step · Due",
+        "Notes"
+      ],
+      "state": "production_live_2026_10_15"
+    },
+    "job_outreach": {
+      "columns": [
+        "Job",
+        "Outreach (contacted/replied/referrals confirmed)",
+        "Next follow-up",
+        "Notes"
+      ],
+      "state": "NOT_IMPLEMENTED"
+    },
+    "recruiters_queue": {
+      "source": "collection://d42e2ab0-34bc-43ca-83be-e92fd5b54071",
+      "existing_broken_filter": "Week Ending >= Today",
+      "required_groups": [
+        "Needs Action",
+        "Waiting/Follow-up"
+      ],
+      "status": "NOT_IMPLEMENTED"
+    },
+    "action_surface": "linked authenticated canonical records; no inert buttons or claims of inline actions in native simple tables"
+  },
+  "lifecycle_states": {
+    "outreach_action": [
+      "Needs Action",
+      "Waiting",
+      "Completed",
+      "Dismissed"
+    ],
+    "contact_referral": [
+      "Contacted",
+      "Replied",
+      "Referral Offered",
+      "Referral Confirmed",
+      "Declined",
+      "Followed Up",
+      "Stop Follow-ups"
+    ],
+    "job_flow": [
+      "Job Ledger",
+      "Job Outreach",
+      "Active Opportunities",
+      "Retired Opportunities"
+    ],
+    "review": [
+      "Needs Review",
+      "DEGRADED"
+    ]
+  },
+  "implementation_rules": [
+    {
+      "id": "ID-01",
+      "jira": [
+        "LIFE-25",
+        "LIFE-47"
+      ],
+      "when": "inbound evidence describes a job",
+      "then": "match employer + exact role/requisition and existing identity; one row per distinct verified job",
+      "source": "Job Ledger, recruiter/hiring mail",
+      "guard": "uncertain or competing identity => Needs Review; no guessed promotion",
+      "acceptance": "two distinct requisitions remain separate; repeat evidence joins same job",
+      "delivery_state": "unimplemented"
+    },
+    {
+      "id": "UI-01",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "display Career Hiring in private Daily Report",
+      "then": "two native Notion tables: Active Opportunities and Job Outreach; source-updated CT stamp; no row tint; attention order",
+      "source": "canonical Jobs, Recruiters, Hiring projections",
+      "guard": "never a public private-data embed or second store",
+      "acceptance": "both tables display complete, actual source-linked rows",
+      "delivery_state": "partial_active_table_only"
+    },
+    {
+      "id": "UI-02",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "display Active Opportunities",
+      "then": "columns Company — Role | Stage | Next step · Due | Notes; existing Notes link",
+      "source": "Hiring Pipeline, Calendar, mail",
+      "guard": "offer evidence not a stage change; no invented due dates",
+      "acceptance": "five real source-backed rows shown with 4 approved columns",
+      "delivery_state": "live_accepted_slice_1"
+    },
+    {
+      "id": "UI-03",
+      "jira": [
+        "LIFE-47",
+        "LIFE-20"
+      ],
+      "when": "display Job Outreach",
+      "then": "columns Job | Outreach counts (contacted/replied/referrals confirmed) | Next follow-up | Notes (Job Ledger link)",
+      "source": "role-specific recruiter/outreach records",
+      "guard": "no generic People directory; no cold applications",
+      "acceptance": "job-grouped rows with verified counts and exact Ledger links",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "UI-04",
+      "jira": [
+        "LIFE-46",
+        "LIFE-47"
+      ],
+      "when": "user selects a hiring opportunity",
+      "then": "navigate to existing opportunity parent, Job Ledger, Calendar invites, interview child Notes; protect manual notes",
+      "source": "Notion opportunity/child, Job Ledger, Calendar",
+      "guard": "never invent source links or clone interview data",
+      "acceptance": "real Notion navigation and preserved authored content",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "UI-05",
+      "jira": [
+        "LIFE-47",
+        "LIFE-21"
+      ],
+      "when": "user needs an action",
+      "then": "offer working authorized actions from canonical record or proven private UI; never pretend static Notion cells are controls",
+      "source": "Job Ledger and hiring decision backend",
+      "guard": "confirmation, identity guard, durable write/read-back and visible errors",
+      "acceptance": "actual click/action => correct canonical state => updated table",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "APP-01",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "user reaches Apply on a Job Ledger record",
+      "then": "show top 3 verified relevant LinkedIn connections, optionally more, ranked for that job",
+      "source": "existing LinkedIn-connection Google Sheet",
+      "guard": "no invented LinkedIn identity/relationship or new CRM",
+      "acceptance": "three verified role-relevant people for an eligible job or truthful none",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "APP-02",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "user chooses Reach Out for suggested person",
+      "then": "open that person's LinkedIn profile only",
+      "source": "verified source profile URL",
+      "guard": "no Draft/Planned/contacted entry, no automatic send",
+      "acceptance": "profile opens; zero writes",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "APP-03",
+      "jira": [
+        "LIFE-47",
+        "LIFE-21"
+      ],
+      "when": "Jim actually sends and selects Mark as Sent",
+      "then": "create exactly one role-specific conversation; status Waiting; next follow-up in 2 business days",
+      "source": "Jim-confirmed action, existing Recruiters/outreach canonical record",
+      "guard": "must not assume an unsent message was sent; idempotent",
+      "acceptance": "one verified canonical row and correct due date; repeat no-op",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-01",
+      "jira": [
+        "LIFE-20"
+      ],
+      "when": "recruiter action is unfinished",
+      "then": "persist Action Status: Needs Action, Waiting, Completed, Dismissed; Follow-up Date",
+      "source": "existing Recruiters & Human Outreach data source",
+      "guard": "preserve Active, Done, Needs review, source links and human fields",
+      "acceptance": "schema live and exact read-back; no duplicate store",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-02",
+      "jira": [
+        "LIFE-20"
+      ],
+      "when": "action remains Needs Action or Waiting over a week boundary",
+      "then": "show it in persistent Needs Action then Waiting/Follow-up views, ordered urgency/due",
+      "source": "Recruiters data source, Action Status, Follow-up Date",
+      "guard": "remove current-week-only Week Ending >= Today suppression",
+      "acceptance": "prior-week unfinished item remains visible next week",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-03",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "new direct recruiter/hiring-person message identifies exact job",
+      "then": "create one Job Outreach Needs Action item with source email deep link",
+      "source": "Gmail / Outlook direct human evidence",
+      "guard": "ambiguous job => Needs Review; automation/notification alone not recruiter",
+      "acceptance": "direct message appears exactly once and links to source",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-04",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "Jim responds or explicitly handles incoming recruiter action",
+      "then": "mark appropriate action Waiting; manual uninterested => Dismissed",
+      "source": "confirmed operator state / supported reply evidence",
+      "guard": "never infer a LinkedIn reply without authorized source",
+      "acceptance": "Waiting or Dismissed persists and read-back matches",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-05",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "2-business-day waiting deadline reached without qualifying response",
+      "then": "reactivate Needs Action, preserving conversation history",
+      "source": "verified persisted sent/response timestamps",
+      "guard": "do not infer absence from incomplete mail source; no auto-send",
+      "acceptance": "due action reappears after week rollover",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-06",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "new substantive recruiter/human reply arrives",
+      "then": "reactivate action and preserve original role-specific thread linkage",
+      "source": "Gmail/Outlook mail",
+      "guard": "one person may have multiple distinct job conversations; do not cross-link",
+      "acceptance": "same job gets new next action, other job unchanged",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-07",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "referral is offered",
+      "then": "record Referral Offered distinct from Referral Confirmed",
+      "source": "recruiter/person message or user entry",
+      "guard": "offered alone never suppresses action as confirmed",
+      "acceptance": "status stays offered pending proof",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-08",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "referral submitted/invitation proof arrives or Jim explicitly confirms evidence unavailable",
+      "then": "mark Referral Confirmed and stop redundant referral prompts for that job",
+      "source": "verified referral evidence or Jim-confirmed exception",
+      "guard": "retain referral history; never mark Applied automatically",
+      "acceptance": "confirmed count increments; redundant follow-ups cease",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "REC-09",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "recruiter row is received from a generic LinkedIn digest",
+      "then": "do not produce Active recruiter record unless recruiting evidence is present",
+      "source": "LinkedIn notification via mail",
+      "guard": "no generic 'just messaged you' classification",
+      "acceptance": "unverified notification is unresolved, not an active recruiter",
+      "delivery_state": "live_code_d193"
+    },
+    {
+      "id": "REC-10",
+      "jira": [
+        "LIFE-21"
+      ],
+      "when": "genuine recruiter message includes company, role, request",
+      "then": "extract fixed evidence patterns, enrich same-message blank fields in place",
+      "source": "Gmail/Outlook and current Recruiters record",
+      "guard": "preserve human-filled fields; exact source URL for enrichment",
+      "acceptance": "one row, correct identity, last message and idempotent",
+      "delivery_state": "live_code_d193"
+    },
+    {
+      "id": "INT-01",
+      "jira": [
+        "LIFE-25",
+        "LIFE-46",
+        "LIFE-47"
+      ],
+      "when": "verified interview request arrives, even before scheduled",
+      "then": "promote whole exact job from Job Outreach to Active Opportunities with all linked conversations",
+      "source": "direct recruiter mail/Calendar/progression",
+      "guard": "ambiguous requests go to Needs Review, no duplicate opportunity",
+      "acceptance": "same job identity moves and retains history",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "INT-02",
+      "jira": [
+        "LIFE-46",
+        "LIFE-47"
+      ],
+      "when": "interview rounds exist",
+      "then": "show distinct chronological interview rows with participants/time, Calendar links, Notes child links",
+      "source": "Calendar, Notion parent/children",
+      "guard": "protect original freeform Notes; show unknown rather than guess",
+      "acceptance": "each supported round navigates to actual existing source",
+      "delivery_state": "missing"
+    },
+    {
+      "id": "HIRE-01",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "direct exact-authority rejection mail matches one specific active opportunity",
+      "then": "auto-retire only that pursuit from Active after guarded canonical update, with history/read-back; maintain reopen",
+      "source": "Gmail/Outlook rejection + Job Ledger or one Notes parent",
+      "guard": "conflict: earlier D194 required manual Confirm Rejected; Jim now requests auto-remove for authoritative exact rejections; ambiguous or conflicting evidence remains review-only",
+      "acceptance": "same exact rejected job vanishes on next projection, recruiter follow-up survives; no other job changes",
+      "delivery_state": "new_request_not_implemented"
+    },
+    {
+      "id": "HIRE-02",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "rejection evidence is possible/company-only/ambiguous",
+      "then": "show Needs Review and a working Confirm Rejected action, no automatic close",
+      "source": "mail matched against job identity",
+      "guard": "human confirmation explicitly required for ambiguous evidence",
+      "acceptance": "confirmation writes guarded rejection, exact read-back, removes only target",
+      "delivery_state": "backend_only_no_ui"
+    },
+    {
+      "id": "HIRE-03",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "operator reverses previously confirmed closure",
+      "then": "Reopen same exact pursuit and retain audit/history",
+      "source": "canonical Job Ledger/Notion Notes status",
+      "guard": "idempotent, no duplicate or lost interview child",
+      "acceptance": "row reappears and history remains",
+      "delivery_state": "backend_only_no_ui"
+    },
+    {
+      "id": "HIRE-04",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "offer email arrives",
+      "then": "surface Offer Review; remain in Active until explicit human outcome",
+      "source": "verified offer mail",
+      "guard": "offer is not a rejection, accepted offer or automatic stage change",
+      "acceptance": "offer action and source link visible without silent closure",
+      "delivery_state": "text_only"
+    },
+    {
+      "id": "HIRE-05",
+      "jira": [
+        "LIFE-26",
+        "LIFE-47"
+      ],
+      "when": "no direct human update for 7 calendar days after last qualifying contact or past interview",
+      "then": "show Stale as reversible attention state, not rejection or deletion",
+      "source": "recruiter/hiring mail, Calendar",
+      "guard": "verified future interview protects from Stale until it passes",
+      "acceptance": "fresh source resets timer; no silent closure",
+      "delivery_state": "blocked"
+    },
+    {
+      "id": "HIRE-06",
+      "jira": [
+        "LIFE-47"
+      ],
+      "when": "applied job aged 30 days",
+      "then": "retain if human recruiter/interview/hiring progression exists; purge only unprotected stale jobs under accepted retention contract",
+      "source": "Job Ledger and canonical acquisition lifecycle",
+      "guard": "absence of source or failed poll never proves closure",
+      "acceptance": "active pursuits survive 30-day rule; unprotected ones follow lifecycle suppression rule",
+      "delivery_state": "existing_contract"
+    },
+    {
+      "id": "INV-01",
+      "jira": [
+        "LIFE-20",
+        "LIFE-21",
+        "LIFE-47"
+      ],
+      "when": "any source read, write, identity or read-back is incomplete",
+      "then": "DEGRADED or Needs Review, keep last accepted state, do not invent positive facts",
+      "source": "all linked sources",
+      "guard": "no silent paid tools, TinyFish, public secrets, second scheduler/datastore",
+      "acceptance": "forced failure makes no destructive mutation and visibly exposes problem",
+      "delivery_state": "required_not_fully_proven"
+    }
+  ],
+  "release_acceptance": {
+    "mandatory": [
+      "Validate each rule's input/condition/action and negative control",
+      "Prove Notion frontend renders both tables with authoritative live data and no week-based hiding",
+      "Click each working action at real private destination and verify exact canonical read-back",
+      "Verify SH/FT-like exact rejection affects only that job and keeps recruiter follow-up",
+      "Verify job-ledger LinkedIn top-three; Reach Out is no-write; Mark as Sent creates exactly one Waiting record",
+      "Verify 2-business-day recruiter follow-ups survive week boundaries",
+      "Prove identity ambiguity and incomplete source fail closed",
+      "Preserve unrelated Notion Daily Report regions with digest/read-back",
+      "Jira issues remain open until Jim accepts full user outcome"
+    ],
+    "no_new_scheduler": true,
+    "no_new_store": true,
+    "no_tinyfish": true
+  },
+  "delivery_issues": {
+    "LIFE-20": "Recruiters queue schema and persistent views; To Do",
+    "LIFE-21": "Recruiter/outreach lifecycle; blocked",
+    "LIFE-25": "Recruiter-to-hiring evidence handoff; To Do",
+    "LIFE-26": "Hiring stale state; blocked",
+    "LIFE-46": "Opportunity parent/child detail; To Do",
+    "LIFE-47": "Native recruiting/hiring UI and integrations; In Progress"
+  },
+  "flowchart_mermaid": "flowchart TD\n A[Job application or direct recruiter message] --> B{Verified job and person identity?}\n B -->|No| REVIEW[Needs Review - no guessed writes]\n B -->|Yes| C{Interview requested?}\n C -->|Yes, even unscheduled| ACTIVE[Active Opportunities table]\n C -->|No, human engagement| OUTREACH[Job Outreach table]\n C -->|No human engagement| LEDGER[Job Ledger only]\n LEDGER --> APPLY[Apply: show top 3 verified LinkedIn connections]\n APPLY --> REACH[Reach Out: open profile, no write]\n REACH --> SENT{Jim marks Sent?}\n SENT -->|No| APPLY\n SENT -->|Yes| WAIT[Track exact job contact - Waiting - 2 business days]\n WAIT --> OUTREACH\n OUTREACH --> INBOUND[Incoming role-specific email: Needs Action and source link]\n INBOUND --> REPLY{Handled / replied?}\n REPLY -->|Replied| WAIT\n REPLY -->|Dismissed| HIST[Preserve historical record]\n REPLY -->|Interview requested| ACTIVE\n WAIT --> REF{Verified referral?}\n REF -->|Offered only| WAIT\n REF -->|Confirmed with evidence| SUPPRESS[Stop redundant referral reminders, preserve proof]\n SUPPRESS --> OUTREACH\n OUTREACH --> TIME{Follow-up due?}\n TIME -->|Yes| ACTION[Needs Action, not hidden by week]\n TIME -->|No| OUTREACH\n ACTION --> OUTREACH\n ACTIVE --> DETAIL[Open Notes, Ledger, Calendar, interview child]\n ACTIVE --> RESULT{Hiring outcome evidence?}\n RESULT -->|Offer| OFFER[Offer review; remain Active]\n RESULT -->|Ambiguous| REVIEW\n RESULT -->|Exact authoritative rejection| CLOSE[Retire exact pursuit; verify; retain history and reopen]\n CLOSE --> RETIRED[Retired Opportunities; keep recruiter relationship]\n RETIRED --> REOPEN{Jim reopens?}\n REOPEN -->|Yes| ACTIVE"
+}
