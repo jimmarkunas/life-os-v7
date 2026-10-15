@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>LIFE OS · Close opportunity · UI prototype</title>
+  <style>
+    :root {font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color-scheme:light; --canvas:#f5f6f7; --paper:#fff; --ink:#171b24; --muted:#657080; --border:#e0e4e8; --border-strong:#bec6d0; --light:#fafbfc; --accent:#273d62; --accent-ink:#fff; --focus:#467dce; --signal:#305b46; --signal-bg:#eaf2ee; --alert:#97562b; --alert-bg:#fff6ed; --danger:#9a3d3d; --danger-bg:#fff1f1; }
+    *{box-sizing:border-box}
+    html,body{min-height:100%;margin:0}
+    body{background:var(--canvas);color:var(--ink);font-size:14px;line-height:1.5}
+    button,textarea,select{font:inherit}
+    button{cursor:pointer}
+    button:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+    .wrap{max-width:910px;margin:0 auto;padding:40px 24px 70px}
+    .mast{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:30px}
+    .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
+    .brandmark{width:33px;height:33px;border-radius:10px;background:#242c3a;color:#fff;display:grid;place-items:center;font-size:16px;font-weight:750;letter-spacing:-1px}
+    .brand strong{display:block;font-size:14px;letter-spacing:.085em;font-weight:740}
+    .brand span{display:block;font-size:12px;color:var(--muted);margin-top:-2px}
+    .flags{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .flag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:1px solid var(--border);padding:6px 9px;border-radius:6px;background:var(--paper)}
+    .pagehead{margin-bottom:18px}
+    .path{font-size:12px;color:var(--muted);margin-bottom:9px}
+    h1{margin:0;font-size:28px;font-weight:730;line-height:1.22;letter-spacing:-.85px}
+    .subtitle{color:var(--muted);margin:8px 0 0;font-size:13px}
+    .surface{background:var(--paper);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 36px rgba(15,24,41,.035)}
+    .section{padding:24px 27px;border-bottom:1px solid var(--border)}
+    .section:last-child{border-bottom:none}
+    .eyebrow{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740;margin-bottom:9px}
+    .jobhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+    h2{font-size:21px;letter-spacing:-.45px;line-height:1.22;margin:0 0 4px;font-weight:710}
+    .company{color:var(--muted);font-size:13px}
+    .status{background:var(--light);border:1px solid var(--border);color:#3f5066;white-space:nowrap;border-radius:20px;padding:5px 10px;font-size:12px;font-weight:680}
+    .facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:21px}
+    .fact small{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}.fact b{font-size:12px;font-weight:600}
+    .lead{margin:0 0 18px;color:var(--muted);font-size:13px}
+    .reasons{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px}
+    .reason{display:flex;align-items:center;gap:9px;min-height:48px;padding:11px 12px;border:1px solid var(--border);border-radius:7px;background:var(--paper);font-weight:610;font-size:12px;cursor:pointer;transition:border-color .1s,background .1s}
+    .reason:has(input:checked){border-color:#617491;background:#f3f6fa;box-shadow:inset 0 0 0 1px #617491}
+    .reason:has(input:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+    .reason input{accent-color:var(--accent);margin:0;flex:none}
+    label.fieldname{display:block;font-size:12px;font-weight:680;margin-bottom:7px}
+    .fine{font-size:11px;color:var(--muted);margin:6px 0 0}
+    textarea{width:100%;resize:vertical;min-height:76px;padding:11px 12px;border:1px solid var(--border-strong);border-radius:7px;color:var(--ink);background:var(--paper);font-size:13px;line-height:1.5}
+    textarea::placeholder{color:#86909d}
+    .actions{padding:19px 27px;display:flex;justify-content:flex-end;align-items:center;gap:9px;background:var(--light);border-top:1px solid var(--border)}
+    .btn{border:1px solid var(--border-strong);border-radius:7px;padding:10px 16px;background:var(--paper);font-size:12px;font-weight:710;min-height:40px;color:var(--ink)}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+    .btn:disabled{cursor:not-allowed;opacity:.43}
+    .btn.link{border-color:transparent;background:transparent;color:var(--muted)}
+    .notice{border-left:3px solid var(--border-strong);background:var(--light);padding:11px 14px;font-size:12px;color:#4d5867;margin-top:17px;border-radius:0 5px 5px 0}
+    .notice.alert{border-color:#d99458;background:var(--alert-bg);color:var(--alert)}
+    .notice.danger{border-color:#bf6868;background:var(--danger-bg);color:var(--danger)}
+    .notice.ok{border-color:#6d9a83;background:var(--signal-bg);color:var(--signal)}
+    .step-title{font-size:15px;font-weight:690;margin:0 0 12px}
+    .review{border:1px solid var(--border);border-radius:7px;padding:16px 18px;background:var(--light);display:grid;grid-template-columns:145px 1fr;row-gap:12px;column-gap:12px;font-size:13px}
+    .review dt{color:var(--muted);margin:0}.review dd{font-weight:620;margin:0;overflow-wrap:anywhere}
+    .demo{border:1px dashed #c9d0d9;border-radius:8px;margin-top:22px;background:transparent;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:13px 15px}
+    .demo span{display:block;font-size:12px;font-weight:680}.demo small{color:var(--muted);display:block;font-size:11px;margin-top:2px}
+    select{color:var(--ink);min-width:210px;border:1px solid var(--border-strong);border-radius:6px;background:var(--paper);padding:9px 12px;font-size:12px}
+    .foot{color:var(--muted);text-align:center;font-size:11px;margin-top:25px;line-height:1.6}
+    .sr-only{position:absolute;height:1px;width:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+    [hidden]{display:none!important}
+    @media(prefers-color-scheme:dark){:root{color-scheme:dark;--canvas:#11151b;--paper:#1c222b;--ink:#f2f4f7;--muted:#9ba7b6;--border:#343d49;--border-strong:#526071;--light:#222934;--accent:#c4d4ee;--accent-ink:#1e2837;--focus:#7eabf0;--signal:#a2d8b9;--signal-bg:#1c3529;--alert:#f2c99a;--alert-bg:#443125;--danger:#e9a7a7;--danger-bg:#412528}.brandmark{background:#dce6f5;color:#192330}.status{color:#d7dfed}.reason:has(input:checked){border-color:#8499b9;background:#263345}.notice{color:#b2bbca}textarea::placeholder{color:#8995a6}}
+    @media(max-width:690px){.wrap{padding:22px 14px 40px}.mast{align-items:flex-start}.pagehead h1{font-size:25px}.section{padding:20px 18px}.actions{padding:17px 18px}.reasons{grid-template-columns:repeat(2,1fr)}.facts{grid-template-columns:1fr 1fr;row-gap:15px}.review{grid-template-columns:100px 1fr}.jobhead{flex-direction:column}.demo{align-items:stretch}select{width:100%}}
+    @media(max-width:400px){.reasons{grid-template-columns:1fr}.facts{grid-template-columns:1fr 1fr}.mast{gap:8px}.flag{font-size:9px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand"><div class="brandmark" aria-hidden="true">L</div><div><strong>LIFE OS</strong><span>Hiring · Opportunity actions</span></div></div>
+    <div class="flags"><span class="flag">Synthetic record</span><span class="flag">Offline UI prototype</span></div>
+  </header>
+  <div class="pagehead"><div class="path">Daily Report / Active Opportunities / Close</div><h1 id="pageTitle">Close opportunity</h1><p class="subtitle" id="pageSubtitle">Review the exact opportunity before making a decision.</p></div>
+  <main class="surface" id="surface" aria-live="polite">
+    <section class="section">
+      <div class="eyebrow">Opportunity to be changed</div>
+      <div class="jobhead"><div><h2>Senior Technical Program Manager</h2><div class="company">ExampleCo · Requisition DEMO-2046</div></div><span class="status" id="statusChip">Interviewing</span></div>
+      <div class="facts"><div class="fact"><small>Canonical job</small><b>ExampleCo · DEMO-2046</b></div><div class="fact"><small>Current stage</small><b id="currentStage">Interviewing</b></div><div class="fact"><small>Source</small><b>Job Ledger · synthetic</b></div></div>
+    </section>
+    <section id="formPane" class="section">
+      <div class="eyebrow">Action · Close</div>
+      <p class="lead">Choose why you're closing this opportunity. Nothing is changed simply by opening this page.</p>
+      <fieldset style="border:0;margin:0;padding:0"><legend class="step-title">Closure reason <span aria-label="Required">*</span></legend>
+        <div class="reasons" id="reasonGrid">
+          <label class="reason"><input type="radio" name="reason" value="Rejected">Rejected</label>
+          <label class="reason"><input type="radio" name="reason" value="Withdrew">Withdrew</label>
+          <label class="reason"><input type="radio" name="reason" value="Position filled">Position filled</label>
+          <label class="reason"><input type="radio" name="reason" value="Declined offer">Declined offer</label>
+          <label class="reason"><input type="radio" name="reason" value="Hired">Hired</label>
+          <label class="reason"><input type="radio" name="reason" value="Other">Other</label>
+        </div>
+      </fieldset>
+      <label class="fieldname" for="note">Context or closure note <span id="requiredNote" class="fine" style="display:inline">(optional)</span></label>
+      <textarea id="note" maxlength="200" placeholder="Optional details or supporting evidence…" aria-describedby="noteHelp"></textarea>
+      <div class="fine" id="noteHelp">If you choose Other, a short explanation is required. Notes are capped at 200 characters in this prototype.</div>
+      <div class="notice">Before a real write, LIFE OS must recheck your identity, the exact job, its current state, and the permitted closure action. This prototype makes no network requests.</div>
+    </section>
+    <section id="reviewPane" class="section" hidden>
+      <div class="eyebrow">Review action</div><p class="step-title">Confirm that this is the exact job you intend to close.</p>
+      <dl class="review"><dt>Company</dt><dd>ExampleCo</dd><dt>Role</dt><dd>Senior Technical Program Manager</dd><dt>Requisition</dt><dd>DEMO-2046</dd><dt>Reason</dt><dd id="reviewReason">—</dd><dt>Note</dt><dd id="reviewNote">—</dd></dl>
+      <div class="notice alert">Confirming is a consequential action. In production it will require an authenticated, fresh server-side check and verified read-back. This demonstration only shows the resulting UI states.</div>
+    </section>
+    <section id="resultPane" class="section" hidden>
+      <div class="eyebrow" id="resultEyebrow">Result</div><h3 class="step-title" id="resultTitle">—</h3><p class="lead" id="resultDescription">—</p><div class="notice" id="resultDetail">—</div>
+    </section>
+    <div class="actions" id="formActions"><button type="button" class="btn link" id="cancelBtn">Cancel</button><button type="button" class="btn primary" id="reviewBtn" disabled>Review closure →</button></div>
+    <div class="actions" id="reviewActions" hidden><button type="button" class="btn" id="backBtn">← Edit reason</button><button type="button" class="btn primary" id="confirmBtn">Confirm closure</button></div>
+    <div class="actions" id="resultActions" hidden><button type="button" class="btn" id="resetBtn">Back to demonstration</button></div>
+  </main>
+  <aside class="demo" aria-label="Prototype test settings"><div><span>Test a result state</span><small>Local simulation only · No server, credentials, or production data</small></div><select id="scenario" aria-label="Simulated confirmation result"><option value="success">Successful verified write</option><option value="stale">Job changed since link creation</option><option value="denied">Authentication / permission refused</option><option value="failure">Backend write unavailable</option></select></aside>
+  <div class="foot">LIFE OS · UI acceptance prototype · No live action endpoint exists. Closing a LinkedIn contact is separate from closing a hiring opportunity.</div>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const panes = ['formPane','reviewPane','resultPane'];
+  const actionSets=['formActions','reviewActions','resultActions'];
+  const state = {stage:'form',reason:'',note:''};
+  const selected = () => document.querySelector('input[name="reason"]:checked');
+  const valid = () => Boolean(selected()) && (selected().value !== 'Other' || $('note').value.trim().length > 0);
+  const show = (stage) => {
+    state.stage=stage;
+    const idx={form:0,review:1,result:2}[stage];
+    panes.forEach((p,i)=>$(p).hidden=i!==idx);
+    actionSets.forEach((p,i)=>$(p).hidden=i!==idx);
+  };
+  const update = () => {
+    $('reviewBtn').disabled=!valid();
+    const other=selected()?.value==='Other';
+    $('requiredNote').textContent=other?'(required)':'(optional)';
+    $('note').setAttribute('aria-required',String(other));
+  };
+  const reset = () => {
+    document.querySelectorAll('input[name="reason"]').forEach(x=>x.checked=false);
+    $('note').value=''; state.reason='';state.note='';
+    $('statusChip').textContent='Interviewing';$('currentStage').textContent='Interviewing';
+    $('pageTitle').textContent='Close opportunity';$('pageSubtitle').textContent='Review the exact opportunity before making a decision.';
+    $('scenario').value='success';show('form');update();
+  };
+  function result(kind,title,desc,detail,css) {
+    $('resultEyebrow').textContent=kind;
+    $('resultTitle').textContent=title;
+    $('resultDescription').textContent=desc;
+    $('resultDetail').textContent=detail;
+    $('resultDetail').className='notice '+css;
+    $('pageTitle').textContent=title;
+    $('pageSubtitle').textContent='Local simulation · The original job record was not modified.';
+    show('result');
+  }
+  $('reasonGrid').addEventListener('change',update);
+  $('note').addEventListener('input',update);
+  $('reviewBtn').addEventListener('click',() => {
+    if(!valid()) return;
+    state.reason=selected().value;state.note=$('note').value.trim();
+    $('reviewReason').textContent=state.reason;
+    $('reviewNote').textContent=state.note||'None supplied';
+    $('pageTitle').textContent='Review closure';$('pageSubtitle').textContent='Your confirmation is required before the action can proceed.';
+    show('review');
+  });
+  $('cancelBtn').addEventListener('click',()=>result('Cancelled','No changes made','The proposed closure was cancelled. The opportunity remains in its current state.','In production, this would return you to the originating Daily Report without writing any data.',''));
+  $('backBtn').addEventListener('click',()=>{$('pageTitle').textContent='Close opportunity';$('pageSubtitle').textContent='Review the exact opportunity before making a decision.';show('form');});
+  $('confirmBtn').addEventListener('click',()=>{
+    switch ($('scenario').value) {
+      case 'success':
+        $('statusChip').textContent='Closed (demo)';$('currentStage').textContent='Closed (demo)';
+        result('Simulated success','Opportunity closed','In a connected implementation, this would appear only after the canonical record was updated and read back successfully.',`Demo result: ExampleCo · DEMO-2046 · Closed — ${state.reason}. No real write occurred.`,'ok');
+        break;
+      case 'stale':
+        result('Conflict','Opportunity changed','This action was stopped because the record changed since the link was generated.','No write attempted. Reload the actual opportunity and review the latest stage before trying again.','alert');
+        break;
+      case 'denied':
+        result('Access blocked','Sign-in or permission required','The action was not authorized for this user/session.','No write attempted. Authenticate through the approved access mechanism and retry.','danger');
+        break;
+      case 'failure':
+        result('Unavailable','Could not verify closure','LIFE OS could not complete and verify the write. Do not assume the opportunity was closed.','Status: DEGRADED. Preserve the previous known-good state until the canonical record is checked.','danger');
+        break;
+    }
+  });
+  $('resetBtn').addEventListener('click',reset);
+  update();
+})();
+</script>
+</body>
+</html>
