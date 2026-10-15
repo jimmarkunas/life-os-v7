@@ -155,6 +155,8 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
 
     if headless:
         return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
+    if _in_place_ok(body, old_text, blocks):
+        return existing, _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
     try:
         placement = {"after": existing[0]["id"]}
         result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": blocks, **placement})
@@ -183,6 +185,63 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
             or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1 + len(blocks):]] != kept):
         raise fail("CARD_VERIFY_FAILED")
     return existing, removed
+
+
+def _in_place_ok(body, old_text, blocks):
+    """Edit in place (Jim, Oct 15 2026: an insert-then-delete write showed new and old lines together for most of a minute) only when the old text sits
+    together right under the heading, holds no nested blocks, and every line that will be rewritten keeps its block type. Anything else uses the insert path."""
+    if not old_text or body[:len(old_text)] != old_text or any(b.get("has_children") for b in old_text):
+        return False
+    return all(old.get("type") == new.get("type") for old, new in zip(old_text, blocks))
+
+
+def _write_in_place(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):
+    """Each old line takes the new text in place (same block, same position); extra new lines go in right after them; surplus old lines are removed.
+    The page never shows two versions of the card at once. Same ownership checks, protected-region proof after every write and authoritative read-back.
+    -> removed count."""
+    def owned():
+        try:
+            router.check_write(module, [title])
+        except router.RouterError:
+            raise fail("CARD_NOT_OWNED") from None
+
+    pairs = list(zip(old_text, blocks))
+    for old, new in pairs:
+        owned()
+        kind = new["type"]
+        try:
+            client.call("PATCH", f"/blocks/{quote(old['id'], safe='')}", {kind: {k: v for k, v in new[kind].items() if k in ("rich_text", "color")}})
+        finally:
+            intact()
+    extra = blocks[len(pairs):]
+    if extra:
+        owned()
+        anchor = (old_text[len(pairs) - 1] if pairs else existing[0])["id"]
+        try:
+            result = client.call_once("PATCH", f"/blocks/{quote(block_id, safe='')}/children", {"children": extra, "after": anchor})
+        finally:
+            intact()
+        if not isinstance(result, dict) or not isinstance(result.get("results"), list) or len(result["results"]) < len(extra):
+            raise fail("CARD_APPEND_MISMATCH")
+    removed = 0
+    for old in old_text[len(pairs):]:
+        owned()
+        try:
+            client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
+            removed += 1
+        except NotionError as error:
+            if str(error) != "NOTION_HTTP_404":
+                raise
+        finally:
+            intact()
+    after = children(client, block_id, fail)                                             # authoritative read-back
+    intact()
+    rewritten = [b["id"] for b, _ in pairs]
+    if (not after or after[0].get("id") != existing[0].get("id") or plain(after[0]).strip() != title or len(after) != 1 + len(blocks) + len(kept)
+            or [plain(b) for b in after[1:1 + len(blocks)]] != [plain(b) for b in blocks] or [b.get("id") for b in after[1:1 + len(rewritten)]] != rewritten
+            or [b.get("id") for b in after[1 + len(blocks):]] != kept):
+        raise fail("CARD_VERIFY_FAILED")
+    return removed
 
 
 def _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail):

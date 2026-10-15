@@ -125,8 +125,9 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("last accepted order state retained", "\n".join(texts(kids)))
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual(counts["blocks_written"], len(kids) - 2)
-        self.assertEqual({p.split("/")[2] for m, p in notion.log if m == "DELETE"}, {"amazon-status-old"})
-        self.assertLess([m for m, _ in notion.log].index("APPEND"), [m for m, _ in notion.log].index("DELETE"))
+        self.assertEqual(kids[1]["id"], "amazon-status-old")                                   # the old line is rewritten in place, never shown beside the new one
+        self.assertEqual([m for m, _ in notion.log if m == "DELETE"], [])
+        self.assertLess([m for m, _ in notion.log].index("PATCH"), [m for m, _ in notion.log].index("APPEND"))
 
     def test_the_read_asks_only_for_open_review_and_recent_delivered_orders(self):
         reader = Reader(ROWS)
@@ -178,7 +179,7 @@ class RunTests(unittest.TestCase):
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
     def test_a_protected_region_changed_mid_write_fails_the_run(self):
-        for op in ("APPEND", "DELETE"):
+        for op in ("PATCH", "APPEND"):                                                          # the in-place rewrite, then the extra lines
             for region in ("calendar-callout", "jira-callout", "bills-callout"):
                 notion = AmazonRegions(change_on=op, change_region=region)
                 with self.assertRaises(card.CardError) as caught:
