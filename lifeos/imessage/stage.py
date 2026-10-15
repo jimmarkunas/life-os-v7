@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 from lifeos.platform import alerts, db
 
 PORT = 47341
-SCHEMA = "lifeos.imessage.alerts.v1"
+SCHEMA = "lifeos.imessage.alerts.v2"
 TZ = ZoneInfo("America/Chicago")
 QUIET_FROM, QUIET_UNTIL = 22, 8
 PREFIX, MARK = "imsg:", "imsg_scan_ok"
@@ -40,7 +40,7 @@ CODE = {"TIME_CRITICAL": "tc", "ACTION_REQUIRED": "ar"}
 SEVERITIES = ("ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
 REASONS = {"emergency_language", "unknown_sender", "group_conversation", "urgent_same_day_deadline", "interview_scheduling", "deadline_request", "urgent_language",
            "direct_request", "mentions_jim", "no_signal", "no_text", "automated_or_code"}
-MAX_REPLY = 32768
+MAX_REPLY, MAX_EVENTS = 131072, 500
 
 
 def window(now, mark):
@@ -80,10 +80,13 @@ def validate(raw, hours, now):
         return None
     try:
         p = json.loads(raw)
-        ok = (isinstance(p, dict) and set(p) == {"schema", "observed_at", "lookback_hours", "limit", "sync", "events", "health", "complete", "scanned", "limit_reached"}
+        ok = (isinstance(p, dict) and set(p) == {"schema", "observed_at", "lookback_hours", "limit", "pages", "sync", "events", "health", "complete", "scanned",
+                                                 "limit_reached"}
               and p["schema"] == SCHEMA and p["lookback_hours"] == hours and p["sync"] == "UNVERIFIED" and isinstance(p["complete"], bool)
               and isinstance(p["limit_reached"], bool) and p["health"] in ("CURRENT", "DEGRADED", "DISCONNECTED", "STALE")
-              and isinstance(p["scanned"], int) and 0 <= p["scanned"] <= p["limit"] == 50 and isinstance(p["events"], list) and len(p["events"]) <= 50
+              and isinstance(p["limit"], int) and 50 <= p["limit"] <= 5000 and isinstance(p["pages"], int) and 0 <= p["pages"] <= 100
+              and isinstance(p["scanned"], int) and 0 <= p["scanned"] <= p["limit"] and isinstance(p["events"], list) and len(p["events"]) <= MAX_EVENTS
+              and (not p["complete"] or (p["health"] == "CURRENT" and not p["limit_reached"] and p["pages"] >= 1))
               and all(isinstance(e, dict) and set(e) == {"key", "severity", "reasons", "review"} and re.fullmatch(r"[0-9a-f]{32}", str(e["key"]))
                       and e["severity"] in SEVERITIES and isinstance(e["review"], bool) and isinstance(e["reasons"], list) and set(e["reasons"]) <= REASONS
                       for e in p["events"]))

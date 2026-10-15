@@ -16,6 +16,7 @@ import os
 import re
 import socket
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 ENDPOINT = os.path.expanduser("~/.config/openclaw-imessage/endpoint")      # one line: "<tailnet host> <port>"
@@ -30,6 +31,8 @@ MAX_SKEW = timedelta(seconds=60)
 HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED")
 MESSAGE_KEYS = {"ref", "chat", "sent_at", "from_me", "sender", "group", "chat_name", "service", "unread", "edited", "attachment", "text", "text_truncated"}
 LEVELS = ("INFORMATIONAL", "ATTENTION", "ACTION_REQUIRED", "TIME_CRITICAL")
+PAGE_SIZE, MAX_PAGES, SCAN_SECONDS = 50, 40, 30                       # the private alert scan: at most 2000 messages and 30 s, else it is incomplete
+PAGE_KEYS = {"channel", "health", "sync", "observed_at", "source", "messages", "contacts", "limit", "more", "cursor"}
 
 
 def unavailable(health, now):
@@ -265,6 +268,74 @@ def run(argv, now=None, path=ENDPOINT, fetcher=fetch):
     recent = _content(data, now, "messages", {"hours": hours}, 50)
     recent.setdefault("hours", hours)
     return recent if kind == "recent" else urgent(recent)
+
+
+def _page(data, now):
+    """One `page`/`next` reply -> (state, None), or (None, refusal health). A page that claims `more` must be full; its cursor must name its last message."""
+    state, refused = _envelope(data, now, MAX_CONTENT_REPLY)
+    if refused:
+        return None, refused
+    if state.get("health") != "CURRENT":
+        return None, state.get("health")
+    try:
+        msgs, cur = state["messages"], state["cursor"]
+        ok = (set(state) == PAGE_KEYS and state["limit"] == PAGE_SIZE and isinstance(state["more"], bool) and state["contacts"] in ("CURRENT", "UNAVAILABLE", "NOT_NEEDED")
+              and isinstance(msgs, list) and len(msgs) <= PAGE_SIZE and all(_message_ok(m) and not m["from_me"] for m in msgs)
+              and (not state["more"] or len(msgs) == PAGE_SIZE)
+              and [_when(m["sent_at"]) for m in msgs] == sorted(_when(m["sent_at"]) for m in msgs))
+        if ok and msgs:
+            ok = (isinstance(cur, dict) and set(cur) == {"date", "rowid"} and all(isinstance(cur[k], int) and not isinstance(cur[k], bool) and cur[k] > 0 for k in cur)
+                  and msgs[-1]["ref"] == "m%d" % cur["rowid"])
+        elif ok:
+            ok = cur is None and not state["more"]
+    except (ValueError, KeyError, TypeError):
+        ok = False
+    return (state, None) if ok else (None, "DEGRADED")
+
+
+def scan(hours, now=None, path=ENDPOINT, fetcher=fetch, clock=time.monotonic, today=None):
+    """Every incoming message of the last `hours`, paged oldest first until the reader proves the end (`more` false). Complete ONLY then: a page
+    cap, the time cap, a cursor that does not advance, a repeated or malformed page, or any source failure leaves it incomplete, with what was read so
+    far still returned (newest first) so nothing seen is lost. Private: runs on Oracle; nothing here is printed or kept."""
+    now = now or datetime.now(timezone.utc)
+    today = today or (lambda: datetime.now(timezone.utc))
+    out = {"health": "DEGRADED", "observed_at": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"), "messages": [], "pages": 0,
+           "complete": False, "truncated": False}
+    try:
+        host, port = endpoint(path)
+    except (OSError, ValueError):
+        out["health"] = "DISCONNECTED"
+        return out
+    start, request, last, seen, msgs = clock(), b"page %d\n" % hours, None, set(), []
+    while True:
+        if out["pages"] >= MAX_PAGES or clock() - start > SCAN_SECONDS:
+            out["truncated"] = True
+            break
+        try:
+            data = fetcher(host, port, request, MAX_CONTENT_REPLY)
+        except OSError:
+            data = b""
+        state, refused = _page(data, today())
+        if refused:
+            out["health"] = refused
+            break
+        out["pages"] += 1
+        if out["pages"] == 1:
+            out["observed_at"] = state["observed_at"]
+        refs = [m["ref"] for m in state["messages"]]
+        cur = state["cursor"]
+        if (len(set(refs)) != len(refs) or seen & set(refs)
+                or (cur is not None and last is not None and (cur["date"], cur["rowid"]) <= last)):
+            break                                                       # a repeated message or a cursor that went backwards: coverage unproven
+        seen |= set(refs)
+        msgs += state["messages"]
+        if not state["more"]:
+            out["health"], out["complete"] = "CURRENT", True
+            break
+        last = (cur["date"], cur["rowid"])
+        request = b"next %d %d\n" % last
+    out["messages"] = list(reversed(msgs))
+    return out
 
 
 def attention(now=None, path=ENDPOINT, fetcher=fetch):

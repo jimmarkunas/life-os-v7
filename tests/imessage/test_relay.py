@@ -375,3 +375,56 @@ class Wrapper(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(CC, "no C compiler (set LIFEOS_TEST_CC)")
+class PagedChain(unittest.TestCase):
+    """The private alert scan through the real relay and the real reader: more than 50 messages, several pages, proven end."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        home = os.path.join(cls.tmp, "home")
+        os.makedirs(os.path.join(home, "Library/Messages"))
+        f = reader.Fixture()
+        now = datetime.now(timezone.utc)
+        cls.ids = [f.add(10 + i % 3, timedelta(minutes=400 - i), text="ok %d" % i, read=i % 2) for i in range(137)]
+        for i in range(3):
+            f.add(10, timedelta(minutes=5), text="same %d" % i)                                       # same-timestamp tie at the end
+        f.con.close()
+        shutil.copy(f.db, os.path.join(home, "Library/Messages/chat.db"))
+        sock = os.path.join(cls.tmp, "h.sock")
+        cls.helper = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        cls.helper.bind(sock)
+        cls.helper.listen(16)
+        Inetd(cls.helper, [sys.executable, "-I", str(ROOT / "lifeos/imessage/attention_mcp.py")], env=dict(os.environ, HOME=home))
+        relay = os.path.join(cls.tmp, "relay")
+        subprocess.run(CC + ["-O2", "-Wall", "-Wextra", "-Werror", '-DALLOWED_V4="%s"' % ORACLE_V4, '-DALLOWED_V6="%s"' % ORACLE_V6,
+                             '-DTEST_HELPER_SOCKET="%s"' % sock, "-o", relay, str(MAC / "relay.c")], check=True, capture_output=True)
+        cls.listener = socket.create_server(("127.0.0.1", 0))
+        Inetd(cls.listener, [relay])
+        cls.serve = FakeServe(cls.listener.getsockname()[1], ORACLE_V4)
+        cls.endpoint = os.path.join(cls.tmp, "endpoint")
+        with open(cls.endpoint, "w") as fh:
+            fh.write("127.0.0.1 %d\n" % cls.serve.port)
+
+    @classmethod
+    def tearDownClass(cls):
+        for s in (cls.listener, cls.helper, cls.serve.listener):
+            s.close()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_all_messages_over_several_pages_with_a_proven_end(self):
+        out = w.scan(72, path=self.endpoint)                                                         # fixture dates follow the reader fixtures' fixed clock
+        self.assertEqual((out["health"], out["complete"], out["truncated"], out["pages"], len(out["messages"])), ("CURRENT", True, False, 3, 140))
+        refs = [m["ref"] for m in out["messages"]]
+        self.assertEqual(len(set(refs)), 140)
+        self.assertEqual(refs[-len(self.ids):][::-1][:5], ["m%d" % i for i in self.ids[:5]])           # oldest first on the wire, newest first returned
+
+    def test_malformed_paging_requests_are_refused_by_the_relay(self):
+        for bad in (b"page 0\n", b"page 73\n", b"page 05\n", b"next 1 0\n", b"next 01 5\n", b"next 5\n", b"next 5 5 5\n", b"next -1 1\n",
+                    b"next 10000000000000000001 1\n", b"next 99999999999999999999 1\n", b"next 5 2147483648\n", b"next 5  5\n", b"next 5 5; id\n"):
+            with socket.create_connection(("127.0.0.1", self.serve.port), timeout=10) as s:
+                s.settimeout(15)
+                s.sendall(bad)
+                self.assertEqual(s.recv(65536), b"", bad)
