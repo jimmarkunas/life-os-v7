@@ -477,5 +477,118 @@
     "LIFE-46": "Opportunity parent/child detail; To Do",
     "LIFE-47": "Native recruiting/hiring UI and integrations; In Progress"
   },
-  "flowchart_mermaid": "flowchart TD\n A[Job application or direct recruiter message] --> B{Verified job and person identity?}\n B -->|No| REVIEW[Needs Review - no guessed writes]\n B -->|Yes| C{Interview requested?}\n C -->|Yes, even unscheduled| ACTIVE[Active Opportunities table]\n C -->|No, human engagement| OUTREACH[Job Outreach table]\n C -->|No human engagement| LEDGER[Job Ledger only]\n LEDGER --> APPLY[Apply: show top 3 verified LinkedIn connections]\n APPLY --> REACH[Reach Out: open profile, no write]\n REACH --> SENT{Jim marks Sent?}\n SENT -->|No| APPLY\n SENT -->|Yes| WAIT[Track exact job contact - Waiting - 2 business days]\n WAIT --> OUTREACH\n OUTREACH --> INBOUND[Incoming role-specific email: Needs Action and source link]\n INBOUND --> REPLY{Handled / replied?}\n REPLY -->|Replied| WAIT\n REPLY -->|Dismissed| HIST[Preserve historical record]\n REPLY -->|Interview requested| ACTIVE\n WAIT --> REF{Verified referral?}\n REF -->|Offered only| WAIT\n REF -->|Confirmed with evidence| SUPPRESS[Stop redundant referral reminders, preserve proof]\n SUPPRESS --> OUTREACH\n OUTREACH --> TIME{Follow-up due?}\n TIME -->|Yes| ACTION[Needs Action, not hidden by week]\n TIME -->|No| OUTREACH\n ACTION --> OUTREACH\n ACTIVE --> DETAIL[Open Notes, Ledger, Calendar, interview child]\n ACTIVE --> RESULT{Hiring outcome evidence?}\n RESULT -->|Offer| OFFER[Offer review; remain Active]\n RESULT -->|Ambiguous| REVIEW\n RESULT -->|Exact authoritative rejection| CLOSE[Retire exact pursuit; verify; retain history and reopen]\n CLOSE --> RETIRED[Retired Opportunities; keep recruiter relationship]\n RETIRED --> REOPEN{Jim reopens?}\n REOPEN -->|Yes| ACTIVE"
+  "flowchart_mermaid": "flowchart TD\n A[Job application or direct recruiter message] --> B{Verified job and person identity?}\n B -->|No| REVIEW[Needs Review - no guessed writes]\n B -->|Yes| C{Interview requested?}\n C -->|Yes, even unscheduled| ACTIVE[Active Opportunities table]\n C -->|No, human engagement| OUTREACH[Job Outreach table]\n C -->|No human engagement| LEDGER[Job Ledger only]\n LEDGER --> APPLY[Apply: show top 3 verified LinkedIn connections]\n APPLY --> REACH[Reach Out: open profile, no write]\n REACH --> SENT{Jim marks Sent?}\n SENT -->|No| APPLY\n SENT -->|Yes| WAIT[Track exact job contact - Waiting - 2 business days]\n WAIT --> OUTREACH\n OUTREACH --> INBOUND[Incoming role-specific email: Needs Action and source link]\n INBOUND --> REPLY{Handled / replied?}\n REPLY -->|Replied| WAIT\n REPLY -->|Dismissed| HIST[Preserve historical record]\n REPLY -->|Interview requested| ACTIVE\n WAIT --> REF{Verified referral?}\n REF -->|Offered only| WAIT\n REF -->|Confirmed with evidence| SUPPRESS[Stop redundant referral reminders, preserve proof]\n SUPPRESS --> OUTREACH\n OUTREACH --> TIME{Follow-up due?}\n TIME -->|Yes| ACTION[Needs Action, not hidden by week]\n TIME -->|No| OUTREACH\n ACTION --> OUTREACH\n ACTIVE --> DETAIL[Open Notes, Ledger, Calendar, interview child]\n ACTIVE --> RESULT{Hiring outcome evidence?}\n RESULT -->|Offer| OFFER[Offer review; remain Active]\n RESULT -->|Ambiguous| REVIEW\n RESULT -->|Exact authoritative rejection| CLOSE[Retire exact pursuit; verify; retain history and reopen]\n CLOSE --> RETIRED[Retired Opportunities; keep recruiter relationship]\n RETIRED --> REOPEN{Jim reopens?}\n REOPEN -->|Yes| ACTIVE",
+  "ux_contract": {
+    "canonical_spec_path": "docs/contracts/career-lifecycle.requirements.v1.json",
+    "single_source_rule": "This JSON is the ONE machine-readable UI-to-backend acceptance contract. Current Notion Jobs/Interview product canons remain product authority and link here; Jira tracks delivery only. Do not create parallel specifications.",
+    "actual_notion_prototype_url": "https://app.notion.com/p/3fa3c5a0592681fb94bce9ebd20ee65d",
+    "prototype_safety": "Synthetic standalone private Notion draft; not a Job Ledger data-source row, real vacancy, or production action target; checkbox clicks affect prototype page only.",
+    "screens": [
+      {
+        "id": "job_ledger_apply",
+        "surface": "existing canonical Notion Job Ledger job page at Apply stage",
+        "native_layout": [
+          "above fold company—role with source/requisition, work arrangement, eligibility/Fit and last verified state",
+          "real job description and relevant source links",
+          "LinkedIn Connections: top 3 verified role-matched people with evidence reason",
+          "Reach Out opens exact person's LinkedIn URL only; no persistence",
+          "Mark as Sent is a separate deliberate user action; after proof of sending creates one role-specific tracked outreach record",
+          "Apply direct / manual Applied confirmation",
+          "expanded evidence, outreach history, pending referral and missing-source/degraded states"
+        ],
+        "owner": "LIFE-47",
+        "interaction_gate": "Test actual Notion-native action primitive with synthetic record and confirm safe backend method before permitting real writes."
+      },
+      {
+        "id": "job_outreach",
+        "surface": "Daily Report Recruiting & Hiring — Job Outreach native table",
+        "native_layout": [
+          "job-first rows (not people-first)",
+          "outreach counts contacted/replied/referral confirmed",
+          "next follow-up",
+          "Notes links to exact canonical Job Ledger record",
+          "contact conversation details/action controls on linked native job record"
+        ],
+        "owner": "LIFE-47",
+        "interaction_gate": "Must preserve exact job identity, distinct conversations and read-back; no unverified status."
+      },
+      {
+        "id": "active_opportunities",
+        "surface": "Daily Report Hiring Pipeline — Active Opportunities native table",
+        "native_layout": [
+          "Company — Role",
+          "Stage",
+          "Next step · Due",
+          "Notes link",
+          "attention-first ordering"
+        ],
+        "owner": "LIFE-47",
+        "interaction_gate": "Navigation into genuine opportunity parent, interview rounds/child Notes, Calendar and appropriate authenticated actions."
+      },
+      {
+        "id": "recruiter_actions",
+        "surface": "existing Recruiters & Human Outreach Notion data source + persistent Daily Report groups",
+        "native_layout": [
+          "Needs Action and Waiting/Follow-up groups",
+          "Action Status and Follow-up Date",
+          "linked original mail evidence",
+          "no week-based expiry of unfinished work"
+        ],
+        "owner": "LIFE-20",
+        "interaction_gate": "Preserve human edits, legacy Active/Done/Needs review and source links; no extra recruiter datastore."
+      }
+    ],
+    "independent_entry_flows": [
+      {
+        "id": "apply_no_outreach",
+        "steps": [
+          "Job discovered and published to canonical Job Ledger",
+          "At Apply, optional top-three network leads visible; user skips contact; no outreach action or conversation",
+          "User applies through employer/ATS and manually marks Applied",
+          "Job removed from discovery; canonical Applied history retained",
+          "Actual employer response or confirmed interview evidence linked by exact role/requisition",
+          "Verified interview request promotes to Active Opportunities; otherwise remain canonical Applied outside outreach",
+          "Authoritative exact rejection handled under separately approved safe auto-close rule; ambiguous requires confirmation"
+        ],
+        "negative_control": "Skipping Reach Out and Mark as Sent must create ZERO recruiter/outreach records."
+      },
+      {
+        "id": "recruiter_no_application",
+        "steps": [
+          "Gmail/Outlook identifies real role-specific human recruiter message",
+          "Verify exact employer/requisition/role; ambiguous -> Needs Review",
+          "Create/reuse canonical job identity without silently checking Applied",
+          "Display in Job Outreach Needs Action with source mail and recruiter linked",
+          "Jim replies/handles -> Waiting and two-business-day follow-up; no application created",
+          "New substantive reply -> Needs Action; no reply by due -> Needs Action, never hidden by week filter",
+          "Verified interview request -> Active Opportunities with history; Applied remains unchecked until Jim actually applies"
+        ],
+        "negative_control": "Recruiter email cannot silently mark Applied or create duplicate job records."
+      },
+      {
+        "id": "apply_optional_linkedin",
+        "steps": [
+          "Existing canonical Job Ledger page at Apply shows 3 verified relevant connections (or honest none/unavailable)",
+          "Reach Out opens person's actual verified LinkedIn URL; no state write",
+          "Jim manually sends LinkedIn message outside Notion",
+          "Jim explicitly uses Mark as Sent on exact person/job; role-specific Waiting record written once and read back",
+          "Projection appears in Job Outreach with follow-up date, and follows job if promoted"
+        ],
+        "negative_control": "Opening LinkedIn alone cannot create sent/outreach state; generic LinkedIn digest is not proof of recruiter intent."
+      }
+    ],
+    "mixed_native_html_boundary": {
+      "native_preferred": "Use Notion database properties/views, pages, tables, toggles, checkboxes, real links and only proven action primitives for private canonical data and writes.",
+      "html_permitted": "Optional small fixed-height view-only visual for non-sensitive/public-safe derived data or labeled synthetic examples where Notion native cannot render the visual.",
+      "html_prohibited": "Never treat an embedded HTML iframe as authenticated access to private Notion content. No secrets, applicant/recruiter personal data, private messages, unbounded expanding controls, or pretending an iframe updates its parent page.",
+      "proof": "Demonstrate the widget inside the actual Notion client at its intended width, height, light/dark themes and privacy boundary before any implementation. Do not add new hosting/auth infrastructure without Jim approval."
+    },
+    "native_preview_acceptance": [
+      "Real editable native Notion page exists with clearly synthetic test job",
+      "job facts, shortlist, action controls, application and lifecycle sections render without clipped width",
+      "demo checkboxes cannot affect actual V7, LinkedIn, recruiter, hiring, or job states",
+      "Jim approves layout before any production UI change",
+      "actual native action selection is proven separately with read-back before turning into real operations"
+    ]
+  }
 }
