@@ -9,10 +9,16 @@ import { propose, confirm, reject, PROPOSAL_TTL_MIN } from "./openclaw-jira.mjs"
 const NOW = Date.parse("2026-10-15T20:00:00Z");
 const CODE = "ABCDEFGHJK";
 
-function jira(due = "2026-10-16", { failPut = false, readBack = null } = {}) {
-  const state = { due, puts: 0 };
+function jira(due = "2026-10-16", { failPut = false, readBack = null, status = "To Do" } = {}) {
+  const state = { due, status, puts: 0 };
   state.call = async (method, p, opts = {}) => {
-    if (method === "GET") return { key: "TEST-123", fields: { duedate: state.due, summary: "Synthetic" } };
+    if (method === "GET" && p.endsWith("/transitions")) return { transitions: [{ id: "11", name: "To Do", to: { name: "To Do" } }, { id: "31", name: "Done", to: { name: "Done" } }] };
+    if (method === "GET") return { key: "TEST-123", fields: { duedate: state.due, status: { name: state.status }, summary: "Synthetic" } };
+    if (method === "POST" && p.endsWith("/transitions")) {
+      state.puts += 1;
+      state.status = opts.body.transition.id === "31" ? "Done" : "To Do";
+      return {};
+    }
     if (method === "PUT") {
       state.puts += 1;
       if (failPut) throw new Error("HTTP 500");
@@ -105,4 +111,28 @@ test("a failed Telegram delivery grants nothing; the demo never touches Jira", a
   assert.deepEqual([r.demo, r.executed], [true, false]);
   assert.match(r.message, /Nothing was changed in Jira/);
   assert.equal(d.sent.length, 1);                                                        // only the preview; the result is Luna's one reply
+});
+
+test("mark Done: preview shows the status change, executes once through the transition, and reads back Done", async () => {
+  const s = setup(); const j = jira();
+  const out = await propose(["transition", "TEST-123", "--to", "Done"], { call: j.call, dir: s.dir, now: NOW, notify: s.notify, code: CODE });
+  assert.deepEqual([out.field, out.from, out.to], ["status", "To Do", "Done"]);
+  assert.ok(s.sent[0].t.includes("Jira TEST-123: mark Done") && s.sent[0].t.includes("Current: To Do"));
+  const done = await confirm(CODE, { call: j.call, dir: s.dir, approvalDir: s.approvalDir, now: NOW });
+  assert.deepEqual([done.executed, done.status, j.puts], [true, "Done", 1]);
+  assert.match(done.message, /TEST-123 status is now Done \(read back/);
+  await assert.rejects(confirm(CODE, { call: j.call, dir: s.dir, approvalDir: s.approvalDir, now: NOW }), { code: "NOT_FOUND" });
+  assert.equal(j.puts, 1);
+});
+
+test("mark Done refuses other targets, an already-Done issue, and a status changed since the preview", async () => {
+  const s = setup(); const j = jira();
+  for (const bad of [["transition", "TEST-123", "--to", "In Progress"], ["transition", "TEST-123", "--to", "done"], ["transition", "TEST-123"]]) {
+    await assert.rejects(propose(bad, { call: j.call, dir: s.dir, now: NOW, notify: s.notify, code: CODE }), { code: "USAGE" });
+  }
+  await assert.rejects(propose(["transition", "TEST-123", "--to", "Done"], { call: jira("2026-10-16", { status: "Done" }).call, dir: s.dir, now: NOW, notify: s.notify, code: CODE }), { code: "NO_CHANGE" });
+  await propose(["transition", "TEST-123", "--to", "Done"], { call: j.call, dir: s.dir, now: NOW, notify: s.notify, code: CODE });
+  j.status = "In Progress";
+  await assert.rejects(confirm(CODE, { call: j.call, dir: s.dir, approvalDir: s.approvalDir, now: NOW }), (e) => e.code === "BASELINE_CHANGED" && /^❌ Not applied: TEST-123 status/.test(e.extra.message));
+  assert.equal(j.puts, 0);
 });

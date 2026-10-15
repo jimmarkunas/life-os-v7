@@ -355,16 +355,17 @@ function audit(entry) {
 
 
 // ---- chat approval (Telegram buttons -> the same single-use permit) ------------------------------
+// Two approvable operations: an issue's due date, and moving an issue to Done.
 // propose: reads the issue's CURRENT value, records a pending proposal bound to the exact operation, that baseline, a payload version and a
 // 10-minute expiry, and sends Jim's private Telegram chat (the single allowlisted id) a preview with Approve / Reject buttons. The buttons
 // carry a random one-time code; only its sha256 is stored and the code is never printed, so the assistant cannot approve on its own.
 // confirm/reject: the code arrives back only from Jim's tap (OpenClaw passes `callback_data: ...` from authorized senders). The proposal is
 // claimed (renamed) BEFORE anything else, so a code works once; expired, unknown, tampered or already-used codes do nothing. confirm re-reads
-// the issue and refuses if the value changed since the preview, then mints the existing permit (1 minute), writes through the same update
-// path, reads the value back and tells Jim the verified result itself.
+// the issue and refuses if the value changed since the preview, then mints the existing permit (1 minute), writes through the same update/transition
+// path, reads the value back and returns the verified result for Luna's reply.
 export const PROPOSAL_DIR = path.join(APPROVAL_DIR, "proposals");
 export const PROPOSAL_TTL_MIN = 10;
-export const PAYLOAD_VERSION = 1;
+export const PAYLOAD_VERSION = 2;
 const CODE_RE = /^[A-Z2-9]{10}$/;
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const OPENCLAW_BIN = path.join(os.homedir(), ".openclaw/tools/node/bin/openclaw");
@@ -398,33 +399,47 @@ export function telegramNotify(text, buttons = null) {
 const ctDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "none");
 const ctTime = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) + " CT";
 
+// The only operations Jim can approve from chat. Each names how to read the issue's current value, the approved target, and how to show it.
+const PROPOSAL_USAGE = "propose supports: update KEY --due YYYY-MM-DD [--demo --demo-current YYYY-MM-DD] | transition KEY --to Done";
+const KINDS = {
+  due: { action: "update", title: "change due date", what: "due date", current: (issue) => issue.due ?? null, target: (op) => op.fields.duedate, show: ctDate,
+    same: (a, b) => a === b },
+  done: { action: "transition", title: "mark Done", what: "status", current: (issue) => issue.status ?? null, target: (op) => op.to, show: (v) => v ?? "none",
+    same: (a, b) => String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase() },
+};
+
 export function parseProposal(tokens) {
-  if (tokens[0] !== "update") throw new CliError("USAGE", "propose supports: update KEY --due YYYY-MM-DD [--demo --demo-current YYYY-MM-DD]");
   const key = requireKey(tokens[1]);
+  if (tokens[0] === "transition") {
+    if (tokens.length !== 4 || tokens[2] !== "--to" || tokens[3] !== "Done") throw new CliError("USAGE", PROPOSAL_USAGE);
+    return { kind: "done", op: parseWrite("transition", [key, "Done"]), demo: false, demoCurrent: null };
+  }
+  if (tokens[0] !== "update") throw new CliError("USAGE", PROPOSAL_USAGE);
   const flags = {};
   for (let i = 2; i < tokens.length; i += 1) {
     const t = tokens[i];
     if (t === "--demo") flags.demo = true;
     else if ((t === "--due" || t === "--demo-current") && DATE_RE.test(tokens[i + 1] || "")) flags[t.slice(2)] = tokens[++i];
-    else throw new CliError("USAGE", "propose supports: update KEY --due YYYY-MM-DD [--demo --demo-current YYYY-MM-DD]");
+    else throw new CliError("USAGE", PROPOSAL_USAGE);
   }
   if (!flags.due || Boolean(flags.demo) !== Boolean(flags["demo-current"])) throw new CliError("USAGE", "--due is required; --demo needs --demo-current");
-  return { op: parseWrite("update", [key, "--due", flags.due]), demo: Boolean(flags.demo), demoCurrent: flags["demo-current"] || null };
+  return { kind: "due", op: parseWrite("update", [key, "--due", flags.due]), demo: Boolean(flags.demo), demoCurrent: flags["demo-current"] || null };
 }
 
 export async function propose(tokens, { call, dir = PROPOSAL_DIR, now = Date.now(), notify = telegramNotify, code = newCode() } = {}) {
-  const { op, demo, demoCurrent } = parseProposal(tokens);
-  const current = demo ? demoCurrent : (await readIssue(call, op.key, false)).due;
-  if (current === op.fields.duedate) throw new CliError("NO_CHANGE", "the proposed due date equals the current one");
+  const { kind, op, demo, demoCurrent } = parseProposal(tokens);
+  const k = KINDS[kind];
+  const current = demo ? demoCurrent : k.current(await readIssue(call, op.key, false));
+  if (k.same(current, k.target(op))) throw new CliError("NO_CHANGE", `the proposed ${k.what} equals the current one`);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const rec = { version: PAYLOAD_VERSION, op, opHash: opHash(op), baseline: { duedate: current ?? null }, demo,
+  const rec = { version: PAYLOAD_VERSION, kind, op, opHash: opHash(op), baseline: current, demo,
     createdAt: new Date(now).toISOString(), expiresAt: new Date(now + PROPOSAL_TTL_MIN * 60000).toISOString() };
   fs.writeFileSync(path.join(dir, `${codeHash(code)}.json`), JSON.stringify(rec), { mode: 0o600, flag: "wx" });
   const lines = [
     `🟡 LIFE OS · approval needed${demo ? " (SYNTHETIC DEMO: approving changes nothing)" : ""}`,
-    `Jira ${op.key}: change due date`,
-    `Current: ${ctDate(current)}`,
-    `Proposed: ${ctDate(op.fields.duedate)}`,
+    `Jira ${op.key}: ${k.title}`,
+    `Current: ${k.show(current)}`,
+    `Proposed: ${k.show(k.target(op))}`,
     `Expires ${ctTime(now + PROPOSAL_TTL_MIN * 60000)} · works once`,
     `${SITE}/browse/${op.key}`,
   ];
@@ -434,7 +449,7 @@ export async function propose(tokens, { call, dir = PROPOSAL_DIR, now = Date.now
     { label: "Approve", value: `lifeos-approve:${code}`, style: "success" },
     { label: "Reject", value: `lifeos-reject:${code}`, style: "danger" },
   ]);
-  return { ok: true, proposed: true, delivered: sent, demo, key: op.key, field: "duedate", from: current ?? null, to: op.fields.duedate, expiresAt: rec.expiresAt };
+  return { ok: true, proposed: true, delivered: sent, demo, key: op.key, field: kind === "due" ? "duedate" : "status", from: current, to: k.target(op), expiresAt: rec.expiresAt };
 }
 
 export function claimProposal(code, { dir = PROPOSAL_DIR, now = Date.now(), as = "claimed" } = {}) {
@@ -450,7 +465,9 @@ export function claimProposal(code, { dir = PROPOSAL_DIR, now = Date.now(), as =
   const st = fs.statSync(claimed);
   if (!st.isFile() || st.uid !== process.getuid() || (st.mode & 0o077) !== 0) throw new CliError("TAMPERED", "proposal file has unsafe ownership or permissions");
   const rec = JSON.parse(fs.readFileSync(claimed, "utf8"));
-  if (rec.version !== PAYLOAD_VERSION || opHash(rec.op) !== rec.opHash || rec.op.action !== "update" || !KEY_RE.test(rec.op.key)) {
+  const k = KINDS[rec.kind];
+  if (rec.version !== PAYLOAD_VERSION || !k || opHash(rec.op) !== rec.opHash || rec.op.action !== k.action || !KEY_RE.test(rec.op.key)
+    || (rec.kind === "done" && rec.op.to !== "Done") || (rec.demo && rec.kind !== "due")) {
     throw new CliError("TAMPERED", "proposal does not match its payload version or operation");
   }
   if (!(Date.parse(rec.expiresAt) > now)) throw new CliError("EXPIRED", "the approval window has closed; ask for a fresh proposal");
@@ -463,22 +480,26 @@ export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = AP
   let rec;
   try {
     rec = claimProposal(code, { dir, now });
+    const k = KINDS[rec.kind];
+    const target = k.target(rec.op);
     if (rec.demo) {
-      const message = `✅ Approved (synthetic demo): ${rec.op.key} due ${ctDate(rec.baseline.duedate)} → ${ctDate(rec.op.fields.duedate)}. Nothing was changed in Jira.`;
+      const message = `✅ Approved (synthetic demo): ${rec.op.key} ${k.what} ${k.show(rec.baseline)} → ${k.show(target)}. Nothing was changed in Jira.`;
       return { ok: true, demo: true, executed: false, key: rec.op.key, message };
     }
-    const current = (await readIssue(call, rec.op.key, false)).due ?? null;
-    if (current !== rec.baseline.duedate) throw new CliError("BASELINE_CHANGED", "the issue changed since the preview; ask for a fresh proposal");
+    if (!k.same(k.current(await readIssue(call, rec.op.key, false)), rec.baseline)) {
+      throw new CliError("BASELINE_CHANGED", "the issue changed since the preview; ask for a fresh proposal");
+    }
     writeApproval(rec.op, { dir: approvalDir, ttlMin: 1, by: "jim-telegram", now });
     const gate = checkApproval(rec.op, { dir: approvalDir, now });
     if (!gate.ok) throw new CliError("APPROVAL_REQUIRED", gate.reason);
     consumeApproval(gate.file, now);
     const result = await execWrite(call, rec.op);
-    if (result.issue?.due !== rec.op.fields.duedate) throw new CliError("READBACK_MISMATCH", "Jira did not read back the approved due date");
-    const message = `✅ Done: ${rec.op.key} due date is now ${ctDate(result.issue.due)} (read back from Jira).\n${SITE}/browse/${rec.op.key}`;
-    return { ok: true, executed: true, key: rec.op.key, due: result.issue.due, opHash: rec.opHash, message };
+    const after = k.current(result.issue || {});
+    if (!k.same(after, target)) throw new CliError("READBACK_MISMATCH", `Jira did not read back the approved ${k.what}`);
+    const message = `✅ Done: ${rec.op.key} ${k.what} is now ${k.show(after)} (read back from Jira).\n${SITE}/browse/${rec.op.key}`;
+    return { ok: true, executed: true, key: rec.op.key, [rec.kind === "due" ? "due" : "status"]: after, opHash: rec.opHash, message };
   } catch (e) {
-    const what = rec ? `${rec.op.key} due date` : "this approval";
+    const what = rec ? `${rec.op.key} ${KINDS[rec.kind]?.what ?? "change"}` : "this approval";
     if (e instanceof CliError) throw new CliError(e.code, e.detail, e.exit, { ...e.extra, message: `❌ Not applied: ${what} — ${e.detail}.` });
     throw new CliError("WRITE_FAILED", "the Jira write did not complete", 1, { message: `❌ Failed: ${what}. Jira was not confirmed as changed.` });
   }
@@ -487,7 +508,8 @@ export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = AP
 export function reject(code, { dir = PROPOSAL_DIR, now = Date.now() } = {}) {
   try {
     const rec = claimProposal(code, { dir, now, as: "rejected" });
-    return { ok: true, rejected: true, key: rec.op.key, message: `Rejected: ${rec.op.key} due date stays ${ctDate(rec.baseline.duedate)}. Nothing was changed.` };
+    const k = KINDS[rec.kind];
+    return { ok: true, rejected: true, key: rec.op.key, message: `Rejected: ${rec.op.key} ${k.what} stays ${k.show(rec.baseline)}. Nothing was changed.` };
   } catch (e) {
     throw new CliError(e.code, e.detail, e.exit, { ...e.extra, message: `❌ Not rejected — ${e.detail}.` });
   }
