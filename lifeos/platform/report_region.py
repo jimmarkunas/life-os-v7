@@ -262,10 +262,11 @@ def page_of(client, meta, fail, ancestors=None):
     raise fail("FLOATING_PAGE_UNRESOLVED")
 
 
-def floating_region(client, block_id, title, fail):
+def floating_region(client, block_id, title, fail, with_status=True):
     """Validate the one floating region the configured heading anchors and return {"heading", "status", "table", "rows", "page_id", "parent_id", "siblings"}.
-    Accepted shape ONLY: a heading_3 whose text is `title` or `title (stamp)`, not inside any callout, followed by exactly one paragraph and one table with a header row of four
-    columns; the block after them (if any) is neither a paragraph nor a table. Anything else raises: no write is ever attempted on an ambiguous region."""
+    Accepted shape ONLY: a heading_3 whose text is `title` or `title (stamp)`, not inside any callout, followed by exactly one paragraph (none when `with_status` is False: the Hiring
+    Pipeline's heading -> table shape, "status" is None) and one table with a header row of four columns; the block after them (if any) is neither a paragraph nor a table.
+    Anything else raises: no write is ever attempted on an ambiguous region."""
     def at(stage, call):
         try:
             return call()
@@ -288,9 +289,9 @@ def floating_region(client, block_id, title, fail):
     if len(found) != 1 or sum(1 for b in siblings if b.get("type") == "heading_3" and titled(plain(b), title)) != 1:
         raise fail("FLOATING_HEADING_AMBIGUOUS")
     i = found[0]
-    status, table = (siblings[i + 1:i + 2] or [None])[0], (siblings[i + 2:i + 3] or [None])[0]
-    after = (siblings[i + 3:i + 4] or [None])[0]
-    if not status or status.get("type") != "paragraph" or not table or table.get("type") != "table" or (after and after.get("type") in ("paragraph", "table")):
+    ahead = siblings[i + 1:i + 4] + [None] * 3
+    status, table, after = ahead[:3] if with_status else [None] + ahead[:2]
+    if (with_status and (not status or status.get("type") != "paragraph")) or not table or table.get("type") != "table" or (after and after.get("type") in ("paragraph", "table")):
         raise fail("FLOATING_SHAPE_INVALID")
     rows = at("TABLE_ROWS", lambda: children(client, table["id"], fail))
     spec = table.get("table") or {}
@@ -300,7 +301,7 @@ def floating_region(client, block_id, title, fail):
 
 
 def floating_digest(client, meta, fail):
-    """Digest of a floating region as a protected neighbour: the heading and the next two blocks with everything under them. Lenient about shape (only the owner validates it)."""
+    """Digest of a floating region as a protected neighbour: the heading and the block after it (its table) with everything under them. Lenient about shape (only the owner validates it)."""
     parent = (meta.get("parent") or {})
     parent_id = parent.get("block_id") or parent.get("page_id")
     if not parent_id:
@@ -309,7 +310,7 @@ def floating_digest(client, meta, fail):
     at = [i for i, b in enumerate(siblings) if same_id(b.get("id"), meta.get("id"))]
     if len(at) != 1:
         raise fail("PROTECTED_REGION_UNAVAILABLE")
-    group = siblings[at[0]:at[0] + 3]
+    group = siblings[at[0]:at[0] + 2]                                               # the heading and its table
     trees = [_stable(_tree(client, b, fail)) for b in group]
     return {"fields": {f"block{n}": _hash(tree) for n, tree in enumerate(trees)}, "children": [[t.get("type"), _hash(t)] for t in trees]}
 
@@ -382,6 +383,6 @@ def write_floating(client, region, status_text, rows, fail):
         for row in have[len(rows):]:
             client.call("DELETE", f"/blocks/{quote(row['id'], safe='')}")
             counts["rows_removed"] += 1
-    if plain(region["status"]) != status_text:
+    if region["status"] is not None and plain(region["status"]) != status_text:
         client.call("PATCH", f"/blocks/{quote(region['status']['id'], safe='')}", {"paragraph": {"rich_text": [{"type": "text", "text": {"content": status_text}}]}})
     return counts
