@@ -240,8 +240,8 @@ class BillsRegions(AgendaRegions):
 
     def call(self, method, path, body=None):
         result = super().call(method, path, body)
-        if method == "DELETE":
-            self._poke("DELETE")
+        if method in ("DELETE", "PATCH"):                       # PATCH: a line rewritten in place
+            self._poke(method)
         return result
 
     def call_once(self, method, path, body=None):

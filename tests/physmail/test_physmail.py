@@ -297,7 +297,8 @@ class CardRunTests(unittest.TestCase):
         self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
         self.assertTrue(report_region.plain(kids[1]).startswith("Updated 10:00 AM CT · 11 waiting"))
         self.assertEqual(kids[-1]["id"], "mail-table-old")
-        self.assertNotIn("mail-status-old", [k["id"] for k in kids])
+        self.assertEqual(kids[1]["id"], "mail-status-old")                                    # the old line is rewritten in place, never shown beside the new one
+        self.assertEqual([m for m, _ in notion.log if m == "DELETE"], [])
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual(counts["status"], "fresh")
 
@@ -322,7 +323,7 @@ class CardRunTests(unittest.TestCase):
             self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE")], [])
 
     def test_a_protected_region_changed_mid_write_fails_the_run(self):
-        for op in ("APPEND", "DELETE"):
+        for op in ("PATCH", "APPEND"):                                                          # the in-place rewrite, then the extra lines
             for region in ("calendar-callout", "jira-callout", "bills-callout"):
                 with self.assertRaises(card.CardError) as caught:
                     self.go(MailRegions(change_on=op, change_region=region))
