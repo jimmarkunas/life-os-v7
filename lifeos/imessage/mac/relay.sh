@@ -1,8 +1,12 @@
 #!/bin/bash
 # COMM-1.4 relay on the Mac Mini: Tailscale Serve (tailnet only, PROXY v2) -> loopback relay -> the existing signed helper's Unix socket.
 #   bash relay.sh install <commit> <oracle tailnet IPv4> <oracle tailnet IPv6>   build + install the relay, add one Serve TCP port, prove it, print the summary
+#   bash relay.sh update <commit> <oracle tailnet IPv4> <oracle tailnet IPv6>    replace only the reader script and the relay binary (previous kept as .prev)
+#   bash relay.sh rollback                                                       put the .prev reader script and relay back
 #   bash relay.sh uninstall                                                      remove only what this script added (the helper and its grant stay)
-# Never rebuilds, re-signs or replaces the Messages helper, never touches privacy settings, never enables Funnel, never changes other Serve ports.
+# Never rebuilds, re-signs or replaces the signed Messages helper (the launcher that holds Full Disk Access), never touches privacy settings, never enables
+# Funnel, never changes other Serve ports. `update` swaps the root-owned reader script the launcher runs: the grant belongs to the launcher, so it stays valid,
+# and the checks prove that by reading Messages again through it.
 # The Oracle addresses are build inputs only: never printed, logged or committed. Every mandatory check must PASS, otherwise "RELAY FAILED", the rollback
 # command and a nonzero exit.
 set -euo pipefail
@@ -10,6 +14,7 @@ set -euo pipefail
 LABEL="ai.lifeos.imessage-relay"
 DIR="/usr/local/libexec/lifeos-imessage"
 HELPER="$DIR/lifeos-imessage-attention"
+TOOL="$DIR/attention_mcp.py"
 RELAY="$DIR/lifeos-imessage-relay"
 AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 HELPER_SOCK="$HOME/Library/Application Support/LifeOS/imessage-attention.sock"
@@ -19,8 +24,9 @@ TAILNET_PORT=47331
 TS="/usr/local/bin/tailscale"
 REPO="https://raw.githubusercontent.com/jimmarkunas/life-os-v7"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-SHA_RELAY="5a9e9772dea891a143cffa323b072e2c4cbe18abf6a6b9ef2490543a76cdda8e"
+SHA_RELAY="d306ba73b9fec21e2bf2185cb46f0fcd2246bcb77d83a650fda0d36dc92153b3"
 SHA_AGENT="cd619461ed3e78e76ec94402aa3e206c8d5948bd861671c269f08a665be6f99b"
+SHA_TOOL="6d1070c421d8ad6691f47173877cf8b6898b9ceec467f188116635c98f4bb9e3"
 
 say() { printf '%s\n' "$*"; }
 die() { say "STOP: $*"; exit 1; }
@@ -40,22 +46,23 @@ helper_cdhash() {
   /usr/bin/awk -F= '$1 == "CDHash" && $2 ~ /^[0-9A-Fa-f]{40}$/ { print tolower($2); exit }' <<<"$out"
 }
 
-helper_reads() {   # the existing helper, asked over its own socket: health CURRENT proves it still reads Messages under its own grant
-  /usr/bin/python3 -I - "$HELPER_SOCK" <<'HELPER_PY'
+helper_reads() {   # helper_reads [tool]: the existing helper, asked over its own socket; health CURRENT proves it still reads Messages under its own grant
+  /usr/bin/python3 -I - "$HELPER_SOCK" "${1:-imessage_attention}" <<'HELPER_PY'
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.settimeout(15)
 s.connect(sys.argv[1])
-s.sendall(b'{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "imessage_attention", "arguments": {}}}\n')
+s.sendall(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": sys.argv[2], "arguments": {}}}).encode() + b"\n")
 s.shutdown(socket.SHUT_WR)
 data = b""
-while len(data) <= 4096:
+while len(data) <= 65536:
     chunk = s.recv(4096)
     if not chunk:
         break
     data += chunk
 state = json.loads(data)["result"]["structuredContent"]
-sys.exit(0 if state["health"] == "CURRENT" and state["count"] is None else 1)
+ok = state["health"] == "CURRENT" and (state["count"] is None if sys.argv[2] == "imessage_attention" else state["counts"] is not None)
+sys.exit(0 if ok else 1)
 HELPER_PY
 }
 
@@ -91,7 +98,11 @@ cases = [("no PROXY header is refused", b"attention\n"),
          ("an unauthorized tailnet source is refused", v2(unauthorized) + b"attention\n"),
          ("send is refused", v2(oracle) + b"send\n"),
          ("SQL or a path as the request is refused", v2(oracle) + b"SELECT text FROM message\n"),
-         ("an oversized request is refused", v2(oracle) + b"attention" + b"A" * 4096 + b"\n")]
+         ("an oversized request is refused", v2(oracle) + b"attention" + b"A" * 4096 + b"\n"),
+         ("an out-of-range hours argument is refused", v2(oracle) + b"recent 73\n"),
+         ("a zero conversation reference is refused", v2(oracle) + b"conversation 0\n"),
+         ("shell text in an argument is refused", v2(oracle) + b"recent 1; id\n"),
+         ("a non-numeric conversation reference is refused", v2(oracle) + b"conversation ../chat.db\n")]
 for name, payload in cases:
     print("%s\t%s" % (name, "PASS" if ask(payload) == b"" else "FAIL"))
 PROBE_PY
@@ -168,7 +179,11 @@ gate() {   # gate <required PASS count>
   fi
   REPORTED=1
   summary "RESULT: RELAY FAILED ($pass of $1 required checks passed; $other failed or unverified)"
-  say "Roll back with:  bash \"$SELF\" uninstall   (removes only the relay and its Serve port; the Messages helper and its grant stay)"
+  if [ -f "$RELAY.prev" ]; then
+    say "Roll back with:  bash \"$SELF\" rollback   (puts the previous reader and relay back; nothing else changes)"
+  else
+    say "Roll back with:  bash \"$SELF\" uninstall   (removes only the relay and its Serve port; the Messages helper and its grant stay)"
+  fi
   exit 1
 }
 
@@ -200,14 +215,52 @@ install_relay() {
   [ "$(serve_state)" = ours ] || "$TS" serve --bg --tcp "$TAILNET_PORT" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL_PORT" >/dev/null
   say "Checks:"
   check_all "$before" "$v4"
-  gate 15
+  gate 19
+}
+
+update_relay() {
+  REF="${1:-}"; local v4="${2:-}" v6="${3:-}"
+  [ -n "$REF" ] && [ -n "$v4" ] && [ -n "$v6" ] || die "usage: bash relay.sh update <commit> <oracle tailnet IPv4> <oracle tailnet IPv6>"
+  /usr/bin/python3 -I -c 'import ipaddress,sys; a=ipaddress.IPv4Address(sys.argv[1]); b=ipaddress.IPv6Address(sys.argv[2]); sys.exit(0 if a in ipaddress.ip_network("100.64.0.0/10") and b in ipaddress.ip_network("fd7a:115c:a1e0::/48") else 1)' "$v4" "$v6" \
+    || die "the Oracle addresses are not tailnet addresses; nothing was changed"
+  [ "$(serve_state)" = ours ] && [ -x "$RELAY" ] && [ -f "$TOOL" ] || die "the COMM-1.4 relay is not installed (run install first); nothing was changed"
+  say "1/4 Messages helper before any change"
+  local before; before="$(helper_cdhash)"
+  [ -n "$before" ] && helper_reads || die "the Messages helper is not reading (or has no code hash); nothing was changed"
+  say "  helper CDHash $before reads Messages: yes"
+  TMPD="$(mktemp -d)"; local tmp="$TMPD"
+  say "2/4 Downloading the reviewed reader and relay at $REF (hash-checked)"
+  curl -fsSL "$REPO/$REF/lifeos/imessage/attention_mcp.py" -o "$tmp/attention_mcp.py" && echo "$SHA_TOOL  $tmp/attention_mcp.py" | shasum -a 256 -c - >/dev/null 2>&1 \
+    || die "reader download or hash failed"
+  curl -fsSL "$REPO/$REF/lifeos/imessage/mac/relay.c" -o "$tmp/relay.c" && echo "$SHA_RELAY  $tmp/relay.c" | shasum -a 256 -c - >/dev/null 2>&1 || die "relay.c download or hash failed"
+  /usr/bin/cc -O2 -Wall -Werror -DALLOWED_V4="\"$v4\"" -DALLOWED_V6="\"$v6\"" -o "$tmp/lifeos-imessage-relay" "$tmp/relay.c"
+  INSTALLED=1
+  say "3/4 Replacing the reader script and relay binary (previous versions kept as .prev; macOS may ask for your password)"
+  sudo /bin/cp -p "$TOOL" "$TOOL.prev"
+  sudo /bin/cp -p "$RELAY" "$RELAY.prev"
+  sudo /usr/bin/install -o root -g wheel -m 644 "$tmp/attention_mcp.py" "$TOOL"
+  sudo /usr/bin/install -o root -g wheel -m 755 "$tmp/lifeos-imessage-relay" "$RELAY"
+  say "4/4 Checks:"
+  check_all "$before" "$v4"
+  [ "$(shasum -a 256 "$TOOL" | cut -d' ' -f1)" = "$SHA_TOOL" ] && [ "$(stat -f '%Su:%Sg %Lp' "$TOOL")" = "root:wheel 644" ] \
+    && record "reader script is the reviewed version and root-owned" PASS || record "reader script is the reviewed version and root-owned" FAIL
+  helper_reads imessage_counts && record "the new reader reads Messages counts under the existing grant" PASS \
+    || record "the new reader reads Messages counts under the existing grant" FAIL
+  gate 21
+}
+
+rollback() {
+  [ -f "$TOOL.prev" ] && [ -f "$RELAY.prev" ] || die "no .prev reader and relay to restore"
+  sudo /bin/mv "$TOOL.prev" "$TOOL"
+  sudo /bin/mv "$RELAY.prev" "$RELAY"
+  helper_reads && say "Restored the previous reader and relay; the helper still reads Messages." || say "Restored the previous reader and relay; the helper read check FAILED."
 }
 
 uninstall() {
   [ "$(serve_state)" = ours ] && "$TS" serve --tcp "$TAILNET_PORT" off >/dev/null 2>&1 || true
   /bin/launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
   rm -f "$AGENT"
-  sudo rm -f "$RELAY"
+  sudo rm -f "$RELAY" "$RELAY.prev"
   say "Rolled back: Serve port $TAILNET_PORT removed (if it was ours), relay LaunchAgent unloaded and removed, relay binary deleted."
   say "The Messages helper, its socket and its Full Disk Access grant were not touched."
 }
@@ -217,7 +270,7 @@ on_exit() {
   [ -z "${TMPD:-}" ] || rm -rf "$TMPD"
   if [ "$rc" -ne 0 ] && [ "$INSTALLED" -eq 1 ] && [ "$REPORTED" -eq 0 ]; then
     say "RESULT: RELAY FAILED (a step stopped unexpectedly, exit $rc)"
-    say "Roll back with:  bash \"$SELF\" uninstall"
+    if [ -f "$RELAY.prev" ]; then say "Roll back with:  bash \"$SELF\" rollback"; else say "Roll back with:  bash \"$SELF\" uninstall"; fi
   fi
 }
 
@@ -227,6 +280,8 @@ trap on_exit EXIT
 preflight
 case "${1:-}" in
   install) install_relay "${2:-}" "${3:-}" "${4:-}" ;;
+  update) update_relay "${2:-}" "${3:-}" "${4:-}" ;;
+  rollback) rollback ;;
   uninstall) uninstall ;;
-  *) die "usage: bash relay.sh install <commit> <oracle tailnet IPv4> <oracle tailnet IPv6> | uninstall" ;;
+  *) die "usage: bash relay.sh install|update <commit> <oracle tailnet IPv4> <oracle tailnet IPv6> | rollback | uninstall" ;;
 esac

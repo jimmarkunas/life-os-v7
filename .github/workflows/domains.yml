@@ -29,6 +29,10 @@ on:
         description: "Hiring Pipeline only (HIRE-1.2, no mail): the Job Ledger Applied state, the Hiring Pipeline pages and the Calendar into the private state row and the floating Hiring Pipeline region; dry run unless Actually write is ticked"
         type: boolean
         default: false
+      imessage:
+        description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
+        type: boolean
+        default: false
       attention:
         description: "Attention only: the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
@@ -810,10 +814,64 @@ jobs:
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure') }}
         run: echo "::warning title=Recruiters::the Recruiters stage or the hiring outcome-mail scan failed or a source was unread; the Jobs pipeline is unaffected"
 
+  imessage:
+    # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
+    # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
+    # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_imessage
+        name: Load the iMessage alert credentials from Bitwarden (exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+            454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
+            e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
+            6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
+      - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
+        with:
+          oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:v7-runner
+          use-cache: "false"
+      - id: imsg
+        continue-on-error: true
+        name: iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)
+        env:
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+        run: python -m lifeos.run imessage-alerts $([ "$LIVE" = "true" ] && echo --live)
+      - name: iMessage alerts warning (does not fail the run)
+        if: ${{ always() && steps.imsg.outcome == 'failure' }}
+        run: echo "::warning title=iMessage alerts::the iMessage alert stage failed; no alert was lost (undelivered alerts stay queued)"
+
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
     # failed tick-triggered run, counts only; a manual run never pushes. It never writes anything.
-    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, recruiters, dcc]
+    needs: [jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, recruiters, dcc, imessage]
     if: ${{ always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -832,7 +890,7 @@ jobs:
           NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
         run: |
           failed=""
-          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }}; do
+          for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           python3 -m lifeos.platform.alerts push --severity page --title "V7 domain jobs failed" --body "Failed domain jobs:$failed. Their cards keep the last good content. Open the Actions tab."

@@ -120,6 +120,7 @@ STAGES = {
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
     "attention": lazy("lifeos.attention.stage", floor=200),
+    "imessage-alerts": lazy("lifeos.imessage.stage"),
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
     "hiring": lazy("lifeos.sources.hiring"),
