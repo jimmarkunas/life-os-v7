@@ -211,6 +211,18 @@ class Card(unittest.TestCase):
         self.assertNotIn("Bob", log)
         self.assertNotIn("Carol", log)
 
+    def test_a_restarted_whatsapp_source_keeps_the_name_already_in_notion(self):
+        report = Report()
+        report.blocks["r2"]["paragraph"]["rich_text"] = [{"type": "text", "plain_text": "Latest: Carol Example", "text": {"content": "Latest: Carol Example", "link": None}}]
+        wa = dict(tg_block(KEY), latest_state="UNAVAILABLE", latest=None)
+        answer = lambda host, key: json.dumps({"schema": card.SCHEMA, "observed_at": "2026-10-14T15:00:00Z", "health": "CURRENT", "unread_7d": 45,
+                                               "latest_state": "PRESENT", "latest": ep.scramble(key, NAME), "telegram": tg_block(key),
+                                               "whatsapp": dict(wa, latest=None)}).encode()
+        counts, _ = self.run_card(report, answer=answer)
+        self.assertEqual((report.plain("l2"), report.plain("r2")), (":whatsapp: WhatsApp (7)", "Latest: Carol Example"))
+        self.assertNotIn("r2", [p[0] for p in report.patches])
+        self.assertEqual(counts["written"], 7)
+
     def test_dry_run_writes_nothing(self):
         report = Report()
         self.assertEqual(self.run_card(report, live=False)[0]["written"], 0)

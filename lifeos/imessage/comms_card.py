@@ -125,12 +125,17 @@ def validate(raw, key, now):
 NONE_LINE = {"messages": "Latest: none in 3 days", "telegram": "Latest: none", "whatsapp": "Latest: none"}
 
 
+KEEP_LAST = ("whatsapp",)   # a CURRENT WhatsApp source that has seen no message since it restarted keeps Notion's last name (names are never on disk)
+
+
 def render(rows, now):
-    """{channel: (count, state, name)} -> ({channel: (link text, latest line)}, heading text)."""
+    """{channel: (count, state, name)} -> ({channel: (link text, latest line or None = keep the line already in Notion)}, heading text)."""
     out = {}
     for channel, (n, state, name) in rows.items():
         count = "—" if n is None else ("99+" if n > 99 else str(n))
         latest = {"PRESENT": f"Latest: {name}", "NONE": NONE_LINE[channel]}.get(state, "Latest: unavailable")
+        if channel in KEEP_LAST and n is not None and state == "UNAVAILABLE":
+            latest = None
         out[channel] = (f"{LABELS[channel]} ({count})", latest)
     return out, f"{TITLE} (Updated {now.astimezone(TZ).strftime('%-I:%M %p')} CT)"
 
@@ -222,7 +227,10 @@ def write(client, heading, rows, lines, heading_text):
         items = [_sendable(i) for i in before]
         items[at]["text"]["content"] = link_text
         _patch_text(client, row, items)
-        _patch_text(client, latest_block, rich_text(latest_line))
+        if latest_line is None:
+            latest_line = report_region.plain(latest_block)
+        else:
+            _patch_text(client, latest_block, rich_text(latest_line))
         expect = _plain(before)
         expect[at] = link_text
         expected[channel] = (expect, latest_line)
