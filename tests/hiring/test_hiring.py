@@ -47,7 +47,7 @@ class CompilerTests(unittest.TestCase):
         got = compile_([applied("Acme Inc", "Senior Program Manager")])
         self.assertEqual([(r["stage"], r["company"]) for r in got["rows"]], [("Submitted", "Acme Inc")])
         self.assertEqual(got["reasons"], [])
-        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted · Applied Oct 2", "Awaiting response"])
+        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted", "Awaiting response · follow up Oct 16"])
 
     def test_two_ledger_rows_for_one_company_and_role_are_one_opportunity(self):
         got = compile_([applied("Acme", "Senior Program Manager", "2026-10-01"), applied("ACME Inc.", "senior program manager", "2026-10-03")])
@@ -91,10 +91,10 @@ class CompilerTests(unittest.TestCase):
 
     def test_a_scheduled_event_reads_today_tomorrow_then_upcoming(self):
         row = {"stage": "Interviewing", "company": "Acme", "role": "R", "event_kind": "interview", "event_start": at(0, 16), "rounds": 0, "parent_state": "none", "parent": None}
-        self.assertIn("Today 4:00 PM CT", cells(row)[1])
-        self.assertIn("Tomorrow 10:00 AM CT", cells(dict(row, event_start=at(1, 10)))[1])
-        self.assertIn("Upcoming Oct 9, 10:00 AM CT", cells(dict(row, event_start=at(3, 10)))[1])
-        self.assertIn("held today", cells(dict(row, event_start=at(0, 9)))[1])                 # 9 AM has started by 2 PM
+        self.assertIn("Today 4:00 PM CT", cells(row)[2])
+        self.assertIn("Tomorrow 10:00 AM CT", cells(dict(row, event_start=at(1, 10)))[2])
+        self.assertIn("Upcoming Oct 9, 10:00 AM CT", cells(dict(row, event_start=at(3, 10)))[2])
+        self.assertIn("held today", cells(dict(row, event_start=at(0, 9)))[2])                 # 9 AM has started by 2 PM
 
     def test_a_hiring_manager_interview_is_scheduled_until_it_has_happened(self):
         events = [{"id": "e1", "title": "Hiring manager interview - Acme", "start": at(2)}]
@@ -104,7 +104,7 @@ class CompilerTests(unittest.TestCase):
 
     def test_a_unique_parent_gives_one_notes_link_and_anything_else_says_needs_notes(self):
         one = compile_([applied("Acme", "Senior Program Manager")], [parent("1234abcd-0000-4000-8000-000000000001", "Acme", "Senior Program Manager")])["rows"][0]
-        self.assertEqual(render.row_cells(one, NOW)[3], ("Opportunity Notes", "https://www.notion.so/1234abcd000040008000000000000001"))
+        self.assertEqual(render.row_cells(one, NOW)[3], ("Opportunity Page ↗", "https://www.notion.so/1234abcd000040008000000000000001"))
         none = compile_([applied("Acme", "Senior Program Manager")])["rows"][0]
         self.assertEqual(render.row_cells(none, NOW)[3], ("Needs Notes", None))
         two = compile_([applied("Acme", "Senior Program Manager")], [parent("p1", "Acme", "Senior Program Manager"), parent("p2", "Acme Inc", "Senior Program Manager")])
@@ -247,18 +247,86 @@ class LifecycleTests(unittest.TestCase):
 
     def test_waiting_on_an_outcome_says_so_after_fourteen_days_and_not_before(self):
         row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-13), "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held " + (NOW - timedelta(days=13)).strftime("%b %-d"))
+        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 23 · follow up Oct 7")
         row["event_start"] = at(-14)
-        self.assertEqual(cells(row)[2], "No news in 14 days · follow up?")
+        self.assertEqual(cells(row)[2], "No news in 14 days · follow up (due Oct 6)")
         row["event_start"] = at(-30)
-        self.assertEqual(cells(row)[2], "No news in 30 days · follow up?")
-        self.assertTrue(cells(row)[1].startswith("Interviewing · Interview held"))            # the stage and the date it happened are unchanged
+        self.assertEqual(cells(row)[2], "No news in 30 days · follow up (due Sep 20)")
+        self.assertEqual(cells(row)[1], "Interviewing")                                         # the stage is unchanged
 
     def test_a_submitted_role_waiting_fourteen_days_asks_for_a_follow_up(self):
         row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=13)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(row)[2], "Awaiting response")
+        self.assertEqual(cells(row)[2], "Awaiting response · follow up Oct 7")
         row["applied_on"] = (NOW - timedelta(days=14)).date().isoformat()
-        self.assertEqual(cells(row)[2], "No response in 14 days · follow up?")
+        self.assertEqual(cells(row)[2], "No response in 14 days · follow up (due Oct 6)")
+
+
+class ActiveTableTests(unittest.TestCase):
+    """LIFE-47 Slice 1 (Jim, comments 10177 and the decision after 10179): the accepted Active Opportunities table, from existing data only."""
+    def test_the_accepted_table_renders_attention_first_then_by_due_date(self):
+        parents = [parent("1234abcd-0000-4000-8000-000000000001", "Globex", "Director", rounds=1)]
+        found = {C._key("Hooli", "Program Manager"): {"kind": "REJECTED", "received": "2026-10-05T12:00:00+00:00", "match": "role"}}
+        got = C.compile_rows([applied("Acme", "Senior Program Manager"), applied("Initech", "PM", "2026-09-20"), applied("Hooli", "Program Manager", "2026-09-25"), applied("Globex", "Director")],
+                             parents, [{"id": "e1", "title": "Interview Globex", "start": at(1, 10)}], None, OK, NOW, outcomes=found)
+        _, table, _ = render.render(got, None, NOW)
+        self.assertEqual([[t for t, _ in row] for row in table], [
+            ["🔴 Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
+            ["🔴 Initech — PM", "Submitted", "No response in 16 days · follow up (due Oct 4)", "Needs Notes"],
+            ["🟡 Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 16", "Needs Notes"],
+            ["🟢 Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
+        self.assertEqual(table[3][3][1], "https://www.notion.so/1234abcd000040008000000000000001")
+
+    def test_missing_stale_or_unverified_evidence_never_becomes_a_due_date_or_a_green_dot(self):
+        base = {"stage": "Submitted", "company": "Acme", "role": "R", "applied_on": None, "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
+        self.assertEqual(cells(base)[0::2], ["🟡 Acme — R", "Awaiting response"])                                   # no Applied date: no follow-up date invented
+        self.assertEqual(cells(dict(base, stage="Interviewing", rounds=2))[0::2], ["🟡 Acme — R", "Awaiting next step · 2 round(s) logged in Notes"])
+        carried = dict(base, stage="Interviewing", event_kind="interview", event_start=at(2), carried=True)
+        self.assertEqual(cells(carried)[:2], ["🟡 Acme — R", "Interviewing (last accepted)"])                       # a future event the Calendar no longer confirms is not verified activity
+        self.assertEqual(cells(dict(carried, carried=False))[0], "🟢 Acme — R")
+
+    def test_a_possible_or_confirmed_offer_is_a_next_action_not_a_stage(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "R", "event_kind": "interview", "event_start": at(-3), "parent": None, "parent_state": "none", "rounds": 0}
+        for match, said in (("role", "Offer email received Oct 5 · review and respond"), ("company", "Possible offer email received Oct 5 · review and respond")):
+            got = cells(dict(row, outcome={"kind": "OFFER", "received": "2026-10-05T12:00:00+00:00", "match": match}))
+            self.assertEqual((got[0], got[1], got[2]), ("🔴 Acme — R", "Interviewing", said))
+
+
+class HeaderMigrationTests(unittest.TestCase):
+    """The header row moves to the accepted text once, in the same fail-closed write; nothing else is touched and a replay changes nothing."""
+    HEAD = "0000000000000000000000000000a003-r0"
+
+    def test_a_dry_run_on_the_old_header_validates_writes_nothing_and_says_a_migration_is_pending(self):
+        t = page(extra_rows=1, headers=M.OLD_HEADERS)
+        done = card.present(t, ENV, "x", WANT, False)
+        self.assertEqual((writes(t), done["verified"], done["header"]), ([], False, "old"))
+
+    def test_the_live_write_migrates_the_header_with_the_rows_and_proves_the_page_unchanged(self):
+        t = page(extra_rows=1, headers=M.OLD_HEADERS)
+        done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
+        self.assertEqual((done["verified"], done["header"]), (True, "migrated"))
+        self.assertEqual(R.cells_of(t.blocks[self.HEAD]), list(M.HEADERS))
+        self.assertEqual(table_state(t), [[(a, b) for a, b in row] for row in WANT])
+        t.log.clear()
+        again = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
+        self.assertEqual((again["header"], again["rows_changed"], writes(t)), ("new", 0, []))               # idempotent
+
+    def test_any_other_header_is_refused_before_a_single_write(self):
+        t = page(extra_rows=1, headers=("Company / Role", "Stage", "Action Needed", "Source"))
+        with self.assertRaises(snapshot.HiringError) as error:
+            card.present(t, ENV, "x", WANT, True)
+        self.assertEqual((str(error.exception), writes(t)), ("HIRING_HEADERS_CHANGED", []))
+
+    def test_a_failed_header_write_is_honest_keeps_the_rows_and_the_next_run_finishes_it(self):
+        t = page(extra_rows=1, headers=M.OLD_HEADERS)
+        t.fail_write = self.HEAD
+        with self.assertRaises(snapshot.HiringError) as error:
+            card.present(t, ENV, "Updated 2:00 PM CT", WANT, True)
+        self.assertEqual(str(error.exception), "HIRING_WRITE_FAILED")
+        self.assertEqual(R.cells_of(t.blocks[self.HEAD]), list(M.OLD_HEADERS))                              # the old header is intact, never half-written
+        self.assertTrue(R.plain(t.blocks["0000000000000000000000000000a002"]).startswith("Hiring Pipeline update failed"))
+        t.fail_write = None
+        done = card.present(t, ENV, "Updated 2:00 PM CT · 2 active", WANT, True)
+        self.assertEqual((done["verified"], done["header"], R.cells_of(t.blocks[self.HEAD])), (True, "migrated", list(M.HEADERS)))
 
 
 class RegionWriterTests(unittest.TestCase):
@@ -598,8 +666,8 @@ class RuntimePathTests(unittest.TestCase):
         events = [gcal("e1", "Interview Acme", at(1, 10))]
         first = run(t, store, events=events)
         self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
-        self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing · Interview Tomorrow 10:00 AM CT", None),
-                                           ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Notes", "https://www.notion.so/aaaa1111000040008000000000000001")]])
+        self.assertEqual(table_state(t), [[("🟢 Acme — Senior Program Manager", None), ("Interviewing", None),
+                                           ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Page ↗", "https://www.notion.so/aaaa1111000040008000000000000001")]])
         self.assertEqual((R.plain(t.blocks["0000000000000000000000000000a001"]), R.plain(t.blocks["0000000000000000000000000000a002"])), ("📈 Hiring Pipeline (Updated 2:00 PM CT)", "1 active"))
         t.log.clear()
         again = run(t, store, events=events)
@@ -695,7 +763,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         t, store, counts = self.go(lambda conn: (self.FOUND, "2026-10-06T00:00:00+00:00"))
         self.assertEqual((counts["mail_outcomes"], counts["status"]), (1, "fresh"))
         action = table_state(t)[0][2][0]
-        self.assertEqual(action, "Rejection email Oct 5 · confirm, then move the Notes page to Retired")
+        self.assertEqual(action, "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
         self.assertEqual(len(table_state(t)), 1)                                                   # still listed: V7 closes nothing
         self.assertEqual({entry[1].split("/")[2] for entry in writes(t)}, {"0000000000000000000000000000a001", "0000000000000000000000000000a002", "0000000000000000000000000000a003"})
         self.assertEqual(R.plain(t.blocks["cal-p"]), "9:00 AM standup")                           # the neighbouring card is untouched
@@ -703,7 +771,7 @@ class OutcomeConsumerTests(unittest.TestCase):
     def test_a_role_without_a_notes_page_keeps_applied_as_history(self):
         t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, None), parents=[])
         action = table_state(t)[0][2][0]
-        self.assertEqual(action, "Possible rejection email Oct 5 · confirm (Applied stays as history)")
+        self.assertEqual(action, "Possible rejection email received Oct 5 · confirm (Applied stays as history)")
 
     def test_the_ledger_is_only_ever_read_and_the_applied_state_is_never_written(self):
         class ReadOnlyLedger(FakeLedger):
