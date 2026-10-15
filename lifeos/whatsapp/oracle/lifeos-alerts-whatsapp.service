@@ -1,4 +1,4 @@
-# COMM-1.1 (LIFE-28): copy each LIFE OS ntfy alert into Jim's WhatsApp self-chat via OpenClaw. Always-on, no output, memory-capped.
+# COMM-1.1 (LIFE-28): copy each LIFE OS ntfy alert into Jim's WhatsApp self-chat via OpenClaw. Always-on, no output, memory-capped (one `openclaw message send` peaks near 520 MB for ~15 s).
 [Unit]
 Description=LIFE OS alerts to WhatsApp (copies ntfy alerts to Jim's self-chat)
 After=network-online.target openclaw-gateway.service
@@ -8,7 +8,7 @@ ExecStart=/usr/bin/python3 -I %h/.local/lib/lifeos-alerts/forward_alerts.py
 Restart=on-failure
 RestartSec=30
 UMask=0077
-MemoryMax=150M
+MemoryMax=1G
 NoNewPrivileges=yes
 StandardOutput=null
 StandardError=null
