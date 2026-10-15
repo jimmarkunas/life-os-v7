@@ -33,6 +33,9 @@ ALLOWED = {"getOption", "setTdlibParameters", "setAuthenticationPhoneNumber", "c
            "loadChats", "getChatHistory", "getUser", "getScopeNotificationSettings", "getMe"}
 LOGIN_ONLY = {"setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword"}
 TELEGRAM_SERVICE = 777000
+SENT_BY_A_PERSON = {"messageText", "messageAnimatedEmoji", "messagePhoto", "messageVideo", "messageVideoNote", "messageVoiceNote", "messageAudio",
+                    "messageDocument", "messageSticker", "messageAnimation", "messageContact", "messageLocation", "messageVenue", "messagePoll",
+                    "messageDice", "messageStory", "messagePaidMedia"}          # content KINDS only; service notices (joined Telegram, pins, calls) are not
 MAX_HISTORY = 12                                                          # chats whose newest message is outgoing that may be scanned for an incoming one
 MAX_NAME = 80
 SCOPES = {"chatTypePrivate": "notificationSettingsScopePrivateChats", "chatTypeBasicGroup": "notificationSettingsScopeGroupChats",
@@ -207,6 +210,8 @@ def person(message, me, users=None):
     """A message from another person (not me, a bot, a channel post or Telegram's service account): its user id, else None."""
     sender = message.get("sender_id") or {}
     if message.get("is_outgoing") or sender.get("@type") != "messageSenderUser" or sender.get("user_id") in (me, TELEGRAM_SERVICE):
+        return None
+    if (message.get("content") or {}).get("@type") not in SENT_BY_A_PERSON:
         return None
     if (((users or {}).get(sender["user_id"]) or {}).get("type") or {}).get("@type") == "userTypeBot":
         return None

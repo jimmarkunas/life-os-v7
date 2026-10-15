@@ -9,8 +9,8 @@ LOUD = {"use_default_mute_for": False, "mute_for": 0}
 QUIET = {"use_default_mute_for": False, "mute_for": 600000}
 
 
-def msg(sender, date, outgoing=False, chat_sender=False):
-    return {"is_outgoing": outgoing, "date": date,
+def msg(sender, date, outgoing=False, chat_sender=False, content="messageText"):
+    return {"is_outgoing": outgoing, "date": date, "content": {"@type": content},
             "sender_id": {"@type": "messageSenderChat", "chat_id": -5} if chat_sender else {"@type": "messageSenderUser", "user_id": sender}}
 
 
@@ -60,6 +60,12 @@ class LatestIncoming(unittest.TestCase):
                          chat(4, last=msg(FRIEND, 600), kind="chatTypeSupergroup", channel=True), chat(5, last=msg(OTHER, 100))],
                         users={BOT: {"type": {"@type": "userTypeBot"}}})
         self.assertEqual(a.latest_incoming(s, 0), (OTHER, 100))
+
+    def test_a_contact_joined_telegram_notice_is_not_a_message_and_the_chat_history_is_checked(self):
+        s = FakeSession([chat(1, last=msg(FRIEND, 900, content="messageContactRegistered")), chat(2, last=msg(OTHER, 200))],
+                        history={1: [msg(FRIEND, 900, content="messageContactRegistered"), msg(FRIEND, 150)]})
+        self.assertEqual(a.latest_incoming(s, 0), (OTHER, 200))
+        self.assertEqual(s.calls, ["getChatHistory"])
 
     def test_no_incoming_at_all_is_none(self):
         s = FakeSession([chat(1, last=msg(ME, 5, outgoing=True))], history={1: [msg(ME, 5, outgoing=True)]})
