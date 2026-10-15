@@ -50,9 +50,8 @@ class Card(unittest.TestCase):
             "Cost this month: $0.00 (Oracle billing) · CPU, last 24 h: avg 5.7%",
             "",
             "Memory ██████░░░░ 55% · Disk ████░░░░░░ 39%",
-            "Always Free A1 cores: 2 of 2 in use · no headroom",
-            "Reclaim risk: none",
             "",
+            "Always Free A1 cores: 2 of 2 in use · no headroom · Reclaim risk: none",
             "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓",
             "",
             "ChatGPT 5h ██████████ 100% · ChatGPT week ██████░░░░ 64%"])

@@ -105,8 +105,8 @@ def _gauge(label, pct, suffix="%"):
 
 
 def render(r, now):
-    """readings -> (paragraph segments [(text, color or None)], heading text). Jim's layout (Oct 15): cost and CPU on one line, then memory and disk,
-    cores and reclaim risk, then services, then both ChatGPT windows, with blank lines between the groups."""
+    """readings -> (paragraph segments [(text, color or None)], heading text). Jim's layout (Oct 15): cost and CPU on one line; memory and disk; cores
+    and reclaim risk on one line with services under it; both ChatGPT windows; blank lines between those groups."""
     cost, a1, plan, sep = r["cost"], r["a1_cores"], r["chatgpt"], [(" · ", None)]
     first = ("Cost this month: unavailable" if cost is None else
              f"Cost this month: {'$' if cost['currency'] == 'USD' else cost['currency'] + ' '}{cost['amount']:.2f} (Oracle billing)")
@@ -119,7 +119,7 @@ def render(r, now):
     chatgpt = ([("ChatGPT plan: unavailable", None)] if plan is None else
                _gauge("ChatGPT 5h", plan["left_5h"]) + sep + _gauge("ChatGPT week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
-                + [(f"\n{cores}\n{reclaim}\n\n{services}\n\n", None)] + chatgpt)
+                + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
     ct = now.astimezone(TZ)
     stamp = f"Updated {ct.strftime('%b')} {ct.day} · {ct.strftime('%-I:%M %p')} CT"
     return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{stamp})"
