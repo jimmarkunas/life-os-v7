@@ -24,9 +24,9 @@ TAILNET_PORT=47331
 TS="/usr/local/bin/tailscale"
 REPO="https://raw.githubusercontent.com/jimmarkunas/life-os-v7"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-SHA_RELAY="d306ba73b9fec21e2bf2185cb46f0fcd2246bcb77d83a650fda0d36dc92153b3"
+SHA_RELAY="62d74eef27df24d75c3bb08a131cebf9d272d365f4e611eafffaf94e60266250"
 SHA_AGENT="cd619461ed3e78e76ec94402aa3e206c8d5948bd861671c269f08a665be6f99b"
-SHA_TOOL="6d1070c421d8ad6691f47173877cf8b6898b9ceec467f188116635c98f4bb9e3"
+SHA_TOOL="24d0cbda96975136cab6a0b6b709c48c20b01c13998824fc25f6c6f766a69498"
 
 say() { printf '%s\n' "$*"; }
 die() { say "STOP: $*"; exit 1; }

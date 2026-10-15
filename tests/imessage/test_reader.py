@@ -234,3 +234,65 @@ class Urgency(unittest.TestCase):
     def test_missing_text_is_reviewed(self):
         v = self.w.classify({"text": None, "sender": {"handle": ALICE, "name": "Alice Example"}, "group": False})
         self.assertEqual((v["level"], v["review"]), ("INFORMATIONAL", True))
+
+
+class Paging(unittest.TestCase):
+    """imessage_page: every incoming message of the window exactly once, oldest first, with a proven end."""
+
+    def walk(self, f, hours=24):
+        first = m.page(hours, db=f.db, now=NOW, contacts_root="/nonexistent")
+        pages, out = [first], list(first["messages"])
+        while pages[-1]["more"]:
+            c = pages[-1]["cursor"]
+            pages.append(m.page(after=(c["date"], c["rowid"]), db=f.db, now=NOW, contacts_root="/nonexistent"))
+            out += pages[-1]["messages"]
+            self.assertLess(len(pages), 50)
+        return pages, out
+
+    def test_more_than_one_page_each_message_exactly_once_in_order(self):
+        f = Fixture()
+        ids = [f.add(10 + i % 3, timedelta(minutes=500 - i), text="t%d" % i, read=i % 2) for i in range(137)]    # read and unread alike
+        f.add(10, timedelta(minutes=1), mine=1)                                                                     # outgoing: never listed
+        f.add(10, 30 * H)                                                                                           # outside the window
+        pages, out = self.walk(f)
+        self.assertEqual([len(p["messages"]) for p in pages], [50, 50, 37])
+        self.assertEqual([p["more"] for p in pages], [True, True, False])
+        self.assertEqual([x["ref"] for x in out], ["m%d" % i for i in ids])
+        self.assertEqual(pages[-1]["cursor"]["rowid"], ids[-1])
+
+    def test_same_timestamp_across_a_page_boundary_neither_skips_nor_repeats(self):
+        f = Fixture()
+        ids = [f.add(10, timedelta(minutes=10), text="same%d" % i) for i in range(75)]                           # 75 rows, one identical date
+        pages, out = self.walk(f)
+        self.assertEqual([len(p["messages"]) for p in pages], [50, 25])
+        self.assertEqual([x["ref"] for x in out], ["m%d" % i for i in ids])
+
+    def test_exactly_one_full_page_ends_with_more_false(self):
+        f = Fixture()
+        for i in range(50):
+            f.add(10, timedelta(minutes=60 - i))
+        pages, out = self.walk(f)
+        self.assertEqual(([len(p["messages"]) for p in pages], pages[0]["more"], len(out)), ([50], False, 50))
+
+    def test_a_message_in_two_conversations_is_one_row(self):
+        f = Fixture()
+        f.add(10, H, guid="dup", also=12)
+        pages, out = self.walk(f)
+        self.assertEqual((len(out), out[0]["chat"]), (1, "c10"))
+
+    def test_empty_window_and_unreadable_source(self):
+        f = Fixture()
+        pages, out = self.walk(f)
+        self.assertEqual((out, pages[0]["more"], pages[0]["cursor"]), ([], False, None))
+        bad = m.page(24, db="/nonexistent/chat.db", now=NOW)
+        self.assertEqual((bad["health"], bad["messages"], bad["more"], bad["cursor"]), ("DISCONNECTED", None, None, None))
+
+    def test_only_bounded_integer_cursors_are_accepted(self):
+        ok = lambda args: m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "imessage_page", "arguments": args}},
+                                   ops={"imessage_page": lambda a: {"health": "CURRENT"}})
+        self.assertIn("result", ok({"hours": 10}))
+        self.assertIn("result", ok({"after_date": 812345678901234567, "after_rowid": 286135}))
+        for args in ({}, {"hours": 0}, {"hours": 73}, {"after_date": 1}, {"after_rowid": 1}, {"after_date": 0, "after_rowid": 1}, {"after_date": 1, "after_rowid": 0},
+                     {"after_date": 10 ** 19, "after_rowid": 1}, {"after_date": 1, "after_rowid": 2 ** 31}, {"after_date": "1", "after_rowid": 1},
+                     {"hours": 1, "after_date": 1, "after_rowid": 1}, {"after_date": 1, "after_rowid": 1, "query": "x"}):
+            self.assertEqual(ok(args)["error"]["code"], -32602, args)

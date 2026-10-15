@@ -23,7 +23,7 @@ SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 OPENCLAW_APP="/Applications/OpenClaw.app"
 FDA="kTCCServiceSystemPolicyAllFiles"
 # sha256 of the three source files at the published commit (a test keeps these in step with the repository)
-SHA_TOOL="6d1070c421d8ad6691f47173877cf8b6898b9ceec467f188116635c98f4bb9e3"
+SHA_TOOL="24d0cbda96975136cab6a0b6b709c48c20b01c13998824fc25f6c6f766a69498"
 SHA_LAUNCHER="cc275afab87d5f1d817055641ca04985bbe1c4e3ae2ad54f49a9ca8954b4005c"
 SHA_PLIST="6e22bffc15943491fdf547a8e6e06cc55bc18c356e6fad159fd78036907cadd0"
 
@@ -95,7 +95,7 @@ try:
     check("caller paths and SQL are refused", codes.get(4) == codes.get(5) == -32602)
     check("unknown methods are refused", codes.get(6) == -32601)
     tools = [t["name"] for x in replies if x["id"] == 7 for t in x["result"]["tools"]]
-    check("exactly the approved read-only tools are offered", tools == ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation"])
+    check("exactly the approved read-only tools are offered", tools == ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation", "imessage_page"])
     state = {k: st.get(k) for k in ("attention", "count", "count_reliable", "health", "sync", "observed_at")}
 except Exception as e:
     check("helper reachable over the launchd socket", False)
