@@ -33,6 +33,7 @@ export class Attention {
 
   absolute(c) {                                   // history sync / upsert: absolute values
     if (isOwnOrService(c.id)) return;
+    if (c.name && !c.id.endsWith("@g.us")) this.contact({ id: c.id, name: c.name });   // a one-to-one chat carries the saved contact name
     const s = this.chat(c.id);
     if (typeof c.unreadCount === "number") { s.unread = Math.max(c.unreadCount, 0); s.marked = c.unreadCount < 0; }
     this.flags(s, c);
@@ -55,9 +56,10 @@ export class Attention {
     if (c.muteEndTime !== undefined) s.muteEnd = Number(c.muteEndTime || 0);
   }
 
-  contact(c) {
+  contact(c) {                                    // a contact may be known by its phone id, its LID or both: file the name under each
     const name = (c.name || c.verifiedName || c.notify || "").replace(/\s+/g, " ").trim();
-    if (c.id && name) this.names.set(c.id, name.slice(0, MAX_NAME));
+    if (!name) return;
+    for (const id of [c.id, c.lid, c.phoneNumber]) if (id) this.names.set(id, name.slice(0, MAX_NAME));
   }
 
   message(m) {                                    // newest message from another person, by the sender's own timestamp
@@ -67,9 +69,9 @@ export class Attention {
     if (!kinds.some((k) => PERSON_KINDS.has(k))) return;
     const ts = Number(m.messageTimestamp || 0);
     if (!ts || (this.latest && ts <= this.latest.ts)) return;
-    const sender = key.participant || key.remoteJid;
+    const ids = [key.participantAlt, key.participant, key.remoteJidAlt, key.remoteJid].filter(Boolean);   // newer WhatsApp: LID and phone id
     const push = (m.pushName || "").replace(/\s+/g, " ").trim().slice(0, MAX_NAME);
-    this.latest = { sender, ts, push };
+    this.latest = { ids: key.participant ? ids.filter((i) => !i.endsWith("@g.us")) : ids, ts, push };
   }
 
   snapshot(now = Date.now()) {
@@ -86,7 +88,7 @@ export class Attention {
     Object.assign(out, { chats_known: open.length, unread_messages: open.reduce((n, s) => n + s.unread, 0), unread_messages_unmuted: loud.reduce((n, s) => n + s.unread, 0),
       unread_chats: open.filter(unreadChat).length, unread_chats_unmuted: loud.filter(unreadChat).length });
     if (!this.latest) out.latest_state = this.restored ? "UNAVAILABLE" : "NONE";
-    else Object.assign(out, { latest_state: "PRESENT", latest_name: this.names.get(this.latest.sender) || this.latest.push || "Unknown contact",
+    else Object.assign(out, { latest_state: "PRESENT", latest_name: this.latest.ids.map((i) => this.names.get(i)).find(Boolean) || this.latest.push || "Unknown contact",
       latest_at: new Date(this.latest.ts * 1000).toISOString().replace(/\.\d+Z$/, "Z") });
     return out;
   }

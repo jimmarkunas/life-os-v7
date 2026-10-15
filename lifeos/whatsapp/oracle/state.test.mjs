@@ -5,7 +5,7 @@ import { Attention } from "./state.mjs";
 
 const NOW = Date.parse("2026-10-15T18:00:00Z");
 const ready = (a) => { a.linked = true; a.connection = "open"; a.synced = true; return a; };
-const msg = (jid, ts, opts = {}) => ({ key: { remoteJid: jid, fromMe: !!opts.fromMe, participant: opts.participant }, messageTimestamp: ts,
+const msg = (jid, ts, opts = {}) => ({ key: { remoteJid: jid, fromMe: !!opts.fromMe, participant: opts.participant, remoteJidAlt: opts.alt }, messageTimestamp: ts,
   pushName: opts.push || "", message: opts.kind === null ? {} : { [opts.kind || "conversation"]: "x" } });
 
 test("history gives absolute counts; updates increment, reset, mark and clear", () => {
@@ -64,6 +64,16 @@ test("not linked, disconnected or unsynced is never a count; a restart keeps cou
   const b = ready(new Attention((j) => j, a.saved()));
   const r = b.snapshot(NOW);
   assert.deepEqual([r.unread_messages, r.latest_state, r.latest_name], [2, "UNAVAILABLE", null]);
+});
+
+test("a sender known by an internal id is named through the phone id, a contact's other id or the chat's saved name", () => {
+  const a = ready(new Attention());
+  a.contact({ id: "contact-1", lid: "internal-1", name: "Dana Example" });
+  a.message(msg("internal-1", 100));
+  assert.equal(a.snapshot(NOW).latest_name, "Dana Example");
+  a.absolute({ id: "contact-2", name: "Eve Example", unreadCount: 0 });
+  a.message(msg("internal-2", 200, { alt: "contact-2" }));
+  assert.equal(a.snapshot(NOW).latest_name, "Eve Example");
 });
 
 test("chat ids can be stored hashed", () => {
