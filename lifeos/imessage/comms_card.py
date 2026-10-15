@@ -30,14 +30,15 @@ TZ = ZoneInfo("America/Chicago")
 TITLE = router.COMMS_REGION
 MODULE = router.OWNERS[TITLE]
 PORT = 47341
-SCHEMA = "lifeos.imessage.comms.v2"
+SCHEMA = "lifeos.imessage.comms.v3"
 TG_COUNTS = ("chats_main", "unread_messages", "unread_messages_unmuted", "unread_chats", "unread_chats_unmuted")
 TG_KEYS = {"health", "auth", "error", "observed_at", "latest_state", "latest", *TG_COUNTS}
 MAX_REPLY = 8192
 WAIT = 100                                                             # seconds: the endpoint may spend up to 90 (Telegram start-up included)
 REPLY_TTL_SECONDS = 600                                               # seconds: an older observation is refused, never shown as current
-LAUNCHES = {"messages": "/launch/messages/", "telegram": "/launch/telegram/"}
-LABELS = {"messages": "Messages", "telegram": "Telegram"}
+LAUNCHES = {"messages": "/launch/messages/", "telegram": "/launch/telegram/", "whatsapp": "/launch/whatsapp/"}
+LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"}
+CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
@@ -54,7 +55,7 @@ def _fail(code):
 def fetch(host, key, port=PORT):
     data = b""
     with socket.create_connection((host, port), timeout=WAIT) as s:
-        s.sendall(b"comms2 " + key.hex().encode() + b"\n")
+        s.sendall(b"comms3 " + key.hex().encode() + b"\n")
         while len(data) <= MAX_REPLY:
             chunk = s.recv(MAX_REPLY + 1 - len(data))
             if not chunk:
@@ -89,48 +90,57 @@ def _count(n):
     return n is None or (type(n) is int and n >= 0)
 
 
+def _block_ok(b):
+    return (isinstance(b, dict) and set(b) == TG_KEYS and b["health"] in ("CURRENT", "DEGRADED", "UNAVAILABLE") and b["latest_state"] in STATES
+            and all(_count(b[k]) for k in TG_COUNTS) and (b["latest_state"] == "PRESENT") == isinstance(b["latest"], dict)
+            and (b["health"] == "CURRENT" or (b["latest_state"] == "UNAVAILABLE" and all(b[k] is None for k in TG_COUNTS))))
+
+
 def validate(raw, key, now):
-    """-> {"messages": (count, state, name), "telegram": (count, state, name)}, plus the Telegram detail for the log. Anything off-contract, stale or
-    tampered raises; it is never partly used."""
+    """-> ({"messages" | "telegram" | "whatsapp": (count, state, name)}, {channel: detail for the log}). Anything off-contract, stale or tampered raises;
+    it is never partly used."""
     if not raw or len(raw) > MAX_REPLY:
         raise _fail("COMMS_UNREACHABLE")
     try:
         p = json.loads(raw)
         seen = datetime.fromisoformat(p["observed_at"].replace("Z", "+00:00"))
-        tg = p["telegram"]
     except (ValueError, TypeError, KeyError, AttributeError):
         raise _fail("COMMS_OFF_CONTRACT") from None
     unread, state = p.get("unread_7d"), p.get("latest_state")
-    if (set(p) != {"schema", "observed_at", "health", "unread_7d", "latest_state", "latest", "telegram"} or p["schema"] != SCHEMA
+    if (set(p) != {"schema", "observed_at", "health", "unread_7d", "latest_state", "latest", *CHANNEL_BLOCKS} or p["schema"] != SCHEMA
             or p["health"] not in ("CURRENT", "DEGRADED") or state not in STATES or not _count(unread)
-            or (state == "PRESENT") != isinstance(p["latest"], dict)
-            or not isinstance(tg, dict) or set(tg) != TG_KEYS or tg["health"] not in ("CURRENT", "DEGRADED", "UNAVAILABLE")
-            or tg["latest_state"] not in STATES or not all(_count(tg[k]) for k in TG_COUNTS)
-            or (tg["latest_state"] == "PRESENT") != isinstance(tg["latest"], dict)
-            or (tg["health"] != "CURRENT" and (tg["latest_state"] != "UNAVAILABLE" or any(tg[k] is not None for k in TG_COUNTS)))):
+            or (state == "PRESENT") != isinstance(p["latest"], dict) or not all(_block_ok(p[c]) for c in CHANNEL_BLOCKS)):
         raise _fail("COMMS_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("COMMS_STALE")
-    messages = (unread, state, unscramble(key, p["latest"]) if state == "PRESENT" else None)
-    telegram = (tg["unread_messages_unmuted"], tg["latest_state"], unscramble(key, tg["latest"]) if tg["latest_state"] == "PRESENT" else None)
-    detail = {k: tg[k] for k in ("health", "auth", "error", *TG_COUNTS)}
-    return {"messages": messages, "telegram": telegram}, detail
+    rows = {"messages": (unread, state, unscramble(key, p["latest"]) if state == "PRESENT" else None)}
+    detail = {}
+    for c in CHANNEL_BLOCKS:
+        b = p[c]
+        rows[c] = (b["unread_messages_unmuted"], b["latest_state"], unscramble(key, b["latest"]) if b["latest_state"] == "PRESENT" else None)
+        detail[c] = {k: b[k] for k in ("health", "auth", "error", *TG_COUNTS)}
+    return rows, detail
 
 
-NONE_LINE = {"messages": "Latest: none in 3 days", "telegram": "Latest: none"}
+NONE_LINE = {"messages": "Latest: none in 3 days", "telegram": "Latest: none", "whatsapp": "Latest: none"}
+
+
+KEEP_LAST = ("whatsapp",)   # a CURRENT WhatsApp source that has seen no message since it restarted keeps Notion's last name (names are never on disk)
 
 
 def render(rows, now):
-    """{channel: (count, state, name)} -> ({channel: (link text, latest line)}, heading text)."""
+    """{channel: (count, state, name)} -> ({channel: (link text, latest line or None = keep the line already in Notion)}, heading text)."""
     out = {}
     for channel, (n, state, name) in rows.items():
         count = "—" if n is None else ("99+" if n > 99 else str(n))
         latest = {"PRESENT": f"Latest: {name}", "NONE": NONE_LINE[channel]}.get(state, "Latest: unavailable")
+        if channel in KEEP_LAST and n is not None and state == "UNAVAILABLE":
+            latest = None
         out[channel] = (f"{LABELS[channel]} ({count})", latest)
     return out, f"{TITLE} (Updated {now.astimezone(TZ).strftime('%-I:%M %p')} CT)"
 
 
-UNAVAILABLE = {"messages": (None, "UNAVAILABLE", None), "telegram": (None, "UNAVAILABLE", None)}
+UNAVAILABLE = {c: (None, "UNAVAILABLE", None) for c in ("messages", *CHANNEL_BLOCKS)}
 
 
 def _children(client, block_id):
@@ -217,7 +227,10 @@ def write(client, heading, rows, lines, heading_text):
         items = [_sendable(i) for i in before]
         items[at]["text"]["content"] = link_text
         _patch_text(client, row, items)
-        _patch_text(client, latest_block, rich_text(latest_line))
+        if latest_line is None:
+            latest_line = report_region.plain(latest_block)
+        else:
+            _patch_text(client, latest_block, rich_text(latest_line))
         expect = _plain(before)
         expect[at] = link_text
         expected[channel] = (expect, latest_line)
@@ -245,7 +258,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     except OSError:
         raw = b""
     now = now or datetime.now(timezone.utc)
-    detail = {"health": "UNAVAILABLE", "auth": None, "error": None, **{k: None for k in TG_COUNTS}}
+    detail = {c: {"health": "UNAVAILABLE", "auth": None, "error": None, **{k: None for k in TG_COUNTS}} for c in CHANNEL_BLOCKS}
     try:
         rows, detail = validate(raw, key, now)
     except CommsError as e:                                    # a source we cannot trust is shown as unavailable, with this run's time
@@ -254,8 +267,9 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, k
     lines, heading_text = render(rows, now)
     client = client or _writer(environ)
     heading, blocks = locate(client, anchor)
-    counts = {"unread_7d": rows["messages"][0], "latest": rows["messages"][1].lower(), "telegram_latest": rows["telegram"][1].lower(),
-              **{"telegram_" + k: v for k, v in detail.items()}, "written": 0}
+    counts = {"unread_7d": rows["messages"][0], "latest": rows["messages"][1].lower(),
+              **{f"{c}_latest": rows[c][1].lower() for c in CHANNEL_BLOCKS},
+              **{f"{c}_{k}": v for c in CHANNEL_BLOCKS for k, v in detail[c].items()}, "written": 0}
     if not live:
         return counts
     protected_ids = {region: (environ.get(var) or "").strip() for var, region in PROTECTED}

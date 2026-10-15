@@ -1,0 +1,8 @@
+{
+  "name": "lifeos-whatsapp-attention",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "baileys": "7.0.0-rc14"
+  }
+}
