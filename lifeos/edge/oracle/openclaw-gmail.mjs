@@ -20,7 +20,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CliError, checkApproval, consumeApproval, writeApproval } from "/home/ubuntu/.local/bin/openclaw-jira.mjs";
+import { CliError, checkApproval, consumeApproval, writeApproval } from "./openclaw-jira.mjs";   // installed side by side in ~/.local/bin
 
 export { CliError };
 const API_ORIGIN = "https://gmail.googleapis.com";
@@ -495,7 +495,9 @@ export async function run(argv, deps = {}) {
     const built = await buildMessage(call, spec);
     const body = { message: { raw: built.raw, ...(built.threadId ? { threadId: built.threadId } : {}) } };
     const d = await call("POST", `${BASE}/drafts`, { body });
-    return { ok: true, drafted: true, draftId: d.id ?? null, note: "Draft only. Nothing was sent." };
+    // The ChatGPT handoff finds this exact draft by these ids (its connector lists drafts but cannot fetch one by draft id).
+    return { ok: true, drafted: true, draftId: d.id ?? null, messageId: d.message?.id ?? null, threadId: d.message?.threadId ?? built.threadId ?? null,
+      note: "Draft only. Nothing was sent." };
   }
   if (sub === "send") {
     const spec = parseCompose(rest);
