@@ -90,9 +90,25 @@ class RepairTests(unittest.TestCase):
         facts = repair.run(0, True, ENV, t)
         self.assertEqual((facts["validate"], facts["rest_of_page_unchanged"]), ("OK", False))
 
-    def test_a_paragraph_restored_to_the_wrong_place_is_put_back_and_nothing_else_changes(self):
+    def test_notion_restores_a_block_at_the_end_of_its_column_so_the_rest_is_finished_and_one_move_is_asked_for(self):
         t = broken()
         t.restore_at = len(t.kids["right"])
+        with self.assertRaises(HiringError) as error:
+            repair.run(0, True, ENV, t)
+        self.assertEqual(str(error.exception), "HIRING_REPAIR_AWAITING_MOVE")
+        self.assertFalse(t.blocks[STATUS].get("in_trash"))                                                       # the ORIGINAL paragraph is back under its pinned id
+        self.assertEqual(t.kids["right"][-1], STATUS)
+        self.assertTrue(t.blocks["stray"]["in_trash"])
+        self.assertEqual(R.cells_of(t.blocks[f"{TABLE}-s"])[3], "Opportunity Page ↗")
+        t.kids["right"].remove(STATUS)                                                                           # the one human step: drag it under the heading
+        t.kids["right"].insert(t.kids["right"].index(HEADING) + 1, STATUS)
+        t.log.clear()
+        facts = repair.run(0, True, ENV, t)
+        self.assertEqual((facts["validate"], writes(t)), ("OK", []))                                             # nothing left to write; the publisher's own validation passes
+
+    def test_a_paragraph_restored_anywhere_else_is_put_back_and_nothing_else_changes(self):
+        t = broken()
+        t.restore_at = len(t.kids["right"]) - 2
         with self.assertRaises(HiringError) as error:
             repair.run(0, True, ENV, t)
         self.assertEqual(str(error.exception), "HIRING_REPAIR_STATUS_MISPLACED")

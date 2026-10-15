@@ -100,8 +100,10 @@ def run(limit, live, environ=os.environ, client=None):
             where = [i for i, b in enumerate(landed) if R.same_id(b["id"], status_id)]       # where Notion put it, as offsets only: never an id
             top = [i for i, b in enumerate(landed) if R.same_id(b["id"], o["ids"]["CARD"])]
             print("hiring-repair: restored status landed", json.dumps({"found": bool(where), "from_heading": (where[0] - top[0]) if where and top else None, "is_last": bool(where) and where[0] == len(landed) - 1, "siblings": len(landed)}, sort_keys=True))
-            client.call("PATCH", f"/blocks/{status_id}", {"in_trash": True})               # restored somewhere else: put it back exactly as it was and stop
-            raise fail("REPAIR_STATUS_MISPLACED")
+            if not (where and where[0] == len(landed) - 1):
+                client.call("PATCH", f"/blocks/{status_id}", {"in_trash": True})           # restored somewhere unexpected: put it back exactly as it was and stop
+                raise fail("REPAIR_STATUS_MISPLACED")
+            facts["awaiting_move"] = True                                                  # Notion appends a restored block to the end of its column and the API cannot move a block: keep the original id, finish the rest, and ask for one drag
     if o["stray"]:
         client.call("PATCH", f"/blocks/{o['stray']['id']}", {"in_trash": True})
     if facts["cells_to_fix"]:
@@ -109,6 +111,9 @@ def run(limit, live, environ=os.environ, client=None):
         cells = row["table_row"]["cells"]
         url = next(p["text"]["link"]["url"] for p in cells[3] if (p.get("text") or {}).get("link"))
         client.call("PATCH", f"/blocks/{row['id']}", {"table_row": {"cells": [_safe(c) for c in cells[:3]] + [R.cell_blocks([(M.NOTES_LABEL, url)])[0]]}})
+    if facts.get("awaiting_move"):
+        print("hiring-repair: stray table removed, Notes cell fixed, original status paragraph restored at the end of its column; move it between the heading and the table")
+        raise fail("REPAIR_AWAITING_MOVE")
     card.validate(client, environ)                                                          # the publisher's own strict shape, pinned-id and whole-page proof
     after = R.page_digest(client, page, own, fail, card.SKIP)
     facts["validate"], facts["rest_of_page_unchanged"] = "OK", _rest(before, own) == _rest(after, own)
