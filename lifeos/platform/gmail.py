@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 import json
 import os
+import random
 import re
 import time
 import urllib.error
@@ -16,6 +17,8 @@ MAX_LIST_PAGES = 100
 
 
 RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError"}
+RATE_LIMITED = {"rateLimitExceeded", "userRateLimitExceeded"}       # per-user quota shared by every hourly job reading the same mailbox
+TRIES, LIMITED_TRIES = 4, 6                                         # rate limits wait 2+4+8+16+32 s (+jitter) before giving up; other errors 2+4+8 s
 
 
 class GmailError(RuntimeError):
@@ -54,16 +57,17 @@ class Gmail:
         if auth:
             headers["Authorization"] = "Bearer " + self._access_token()
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
-        for attempt in range(4):
+        for attempt in range(LIMITED_TRIES):
             try:
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     raw = response.read()
                 return json.loads(raw) if raw else {}
             except urllib.error.HTTPError as error:
                 reason = _reason(error)
-                transient = error.code in (429, 500, 502, 503, 504) or reason in RATE_REASONS
-                if transient and attempt < 3:
-                    time.sleep(2 ** (attempt + 1))
+                limited = error.code == 429 or reason in RATE_LIMITED
+                transient = limited or error.code in (500, 502, 503, 504) or reason in RATE_REASONS
+                if transient and attempt < (LIMITED_TRIES if limited else TRIES) - 1:
+                    time.sleep(2 ** (attempt + 1) + (random.uniform(0, 1) if limited else 0))     # jitter so parallel jobs do not retry in step
                     continue
                 # only a short enumerated reason code is surfaced; bodies never reach logs
                 raise GmailError(f"{method} {url.split('?')[0].split('/messages')[0]} -> HTTP {error.code} {reason}") from None
