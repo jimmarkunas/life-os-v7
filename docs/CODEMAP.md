@@ -31,6 +31,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
+- `imessage-alerts` -> `lifeos.imessage.stage:run`
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
@@ -111,8 +112,10 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
 - `lifeos/hiring/snapshot.py`: The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back).
 ### lifeos/imessage/
-- `lifeos/imessage/attention_mcp.py`: COMM-1.4: the one read-only iMessage attention tool, served over MCP stdio on the Mac Mini through the signed launchd helper in `mac/` (local proof only).
-- `lifeos/imessage/openclaw_imessage.py`: COMM-1.4: Luna's one iMessage command on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly `openclaw-imessage attention`.
+- `lifeos/imessage/alerts_endpoint.py`: COMM-1.4b: the private, read-only iMessage alert-METADATA endpoint on Oracle (Jim's approval, LIFE-31, Oct 13 2026).
+- `lifeos/imessage/attention_mcp.py`: COMM-1.4: the read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the one process with Full Disk Access).
+- `lifeos/imessage/openclaw_imessage.py`: COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:
+- `lifeos/imessage/stage.py`: COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31; Jim's approval of Oct 13, 2026).
 ### lifeos/interview/
 - `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
@@ -278,7 +281,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID

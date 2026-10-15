@@ -1,0 +1,13 @@
+# COMM-1.4b: the alert-metadata endpoint's loopback listener. Only Oracle's Tailscale Serve forwards to it (PROXY v2); nothing listens on a tailnet or public
+# address, and no process runs between connections.
+[Unit]
+Description=LIFE OS iMessage alert metadata (loopback; Tailscale Serve only)
+
+[Socket]
+ListenStream=127.0.0.1:47342
+Accept=yes
+MaxConnections=4
+MaxConnectionsPerSource=4
+
+[Install]
+WantedBy=sockets.target
