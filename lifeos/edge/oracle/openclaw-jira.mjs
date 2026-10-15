@@ -7,10 +7,12 @@
 //   read  : whoami | projects | get KEY | transitions KEY | search JQL [--max N]
 //   write : create | update | comment | transition      (each needs a single-use human approval)
 //   admin : approve <write-subcommand ...>               (NOT in the Gateway exec allowlist)
+//   chat  : propose update KEY --due DATE [--demo --demo-current DATE] | confirm CODE | reject CODE
+//           (Jim approves in Telegram: see "chat approval" below; the code is never shown to the assistant)
 //
 // Never implemented: delete, bulk, sprint/board changes, assignee/permission/admin, arbitrary URLs.
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -351,6 +353,140 @@ function audit(entry) {
   }
 }
 
+
+// ---- chat approval (Telegram buttons -> the same single-use permit) ------------------------------
+// propose: reads the issue's CURRENT value, records a pending proposal bound to the exact operation, that baseline, a payload version and a
+// 10-minute expiry, and sends Jim's private Telegram chat (the single allowlisted id) a preview with Approve / Reject buttons. The buttons
+// carry a random one-time code; only its sha256 is stored and the code is never printed, so the assistant cannot approve on its own.
+// confirm/reject: the code arrives back only from Jim's tap (OpenClaw passes `callback_data: ...` from authorized senders). The proposal is
+// claimed (renamed) BEFORE anything else, so a code works once; expired, unknown, tampered or already-used codes do nothing. confirm re-reads
+// the issue and refuses if the value changed since the preview, then mints the existing permit (1 minute), writes through the same update
+// path, reads the value back and tells Jim the verified result itself.
+export const PROPOSAL_DIR = path.join(APPROVAL_DIR, "proposals");
+export const PROPOSAL_TTL_MIN = 10;
+export const PAYLOAD_VERSION = 1;
+const CODE_RE = /^[A-Z2-9]{10}$/;
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const OPENCLAW_BIN = path.join(os.homedir(), ".openclaw/tools/node/bin/openclaw");
+const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw/openclaw.json");
+
+export function newCode(bytes = randomBytes(10)) {
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+}
+
+const codeHash = (code) => createHash("sha256").update("lifeos-chat-approval:" + code).digest("hex");
+
+function telegramOwner(configPath = OPENCLAW_CONFIG) {
+  const allow = ((JSON.parse(fs.readFileSync(configPath, "utf8")).channels || {}).telegram || {}).allowFrom || [];
+  return allow.length === 1 && /^\d{5,15}$/.test(String(allow[0])) ? String(allow[0]) : null;
+}
+
+export function telegramNotify(text, buttons = null) {
+  // Jim's private chat with the LIFE OS bot, through the existing OpenClaw channel. Never throws: delivery failure never authorizes anything.
+  try {
+    const to = telegramOwner();
+    if (!to) return false;
+    const args = ["message", "send", "--channel", "telegram", "--target", to, "-m", text];
+    if (buttons) args.push("--presentation", JSON.stringify({ blocks: [{ type: "buttons", buttons }] }));
+    const env = { ...process.env, PATH: `${path.dirname(OPENCLAW_BIN)}:${process.env.PATH || "/usr/bin:/bin"}` };
+    return spawnSync(OPENCLAW_BIN, args, { env, timeout: 90000, stdio: "ignore" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const ctDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "none");
+const ctTime = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" }) + " CT";
+
+export function parseProposal(tokens) {
+  if (tokens[0] !== "update") throw new CliError("USAGE", "propose supports: update KEY --due YYYY-MM-DD [--demo --demo-current YYYY-MM-DD]");
+  const key = requireKey(tokens[1]);
+  const flags = {};
+  for (let i = 2; i < tokens.length; i += 1) {
+    const t = tokens[i];
+    if (t === "--demo") flags.demo = true;
+    else if ((t === "--due" || t === "--demo-current") && DATE_RE.test(tokens[i + 1] || "")) flags[t.slice(2)] = tokens[++i];
+    else throw new CliError("USAGE", "propose supports: update KEY --due YYYY-MM-DD [--demo --demo-current YYYY-MM-DD]");
+  }
+  if (!flags.due || Boolean(flags.demo) !== Boolean(flags["demo-current"])) throw new CliError("USAGE", "--due is required; --demo needs --demo-current");
+  return { op: parseWrite("update", [key, "--due", flags.due]), demo: Boolean(flags.demo), demoCurrent: flags["demo-current"] || null };
+}
+
+export async function propose(tokens, { call, dir = PROPOSAL_DIR, now = Date.now(), notify = telegramNotify, code = newCode() } = {}) {
+  const { op, demo, demoCurrent } = parseProposal(tokens);
+  const current = demo ? demoCurrent : (await readIssue(call, op.key, false)).due;
+  if (current === op.fields.duedate) throw new CliError("NO_CHANGE", "the proposed due date equals the current one");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const rec = { version: PAYLOAD_VERSION, op, opHash: opHash(op), baseline: { duedate: current ?? null }, demo,
+    createdAt: new Date(now).toISOString(), expiresAt: new Date(now + PROPOSAL_TTL_MIN * 60000).toISOString() };
+  fs.writeFileSync(path.join(dir, `${codeHash(code)}.json`), JSON.stringify(rec), { mode: 0o600, flag: "wx" });
+  const lines = [
+    `🟡 LIFE OS · approval needed${demo ? " (SYNTHETIC DEMO: approving changes nothing)" : ""}`,
+    `Jira ${op.key}: change due date`,
+    `Current: ${ctDate(current)}`,
+    `Proposed: ${ctDate(op.fields.duedate)}`,
+    `Expires ${ctTime(now + PROPOSAL_TTL_MIN * 60000)} · works once`,
+    `${SITE}/browse/${op.key}`,
+  ];
+  const sent = notify(lines.join("\n"), [
+    { label: "Approve", action: { type: "callback", value: `lifeos-approve:${code}` }, style: "success" },
+    { label: "Reject", action: { type: "callback", value: `lifeos-reject:${code}` }, style: "danger" },
+  ]);
+  return { ok: true, proposed: true, delivered: sent, demo, key: op.key, field: "duedate", from: current ?? null, to: op.fields.duedate, expiresAt: rec.expiresAt };
+}
+
+export function claimProposal(code, { dir = PROPOSAL_DIR, now = Date.now(), as = "claimed" } = {}) {
+  // Single use: the proposal file is renamed before it is read or acted on; a second claim of the same code finds nothing.
+  if (!CODE_RE.test(String(code || ""))) throw new CliError("NOT_FOUND", "no pending proposal for that code");
+  const file = path.join(dir, `${codeHash(code)}.json`);
+  const claimed = file.replace(/\.json$/, `.${as}.${now}.json`);
+  try {
+    fs.renameSync(file, claimed);
+  } catch {
+    throw new CliError("NOT_FOUND", "no pending proposal for that code (unknown, already used or rejected)");
+  }
+  const st = fs.statSync(claimed);
+  if (!st.isFile() || st.uid !== process.getuid() || (st.mode & 0o077) !== 0) throw new CliError("TAMPERED", "proposal file has unsafe ownership or permissions");
+  const rec = JSON.parse(fs.readFileSync(claimed, "utf8"));
+  if (rec.version !== PAYLOAD_VERSION || opHash(rec.op) !== rec.opHash || rec.op.action !== "update" || !KEY_RE.test(rec.op.key)) {
+    throw new CliError("TAMPERED", "proposal does not match its payload version or operation");
+  }
+  if (!(Date.parse(rec.expiresAt) > now)) throw new CliError("EXPIRED", "the approval window has closed; ask for a fresh proposal");
+  return rec;
+}
+
+export async function confirm(code, { call, dir = PROPOSAL_DIR, approvalDir = APPROVAL_DIR, now = Date.now(), notify = telegramNotify } = {}) {
+  let rec;
+  try {
+    rec = claimProposal(code, { dir, now });
+    if (rec.demo) {
+      notify(`✅ Approved (synthetic demo): ${rec.op.key} due ${ctDate(rec.baseline.duedate)} → ${ctDate(rec.op.fields.duedate)}. Nothing was changed in Jira.`);
+      return { ok: true, demo: true, executed: false, key: rec.op.key };
+    }
+    const current = (await readIssue(call, rec.op.key, false)).due ?? null;
+    if (current !== rec.baseline.duedate) throw new CliError("BASELINE_CHANGED", "the issue changed since the preview; ask for a fresh proposal");
+    writeApproval(rec.op, { dir: approvalDir, ttlMin: 1, by: "jim-telegram", now });
+    const gate = checkApproval(rec.op, { dir: approvalDir, now });
+    if (!gate.ok) throw new CliError("APPROVAL_REQUIRED", gate.reason);
+    consumeApproval(gate.file, now);
+    const result = await execWrite(call, rec.op);
+    if (result.issue?.due !== rec.op.fields.duedate) throw new CliError("READBACK_MISMATCH", "Jira did not read back the approved due date");
+    notify(`✅ Done: ${rec.op.key} due date is now ${ctDate(result.issue.due)} (read back from Jira).\n${SITE}/browse/${rec.op.key}`);
+    return { ok: true, executed: true, key: rec.op.key, due: result.issue.due, opHash: rec.opHash };
+  } catch (e) {
+    const what = rec ? `${rec.op.key} due date` : "the request";
+    if (e instanceof CliError) notify(`❌ Not applied: ${what}. ${e.detail}`);
+    else notify(`❌ Failed: ${what}. Jira was not confirmed as changed.`);
+    throw e instanceof CliError ? e : new CliError("WRITE_FAILED", "the Jira write did not complete", 1);
+  }
+}
+
+export function reject(code, { dir = PROPOSAL_DIR, now = Date.now(), notify = telegramNotify } = {}) {
+  const rec = claimProposal(code, { dir, now, as: "rejected" });
+  notify(`Rejected: ${rec.op.key} due date stays ${ctDate(rec.baseline.duedate)}. Nothing was changed.`);
+  return { ok: true, rejected: true, key: rec.op.key };
+}
+
 // ---- operations -------------------------------------------------------------------------------
 async function readIssue(call, key, full = true) {
   const issue = await call("GET", `/rest/api/3/issue/${key}`, { query: { fields: ISSUE_FIELDS } });
@@ -455,6 +591,12 @@ export async function run(argv, deps = {}) {
     const result = await execWrite(connect(), op);
     return { ok: true, approvedBy: gate.rec.approvedBy, opHash: gate.hash, ...result };
   }
+  const lazyCall = (...a) => connect()(...a);                                   // a demo proposal never touches Jira or its credentials
+  if (sub === "propose") return propose(rest, { call: lazyCall, dir: deps.proposalDir, now, notify: deps.notify });
+  if (sub === "confirm" && rest.length === 1) {
+    return confirm(rest[0], { call: lazyCall, dir: deps.proposalDir, approvalDir, now, notify: deps.notify });
+  }
+  if (sub === "reject" && rest.length === 1) return reject(rest[0], { dir: deps.proposalDir, now, notify: deps.notify });
   if (sub === "approve") {
     // Operator-only. Not in the exec allowlist, so the assistant cannot reach it.
     const wsub = rest[0];
