@@ -481,8 +481,8 @@
   "ux_contract": {
     "canonical_spec_path": "docs/contracts/career-lifecycle.requirements.v1.json",
     "single_source_rule": "This JSON is the ONE machine-readable UI-to-backend acceptance contract. Current Notion Jobs/Interview product canons remain product authority and link here; Jira tracks delivery only. Do not create parallel specifications.",
-    "actual_notion_prototype_url": "https://app.notion.com/p/3fa3c5a0592681fb94bce9ebd20ee65d",
-    "prototype_safety": "Synthetic standalone private Notion draft; not a Job Ledger data-source row, real vacancy, or production action target; checkbox clicks affect prototype page only.",
+    "actual_notion_prototype_url": "https://app.notion.com/p/3fa3c5a05926817ca7c5dcfec637d8ee",
+    "prototype_safety": "Synthetic database row in isolated private Notion test database mirroring the production Job Ledger To Apply view's 11 visible fields; NOT a canonical Job Ledger row. Controls change only the sandbox and do not invoke production V7.",
     "screens": [
       {
         "id": "job_ledger_apply",
@@ -584,11 +584,12 @@
       "proof": "Demonstrate the widget inside the actual Notion client at its intended width, height, light/dark themes and privacy boundary before any implementation. Do not add new hosting/auth infrastructure without Jim approval."
     },
     "native_preview_acceptance": [
-      "Real editable native Notion page exists with clearly synthetic test job",
+      "Real editable native Notion DATABASE RECORD exists in private sandbox with actual To Apply-view column layout and clearly synthetic test job",
       "job facts, shortlist, action controls, application and lifecycle sections render without clipped width",
       "demo checkboxes cannot affect actual V7, LinkedIn, recruiter, hiring, or job states",
       "Jim approves layout before any production UI change",
       "actual native action selection is proven separately with read-back before turning into real operations"
-    ]
+    ],
+    "actual_notion_prototype_database_url": "https://app.notion.com/p/9b4eb9f9040a447d83b311a0572ae8c4"
   }
 }
