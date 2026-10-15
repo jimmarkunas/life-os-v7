@@ -102,6 +102,41 @@ class AgendaCardTests(unittest.TestCase):
         many_blocks, _ = card.render(saved_snapshot(many), now=NOW)
         self.assertGreater(len(many_blocks), 100)
 
+    def test_the_same_title_and_time_shows_once_as_the_richer_copy_and_next_lands_on_it(self):
+        day, tomorrow = NOW.date(), NOW.date().replace(day=9)
+        gmail = timed("gmail", "🍕 Pizza night (1/2 price)", "2026-03-08T18:30:00-05:00", "2026-03-08T21:00:00-05:00", location="Moretti's Ristorante and Pizzeria")
+        mine = timed("mine", "🍕 Pizza night (1/2 price)", "2026-03-08T18:30:00-05:00", "2026-03-08T21:00:00-05:00", location="Moretti's Ristorante and Pizzeria - 365 W Dundee Rd, Wheeling, IL 60090, USA")
+        saved = saved_snapshot([snapshot.compact(gmail, day, tomorrow), snapshot.compact(mine, day, tomorrow)])
+        before = json.dumps(saved, sort_keys=True)
+        blocks, counts = card.render(saved, now=NOW)
+        lines = [card._plain(b) for b in blocks if card._plain(b).startswith(("Next", "6:30"))]
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("Next · 6:30 PM–9:00 PM — 🍕 Pizza night") and "365 W Dundee Rd" in lines[0])
+        self.assertEqual((counts["events"], counts["merged"]), (2, 1))
+        self.assertEqual(json.dumps(saved, sort_keys=True), before)                           # display only: the stored snapshot is untouched
+        swapped, _ = card.render(saved_snapshot([snapshot.compact(mine, day, tomorrow), snapshot.compact(gmail, day, tomorrow)]), now=NOW)
+        self.assertEqual(sorted(card._plain(b) for b in blocks), sorted(card._plain(b) for b in swapped))      # the order the two arrive in does not matter
+
+    def test_a_meeting_link_outranks_a_longer_location_and_title_case_and_spacing_do_not_matter(self):
+        day, tomorrow = NOW.date(), NOW.date().replace(day=9)
+        long_place = timed("a", "Team  Sync", location="A very long location name that has no meeting link at all")
+        linked = timed("b", "team sync", hangoutLink="https://example.com/join", location="Room 1")
+        blocks, counts = card.render(saved_snapshot([snapshot.compact(long_place, day, tomorrow), snapshot.compact(linked, day, tomorrow)]), now=NOW)
+        shown = [card._plain(b) for b in blocks if "ync" in card._plain(b)]
+        self.assertEqual((len(shown), counts["merged"]), (1, 1))
+        self.assertIn("Join", shown[0])
+
+    def test_events_that_differ_in_title_time_or_day_are_never_merged(self):
+        day, tomorrow = NOW.date(), NOW.date().replace(day=9)
+        base = timed("a", "Dentist")
+        distinct = [timed("b", "Dentist cleaning"), timed("c", "Dentist", "2026-03-08T10:00:00-05:00", "2026-03-08T11:00:00-05:00"),
+                    timed("d", "Dentist", "2026-03-08T11:00:00-05:00", "2026-03-08T11:30:00-05:00"), timed("e", "Dentist", "2026-03-09T10:00:00-05:00", "2026-03-09T10:30:00-05:00")]
+        blocks, counts = card.render(saved_snapshot([snapshot.compact(e, day, tomorrow) for e in [base] + distinct]), now=NOW)
+        self.assertEqual((counts["merged"], sum("Dentist" in card._plain(b) for b in blocks)), (0, 5))
+        both_all_day = [snapshot.compact(all_day("x", "Holiday"), day, tomorrow), snapshot.compact(all_day("y", "holiday"), day, tomorrow)]
+        merged_blocks, merged_counts = card.render(saved_snapshot(both_all_day), now=NOW)
+        self.assertEqual((merged_counts["merged"], sum("Holiday" in card._plain(b) for b in merged_blocks)), (1, 1))
+
     def test_stale_changes_only_the_heading_and_never_blanks_events(self):
         event = snapshot.compact(timed("old", "Example retained"), NOW.date(), NOW.date().replace(day=9))
         fresh, _ = card.render(saved_snapshot([event]), now=NOW)
