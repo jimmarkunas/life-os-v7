@@ -1,8 +1,11 @@
 import json
 import unittest
+from datetime import date
 
 from lifeos.platform.http import Fetched
 from lifeos.sources import openjobs as oj
+
+AS_OF = date(2026, 9, 30)             # the fixtures' "today": freshness is evaluated against this, never the clock
 
 
 def event(key, title="Technical Program Manager", location="Remote - United States", published="2026-09-30T00:00:00Z", op="upsert"):
@@ -65,14 +68,14 @@ class FeedTests(unittest.TestCase):
     def test_first_run_applies_the_head_delta_and_filters(self):
         site = Site(generation(EVENTS))
         repo = MemRepo()
-        counts = oj.run(10, True, fetcher=site, repo=repo)
+        counts = oj.run(10, True, fetcher=site, repo=repo, today=AS_OF)
         self.assertEqual(repo.committed[0][1:], (["greenhouse/acme#1"], ["greenhouse/acme#9"]))
         self.assertEqual((counts["events"], counts["admit"], counts["status"]), (6, 1, "OK"))
         self.assertEqual(counts["why"], {"off_family": 1, "non_us": 1, "no_remote_evidence": 1, "stale": 1})
 
     def test_dry_run_commits_nothing(self):
         repo = MemRepo()
-        counts = oj.run(10, False, fetcher=Site(generation(EVENTS)), repo=repo)
+        counts = oj.run(10, False, fetcher=Site(generation(EVENTS)), repo=repo, today=AS_OF)
         self.assertEqual((repo.committed, counts["admit"]), ([], 1))
 
     def test_applies_every_generation_after_the_checkpoint_in_order(self):
@@ -80,7 +83,7 @@ class FeedTests(unittest.TestCase):
         g2 = generation([event("greenhouse/acme#2", title="Program Manager")], previous=g1[0]["generation"], cursor="2026-09-29")
         g3 = generation([event("greenhouse/acme#3", title="Product Manager")], previous=g2[0]["generation"])
         repo = MemRepo(checkpoint=g1[0]["generation"])
-        oj.run(10, True, fetcher=Site(g1, g2, g3), repo=repo)
+        oj.run(10, True, fetcher=Site(g1, g2, g3), repo=repo, today=AS_OF)
         self.assertEqual([c[1] for c in repo.committed], [["greenhouse/acme#2"], ["greenhouse/acme#3"]])
         self.assertEqual(repo.cp, g3[0]["generation"])
 
@@ -105,7 +108,7 @@ class FeedTests(unittest.TestCase):
         events = [event("greenhouse/a-company-with-a-very-long-board-slug#" + "9" * 12, op="remove"),
                   event("greenhouse/acme#1", title="Software Engineer"), event("greenhouse/acme#2")]
         repo = MemRepo()
-        counts = oj.run(10, True, fetcher=Site(generation(events)), repo=repo)
+        counts = oj.run(10, True, fetcher=Site(generation(events)), repo=repo, today=AS_OF)
         self.assertEqual((counts["events"], counts["removes"], counts["upserts"], counts["admit"]), (3, 1, 2, 1))
         self.assertEqual(counts["why"], {"off_family": 1})
 
@@ -125,8 +128,16 @@ class FeedTests(unittest.TestCase):
             if path == "latest.json":
                 return Fetched(url, 200, oj._canonical(header).decode())
             return Fetched(url, 200, files[path.split("/")[1]].decode())
-        admits, removes, counts = oj.process(header, fetcher)
+        admits, removes, counts = oj.process(header, fetcher, AS_OF)
         self.assertEqual([k for k, _ in admits], [f"greenhouse/acme#{i}" for i in range(40)])
+
+    def test_freshness_is_judged_at_the_as_of_date_and_the_14_day_limit_is_unchanged(self):
+        events = [event("greenhouse/acme#1", published="2026-09-16T00:00:00Z"), event("greenhouse/acme#2", published="2026-09-15T00:00:00Z")]
+        repo = MemRepo()
+        counts = oj.run(10, True, fetcher=Site(generation(events)), repo=repo, today=AS_OF)
+        self.assertEqual((repo.committed[0][1], counts["why"]), (["greenhouse/acme#1"], {"stale": 1}))
+        counts = oj.run(10, False, fetcher=Site(generation(events)), repo=MemRepo(), today=date(2026, 10, 1))
+        self.assertEqual((counts["admit"], counts["why"]), (0, {"stale": 2}))
 
     def test_company_from_slug(self):
         self.assertEqual(oj.company_from("acme-labs"), "Acme Labs")
