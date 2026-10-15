@@ -19,9 +19,6 @@
     .glyph{font-size:18px;line-height:1}
     .controls{display:flex;align-items:center;gap:9px}
     .stamp{font-size:11px;color:var(--muted);white-space:nowrap}
-    button{border:0;border-radius:5px;padding:5px 7px;color:var(--muted);background:none;font:inherit;font-size:12px;cursor:pointer}
-    button:hover{color:var(--fg);background:var(--hover)}
-    button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     .list{border-top:1px solid var(--hair)}
     .channel{display:grid;grid-template-columns:minmax(280px,66%) minmax(0,1fr);align-items:center;column-gap:13px;min-height:45px;padding:9px 5px;border-bottom:1px solid var(--hair)}
     .channel-name{display:flex;align-items:center;gap:10px;min-width:0;font-weight:600}
@@ -40,32 +37,30 @@
     footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--muted);padding:11px 5px 1px;font-size:11px}
     @media(max-width:520px){.wrap{padding:9px 6px 8px}.channel{grid-template-columns:minmax(175px,55%) minmax(0,1fr);gap:3px 8px}.stamp{display:none}footer{font-size:10px}}
     @media(max-width:380px){.ch-icon{display:none}.channel{grid-template-columns:minmax(148px,56%) minmax(0,1fr)}}
-    @media(prefers-reduced-motion:no-preference){button:active{transform:scale(.96)}}
   </style>
 </head>
 <body>
   <main class="wrap" aria-labelledby="heading">
     <header>
       <h1 id="heading"><span class="glyph" aria-hidden="true">💬</span>Communications Attention</h1>
-      <div class="controls"><span class="stamp" id="stamp">Synthetic preview</span><button id="refresh" type="button" aria-label="Refresh synthetic preview">↻ Refresh</button></div>
+      <div class="controls"><span class="stamp" id="stamp">Preview only · No live data</span></div>
     </header>
     <div class="list" id="channels" aria-live="polite"></div>
-    <footer><span role="status" id="status">SYNTHETIC DEMO · No live data connection</span><span>🔒 Private data integration not enabled</span></footer>
+    <footer><span role="status" id="status">No live data connected · App launch links available</span><span>🔒 Private data integration not enabled</span></footer>
   </main>
   <script>
     'use strict';
     // PUBLIC DESIGN DEMO ONLY. No fetch(), real identifiers, credentials, data endpoint or outbound network calls.
     // Future real data must use a separately proven authenticated private origin, not GitHub Pages.
     const CHANNELS=[
-      {id:'messages',name:'Messages',icon:'▤',unread_count:5,count_reliable:true,latest_contact:'Sample Contact A',health:'CURRENT',connection_state:'CONNECTED',native_url:'messages://'},
-      {id:'telegram',name:'Telegram',icon:'➤',unread_count:3,count_reliable:true,latest_contact:'Sample Contact B',health:'CURRENT',connection_state:'CONNECTED',native_url:'tg://'}, 
-      {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'DISCONNECTED',connection_state:'ISSUE',native_url:'whatsapp://'}, 
+      {id:'messages',name:'Messages',icon:'▤',unread_count:null,count_reliable:false,latest_contact:null,health:'UNAVAILABLE',connection_state:'UNKNOWN',native_url:'messages://'},
+      {id:'telegram',name:'Telegram',icon:'➤',unread_count:null,count_reliable:false,latest_contact:null,health:'UNAVAILABLE',connection_state:'UNKNOWN',native_url:'tg://'}, 
+      {id:'whatsapp',name:'WhatsApp',icon:'✆',unread_count:null,count_reliable:false,latest_contact:null,health:'UNAVAILABLE',connection_state:'UNKNOWN',native_url:'whatsapp://'}, 
       // Link only: Discord exposes no unread count or latest-contact source to any approved adapter.
       {id:'discord',name:'Discord',icon:'◉',link_only:true,native_url:'discord://'}
     ];
     function el(tag,cls,value){const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e}
-    let refreshCount=0;
-    function draw(isRefresh=false){
+    function draw(){
       const target=document.getElementById('channels');target.replaceChildren();
       for(const source of CHANNELS){
         const reliable=source.health==='CURRENT'&&source.count_reliable===true&&Number.isSafeInteger(source.unread_count)&&source.unread_count>=0;
@@ -99,8 +94,8 @@
         const connLabel=conn==='connected'?'Connected':conn==='issue'?'Connection issue':'Connection unverified';
         const dot=el('span','connection-dot '+conn);
         dot.setAttribute('role','img');
-        dot.setAttribute('aria-label',connLabel+' (synthetic example)');
-        dot.title=connLabel+' (synthetic example)';
+        dot.setAttribute('aria-label',connLabel+' (unverified preview)');
+        dot.title=connLabel+' (unverified preview)';
         actionGroup.append(dot);
         left.append(actionGroup);
         // Second and only other column: the newest verified incoming contact or honest unavailable. 
@@ -110,12 +105,8 @@
         latest.setAttribute('aria-label','Latest incoming contact: '+latestLabel);
         row.append(left,latest);target.append(row);
       }
-      if(isRefresh)refreshCount++;
-      const now=new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
-      document.getElementById('stamp').textContent=(isRefresh?'Preview refreshed ':'Preview loaded ')+now+(isRefresh?' · #'+refreshCount:'');
-      document.getElementById('status').textContent='SYNTHETIC DEMO · '+(isRefresh?'Refreshed; sample values are unchanged':'No live data source connected')+' · Notion-to-Mac launch needs real-client confirmation';
+      document.getElementById('status').textContent='No live data connected · App launch links available';
     }
-    document.getElementById('refresh').addEventListener('click',()=>draw(true));
     draw();
   </script>
 </body>
