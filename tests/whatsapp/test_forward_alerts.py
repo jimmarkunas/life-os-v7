@@ -49,10 +49,10 @@ class ForwardTests(unittest.TestCase):
         fa.follow("topic", "+15550100001", opener, lambda to, body: sent.append((to, body)) or True)
         self.assertEqual([b for _, b in sent], ["🔔 One", "🔔 Two"])
         self.assertEqual(fa.last_id(), "a2")
-        self.assertTrue(opener.urls[0].endswith("?since=10m"))
+        self.assertTrue(opener.urls[0].endswith("?poll=1&since=10m"))
         nxt = Stream(stream())
         fa.follow("topic", "+15550100001", nxt, lambda to, body: True)
-        self.assertTrue(nxt.urls[0].endswith("?since=a2"))
+        self.assertTrue(nxt.urls[0].endswith("?poll=1&since=a2"))
 
     def test_a_failed_send_is_not_remembered_so_it_is_retried(self):
         fa.remember("a0")

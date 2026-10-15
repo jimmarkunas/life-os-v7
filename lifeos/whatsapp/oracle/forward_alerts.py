@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -I
 """COMM-1.1 (LIFE-28, Jim's approval Oct 15 2026): copy every LIFE OS phone alert into Jim's WhatsApp self-chat, alongside ntfy.
 
+It polls ntfy every POLL seconds for messages after the last forwarded one (a long-lived stream is buffered by urllib and never yields).
 V7 already decides which events alert (Action Required / Time Critical, deduplication, quiet hours) and already redacts them to counts and fixed
 words before posting to ntfy. This always-on user service on Oracle follows the same ntfy topic and sends each alert, unchanged, to the ONE
 allowlisted WhatsApp number of OpenClaw's channel (Jim's self-chat) with `openclaw message send`. It adds no alert, decision or schedule of its own.
@@ -26,6 +27,7 @@ RESOLVER = os.path.join(HOME, ".local/bin/openclaw-bws-resolver.mjs")
 BWS_ENV = os.path.join(HOME, ".config/bws/openclaw.env")
 SECRET = "lifeos/github-actions/NTFY_TOPIC"
 MAX_TEXT = 1500
+POLL = 20
 ICON = {5: "🚨", 4: "🔔"}
 
 
@@ -92,10 +94,11 @@ def remember(message_id):
 
 
 def follow(name, to, opener=urllib.request.urlopen, sender=send):
-    """One streaming connection; returns when it ends. A failed send stops here so the next connection resumes from the last success."""
+    """One poll: every message after the last forwarded one, oldest first. A failed send stops here so the next poll retries it."""
     since = last_id() or "10m"
-    with opener(f"https://ntfy.sh/{name}/json?since={since}", timeout=120) as stream:
-        for e in events(line.decode("utf-8", "replace") for line in stream):
+    with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since}", timeout=30) as stream:
+        lines = [line.decode("utf-8", "replace") for line in stream]
+        for e in events(lines):
             if not sender(to, text(e)):
                 return
             remember(e["id"])
@@ -103,17 +106,17 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send):
 
 def main():
     os.environ["PATH"] = os.path.dirname(NODE) + ":" + os.environ.get("PATH", "/usr/bin:/bin")      # openclaw runs on this node
-    delay = 10
+    name, delay = None, POLL
     while True:
         try:
-            name, to = topic(), recipient()
+            name = name or topic()
+            to = recipient()
             if name and to:
                 follow(name, to)
-                delay = 10
-        except Exception:                                                   # network, Bitwarden or OpenClaw unavailable: wait and resume
-            pass
+                delay = POLL
+        except Exception:                                                   # network, Bitwarden or OpenClaw unavailable: back off and resume
+            name, delay = None, min(delay * 2, 300)
         time.sleep(delay)
-        delay = min(delay * 2, 300)
 
 
 if __name__ == "__main__":
