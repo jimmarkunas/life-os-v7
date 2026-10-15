@@ -586,7 +586,7 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_API_TOKEN }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run hiring --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run hiring-orphan --limit 0 $([ "$LIVE" = "true" ] && echo --live) && python -m lifeos.run hiring --limit 0 $([ "$LIVE" = "true" ] && echo --live)      # BRANCH ONLY (LIFE-47 P0 cutover): never merge this line
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
