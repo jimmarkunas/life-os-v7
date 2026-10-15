@@ -39,34 +39,40 @@ def when(start, now):
     return False, f"Upcoming {at.strftime('%b %-d')}, {clock(at)}"
 
 
-def row_cells(row, now):
-    """-> [(text, link)] x 4."""
-    stage, update, action = row["stage"], "", ""
-    if row.get("event_start"):
-        past, label = when(row["event_start"], now)
-        kind = KIND_LABEL.get(row["event_kind"], "interview")
-        if past:
-            days = (local(now).date() - local(row["event_start"]).date()).days
-            update, action = f"{kind.capitalize()} held {label}", (f"No news in {days} days · follow up?" if days >= M.AWAIT_DAYS else f"Awaiting outcome of the {kind} held {label}")
-        else:
-            update, action = f"{kind.capitalize()} {label}", f"Prepare for the {kind} · {label}"
-    elif row.get("rounds"):
-        update, action = f"{row['rounds']} round(s) logged in Notes", "Awaiting next step"
-    else:
-        waited = (local(now).date() - local(row["applied_on"]).date()).days if row.get("applied_on") else 0
-        update, action = (f"Applied {local(row['applied_on']).strftime('%b %-d')}" if row.get("applied_on") else "Application submitted"), (f"No response in {waited} days · follow up?" if waited >= M.AWAIT_DAYS else "Awaiting response")
-    outcome = row.get("outcome")
-    if outcome:                                                      # D190: outcome mail says what to do; V7 never closes anything itself
+RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actionable or due · waiting · verified upcoming activity (LIFE-47); a dot is a cue, the words say the same
+
+
+def next_step(row, now):
+    """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented."""
+    outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
+    if outcome:                                                      # D190: outcome mail is a source-backed action to confirm, never a stage or a deadline; its received date is the evidence
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
         if outcome["kind"] == "OFFER":
-            action = f"{'Offer' if sure else 'Possible offer'} email {day} · review and respond"
-        else:
-            where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"   # never advise unticking Applied: it is the application record
-            action = f"{'Rejection' if sure else 'Possible rejection'} email {day} · {where}"
-    if row.get("carried"):
-        update += " (last accepted)"
+            return RED, f"{'Offer' if sure else 'Possible offer'} email received {day} · review and respond", ""
+        where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"
+        return RED, f"{'Rejection' if sure else 'Possible rejection'} email received {day} · {where}", ""
+    if row.get("event_start"):
+        past, label = when(row["event_start"], now)
+        if not past:
+            return (YELLOW if row.get("carried") else GREEN), f"Prepare for the {kind} · {label}", local(row["event_start"]).date().isoformat()
+        start, waiting, quiet = row["event_start"], f"Awaiting outcome of the {kind} held {label}", "news"
+    elif row.get("rounds"):
+        return YELLOW, f"Awaiting next step · {row['rounds']} round(s) logged in Notes", "9"
+    else:
+        start, waiting, quiet = row.get("applied_on"), "Awaiting response", "response"
+        if not start:
+            return YELLOW, waiting, "9"
+    due, days = local(start).date() + timedelta(days=M.AWAIT_DAYS), (local(now).date() - local(start).date()).days
+    if days >= M.AWAIT_DAYS:
+        return RED, f"No {quiet} in {days} days · follow up (due {due.strftime('%b %-d')})", due.isoformat()
+    return YELLOW, f"{waiting} · follow up {due.strftime('%b %-d')}", due.isoformat()
+
+
+def row_cells(row, now):
+    """-> [(text, link)] x 4: Company — Role · Stage · Next step · Due · Notes. Plain text; the Notes page is linked only when exactly one parent was resolved (a URL is never guessed)."""
+    dot, step, _ = next_step(row, now)
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
-    return [(M.label(row["company"], row["role"]), None), (f"{stage} · {update}", None), (action, None), source]
+    return [(f"{dot} {M.label(row['company'], row['role'])}", None), (row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
 
 
 def _older(row, now):
@@ -92,6 +98,7 @@ def render(result, stored, now):
                 None, {"status": "unavailable", "rows": 0, "reasons": reasons})
     hidden_older = sum(1 for r in rows if _older(r, now))
     rows = [r for r in rows if not _older(r, now)]
+    rows.sort(key=lambda r: ((n := next_step(r, now))[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))     # attention first, then by due date
     shown = rows[:MAX_ROWS]
     cells = [row_cells(r, now) for r in shown]
     extra = []

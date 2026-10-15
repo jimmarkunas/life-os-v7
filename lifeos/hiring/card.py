@@ -54,7 +54,7 @@ def validate(client, environ):
     jira = _step("JIRA_BLOCK", lambda: R._meta(client, anchor))
     if not isinstance(jira, dict) or not R.same_id(_step("JIRA_PAGE", lambda: R.page_of(client, jira, fail)), region["page_id"]):
         raise fail("WRONG_PAGE")
-    if [R.cells_of(region["rows"][0])] != [list(M.HEADERS)]:
+    if R.cells_of(region["rows"][0]) not in (list(M.HEADERS), list(M.OLD_HEADERS)):      # LIFE-47: exactly the old or the new header; anything else writes nothing
         raise fail("HEADERS_CHANGED")
     own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
     digest = _step("DIGEST", lambda: R.page_digest(client, region["page_id"], own, fail, SKIP))
@@ -70,7 +70,7 @@ def validate(client, environ):
 def present(client, environ, text, cells, live):
     """Dry run: validate only. Live: write, read back, prove the rest of the page unchanged. -> {"rows_changed", "rows_added", "rows_removed", "verified"}."""
     region, before = validate(client, environ)
-    counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
+    counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False, "header": "old" if R.cells_of(region["rows"][0]) == list(M.OLD_HEADERS) else "new"}
     if not live:
         return counts
     own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
@@ -78,6 +78,9 @@ def present(client, environ, text, cells, live):
     heading = M.heading_text(stamp)
     try:
         counts.update(R.write_floating(client, region, paragraph, cells, fail))
+        if counts["header"] == "old":                                # idempotent: only the exact old text, only the header row, inside the same fail-closed write
+            client.call("PATCH", f"/blocks/{region['rows'][0]['id']}", {"table_row": {"cells": R.cell_blocks([(h, None) for h in M.HEADERS])}})
+            counts["header"] = "migrated"
         if R.plain(region["heading"]).strip() != heading:
             client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
     except Exception:

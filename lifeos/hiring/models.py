@@ -6,8 +6,9 @@ import re
 from lifeos.platform import names
 
 TITLE = "📈 Hiring Pipeline"                                   # the floating heading, exactly (router.HIRING_REGION)
-HEADERS = ("Company / Role", "Stage / Update", "Action Needed", "Source")
-NOTES_LABEL, NO_NOTES = "Opportunity Notes", "Needs Notes"
+HEADERS = ("Company — Role", "Stage", "Next step · Due", "Notes")                   # LIFE-47 (Jim, comment 10177)
+OLD_HEADERS = ("Company / Role", "Stage / Update", "Action Needed", "Source")        # recognised only to migrate the header row once
+NOTES_LABEL, NO_NOTES = "Opportunity Page ↗", "Needs Notes"
 
 SUBMITTED, RECRUITER_SCREEN, HM_SCHEDULED, INTERVIEWING, ASSESSMENT = (
     "Submitted", "Recruiter Screen", "Hiring-Manager Interview Scheduled", "Interviewing", "Assessment")
