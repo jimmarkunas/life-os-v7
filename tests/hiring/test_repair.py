@@ -101,7 +101,7 @@ class RepairTests(unittest.TestCase):
         self.assertIn("•", R.cells_of(t.blocks[f"{TABLE}-s"])[3])                                               # the Notes cell was not touched before the stop
 
     def test_anything_unexpected_stops_before_a_single_write(self):
-        cases = {"two stray tables": ("HIRING_REPAIR_TABLE_UNEXPECTED", broken(second_stray=True)), "a stray table with another header": ("HIRING_REPAIR_STATE_UNEXPECTED", broken(header=("Company", "Stage", "Action"))),
+        cases = {"two stray tables": ("HIRING_REPAIR_STATE_UNEXPECTED", broken(second_stray=True)), "a stray table with another header": ("HIRING_REPAIR_STATE_UNEXPECTED", broken(header=("Company", "Stage", "Action"))),
                  "two links in the Notes cell": ("HIRING_REPAIR_STATE_UNEXPECTED", broken(links=2))}
         gone = broken()
         del gone.blocks[STATUS]                                                                                  # the original paragraph no longer exists at all
