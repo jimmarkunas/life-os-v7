@@ -33,7 +33,7 @@ import { Attention } from "./state.mjs";
 const quiet = pino({ level: "silent" });
 
 function socketFor(auth) {
-  return makeWASocket({ auth, logger: quiet, browser: Browsers.ubuntu("LIFE OS attention"), markOnlineOnConnect: false, syncFullHistory: false,
+  return makeWASocket({ auth, logger: quiet, browser: Browsers.ubuntu("Chrome"), markOnlineOnConnect: false, syncFullHistory: false,
     generateHighQualityLinkPreview: false, emitOwnEvents: false, getMessage: async () => undefined });
 }
 
@@ -84,7 +84,7 @@ async function serve() {
   let delay = 2000;
   const start = async () => {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH);
-    att.linked = Boolean(state.creds?.registered || state.creds?.me);
+    att.linked = Boolean(state.creds?.registered || state.creds?.account);   // `me` alone is set by a code REQUEST, not by a completed link
     if (!att.linked) return;                      // not linked: answer NOT_LINKED, never try to pair from the service
     const sock = socketFor(state);
     wire(sock, att, saveCreds);
@@ -103,7 +103,7 @@ async function serve() {
 
 async function link() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH);
-  if (state.creds?.registered || state.creds?.me) { console.log("Already linked."); return 0; }
+  if (state.creds?.registered || state.creds?.account) { console.log("Already linked."); return 0; }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const phone = (await new Promise((r) => rl.question("WhatsApp phone number with country code, digits only: ", r))).replace(/\D/g, "");
   rl.close();
@@ -115,13 +115,13 @@ async function link() {
       const sock = socketFor(state);
       wire(sock, att, saveCreds);
       sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-        if (qr && !asked && !state.creds.me) {
+        if (qr && !asked) {
           asked = true;
           const code = await sock.requestPairingCode(phone);
           console.log(`\nOn your phone: WhatsApp > Settings > Linked devices > Link a device > "Link with phone number instead", then enter:\n\n    ${code}\n`);
         }
         if (connection === "open") {
-          console.log("Linked. Receiving WhatsApp's first sync (up to 3 minutes; keep this window open)...");
+          console.log("Linked (your phone lists it as Chrome on Ubuntu). Receiving WhatsApp's first sync (up to 3 minutes; keep this window open)...");
           const started = Date.now();
           const wait = setInterval(() => {
             if (att.synced || Date.now() - started > 180000) {
