@@ -3,8 +3,13 @@
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
+## Development entrypoint (all authorized coding agents)
+- Read the canonical [LIFE OS Development Policy](https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md), especially **Deterministic agent work selection** and **Jira-first development lifecycle**. This guide is subordinate to that policy.
+- When an authorized coding session starts/resumes or an accepted package closes, **self-resume or self-pull** the next eligible `LIFE` issue from live Jira under the approved lane, dependency, rank, ownership and permission gates; read linked `LOS` context only if relevant. Do not wait for ChatGPT to choose a ticket. If Jira access or queue readiness is missing, return `QUEUE_NOT_READY` with the exact gap; a Tech Lead's fresh handoff can authorize only a specified one-off package, not autonomous pull. Historical `docs/MASTER_ROADMAP.md` never selects next work.
+- Respect the policy's single-writer, permission, proof and Jim-approval gates. GitHub PR/CI success never marks LIFE Done automatically; an agent entrypoint grants no extra Jira or OpenClaw permissions.
+
 ## OpenClaw / Oracle edge
-Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and `docs/MASTER_ROADMAP.md`. Its "Capability registry" section lists the named capabilities, their approval gates and how to invoke them (Oracle-local `openclaw agent`; off-host not yet approved).
+Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and the relevant WBS evidence row in `docs/MASTER_ROADMAP.md`. The scope's "Capability registry" section lists the named capabilities, their approval gates and how to invoke them (Oracle-local `openclaw agent`; off-host not yet approved).
 - OpenClaw is a bounded capability/control plane; V7/domain owners retain business rules, canonical persistence and scheduling.
 - Do not create a second scheduler or duplicate datastore around OpenClaw.
 - Secret values do not belong in this repository or Notion; use the approved central secrets service/runtime references.
@@ -19,7 +24,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 - `lifeos/sources/` producers (newsletters, web, openjobs, sponsor register); may import any OS.
 - `lifeos/run.py` stage registry: one `lazy("module", "function")` line per stage. `.github/workflows/hourly.yml` runs stages; `workflow_dispatch` is at the 25-input limit: add no input.
 - `tests/` mirrors `lifeos/`. Shared fakes live in `tests/kit` (add new fakes there). `tests/contracts/` enforce the rules below.
-- Docs: `docs/DECISIONS_INDEX.md` (find a decision), `docs/DECISIONS.md` (grep, never read whole), `docs/SETUP.md` (secrets and manual steps), `docs/MASTER_ROADMAP.md` (live operating plan). `docs/ROADMAP.md` is legacy prompt history, not current sequencing authority.
+- Docs: `docs/DECISIONS_INDEX.md` (find a decision), `docs/DECISIONS.md` (grep, never read whole), `docs/SETUP.md` (secrets and manual steps), `docs/MASTER_ROADMAP.md` (dated technical WBS and acceptance evidence, not a live plan: priorities are in Jira `LOS`, delivery status/dependencies/sprints in Jira `LIFE`). `docs/ROADMAP.md` is legacy prompt history, not current sequencing authority.
 
 ## Commands
 - All tests: `python -m unittest discover -s tests -t .` (about 2 s). A run is good only if it prints a line starting `OK`.

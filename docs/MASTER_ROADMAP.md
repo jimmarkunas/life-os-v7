@@ -1,20 +1,20 @@
-# LIFE OS V7: the one plan (plain words)
+# LIFE OS V7: technical WBS and acceptance evidence (not a live plan)
 
-Last updated: October 13, 2026. This file is the source; Notion shows the same operating plan.
+Snapshot as of October 13, 2026, reconciled into Jira the same day. **This file is not a planning authority.** Jim approved Jira as the canonical planning system on October 13, 2026: product priorities, discovery and the future roadmap live in Jira Product Discovery `LOS`; delivery status, dependencies, sprints, blockers and commitments live in Jira Software `LIFE`; durable product requirements live in Notion. This file keeps the stable WBS identifiers, technical scope, acceptance evidence and the approved dependency order as a GitHub reference (see `jimmarkunas/life-os-automation/docs/life-os-development-policy.md`, Jira product and development planning authority). Status, Owner, Next step and Needs Jim cells below are frozen at the snapshot date: read current values from the LIFE ticket that carries the WBS ID, never from this table. Do not use this table as a second status board, and do not add rows for new work (create it in LIFE and carry the WBS ID there).
 
 ## Roadmap contract
 
 - **Done means:** merged where code is involved, run live once, a counts-only or equivalent acceptance check passes, and Jim says it is done.
-- **Status values:** 🔵 To-Do, 🟡 In Progress, 🔴 Blocked, 🟢 Done.
-- **Live, awaiting Jim:** keep the row 🟡 In Progress until Jim explicitly confirms Done; say `Live, awaiting Jim` in the row so production-live work is not confused with unfinished implementation.
-- **One owner per WBS element:** every tracked row is owned by exactly one of `ChatGPT`, `Jim`, or `Claude Code`. If ownership changes between steps, split the work into separate WBS elements in dependency order.
-- **WBS contract:** every Item starts with a stable WBS element using `<DOMAIN>-<STREAM>.<ELEMENT>`. WBS IDs are semantic identifiers, not row numbers: never renumber them merely because delivery order changes. New work gets the next unused child within its domain. References should use the WBS ID first.
-- **Order rule:** the roadmap is topological: prerequisite work appears before the work it unlocks. Blocked dependent work sits immediately after its unmet prerequisite where practical.
+- **Status values (snapshot legend):** 🔵 To-Do, 🟡 In Progress, 🔴 Blocked, 🟢 Done, as recorded on October 13, 2026. Live status is in LIFE.
+- **Live, awaiting Jim (historical convention):** rows marked `Live, awaiting Jim` were production-live but not yet confirmed Done by Jim at the snapshot date. Done is still never inferred from a merge, CI or a Jira transition alone.
+- **One owner per WBS element (snapshot):** every row recorded one owner of `ChatGPT`, `Jim`, or `Claude Code`. Current ownership is on the LIFE ticket.
+- **WBS contract:** every Item starts with a stable WBS element using `<DOMAIN>-<STREAM>.<ELEMENT>`. WBS IDs are semantic identifiers, not row numbers: never renumber them merely because delivery order changes. New work gets the next unused child within its domain on its LIFE ticket; no new row is added here. References should use the WBS ID first.
+- **Order rule:** the dependency order below is the approved technical order as of the snapshot (prerequisite work appears before the work it unlocks). Live sequencing and dependencies are Jira issue links in LIFE.
 - **Privacy rule:** never commit source-derived personal identifiers to this public roadmap: no personal email addresses, full personal names, phone numbers, or street/postal addresses. Use neutral system/account/role labels instead. The fixed owner labels `Jim`, `ChatGPT`, and `Claude Code` are allowed.
 - **Safety rules:** private data never goes in this public repository; a failed step says so instead of showing old numbers as fresh; consequential database/secret/schema changes retain their existing approval gates.
 - **Production-defect interrupt rule:** any regression or failure in an accepted live feature is handled immediately as the smallest bounded fix with authoritative live verification, then normal roadmap sequencing resumes. This maintenance rule applies even when the feature's enhancement roadmap is parked in Phase 2.
 
-## Tracking table
+## Technical WBS and acceptance-evidence table (snapshot, October 13, 2026)
 
 | WBS | Item | Status | What it is / delivers | Owner | Next step | Needs Jim | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -102,11 +102,11 @@ These items are deliberately preserved, not deleted. They are not active Phase-1
 
 ## Future product backlog
 
-Deferred and future product work is owned by the private Notion **Product Backlog**. It preserves reviewed Phase-2 items, untouched domain backlog such as Finance/Style/Archive/Search, and absorbed/retired wrapper references without turning them into active Phase-1 commitments.
+Deferred and future product work is owned by Jira Product Discovery `LOS` (Parking lot for reviewed Phase-2 ideas); the private Notion **Product Backlog** is historical reference for requirements and context. It preserves reviewed Phase-2 items, untouched domain backlog such as Finance/Style/Archive/Search, and absorbed/retired wrapper references without turning them into active Phase-1 commitments.
 
 ## Active-vs-future boundary
 
-- **Current roadmaps show Phase 1 only.** Deferred reviewed work is preserved in the Notion **Product Backlog — Phase 2**, not duplicated here.
+- **Current roadmaps show Phase 1 only.** Deferred reviewed work is preserved in the `LOS` Parking lot (migrated from the Notion **Product Backlog — Phase 2**), not duplicated here.
 - **Accepted production products default to bug-fix-only unless explicitly promoted:** Network core, MegIBOW, Mail Alerts/Physical Mail, Amazon Orders, Accountability, accepted Delivery behavior, accepted Jobs source lanes and Portfolio V1 while V2 is being built.
 - **Active Jobs lanes remain Newsletter + US Remote + Scale-Up.** Skilled Worker, Lensa, Reed and future provider expansion remain deferred.
 - Stale umbrella IDs and absorbed wrappers are reference-only in Product Backlog; they are not active WBS.
@@ -114,7 +114,7 @@ Deferred and future product work is owned by the private Notion **Product Backlo
 
 ## Execution order
 
-The pruned Phase-1 repo-heavy train is:
+Approved technical order as of the October 13, 2026 snapshot (the live copy is the LIFE issue-link chain). The pruned Phase-1 repo-heavy train is:
 
 `JOBS-1.1A → JOBS-1.1B → PLAT-1.1 → PLAT-1.2 → RECR-2.1 → RECR-2.2 → INT-1.1 → MEET-1.1 (MEET-1A only) → COCK-1.2`
 
@@ -152,7 +152,7 @@ Approved Phase-1 boundaries:
 
 Detailed PBDS requirements live in the canonical PBDS roadmap and `jimmarkunas/portfolio/docs/PBDS_V2_ARCHITECTURE_CONTRACT.md`.
 
-## Jim's own to-dos
+## Jim's own to-dos (snapshot; live items are in LIFE)
 
 - Check MEGI-1.1 after Monday's rollover and confirm Done only after the remaining proof passes.
 - Answer MegIBOW review items as they appear.
