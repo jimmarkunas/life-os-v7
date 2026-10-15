@@ -1,0 +1,19 @@
+# COMM-1.3 (LIFE-30): Jim's personal WhatsApp attention as one dedicated linked device. Counts and the latest sender in memory; answers only on a
+# 0600 Unix socket. No output (stdout/stderr discarded), memory-capped, restarts after a crash, never re-pairs by itself.
+[Unit]
+Description=LIFE OS WhatsApp attention (dedicated linked device; counts only)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/.local/lib/lifeos-whatsapp
+ExecStart=%h/.openclaw/tools/node/bin/node %h/.local/lib/lifeos-whatsapp/attention.mjs serve
+Restart=on-failure
+RestartSec=30
+UMask=0077
+MemoryMax=400M
+NoNewPrivileges=yes
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=default.target
