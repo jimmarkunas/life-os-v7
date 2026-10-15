@@ -14,6 +14,8 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
   comms (LIFE-34, Jim's approval Oct 15 2026): answers the reader's unread count for the last 7 days and the display name of the newest incoming
      sender, the name SCRAMBLED under the runner's one-run key (HMAC-SHA256 keystream, encrypt-then-MAC), so it is never plain text anywhere between the
      Mac and the runner's in-memory Notion write. Never a handle, number, text or reference; nothing is kept, so no key exists after the run;
+  oracle1 (Jim's approval Oct 15 2026, Option B): the Oracle Cloud card's numbers from ~/.local/lib/lifeos-oracle/stats.mjs (OCI's own metrics, cost and
+     limits read as the VM itself, plus local memory, disk, service and ChatGPT-plan state), passed through only if it is that script's one JSON object;
   3. alerts: reads ALL of the Mac Mini's incoming messages for that lookback through the existing wrapper path (read or unread alike), paging until the reader
      proves the end, classifies them in memory with the wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the
      source reference under a key that never leaves Oracle), severity, reason codes, review flag, observation time, pages and completeness. Never text,
@@ -48,6 +50,10 @@ WA_HEALTH = ("CURRENT", "DEGRADED", "DISCONNECTED", "NOT_LINKED", "UNAVAILABLE")
 TELEGRAM = os.path.expanduser("~/.local/lib/lifeos-telegram/attention.py")
 TELEGRAM_TIMEOUT = 60
 TG_COUNTS = ("chats_main", "unread_messages", "unread_messages_unmuted", "unread_chats", "unread_chats_unmuted")
+NODE = os.path.expanduser("~/.openclaw/tools/node/bin/node")
+ORACLE_STATS = os.path.expanduser("~/.local/lib/lifeos-oracle/stats.mjs")
+ORACLE_SCHEMA = "lifeos.oracle.stats.v1"
+ORACLE_TIMEOUT = 70
 MAX_NAME = 80
 HEX = b"0123456789abcdef"
 MAX_EVENTS = 500
@@ -122,7 +128,7 @@ def authorized(ip, lookup=whois):
 
 
 def request(stream):
-    """-> ("alerts", hours) | ("comms", 32-byte key) | None."""
+    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -133,6 +139,8 @@ def request(stream):
         raw += c
     else:
         return None
+    if raw == b"oracle1":
+        return "oracle1", None
     parts = raw.split(b" ")
     if len(parts) != 2:
         return None
@@ -280,7 +288,16 @@ def whatsapp(key, path=WHATSAPP_SOCKET):
     return _attention_block(got, key, WA_HEALTH)
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid):
+def oracle_stats(run=subprocess.run):
+    """The stats script's one JSON object, or an exception (the caller then answers nothing)."""
+    done = run([NODE, ORACLE_STATS], capture_output=True, text=True, timeout=ORACLE_TIMEOUT)
+    got = json.loads(done.stdout) if done.returncode == 0 else None
+    if not isinstance(got, dict) or got.get("schema") != ORACLE_SCHEMA:
+        raise ValueError("ORACLE_STATS_OFF_CONTRACT")
+    return got
+
+
+def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
     try:
@@ -296,7 +313,9 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
         return 1
     kind, arg = asked
     try:
-        if kind in ("comms", "comms2", "comms3"):
+        if kind == "oracle1":
+            payload = stats()
+        elif kind in ("comms", "comms2", "comms3"):
             payload = comms(load_wrapper(wrapper_path), arg, now)
             if kind in ("comms2", "comms3"):
                 payload = {**payload, "schema": COMMS2_SCHEMA, "telegram": telegram(arg)}

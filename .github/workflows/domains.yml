@@ -887,6 +887,26 @@ jobs:
       - name: Communications card warning (does not fail the run)
         if: ${{ always() && steps.comms.outcome == 'failure' }}
         run: echo "::warning title=Communications card::the Messages row was not updated; the Daily Report keeps its previous update time"
+      - id: oracle
+        continue-on-error: true
+        if: ${{ always() }}
+        # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention, once a day. Oracle answers numbers only (OCI cost,
+        # metrics and limits read as the VM itself; local memory, disk, services, ChatGPT plan). Each tick reads only the heading unless the card is due.
+        name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
+        env:
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          ORACLE_CARD_FORCE: ${{ github.event_name == 'workflow_dispatch' }}
+          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
+          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+        run: python -m lifeos.run oracle-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Oracle Cloud card warning (does not fail the run)
+        if: ${{ always() && steps.oracle.outcome == 'failure' }}
+        run: echo "::warning title=Oracle Cloud card::the Oracle Cloud card was not updated; it keeps its previous update time"
 
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
