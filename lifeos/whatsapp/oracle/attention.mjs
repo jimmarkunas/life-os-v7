@@ -103,19 +103,19 @@ async function serve() {
 
 async function link() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH);
-  if (state.creds?.registered) { console.log("Already linked."); return 0; }
+  if (state.creds?.registered || state.creds?.me) { console.log("Already linked."); return 0; }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const phone = (await new Promise((r) => rl.question("WhatsApp phone number with country code, digits only: ", r))).replace(/\D/g, "");
   rl.close();
   const att = new Attention(hasher(), null);
   return new Promise((resolve) => {
-    let asked = false;
-    const finish = (sock, code) => { persist(att); sock.end(undefined); resolve(code); };
+    let asked = false, done = false;
+    const finish = (sock, code) => { done = true; persist(att); resolve(code); sock.end(undefined); };
     const open = () => {
       const sock = socketFor(state);
       wire(sock, att, saveCreds);
       sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-        if (qr && !asked && !state.creds.registered) {
+        if (qr && !asked && !state.creds.me) {
           asked = true;
           const code = await sock.requestPairingCode(phone);
           console.log(`\nOn your phone: WhatsApp > Settings > Linked devices > Link a device > "Link with phone number instead", then enter:\n\n    ${code}\n`);
@@ -131,10 +131,10 @@ async function link() {
             }
           }, 2000);
         }
-        if (connection === "close") {
+        if (connection === "close" && !done) {
           const code = lastDisconnect?.error?.output?.statusCode;
           if (code === DisconnectReason.restartRequired) open();          // WhatsApp restarts the connection once right after pairing
-          else if (!state.creds.registered) { console.log("Pairing did not complete; run this again."); resolve(1); }
+          else { done = true; console.log("Pairing did not complete; run this again."); resolve(1); }
         }
       });
     };
