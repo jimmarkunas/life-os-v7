@@ -54,7 +54,7 @@ class Card(unittest.TestCase):
             "Always Free A1 cores: 2 of 2 in use · no headroom · Reclaim risk: none",
             "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓",
             "",
-            "ChatGPT 5h ██████████ 100% · ChatGPT week ██████░░░░ 64%"])
+            "Codex 5h ██████████ 100% · Codex week ██████░░░░ 64%"])
         colors = [(i["plain_text"], i["annotations"].get("color")) for i in rep.blocks["obody"]["paragraph"]["rich_text"] if "█" in i["plain_text"] or "░" in i["plain_text"]]
         self.assertEqual(colors, [("██████", "green"), ("░░░░", "gray"), ("████", "green"), ("░░░░░░", "gray"),
                                   ("██████████", "green"), ("██████", "green"), ("░░░░", "gray")])          # the bars only; a full bar has no gray part
@@ -79,7 +79,7 @@ class Card(unittest.TestCase):
         counts, _ = self.run_card(rep, answer=lambda host: json.dumps(stats(cost=None, chatgpt=None, services={**SVC, "telegram": None, "alerts": False})).encode())
         body = rep.plain("obody")
         self.assertIn("Cost this month: unavailable", body)
-        self.assertIn("ChatGPT plan: unavailable", body)
+        self.assertIn("Codex plan: unavailable", body)
         self.assertIn("Services: Gateway ✓ · Telegram ? · WhatsApp ✓ · Alerts ✗", body)
         self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · Updated Oct 15 · 8:05 AM CT)")
         self.assertEqual((counts["missing"], counts["services_down"]), (3, 1))

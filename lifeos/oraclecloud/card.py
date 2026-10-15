@@ -106,7 +106,7 @@ def _gauge(label, pct, suffix="%"):
 
 def render(r, now):
     """readings -> (paragraph segments [(text, color or None)], heading text). Jim's layout (Oct 15): cost and CPU on one line; memory and disk; cores
-    and reclaim risk on one line with services under it; both ChatGPT windows; blank lines between those groups."""
+    and reclaim risk on one line with services under it; both Codex (ChatGPT plan) windows; blank lines between those groups."""
     cost, a1, plan, sep = r["cost"], r["a1_cores"], r["chatgpt"], [(" · ", None)]
     first = ("Cost this month: unavailable" if cost is None else
              f"Cost this month: {'$' if cost['currency'] == 'USD' else cost['currency'] + ' '}{cost['amount']:.2f} (Oracle billing)")
@@ -116,8 +116,8 @@ def render(r, now):
     reclaim = {"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
         r["reclaim"], "Reclaim risk: unavailable")
     services = "Services: " + " · ".join(f"{label} {'✓' if r['services'][k] else '✗' if r['services'][k] is False else '?'}" for k, label in SERVICES)
-    chatgpt = ([("ChatGPT plan: unavailable", None)] if plan is None else
-               _gauge("ChatGPT 5h", plan["left_5h"]) + sep + _gauge("ChatGPT week", plan["left_week"]))
+    chatgpt = ([("Codex plan: unavailable", None)] if plan is None else
+               _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
                 + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
     ct = now.astimezone(TZ)
