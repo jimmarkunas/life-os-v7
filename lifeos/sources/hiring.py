@@ -145,14 +145,14 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)
-            shown = {c[0][0] for c in (cells or [])}
+            shown = {c[0][0].split(" ", 1)[1] for c in (cells or [])}                  # the first cell is "<dot> Company — Role"
             counts["target_listed"] = None if cells is None else any(M.label(r["company"], r["role"]) in shown for r in result["rows"] or [] if M.same(r["company"], r["role"], *target))
         new = snapshot.build(result, prior, now)
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched
             counts["saved"] = 1
     done = card.present(client or card.writer(environ), environ, text, cells, live)
-    counts.update(rows_changed=done["rows_changed"], rows_added=done["rows_added"], rows_removed=done["rows_removed"], verified=done["verified"])
+    counts.update(rows_changed=done["rows_changed"], rows_added=done["rows_added"], rows_removed=done["rows_removed"], verified=done["verified"], header=done["header"])
     if live:
         counts["blocks_written"] = done["rows_changed"] + done["rows_added"] + 1
     return counts

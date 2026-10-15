@@ -114,7 +114,7 @@ SIBLING_PARENT = hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-0000000000
 
 
 def seen(tree):
-    return [row[0][0] for row in T.table_state(tree)]
+    return [row[0][0].split(" ", 1)[1] for row in T.table_state(tree)]               # the first cell is "<dot> Company — Role"
 
 
 class Chain:

@@ -116,7 +116,7 @@ class ShownTests(unittest.TestCase):
 
     def test_a_rejection_after_the_interview_says_to_confirm_and_retire_and_the_stage_is_untouched(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=3)).isoformat(), "match": "role"})
-        self.assertEqual(self.action(result), f"Rejection email {(NOW - timedelta(days=3)).strftime('%b %-d')} · confirm, then move the Notes page to Retired")
+        self.assertEqual(self.action(result), f"Rejection email received {(NOW - timedelta(days=3)).strftime('%b %-d')} · confirm, then move the Notes page to Retired")
         self.assertEqual(result["rows"][0]["stage"], "Interviewing")
         self.assertEqual(len(result["rows"]), 1)                                  # still listed: V7 closes nothing
 
@@ -135,12 +135,12 @@ class ShownTests(unittest.TestCase):
     def test_an_offer_says_to_review_and_respond(self):
         result = self.compiled({"kind": "OFFER", "received": (NOW - timedelta(days=1)).isoformat(), "match": "role"})
         self.assertTrue(self.action(result).endswith("· review and respond"))
-        self.assertTrue(self.action(result).startswith("Offer email"))
+        self.assertTrue(self.action(result).startswith("Offer email received"))
 
     def test_an_outcome_older_than_the_rows_last_evidence_is_ignored_and_the_row_ages_as_before(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=60)).isoformat(), "match": "role"})
         self.assertNotIn("outcome", result["rows"][0])
-        self.assertEqual(self.action(result), "No news in 35 days · follow up?")
+        self.assertEqual(self.action(result), "No news in 35 days · follow up (due Sep 22)")
 
     def test_a_retired_page_still_closes_the_pursuit_whatever_the_mail_says(self):
         result = C.compile_rows([{"company": "Walmart", "role": "Senior Manager, Operations and Implementation", "applied_on": "2026-09-01"}],

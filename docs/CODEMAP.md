@@ -482,3 +482,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D190: Outcome mail reaches the Hiring Pipeline as a line to confirm (2026-10-13, Jim)
 - D194: Hiring Decision: Confirm Rejected closes a pursuit on the Job Ledger row (2026-10-14, Jim)
 - D195: Hiring Decision: a Notes-only pursuit is closed through its Notion opportunity page (2026-10-14, Jim; accepted live on fictional fixtures)
+- D196: Hiring Pipeline: the Active Opportunities table in its accepted shape (2026-10-14, Jim; LIFE-47 Slice 1, candidate — not yet live)
