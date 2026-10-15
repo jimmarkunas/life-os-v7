@@ -32,6 +32,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
+- `imessage-comms` -> `lifeos.imessage.comms_card:run`
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
@@ -114,6 +115,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/imessage/
 - `lifeos/imessage/alerts_endpoint.py`: COMM-1.4b: the private, read-only iMessage alert-METADATA endpoint on Oracle (Jim's approval, LIFE-31, Oct 13 2026).
 - `lifeos/imessage/attention_mcp.py`: COMM-1.4: the read-only Messages reader, served over MCP stdio on the Mac Mini by the signed launchd helper in `mac/` (the one process with Full Disk Access).
+- `lifeos/imessage/comms_card.py`: LIFE-34 (COMM-1.7): the Messages row of the Daily Report's Communications Attention callout, every hour (Jim's approval, Oct 15 2026).
 - `lifeos/imessage/openclaw_imessage.py`: COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:
 - `lifeos/imessage/stage.py`: COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31; Jim's approval of Oct 13, 2026).
 ### lifeos/interview/
