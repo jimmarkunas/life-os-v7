@@ -88,8 +88,9 @@ def validate(raw, now):
 
 
 def bar(pct):
+    """-> [(text, color)]: the filled part green, the rest gray (Jim, Oct 15)."""
     filled = min(BAR, max(0, round(pct / 100 * BAR)))
-    return "█" * filled + "░" * (BAR - filled)
+    return [(text, color) for text, color in (("█" * filled, "green"), ("░" * (BAR - filled), "gray")) if text]
 
 
 def missing(r):
@@ -98,29 +99,42 @@ def missing(r):
         v is None for v in r["services"].values())
 
 
+def _gauge(label, pct, suffix="%"):
+    """`Memory ████░░░░░░ 44%` as segments, or `Memory unavailable`."""
+    return [(f"{label} unavailable", None)] if pct is None else [(f"{label} ", None), *bar(pct), (f" {pct:.0f}{suffix}", None)]
+
+
 def render(r, now):
-    """readings -> (paragraph text, heading text)."""
-    cost = r["cost"]
-    lines = ["Cost this month: unavailable" if cost is None else
-             f"Cost this month: {'$' if cost['currency'] == 'USD' else cost['currency'] + ' '}{cost['amount']:.2f} (Oracle billing)",
-             "CPU, last 24 h: unavailable" if r["cpu_24h_pct"] is None else f"CPU, last 24 h: avg {r['cpu_24h_pct']:.1f}%"]
-    for label, key in (("Memory", "memory_pct"), ("Disk", "disk_pct")):
-        lines.append(f"{label}: unavailable" if r[key] is None else f"{label} {bar(r[key])} {r[key]:.0f}%")
-    a1 = r["a1_cores"]
-    lines.append("Always Free A1 cores: unavailable" if a1 is None else
-                 f"Always Free A1 cores: {a1['used']} of {a1['used'] + a1['available']} in use · "
-                 + ("no headroom" if a1["available"] == 0 else f"{a1['available']} free"))
-    lines.append({"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
-        r["reclaim"], "Reclaim risk: unavailable"))
-    lines.append("Services: " + " · ".join(f"{label} {'✓' if r['services'][k] else '✗' if r['services'][k] is False else '?'}" for k, label in SERVICES))
-    plan = r["chatgpt"]
-    if plan is None:
-        lines.append("ChatGPT plan: unavailable")
-    else:
-        lines += [f"ChatGPT 5 h {bar(plan['left_5h'])} {plan['left_5h']}% left", f"ChatGPT week {bar(plan['left_week'])} {plan['left_week']}% left"]
+    """readings -> (paragraph segments [(text, color or None)], heading text). Jim's layout (Oct 15): cost and CPU on one line, then memory and disk,
+    cores and reclaim risk, then services, then both ChatGPT windows, with blank lines between the groups."""
+    cost, a1, plan, sep = r["cost"], r["a1_cores"], r["chatgpt"], [(" · ", None)]
+    first = ("Cost this month: unavailable" if cost is None else
+             f"Cost this month: {'$' if cost['currency'] == 'USD' else cost['currency'] + ' '}{cost['amount']:.2f} (Oracle billing)")
+    cpu = "CPU, last 24 h: unavailable" if r["cpu_24h_pct"] is None else f"CPU, last 24 h: avg {r['cpu_24h_pct']:.1f}%"
+    cores = ("Always Free A1 cores: unavailable" if a1 is None else f"Always Free A1 cores: {a1['used']} of {a1['used'] + a1['available']} in use · "
+             + ("no headroom" if a1["available"] == 0 else f"{a1['available']} free"))
+    reclaim = {"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
+        r["reclaim"], "Reclaim risk: unavailable")
+    services = "Services: " + " · ".join(f"{label} {'✓' if r['services'][k] else '✗' if r['services'][k] is False else '?'}" for k, label in SERVICES)
+    chatgpt = ([("ChatGPT plan: unavailable", None)] if plan is None else
+               _gauge("ChatGPT 5h", plan["left_5h"]) + sep + _gauge("ChatGPT week", plan["left_week"]))
+    segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
+                + [(f"\n{cores}\n{reclaim}\n\n{services}\n\n", None)] + chatgpt)
     ct = now.astimezone(TZ)
     stamp = f"Updated {ct.strftime('%b')} {ct.day} · {ct.strftime('%-I:%M %p')} CT"
-    return "\n".join(lines), f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{stamp})"
+    return segments, f"{TITLE} ({'DEGRADED · ' if missing(r) else ''}{stamp})"
+
+
+def text_of(segments):
+    return "".join(text for text, _ in segments)
+
+
+def items_of(segments):
+    """Segments -> Notion rich text, a color annotation on the colored pieces only."""
+    out = []
+    for text, color in segments:
+        out += [{**i, "annotations": {"color": color}} if color else i for i in rich_text(text)]
+    return out
 
 
 def due(heading_text, now, force=False):
@@ -158,9 +172,10 @@ def _patch(client, block, items):
     client.call_once("PATCH", f"/blocks/{quote(block['id'], safe='')}", {block["type"]: {"rich_text": items}})
 
 
-def write(client, heading, paragraph, body, heading_text):
+def write(client, heading, paragraph, segments, heading_text):
     """The paragraph, then the heading (keeping the heading's own formatting, e.g. Jim's bold); both read back."""
-    _patch(client, paragraph, rich_text(body))
+    body = text_of(segments)
+    _patch(client, paragraph, items_of(segments))
     first = ((heading.get(heading["type"]) or {}).get("rich_text") or [{}])[0]
     items = rich_text(heading_text)
     if isinstance(first.get("annotations"), dict):
@@ -195,7 +210,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
     except OracleCardError as e:                                  # a source we cannot trust is shown as unavailable, with this run's time
         print("oracle-card: source refused", json.dumps({"code": str(e)}))
         readings = UNAVAILABLE
-    body, heading_text = render(readings, now)
+    segments, heading_text = render(readings, now)
     counts = {"due": True, "missing": missing(readings), "reclaim": (readings["reclaim"] or "unavailable").lower(),
               "services_down": sum(v is False for v in readings["services"].values()), "written": 0}
     if not live:
@@ -203,7 +218,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
     protected_ids = {region: (environ.get(var) or "").strip() for var, region in PROTECTED}
     before = report_region.protected(client, protected_ids, _fail)
     try:
-        write(client, heading, paragraph, body, heading_text)
+        write(client, heading, paragraph, segments, heading_text)
     except NotionError:
         raise _fail("ORACLE_WRITE_FAILED") from None
     if not router.protected_intact(MODULE, before, report_region.protected(client, protected_ids, _fail)):

@@ -46,16 +46,19 @@ class Card(unittest.TestCase):
         counts, _ = self.run_card(rep)
         self.assertEqual((counts["missing"], counts["reclaim"], counts["written"]), (0, "none", 2))
         self.assertEqual([p[0] for p in rep.patches], ["obody", "ohead"])
-        self.assertEqual(rep.plain("obody").split("\n"), [
-            "Cost this month: $0.00 (Oracle billing)",
-            "CPU, last 24 h: avg 5.7%",
-            "Memory ██████░░░░ 55%",
-            "Disk ████░░░░░░ 39%",
+        self.assertEqual(rep.plain("obody").split("\n"), [                           # Jim's layout (Oct 15)
+            "Cost this month: $0.00 (Oracle billing) · CPU, last 24 h: avg 5.7%",
+            "",
+            "Memory ██████░░░░ 55% · Disk ████░░░░░░ 39%",
             "Always Free A1 cores: 2 of 2 in use · no headroom",
             "Reclaim risk: none",
+            "",
             "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓",
-            "ChatGPT 5 h ██████████ 100% left",
-            "ChatGPT week ██████░░░░ 64% left"])
+            "",
+            "ChatGPT 5h ██████████ 100% · ChatGPT week ██████░░░░ 64%"])
+        colors = [(i["plain_text"], i["annotations"].get("color")) for i in rep.blocks["obody"]["paragraph"]["rich_text"] if "█" in i["plain_text"] or "░" in i["plain_text"]]
+        self.assertEqual(colors, [("██████", "green"), ("░░░░", "gray"), ("████", "green"), ("░░░░░░", "gray"),
+                                  ("██████████", "green"), ("██████", "green"), ("░░░░", "gray")])          # the bars only; a full bar has no gray part
         self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
         self.assertTrue(rep.blocks["ohead"]["heading_3"]["rich_text"][0]["annotations"]["bold"])
         self.assertEqual({b: rep.plain(b) for b in others}, others)                  # the Communications callout and the rest are untouched
@@ -96,7 +99,7 @@ class Card(unittest.TestCase):
             self.assertIn("source refused", log)
             self.assertEqual(counts["missing"], 11)
             self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
-            self.assertIn("Memory: unavailable", rep.plain("obody"))
+            self.assertIn("Memory unavailable · Disk unavailable", rep.plain("obody"))
 
     def test_dry_run_writes_nothing(self):
         rep = report()
