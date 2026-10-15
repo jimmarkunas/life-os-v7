@@ -29,7 +29,7 @@ RESOLVER = os.path.join(HOME, ".local/bin/openclaw-bws-resolver.mjs")
 BWS_ENV = os.path.join(HOME, ".config/bws/openclaw.env")
 NODE = os.path.join(HOME, ".openclaw/tools/node/bin/node")
 SECRET_IDS = ("openclaw/telegram/apiId", "openclaw/telegram/apiHash")
-ALLOWED = {"setTdlibParameters", "setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword", "close",
+ALLOWED = {"getOption", "setTdlibParameters", "setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword", "close",
            "loadChats", "getChatHistory", "getUser", "getScopeNotificationSettings", "getMe"}
 LOGIN_ONLY = {"setAuthenticationPhoneNumber", "checkAuthenticationCode", "checkAuthenticationPassword"}
 TELEGRAM_SERVICE = 777000
@@ -160,6 +160,7 @@ class Session:
                 c["notification_settings"] = e["notification_settings"]
 
     def start(self, api_id, api_hash, key, deadline):
+        self.td.send({"@type": "getOption", "name": "version"})               # TDLib starts a client only when it receives its first request
         if not self.pump(lambda: self.auth == "authorizationStateWaitTdlibParameters", deadline):
             raise Refused("TDLIB_NOT_STARTED")
         reply = self.call(params(api_id, api_hash, key), deadline)
