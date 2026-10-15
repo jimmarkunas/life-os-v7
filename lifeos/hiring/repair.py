@@ -27,6 +27,13 @@ def _shaped(sibs, ids, stray_id):
     return len(at) == 1 and len(kept) > at[0] + 2 and R.same_id(kept[at[0] + 1], ids["STATUS"]) and R.same_id(kept[at[0] + 2], ids["TABLE"])
 
 
+def _rest(digest, own):
+    """The page outside the region: every block's content hash and every parent's child order, with the region's own blocks (which this repair legitimately moves in and out of their column) set aside."""
+    ours = {i.replace("-", "").lower() for i in own}
+    keep = lambda i: i.replace("-", "").lower() not in ours                                  # noqa: E731
+    return {k: v for k, v in digest["nodes"].items() if keep(k)}, {p: [c for c in kids if keep(c)] for p, kids in digest["layout"].items()}
+
+
 def plan(client, environ):
     """-> (facts, objects). Raises a fixed code if the pinned heading is not the live one or the table is not the pinned four-column table."""
     ids = {k: R.clean_id(environ.get(f"HIRING_{k}_BLOCK_ID")) for k in ("CARD", "STATUS", "TABLE")}
@@ -54,7 +61,7 @@ def plan(client, environ):
     facts = {"heading_ok": True, "table_ok": True, "stray_tables": len(stray), "stray_header_exact": bool(stray_rows) and (stray[0].get("table") or {}).get("table_width") == 3 and R.cells_of(stray_rows[0]) == STRAY_HEADER,
              "stray_is_first": bool(stray) and stray[0] is near[0], "status_found": status is not None and status.get("type") == "paragraph", "status_in_trash": bool(status) and _gone(status),
              "status_in_place": bool(status) and not _gone(status) and bool(near) and R.same_id(near[0]["id"], ids["STATUS"]), "cells_to_fix": len(sick)}
-    return facts, {"ids": ids, "parent_id": parent_id, "stray": stray[0] if len(stray) == 1 else None, "status": status, "sick": sick}
+    return facts, {"heading": heading, "ids": ids, "parent_id": parent_id, "stray": stray[0] if len(stray) == 1 else None, "status": status, "sick": sick}
 
 
 def _safe(parts):
@@ -82,6 +89,9 @@ def run(limit, live, environ=os.environ, client=None):
     if not live or facts["validate"] == "OK":
         return facts
     status_id = o["status"]["id"]
+    own = [o["ids"]["CARD"], o["ids"]["STATUS"], o["ids"]["TABLE"]] + ([o["stray"]["id"]] if o["stray"] else [])
+    page = R.page_of(client, o["heading"], fail)
+    before = R.page_digest(client, page, own, fail, card.SKIP)                              # everything outside the region, before the first write
     if facts["status_in_trash"]:
         client.call("PATCH", f"/blocks/{status_id}", {"in_trash": False})                  # the original paragraph, by its pinned id: no replacement, nothing repinned
         stray_id = o["stray"]["id"] if o["stray"] else ""
@@ -96,6 +106,7 @@ def run(limit, live, environ=os.environ, client=None):
         url = next(p["text"]["link"]["url"] for p in cells[3] if (p.get("text") or {}).get("link"))
         client.call("PATCH", f"/blocks/{row['id']}", {"table_row": {"cells": [_safe(c) for c in cells[:3]] + [R.cell_blocks([(M.NOTES_LABEL, url)])[0]]}})
     card.validate(client, environ)                                                          # the publisher's own strict shape, pinned-id and whole-page proof
-    facts["validate"] = "OK"
-    print("hiring-repair: repaired", json.dumps({k: facts[k] for k in ("stray_tables", "status_in_trash", "cells_to_fix")}, sort_keys=True))
+    after = R.page_digest(client, page, own, fail, card.SKIP)
+    facts["validate"], facts["rest_of_page_unchanged"] = "OK", _rest(before, own) == _rest(after, own)
+    print("hiring-repair: repaired", json.dumps({k: facts[k] for k in ("stray_tables", "status_in_trash", "cells_to_fix", "rest_of_page_unchanged")}, sort_keys=True))
     return facts

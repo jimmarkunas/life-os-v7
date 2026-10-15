@@ -213,6 +213,7 @@
    "lifeos/hiring/models.py": "Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.",
    "lifeos/hiring/outcomes.py": "Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.",
    "lifeos/hiring/render.py": "Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.",
+   "lifeos/hiring/repair.py": "LIFE-47 P0: one-shot repair of the floating Hiring Pipeline region after a hand edit (HIRING_FLOATING_SHAPE_INVALID). Branch tool, never scheduled.",
    "lifeos/hiring/snapshot.py": "The one private derivative row that carries the Hiring Pipeline between runs (one table, one key, replaced each run, saved with read-back)."
   },
   "imessage": {
@@ -423,6 +424,7 @@
   "funnel": "lifeos.jobs.funnel:run",
   "hiring": "lifeos.sources.hiring:run",
   "hiring-outcomes": "lifeos.hiring.outcomes:run",
+  "hiring-repair": "lifeos.hiring.repair:run",
   "imessage-alerts": "lifeos.imessage.stage:run",
   "imessage-comms": "lifeos.imessage.comms_card:run",
   "interview": "lifeos.interview.stage:run",

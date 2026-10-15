@@ -33,6 +33,7 @@ class RepairTree(Tree):
             elif not body["in_trash"] and self.blocks[parts[1]].get("in_trash"):
                 self.kids[parent].insert(self.old_index[parts[1]] if self.restore_at is None else self.restore_at, parts[1])
                 self.blocks[parts[1]]["in_trash"] = False
+            self._tripped(method, path)
             return {}
         return super().call(method, path, body)
 
@@ -70,7 +71,7 @@ class RepairTests(unittest.TestCase):
     def test_the_live_repair_restores_the_original_paragraph_trashes_only_the_stray_and_fixes_only_the_cell(self):
         t = broken()
         facts = repair.run(0, True, ENV, t)
-        self.assertEqual(facts["validate"], "OK")
+        self.assertEqual((facts["validate"], facts["rest_of_page_unchanged"]), ("OK", True))
         self.assertEqual(t.kids["right"][t.kids["right"].index(HEADING):][:3], [HEADING, STATUS, TABLE])          # the same three ids, in order
         self.assertTrue(t.blocks["stray"]["in_trash"] and "stray" not in t.kids["right"])
         self.assertEqual([c[0]["text"]["content"] for c in t.blocks[f"{TABLE}-s"]["table_row"]["cells"]][3], "Opportunity Page ↗")
@@ -82,6 +83,12 @@ class RepairTests(unittest.TestCase):
         t.log.clear()
         again = repair.run(0, True, ENV, t)                                                                       # idempotent: a healthy region is left alone
         self.assertEqual((again["validate"], writes(t)), ("OK", []))
+
+    def test_a_change_elsewhere_on_the_page_during_the_repair_is_reported_not_hidden(self):
+        t = broken()
+        t.trip = ("stray", lambda tree: tree.blocks["cal-p"]["paragraph"].update({"rich_text": rich("someone edited the Calendar")}))
+        facts = repair.run(0, True, ENV, t)
+        self.assertEqual((facts["validate"], facts["rest_of_page_unchanged"]), ("OK", False))
 
     def test_a_paragraph_restored_to_the_wrong_place_is_put_back_and_nothing_else_changes(self):
         t = broken()
