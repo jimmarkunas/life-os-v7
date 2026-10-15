@@ -99,9 +99,9 @@ class Protocol(unittest.TestCase):
     def call(self, params):
         return m.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params}, snap=self.SNAP)
 
-    def test_lists_exactly_the_four_read_only_tools(self):
+    def test_lists_exactly_the_five_read_only_tools(self):
         tools = m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        self.assertEqual([t["name"] for t in tools], ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation"])
+        self.assertEqual([t["name"] for t in tools], ["imessage_attention", "imessage_counts", "imessage_recent", "imessage_conversation", "imessage_page"])
         self.assertEqual(tools[0]["inputSchema"], {"type": "object", "properties": {}, "additionalProperties": False})
         self.assertTrue(all(t["annotations"]["readOnlyHint"] and not t["annotations"]["destructiveHint"] for t in tools))
 

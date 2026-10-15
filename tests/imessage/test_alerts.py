@@ -38,23 +38,25 @@ def message(i, text=SECRET_TEXT, name=SECRET_NAME, group=False, minutes=1):
 
 
 class FakeWrapper:
-    """The real classifier (verdicts) from the installed wrapper, with the Mac read replaced by a fixed `recent` result."""
+    """The real classifier (verdicts) and limits from the installed wrapper, with the paged Mac read replaced by a fixed `scan` result."""
 
     def __init__(self, recent):
         self.real = ep.load_wrapper(WRAPPER)
+        self.MAX_PAGES, self.PAGE_SIZE = self.real.MAX_PAGES, self.real.PAGE_SIZE
         self.recent, self.calls = recent, []
 
-    def run(self, argv, now=None):
-        self.calls.append(argv)
+    def scan(self, hours, now=None):
+        self.calls.append(hours)
         return self.recent
 
     def verdicts(self, msgs):
         return self.real.verdicts(msgs)
 
 
-def recent(msgs, health="CURRENT"):
-    return {"channel": "imessage", "health": health, "sync": "UNVERIFIED", "observed_at": "2026-10-14T15:00:00Z", "source": "Apple Messages / Mac Mini",
-            "hours": 3, "messages": msgs if health == "CURRENT" else None, "contacts": "CURRENT", "limit": 50}
+def recent(msgs, health="CURRENT", truncated=False, pages=1):
+    """What the wrapper's paged scan returns: newest first, complete only when the reader proved the end."""
+    return {"health": health, "observed_at": "2026-10-14T15:00:00Z", "messages": msgs, "pages": pages,
+            "complete": health == "CURRENT" and not truncated, "truncated": truncated}
 
 
 class Endpoint(unittest.TestCase):
@@ -79,7 +81,7 @@ class Endpoint(unittest.TestCase):
         w = FakeWrapper(recent([message(1), message(2, text="haha nice", minutes=5), message(3, text="Can you send the form by Friday?", minutes=9)]))
         code, raw = self.call(v2(RUNNER) + b"alerts 3\n", w)
         self.assertEqual(code, 0)
-        self.assertEqual(w.calls, [["recent", "--hours", "3"]])
+        self.assertEqual(w.calls, [3])
         p = json.loads(raw)
         self.assertEqual((p["health"], p["complete"], p["scanned"], p["limit_reached"], p["lookback_hours"]), ("CURRENT", True, 3, False, 3))
         self.assertEqual([e["severity"] for e in p["events"]], ["TIME_CRITICAL", "ACTION_REQUIRED"])
@@ -99,14 +101,26 @@ class Endpoint(unittest.TestCase):
             code, raw = self.call(v2(RUNNER) + b"alerts 2\n", FakeWrapper(recent([m])))
             self.assertEqual(json.loads(raw)["events"][0]["severity"], "TIME_CRITICAL")
 
-    def test_a_full_page_is_never_complete(self):
-        msgs = [message(i, text="ok", minutes=i % 50) for i in range(50)]
-        p = json.loads(self.call(v2(RUNNER) + b"alerts 5\n", FakeWrapper(recent(msgs)))[1])
-        self.assertEqual((p["health"], p["complete"], p["limit_reached"], p["scanned"]), ("DEGRADED", False, True, 50))
+    def test_a_truncated_scan_is_never_complete_but_what_was_read_still_counts(self):
+        msgs = [message(i, text="ok", minutes=i % 50) for i in range(2000)]
+        msgs[0] = message(0)                                                              # one urgent message among them
+        p = json.loads(self.call(v2(RUNNER) + b"alerts 5\n", FakeWrapper(recent(msgs, "DEGRADED", truncated=True, pages=40)))[1])
+        self.assertEqual((p["health"], p["complete"], p["limit_reached"], p["scanned"], p["pages"], p["limit"]), ("DEGRADED", False, True, 2000, 40, 2000))
+        self.assertEqual([e["severity"] for e in p["events"]], ["TIME_CRITICAL"])
+
+    def test_more_than_fifty_messages_over_several_pages_is_complete(self):
+        msgs = [message(i, text="ok", minutes=i % 50) for i in range(137)]
+        p = json.loads(self.call(v2(RUNNER) + b"alerts 10\n", FakeWrapper(recent(msgs, pages=3)))[1])
+        self.assertEqual((p["health"], p["complete"], p["limit_reached"], p["scanned"], p["pages"]), ("CURRENT", True, False, 137, 3))
+
+    def test_too_many_events_is_incomplete_and_bounded(self):
+        msgs = [message(i, text="Can you call me?", minutes=i % 50) for i in range(600)]
+        p = json.loads(self.call(v2(RUNNER) + b"alerts 10\n", FakeWrapper(recent(msgs, pages=12)))[1])
+        self.assertEqual((p["health"], p["complete"], p["limit_reached"], len(p["events"])), ("DEGRADED", False, True, ep.MAX_EVENTS))
 
     def test_source_failures_are_incomplete(self):
         for health in ("DISCONNECTED", "DEGRADED", "STALE"):
-            p = json.loads(self.call(v2(RUNNER) + b"alerts 2\n", FakeWrapper(recent([], health)))[1])
+            p = json.loads(self.call(v2(RUNNER) + b"alerts 2\n", FakeWrapper(recent([], health, pages=0)))[1])
             self.assertEqual((p["health"], p["complete"], p["events"]), (health, False, []))
 
     def test_refusals_return_nothing(self):
@@ -184,8 +198,8 @@ sqlite3.register_converter("TIMESTAMP", lambda b: dt.datetime.fromisoformat(b.de
 
 
 def payload(events, observed="2026-10-14T15:00:00Z", hours=2, complete=True, health="CURRENT", scanned=None, reached=False):
-    return {"schema": stage.SCHEMA, "observed_at": observed, "lookback_hours": hours, "limit": 50, "sync": "UNVERIFIED", "events": events, "health": health,
-            "complete": complete, "scanned": len(events) if scanned is None else scanned, "limit_reached": reached}
+    return {"schema": stage.SCHEMA, "observed_at": observed, "lookback_hours": hours, "limit": 2000, "pages": 1 if complete else 2, "sync": "UNVERIFIED",
+            "events": events, "health": health, "complete": complete, "scanned": len(events) if scanned is None else scanned, "limit_reached": reached}
 
 
 def ev(key, severity="ACTION_REQUIRED", review=False):
@@ -303,7 +317,8 @@ class Stage(unittest.TestCase):
         self.assertIsNotNone(stage.validate((json.dumps(good) + "\n").encode(), 2, DAY))
         for bad in (dict(good, observed_at="2026-10-14T14:50:00Z"), dict(good, lookback_hours=3), dict(good, text="hi"), dict(good, sync="CURRENT"),
                     dict(good, events=[dict(ev("a"), text="hi")]), dict(good, events=[dict(ev("a"), key="m12")]),
-                    dict(good, events=[dict(ev("a"), reasons=["sender:Alice"])]), dict(good, events=[ev("a", "CLEAR")]), dict(good, limit=500)):
+                    dict(good, events=[dict(ev("a"), reasons=["sender:Alice"])]), dict(good, events=[ev("a", "CLEAR")]), dict(good, limit=50000),
+                    dict(good, limit_reached=True), dict(good, pages=0), dict(good, health="DEGRADED"), dict(good, scanned=2001)):
             self.assertIsNone(stage.validate((json.dumps(bad) + "\n").encode(), 2, DAY), bad)
 
     def test_pushes_never_carry_keys_or_message_data(self):
@@ -326,3 +341,80 @@ class Stage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WrapperScan(unittest.TestCase):
+    """openclaw_imessage.scan over a fake paged source: complete only on a proven end; anything uncertain is incomplete."""
+    from lifeos.imessage import openclaw_imessage as w
+    NOW = dt.datetime(2026, 10, 14, 15, 0, tzinfo=dt.timezone.utc)
+
+    def page(self, ids, more, cursor=True, health="CURRENT"):
+        msgs = [dict(message(i, text="ok", minutes=1), sent_at="2026-10-14T14:%02d:%02dZ" % (i // 60 % 60, i % 60)) for i in ids]
+        state = {"channel": "imessage", "health": health, "sync": "UNVERIFIED", "observed_at": "2026-10-14T15:00:00Z", "source": "Apple Messages / Mac Mini",
+                 "messages": msgs if health == "CURRENT" else None, "contacts": "CURRENT", "limit": 50, "more": more if health == "CURRENT" else None,
+                 "cursor": ({"date": 1000 + ids[-1], "rowid": ids[-1]} if ids and cursor else None) if health == "CURRENT" else None}
+        body = {"content": [{"type": "text", "text": json.dumps(state)}], "structuredContent": state, "isError": health != "CURRENT"}
+        return (json.dumps({"jsonrpc": "2.0", "id": 1, "result": body}) + "\n").encode()
+
+    def run_pages(self, pages, clock=None):
+        endpoint = os.path.join(tempfile.mkdtemp(), "endpoint")
+        with open(endpoint, "w") as f:
+            f.write("mac.example 47331\n")
+        requests = []
+
+        def fetcher(host, port, request, limit):
+            requests.append(request)
+            if not pages:
+                raise OSError("gone")
+            return pages.pop(0)
+        out = self.w.scan(10, self.NOW, endpoint, fetcher, clock or (lambda: 0), lambda: self.NOW)
+        return out, requests
+
+    def test_pages_until_the_reader_proves_the_end(self):
+        out, req = self.run_pages([self.page(range(1, 51), True), self.page(range(51, 101), True), self.page(range(101, 138), False)])
+        self.assertEqual((out["health"], out["complete"], out["pages"], len(out["messages"])), ("CURRENT", True, 3, 137))
+        self.assertEqual(req, [b"page 10\n", b"next 1050 50\n", b"next 1100 100\n"])
+        self.assertEqual(out["messages"][0]["ref"], "m137")                                     # newest first for classification
+
+    def test_uncertain_coverage_is_incomplete_but_keeps_what_was_read(self):
+        cases = {
+            "short page claiming more": [self.page(range(1, 31), True)],
+            "cursor went backwards": [self.page(range(51, 101), True), self.page(range(1, 51), True)],
+            "message repeated across pages": [self.page(range(1, 51), True), self.page(range(50, 100), False)],
+            "source failed mid-scan": [self.page(range(1, 51), True), self.page([], False, health="DISCONNECTED")],
+            "connection lost mid-scan": [self.page(range(1, 51), True)],
+            "malformed page": [self.page(range(1, 51), True), b"not json\n"],
+            "cursor not the last message": [self.page(range(1, 51), True, cursor=False)],
+        }
+        for name, pages in cases.items():
+            out, _ = self.run_pages(pages)
+            self.assertFalse(out["complete"], name)
+            self.assertNotEqual(out["health"], "CURRENT", name)
+            self.assertTrue(len(out["messages"]) <= 50, name)
+
+    def test_page_and_time_caps_are_incomplete(self):
+        pages = [self.page(range(1 + 50 * k, 51 + 50 * k), True) for k in range(self.w.MAX_PAGES + 2)]
+        out, req = self.run_pages(pages)
+        self.assertEqual((out["complete"], out["truncated"], out["pages"], len(req)), (False, True, self.w.MAX_PAGES, self.w.MAX_PAGES))
+        ticks = iter([0, 0, 10, 20, 40, 50])
+        out, req = self.run_pages([self.page(range(1 + 50 * k, 51 + 50 * k), True) for k in range(5)], clock=lambda: next(ticks))
+        self.assertEqual((out["complete"], out["truncated"]), (False, True))
+
+    def test_an_empty_window_is_complete(self):
+        out, _ = self.run_pages([self.page([], False)])
+        self.assertEqual((out["health"], out["complete"], out["messages"], out["pages"]), ("CURRENT", True, [], 1))
+
+
+class Recovery(unittest.TestCase):
+    def test_events_already_recorded_by_a_degraded_run_are_not_pushed_again(self):
+        db = StageDB()
+        degraded = payload([ev("a")], complete=False, health="DEGRADED", scanned=50, reached=True)
+        counts, pushes = Stage.runs(Stage(), db, DAY, degraded)
+        self.assertEqual((counts["new"], len(pushes), counts["failed"]), (1, 1, 1))
+        self.assertNotIn(stage.MARK, db.rows())                                                  # watermark NOT advanced by the incomplete scan
+        later = DAY + dt.timedelta(hours=1)
+        hours, _ = stage.window(later, None)
+        counts, pushes = Stage.runs(Stage(), db, later, payload([ev("a"), ev("b")], observed="2026-10-14T16:00:00Z", hours=hours))
+        self.assertEqual((counts["new"], counts["deliver"], counts["complete"], counts["failed"]), (1, 1, 1, 0))
+        self.assertEqual(pushes[0][2], "1 text needs a reply. Open Messages.")                   # only the new event
+        self.assertIn(stage.MARK, db.rows())

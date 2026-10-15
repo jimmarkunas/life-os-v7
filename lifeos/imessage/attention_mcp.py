@@ -6,6 +6,9 @@ each fixed SQL over the read-only database with at most one bounded integer argu
 - `imessage_counts` (no arguments): unread messages and unread conversations by defined window, service and group/direct; never presented as the iPhone badge.
 - `imessage_recent` (`hours` 1-72): the newest incoming messages (at most 50) with sender, time, conversation reference and text, for on-demand reading.
 - `imessage_conversation` (`chat` reference from `imessage_recent`): the last 20 messages of that one conversation, both directions.
+- `imessage_page` (`hours` 1-72 for the first page, or the integer cursor `after_date` + `after_rowid` it returned): ALL incoming messages of the window,
+  oldest first in strict (date, ROWID) order, one row per message, PAGE at a time; `more` is decided by fetching one extra row, so the end of results is
+  proven, never assumed. Used only by the private alert scan on Oracle, which pages until `more` is false.
 Content is returned to the caller only; nothing is written to disk, logged or kept. Never writes stderr; any failure is a fixed state, never an exception text.
 
 What one observation can and cannot establish:
@@ -33,6 +36,7 @@ SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
 RECENT_UNREAD = "SELECT COUNT(*) FROM message WHERE is_from_me = 0 AND is_read = 0 AND item_type = 0 AND date > ?"
 CONTACTS = os.path.expanduser("~/Library/Application Support/AddressBook")
 MAX_HOURS, MAX_RECENT, MAX_THREAD, MAX_TEXT, MAX_CHAT = 72, 50, 20, 2000, 10 ** 9
+PAGE, MAX_TICKS, MAX_ROWID = 50, 10 ** 18, 2 ** 31 - 1
 EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 TOOLS = {
     "imessage_attention": ("Aggregate iMessage attention state for the Mac Mini's local Messages copy. Read-only; no content or identities.", EMPTY),
@@ -43,6 +47,12 @@ TOOLS = {
     "imessage_conversation": ("The last 20 messages of one conversation (reference from imessage_recent), both directions. Read-only.",
                               {"type": "object", "properties": {"chat": {"type": "integer", "minimum": 1, "maximum": MAX_CHAT}}, "required": ["chat"],
                                "additionalProperties": False}),
+    "imessage_page": ("All incoming messages of a window, oldest first, one page (50) at a time with a cursor; `more` false proves the end. Read-only.",
+                      {"type": "object", "oneOf": [
+                          {"properties": {"hours": {"type": "integer", "minimum": 1, "maximum": MAX_HOURS}}, "required": ["hours"], "additionalProperties": False},
+                          {"properties": {"after_date": {"type": "integer", "minimum": 1, "maximum": MAX_TICKS},
+                                          "after_rowid": {"type": "integer", "minimum": 1, "maximum": MAX_ROWID}},
+                           "required": ["after_date", "after_rowid"], "additionalProperties": False}]}),
 }
 COUNT_DEFINITIONS = {
     "messages": "distinct incoming messages (by GUID) in a conversation with is_read = 0; reactions, retracted (unsent) and non-message rows excluded",
@@ -213,6 +223,11 @@ def _messages(con, cols, where, args, limit, names_root):
         if row[1] not in seen and len(picked) < limit:                 # one entry per message even when it is joined to two chats
             seen.add(row[1])
             picked.append(row)
+    return _shape(picked, names_root)
+
+
+def _shape(picked, names_root):
+    """Rows (ROWID, guid, text, attributedBody, attachment, edited, date, service, mine, read, handle, chat, style, chat_name) -> message dicts."""
     names, contacts = _contacts([r[10] for r in picked if not r[8]], names_root)
     out = []
     for rowid, _, text, attributed, attachment, edited, date, service, mine, read, handle, chat, style, chat_name in picked:
@@ -223,6 +238,35 @@ def _messages(con, cols, where, args, limit, names_root):
                     "edited": bool(edited), "attachment": bool(attachment), "text": body[:MAX_TEXT] if body else None,
                     "text_truncated": bool(body) and len(body) > MAX_TEXT})
     return out, contacts
+
+
+def page(hours=None, after=None, db=DB, now=None, contacts_root=CONTACTS):
+    """One page of ALL incoming messages after a cursor, oldest first. The first page starts at now - hours; each later one strictly after the (date, ROWID)
+    of the previous page's last message, so a page boundary between messages that share a timestamp neither skips nor repeats one. A message joined to
+    several conversations is one row (its lowest conversation id)."""
+    now = now or datetime.now(timezone.utc)
+    after_date, after_rowid = after if after else (_ticks(now - timedelta(hours=hours)), 0)
+    box = {}
+
+    def work(con, cols):
+        extra = ", ".join("m." + c if c in cols else "0" for c in ("attributedBody", "cache_has_attachments", "date_edited"))
+        rows = con.execute("SELECT m.ROWID, m.guid, m.text, " + extra + ", m.date, m.service, m.is_from_me, m.is_read, h.id, c.ROWID, c.style, c.display_name"
+                           " FROM (SELECT m.ROWID AS rid, MIN(j.chat_id) AS cid FROM message m JOIN chat_message_join j ON j.message_id = m.ROWID"
+                           " WHERE " + _real(cols) + " AND (m.date > ? OR (m.date = ? AND m.ROWID > ?)) GROUP BY m.ROWID ORDER BY m.date, m.ROWID LIMIT ?) p"
+                           " JOIN message m ON m.ROWID = p.rid JOIN chat c ON c.ROWID = p.cid LEFT JOIN handle h ON h.ROWID = m.handle_id"
+                           " ORDER BY m.date, m.ROWID", (after_date, after_date, after_rowid, PAGE + 1)).fetchall()
+        more = len(rows) > PAGE
+        rows = rows[:PAGE]
+        box["cursor"] = {"date": rows[-1][6], "rowid": rows[-1][0]} if rows else None
+        box["more"] = more
+        box["messages"], box["contacts"] = _shape(rows, contacts_root)
+        return True
+    health, _ = _read(db, now, work)
+    out = _base(now, db, health)
+    ok = health == "CURRENT"
+    out.update({"messages": box.get("messages") if ok else None, "contacts": box.get("contacts", "UNAVAILABLE"), "limit": PAGE,
+                "more": box.get("more") if ok else None, "cursor": box.get("cursor") if ok else None})
+    return out
 
 
 def recent(hours, db=DB, now=None, contacts_root=CONTACTS):
@@ -264,7 +308,8 @@ def _error(mid, code, message):
 def handle(msg, snap=snapshot, ops=None):
     """One JSON-RPC message -> one reply (None for notifications)."""
     ops = ops or {"imessage_counts": lambda args: counts(), "imessage_recent": lambda args: recent(args["hours"]),
-                  "imessage_conversation": lambda args: conversation(args["chat"])}
+                  "imessage_conversation": lambda args: conversation(args["chat"]),
+                  "imessage_page": lambda args: page(args["hours"]) if "hours" in args else page(after=(args["after_date"], args["after_rowid"]))}
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:
         return None
@@ -283,7 +328,10 @@ def handle(msg, snap=snapshot, ops=None):
         valid = isinstance(args, dict) and (
             (name in (TOOL, "imessage_counts") and args == {})
             or (name == "imessage_recent" and set(args) == {"hours"} and _int(args["hours"], 1, MAX_HOURS))
-            or (name == "imessage_conversation" and set(args) == {"chat"} and _int(args["chat"], 1, MAX_CHAT)))
+            or (name == "imessage_conversation" and set(args) == {"chat"} and _int(args["chat"], 1, MAX_CHAT))
+            or (name == "imessage_page" and set(args) == {"hours"} and _int(args["hours"], 1, MAX_HOURS))
+            or (name == "imessage_page" and set(args) == {"after_date", "after_rowid"} and _int(args["after_date"], 1, MAX_TICKS)
+                and _int(args["after_rowid"], 1, MAX_ROWID)))
         if not valid:
             return _error(mid, -32602, "unsupported tool or arguments")
         state = snap() if name == TOOL else ops[name](args)

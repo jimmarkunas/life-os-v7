@@ -3,8 +3,8 @@
    launchd starts it per connection on 127.0.0.1 (inetd style: the connection is stdin/stdout). Tailscale Serve forwards each tailnet connection here
    with a PROXY protocol v2 header carrying the WireGuard-authenticated source address. The relay:
      1. requires a well-formed v2 PROXY header for TCP over IPv4/IPv6 whose source is exactly the Oracle Gateway (fixed at build time, never in Git);
-     2. requires one request line from the fixed grammar: "attention", "counts", "recent <1-72>" or "conversation <1-999999999>" (digits only, no
-        leading zero), at most MAX_REQUEST bytes;
+     2. requires one request line from the fixed grammar: "attention", "counts", "recent <1-72>", "conversation <1-999999999>", "page <1-72>" or
+        "next <date 1-10^18> <rowid 1-2147483647>" (digits only, no leading zero), at most MAX_REQUEST bytes;
      3. builds the matching tools/call itself from the validated integer and returns the helper's single reply line, at most MAX_REPLY bytes.
    Anything else closes the connection with no output. No arguments, no environment input, no caller-chosen path, command or query; a fixed deadline. */
 #include <arpa/inet.h>
@@ -26,7 +26,7 @@
 #define SOCKET_IN_HOME "/Library/Application Support/LifeOS/imessage-attention.sock"
 #define CALL_HEAD "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": "
 #define MAX_PROXY_TAIL 216                                    /* v2 address block plus room for Serve's TLVs; anything larger is refused */
-#define MAX_REQUEST 32
+#define MAX_REQUEST 48
 #define MAX_REPLY 262144                                      /* 50 messages of at most 2000 characters, JSON-escaped */
 #define DEADLINE_SECONDS 8
 
@@ -68,13 +68,14 @@ static int source_is_oracle(void) {
     return 0;
 }
 
-static long number(const char *digits, long high) {         /* 1..high from plain decimal digits, no sign, no leading zero; -1 otherwise */
-    long n = 0;
+static long long number(const char *digits, long long high) {   /* 1..high from plain decimal digits, no sign, no leading zero; -1 otherwise */
+    long long n = 0;
     if (digits[0] < '1' || digits[0] > '9')
         return -1;
     for (const char *c = digits; *c; c++) {
-        if (*c < '0' || *c > '9' || (n = n * 10 + (*c - '0')) > high)
+        if (*c < '0' || *c > '9' || n > (high - (*c - '0')) / 10)    /* checked before multiplying: never overflows */
             return -1;
+        n = n * 10 + (*c - '0');
     }
     return n;
 }
@@ -82,7 +83,8 @@ static long number(const char *digits, long high) {         /* 1..high from plai
 static int request_to_call(char *call, size_t size) {       /* read one request line and write the matching fixed call; 0 when it is not in the grammar */
     char req[MAX_REQUEST + 1];
     size_t n = 0;
-    long arg;
+    long long arg, rowid;
+    char *space;
     for (;;) {
         if (n == MAX_REQUEST || read(0, req + n, 1) != 1)
             return 0;                                         /* longer than any valid request, or the caller stopped: refused */
@@ -96,9 +98,17 @@ static int request_to_call(char *call, size_t size) {       /* read one request 
     if (strcmp(req, "counts") == 0)
         return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_counts\", \"arguments\": {}}}\n") < (int)size;
     if (strncmp(req, "recent ", 7) == 0 && (arg = number(req + 7, 72)) > 0)
-        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_recent\", \"arguments\": {\"hours\": %ld}}}\n", arg) < (int)size;
-    if (strncmp(req, "conversation ", 13) == 0 && (arg = number(req + 13, 999999999L)) > 0)
-        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_conversation\", \"arguments\": {\"chat\": %ld}}}\n", arg) < (int)size;
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_recent\", \"arguments\": {\"hours\": %lld}}}\n", arg) < (int)size;
+    if (strncmp(req, "conversation ", 13) == 0 && (arg = number(req + 13, 999999999LL)) > 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_conversation\", \"arguments\": {\"chat\": %lld}}}\n", arg) < (int)size;
+    if (strncmp(req, "page ", 5) == 0 && (arg = number(req + 5, 72)) > 0)
+        return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_page\", \"arguments\": {\"hours\": %lld}}}\n", arg) < (int)size;
+    if (strncmp(req, "next ", 5) == 0 && (space = strchr(req + 5, ' ')) != NULL) {   /* exactly two numbers separated by one space */
+        *space = '\0';
+        if ((arg = number(req + 5, 1000000000000000000LL)) > 0 && (rowid = number(space + 1, 2147483647LL)) > 0)
+            return snprintf(call, size, CALL_HEAD "{\"name\": \"imessage_page\", \"arguments\": {\"after_date\": %lld, \"after_rowid\": %lld}}}\n",
+                            arg, rowid) < (int)size;
+    }
     return 0;
 }
 
