@@ -6,13 +6,20 @@ fail-closed or retryable path, never a silent static fallback. No provider logic
 """
 from dataclasses import dataclass
 import json
+import re
 
 from lifeos.jobs.fit import UNIVERSAL_FIT_FLOOR, extract
-from lifeos.jobs.fit.score import JUNIOR, JUNIOR_CAP, SENIOR
+from lifeos.jobs.fit.score import JUNIOR, JUNIOR_CAP, MIN_TEXT, SENIOR
 
 FAMILY_CAP = 40
 SECTIONS = ("summary", "required", "preferred", "duty")          # what the static scorer reads; benefits, pay, place and company boilerplate are never sent
 KEYS = {"score", "rationale", "confidence"}
+# Pay, benefits, work mode, place and visa are never Fit evidence: a clause stating one is dropped before egress (a mixed clause is lost whole; "remote teams" or "benefits realization" are kept).
+POLICY = re.compile(r"[$£€]\s?\d|\b(?:salary|base pay|pay range|hourly rate|compensation (?:range|package)|competitive (?:salary|pay|compensation))\b|\b401\(?k\)?|\bpto\b|paid time off|parental leave|"
+                    r"\b(?:health|medical|dental|vision) (?:insurance|coverage|plans?|benefits)\b|\bstock options\b|\bequity (?:grants?|package)\b|"
+                    r"\b(?:remote|hybrid|on-?site|in-office)[- ](?:first|only|friendly|role|position|work|schedule|policy|basis|job)\b|\b(?:fully|100%|completely) remote\b|"
+                    r"\bwork(?:ing)? (?:remotely|from (?:home|anywhere|the office))\b|\bon-?site\b|\bin[- ]office\b|\b\d+ days? (?:a|per) week\b|\b(?:based|located) in\b|"
+                    r"\brelocat\w+|\boffice in\b|\blocation\b|\bvisa\b|\bsponsorship\b|\bauthori[sz]ed to work\b|work authori[sz]ation|\bright to work\b", re.I)
 
 
 @dataclass(frozen=True)
@@ -24,14 +31,18 @@ class Judgment:
 
 
 def request(title, text, profile_brief):
-    """The capability's whole input: the title, the substantive description and the canonical profile brief. Location, work mode, pay, source and freshness are not in it."""
-    return {"title": title, "description": "\n".join(u.text for u in extract.parse(text) if u.section in SECTIONS), "profile": profile_brief}
+    """The capability's whole input: the title, the substantive description and the canonical profile brief; None (nothing is sent) when less than MIN_TEXT characters of description
+    remain. Pay, benefits, work mode, place and visa statements are removed clause by clause wherever they appear; source and freshness are never in the text."""
+    clauses = [c for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c)]
+    description = "\n".join(clauses)
+    return {"title": title, "description": description, "profile": profile_brief} if len(description) >= MIN_TEXT else None
 
 
-def accept(raw, base, title):
-    """The capability's JSON answer under the code-owned envelope -> Judgment, or None (unusable). `base` is the static `evaluate` Result for the same posting: it owns scoreability and the gate."""
-    if base.score is None:
-        return Judgment(None, base.decision, base.why, "low")      # title-only or requirement-free: unscorable stays unscorable, never a percentage
+def accept(raw, base, title, sent):
+    """The capability's JSON answer under the code-owned envelope -> Judgment, or None (unusable). `sent` is what `request` returned for the posting; `base` is the static `evaluate` Result,
+    used only for the exclusion gate and the hard-family cap, never for scoreability: the static scorer failing to recognise a requirement does not make a substantive description unscorable."""
+    if sent is None:
+        return Judgment(None, "No-Go" if base.exclusion else "Unscorable", "No substantive description to judge.", "low")      # title-only or too little description: never a percentage
     try:
         data = json.loads(raw) if isinstance(raw, str) else raw
         score, rationale, confidence = data["score"], data["rationale"], data["confidence"]

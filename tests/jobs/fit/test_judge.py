@@ -10,7 +10,7 @@ from lifeos.jobs.fit.score import evaluate
 from tests.jobs.fit.test_fit import GOOD, PROFILE
 
 TODAY = date(2026, 10, 1)
-PAD = " We are a collaborative remote-first team shipping software for merchants worldwide." * 6
+PAD = " Our teams value clear writing, steady delivery and honest status updates." * 6
 JOBS = {}
 JOBS["A clear keyword match"] = ("Technical Program Manager", "Northwind Commerce", GOOD)
 JOBS["B paraphrased delivery lead"] = ("Delivery Lead, Platform Programs", "Contoso Retail", """About the role
@@ -153,13 +153,17 @@ def answer(score, rationale="Aligned on delivery ownership.", confidence="medium
     return json.dumps({"score": score, "rationale": rationale, "confidence": confidence})
 
 
+def sent_for(title, text):
+    return judge.request(title, text, {"years": 15})
+
+
 class RepresentativeSet(unittest.TestCase):
     def test_baseline_beside_the_provisional_outcome_for_every_case(self):
         self.assertEqual(set(JOBS), set(PROVISIONAL))
         for name, (title, company, text) in JOBS.items():
             base = evaluate(title, company, text, PROFILE, TODAY)
             decision, raw, want = PROVISIONAL[name]
-            got = judge.accept(answer(raw), base, title)
+            got = judge.accept(answer(raw), base, title, sent_for(title, text))
             self.assertEqual(base.decision, decision, name)
             self.assertEqual((got.score, got.decision), want, name)
 
@@ -170,36 +174,78 @@ class RepresentativeSet(unittest.TestCase):
 
 
 class Envelope(unittest.TestCase):
-    title = JOBS["B paraphrased delivery lead"][0]
-    base = evaluate(*JOBS["B paraphrased delivery lead"], PROFILE, TODAY)
+    title, company, text = JOBS["B paraphrased delivery lead"]
+    base = evaluate(title, company, text, PROFILE, TODAY)
+    sent = sent_for(title, text)
 
     def test_the_floor_is_72_and_code_decides(self):
-        self.assertEqual(judge.accept(answer(72), self.base, self.title).decision, "Go")
-        self.assertEqual(judge.accept(answer(71), self.base, self.title).decision, "No-Go")
+        self.assertEqual(judge.accept(answer(72), self.base, self.title, self.sent).decision, "Go")
+        self.assertEqual(judge.accept(answer(71), self.base, self.title, self.sent).decision, "No-Go")
 
     def test_an_unscorable_posting_never_gets_a_percentage_whatever_the_capability_says(self):
         base = evaluate("Technical Program Manager", "Litware", "", PROFILE, TODAY)
-        got = judge.accept(answer(99), base, "Technical Program Manager")
+        sent = sent_for("Technical Program Manager", "")
+        self.assertIsNone(sent)                                                        # nothing is sent for a title-only posting
+        got = judge.accept(answer(99), base, "Technical Program Manager", sent)
         self.assertEqual((got.score, got.decision), (None, "Unscorable"))
-        self.assertEqual(judge.accept("not json at all", base, "x").score, None)         # the answer is not even read
+        self.assertIsNone(judge.accept("not json at all", base, "x", sent).score)      # the answer is not even read
 
     def test_unusable_answers_fail_closed(self):
         for bad in ("", "nonsense", "[]", "null", answer(101), answer(-1), answer(72.5), json.dumps({"score": True, "rationale": "x", "confidence": "low"}),
                     json.dumps({"score": "80", "rationale": "x", "confidence": "low"}), answer(80, confidence="certain"), json.dumps({"score": 80, "confidence": "low"}),
                     json.dumps({"score": 80, "rationale": 5, "confidence": "low"}), json.dumps({"score": 80, "rationale": "x", "confidence": "low", "model": "other"}), None):
-            self.assertIsNone(judge.accept(bad, self.base, self.title), repr(bad))
+            self.assertIsNone(judge.accept(bad, self.base, self.title, self.sent), repr(bad))
 
     def test_the_rationale_is_bounded_and_single_line(self):
-        got = judge.accept(answer(80, "line one\n\n  line two " + "x" * 400), self.base, self.title)
+        got = judge.accept(answer(80, "line one\n\n  line two " + "x" * 400), self.base, self.title, self.sent)
         self.assertEqual((len(got.rationale), "\n" in got.rationale), (300, False))
 
-    def test_the_request_carries_title_description_and_profile_but_no_benefits_pay_or_place(self):
-        text = JOBS["B paraphrased delivery lead"][2] + "\nBenefits\nSalary range 150,000 to 180,000 USD\nLocation\nAustin, Texas onsite three days\n"
-        sent = judge.request(self.title, text, {"years": 15})
+    def test_the_request_carries_title_description_and_profile_but_no_benefits_pay_or_place_under_their_own_headings(self):
+        text = self.text + "\nBenefits\nSalary range 150,000 to 180,000 USD\nLocation\nAustin, Texas onsite three days\n"
+        sent = sent_for(self.title, text)
         self.assertEqual(sorted(sent), ["description", "profile", "title"])
         self.assertIn("steering forum", sent["description"])
         self.assertNotIn("Salary", sent["description"])
         self.assertNotIn("Austin", sent["description"])
+
+    def test_pay_place_and_work_mode_stated_inside_a_retained_section_are_removed_before_egress(self):
+        text = self.text.replace("• Run the weekly steering forum and publish decisions",
+                                 "• Run the weekly steering forum and publish decisions\n• This is a hybrid role based in Austin, Texas, three days a week in the office\n"
+                                 "• Coordinate remote engineering teams across time zones. Salary range $150,000 to $180,000 plus a 401(k) match\n"
+                                 "• Track benefits realization for each program; Relocation assistance is available") \
+                          .replace("• Clear written and verbal communication with executives", "• Clear written and verbal communication with executives\n• Must be authorized to work in the US; visa sponsorship is not offered")
+        description = sent_for(self.title, text)["description"]
+        for leaked in ("hybrid", "Austin", "three days", "Salary", "$150,000", "401(k)", "Relocation", "visa", "authorized to work"):
+            self.assertNotIn(leaked, description, leaked)
+        for kept in ("steering forum", "remote engineering teams", "benefits realization", "10+ years leading complex"):
+            self.assertIn(kept, description, kept)                                     # legitimate responsibilities survive
+
+    def test_a_posting_that_is_mostly_policy_statements_sends_nothing(self):
+        text = "Responsibilities\n" + "\n".join(f"• Salary range ${n}0,000, hybrid in Austin, 401(k) and health insurance" for n in range(1, 12)) + "\n"
+        self.assertGreater(len(text), 300)
+        self.assertIsNone(sent_for(self.title, text))
+
+    NARRATIVE = ("About the role\nGet merchants live, smoothly and on a date.\n\nWhat you'll do\n• Take each merchant from signed contract to first live order\n"
+                 "• Keep a tracker the whole group trusts and flag slips early\n• Hold a weekly call with every merchant champion\n"
+                 "• Explain slips, reset expectations and protect the next launch\n• Write plain status notes that close loops before anyone has to ask\n"
+                 "• Keep the next three launches warm so nobody waits on a handoff\n")
+
+    def test_a_substantive_paraphrased_description_is_judged_even_when_the_static_scorer_recognises_nothing(self):
+        base = evaluate("Launch Captain", "Initech", self.NARRATIVE, PROFILE, TODAY)
+        self.assertEqual((base.score, base.decision), (None, "Unscorable"))          # static vocabulary limit: nothing recognised
+        sent = sent_for("Launch Captain", self.NARRATIVE)
+        self.assertIsNotNone(sent)
+        got = judge.accept(answer(79), base, "Launch Captain", sent)
+        self.assertEqual((got.score, got.decision), (79, "Go"))
+
+    def test_the_family_cap_and_the_gate_hold_when_the_static_scorer_recognises_nothing(self):
+        engineer = evaluate("Software Engineer", "Initech", self.NARRATIVE, PROFILE, TODAY)
+        self.assertIsNone(engineer.score)
+        got = judge.accept(answer(90), engineer, "Software Engineer", sent_for("Software Engineer", self.NARRATIVE))
+        self.assertEqual((got.score, got.decision), (40, "No-Go"))                   # hard-family cap, code-owned
+        gated = evaluate("Program Manager", "AcmeCorp", self.NARRATIVE, PROFILE, TODAY)
+        got = judge.accept(answer(90), gated, "Program Manager", sent_for("Program Manager", self.NARRATIVE))
+        self.assertEqual((got.score, got.decision), (90, "No-Go"))                   # the private exclusion gate decides
 
 
 if __name__ == "__main__":
