@@ -95,6 +95,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("display_title == 'tick'", domains["jobs"]["agenda"]["if"])      # nor does a manual hourly run
         self.assertEqual(domains["jobs"]["agenda"]["needs"], "jira")                   # both write the Daily Report page: never at once
         self.assertIn("always()", domains["jobs"]["agenda"]["if"])                     # but a failed Jira job does not stop the Calendar card
+        self.assertEqual(set(domains["jobs"]["imessage"]["needs"]), {"jira", "agenda", "bills", "amazon", "attention"})   # its cards prove these regions unchanged: never beside their writers
+        self.assertIn("always()", domains["jobs"]["imessage"]["if"])                   # a failed writer never stops the alerts
 
     def test_bills_paid_runs_on_a_tick_before_the_snapshot_and_follows_the_live_flag(self):
         from pathlib import Path
