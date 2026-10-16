@@ -218,6 +218,68 @@ class RunTests(unittest.TestCase):
         self.assertIn("Protected DCC content", "\n".join(lines_of(notion)))             # the old lines are removed only after the replacement is verified
         self.assertEqual([p for m, p in notion.log if m == "DELETE"], [])
 
+    def quiet(self, notion):
+        """Make every card say there is nothing to do (one suggestion), or put the busy day back (three)."""
+        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 0 overdue")
+        notion.children["jira-callout"][2] = text_block(notion, "sprint-quiet", "paragraph", "JFM Sprint 15 · 0 Overdue/Blocked · 1 Today")
+        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": "Updated 10:05 PM CT · No active exceptions.", "text": {"content": "Updated 10:05 PM CT · No active exceptions."}}]}
+
+    def decisions(self, notion):
+        right = notion.children[notion.children["dcc-callout"][1]["id"]][1]["id"]
+        return [(b["type"], report_region.plain(b)) for b in notion.children[notion.children[right][0]["id"]]]
+
+    def test_the_suggestion_list_goes_three_one_three_on_the_same_tree_keeping_the_hiring_footer(self):
+        notion = page()
+        go(notion)
+        self.assertEqual([t for t, _ in self.decisions(notion)], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
+        busy = {k: list(v) for k, v in notion.children.items()}
+        right = notion.children[notion.children[notion.children["dcc-callout"][1]["id"]][1]["id"]][0]["id"]
+        kept = [b["id"] for b in notion.children[right]]
+        self.quiet(notion)
+        go(notion)
+        self.assertEqual([t for t, _ in self.decisions(notion)], ["paragraph", "numbered_list_item", "paragraph"])
+        self.assertEqual([b["id"] for b in notion.children[right]][:2], kept[:2])                      # the title and the first item keep their blocks
+        for key in ("bills-callout", "jira-callout"):
+            notion.children[key] = busy[key]
+        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": "Updated 10:05 PM CT · 23 active exceptions", "text": {"content": "Updated 10:05 PM CT · 23 active exceptions"}}]}
+        go(notion)
+        shown = self.decisions(notion)
+        self.assertEqual([t for t, _ in shown], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
+        self.assertEqual(sum(1 for _, text in shown if text.endswith("See Hiring Pipeline below.")), 1)       # the fixed footer survives, once
+        self.assertEqual(len(notion.children[right]), 5)
+        mark = len(notion.log)
+        go(notion)
+        self.assertEqual([m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")], [])
+
+    def writes_since(self, notion, mark):
+        return [m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")]
+
+    def test_a_foreign_child_inside_a_valid_component_is_never_deleted_and_nothing_is_written(self):
+        notion = page()
+        go(notion)
+        bottom = notion.children["dcc-callout"][2]["id"]
+        kpi = notion.children[notion.children[notion.children[bottom][3]["id"]][0]["id"]]               # the Mail waiting card's blocks
+        kpi.append(text_block(notion, "human-note", "paragraph", "my own note"))
+        mark = len(notion.log)
+        with self.assertRaises(NotionError) as error:
+            go(notion)
+        self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
+        self.assertEqual(self.writes_since(notion, mark), [])
+        self.assertIn("my own note", str(self.shape(notion)))
+
+    def test_a_later_branch_mismatch_stops_everything_even_when_an_earlier_branch_has_a_pending_change(self):
+        notion = page()
+        go(notion)
+        bottom = notion.children["dcc-callout"][2]["id"]
+        last = notion.children[notion.children[notion.children[bottom][3]["id"]][0]["id"]]
+        last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}                         # the last card's number block was changed
+        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 overdue · Bill Tracker")      # an earlier card has new data
+        mark = len(notion.log)
+        with self.assertRaises(NotionError) as error:
+            go(notion)
+        self.assertIn("CARD_STRUCTURE_CHANGED", str(error.exception))
+        self.assertEqual(self.writes_since(notion, mark), [])
+
     def test_a_block_that_is_not_ours_or_a_changed_structure_stops_the_write(self):
         notion = page()
         notion.children["dcc-callout"].append({"id": "extra-view", "type": "child_database", "has_children": False, "child_database": {}})

@@ -8,6 +8,7 @@ import hashlib
 import json
 import time
 from copy import deepcopy
+from itertools import groupby
 from urllib.parse import quote
 
 from lifeos.platform import router
@@ -288,7 +289,6 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
     raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(kept)))
 
 
-# ---- A nested native layout (LIFE-57): columns, toggles and callouts under the owner's heading, kept in place hour after hour. ----
 def _shell(block, depth=2):
     """The block as Notion accepts it in ONE append (two levels of children); deeper levels are filled by the next sync step."""
     kind = block["type"]
@@ -303,41 +303,47 @@ def _sig(rich):
              ((p.get("text") or {}).get("link") or {}).get("url")) for p in rich or []]
 
 
+def _runs(blocks):
+    return [(kind, list(run)) for kind, run in groupby(blocks, lambda b: b.get("type"))]
+
+
 def _sync(client, parent, old, new, anchor, fail, live):
-    """-> number of changes (made, when live). A block of the same type takes the new text in place (identity kept), a missing one is appended and filled, a surplus one is removed;
-    another type where one is expected is somebody else's edit: nothing is rewritten."""
-    count = 0
-    for i, want in enumerate(new):
-        kind = want["type"]
-        if i < len(old):
-            have = old[i]
-            if have.get("type") != kind:
-                raise fail("CARD_STRUCTURE_CHANGED")
-            if "rich_text" in want[kind] and _sig(have[kind].get("rich_text")) != _sig(want[kind]["rich_text"]):
+    """-> number of changes. Blocks match run by run (same type, in order): text is patched in place, a missing block appended and filled, only a numbered list may grow or shrink; anything else
+    (another type, an extra block) is somebody else's edit and fails before any write (the dry run comes first)."""
+    count, olds, news = 0, _runs(old), _runs(new)
+    if len(olds) > len(news) or any(o[0] != w[0] for o, w in zip(olds, news)):
+        raise fail("CARD_STRUCTURE_CHANGED")
+    for n, (kind, wants) in enumerate(news):
+        haves = olds[n][1] if n < len(olds) else []
+        if len(haves) > len(wants) and kind != "numbered_list_item":
+            raise fail("CARD_STRUCTURE_CHANGED")
+        for i, want in enumerate(wants):
+            if i < len(haves):
+                have = haves[i]
+                if "rich_text" in want[kind] and _sig(have[kind].get("rich_text")) != _sig(want[kind]["rich_text"]):
+                    count += 1
+                    if live:
+                        client.call("PATCH", f"/blocks/{quote(have['id'], safe='')}", {kind: {"rich_text": want[kind]["rich_text"]}})
+            else:
                 count += 1
-                if live:
-                    client.call("PATCH", f"/blocks/{quote(have['id'], safe='')}", {kind: {"rich_text": want[kind]["rich_text"]}})
-        else:
+                if not live:
+                    continue
+                made = client.call_once("PATCH", f"/blocks/{quote(parent, safe='')}/children", {"children": [_shell(want)], **({"after": anchor} if anchor else {})})
+                if not isinstance(made, dict) or not made.get("results"):
+                    raise fail("CARD_APPEND_MISMATCH")
+                have = made["results"][0]
+            if want[kind].get("children"):
+                count += _sync(client, have["id"], children(client, have["id"], fail), want[kind]["children"], None, fail, live)
+            anchor = have["id"]
+        for extra in haves[len(wants):]:
             count += 1
-            if not live:
-                continue
-            made = client.call_once("PATCH", f"/blocks/{quote(parent, safe='')}/children", {"children": [_shell(want)], **({"after": anchor} if anchor else {})})
-            if not isinstance(made, dict) or not made.get("results"):
-                raise fail("CARD_APPEND_MISMATCH")
-            have = made["results"][0]
-        if want[kind].get("children"):
-            count += _sync(client, have["id"], children(client, have["id"], fail), want[kind]["children"], None, fail, live)
-        anchor = have["id"]
-    for extra in old[len(new):]:
-        count += 1
-        if live:
-            client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
+            if live:
+                client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
     return count
 
 
 def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live):
-    """The owner's callout keeps its heading and holds exactly `spec` (column lists) under it. Dry run: validate and count the changes. Live: sync, read back (a second sync must find nothing to
-    change), and only then remove the old flat text lines. -> (changes, removed)."""
+    """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed)."""
     meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
         raise fail("CARD_NOT_OWNED")
@@ -353,6 +359,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
         raise fail("CARD_NOT_OWNED")                                                  # anything else under the heading is not ours to rewrite
     if not live:
         return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
+    _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
     before = protected(client, protected_ids, fail)
     try:
         changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
