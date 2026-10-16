@@ -113,6 +113,19 @@ def read_events(calendar, now):
     return events
 
 
+def close_ids(rows, applied, parents):
+    """D194 S3: {row key: the page id `decision.route` would close it on}, the very rule the private Close screen runs; an ambiguous or unmatched pursuit has none."""
+    ids = {}
+    for r in rows or []:
+        try:
+            pid = decision._page_id(decision.route(applied, parents, {"company": r["company"], "role": r["role"], "action": decision.ACTION})[1].get("id"))
+        except decision.DecisionError:
+            continue
+        if pid:
+            ids[r["key"]] = pid
+    return ids
+
+
 def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
@@ -141,7 +154,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         except Exception:                                             # noqa: BLE001
             heard = {}
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard)
-        text, cells, counts = render.render(result, prior, now)
+        text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)

@@ -224,6 +224,93 @@ def table_state(tree, table="0000000000000000000000000000a003"):
     return out
 
 
+LED, PAGE = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+BASE = "https://oracle.tail1234.ts.net:47443"
+
+
+class CloseLinkTests(unittest.TestCase):
+    """D194 S3: a second Notes-cell link to the private Close screen, only for the one page id `decision.route` would close on, and only with a safely configured https origin."""
+    def ids(self, applied_rows, parents):
+        rows = compile_(applied_rows, parents)["rows"]
+        return rows, stage.close_ids(rows, applied_rows, parents)
+
+    def test_the_ledger_row_wins_and_a_pursuit_without_one_uses_its_one_notes_page(self):
+        led = {**applied("Acme", "PM"), "id": LED}
+        rows, ids = self.ids([led], [parent(PAGE, "Acme", "PM")])
+        self.assertEqual(ids, {rows[0]["key"]: LED.replace("-", "")})                      # the Notes page is never substituted for the Ledger row
+        rows, ids = self.ids([], [parent(PAGE, "Globex", "Dir", rounds=1)])
+        self.assertEqual(ids, {rows[0]["key"]: PAGE.replace("-", "")})
+
+    def test_an_ambiguous_or_unmatched_pursuit_has_no_id(self):
+        led = {**applied("Acme", "PM"), "id": LED}
+        self.assertEqual(self.ids([led, {**led, "id": "cccccccc-3333-4333-8333-cccccccccccc"}], [])[1], {})            # two Ledger rows
+        self.assertEqual(self.ids([], [parent(PAGE, "Acme", "PM"), parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM")])[1], {})
+        self.assertEqual(self.ids([], [parent(PAGE, "Acme", "PM"), {**parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM"), "retired": True}])[1], {})
+        self.assertEqual(self.ids([{**applied("Acme", "PM"), "id": "not-an-id"}], [])[1], {})                                    # an invalid id is dropped, never repaired
+
+    def test_the_url_is_built_only_from_a_bare_https_origin_and_one_hex_id(self):
+        pid = LED.replace("-", "")
+        self.assertEqual(render.close_url(BASE, pid), f"{BASE}/?o={pid}")
+        self.assertEqual(render.close_url(BASE + "/", pid), f"{BASE}/?o={pid}")
+        for bad in (None, "", "http://x.ts.net", "https://u:p" + "@x.ts.net", "https://x.ts.net/path", "https://x.ts.net/?a=1", "https://x.ts.net/#f", "//x.ts.net", "https://x.ts.net:99999999", "https://x y.ts.net"):
+            self.assertIsNone(render.close_url(bad, pid), bad)
+        for bad in (None, "", pid[:-1], pid.upper(), pid + "0", LED, pid[:-1] + "&", pid[:-3] + "?x="):
+            self.assertIsNone(render.close_url(BASE, bad), bad)
+
+    def test_the_notes_cell_keeps_the_opportunity_link_and_adds_close_and_without_configuration_nothing_changes(self):
+        row = compile_([applied("Acme", "PM")], [parent(PAGE, "Acme", "PM")])["rows"][0]
+        link = render.close_url(BASE, PAGE.replace("-", ""))
+        plain = render.row_cells(row, NOW)
+        both = render.row_cells(row, NOW, link)
+        self.assertEqual(both[:3], plain[:3])
+        self.assertEqual(both[3], [plain[3], (" · ", None), ("Close ↗", link)])
+        self.assertEqual(R.want_view(both)[3], [("Opportunity Page ↗", plain[3][1]), (" · ", None), ("Close ↗", link)])
+        self.assertEqual(render.row_cells(row, NOW, None), plain)
+        orphan = compile_([applied("Acme", "PM")])["rows"][0]
+        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None), ("Close ↗", link)])        # a Close link needs no Notes link
+
+    def test_render_adds_links_by_row_key_keeps_order_and_labels_and_ignores_a_bad_origin(self):
+        applied_rows = [{**applied("Acme", "PM"), "id": LED}, applied("Globex", "Dir")]
+        parents = [parent(PAGE, "Acme", "PM")]
+        result = compile_(applied_rows, parents)
+        ids = stage.close_ids(result["rows"], applied_rows, parents)
+        base = render.render(result, None, NOW)
+        for origin in (None, "", "http://x", "https://u:p" + "@x.ts.net"):
+            self.assertEqual(render.render(result, None, NOW, (origin, ids)), base)
+        text, shown, _ = render.render(result, None, NOW, (BASE, ids))
+        self.assertEqual(text, base[0])
+        self.assertEqual([R.want_view(r)[:3] for r in shown], [R.want_view(r)[:3] for r in base[1]])
+        by_name = {r[0][0].split(" — ")[0]: R.want_view(r)[3] for r in shown}
+        self.assertEqual([x[0] for x in by_name["Acme"]], ["Opportunity Page ↗", " · ", "Close ↗"])
+        self.assertEqual(by_name["Acme"][2][1], f"{BASE}/?o={LED.replace('-', '')}")
+        self.assertEqual(by_name["Globex"], [("Needs Notes", None)])                                                       # no id, no link
+
+    def test_the_writer_renders_two_links_reads_them_back_and_repairs_only_a_changed_link(self):
+        link = render.close_url(BASE, PAGE.replace("-", ""))
+        want = [[("Acme — PM", None), ("Submitted", None), ("Awaiting", None), [("Opportunity Page ↗", "https://www.notion.so/abc"), (" · ", None), ("Close ↗", link)]]]
+        t = page(extra_rows=0)
+        done = card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)
+        self.assertTrue(done["verified"])
+        self.assertEqual(R.cell_blocks(want[0])[3], [{"type": "text", "text": {"content": "Opportunity Page ↗", "link": {"url": "https://www.notion.so/abc"}}},
+                                                     {"type": "text", "text": {"content": " · "}}, {"type": "text", "text": {"content": "Close ↗", "link": {"url": link}}}])
+        t.log.clear()
+        again = card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)
+        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"], writes(t)), (0, 0, 0, []))     # a repeat run writes nothing
+        spans = lambda *parts: [{"type": "text", "text": {"content": c, **({"link": {"url": u}} if u else {})}} for c, u in parts]
+        row_id = t.kids["0000000000000000000000000000a003"][1]
+        notes = "https://www.notion.so/abc"
+        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity Page ↗", notes), (" · ", link), ("Close ↗", None))      # same text and same URLs, but the link sits on the separator: Close is not clickable
+        self.assertNotEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
+        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], 1)              # repaired, and the read-back proves it
+        self.assertEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
+        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity", notes), (" Page ↗", notes), (" · ", None), ("Close", link), (" ↗", link))      # Notion may split or join spans: still the same ownership
+        t.log.clear()
+        self.assertEqual((card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], writes(t)), (0, []))
+        moved = [[*want[0][:3], [want[0][3][0], want[0][3][1], ("Close ↗", link.replace("47443", "47444"))]]]
+        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", moved, True)["rows_changed"], 1)          # the second link alone changed
+        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", [want[0][:3] + [want[0][3][0]]], True)["rows_changed"], 1)    # dropping the config removes the link
+
+
 class LifecycleTests(unittest.TestCase):
     """D189: a Retired page closes the pursuit, and a role that has waited two weeks says so."""
     def retired(self, page_id, company, role):

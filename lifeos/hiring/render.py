@@ -2,7 +2,9 @@
 
 Every date label is derived from the stored event start and the run's `now`, never stored, so a past interview can only read as held. One concrete status per row;
 no checkbox and no task state. Source is ONE `Opportunity Notes` link when exactly one parent was resolved, else `Needs Notes` (a URL is never guessed)."""
+import re
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from . import models as M
@@ -68,10 +70,16 @@ def next_step(row, now):
     return YELLOW, f"{waiting} · follow up {due.strftime('%b %-d')}", due.isoformat()
 
 
-def row_cells(row, now):
-    """-> [(text, link)] x 4: Company — Role · Stage · Next step · Due · Notes. Plain text; the Notes page is linked only when exactly one parent was resolved (a URL is never guessed)."""
+def close_url(base, pid):
+    """D194 S3: the private Close screen link, or None. `base` must be a bare https origin (host and optional port: no credentials, path, query or fragment) and `pid` one 32-hex page id; nothing is guessed or half-built."""
+    return f"{base.rstrip('/')}/?{urlencode({'o': pid})}" if re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?", base or "") and re.fullmatch(r"[0-9a-f]{32}", pid or "") else None
+
+
+def row_cells(row, now, close=None):
+    """-> [(text, link)] x 4: Company — Role · Stage · Next step · Due · Notes. Plain text; the Notes page is linked only when exactly one parent was resolved (a URL is never guessed). `close` adds the second Notes link as segments."""
     _, step, _ = next_step(row, now)                                 # the dot classifies and sorts the row (render below); it is never printed beside the name
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
+    source = [source, (" · ", None), ("Close ↗", close)] if close else source
     return [(M.label(row['company'], row['role']), None), (row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
 
 
@@ -84,8 +92,8 @@ def _older(row, now):
 older_submitted = _older                                             # the one active-row rule, shared with network matching (NET-2.2); not a second lifecycle
 
 
-def render(result, stored, now):
-    """result: compile_rows output. -> (status text, table rows or None, counts). None leaves the table as it was (UNAVAILABLE)."""
+def render(result, stored, now, close=(None, {})):
+    """result: compile_rows output; close: (private base URL, {row key: page id}). -> (status text, table rows or None, counts). None leaves the table as it was (UNAVAILABLE)."""
     now = local(now)
     reasons = list(result["reasons"])
     accepted = (stored or {}).get("accepted_at")
@@ -100,7 +108,7 @@ def render(result, stored, now):
     rows = [r for r in rows if not _older(r, now)]
     rows.sort(key=lambda r: ((n := next_step(r, now))[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))     # attention first, then by due date
     shown = rows[:MAX_ROWS]
-    cells = [row_cells(r, now) for r in shown]
+    cells = [row_cells(r, now, close_url(close[0], close[1].get(r["key"]))) for r in shown]
     extra = []
     if len(rows) > len(shown):
         extra.append(f"{len(rows) - len(shown)} more not shown")
