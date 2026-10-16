@@ -154,7 +154,7 @@ class ConfirmRejectedTests(unittest.TestCase):
         self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])      # one bounded write, two properties, one row
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
         entry = json.loads(chain.source.history())
-        self.assertEqual(entry, {"action": "CONFIRM_REJECTED", "at": NOW.isoformat(timespec="seconds"), "op": OP, "reason": "Employer rejection email confirmed"})
+        self.assertEqual(entry, {"action": "CONFIRM_REJECTED", "at": NOW.isoformat(timespec="seconds"), "op": OP, "reason": "Employer rejection email confirmed", "outcome": "Rejected"})
         for page_id in (SIBLING, OTHER):                                                           # another opportunity at the same company, and another company: not touched
             self.assertEqual(chain.source.pages[page_id], before[page_id])
         for name in ("Applied", "Applied On", "Saturn Decision", "Company", "Job"):               # the historical application stays exactly as it was

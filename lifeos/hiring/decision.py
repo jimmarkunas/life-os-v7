@@ -15,7 +15,7 @@ from . import models as M
 ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
 ACTIVE_TITLE, RETIRED_TITLE = "Active Opportunities", "Retired Opportunities"      # the container pages under the Hiring Pipeline page that the page reader already understands (D189)
 MOVE_VERSION = "2026-03-11"                                                          # the Move page API's documented Notion-Version; the pinned version is not assumed to carry it
-RECORD = re.compile(r"Hiring decision \(V7\) · (Pending )?(Rejected|Reopened) · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
+RECORD = re.compile(r"Hiring decision \(V7\) · (Pending )?(" + "|".join(map(re.escape, M.OUTCOMES + ("Reopened",))) + r") · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
 DECISION, HISTORY, DISMISSED = "Hiring Decision", "Hiring Decision History", "Dismissed Outcome Ref"
 HISTORY_MAX, REASON_MAX, MAX_PAGES = 6000, 200, 40            # history longer than this is refused, never cut; a reason longer than this is refused, never shortened
 OP = re.compile(r"[A-Za-z0-9_-]{8,64}\Z")
@@ -42,21 +42,21 @@ def parse(request):
     """The validated request, or a fixed code. Nothing is written for a request that is not an explicit, complete confirmation."""
     if not isinstance(request, dict) or request.get("action") not in (ACTION, REOPEN) or request.get("confirmed") is not True:
         raise fail("NOT_CONFIRMED")
-    reason = request.get("reason")
+    reason, outcome = request.get("reason"), request.get("outcome", REJECTED)
     fields = {k: (request.get(k).strip() if isinstance(request.get(k), str) else "") for k in ("company", "role")}
-    if not (_page_id(request.get("id")) and fields["company"] and fields["role"] and isinstance(request.get("op"), str) and OP.match(request["op"])
+    if not (outcome in M.OUTCOMES and _page_id(request.get("id")) and fields["company"] and fields["role"] and isinstance(request.get("op"), str) and OP.match(request["op"])
             and isinstance(reason, str) and reason.strip() and len(reason.strip()) <= REASON_MAX and reason.strip().isprintable()):
         raise fail("REQUEST_INVALID")
     ack = request.get("not_this_application") or []
     if not isinstance(ack, list) or not all(_page_id(x) for x in ack):
         raise fail("REQUEST_INVALID")
-    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), "action": request["action"], "ack": sorted({_page_id(x) for x in ack}), **fields}
+    return {"id": _page_id(request["id"]), "op": request["op"], "reason": reason.strip(), "action": request["action"], "outcome": outcome, "hired_ok": request.get("reopen_hired") is True, "ack": sorted({_page_id(x) for x in ack}), **fields}
 
 
-def check_schema(client):
+def check_schema(client, outcome=REJECTED):
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
     options = {o.get("name") for o in ((props.get(DECISION) or {}).get("select") or {}).get("options") or []}
-    if (props.get(DECISION) or {}).get("type") != "select" or not {REJECTED, PASSED} <= options or any((props.get(n) or {}).get("type") != "rich_text" for n in (HISTORY, DISMISSED)):
+    if (props.get(DECISION) or {}).get("type") != "select" or not {REJECTED, PASSED, outcome} <= options or any((props.get(n) or {}).get("type") != "rich_text" for n in (HISTORY, DISMISSED)):
         raise fail("SCHEMA_MISSING")
 
 
@@ -148,8 +148,8 @@ def route(applied, parents, want):
         raise fail("AMBIGUOUS")
     page = ret or act                                                  # at most one: the page the pursuit lives on, wherever it is now (a retry after a move that landed must still reach move_page's own checks)
     if want["action"] == REOPEN:
-        if any(r.get("decision") in M.CLOSED_DECISIONS for r in led):
-            raise fail("LEDGER_CLOSED")
+        if led and (led[0].get("decision") in M.CLOSED_DECISIONS or (want.get("id") and _page_id(led[0].get("id")) == want["id"])):
+            return "ledger", led[0]                                    # an application is reopened on its own row (a finished retry included), never through its Notes page
         if page:
             return "notes", page[0]
         raise fail("NOT_CLOSED")
@@ -192,7 +192,7 @@ def move_page(client, root_id, request, live, now, parents):
     blocks (ids, types, plain text) before and after; nested content is not compared (Notion's move carries the page with its content)."""
     want = parse(request)
     reopen = want["action"] == REOPEN
-    label, dest_title = ("Reopened", ACTIVE_TITLE) if reopen else (REJECTED, RETIRED_TITLE)
+    label, dest_title = ("Reopened", ACTIVE_TITLE) if reopen else (want["outcome"], RETIRED_TITLE)
     found = {}
     for block in listing(client, root_id):
         if block.get("type") == "child_page" and (block.get("child_page") or {}).get("title") in (ACTIVE_TITLE, RETIRED_TITLE):
@@ -216,11 +216,12 @@ def move_page(client, root_id, request, live, now, parents):
         if len(here) != 1 or bool(here[0].get("retired")) != reopen:
             raise fail("STALE_SOURCE")                                                                  # moved out of the section it was routed from (a column under its heading, or its container)
     page, kids = fetch()
-    marks = {}
+    marks, closed_as = {}, None
     for _, _, text in kids:
         m = RECORD.match(text or "")
         if m:
             marks.setdefault(m.group(4), set()).add(("pending" if m.group(1) else "done", m.group(2)))
+            closed_as = m.group(2) if not m.group(1) and m.group(2) != "Reopened" else closed_as
     mine = marks.get(want["op"], set())
     if any(lab != label for _, lab in mine):
         raise fail("CONFLICT")
@@ -232,6 +233,8 @@ def move_page(client, root_id, request, live, now, parents):
         return {"status": "already_recorded", "verified": True, "route": "notes", "entries": len(marks)}
     if not mine and (parent(page) == dest or (reopen and parent(page) != retired)):
         raise fail("CONFLICT" if not reopen else "NOT_CLOSED")
+    if reopen and closed_as == "Hired" and not want["hired_ok"]:
+        raise fail("HIRED_REOPEN_UNCONFIRMED")                                                   # reopening a Hired outcome needs its own explicit confirmation
     if parent(page) != dest:
         in_source()
     if not live:
@@ -277,21 +280,27 @@ def move_page(client, root_id, request, live, now, parents):
 def confirm_rejected(client, request, live, now):
     """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError. Never success from an HTTP response alone: the exact row is fetched again and compared."""
     want = parse(request)
-    if want["action"] != ACTION:
-        raise fail("NOT_CONFIRMED")
-    check_schema(client)
+    reopen, was = want["action"] == REOPEN, None
+    check_schema(client, want["outcome"])
     row = target(applied_pages(client), want)
     page = client.get_page(row["id"])
     current(page, want, client.source)
     kept, decision, history = snapshot(page)
-    ops = [e["op"] for e in entries(history)]
+    log = entries(history)
+    ops, after = [e["op"] for e in log], None if reopen else want["outcome"]                  # `after`: the decision this operation leaves on the row
     if want["op"] in ops:
-        if decision == REJECTED:
+        if decision == after:
             return {"status": "already_recorded", "verified": True, "entries": len(ops)}      # a retry of the same confirmed operation: nothing is written twice
         raise fail("CONFLICT")
-    if decision is not None:
+    if reopen:                                                                                  # only the decision V7 itself recorded last is reopened; its history stays
+        was = (log[-1].get("outcome") or REJECTED) if log and log[-1].get("action") == ACTION else None
+        if decision is None or decision != was:
+            raise fail("NOT_CLOSED")
+        if was == "Hired" and not want["hired_ok"]:
+            raise fail("HIRED_REOPEN_UNCONFIRMED")                                              # reopening a Hired outcome needs its own explicit confirmation
+    elif decision is not None:
         raise fail("CONFLICT")                                                                  # another decision is already recorded: never replaced here
-    line = json.dumps({"op": want["op"], "action": ACTION, "at": now.isoformat(timespec="seconds"), "reason": want["reason"]}, separators=(",", ":"), sort_keys=True)
+    line = json.dumps({"op": want["op"], "action": want["action"], "at": now.isoformat(timespec="seconds"), "reason": want["reason"], "outcome": was or want["outcome"]}, separators=(",", ":"), sort_keys=True)
     new = f"{history}\n{line}" if history else line
     if len(new) > HISTORY_MAX:
         raise fail("HISTORY_FULL")
@@ -302,13 +311,13 @@ def confirm_rejected(client, request, live, now):
     if again.get("last_edited_time") != page.get("last_edited_time") or snapshot(again) != (kept, decision, history):
         raise fail("CONCURRENT_CHANGE")
     try:
-        client.update_page_properties(row["id"], {DECISION: {"select": {"name": REJECTED}}, HISTORY: {"rich_text": rich_text(new)}})
+        client.update_page_properties(row["id"], {DECISION: {"select": None if reopen else {"name": want["outcome"]}}, HISTORY: {"rich_text": rich_text(new)}})
     except NotionError:
         raise fail("WRITE_FAILED") from None
     try:
         back = client.get_page(row["id"])
     except NotionError:
         raise fail("READBACK_FAILED") from None
-    if snapshot(back) != (kept, REJECTED, new):
+    if snapshot(back) != (kept, after, new):
         raise fail("READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "entries": len(ops) + 1}
