@@ -290,6 +290,9 @@ class PublicationOrderTests(unittest.TestCase):
             def __init__(self, environ=None):
                 pass
 
+            def call(self, method, path, body=None):
+                return {"results": []}
+
             def create(self, props, blocks):
                 created.append(props["Stable Job Key"]["rich_text"][0]["text"]["content"])
                 return "page-" + created[-1]
