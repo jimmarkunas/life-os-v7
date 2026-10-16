@@ -16,7 +16,8 @@ from lifeos.platform.notion_client import Client
 POLICY = "/etc/lifeos-close/policy.json"
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
-SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"), ("X-Frame-Options", "DENY"),
+# same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin check below refuses every Review (iPhone Safari, Oct 16 2026)
+SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "same-origin"), ("X-Frame-Options", "DENY"),
         ("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"), ("Connection", "close"))
 
 
