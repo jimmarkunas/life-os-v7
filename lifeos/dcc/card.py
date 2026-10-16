@@ -40,10 +40,7 @@ def _writer(environ):
 
 
 def _link(block):
-    for part in (block.get(block.get("type")) or {}).get("rich_text") or []:
-        url = ((part.get("text") or {}).get("link") or {}).get("url")
-        if url:
-            return url
+    return next((url for part in (block.get(block.get("type")) or {}).get("rich_text") or [] if (url := ((part.get("text") or {}).get("link") or {}).get("url"))), None)
 
 
 def _links(client, block_id):
@@ -168,10 +165,7 @@ ICONS = ("credit-card", "arrow-right", "arrow-up", "inbox")                  # t
 
 
 def _t(text, bold=False, gray=False, link=None):
-    part = {"type": "text", "text": {"content": text[:1800], **({"link": {"url": link}} if link else {})}}
-    if bold or gray:
-        part["annotations"] = {**({"bold": True} if bold else {}), **({"color": "gray"} if gray else {})}
-    return part
+    return {"type": "text", "text": {"content": text[:1800], **({"link": {"url": link}} if link else {})}, **({"annotations": {**({"bold": True} if bold else {}), **({"color": "gray"} if gray else {})}} if bold or gray else {})}
 
 
 def _b(kind, *parts, children=None, icon=None):
