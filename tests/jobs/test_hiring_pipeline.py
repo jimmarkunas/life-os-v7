@@ -44,6 +44,13 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(got["o2"][:2], (hp.ACTIVE, 0))
         self.assertEqual(got["o3"][:2], (hp.RETIRED, 1))
 
+    def test_without_rounds_the_same_opportunities_are_read_with_one_call_fewer_per_opportunity(self):
+        full, lean = Fake(TREE), Fake(TREE)
+        with_rounds, without = hp.read(full, "root"), hp.read(lean, "root", rounds=False)
+        self.assertEqual([(o.page_id, o.section, o.company, o.role) for o in without], [(o.page_id, o.section, o.company, o.role) for o in with_rounds])
+        self.assertEqual({o.rounds for o in without}, {0})
+        self.assertEqual(full.calls - lean.calls, len(with_rounds))                               # the S2 closure skips exactly the interview-count reads
+
     def test_company_and_role_must_both_match(self):
         h = hp.handoff_for("Smartsheet Inc.", "Technical Programme Manager", self.opps)       # legal suffix and British spelling
         self.assertEqual((h.protected, h.progression_state, h.interview_progression), (True, hp.INTERVIEW_ACTIVE, True))

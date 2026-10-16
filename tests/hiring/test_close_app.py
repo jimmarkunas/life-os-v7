@@ -12,7 +12,7 @@ from unittest import mock
 from lifeos.edge import close_gate
 from lifeos.edge.oracle import close_release as rel
 from lifeos.hiring import close_screen, decision as D, models as M
-from lifeos.sources import close_app
+from lifeos.sources import close_app, hiring as hiring_source
 from tests.edge.test_close_release import github
 from tests.hiring import test_decision as TD, test_hiring as T
 from tests.hiring.test_notes_decision import COMPANY, ROLE, World, options
@@ -102,9 +102,32 @@ class Get(unittest.TestCase):
             status, body, fields = h.open(pid)
             self.assertEqual((status, h.writes()), (200, before))
             self.assertTrue(all(r in body for r in M.OUTCOMES) and COMPANY in body and "Requisition not recorded" in body and "Unavailable on this screen" in body)
-            self.assertEqual(set(fields), {"o", "exp", "st", "t"})
+            self.assertEqual(set(fields), {"o", "k", "co", "ro", "exp", "st", "t"})
             self.assertFalse({SECRET.decode(), TOKEN.decode()} & set(re.findall(r"[\w-]{20,}", body)) or SECRET.decode() in body or TOKEN.decode() in body)
             self.assertNotIn("Interviewing", body)                                              # no stage is invented
+
+    def test_review_and_edit_render_from_the_signed_fingerprint_without_reading_notion(self):
+        h = Harness([(TD.TARGET, COMPANY, ROLE)])
+        _, _, f = h.open(TD.TARGET)
+        before = h.writes()
+        with mock.patch.object(close_app, "resolve", side_effect=AssertionError("Review and Edit must not read Notion")):
+            status, body, rf = (lambda r: (r[0], r[1], h.fields(r[1])))(h.call("POST", form={**f, "step": "review", "outcome": "Rejected"}))
+            self.assertEqual(status, 200)
+            self.assertTrue(COMPANY in body and ROLE in body and "Confirm closure" in body)
+            status, body, _ = h.call("POST", form={**rf, "step": "edit"})
+            self.assertEqual(status, 200)
+        self.assertEqual(h.writes(), before)
+        self.assertEqual(h.call("POST", form={**rf, "step": "confirm"})[0], 200)                 # Confirm resolves afresh and records
+
+    def test_shown_fields_that_do_not_match_the_signed_fingerprint_are_refused(self):
+        h = Harness([(TD.TARGET, COMPANY, ROLE)])
+        _, _, f = h.open(TD.TARGET)
+        before = h.writes()
+        for key, value in (("co", "Another Company"), ("ro", "Another Role"), ("k", "notes" if f["k"] == "ledger" else "ledger"), ("k", "other")):
+            status, body, _ = h.call("POST", form={**f, key: value, "step": "review", "outcome": "Rejected"})
+            self.assertEqual(status, 403, key)
+            self.assertIn("no longer valid", body)
+        self.assertEqual(h.writes(), before)
 
     def test_the_stylesheet_is_served_and_pages_obey_the_gates_csp(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
@@ -268,7 +291,8 @@ class Post(unittest.TestCase):
             for pid_of, rows in ((lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")]), (lambda h: h.world.ws.target.replace("-", ""), [])):
                 h = Harness(rows)
                 self.assertEqual(h.close(pid_of(h), outcome, notes)[0], 200, outcome)
-                ledger_rows, parents = close_app._state(Both(h.world), h.cfg["pipeline"])
+                ledger_rows, _ = close_app._state(Both(h.world), h.cfg["pipeline"])
+                parents = hiring_source.read_parents(Both(h.world), h.cfg["pipeline"])                # the hourly job's own reader, interview counts included
                 compiled = T.compile_([dict(r, applied_on="2026-10-02") for r in ledger_rows], parents)
                 listed = [(r["company"], r["role"]) for r in compiled["rows"]]
                 self.assertNotIn((COMPANY, ROLE), listed, outcome)                                    # the closed pursuit is no longer an active row

@@ -63,8 +63,9 @@ def _section(text, current):
     return RETIRED if "retired" in low else ACTIVE if "active" in low else current
 
 
-def read(client, root_id):
-    """Opportunities under the Hiring Pipeline page. Raises NotionError when the page cannot be read (the caller fails closed)."""
+def read(client, root_id, rounds=True):
+    """Opportunities under the Hiring Pipeline page. Raises NotionError when the page cannot be read (the caller fails closed). rounds=False skips the one
+    children read per opportunity that counts interview pages (rounds stay 0): a caller that never uses the count (the S2 closure) saves a paced call each."""
     found, budget = [], [MAX_BLOCKS]
 
     def walk(block_id, section, depth):
@@ -82,7 +83,8 @@ def read(client, root_id):
                 else:
                     opp = Opportunity(block["id"], text, context or ACTIVE)
                     opp.company, opp.role = split_title(text)
-                    opp.rounds = sum(1 for c in _children(client, block["id"], budget) if c.get("type") == "child_page")
+                    if rounds:
+                        opp.rounds = sum(1 for c in _children(client, block["id"], budget) if c.get("type") == "child_page")
                     found.append(opp)
             elif block.get("has_children") and depth < MAX_DEPTH and (kind in ("toggle", "column_list", "column") or kind.startswith("heading")):
                 walk(block["id"], context, depth + 1)
@@ -101,9 +103,9 @@ def handoff_for(company, title, opportunities):
                    [{"type": "hiring_pipeline_opportunity", "source_id": o.page_id} for o in matches])
 
 
-def snapshot(client, root_id):
+def snapshot(client, root_id, rounds=True):
     """-> (opportunities, status) with status 'ok' | 'unreadable'. Never raises."""
     try:
-        return read(client, root_id), "ok"
+        return read(client, root_id, rounds), "ok"
     except NotionError:
         return [], "unreadable"

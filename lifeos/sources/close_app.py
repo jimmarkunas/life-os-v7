@@ -34,10 +34,10 @@ def _state(client, root):
     """-> (Applied Ledger rows, Notes pages) in the shapes decision.route reads; anything short of a complete read raises."""
     rows = [{"company": D._text(p["properties"].get("Company"), "rich_text"), "role": D._text(p["properties"].get("Job"), "title"), "id": p.get("id"),
              "decision": ((p["properties"].get(D.DECISION) or {}).get("select") or {}).get("name")} for p in D.applied_pages(client)]
-    found, status = hiring_pipeline.snapshot(client, root)
+    found, status = hiring_pipeline.snapshot(client, root, rounds=False)            # decision.route never reads interview counts: skip one paced call per opportunity
     if status != "ok":
         raise D.fail("PAGES_UNREADABLE")
-    return [r for r in rows if r["company"] and r["role"]], [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
+    return [r for r in rows if r["company"] and r["role"]], [{"id": o.page_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
 
 
 def resolve(client, config, pid):
@@ -55,12 +55,22 @@ def resolve(client, config, pid):
     closed = bool(target.get("decision")) if kind == "ledger" else bool(target["retired"])
     if kind == "notes" and not closed and D.unapplied_matches(client, want):
         raise D.fail("LEDGER_UNAPPLIED")                                 # a Ledger row for this role that is not marked Applied may be this application: resolve it first
-    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed,
-            "st": hashlib.sha256(f"{kind}|{pid}|{rec['company']}|{rec['role']}|{closed}".encode()).hexdigest()[:16]}
+    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed)}
+
+
+def _fingerprint(kind, pid, company, role, closed):
+    return hashlib.sha256(f"{kind}|{pid}|{company}|{role}|{closed}".encode()).hexdigest()[:16]
 
 
 def _fields(secret, login, opp, exp):
-    return {"o": opp["id"], "exp": str(exp), "st": opp["st"], "t": _mac(secret, "t", login, opp["id"], opp["st"], exp)}
+    return {"o": opp["id"], "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": str(exp), "st": opp["st"], "t": _mac(secret, "t", login, opp["id"], opp["st"], exp)}
+
+
+def _shown(form, pid, st):
+    """The open record exactly as the GET showed it, proven by the signed fingerprint `st` and read from no source: Edit and Review re-render without a Notion
+    round trip (they never write). None when the carried fields are not the ones `st` was computed from. Confirm always resolves afresh."""
+    kind, company, role = form.get("k", ""), form.get("co", ""), form.get("ro", "")
+    return {"kind": kind, "id": pid, "company": company, "role": role, "closed": False, "st": st} if kind in ("ledger", "notes") and _same(_fingerprint(kind, pid, company, role, False), st) else None
 
 
 def _get(req, who, secrets):
@@ -82,13 +92,16 @@ def _post(req, who, secrets):
     if step == "cancel":
         return _stop(200, "Cancelled", "No changes made", "The proposed closure was cancelled. The opportunity remains in its current state.", "Nothing was written.", "")
     config = secrets["config"]
-    client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
-    opp = resolve(client, config, pid)
-    if opp["closed"] and step != "confirm":
-        return _stop(409, "Already decided", "This opportunity is already closed", "A decision is already recorded for it.", "Nothing was changed.")
-    if not opp["closed"] and opp["st"] != st:
-        return _stop(409, "Conflict", "Opportunity changed", "The record changed since this form was opened.", "No write attempted. Reload the opportunity and review it again.")
-    fields = {"o": pid, "exp": exp, "st": st, "t": form["t"]}                  # the token was verified above; the review step adds its own
+    if step == "confirm":
+        client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
+        opp = resolve(client, config, pid)                                       # the write is authorized only by a fresh read of the canonical record
+        if not opp["closed"] and opp["st"] != st:
+            return _stop(409, "Conflict", "Opportunity changed", "The record changed since this form was opened.", "No write attempted. Reload the opportunity and review it again.")
+    else:
+        opp = _shown(form, pid, st)
+        if opp is None:
+            return _stop(403, "Not accepted", "This form is no longer valid", "Reload the opportunity from its link.", "Nothing was changed.", "danger")
+    fields = {"o": pid, "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": exp, "st": st, "t": form["t"]}     # the token was verified above; the review step adds its own
     if step == "edit":
         return 200, HTML, S.form(opp, fields, outcome, notes), ()
     if outcome not in M.OUTCOMES or len(notes) > D.REASON_MAX or not (notes or outcome != "Other") or not (notes or "x").isprintable():
