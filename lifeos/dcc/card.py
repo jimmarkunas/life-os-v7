@@ -39,6 +39,18 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
+def _link(block):
+    for part in (block.get(block.get("type")) or {}).get("rich_text") or []:
+        url = ((part.get("text") or {}).get("link") or {}).get("url")
+        if url:
+            return url
+
+
+def _links(client, block_id):
+    kids = report_region.children(client, report_region.clean_id(block_id), _fail)
+    return {report_region.plain(b).strip(): _link(b) for b in kids if _link(b)}
+
+
 def _text_of(client, block_id, kind, region):
     """-> (status text, [every other text line of the card]) or raises NotionError."""
     if kind == "own":
@@ -72,10 +84,11 @@ def read_areas(client, environ):
             continue
         try:
             status, lines = _text_of(client, block_id, kind, region)
+            links = _links(client, block_id) if label in ("Jira", "Bills") else {}              # the real records Primary focus and a suggestion open
         except NotionError:
             out[label] = {"unreadable": True}
             continue
-        out[label] = {"status": status, "lines": lines}
+        out[label] = {"status": status, "lines": lines, "links": links}
     return out
 
 
@@ -108,54 +121,79 @@ def _number(text, pattern):
 
 
 def compose(areas, now):
-    """-> [(label or None, text)]: the callout's lines. Pure."""
+    """-> the callout's content as plain data (the approved native layout, LIFE-57). Pure. A count is shown only from a card that is current: a stale, degraded or unreadable card shows
+    its own state in place of a number, never a zero."""
     states = {label: classify(area, now) for label, area in areas.items()}
-    ok = [label for label, (state, _) in states.items() if state == "fresh"]
-    bad = [(label, state) for label, (state, _) in states.items() if state != "fresh"]
-    head = f"Updated {now.strftime('%-I:%M %p')} CT · {len(ok)} of {len(states)} areas current" + (f" · {len(bad)} need a look" if bad else "")
+    ok, bad = [l for l, (state, _) in states.items() if state == "fresh"], [(l, state) for l, (state, _) in states.items() if state != "fresh"]
 
-    def status(label):
-        return (areas.get(label) or {}).get("status") or ""
+    def source(label):
+        state, stamp = states.get(label, ("unset", None))
+        return f"{label} · {stamp} CT" if state == "fresh" else f"{state.upper()} · {label}" + (f" (last {stamp})" if stamp else "")
 
-    jira = (areas.get("Jira") or {})
-    lines = [jira.get("status", "")] + list(jira.get("lines", []))
-    gtv = next((t for t in lines if t.startswith("GTV Action")), None)
-    sprint = next((t for t in lines if "Overdue/Blocked" in t), None)
-    focus = "; ".join(t for t in (gtv, sprint) if t) or ("Jira " + states.get("Jira", ("unknown", None))[0])
-    jira_open = _number(sprint, r"(\d+) Overdue/Blocked")
+    def count(label, pattern, line=None):
+        text = line if line is not None else (areas.get(label) or {}).get("status")
+        return _number(text, pattern) if states.get(label, ("unset",))[0] == "fresh" else None
 
-    overdue = _number(status("Bills"), r"(\d+) overdue")
-    exceptions = _number(status("Attention"), r"(\d+) active exception")
-    waiting, review = _number(status("Mail Alerts"), r"(\d+) waiting"), _number(status("Mail Alerts"), r"(\d+) need review")
-    hiring = _number(status("Hiring Pipeline"), r"(\d+) active")
-    attention = [f"{overdue} overdue bills" if overdue else None, f"{exceptions} active Attention exceptions" if exceptions else None,
-                 f"{waiting} mail items waiting" if waiting else None, f"{review} mail items need review" if review else None,
-                 f"{hiring} interview opportunities active" if hiring else None]
-    attention = [a for a in attention if a]
+    jira = areas.get("Jira") or {}
+    fresh_lines = list(jira.get("lines", [])) if states.get("Jira", ("unset",))[0] == "fresh" else []
+    gtv, sprint = next((t for t in fresh_lines if t.startswith("GTV Action")), None), next((t for t in fresh_lines if "Overdue/Blocked" in t), None)
+    overdue, review = count("Bills", r"(\d+) overdue"), count("Mail Alerts", r"(\d+) need review")
+    waiting, hiring, combined = count("Mail Alerts", r"(\d+) waiting"), count("Hiring Pipeline", r"(\d+) active"), count("Jira", r"(\d+) Overdue/Blocked", sprint)
+    exceptions = 0 if "No active exceptions" in ((areas.get("Attention") or {}).get("status") or "") and states["Attention"][0] == "fresh" else count("Attention", r"(\d+) active exception")
+    freshness = " · ".join(f"{label} {stamp}" if state == "fresh" else f"{label} {state}" + (f" (last {stamp})" if stamp else "") for label, (state, stamp) in states.items())
+    label, _, rest = (gtv or "").partition(" · ")
+    title, _, state = rest.rpartition(" · ")
+    title, state = (title, state) if title else (rest, "")                         # a GTV line with no status still names its task
+    bills_link = ((areas.get("Bills") or {}).get("links") or {}).get((areas.get("Bills") or {}).get("status"))
+    items = ([("Check " + ", ".join(l for l, _ in bad), "not current, so no decision is drawn from them", None)] if bad else [])
+    items += [("Triage overdue bills", f"{overdue} on the Bills card", bills_link)] if overdue else []
+    items += [("Clear overdue or blocked Jira items", f"{combined} on the Jira card", None)] if combined else []
+    items += [("Review Attention exceptions", f"{exceptions} active", None)] if exceptions else []
+    items += [("Review mail items", f"{review} need review", None)] if review else []
 
-    freshness = " · ".join(f"{label} {stamp}" if state == "fresh" else f"{label} {state}" + (f" (last {stamp})" if stamp else "")
-                           for label, (state, stamp) in states.items())
-    nxt = []
-    if bad:
-        nxt.append("Check " + ", ".join(label for label, _ in bad) + " (not current)")
-    if overdue:
-        nxt.append(f"Triage {overdue} overdue bills")
-    if jira_open:
-        nxt.append(f"Clear {jira_open} overdue or blocked Jira items")
-    if exceptions:
-        nxt.append(f"Review {exceptions} Attention exceptions")
-    if review:
-        nxt.append(f"Review {review} mail items")
-    return [(None, head), ("Current focus", focus), ("Attention needed", "; ".join(attention) or "Nothing flagged by the cards."),
-            ("Evidence freshness", freshness), ("Next useful action", "; ".join(nxt) or "Nothing flagged; continue the day's planned work.")]
+    def kpi(value, name, text):
+        return (str(value) if value is not None else "—", name, text)
+
+    return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {l} {s.upper()}" for l, s in bad),
+            "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
+            "focus": f"Primary focus: {title}" if gtv else "Primary focus: unavailable", "link": ((jira.get("links") or {}).get(gtv)) if gtv else None,
+            "sub": " · ".join(x for x in (("One designated action", state) if gtv else (source("Jira") if states.get("Jira", ("unset",))[0] != "fresh" else "No GTV action on the Jira card",)) + (f"Updated {now.strftime('%-I:%M %p')} CT",) if x),
+            "items": items[:3] or [("Nothing flagged by the cards", "continue the day's planned work", None)],
+            "hiring": f"{hiring} active hiring opportunities" if hiring is not None else "Hiring Pipeline " + states.get("Hiring Pipeline", ("unset",))[0],
+            "kpis": [kpi(overdue, "Overdue bills", source("Bills")), kpi(None, "Jira blocked", "Not published separately" + (f" · {combined} overdue or blocked" if combined is not None else f" · {source('Jira')}")),
+                     kpi(exceptions, "Attention items", source("Attention")), kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
 
 
-def render(lines):
-    blocks = []
-    for label, text in lines:
-        rich = ([{"type": "text", "text": {"content": label + ": "}, "annotations": {"bold": True}}] if label else []) + [{"type": "text", "text": {"content": text[:1800]}}]
-        blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}})
-    return blocks
+ICONS = ("credit-card", "arrow-right", "arrow-up", "inbox")                  # the approved mockup's native icons, in card order
+
+
+def _t(text, bold=False, gray=False, link=None):
+    part = {"type": "text", "text": {"content": text[:1800], **({"link": {"url": link}} if link else {})}}
+    if bold or gray:
+        part["annotations"] = {**({"bold": True} if bold else {}), **({"color": "gray"} if gray else {})}
+    return part
+
+
+def _b(kind, *parts, children=None, icon=None):
+    return {"object": "block", "type": kind, kind: {"rich_text": list(parts), **({"icon": {"type": "external", "external": {"url": f"https://www.notion.so/icons/{icon}_gray.svg"}}} if icon else {}),
+                                                    **({"children": children} if children else {})}}
+
+
+def render(model):
+    """The approved native layout: a 50/50 row (source health toggle and primary focus | suggested decisions) and a row of four equal KPI callouts."""
+    def column(ratio, *kids):
+        return {"object": "block", "type": "column", "column": {"width_ratio": ratio, "children": list(kids)}}
+
+    def row(*cols):
+        return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
+
+    left = column(0.5, _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]]),
+                  _b("paragraph", _t(model["focus"], bold=True, link=model["link"])), _b("paragraph", _t(model["sub"], gray=True)))
+    right = column(0.5, _b("callout", icon="checkmark-square", children=[_b("paragraph", _t("Suggested next decisions", bold=True)),
+                                                                          *[_b("numbered_list_item", _t(a, bold=True, link=l), _t(" — " + d)) for a, d, l in model["items"]],
+                                                                          _b("paragraph", _t(model["hiring"], bold=True), _t(" · See Hiring Pipeline below."))]))
+    return [row(left, right), row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
+                                    for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
 
 
 def run(limit, live, environ=os.environ, client=None, now=None):
@@ -170,12 +208,12 @@ def run(limit, live, environ=os.environ, client=None, now=None):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
     by_area = {label: classify(area, now)[0] for label, area in areas.items()}
     states = list(by_area.values())
-    blocks = render(compose(areas, now))
+    spec = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "dcc", live)
+    changed, removed = report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)
     counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
     if live:
-        counts["blocks_written"], counts["removed"] = len(blocks), removed
+        counts["blocks_written"], counts["removed"] = changed, removed
     try:
         counts["header"] = header.run(client, report_region.clean_id(block_id), now, live, _fail)                      # D183: never changes the Command Center's own result
     except NotionError as error:
