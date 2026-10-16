@@ -62,6 +62,15 @@ class Stage(unittest.TestCase):
             rel.stage(C, self.dest(), github(leaky))                     # close_app imports a module its CLOSURE does not ship
         self.assertEqual(str(caught.exception), "CLOSURE_INCOMPLETE")
 
+    def test_the_real_import_check_leaves_the_staged_tree_exactly_as_the_manifest_says(self):
+        app = open(os.path.join(ROOT, rel.APP), "rb").read()
+        files = {p: open(os.path.join(ROOT, p), "rb").read() for p in rel.closure(app)}               # the real Career application and its whole closure
+        d = self.dest()
+        rel.stage(C, d, github(files))                                   # the real isolated import runs inside the staged tree ...
+        rel.check(d)                                                     # ... and the install's very next step must still find exactly the manifest
+        self.assertEqual([n for _, _, names in os.walk(d) for n in names if n.endswith((".pyc", ".pyo"))], [])
+        self.assertEqual([n for _, dirs, _ in os.walk(d) for n in dirs if n == "__pycache__"], [])
+
     def test_check_refuses_an_extra_file_a_changed_file_or_a_symlink(self):
         for damage in (lambda d: open(os.path.join(d, "lifeos", "extra.py"), "w").write("x"),
                        lambda d: open(os.path.join(d, "lifeos", "hiring", "close.py"), "w").write("# changed"),

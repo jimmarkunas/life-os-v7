@@ -74,7 +74,7 @@ def stage(commit, dest, fetch=get, importer=None):
 def imports(dest):
     code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.close_app; "
             "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
-    if subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, timeout=30).returncode != 0:
+    if subprocess.run([sys.executable, "-I", "-B", "-c", code], capture_output=True, timeout=30).returncode != 0:
         raise Refused("CLOSURE_INCOMPLETE")
 
 
