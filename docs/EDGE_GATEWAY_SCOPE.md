@@ -26,6 +26,16 @@ Current capability lanes:
 - Interview capture remains invisible/botless. Keep Granola as the current acquisition layer; visible OpenClaw meeting participants are not the Interview OS capture path.
 - Local Whisper/whisper.cpp remains the future Granola-replacement candidate, not the first meeting slice.
 
+## Host administration (verified October 16, 2026; LIFE-47 S2 credential isolation, Jim's approval in two stages)
+
+The runtime user and the administrator are separate accounts. This is deliberate: a credential owned by another service user (S2) is only isolated from OpenClaw if OpenClaw's user cannot become root.
+
+- **Administrator: `opc` only.** Rule `opc ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/91-lifeos-admin` (root, 0440). SSH as `opc@lifeos-edge-01` with the existing LIFE OS key. cloud-init's forced "login as ubuntu" command was removed from `opc`'s key; `no-port-forwarding,no-agent-forwarding,no-X11-forwarding` stay. Every host change (sudo, system units, Tailscale Serve) is done as `opc`.
+- **Runtime user: `ubuntu`, with no root path.** OpenClaw, the Gateway, the iMessage endpoint, WhatsApp attention and the alert relay all run as `ubuntu` user units. Its `NOPASSWD:ALL` line was removed from `/etc/sudoers.d/90-cloud-init-users` (comments kept), it was removed from the `sudo` and `lxd` groups, and its password is locked, so the `%sudo` rule in `/etc/sudoers` gives nothing. Do not re-grant sudo or `lxd` to `ubuntu`.
+- **Check (deterministic):** as `opc`, `sudo -l -U ubuntu` prints "User ubuntu is not allowed to run sudo"; as `ubuntu`, `sudo -n true` fails, including from `systemd-run --user` (the running services' context). Already-running processes keep supplementary groups 27/104 until their next restart; that is inert (`%sudo` needs the locked password, there is no LXD daemon, and polkit's sudo-group grants require an active local session).
+- **Backups:** `/root/90-cloud-init-users.bak` (the original cloud-init rule) and `/home/opc/.ssh/authorized_keys.pre-admin` (the original `opc` key line).
+- **Rollback (from an `opc` root session, `ssh -t opc@lifeos-edge-01 sudo -s`):** `cp -p /root/90-cloud-init-users.bak /etc/sudoers.d/90-cloud-init-users && gpasswd -a ubuntu sudo && gpasswd -a ubuntu lxd && visudo -c`. There is no out-of-band root path (Oracle Run Command runs as unprivileged `ocarun`; every password is locked), so confirm `opc` access before any further privilege change.
+
 ## Capability registry (Oracle-local, verified October 13, 2026)
 
 Derived from the live Oracle exec allowlist (ten rules), the Oracle-local wrappers in `~/.local/bin`, and the accepted evidence in the EDGE-1.4 roadmap row. The allowlist, each wrapper's own gate and the roadmap row win over this table. A command is **accepted** only where the status column says so; "allowlisted" is not "live-proven", and unexercised operations are not accepted.
