@@ -154,7 +154,7 @@ class ConfirmRejectedTests(unittest.TestCase):
         self.assertEqual(chain.source.patches(), [("PATCH", TARGET, ("Hiring Decision", "Hiring Decision History"))])      # one bounded write, two properties, one row
         self.assertEqual(chain.source.decision(), {"name": "Rejected"})
         entry = json.loads(chain.source.history())
-        self.assertEqual(entry, {"action": "CONFIRM_REJECTED", "at": NOW.isoformat(timespec="seconds"), "op": OP, "reason": "Employer rejection email confirmed"})
+        self.assertEqual(entry, {"action": "CONFIRM_REJECTED", "at": NOW.isoformat(timespec="seconds"), "op": OP, "reason": "Employer rejection email confirmed", "outcome": "Rejected"})
         for page_id in (SIBLING, OTHER):                                                           # another opportunity at the same company, and another company: not touched
             self.assertEqual(chain.source.pages[page_id], before[page_id])
         for name in ("Applied", "Applied On", "Saturn Decision", "Company", "Job"):               # the historical application stays exactly as it was
@@ -435,6 +435,12 @@ class CompilerTests(unittest.TestCase):
             self.assertEqual(sorted((r["company"], r["role"]) for r in got["rows"]), [("Acme", "Director"), ("Globex", "PM")])
             self.assertEqual(got["closed"], 1)
             self.assertEqual({r["role"]: r["ledger_id"] for r in got["rows"]}, {"Director": "i2", "PM": "i3"})
+
+    def test_the_live_compiler_still_closes_only_on_rejected_or_passed_until_the_new_outcomes_are_activated(self):
+        self.assertEqual(M.CLOSED_DECISIONS, ("Rejected", "Passed"))                       # LIFE-47 S1 is dormant: the closure outcomes added to M.OUTCOMES do not change the live report
+        for value in [o for o in M.OUTCOMES if o != "Rejected"]:
+            got = self.rows([self.applied("Acme", "PM", value, "i1")])
+            self.assertEqual((len(got["rows"]), got["closed"]), (1, 0), value)
 
     def test_an_active_notes_page_does_not_keep_a_confirmed_closure_open(self):
         got = self.rows([self.applied("Acme", "PM", "Rejected", "i1")], [{"id": "p1", "company": "Acme", "role": "PM", "rounds": 3}])

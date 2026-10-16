@@ -8,7 +8,7 @@ import urllib.request
 import uuid
 from unittest import mock
 
-from lifeos.hiring import decision as D
+from lifeos.hiring import decision as D, models as M
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform import notion_client
 from lifeos.platform.notion_client import NotionError
@@ -192,8 +192,9 @@ class RoutingTests(unittest.TestCase):
         want = {**self.WANT, "action": "REOPEN"}
         self.assertEqual(D.route([], [self.parent("p1", retired=True)], want)[0], "notes")
         self.assertEqual(D.route([], [self.parent("p1")], want)[0], "notes")                                 # an open page is routed too: move_page refuses it as NOT_CLOSED, or recognises a finished retry
-        for applied, parents, code in (([self.row("l1", "Rejected")], [self.parent("p1", retired=True)], "DECISION_LEDGER_CLOSED"), ([self.row("l1", "Passed")], [], "DECISION_LEDGER_CLOSED"),
-                                       ([self.row("l1")], [], "DECISION_NOT_CLOSED")):
+        self.assertEqual(D.route([self.row("l1", "Rejected")], [self.parent("p1", retired=True)], want)[0], "ledger")      # a Ledger-closed application is reopened on its own row, never through its Notes page
+        self.assertEqual(D.route([self.row("l1", "Hired")], [], want)[0], "ledger")
+        for applied, parents, code in (([self.row("l1")], [], "DECISION_NOT_CLOSED"),):
             with self.assertRaises(D.DecisionError) as error:
                 D.route(applied, parents, want)
             self.assertEqual(str(error.exception), code)
@@ -507,7 +508,7 @@ class ReopenTests(unittest.TestCase):
         before = ws.digest(ws.target)
         with self.assertRaises(NotionError) as error:
             world.decide(world.reopen())
-        self.assertEqual((str(error.exception), ws.writes(), ws.digest(ws.target)), ("DECISION_LEDGER_CLOSED", [], before))
+        self.assertEqual((str(error.exception), ws.writes(), ws.digest(ws.target)), ("DECISION_STALE_IDENTITY", [], before))
         self.assertEqual(world.source.decision(), {"name": "Rejected"})
 
 
@@ -536,6 +537,85 @@ class BoundaryTests(unittest.TestCase):
             text = path.read_text()
             for name in ("move_page", "confirm_rejected", "decision.decide"):
                 self.assertNotIn(name, text, path.name)
+
+
+
+# LIFE-47 S1: six distinct closure outcomes on BOTH paths, guarded Reopen. Invented records only.
+NEW = [o for o in M.OUTCOMES if o != "Rejected"]
+
+
+def options(source, names):
+    orig = source.call
+
+    def call(method, path, body=None):
+        out = orig(method, path, body)
+        if "Hiring Decision" in (out.get("properties") or {}):
+            out["properties"]["Hiring Decision"]["select"]["options"] += [{"name": n} for n in names]
+        return out
+    source.call = call
+
+
+class LedgerOutcomes(unittest.TestCase):
+    def test_each_outcome_is_its_own_value_idempotent_and_reopens_with_history_kept(self):
+        for outcome in M.OUTCOMES:
+            chain = TD.Chain()
+            options(chain.source, NEW)
+            done = chain.confirm(TD.request(outcome=outcome))
+            self.assertEqual((done["status"], done["verified"], chain.source.decision()), ("recorded", True, {"name": outcome}), outcome)
+            self.assertEqual(chain.confirm(TD.request(outcome=outcome))["status"], "already_recorded")
+            with self.assertRaises(D.DecisionError):                                       # a different operation never replaces the decision
+                chain.confirm(TD.request(outcome="Other", op="op-9876543210"))
+            reopen = TD.request(action="REOPEN", op="op-5555555555", reason="Closed in error")
+            if outcome == "Hired":
+                with self.assertRaises(D.DecisionError) as error:
+                    chain.confirm(reopen)
+                self.assertEqual((str(error.exception), len(chain.source.patches())), ("DECISION_HIRED_REOPEN_UNCONFIRMED", 1))
+                reopen["reopen_hired"] = True
+            self.assertEqual(chain.confirm(reopen)["status"], "recorded")
+            self.assertEqual(chain.source.decision(), None)
+            self.assertEqual([e["action"] for e in D.entries(chain.source.history())], ["CONFIRM_REJECTED", "REOPEN"])
+            self.assertEqual(chain.confirm(reopen)["status"], "already_recorded")
+            self.assertEqual(chain.confirm(TD.request(outcome="Hired", op="op-7777777777"))["status"], "recorded")   # and it can be closed again
+
+    def test_an_outcome_without_its_select_option_fails_closed_and_a_manual_decision_is_not_reopened(self):
+        chain = TD.Chain()
+        with self.assertRaises(D.DecisionError) as error:
+            chain.confirm(TD.request(outcome="Hired"))
+        self.assertEqual((str(error.exception), chain.source.patches()), ("DECISION_SCHEMA_MISSING", []))
+        chain.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE, decision="Rejected")      # set by hand in Notion: no V7 history
+        with self.assertRaises(D.DecisionError) as error:
+            chain.confirm(TD.request(action="REOPEN", op="op-5555555555"))
+        self.assertEqual((str(error.exception), chain.source.patches()), ("DECISION_NOT_CLOSED", []))
+
+    def test_a_stored_outcome_that_differs_from_the_one_written_is_a_failed_read_back(self):
+        chain = TD.Chain()
+        options(chain.source, NEW)
+        chain.source.tamper = lambda page: page["properties"].update({"Hiring Decision": {"select": {"name": "Other"}}})
+        with self.assertRaises(D.DecisionError) as error:
+            chain.confirm(TD.request(outcome="Hired"))
+        self.assertEqual(str(error.exception), "DECISION_READBACK_MISMATCH")
+
+
+class NotesOutcomes(unittest.TestCase):
+    def test_each_outcome_is_its_own_label_on_the_retired_page_and_reopens_with_records_kept(self):
+        for outcome in M.OUTCOMES:
+            world = World()
+            world.project()
+            done = world.decide(world.request(outcome=outcome))
+            ws = world.ws
+            self.assertEqual((done["status"], done["route"], ws.where(ws.target)), ("recorded", "notes", ws.retired[0]), outcome)
+            self.assertIn(f"Hiring decision (V7) · {outcome} · ", ws.digest(ws.target)[-1][2])
+            self.assertEqual(world.decide(world.request(outcome=outcome))["status"], "already_recorded")
+            reopen = world.reopen()
+            if outcome == "Hired":
+                before = len(ws.writes())
+                with self.assertRaises(NotionError) as error:
+                    world.decide(reopen)
+                self.assertEqual((str(error.exception), len(ws.writes())), ("DECISION_HIRED_REOPEN_UNCONFIRMED", before))
+                reopen["reopen_hired"] = True
+            self.assertEqual(world.decide(reopen)["status"], "recorded")
+            self.assertEqual(ws.where(ws.target), ws.active[0])
+            self.assertEqual(len([k for k in ws.digest(ws.target) if "Hiring decision (V7)" in (k[2] or "")]), 4)       # both closing records and both reopening records stay
 
 
 if __name__ == "__main__":
