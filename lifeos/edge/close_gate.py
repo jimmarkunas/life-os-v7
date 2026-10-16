@@ -1,16 +1,9 @@
-"""LIFE-47 S2 (Edge): the transport gate of the private Close Opportunity service on Oracle (Jim's Option B, LIFE-47 comments 10248/10249).
-
-systemd starts one process per connection (lifeos-close.socket on 127.0.0.1:47344, Accept=yes) as a DynamicUser that cannot read the OpenClaw
-account and that OpenClaw (`ubuntu`, no root since Oct 16 2026) cannot read; Tailscale Serve terminates TLS on tailnet port 47443 and forwards
-with a PROXY v2 header. Before the application sees a byte of the request this gate:
-  1. requires the loopback peer to be root (tailscaled), so no local user, OpenClaw included, can present a PROXY header;
-  2. requires the PROXY v2 source and asks tailscaled who it is: the approved login, an untagged node, and a StableID on the approved list
-     (Jim's iPhone and MacBook; the Oracle node, the Mac mini and every other device are refused);
-  3. reads ONE bounded HTTP/1.1 request: GET or POST only, the exact Host, no duplicate header, no chunked body; a POST must be same-origin
-     (Origin and, when sent, Sec-Fetch-Site) and form-encoded;
-  4. calls the application with the request, the verified identity and its credentials. A GET never gets the Notion token: it gets a
-     read-only client (GET calls, data-source queries and page reads only) so it can show the current opportunity but cannot write.
-Anything else gets a fixed status and no detail; nothing is logged. Policy (host, login, node ids) is root-owned config, never in the repo."""
+"""LIFE-47 S2 (Edge): transport gate of the private Close Opportunity service (Option B, LIFE-47 10248/10249). One process per connection (127.0.0.1:47344,
+Accept=yes) as a DynamicUser isolated from OpenClaw (`ubuntu`, no root); Tailscale Serve terminates TLS on 47443 and adds PROXY v2. Before the app sees the request:
+  1. the loopback peer must be root (tailscaled): no local user, OpenClaw included, can present a PROXY header;
+  2. PROXY v2 source -> tailscaled whois: the approved login, untagged, StableID on the approved list (iPhone, MacBook; never Oracle or the Mac mini);
+  3. ONE bounded HTTP/1.1 request: GET or POST, exact Host, no duplicate header or chunked body; POST same-origin and form-encoded;
+  4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged."""
 import json
 import os
 import subprocess
@@ -18,6 +11,7 @@ import sys
 from urllib.parse import parse_qsl
 
 from lifeos.imessage import alerts_endpoint as ep
+from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
 MAX_HEAD, MAX_BODY = 8192, 16384
@@ -46,7 +40,7 @@ class ReadOnly:
 
 
 def notion_client(token, policy):
-    from lifeos.platform.notion_client import Client
+    """The real client for the canonical Job Ledger; a policy without the ledger id fails closed (NOTION_CONFIG_MISSING)."""
     return Client({"NOTION_API_TOKEN": token.decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": policy.get("ledger", "")})
 
 
@@ -108,7 +102,7 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=()):
 
 def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
     """app(req, who, secrets) -> (status, content type, body bytes, extra headers).
-    secrets: GET {"link", "reader": ReadOnly client}; POST {"link", "notion": the token}."""
+    secrets: GET {"link", "reader": ReadOnly client, "config"}; POST {"link", "notion": the token, "config"}; config = canonical ledger/pipeline ids."""
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
         if uid() != 0:
@@ -128,6 +122,7 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         return 0
     creds = creds or os.environ.get("CREDENTIALS_DIRECTORY", "")
     secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
+    secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     try:
         if req["method"] == "GET":
             secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))

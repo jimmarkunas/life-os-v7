@@ -8,8 +8,13 @@ from lifeos.edge.oracle import close_release as rel
 
 C = "a" * 40
 APP_SRC = b'CLOSURE = ("lifeos/hiring/close.py",)\n'
-FILES = {"lifeos/__init__.py": b"", "lifeos/edge/close_gate.py": b"# gate\n", "lifeos/imessage/__init__.py": b"", "lifeos/imessage/alerts_endpoint.py": b"# ep\n",
-         "lifeos/hiring/__init__.py": b"", rel.APP: APP_SRC, "lifeos/hiring/close.py": b"# close\n"}
+FILES = {**{p: b"# stub\n" for p in rel.EDGE}, rel.APP: APP_SRC, "lifeos/hiring/close.py": b"# close\n"}
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def real_edge(app=b"CLOSURE = ()\n"):
+    """The REAL Edge closure files from this checkout plus a minimal entry point."""
+    return {**{p: open(os.path.join(ROOT, p), "rb").read() for p in rel.EDGE if p != rel.APP}, rel.APP: app}
 
 
 def github(files=FILES, status="ahead", tree_extra=None, mode="100644"):
@@ -51,8 +56,8 @@ class Stage(unittest.TestCase):
         self.assertTrue(str(caught.exception).startswith("CONTENT_MISMATCH"))
 
     def test_an_incomplete_import_closure_is_refused(self):
-        rel.stage(C, self.dest(), github())                              # the real import check passes when the declared closure is complete
-        leaky = {**FILES, rel.APP: b'import lifeos.hiring.not_declared\nCLOSURE = ("lifeos/hiring/close.py",)\n'}
+        rel.stage(C, self.dest(), github(real_edge()))                   # the real import check passes when the declared closure is complete
+        leaky = real_edge(b'import lifeos.hiring.not_declared\nCLOSURE = ()\n')
         with self.assertRaises(rel.Refused) as caught:
             rel.stage(C, self.dest(), github(leaky))                     # close_app imports a module its CLOSURE does not ship
         self.assertEqual(str(caught.exception), "CLOSURE_INCOMPLETE")
@@ -84,3 +89,23 @@ class ServeState(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IsolatedTree(unittest.TestCase):
+    """The REAL Edge files, staged alone with a minimal entry point: they import and build the real GET client with nothing outside the tree."""
+
+    def real(self):
+        return real_edge()
+
+    def test_the_edge_closure_alone_imports_and_builds_the_get_client(self):
+        rel.stage(C, os.path.join(tempfile.mkdtemp(), "tree"), github(self.real()))            # the real isolated import + dry client construction
+
+    def test_a_tree_without_the_notion_transport_or_limits_is_incomplete(self):
+        for missing in ("lifeos/platform/limits.py", "lifeos/platform/notion_client.py"):
+            d = tempfile.mkdtemp()
+            for p, data in self.real().items():
+                if p != missing:
+                    os.makedirs(os.path.join(d, os.path.dirname(p)), exist_ok=True)
+                    open(os.path.join(d, p), "wb").write(data)
+            with self.assertRaises(rel.Refused):
+                rel.imports(d)

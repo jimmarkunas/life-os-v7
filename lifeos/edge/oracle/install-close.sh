@@ -1,12 +1,7 @@
 #!/bin/bash
-# LIFE-47 S2 on Oracle: the private Close Opportunity service (Edge package). Run as root through the `opc` administrator; never as `ubuntu`.
-#   install-close.sh policy LOGIN NODE_ID...   write /etc/lifeos-close/policy.json (exact login, approved untagged node StableIDs, never this node)
-#   install-close.sh credential notion|link    encrypt one credential for the unit (notion: read from stdin, e.g. piped from Bitwarden; link: generated)
-#   install-close.sh units DIR                 write the two unit files into DIR (used by install and by `systemd-analyze verify`)
-#   install-close.sh install COMMIT            stage the approved commit (close_release.py: on main, exact closure, blob hashes, import check),
-#                                              then atomically activate it read-only under /opt/lifeos-close, units, socket, ONE Serve port
-#   install-close.sh verify | rollback | uninstall
-# Never touches the Gateway (443/18789), the iMessage endpoint (47341/47342), Funnel or any other Serve port, and never runs `tailscale serve reset`.
+# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link | units DIR |
+#   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
+# Only port 47443 and its own units/tree are touched: never the Gateway (443/18789), iMessage (47341/47342), Funnel, or `tailscale serve reset`.
 set -euo pipefail
 OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
 LOCAL=47344; TAILNET=47443; REL="$(cd "$(dirname "$0")" && pwd)/close_release.py"
@@ -71,19 +66,10 @@ EOF
 
 case "${1:-}" in
   policy)
-    shift; login="${1:?login}"; shift; [ "$#" -ge 1 ] || { say "at least one node id"; exit 2; }
+    shift; [ "$#" -ge 4 ] || { say "policy LOGIN LEDGER_DATA_SOURCE_ID PIPELINE_PAGE_ID NODE_ID..."; exit 2; }
     install -d -m 755 "$ETC"
-    tailscale status --json | python3 -I -c '
-import json, sys
-st, port, login, want = json.load(sys.stdin), sys.argv[1], sys.argv[2], sys.argv[3:]
-users = {str(k): v.get("LoginName") for k, v in (st.get("User") or {}).items()}
-peers = {p.get("ID"): p for p in (st.get("Peer") or {}).values()}
-for n in want:
-    p = peers.get(n)
-    if n == st["Self"].get("ID") or p is None or p.get("Tags") or users.get(str(p.get("UserID"))) != login:
-        sys.exit("refused: " + n + " is this node, unknown, tagged or not owned by " + login)
-print(json.dumps({"host": st["Self"]["DNSName"].rstrip(".") + ":" + port, "login": login, "nodes": want}))' "$TAILNET" "$login" "$@" > "$ETC/policy.json.new"
-    chmod 644 "$ETC/policy.json.new"; mv "$ETC/policy.json.new" "$ETC/policy.json"; say "policy written for $# node(s)" ;;
+    tailscale status --json | python3 -I "$REL" policy "$TAILNET" "$@" > "$ETC/policy.json.new" || { rm -f "$ETC/policy.json.new"; say "STOP: policy refused"; exit 1; }
+    chmod 644 "$ETC/policy.json.new"; mv "$ETC/policy.json.new" "$ETC/policy.json"; say "policy written for $(( $# - 3 )) node(s)" ;;
   credential)
     install -d -m 700 "$CREDS"
     case "${2:-}" in

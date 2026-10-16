@@ -1,10 +1,7 @@
-"""LIFE-47 S2 (Edge): proof that the Close Opportunity tree on Oracle is exactly an approved V7 commit, and a fail-closed reading of Tailscale Serve.
-Stdlib only; used by install-close.sh as root. Nothing here changes the live tree, units or Serve.
-  stage COMMIT DEST   the commit must be a full SHA already on main; the file set is the fixed Edge files plus the CLOSURE the Career entry point
-                      declares (read with ast, never executed); every entry must be a regular git blob whose content hash matches the commit's tree;
-                      the staged tree must import with nothing outside it. Any surprise refuses before DEST is written.
-  check DEST          the tree holds exactly its MANIFEST: same files, same hashes, no extra file and no symlink.
-  serve-state         Serve status JSON on stdin -> ours | free | other | unknown; only a well-formed status can say free."""
+"""LIFE-47 S2 (Edge), stdlib only, used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main; exactly the Edge files plus the
+CLOSURE the Career entry point declares (ast, never executed); regular blobs whose git hashes match the commit tree; imports and builds the GET client with
+nothing outside DEST; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST, no extra file or symlink. `serve-state`: unknown unless
+the status is well-formed. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
 import ast
 import hashlib
 import json
@@ -16,7 +13,9 @@ import urllib.request
 
 REPO = "jimmarkunas/life-os-v7"
 APP = "lifeos/hiring/close_app.py"
-EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/hiring/__init__.py", APP)
+EDGE = ("lifeos/__init__.py", "lifeos/edge/close_gate.py", "lifeos/imessage/__init__.py", "lifeos/imessage/alerts_endpoint.py", "lifeos/platform/__init__.py",
+        "lifeos/platform/notion_client.py", "lifeos/platform/limits.py", "lifeos/hiring/__init__.py", APP)      # the gate's own runtime closure, GET client included
+NOTION_ID = re.compile(r"[0-9a-f]{32}\Z")
 PATH = re.compile(r"lifeos(/[a-z0-9_]+)+\.py\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
@@ -73,7 +72,8 @@ def stage(commit, dest, fetch=get, importer=None):
 
 
 def imports(dest):
-    code = f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.edge.close_gate, lifeos.hiring.close_app"
+    code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.hiring.close_app; "
+            "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
     if subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, timeout=30).returncode != 0:
         raise Refused("CLOSURE_INCOMPLETE")
 
@@ -92,6 +92,21 @@ def check(dest):
                 seen[rel] = blob(open(os.path.join(root, n), "rb").read())
     if seen != want:
         raise Refused("TREE_DIFFERS")
+
+
+def policy(status, port, login, ledger, pipeline, nodes):
+    ids = {k: str(v).replace("-", "").lower() for k, v in (("ledger", ledger), ("pipeline", pipeline))}
+    if not all(NOTION_ID.match(v) for v in ids.values()):
+        raise Refused("NOTION_ID_INVALID")
+    users = {str(k): v.get("LoginName") for k, v in (status.get("User") or {}).items()}
+    peers = {p.get("ID"): p for p in (status.get("Peer") or {}).values()}
+    for n in nodes:
+        p = peers.get(n)
+        if n == status["Self"].get("ID") or p is None or p.get("Tags") or users.get(str(p.get("UserID"))) != login:
+            raise Refused("NODE_REFUSED:" + n)
+    if not nodes:
+        raise Refused("NO_NODES")
+    return {"host": status["Self"]["DNSName"].rstrip(".") + ":" + port, "login": login, **ids, "nodes": list(nodes)}
 
 
 def serve_state(text, tailnet="47443", local="47344"):
@@ -116,6 +131,8 @@ if __name__ == "__main__":
             print(serve_state(sys.stdin.read()))
         elif sys.argv[1:2] == ["stage"] and len(sys.argv) == 4:
             stage(sys.argv[2], sys.argv[3])
+        elif sys.argv[1:2] == ["policy"] and len(sys.argv) >= 7:
+            print(json.dumps(policy(json.load(sys.stdin), *sys.argv[2:6], sys.argv[6:])))
         elif sys.argv[1:2] == ["check"] and len(sys.argv) == 3:
             check(sys.argv[2])
         else:

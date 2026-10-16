@@ -56,7 +56,7 @@ class Gate(unittest.TestCase):
             self.assertEqual((code, status), (0, 200))
             req, who, secrets = self.calls[0]
             self.assertEqual((req["method"], req["path"], req["query"], who), ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}))
-            self.assertEqual(set(secrets), {"link", "reader"})               # GET never receives the Notion token, only the read-only client
+            self.assertEqual(set(secrets), {"link", "reader", "config"})     # GET never receives the Notion token, only the read-only client
             for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff"):
                 self.assertIn(header, text)
 
@@ -140,3 +140,68 @@ class Gate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealClientGet(unittest.TestCase):
+    """The installer's own policy builder and the real Notion Client, with only urllib's transport replaced: GET reads, never writes."""
+
+    LEDGER, PIPELINE = "1" * 32, "2" * 32
+
+    def setUp(self):
+        from lifeos.edge.oracle import close_release as rel
+        status = {"Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."}, "User": {"7": {"LoginName": LOGIN}},
+                  "Peer": {"k1": {"ID": PHONE, "UserID": 7}, "k2": {"ID": MAC_MINI, "UserID": 7}}}
+        d = tempfile.mkdtemp()
+        self.policy, self.creds = os.path.join(d, "policy.json"), os.path.join(d, "creds")
+        with open(self.policy, "w") as f:
+            json.dump(rel.policy(status, "47443", LOGIN, self.LEDGER, "2222" * 8, [PHONE]), f)
+        os.mkdir(self.creds)
+        for name in ("link", "notion"):
+            with open(os.path.join(self.creds, name), "wb") as f:
+                f.write(b"synthetic-" + name.encode())
+        self.sent = []
+
+    def urlopen(self, request, timeout=None):
+        self.sent.append((request.get_method(), request.full_url.split("/v1", 1)[1], request.get_header("Authorization")))
+        body = {"id": "page", "properties": {}} if request.get_method() == "GET" else {"results": [], "has_more": False}
+        return type("R", (), {"__enter__": lambda s: s, "__exit__": lambda s, *a: None, "read": lambda s: json.dumps(body).encode()})()
+
+    def run_get(self, app):
+        from unittest import mock
+        out = io.BytesIO()
+        with mock.patch("lifeos.platform.notion_client.urllib.request.urlopen", self.urlopen), mock.patch("lifeos.platform.notion_client.time.sleep"):
+            gate.main(app, io.BytesIO(v2(RUNNER) + http(headers={"Host": "edge.example.ts.net:47443"})), out, whois_as(), lambda: 0, self.policy, self.creds)
+        return int(out.getvalue().split(b" ")[1])
+
+    def test_get_gets_the_canonical_ids_and_a_real_read_only_client_and_sends_only_reads(self):
+        seen = {}
+
+        def screen(req, who, secrets):
+            reader = secrets["reader"]
+            seen.update(config=secrets["config"], token="notion" in secrets, source=reader.source)
+            reader.get_page("3" * 32)
+            reader.query_data_source(body={"page_size": 1})
+            self.assertRaises(PermissionError, reader.call, "PATCH", "/pages/" + "3" * 32, {})
+            return 200, "text/html", b"ok", ()
+
+        self.assertEqual(self.run_get(screen), 200)
+        self.assertEqual(seen, {"config": {"ledger": self.LEDGER, "pipeline": self.PIPELINE}, "token": False, "source": self.LEDGER})
+        self.assertEqual([(m, p) for m, p, _ in self.sent], [("GET", "/pages/" + "3" * 32), ("POST", f"/data_sources/{self.LEDGER}/query")])
+        self.assertTrue(all(a == "Bearer synthetic-notion" for _, _, a in self.sent))      # the scoped token is used by the client, never handed to GET code
+
+    def test_a_policy_without_the_ledger_id_fails_closed_and_sends_nothing(self):
+        p = json.load(open(self.policy))
+        del p["ledger"]
+        json.dump(p, open(self.policy, "w"))
+        self.assertEqual(self.run_get(lambda req, who, secrets: (200, "text/html", b"", ())), 500)
+        self.assertEqual(self.sent, [])
+
+    def test_the_policy_builder_refuses_bad_ids_and_wrong_nodes(self):
+        from lifeos.edge.oracle import close_release as rel
+        status = {"Self": {"ID": ORACLE, "DNSName": "edge.example.ts.net."}, "User": {"7": {"LoginName": LOGIN}, "8": {"LoginName": "x@example.com"}},
+                  "Peer": {"a": {"ID": PHONE, "UserID": 7}, "b": {"ID": "nTAGGED", "UserID": 7, "Tags": ["tag:x"]}, "c": {"ID": "nOTHER", "UserID": 8}}}
+        for ledger, nodes, code in (("xyz", [PHONE], "NOTION_ID_INVALID"), (self.LEDGER, [ORACLE], "NODE_REFUSED"), (self.LEDGER, ["nTAGGED"], "NODE_REFUSED"),
+                                    (self.LEDGER, ["nOTHER"], "NODE_REFUSED"), (self.LEDGER, ["nUNKNOWN"], "NODE_REFUSED"), (self.LEDGER, [], "NO_NODES")):
+            with self.assertRaises(rel.Refused) as caught:
+                rel.policy(status, "47443", LOGIN, ledger, self.PIPELINE, nodes)
+            self.assertTrue(str(caught.exception).startswith(code))
