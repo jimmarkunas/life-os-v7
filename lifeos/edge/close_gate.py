@@ -8,7 +8,8 @@ with a PROXY v2 header. Before the application sees a byte of the request this g
      (Jim's iPhone and MacBook; the Oracle node, the Mac mini and every other device are refused);
   3. reads ONE bounded HTTP/1.1 request: GET or POST only, the exact Host, no duplicate header, no chunked body; a POST must be same-origin
      (Origin and, when sent, Sec-Fetch-Site) and form-encoded;
-  4. calls the application with the request, the verified identity and its credentials. A GET gets NO Notion credential, so it cannot write.
+  4. calls the application with the request, the verified identity and its credentials. A GET never gets the Notion token: it gets a
+     read-only client (GET calls, data-source queries and page reads only) so it can show the current opportunity but cannot write.
 Anything else gets a fixed status and no detail; nothing is logged. Policy (host, login, node ids) is root-owned config, never in the repo."""
 import json
 import os
@@ -23,6 +24,30 @@ MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
 SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"), ("X-Frame-Options", "DENY"),
         ("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"), ("Connection", "close"))
+
+
+class ReadOnly:
+    """GET's Notion client. Reads pass through (GET calls, data-source queries, page reads, the configured source id); every write is refused
+    before anything is sent. The token stays inside the wrapped client."""
+
+    def __init__(self, client):
+        self._client, self.source = client, client.source
+
+    def call(self, method, path, body=None):
+        if method == "GET" or (method == "POST" and str(path).endswith("/query")):
+            return self._client.call(method, path, body)
+        raise PermissionError("READ_ONLY")
+
+    def get_page(self, page_id):
+        return self._client.get_page(page_id)
+
+    def query_data_source(self, source_id=None, body=None):
+        return self._client.query_data_source(source_id, body)
+
+
+def notion_client(token, policy):
+    from lifeos.platform.notion_client import Client
+    return Client({"NOTION_API_TOKEN": token.decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": policy.get("ledger", "")})
 
 
 def identity(ip, policy, lookup=ep.whois):
@@ -81,8 +106,9 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=()):
     out.flush()
 
 
-def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None):
-    """app(req, who, secrets) -> (status, content type, body bytes, extra headers). secrets: {"link"} on GET, {"link", "notion"} on POST."""
+def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
+    """app(req, who, secrets) -> (status, content type, body bytes, extra headers).
+    secrets: GET {"link", "reader": ReadOnly client}; POST {"link", "notion": the token}."""
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
         if uid() != 0:
@@ -101,9 +127,10 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         respond(stdout, code)
         return 0
     creds = creds or os.environ.get("CREDENTIALS_DIRECTORY", "")
-    names = ("link",) if req["method"] == "GET" else ("link", "notion")
-    secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in names}
+    secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
     try:
+        if req["method"] == "GET":
+            secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()

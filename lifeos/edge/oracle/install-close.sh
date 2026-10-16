@@ -3,23 +3,19 @@
 #   install-close.sh policy LOGIN NODE_ID...   write /etc/lifeos-close/policy.json (exact login, approved untagged node StableIDs, never this node)
 #   install-close.sh credential notion|link    encrypt one credential for the unit (notion: read from stdin, e.g. piped from Bitwarden; link: generated)
 #   install-close.sh units DIR                 write the two unit files into DIR (used by install and by `systemd-analyze verify`)
-#   install-close.sh install TARBALL SHA256    verified, read-only, commit-pinned tree under /opt/lifeos-close, units, socket, ONE Serve port
+#   install-close.sh install COMMIT            stage the approved commit (close_release.py: on main, exact closure, blob hashes, import check),
+#                                              then atomically activate it read-only under /opt/lifeos-close, units, socket, ONE Serve port
 #   install-close.sh verify | rollback | uninstall
 # Never touches the Gateway (443/18789), the iMessage endpoint (47341/47342), Funnel or any other Serve port, and never runs `tailscale serve reset`.
 set -euo pipefail
 OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
-LOCAL=47344; TAILNET=47443
+LOCAL=47344; TAILNET=47443; REL="$(cd "$(dirname "$0")" && pwd)/close_release.py"
 say() { printf '%s\n' "$*"; }
 [ "$(id -u)" = 0 ] || { say "run as root via opc"; exit 2; }
 
-serve_state() {   # ours | free | other
-  tailscale serve status --json 2>/dev/null | python3 -I -c '
-import json, sys
-cfg = json.loads(sys.stdin.read() or "{}") or {}
-h = (cfg.get("TCP") or {}).get(sys.argv[1])
-funnel = any(v and str(k).endswith(":" + sys.argv[1]) for k, v in (cfg.get("AllowFunnel") or {}).items())
-ok = bool(h) and h.get("TCPForward") == "127.0.0.1:" + sys.argv[2] and h.get("ProxyProtocol") == 2 and bool(h.get("TerminateTLS"))
-print("free" if h is None and not funnel else "ours" if ok and not funnel else "other")' "$TAILNET" "$LOCAL"
+serve_state() {   # ours | free | other | unknown: a failed, empty or malformed status read is unknown, never free
+  local status; status="$(tailscale serve status --json 2>/dev/null)" || status=""
+  printf '%s' "$status" | python3 -I "$REL" serve-state || echo unknown
 }
 
 units() {
@@ -98,22 +94,23 @@ print(json.dumps({"host": st["Self"]["DNSName"].rstrip(".") + ":" + port, "login
     chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)" ;;
   units) units "${2:?dir}" ;;
   install)
-    tar="${2:?tarball}"; want="${3:?sha256}"
-    [ "$(sha256sum "$tar" | cut -d' ' -f1)" = "$want" ] || { say "STOP: tarball hash mismatch"; exit 1; }
+    commit="${2:?approved full commit sha}"
     for f in "$ETC/policy.json" "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link"; do [ -s "$f" ] || { say "STOP: missing $f"; exit 1; }; done
-    case "$(serve_state)" in free|ours) ;; *) say "STOP: tailnet port $TAILNET has another Serve/Funnel configuration"; exit 1;; esac
-    dest="$OPT/${want:0:12}"; install -d -m 755 "$dest"; tar -xzf "$tar" -C "$dest" --no-same-owner
-    (cd "$dest" && find . -type f ! -name MANIFEST -exec sha256sum {} + | sort -k2 > MANIFEST)
-    chown -R root:root "$dest"; chmod -R go-w,a-w+rX "$dest"
-    [ -L "$OPT/current" ] && ln -sfn "$(readlink "$OPT/current")" "$OPT/previous"
+    st="$(serve_state)"; case "$st" in free|ours) ;; *) say "STOP: tailnet port $TAILNET is $st (not verified free or ours)"; exit 1;; esac
+    dest="$OPT/${commit:0:12}"; stage="$OPT/.stage-$$"; install -d -m 755 "$OPT"; rm -rf "$stage"
+    python3 -I "$REL" stage "$commit" "$stage" || { rm -rf "$stage"; say "STOP: release not verified; nothing changed"; exit 1; }
+    chown -R root:root "$stage"; chmod -R go-w,a-w+rX "$stage"
+    python3 -I "$REL" check "$stage" || { rm -rf "$stage"; say "STOP: staged tree differs; nothing changed"; exit 1; }
+    if [ -e "$dest" ]; then python3 -I "$REL" check "$dest" || { rm -rf "$stage"; say "STOP: existing $dest differs"; exit 1; }; rm -rf "$stage"; else mv -T "$stage" "$dest"; fi
+    [ -L "$OPT/current" ] && [ "$(readlink "$OPT/current")" != "$dest" ] && ln -sfn "$(readlink "$OPT/current")" "$OPT/previous"
     ln -sfn "$dest" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
     units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket >/dev/null
-    [ "$(serve_state)" = ours ] || tailscale serve --bg --tls-terminated-tcp "$TAILNET" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL" >/dev/null
+    [ "$st" = ours ] || tailscale serve --bg --tls-terminated-tcp "$TAILNET" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL" >/dev/null || { say "FAIL: Serve $TAILNET not added (run uninstall)"; exit 1; }
     "$0" verify ;;
   verify)
     ok=0
     check() { if eval "$2"; then say "  [PASS] $1"; else say "  [FAIL] $1"; ok=1; fi; }
-    check "tree matches its manifest" '(cd "$OPT/current" && sha256sum --quiet -c MANIFEST)'
+    check "tree is exactly its approved-commit manifest" 'python3 -I "$REL" check "$OPT/current" >/dev/null 2>&1'
     check "tree root-owned and read-only" '[ -z "$(find -L "$OPT/current" ! -user root -o -perm /022 2>/dev/null)" ]'
     check "credentials root-only" '[ "$(stat -c %a:%U "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link" | sort -u)" = "600:root" ]'
     check "ubuntu cannot read the credentials" '! runuser -u ubuntu -- cat "$CREDS/lifeos-close.notion" >/dev/null 2>&1'
@@ -123,12 +120,19 @@ print(json.dumps({"host": st["Self"]["DNSName"].rstrip(".") + ":" + port, "login
     check "Serve terminates TLS on $TAILNET with PROXY v2, no Funnel" '[ "$(serve_state)" = ours ]'
     exit $ok ;;
   rollback)
-    [ -L "$OPT/previous" ] || { say "no previous tree"; exit 1; }
+    [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
+    python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)
-    if [ "$(serve_state)" = ours ]; then tailscale serve --tls-terminated-tcp "$TAILNET" off >/dev/null || true; fi
-    systemctl disable --now lifeos-close.socket >/dev/null 2>&1 || true
-    rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service"; systemctl daemon-reload
-    say "Removed the socket, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand." ;;
+    bad=0; st="$(serve_state)"
+    case "$st" in
+      ours) tailscale serve --tls-terminated-tcp "$TAILNET" off >/dev/null || { say "FAIL: Serve $TAILNET not removed"; bad=1; } ;;
+      free) ;;
+      *) say "FAIL: Serve $TAILNET is $st; left untouched"; bad=1 ;;
+    esac
+    if systemctl list-unit-files lifeos-close.socket --no-legend 2>/dev/null | grep -q .; then systemctl disable --now lifeos-close.socket >/dev/null || { say "FAIL: socket not stopped"; bad=1; }; fi
+    rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service"; systemctl daemon-reload || bad=1
+    [ "$(serve_state)" = free ] || { say "FAIL: Serve $TAILNET not verified free"; bad=1; }
+    if [ "$bad" = 0 ]; then say "Removed the socket, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand."; else say "UNINSTALL INCOMPLETE"; exit 1; fi ;;
   *) say "usage: install-close.sh policy|credential|units|install|verify|rollback|uninstall"; exit 2 ;;
 esac

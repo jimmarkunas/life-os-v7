@@ -45,7 +45,7 @@ class Gate(unittest.TestCase):
 
     def run_gate(self, raw, lookup=None, uid=0, app=None):
         out = io.BytesIO()
-        code = gate.main(app or self.app, io.BytesIO(raw), out, lookup or whois_as(), lambda: uid, self.policy, self.creds)
+        code = gate.main(app or self.app, io.BytesIO(raw), out, lookup or whois_as(), lambda: uid, self.policy, self.creds, client=lambda t, p: type("C", (), {"source": "ds"})())
         text = out.getvalue().decode("latin-1")
         return code, (int(text.split(" ")[1]) if text else None), text
 
@@ -56,9 +56,43 @@ class Gate(unittest.TestCase):
             self.assertEqual((code, status), (0, 200))
             req, who, secrets = self.calls[0]
             self.assertEqual((req["method"], req["path"], req["query"], who), ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}))
-            self.assertEqual(set(secrets), {"link"})                         # GET cannot write: it never receives the Notion credential
+            self.assertEqual(set(secrets), {"link", "reader"})               # GET never receives the Notion token, only the read-only client
             for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff"):
                 self.assertIn(header, text)
+
+    def test_get_reads_the_current_opportunity_through_a_read_only_client_and_writes_nothing(self):
+        class Notion:                                                   # a fake Notion client: one opportunity, every call recorded
+            source = "ds-ledger"
+
+            def __init__(self, stage):
+                self.stage, self.log = stage, []
+
+            def call(self, method, path, body=None):
+                self.log.append((method, path))
+                return {"id": "page-1", "stage": self.stage}
+
+            def get_page(self, page_id):
+                return self.call("GET", f"/pages/{page_id}")
+
+            def query_data_source(self, source_id=None, body=None):
+                return self.call("POST", f"/data_sources/{source_id or self.source}/query", body)
+
+        def screen(req, who, secrets):                                  # what close_app's GET must do: read live state, refuse a stale link
+            reader = secrets["reader"]
+            live = reader.get_page("page-1")["stage"]
+            reader.query_data_source(body={"filter": {}})
+            for write in (lambda: reader.call("PATCH", "/pages/page-1", {}), lambda: reader.call("POST", "/pages", {})):
+                self.assertRaises(PermissionError, write)
+            self.assertFalse(hasattr(reader, "update_page_properties") or hasattr(reader, "call_once") or hasattr(reader, "create"))
+            return (409, "text/plain", b"stale", ()) if live != req["query"]["stage"] else (200, "text/html", b"current", ())
+
+        for stage, want in (("Interview", 200), ("Offer", 409)):
+            notion = Notion(stage)
+            out = io.BytesIO()
+            gate.main(screen, io.BytesIO(v2(RUNNER) + http(path="/close?stage=Interview")), out, whois_as(), lambda: 0, self.policy, self.creds,
+                      client=lambda token, policy: (self.assertEqual(token, b"synthetic-notion-token"), notion)[1])
+            self.assertEqual(int(out.getvalue().split(b" ")[1]), want)
+            self.assertEqual(notion.log, [("GET", "/pages/page-1"), ("POST", "/data_sources/ds-ledger/query")])      # reads only: zero writes reached Notion
 
     def test_a_same_origin_form_post_gets_the_notion_credential_and_the_parsed_form(self):
         body = b"reason=Rejected&confirm=yes&csrf=t"
