@@ -107,8 +107,8 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual([i[0] for i in m["items"]], ["Triage overdue bills", "Clear overdue or blocked Jira items", "Review Attention exceptions"])
         self.assertEqual(m["items"][0][2], "https://example.invalid/tracker")
         self.assertEqual(m["hiring"], "5 active hiring opportunities")
-        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Overdue bills"), ("—", "Jira blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
-        self.assertEqual(m["kpis"][1][2], "Not published separately · 6 overdue or blocked")             # the combined count is never shown as the blocked number
+        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Overdue bills"), ("6", "Jira Overdue / Blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
+        self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
 
     def test_a_degraded_or_stale_card_is_named_in_the_closed_summary_and_never_shows_a_number_or_a_zero(self):
         areas = self.areas(Attention={"status": "DEGRADED · Attention sync failed at 10:05 PM CT · showing the last accepted exceptions", "lines": []},
@@ -126,7 +126,7 @@ class ComposeTests(unittest.TestCase):
         m = card.compose(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["GTV Action · JFM-2 — No status yet"]}), NOW)
         self.assertEqual((m["focus"], m["sub"]), ("Primary focus: JFM-2 — No status yet", "One designated action · Updated 10:20 PM CT"))
         m = card.compose(self.areas(Jira={"unreadable": True}), NOW)
-        self.assertEqual((m["focus"], m["sub"], m["kpis"][1][2]), ("Primary focus: unavailable", "UNREADABLE · Jira · Updated 10:20 PM CT", "Not published separately · UNREADABLE · Jira"))
+        self.assertEqual((m["focus"], m["sub"], m["kpis"][1][2]), ("Primary focus: unavailable", "UNREADABLE · Jira · Updated 10:20 PM CT", "UNREADABLE · Jira"))
 
     def test_nothing_flagged_says_so_and_a_fresh_zero_is_a_zero(self):
         areas = self.areas(Bills={"status": "Updated 10:07 PM CT · 0 due · 0 overdue", "lines": []}, Attention={"status": "Updated 10:05 PM CT · No active exceptions.", "lines": []},
@@ -134,7 +134,18 @@ class ComposeTests(unittest.TestCase):
         areas["Mail Alerts"] = {"status": "Updated 10:12 PM CT · 0 waiting · 0 need review", "lines": []}
         m = card.compose(areas, NOW)
         self.assertEqual(m["items"], [("Nothing flagged by the cards", "continue the day's planned work", None)])
-        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "—", "0", "0"])
+        self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0", "0"])                   # a verified zero is a zero, Jira included
+
+    def test_the_jira_card_shows_its_combined_overdue_blocked_count_and_never_a_number_it_cannot_verify(self):
+        kpi = lambda areas: card.compose(areas, NOW)["kpis"][1]
+        self.assertEqual(kpi(self.areas()), ("6", "Jira Overdue / Blocked", "Jira · 10:05 PM CT"))
+        self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, "JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]}))[0], "0")
+        stale = {"status": "JIRA Execution (Updated 8:00 PM CT)", "lines": [GTV, SPRINT]}
+        self.assertEqual(kpi(self.areas(Jira=stale)), ("—", "Jira Overdue / Blocked", "STALE · Jira (last 8:00 PM)"))
+        degraded = {"status": "DEGRADED · Jira sync failed at 10:05 PM CT · showing the last accepted state", "lines": [GTV, SPRINT]}
+        self.assertEqual(kpi(self.areas(Jira=degraded))[::2], ("—", "DEGRADED · Jira (last 10:05 PM)"))
+        self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV]})), ("—", "Jira Overdue / Blocked", "Jira · 10:05 PM CT · count not reported"))
+        self.assertEqual(kpi(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, "JFM Sprint 15 · many Overdue/Blocked"]}))[0], "—")
 
     def test_the_counts_it_reads_match_what_the_attention_card_really_writes(self):
         text = report_region.plain(attention_card.render(23, NOW)[0])
