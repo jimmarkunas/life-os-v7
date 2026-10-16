@@ -148,7 +148,7 @@ def route(applied, parents, want):
         raise fail("AMBIGUOUS")
     page = ret or act                                                  # at most one: the page the pursuit lives on, wherever it is now (a retry after a move that landed must still reach move_page's own checks)
     if want["action"] == REOPEN:
-        if led and (led[0].get("decision") in M.CLOSED_DECISIONS or (want.get("id") and _page_id(led[0].get("id")) == want["id"])):
+        if led and (led[0].get("decision") in M.OUTCOMES + (PASSED,) or (want.get("id") and _page_id(led[0].get("id")) == want["id"])):
             return "ledger", led[0]                                    # an application is reopened on its own row (a finished retry included), never through its Notes page
         if page:
             return "notes", page[0]

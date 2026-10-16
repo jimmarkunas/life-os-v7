@@ -17,7 +17,7 @@ AWAIT_DAYS = 14                                                # D189: a role wa
 APPLIED_DAYS = 30                                              # a submitted role with no newer evidence is listed for 30 days after Applied On, then counted in the status line, never dropped silently
 
 OUTCOMES = ("Rejected", "Withdrew", "Position filled", "Declined offer", "Hired", "Other")      # the six distinct closure outcomes: each is its own value, none stands in for another
-CLOSED_DECISIONS = OUTCOMES + ("Passed",)                      # D194: a Job Ledger Hiring Decision a person confirmed; it closes the pursuit whatever Notes pages say (Applied stays as history)
+CLOSED_DECISIONS = ("Rejected", "Passed")                      # D194: a Job Ledger Hiring Decision a person confirmed; it closes the pursuit whatever Notes pages say (Applied stays as history)
 KINDS = ("assessment", "hiring_manager", "recruiter_screen", "interview")         # calendar evidence kinds, most specific first
 
 

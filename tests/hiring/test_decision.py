@@ -436,6 +436,12 @@ class CompilerTests(unittest.TestCase):
             self.assertEqual(got["closed"], 1)
             self.assertEqual({r["role"]: r["ledger_id"] for r in got["rows"]}, {"Director": "i2", "PM": "i3"})
 
+    def test_the_live_compiler_still_closes_only_on_rejected_or_passed_until_the_new_outcomes_are_activated(self):
+        self.assertEqual(M.CLOSED_DECISIONS, ("Rejected", "Passed"))                       # LIFE-47 S1 is dormant: the closure outcomes added to M.OUTCOMES do not change the live report
+        for value in [o for o in M.OUTCOMES if o != "Rejected"]:
+            got = self.rows([self.applied("Acme", "PM", value, "i1")])
+            self.assertEqual((len(got["rows"]), got["closed"]), (1, 0), value)
+
     def test_an_active_notes_page_does_not_keep_a_confirmed_closure_open(self):
         got = self.rows([self.applied("Acme", "PM", "Rejected", "i1")], [{"id": "p1", "company": "Acme", "role": "PM", "rounds": 3}])
         self.assertEqual((got["rows"], got["closed"]), ([], 1))
