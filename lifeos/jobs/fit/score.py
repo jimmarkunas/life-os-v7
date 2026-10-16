@@ -245,14 +245,14 @@ def evaluate(title, company, text, profile, today, semantic=None):
     text = text or ""
     gate, soft = exclusions.check(title, company, text, profile)
     units = extract.parse(text)
+    capped = _family(title, units, profile)                    # a hard-family mismatch is judged from the title and the text, whether or not any requirement was recognised
     reqs = _requirements(units, profile, today.year) if len(text) >= MIN_TEXT else []
     if not reqs:
         why = "Description too short to score." if len(text) < MIN_TEXT else "No requirement was recognised in the description."
         line = "[--] Unscorable" + (f" | Excluded: {gate['reason']}" if gate else "")
-        return Result(None, "No-Go" if gate else "Unscorable", line, why, exclusion=gate["id"] if gate else None, soft=soft)
+        return Result(None, "No-Go" if gate else "Unscorable", line, why, exclusion=gate["id"] if gate else None, soft=soft, capped=capped)
     title_cls, title_strength = _title(title, profile)
     bonus = title_cls == "direct" and any(rx.search(norm(title)) for rx in profile.specialization)
-    capped = _family(title, units, profile)
     score, buckets = _arithmetic(reqs, title_cls, bonus, capped)
     anchored = title_cls != "unsupported" or any(r.anchor for r in reqs)
     junior = bool(JUNIOR.search(title or "")) and not SENIOR.search(title or "")
