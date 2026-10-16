@@ -262,6 +262,45 @@ class Post(unittest.TestCase):
                 close_app.resolve(Both(h.world), h.cfg, pid)
         self.assertEqual(str(error.exception), "DECISION_AMBIGUOUS")
 
+    def test_a_closure_the_screen_records_leaves_the_compiled_hiring_rows_for_every_outcome(self):
+        for outcome in M.OUTCOMES:
+            notes = "short explanation" if outcome == "Other" else ""
+            for pid_of, rows in ((lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")]), (lambda h: h.world.ws.target.replace("-", ""), [])):
+                h = Harness(rows)
+                self.assertEqual(h.close(pid_of(h), outcome, notes)[0], 200, outcome)
+                ledger_rows, parents = close_app._state(Both(h.world), h.cfg["pipeline"])
+                compiled = T.compile_([dict(r, applied_on="2026-10-02") for r in ledger_rows], parents)
+                listed = [(r["company"], r["role"]) for r in compiled["rows"]]
+                self.assertNotIn((COMPANY, ROLE), listed, outcome)                                    # the closed pursuit is no longer an active row
+                self.assertEqual(compiled["reasons"], [], outcome)                                     # not flagged as ambiguous either
+                self.assertIn((COMPANY, "Director, Delivery"), listed)                                # and nothing else left with it
+
+    def test_an_interrupted_or_unverified_notes_closure_never_claims_nothing_changed_or_that_it_closed(self):
+        for mode in ("fail", "drop_move"):
+            h = Harness()
+            ws, pid = h.world.ws, h.world.ws.target.replace("-", "")
+            if mode == "fail":
+                ws.fail = {"move"}                                                                      # the Pending record lands, the move does not
+            else:
+                ws.drop_move = True                                                                     # the move is acknowledged but not kept
+            status, body, _ = h.close(pid, "Withdrew")
+            text = re.sub(r"<[^>]+>", " ", html.unescape(body))
+            self.assertEqual(status, 500, mode)
+            for claim in ("Nothing else was changed", "Nothing was changed", "Opportunity closed", "read back successfully"):
+                self.assertNotIn(claim, text, (mode, claim))
+            self.assertTrue(all(w in text for w in ("Could not verify closure", "Do not assume", "DEGRADED")), mode)
+            self.assertTrue(any("Pending" in (block[2] or "") for block in ws.digest(ws.target)) or mode == "drop_move", mode)      # the page really is partially applied
+            if mode == "fail":
+                self.assertNotIn(ws.where(ws.target), ws.retired)                                       # still in the Active container
+
+    def test_every_result_page_has_the_same_neutral_subtitle(self):
+        h = Harness([(TD.TARGET, COMPANY, ROLE)])
+        pages = [h.close(TD.TARGET, "Hired")[1], h.open(TD.TARGET)[1], h.call("GET", query={})[1],
+                 h.call("POST", form={"step": "review"})[1], close_screen.result("a", "b", "c", "d").decode()]
+        for body in pages:
+            self.assertIn("A closure counts as done only after the canonical record is read back.", body)
+            self.assertNotIn("Nothing else was changed", body)
+
     def test_reopen_and_manage_are_not_reachable(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
         self.assertEqual(h.close(TD.TARGET, "Hired")[0], 200)

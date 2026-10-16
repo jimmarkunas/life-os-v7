@@ -103,4 +103,4 @@ def review(opp, fields, outcome, note):
 
 
 def result(eyebrow, title, text, detail, css="ok"):
-    return page(title, "Nothing else was changed.", f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p><div class="notice {css}">{e(detail)}</div></section>')
+    return page(title, "See the status below. A closure counts as done only after the canonical record is read back.", f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p><div class="notice {css}">{e(detail)}</div></section>')
