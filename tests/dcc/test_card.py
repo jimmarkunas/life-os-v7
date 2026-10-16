@@ -151,15 +151,15 @@ class ComposeTests(unittest.TestCase):
         text = report_region.plain(attention_card.render(23, NOW)[0])
         self.assertEqual(card.compose(self.areas(Attention={"status": text, "lines": []}), NOW)["kpis"][2][0], "23")
 
-    def test_render_is_the_approved_layout_a_50_50_row_and_four_equal_kpi_callouts(self):
-        top, bottom = card.render(card.compose(self.areas(), NOW))
-        self.assertEqual([c["column"]["width_ratio"] for c in top["column_list"]["children"]], [0.5, 0.5])
-        left, right = [c["column"]["children"] for c in top["column_list"]["children"]]
+    def test_render_is_the_approved_layout_four_equal_kpi_callouts_above_a_50_50_row(self):
+        kpi_row, focus_row = card.render(card.compose(self.areas(), NOW))
+        self.assertEqual([c["column"]["width_ratio"] for c in focus_row["column_list"]["children"]], [0.5, 0.5])
+        left, right = [c["column"]["children"] for c in focus_row["column_list"]["children"]]
         self.assertEqual([b["type"] for b in left], ["toggle", "paragraph", "paragraph"])
         self.assertEqual([b["type"] for b in right], ["callout"])
         self.assertEqual([b["type"] for b in right[0]["callout"]["children"]], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
-        self.assertEqual([c["column"]["width_ratio"] for c in bottom["column_list"]["children"]], [0.25] * 4)
-        kpis = [c["column"]["children"][0]["callout"] for c in bottom["column_list"]["children"]]
+        self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.25] * 4)
+        kpis = [c["column"]["children"][0]["callout"] for c in kpi_row["column_list"]["children"]]
         self.assertEqual([[b["type"] for b in k["children"]] for k in kpis], [["heading_3", "paragraph", "paragraph"]] * 4)
         self.assertEqual([k["icon"]["external"]["url"].rsplit("/", 1)[1] for k in kpis], ["credit-card_gray.svg", "arrow-right_gray.svg", "arrow-up_gray.svg", "inbox_gray.svg"])
         self.assertEqual(left[1]["paragraph"]["rich_text"][0]["text"]["link"], {"url": "https://example.invalid/browse/JFM-1"})
@@ -180,9 +180,9 @@ class RunTests(unittest.TestCase):
         self.assertEqual([b["type"] for b in kids][1:], ["column_list", "column_list"])
         self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION, "heading-dcc-callout"))        # the heading keeps its identity
         self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
-        top, bottom = (b["id"] for b in kids[1:])
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[top]], [3, 1])
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[bottom]], [1, 1, 1, 1])
+        kpi_row, focus_row = (b["id"] for b in kids[1:])
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[focus_row]], [3, 1])
+        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (6, 1, 1))
         self.assertEqual({v for k, v in counts["states"].items() if k != "Hiring Pipeline"}, {"fresh"})
@@ -236,7 +236,7 @@ class RunTests(unittest.TestCase):
         notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": "Updated 10:05 PM CT · No active exceptions.", "text": {"content": "Updated 10:05 PM CT · No active exceptions."}}]}
 
     def decisions(self, notion):
-        right = notion.children[notion.children["dcc-callout"][1]["id"]][1]["id"]
+        right = notion.children[notion.children["dcc-callout"][2]["id"]][1]["id"]
         return [(b["type"], report_region.plain(b)) for b in notion.children[notion.children[right][0]["id"]]]
 
     def test_the_suggestion_list_goes_three_one_three_on_the_same_tree_keeping_the_hiring_footer(self):
@@ -244,7 +244,7 @@ class RunTests(unittest.TestCase):
         go(notion)
         self.assertEqual([t for t, _ in self.decisions(notion)], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
         busy = {k: list(v) for k, v in notion.children.items()}
-        right = notion.children[notion.children[notion.children["dcc-callout"][1]["id"]][1]["id"]][0]["id"]
+        right = notion.children[notion.children[notion.children["dcc-callout"][2]["id"]][1]["id"]][0]["id"]
         kept = [b["id"] for b in notion.children[right]]
         self.quiet(notion)
         go(notion)
@@ -268,8 +268,8 @@ class RunTests(unittest.TestCase):
     def test_a_foreign_child_inside_a_valid_component_is_never_deleted_and_nothing_is_written(self):
         notion = page()
         go(notion)
-        bottom = notion.children["dcc-callout"][2]["id"]
-        kpi = notion.children[notion.children[notion.children[bottom][3]["id"]][0]["id"]]               # the Mail waiting card's blocks
+        kpi_row = notion.children["dcc-callout"][1]["id"]
+        kpi = notion.children[notion.children[notion.children[kpi_row][3]["id"]][0]["id"]]               # the Mail waiting card's blocks
         kpi.append(text_block(notion, "human-note", "paragraph", "my own note"))
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
@@ -281,8 +281,8 @@ class RunTests(unittest.TestCase):
     def test_a_later_branch_mismatch_stops_everything_even_when_an_earlier_branch_has_a_pending_change(self):
         notion = page()
         go(notion)
-        bottom = notion.children["dcc-callout"][2]["id"]
-        last = notion.children[notion.children[notion.children[bottom][3]["id"]][0]["id"]]
+        kpi_row = notion.children["dcc-callout"][1]["id"]
+        last = notion.children[notion.children[notion.children[kpi_row][3]["id"]][0]["id"]]
         last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}                         # the last card's number block was changed
         notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 overdue · Bill Tracker")      # an earlier card has new data
         mark = len(notion.log)
@@ -300,8 +300,8 @@ class RunTests(unittest.TestCase):
         self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
         notion = page()
         go(notion)
-        top = notion.children["dcc-callout"][1]["id"]
-        first = notion.children[notion.children[top][0]["id"]][1]
+        focus_row = notion.children["dcc-callout"][2]["id"]
+        first = notion.children[notion.children[focus_row][0]["id"]][1]
         first["type"], first["paragraph"] = "bulleted_list_item", {"rich_text": []}                                         # somebody turned a line into a bullet
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
