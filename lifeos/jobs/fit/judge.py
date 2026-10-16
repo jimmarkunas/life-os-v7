@@ -1,6 +1,6 @@
 """Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, caps, gate and the 72 floor stay here).
 accept() returns None for an unusable answer: before cutover the static scorer may stay authoritative; after cutover an approved fail-closed or retryable path, never a silent static fallback.
-RESIDUAL LIMIT: policy facts are removed by cue and structure only, so a place named with no cue cannot be recognised. No model egress may be enabled until the egress design accepts or closes that limit."""
+RESIDUAL LIMIT: the job's structured location is removed and a short capitalised title tail is dropped, but a place that is absent from the location field and sits in the title with no separator, bracket or comma is unrecognised. No model egress may be enabled until the egress design accepts that."""
 from dataclasses import dataclass
 import json
 import re
@@ -11,6 +11,8 @@ from lifeos.jobs.fit.score import JUNIOR, JUNIOR_CAP, MIN_TEXT, SENIOR
 FAMILY_CAP = 40
 SECTIONS = ("summary", "required", "preferred", "duty")          # what the static scorer reads; benefits, pay, place and company boilerplate are never sent
 MODE = r"\b(?:remote|hybrid|on-?site|in-office)\b"
+GENERIC = {"remote", "hybrid", "onsite", "office", "united", "states", "kingdom", "area", "metro", "greater", "anywhere", "worldwide"}
+SUFFIX = re.compile(r",\s*[A-Z][\w.]*(?:\s[A-Z][\w.]*){0,2}$")      # a short capitalised tail such as ", Chicago" or ", Platform Programs": a place or a qualifier, indistinguishable, so dropped
 KEYS = {"score", "rationale", "confidence"}
 # Pay, benefits, work mode, place and visa are never Fit evidence: a clause stating one is dropped before egress (a mixed clause is lost whole; "remote teams" or "benefits realization" are kept).
 POLICY = re.compile(r"[$£€]\s?\d|\b(?:salary|base pay|pay range|hourly rate|compensation (?:range|package)|competitive (?:salary|pay|compensation))\b|\b401\(?k\)?|\bpto\b|paid time off|parental leave|"
@@ -28,14 +30,21 @@ class Judgment:
     confidence: str
 
 
-def request(title, text, profile_brief):
-    """The capability's whole input (title, description, profile brief), or None when nothing substantive can be sent: at least MIN_TEXT characters must remain, under a real responsibilities or
-    qualifications heading (parse relabels a headingless text as requirements), with half of MIN_TEXT of it role evidence. Policy clauses are dropped and the title is cut at a mode, place or suffix cue."""
-    kept = [(u.section, c) for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c)]
+def request(title, text, profile_brief, location=None):
+    """The capability's whole input (title, description, profile brief), or None when nothing substantive or safe can be sent: at least MIN_TEXT characters must remain, under a real responsibilities or
+    qualifications heading (parse relabels a headingless text as requirements), with half of MIN_TEXT of it role evidence. Policy clauses and the job's own `location` words are removed and the title is cut
+    at a mode, place or suffix cue and stripped of short capitalised tails; a title that cleans to nothing is ambiguous, so nothing is sent."""
+    words = {w.lower() for w in re.findall(r"[A-Za-z]{4,}", location or "")} - GENERIC
+    place = re.compile(r"\b(?:" + "|".join(map(re.escape, sorted(words))) + r")\b", re.I) if words else re.compile(r"(?!)")
+    kept = [(u.section, c) for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c) and not place.search(c)]
     headed = any(extract._heading(line.strip()) in SECTIONS[1:] for line in (text or "").split("\n"))
     short = sum(len(c) for _, c in kept) < MIN_TEXT or sum(len(c) for sec, c in kept if sec in SECTIONS[1:]) < MIN_TEXT // 2
-    name = re.sub(MODE, "", re.split(r"\s[-–—|@]\s|[(\[]|,\s*" + MODE, title or "", flags=re.I)[0], flags=re.I)
-    return None if short or not headed else {"title": " ".join(name.split()), "description": "\n".join(c for _, c in kept), "profile": profile_brief}
+    name = re.sub(r"(,\s*)+", ", ", place.sub("", re.sub(MODE, "", re.split(r"\s[-–—|@]\s|[(\[]|,\s*" + MODE, title or "", flags=re.I)[0], flags=re.I))).strip(" ,")
+    while SUFFIX.search(name):
+        name = SUFFIX.sub("", name)
+    if short or not headed or not name.strip():
+        return None
+    return {"title": " ".join(name.split()), "description": "\n".join(c for _, c in kept), "profile": profile_brief}
 
 
 def accept(raw, base, title, sent):

@@ -153,8 +153,8 @@ def answer(score, rationale="Aligned on delivery ownership.", confidence="medium
     return json.dumps({"score": score, "rationale": rationale, "confidence": confidence})
 
 
-def sent_for(title, text):
-    return judge.request(title, text, {"years": 15})
+def sent_for(title, text, location=None):
+    return judge.request(title, text, {"years": 15}, location)
 
 
 class RepresentativeSet(unittest.TestCase):
@@ -238,10 +238,23 @@ class Envelope(unittest.TestCase):
             self.assertNotIn(leaked, description, leaked)
         self.assertIn("steering forum", description)
 
+    def test_the_structured_location_is_removed_from_the_title_and_from_clauses(self):
+        for title, location, kept in (("Product Manager, Chicago", "Chicago, IL", "Product Manager"), ("Product Manager Chicago", "Chicago, Illinois", "Product Manager"),
+                                      ("Product Manager, Chicago", None, "Product Manager"), ("Delivery Lead, Platform Programs", None, "Delivery Lead"),
+                                      ("Product Manager, Chicago, IL", "Chicago, IL", "Product Manager"), ("Senior Manager, Operations and Implementation", None, "Senior Manager, Operations and Implementation")):
+            self.assertEqual(sent_for(title, self.text, location)["title"], kept, (title, location))
+        text = self.text.replace("• Run the weekly steering forum and publish decisions", "• Run the weekly steering forum and publish decisions\n• Partner with the Chicago hub")
+        self.assertNotIn("Chicago", sent_for(self.title, text, "Chicago, IL")["description"])
+        self.assertIn("Chicago hub", sent_for(self.title, text, None)["description"])          # no structured location, no structured removal (the residual limit)
+
+    def test_a_title_that_cleans_to_nothing_is_ambiguous_and_sends_nothing(self):
+        for title in ("Remote - Chicago", "(Hybrid) Austin", "", None):
+            self.assertIsNone(sent_for(title, self.text, "Austin, TX"), title)
+
     def test_the_residual_limit_is_explicit_so_zero_leakage_is_never_claimed(self):
         self.assertIn("RESIDUAL LIMIT", judge.__doc__)
         self.assertIn("no model egress may be enabled", judge.__doc__.lower())
-        self.assertEqual(sent_for("Product Manager, Chicago", self.text)["title"], "Product Manager, Chicago")      # a place with no cue is NOT recognised: closing this gap needs a new boundary, then this test changes
+        self.assertEqual(sent_for("Product Manager Chicago", self.text)["title"], "Product Manager Chicago")      # a place with no separator, absent from the location field, is NOT recognised: closing it needs a new boundary, then this test changes
 
     BOILERPLATE = ("About the Role\nWe are a mission-driven company reimagining how teams everywhere collaborate. Our culture rewards curiosity, kindness and bold ideas, and our customers "
                    "span every industry and continent. Join a passionate group that celebrates wins together, learns from every setback and believes the best work happens when people feel they belong "
