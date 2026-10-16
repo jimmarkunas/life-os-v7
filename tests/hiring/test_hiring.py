@@ -264,10 +264,10 @@ class CloseLinkTests(unittest.TestCase):
         both = render.row_cells(row, NOW, link)
         self.assertEqual(both[:3], plain[:3])
         self.assertEqual(both[3], [plain[3], (" · ", None), ("Close ↗", link)])
-        self.assertEqual(R.want_view(both)[3], ("Opportunity Page ↗ · Close ↗", [plain[3][1], link]))
+        self.assertEqual(R.want_view(both)[3], [("Opportunity Page ↗", plain[3][1]), (" · ", None), ("Close ↗", link)])
         self.assertEqual(render.row_cells(row, NOW, None), plain)
         orphan = compile_([applied("Acme", "PM")])["rows"][0]
-        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], ("Needs Notes · Close ↗", [link]))        # a Close link needs no Notes link
+        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None), ("Close ↗", link)])        # a Close link needs no Notes link
 
     def test_render_adds_links_by_row_key_keeps_order_and_labels_and_ignores_a_bad_origin(self):
         applied_rows = [{**applied("Acme", "PM"), "id": LED}, applied("Globex", "Dir")]
@@ -281,9 +281,9 @@ class CloseLinkTests(unittest.TestCase):
         self.assertEqual(text, base[0])
         self.assertEqual([R.want_view(r)[:3] for r in shown], [R.want_view(r)[:3] for r in base[1]])
         by_name = {r[0][0].split(" — ")[0]: R.want_view(r)[3] for r in shown}
-        self.assertEqual(by_name["Acme"][0], "Opportunity Page ↗ · Close ↗")
-        self.assertEqual(by_name["Acme"][1][1], f"{BASE}/?o={LED.replace('-', '')}")
-        self.assertEqual(by_name["Globex"], ("Needs Notes", []))                                                       # no id, no link
+        self.assertEqual([x[0] for x in by_name["Acme"]], ["Opportunity Page ↗", " · ", "Close ↗"])
+        self.assertEqual(by_name["Acme"][2][1], f"{BASE}/?o={LED.replace('-', '')}")
+        self.assertEqual(by_name["Globex"], [("Needs Notes", None)])                                                       # no id, no link
 
     def test_the_writer_renders_two_links_reads_them_back_and_repairs_only_a_changed_link(self):
         link = render.close_url(BASE, PAGE.replace("-", ""))
@@ -296,6 +296,16 @@ class CloseLinkTests(unittest.TestCase):
         t.log.clear()
         again = card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)
         self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"], writes(t)), (0, 0, 0, []))     # a repeat run writes nothing
+        spans = lambda *parts: [{"type": "text", "text": {"content": c, **({"link": {"url": u}} if u else {})}} for c, u in parts]
+        row_id = t.kids["0000000000000000000000000000a003"][1]
+        notes = "https://www.notion.so/abc"
+        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity Page ↗", notes), (" · ", link), ("Close ↗", None))      # same text and same URLs, but the link sits on the separator: Close is not clickable
+        self.assertNotEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
+        self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], 1)              # repaired, and the read-back proves it
+        self.assertEqual(R.live_view(t.blocks[row_id]), R.want_view(want[0]))
+        t.blocks[row_id]["table_row"]["cells"][3] = spans(("Opportunity", notes), (" Page ↗", notes), (" · ", None), ("Close", link), (" ↗", link))      # Notion may split or join spans: still the same ownership
+        t.log.clear()
+        self.assertEqual((card.present(t, ENV, "Updated 2:00 PM CT · 1 active", want, True)["rows_changed"], writes(t)), (0, []))
         moved = [[*want[0][:3], [want[0][3][0], want[0][3][1], ("Close ↗", link.replace("47443", "47444"))]]]
         self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", moved, True)["rows_changed"], 1)          # the second link alone changed
         self.assertEqual(card.present(t, ENV, "Updated 2:00 PM CT · 1 active", [want[0][:3] + [want[0][3][0]]], True)["rows_changed"], 1)    # dropping the config removes the link

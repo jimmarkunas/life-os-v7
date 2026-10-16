@@ -392,22 +392,23 @@ def cells_of(row):
     return [plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
-def _links_of(row):
-    return [[((part.get("text") or {}).get("link") or {}).get("url") if isinstance(part, dict) else None for part in cell]      # Notion sends "link": null for plain text
-            for cell in (row.get("table_row") or {}).get("cells") or []]
-
-
 def _segs(cell):
     return [cell] if isinstance(cell, tuple) else cell                  # a cell is (text, link) or a list of them
 
 
+def _owned(spans):
+    """[(text, link or None)] -> adjacent spans with the same link merged: the view ignores how Notion splits or joins rich text but still says which span owns each link."""
+    return [("".join(t for t, _ in group), link) for link, group in groupby(spans, key=lambda span: span[1])]
+
+
 def want_view(row):
-    """A rendered row as [(text, [links in order])] per cell: comparable with `live_view`."""
-    return [("".join(t for t, _ in _segs(c)), [x for _, x in _segs(c) if x]) for c in row]
+    """A rendered row as [[(text, link)] runs] per cell: comparable with `live_view`."""
+    return [_owned(_segs(c)) for c in row]
 
 
 def live_view(row):
-    return [(t, [x for x in links if x]) for t, links in zip(cells_of(row), _links_of(row))]
+    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url")) for part in cell if isinstance(part, dict)])      # Notion sends "link": null for plain text
+            for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
 def _meta(client, block_id):
