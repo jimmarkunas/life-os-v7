@@ -29,6 +29,7 @@ REPLY_TTL_SECONDS = 600
 DUE_HOUR = 6                                                           # Chicago time: the day's card is written on the first tick from 6 AM
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
+UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
 BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
@@ -80,7 +81,7 @@ def validate(raw, now):
             or not (a1 is None or (isinstance(a1, dict) and set(a1) == {"used", "available"} and _whole(a1["used"]) and _whole(a1["available"])))
             or p["reclaim"] not in (None, "NONE", "AT_RISK")
             or not (isinstance(svc, dict) and set(svc) == {k for k, _ in SERVICES} and all(v in (None, True, False) for v in svc.values()))
-            or not (plan is None or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
+            or not (plan in (None, UNREPORTED) or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
         raise _fail("ORACLE_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("ORACLE_STALE")
@@ -116,7 +117,7 @@ def render(r, now):
     reclaim = {"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
         r["reclaim"], "Reclaim risk: unavailable")
     services = "Services: " + " · ".join(f"{label} {'✓' if r['services'][k] else '✗' if r['services'][k] is False else '?'}" for k, label in SERVICES)
-    chatgpt = ([("Codex plan: unavailable", None)] if plan is None else
+    chatgpt = ([("Codex plan: unavailable", None)] if plan is None else [("ChatGPT plan: not reported by Sign in with ChatGPT", "gray")] if plan == UNREPORTED else
                _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
                 + [(f"\n\n{cores} · {reclaim}\n{services}\n\n", None)] + chatgpt)
