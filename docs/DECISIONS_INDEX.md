@@ -196,3 +196,4 @@ This index is checked by a test: add a line here with every new decision.
 - D195 — Hiring Decision: a Notes-only pursuit is closed through its Notion opportunity page (2026-10-14, Jim; accepted live on fictional fixtures)
 - D196 — Hiring Pipeline: the Active Opportunities table in its accepted shape (2026-10-14, Jim; LIFE-47 Slice 1, candidate — not yet live)
 - D197 — Hiring Pipeline: the status paragraph is removed; the region is a heading and its table (2026-10-15, Jim; LIFE-47)
+- D198 — Close Opportunity: the private Close service on Oracle and its Hiring Pipeline link (2026-10-16, Jim; LIFE-47 S2 live, S3 activated)
