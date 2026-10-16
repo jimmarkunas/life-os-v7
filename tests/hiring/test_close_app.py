@@ -11,7 +11,8 @@ from unittest import mock
 
 from lifeos.edge import close_gate
 from lifeos.edge.oracle import close_release as rel
-from lifeos.hiring import close_app, close_screen, decision as D, models as M
+from lifeos.hiring import close_screen, decision as D, models as M
+from lifeos.sources import close_app
 from tests.edge.test_close_release import github
 from tests.hiring import test_decision as TD, test_hiring as T
 from tests.hiring.test_notes_decision import COMPANY, ROLE, World, options
@@ -269,7 +270,7 @@ class Post(unittest.TestCase):
         smuggled = {"o": TD.TARGET, "step": "confirm", "action": "REOPEN", "reopen_hired": "true", "outcome": "Rejected"}
         self.assertEqual(h.call("POST", form=smuggled)[0], 403)
         self.assertEqual(h.world.source.decision(), {"name": "Hired"})
-        text = (ROOT / "lifeos/hiring/close_app.py").read_text() + (ROOT / "lifeos/hiring/close_screen.py").read_text()
+        text = (ROOT / "lifeos/sources/close_app.py").read_text() + (ROOT / "lifeos/hiring/close_screen.py").read_text()
         self.assertFalse(re.search(r"D\.REOPEN|reopen_hired|\"REOPEN\"", text))
         self.assertEqual(h.call("GET", "/manage")[0], 404)
 
@@ -294,17 +295,26 @@ class Contract(unittest.TestCase):
                 continue
             seen.add(path)
             for node in ast.walk(ast.parse((ROOT / path).read_text())):
-                mods = [node.module] if isinstance(node, ast.ImportFrom) and not node.level and node.module else [a.name for a in node.names] if isinstance(node, ast.Import) else []
-                if isinstance(node, ast.ImportFrom) and node.level:
-                    mods = ["lifeos.hiring" + ("." + node.module if node.module else "")] + [f"lifeos.hiring.{a.name}" for a in node.names]
+                mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module] + [f"{node.module}.{a.name}" for a in node.names] if isinstance(node, ast.ImportFrom) and node.module else []
                 for mod in (m for m in mods if m.startswith("lifeos")):
-                    for cand in (mod.replace(".", "/") + ".py", mod.replace(".", "/") + "/__init__.py"):
-                        if (ROOT / cand).is_file():
-                            todo.append(cand)
+                    parts = mod.split(".")
+                    for n in range(1, len(parts) + 1):                                                  # a module needs every package initializer above it too
+                        for cand in ("/".join(parts[:n]) + ".py", "/".join(parts[:n]) + "/__init__.py"):
+                            if (ROOT / cand).is_file():
+                                todo.append(cand)
         self.assertEqual(seen - shipped, set(), "an import the release would not ship")
         files = {p: (ROOT / p).read_bytes() for p in shipped}
         dest = os.path.join(tempfile.mkdtemp(), "tree")
         rel.stage("a" * 40, dest, github(files))                                                  # the real verifier: regular blobs, hashes, and an isolated import of the app and the gate
+
+    def test_the_release_verifier_and_the_installed_service_use_the_relocated_callable_handler(self):
+        self.assertEqual(rel.APP, "lifeos/sources/close_app.py")
+        self.assertIn("lifeos/sources/__init__.py", rel.EDGE)
+        unit = next(line for line in (ROOT / "lifeos/edge/oracle/install-close.sh").read_text().splitlines() if line.startswith("ExecStart="))
+        self.assertIn("from lifeos.sources.close_app import handle; sys.exit(close_gate.main(handle))", unit)
+        self.assertNotIn("lifeos.hiring.close_app", unit)
+        self.assertTrue(callable(close_app.handle) and close_app.handle.__module__ == "lifeos.sources.close_app")
+        self.assertFalse((ROOT / "lifeos/hiring/close_app.py").exists())                              # no wrapper is left in the hiring package
 
     def test_no_stage_workflow_or_schedule_reaches_the_application(self):
         for path in list((ROOT / ".github/workflows").glob("*.yml")) + [ROOT / "lifeos/run.py"]:
@@ -315,7 +325,7 @@ class Contract(unittest.TestCase):
         self.assertFalse([n for n, s in entry.STAGES.items() if "close_" in str(getattr(s, "target", ""))])
 
     def test_the_budget_and_the_files(self):
-        lines = sum(1 for p in ("close_app.py", "close_screen.py") for line in (ROOT / "lifeos/hiring" / p).read_text().splitlines() if line.strip())
+        lines = sum(1 for p in ("lifeos/sources/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
         self.assertLessEqual(lines, 260)
 
 

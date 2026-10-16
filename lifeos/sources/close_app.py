@@ -1,4 +1,4 @@
-"""LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`). One exact opportunity is resolved by its canonical page id, routed
+"""LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the Notes pages and the S1 decision rules. One exact opportunity is resolved by its canonical page id, routed
 by the S1 decision rules, shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
 conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Reopen and Manage are not reachable. Fixed codes only."""
 import hashlib
@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError
-from . import close_screen as S, decision as D, models as M
+from lifeos.hiring import close_screen as S, decision as D, models as M
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py")
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
