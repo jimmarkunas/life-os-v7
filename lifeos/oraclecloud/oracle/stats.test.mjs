@@ -10,6 +10,14 @@ test("the ChatGPT plan line is read strictly; any other shape is unavailable", (
   assert.equal(parsePlan(null), null);
 });
 
+test("a Sign in with ChatGPT profile with no usage line is unreported; a broken usage line stays unavailable", () => {
+  const siwc = "- openai effective=profiles:~/x | profiles=1 (1 oauth, 0 token, 0 api-key) | openai:token-sharing:x (Sign in with ChatGPT (Beta))";
+  assert.equal(parsePlan(siwc), "unreported");
+  assert.equal(parsePlan(siwc + "\n- openai usage: unavailable"), null);
+  assert.deepEqual(parsePlan(siwc + "\n- openai usage: 5h 50% left · Week 70% left"), { left_5h: 50, left_week: 70 });
+  assert.equal(parsePlan("- openai effective=profiles | (Codex OAuth)"), null);
+});
+
 test("reclaim risk follows Oracle's all-below-20% idle rule, conservatively", () => {
   assert.equal(reclaimState(5.7, 55), "NONE");          // memory keeps the VM out of the idle rule
   assert.equal(reclaimState(25, 10), "NONE");
