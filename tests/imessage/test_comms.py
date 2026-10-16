@@ -8,7 +8,7 @@ from unittest import mock
 from lifeos.imessage import alerts_endpoint as ep, comms_card as card
 from lifeos.platform import report_region
 from tests.imessage.test_alerts import RUNNER, OTHER, SECRET_HANDLE, SECRET_TEXT, message, v2, whois
-from tests.kit.comms import Report
+from tests.kit.comms import LAUNCH, Report, text
 
 KEY = bytes(range(32))
 NOW = dt.datetime(2026, 10, 14, 15, 0, 30, tzinfo=dt.timezone.utc)
@@ -247,6 +247,31 @@ class Card(unittest.TestCase):
         self.assertEqual(report.patches, [])
         with self.assertRaises(card.CommsError):
             self.run_card(Report(), env={**self.ENV, "ATTENTION_CARD_BLOCK_ID": ""})
+
+    def add_row(self, report, name, links=False):
+        """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist); with links=True it holds a launch link too."""
+        report.add(name, "column_list", "comms")
+        report.add(name + "L", "column", name)
+        report.add(name + "R", "column", name)
+        report.add(name + "l", "paragraph", name + "L", [text("Reminders (-)", LAUNCH % "messages" if links else None)])
+        report.add(name + "r", "paragraph", name + "R", [text("Todoist (-)")])
+
+    def test_another_row_of_jims_own_is_left_alone_and_the_channel_rows_are_still_written(self):
+        report = Report()
+        report.add("div", "divider", "comms")
+        self.add_row(report, "extra")
+        counts, _ = self.run_card(report)
+        self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])
+        self.assertEqual((report.plain("extral"), report.plain("extrar")), ("Reminders (-)", "Todoist (-)"))
+        self.assertEqual(counts["written"], 7)
+
+    def test_two_rows_with_launch_links_are_ambiguous_and_nothing_is_written(self):
+        report = Report()
+        self.add_row(report, "extra", links=True)
+        with self.assertRaises(card.CommsError) as error:
+            self.run_card(report)
+        self.assertEqual(str(error.exception), "CARD_NOT_OWNED")
+        self.assertEqual(report.patches, [])
 
     def test_a_changed_protected_region_fails_after_the_write(self):
         states = iter([{"Attention": "a"}, {"Attention": "b"}])
