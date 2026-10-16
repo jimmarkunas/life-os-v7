@@ -157,7 +157,7 @@ def compose(areas, now):
             "sub": " · ".join(x for x in (("One designated action", state) if gtv else (source("Jira") if states.get("Jira", ("unset",))[0] != "fresh" else "No GTV action on the Jira card",)) + (f"Updated {now.strftime('%-I:%M %p')} CT",) if x),
             "items": items[:3] or [("Nothing flagged by the cards", "continue the day's planned work", None)],
             "hiring": f"{hiring} active hiring opportunities" if hiring is not None else "Hiring Pipeline " + states.get("Hiring Pipeline", ("unset",))[0],
-            "kpis": [kpi(overdue, "Overdue bills", source("Bills")), kpi(None, "Jira blocked", "Not published separately" + (f" · {combined} overdue or blocked" if combined is not None else f" · {source('Jira')}")),
+            "kpis": [kpi(overdue, "Overdue bills", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
                      kpi(exceptions, "Attention items", source("Attention")), kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
 
 

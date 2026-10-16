@@ -273,25 +273,34 @@ class ActiveTableTests(unittest.TestCase):
                              parents, [{"id": "e1", "title": "Interview Globex", "start": at(1, 10)}], None, OK, NOW, outcomes=found)
         _, table, _ = render.render(got, None, NOW)
         self.assertEqual([[t for t, _ in row] for row in table], [
-            ["🔴 Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
-            ["🔴 Initech — PM", "Submitted", "No response in 16 days · follow up (due Oct 4)", "Needs Notes"],
-            ["🟡 Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 16", "Needs Notes"],
-            ["🟢 Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
+            ["Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
+            ["Initech — PM", "Submitted", "No response in 16 days · follow up (due Oct 4)", "Needs Notes"],
+            ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 16", "Needs Notes"],
+            ["Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
         self.assertEqual(table[3][3][1], "https://www.notion.so/1234abcd000040008000000000000001")
 
     def test_missing_stale_or_unverified_evidence_never_becomes_a_due_date_or_a_green_dot(self):
         base = {"stage": "Submitted", "company": "Acme", "role": "R", "applied_on": None, "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(base)[0::2], ["🟡 Acme — R", "Awaiting response"])                                   # no Applied date: no follow-up date invented
-        self.assertEqual(cells(dict(base, stage="Interviewing", rounds=2))[0::2], ["🟡 Acme — R", "Awaiting next step · 2 round(s) logged in Notes"])
+        self.assertEqual(cells(base)[0::2], ["Acme — R", "Awaiting response"])                                   # no Applied date: no follow-up date invented
+        self.assertEqual(cells(dict(base, stage="Interviewing", rounds=2))[0::2], ["Acme — R", "Awaiting next step · 2 round(s) logged in Notes"])
         carried = dict(base, stage="Interviewing", event_kind="interview", event_start=at(2), carried=True)
-        self.assertEqual(cells(carried)[:2], ["🟡 Acme — R", "Interviewing (last accepted)"])                       # a future event the Calendar no longer confirms is not verified activity
-        self.assertEqual(cells(dict(carried, carried=False))[0], "🟢 Acme — R")
+        self.assertEqual(cells(carried)[:2], ["Acme — R", "Interviewing (last accepted)"])                       # a future event the Calendar no longer confirms is not verified activity
+        self.assertEqual(cells(dict(carried, carried=False))[0], "Acme — R")
+
+    def test_the_status_dot_still_sorts_and_classifies_every_row_but_is_never_printed_beside_the_name(self):
+        base = {"stage": "Submitted", "company": "Acme", "role": "R", "applied_on": "2026-09-20", "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
+        rows = {"red": dict(base), "yellow": dict(base, applied_on="2026-10-10"), "green": dict(base, stage="Interviewing", event_kind="interview", event_start=at(1, 10))}
+        self.assertEqual({k: render.next_step(r, NOW)[0] for k, r in rows.items()}, {"red": render.RED, "yellow": render.YELLOW, "green": render.GREEN})
+        for r in rows.values():
+            name = cells(r)[0]
+            self.assertEqual(name, "Acme — R")
+            self.assertFalse(any(dot in str(cells(r)) for dot in (render.RED, render.YELLOW, render.GREEN)))
 
     def test_a_possible_or_confirmed_offer_is_a_next_action_not_a_stage(self):
         row = {"stage": "Interviewing", "company": "Acme", "role": "R", "event_kind": "interview", "event_start": at(-3), "parent": None, "parent_state": "none", "rounds": 0}
         for match, said in (("role", "Offer email received Oct 5 · review and respond"), ("company", "Possible offer email received Oct 5 · review and respond")):
             got = cells(dict(row, outcome={"kind": "OFFER", "received": "2026-10-05T12:00:00+00:00", "match": match}))
-            self.assertEqual((got[0], got[1], got[2]), ("🔴 Acme — R", "Interviewing", said))
+            self.assertEqual((got[0], got[1], got[2]), ("Acme — R", "Interviewing", said))
 
 
 class HeaderMigrationTests(unittest.TestCase):
@@ -681,7 +690,7 @@ class RuntimePathTests(unittest.TestCase):
         events = [gcal("e1", "Interview Acme", at(1, 10))]
         first = run(t, store, events=events)
         self.assertEqual((first["saved"], first["verified"], store.saves), (1, True, 1))
-        self.assertEqual(table_state(t), [[("🟢 Acme — Senior Program Manager", None), ("Interviewing", None),
+        self.assertEqual(table_state(t), [[("Acme — Senior Program Manager", None), ("Interviewing", None),
                                            ("Prepare for the interview · Tomorrow 10:00 AM CT", None), ("Opportunity Page ↗", "https://www.notion.so/aaaa1111000040008000000000000001")]])
         self.assertEqual(R.plain(t.blocks["0000000000000000000000000000a001"]), "📈 Hiring Pipeline (Updated 2:00 PM CT)")
         t.log.clear()
@@ -690,6 +699,16 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(len(table_state(t)), 1)
         self.assertEqual(json.loads(json.dumps(store.row))["rows"], store.row["rows"])
         self.assertEqual(store.row["accepted_at"], NOW.isoformat())
+
+    def test_the_next_hourly_run_rewrites_a_row_that_still_carries_a_dot_and_the_dot_stays_gone(self):
+        t, store = page(extra_rows=1), FakeStore()
+        t.blocks["0000000000000000000000000000a003-r1"]["table_row"]["cells"][0] = rich("🟢 Acme — Senior Program Manager")       # the row as the live page shows it today
+        events = [gcal("e1", "Interview Acme", at(1, 10))]
+        first = run(t, store, events=events)
+        self.assertEqual((first["rows_changed"], first["verified"]), (1, True))
+        self.assertEqual([row[0][0] for row in table_state(t)], ["Acme — Senior Program Manager"])
+        again = run(t, store, events=events)
+        self.assertEqual((again["rows_changed"], again["rows_added"], again["rows_removed"]), (0, 0, 0))
 
     def test_a_retired_page_drops_the_row_from_the_region_and_is_counted(self):
         t, store = page(extra_rows=1), FakeStore()

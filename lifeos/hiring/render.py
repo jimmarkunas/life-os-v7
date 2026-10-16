@@ -70,9 +70,9 @@ def next_step(row, now):
 
 def row_cells(row, now):
     """-> [(text, link)] x 4: Company — Role · Stage · Next step · Due · Notes. Plain text; the Notes page is linked only when exactly one parent was resolved (a URL is never guessed)."""
-    dot, step, _ = next_step(row, now)
+    _, step, _ = next_step(row, now)                                 # the dot classifies and sorts the row (render below); it is never printed beside the name
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
-    return [(f"{dot} {M.label(row['company'], row['role'])}", None), (row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
+    return [(M.label(row['company'], row['role']), None), (row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
 
 
 def _older(row, now):
