@@ -107,6 +107,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/delivery/census.py`: DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.
 ### lifeos/hiring/
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
+- `lifeos/hiring/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`). One exact opportunity is re
+- `lifeos/hiring/close_screen.py`: LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet. Pure: strings in, bytes out; every dynam
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
 - `lifeos/hiring/decision.py`: D194 Hiring Decision, the first action: a person confirms an employer rejection (Confirm Rejected).
 - `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
