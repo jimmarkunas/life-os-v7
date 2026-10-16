@@ -255,7 +255,7 @@
    "lifeos/jobs/explain.py": "Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.",
    "lifeos/jobs/fit/exclusions.py": "Step 0: hard exclusions. Generic defaults (lexicon) plus the private profile's own rules.",
    "lifeos/jobs/fit/extract.py": "Job description -> units (a bullet or sentence tagged with its section) and the raw facts the scorer classifies.",
-   "lifeos/jobs/fit/judge.py": "Fit v2 (LIFE-41): what the named OpenClaw Jobs Fit capability is asked, and what code accepts back from it.",
+   "lifeos/jobs/fit/judge.py": "Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, c",
    "lifeos/jobs/fit/lexicon.py": "Generic, public vocabulary: nothing here describes a person. Only what a job description says.",
    "lifeos/jobs/fit/profile.py": "The private fit profile: injected at run time, validated here, never committed (D16).",
    "lifeos/jobs/fit/score.py": "Professional Fit, V3 (docs/FIT_MODEL.md): five weighted dimensions over the requirements the posting activates.",

@@ -225,6 +225,36 @@ class Envelope(unittest.TestCase):
         self.assertGreater(len(text), 300)
         self.assertIsNone(sent_for(self.title, text))
 
+    def test_a_title_carrying_work_mode_or_place_is_cleaned_before_egress(self):
+        for raw, kept in (("Technical Program Manager — Remote US", "Technical Program Manager"), ("Product Manager (Hybrid, Chicago)", "Product Manager"),
+                          ("Program Manager | Onsite | Austin", "Program Manager"), ("Technical Program Manager, Remote US", "Technical Program Manager"),
+                          ("Remote Delivery Lead", "Delivery Lead"), ("Senior Manager, Operations and Implementation", "Senior Manager, Operations and Implementation")):
+            self.assertEqual(sent_for(raw, self.text)["title"], kept, raw)
+
+    def test_commuting_and_residency_requirements_without_a_place_keyword_are_removed(self):
+        text = self.text.replace("• Run the weekly steering forum and publish decisions", "• Run the weekly steering forum and publish decisions\n• Must commute to Chicago every Monday\n• Candidates must reside near the hub")
+        description = sent_for(self.title, text)["description"]
+        for leaked in ("commute", "Chicago", "reside"):
+            self.assertNotIn(leaked, description, leaked)
+        self.assertIn("steering forum", description)
+
+    def test_the_residual_limit_is_explicit_so_zero_leakage_is_never_claimed(self):
+        self.assertIn("RESIDUAL LIMIT", judge.__doc__)
+        self.assertIn("no model egress may be enabled", judge.__doc__.lower())
+        self.assertEqual(sent_for("Product Manager, Chicago", self.text)["title"], "Product Manager, Chicago")      # a place with no cue is NOT recognised: closing this gap needs a new boundary, then this test changes
+
+    BOILERPLATE = ("About the Role\nWe are a mission-driven company reimagining how teams everywhere collaborate. Our culture rewards curiosity, kindness and bold ideas, and our customers "
+                   "span every industry and continent. Join a passionate group that celebrates wins together, learns from every setback and believes the best work happens when people feel they belong "
+                   "and are trusted to do their best work every single day.\n")
+
+    def test_long_generic_company_text_without_role_evidence_is_not_scorable(self):
+        for text in (self.BOILERPLATE, self.BOILERPLATE.replace("About the Role", "About the Company"), self.BOILERPLATE + "\nResponsibilities\n• Support the team\n"):
+            self.assertGreater(len(text), 300)
+            sent = sent_for("Program Manager", text)
+            self.assertIsNone(sent)
+            got = judge.accept(answer(90), evaluate("Program Manager", "Initech", text, PROFILE, TODAY), "Program Manager", sent)
+            self.assertEqual((got.score, got.decision), (None, "Unscorable"))
+
     NARRATIVE = ("About the role\nGet merchants live, smoothly and on a date.\n\nWhat you'll do\n• Take each merchant from signed contract to first live order\n"
                  "• Keep a tracker the whole group trusts and flag slips early\n• Hold a weekly call with every merchant champion\n"
                  "• Explain slips, reset expectations and protect the next launch\n• Write plain status notes that close loops before anyone has to ask\n"

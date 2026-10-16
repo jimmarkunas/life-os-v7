@@ -1,9 +1,6 @@
-"""Fit v2 (LIFE-41): what the named OpenClaw Jobs Fit capability is asked, and what code accepts back from it.
-
-The capability judges semantic professional match only. Scoreability, the hard-family and level caps, the exclusion gate and the universal floor stay code-owned here. An unusable
-answer is refused (None) and nothing is invented. Before cutover the caller may leave the static scorer authoritative on None; after cutover None must follow an explicitly approved
-fail-closed or retryable path, never a silent static fallback. No provider logic, no fallback model, no persistence.
-"""
+"""Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, caps, gate and the 72 floor stay here).
+accept() returns None for an unusable answer: before cutover the static scorer may stay authoritative; after cutover an approved fail-closed or retryable path, never a silent static fallback.
+RESIDUAL LIMIT: policy facts are removed by cue and structure only, so a place named with no cue cannot be recognised. No model egress may be enabled until the egress design accepts or closes that limit."""
 from dataclasses import dataclass
 import json
 import re
@@ -13,13 +10,14 @@ from lifeos.jobs.fit.score import JUNIOR, JUNIOR_CAP, MIN_TEXT, SENIOR
 
 FAMILY_CAP = 40
 SECTIONS = ("summary", "required", "preferred", "duty")          # what the static scorer reads; benefits, pay, place and company boilerplate are never sent
+MODE = r"\b(?:remote|hybrid|on-?site|in-office)\b"
 KEYS = {"score", "rationale", "confidence"}
 # Pay, benefits, work mode, place and visa are never Fit evidence: a clause stating one is dropped before egress (a mixed clause is lost whole; "remote teams" or "benefits realization" are kept).
 POLICY = re.compile(r"[$£€]\s?\d|\b(?:salary|base pay|pay range|hourly rate|compensation (?:range|package)|competitive (?:salary|pay|compensation))\b|\b401\(?k\)?|\bpto\b|paid time off|parental leave|"
                     r"\b(?:health|medical|dental|vision) (?:insurance|coverage|plans?|benefits)\b|\bstock options\b|\bequity (?:grants?|package)\b|"
                     r"\b(?:remote|hybrid|on-?site|in-office)[- ](?:first|only|friendly|role|position|work|schedule|policy|basis|job)\b|\b(?:fully|100%|completely) remote\b|"
                     r"\bwork(?:ing)? (?:remotely|from (?:home|anywhere|the office))\b|\bon-?site\b|\bin[- ]office\b|\b\d+ days? (?:a|per) week\b|\b(?:based|located) in\b|"
-                    r"\brelocat\w+|\boffice in\b|\blocation\b|\bvisa\b|\bsponsorship\b|\bauthori[sz]ed to work\b|work authori[sz]ation|\bright to work\b", re.I)
+                    r"\brelocat\w+|\boffice in\b|\blocation\b|\bvisa\b|\bsponsorship\b|\bauthori[sz]ed to work\b|work authori[sz]ation|\bright to work\b|\bcommut\w+|\bresid(?:e|ency|ents?)\b|\bin[- ]person\b", re.I)
 
 
 @dataclass(frozen=True)
@@ -31,18 +29,19 @@ class Judgment:
 
 
 def request(title, text, profile_brief):
-    """The capability's whole input: the title, the substantive description and the canonical profile brief; None (nothing is sent) when less than MIN_TEXT characters of description
-    remain. Pay, benefits, work mode, place and visa statements are removed clause by clause wherever they appear; source and freshness are never in the text."""
-    clauses = [c for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c)]
-    description = "\n".join(clauses)
-    return {"title": title, "description": description, "profile": profile_brief} if len(description) >= MIN_TEXT else None
+    """The capability's whole input (title, description, profile brief), or None when nothing substantive can be sent: at least MIN_TEXT characters must remain, under a real responsibilities or
+    qualifications heading (parse relabels a headingless text as requirements), with half of MIN_TEXT of it role evidence. Policy clauses are dropped and the title is cut at a mode, place or suffix cue."""
+    kept = [(u.section, c) for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c)]
+    headed = any(extract._heading(line.strip()) in SECTIONS[1:] for line in (text or "").split("\n"))
+    short = sum(len(c) for _, c in kept) < MIN_TEXT or sum(len(c) for sec, c in kept if sec in SECTIONS[1:]) < MIN_TEXT // 2
+    name = re.sub(MODE, "", re.split(r"\s[-–—|@]\s|[(\[]|,\s*" + MODE, title or "", flags=re.I)[0], flags=re.I)
+    return None if short or not headed else {"title": " ".join(name.split()), "description": "\n".join(c for _, c in kept), "profile": profile_brief}
 
 
 def accept(raw, base, title, sent):
-    """The capability's JSON answer under the code-owned envelope -> Judgment, or None (unusable). `sent` is what `request` returned for the posting; `base` is the static `evaluate` Result,
-    used only for the exclusion gate and the hard-family cap, never for scoreability: the static scorer failing to recognise a requirement does not make a substantive description unscorable."""
+    """The capability's JSON answer under the code-owned envelope -> Judgment, or None (unusable). `sent` is what `request` returned; `base` (the static Result) supplies only the gate and the family cap, never scoreability."""
     if sent is None:
-        return Judgment(None, "No-Go" if base.exclusion else "Unscorable", "No substantive description to judge.", "low")      # title-only or too little description: never a percentage
+        return Judgment(None, "No-Go" if base.exclusion else "Unscorable", "No substantive description to judge.", "low")      # never a percentage
     try:
         data = json.loads(raw) if isinstance(raw, str) else raw
         score, rationale, confidence = data["score"], data["rationale"], data["confidence"]
