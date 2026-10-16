@@ -819,7 +819,9 @@ jobs:
     # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the
     # tailnet policy lets reach only Oracle's alert-METADATA endpoint (TCP 47341); Oracle reads and classifies privately and returns keyed event ids, severity and
     # completeness only. State: the private v7_alerts table. Push: the existing ntfy topic, counts only. Off unless V7_IMESSAGE_ALERTS is 'true' (or run by hand).
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage }}
+    # It follows the writers of the regions its Communications and Oracle Cloud cards prove unchanged (Oct 16 2026): run beside them, every proof saw their own writes as a change.
+    needs: [jira, agenda, bills, amazon, attention]
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick' && vars.V7_IMESSAGE_ALERTS == 'true') || inputs.imessage) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
