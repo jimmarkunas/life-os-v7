@@ -163,13 +163,16 @@ def locate(client, anchor):
     if len(found) != 1:
         raise _fail("CARD_NOT_OWNED")
     heading, rest = found[0][0], found[0][1:]
-    lists = [b for b in rest if b.get("type") == "column_list"]
-    if len(lists) != 1:
+    lists = []                                                     # the channel rows: the one column list whose left column holds a launch link; Jim's other rows (Reminders | Todoist) are never read or written
+    for block in rest:
+        if block.get("type") == "column_list":
+            columns = _children(client, block["id"])
+            first = _children(client, columns[0]["id"]) if columns else []
+            if any(_link_item(b, channel) is not None for b in first for channel in LAUNCHES):
+                lists.append(columns)
+    if len(lists) != 1 or len(lists[0]) != 2:
         raise _fail("CARD_NOT_OWNED")
-    columns = _children(client, lists[0]["id"])
-    if len(columns) != 2:
-        raise _fail("CARD_NOT_OWNED")
-    left, right = (_children(client, c["id"]) for c in columns)
+    left, right = (_children(client, c["id"]) for c in lists[0])
     found = {}
     for channel in LAUNCHES:
         rows = [i for i, b in enumerate(left) if _link_item(b, channel) is not None]
