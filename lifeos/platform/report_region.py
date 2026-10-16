@@ -397,6 +397,19 @@ def _links_of(row):
             for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
+def _segs(cell):
+    return [cell] if isinstance(cell, tuple) else cell                  # a cell is (text, link) or a list of them
+
+
+def want_view(row):
+    """A rendered row as [(text, [links in order])] per cell: comparable with `live_view`."""
+    return [("".join(t for t, _ in _segs(c)), [x for _, x in _segs(c) if x]) for c in row]
+
+
+def live_view(row):
+    return [(t, [x for x in links if x]) for t, links in zip(cells_of(row), _links_of(row))]
+
+
 def _meta(client, block_id):
     return client.call("GET", f"/blocks/{quote(block_id, safe='')}")
 
@@ -517,8 +530,8 @@ def page_changed(before, after):
 
 
 def cell_blocks(cells):
-    """cells: one row as [(text, link or None)] -> the table_row `cells` field."""
-    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}}] for text, link in cells]
+    """cells: one row, each cell a (text, link or None) or a list of them -> the table_row `cells` field."""
+    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}} for text, link in _segs(cell)] for cell in cells]
 
 
 def write_floating(client, region, status_text, rows, fail):
@@ -529,7 +542,7 @@ def write_floating(client, region, status_text, rows, fail):
     if rows is not None:
         have = region["rows"][1:]
         for row, want in zip(have, rows):
-            if cells_of(row) != [t for t, _ in want] or [x[0] if x else None for x in _links_of(row)] != [link for _, link in want]:
+            if live_view(row) != want_view(want):
                 client.call("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": cell_blocks(want)}})
                 counts["rows_changed"] += 1
         extra = rows[len(have):]
