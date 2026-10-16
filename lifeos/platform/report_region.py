@@ -8,6 +8,7 @@ import hashlib
 import json
 import time
 from copy import deepcopy
+from itertools import groupby
 from urllib.parse import quote
 
 from lifeos.platform import router
@@ -123,6 +124,13 @@ def protected(client, ids, fail):
         raise fail("PROTECTED_REGION_UNAVAILABLE") from None
 
 
+def _prove(client, module, before, protected_ids, tag, fail):
+    after = protected(client, protected_ids, fail)
+    if not router.protected_intact(module, before, after):
+        print(f"{tag}: protected region changed", json.dumps({r: changed(before.get(r), after.get(r)) for r in before if before.get(r) != after.get(r)}))
+        raise fail("PROTECTED_REGION_CHANGED")
+
+
 def replace_text(client, block_id, title, module, blocks, protected_ids, fail, tag, live, headless=False):
     """Dry run: validate the target and return (existing children, [] ). Live: write, read back, verify. -> (existing children, removed count).
     headless (D129): the callout has no heading of its own (it holds only Jim's interactive view, which shows its own title), so the configured block id is the ownership proof;
@@ -148,10 +156,7 @@ def replace_text(client, block_id, title, module, blocks, protected_ids, fail, t
     before = protected(client, protected_ids, fail)
 
     def intact():
-        after = protected(client, protected_ids, fail)
-        if not router.protected_intact(module, before, after):
-            print(f"{tag}: protected region changed", json.dumps({r: changed(before.get(r), after.get(r)) for r in before if before.get(r) != after.get(r)}))
-            raise fail("PROTECTED_REGION_CHANGED")
+        _prove(client, module, before, protected_ids, tag, fail)
 
     if headless:
         return existing, _write_headless(client, block_id, title, module, blocks, existing, kept, old_text, intact, fail)
@@ -282,6 +287,99 @@ def _write_headless(client, block_id, title, module, blocks, existing, kept, old
         if all(shape):
             return removed
     raise fail("CARD_VERIFY_FAILED:own=%s:no_child_text=%s:kept=%s:n=%d/%d" % (*shape, len(after), len(kept)))
+
+
+def _shell(block, depth=2):
+    """The block as Notion accepts it in ONE append (two levels of children); deeper levels are filled by the next sync step."""
+    kind = block["type"]
+    body = {k: v for k, v in block[kind].items() if k != "children"}
+    if depth and block[kind].get("children"):
+        body["children"] = [_shell(child, depth - 1) for child in block[kind]["children"]]
+    return {"object": "block", "type": kind, kind: body}
+
+
+def _sig(rich):
+    return [((p.get("text") or {}).get("content", p.get("plain_text", "")), bool((p.get("annotations") or {}).get("bold")), (p.get("annotations") or {}).get("color", "default"),
+             ((p.get("text") or {}).get("link") or {}).get("url")) for p in rich or []]
+
+
+def _runs(blocks):
+    return [(kind, list(run)) for kind, run in groupby(blocks, lambda b: b.get("type"))]
+
+
+def _sync(client, parent, old, new, anchor, fail, live):
+    """-> number of changes. Blocks match run by run (same type, in order): text is patched in place, a missing block appended and filled, only a numbered list may grow or shrink; anything else
+    (another type, an extra block) is somebody else's edit and fails before any write (the dry run comes first)."""
+    count, olds, news = 0, _runs(old), _runs(new)
+    if len(olds) > len(news) or any(o[0] != w[0] for o, w in zip(olds, news)):
+        raise fail("CARD_STRUCTURE_CHANGED")
+    for n, (kind, wants) in enumerate(news):
+        haves = olds[n][1] if n < len(olds) else []
+        if len(haves) > len(wants) and kind != "numbered_list_item":
+            raise fail("CARD_STRUCTURE_CHANGED")
+        for i, want in enumerate(wants):
+            if i < len(haves):
+                have = haves[i]
+                if "rich_text" in want[kind] and _sig(have[kind].get("rich_text")) != _sig(want[kind]["rich_text"]):
+                    count += 1
+                    if live:
+                        client.call("PATCH", f"/blocks/{quote(have['id'], safe='')}", {kind: {"rich_text": want[kind]["rich_text"]}})
+            else:
+                count += 1
+                if not live:
+                    continue
+                made = client.call_once("PATCH", f"/blocks/{quote(parent, safe='')}/children", {"children": [_shell(want)], **({"after": anchor} if anchor else {})})
+                if not isinstance(made, dict) or not made.get("results"):
+                    raise fail("CARD_APPEND_MISMATCH")
+                have = made["results"][0]
+            if want[kind].get("children"):
+                count += _sync(client, have["id"], children(client, have["id"], fail), want[kind]["children"], None, fail, live)
+            anchor = have["id"]
+        for extra in haves[len(wants):]:
+            count += 1
+            if live:
+                client.call("DELETE", f"/blocks/{quote(extra['id'], safe='')}")
+    return count
+
+
+def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag, live):
+    """The owner's callout keeps its heading and holds exactly `spec` under it: preflight, sync, read back (a second sync finds nothing), then remove the old flat lines. -> (changes, removed)."""
+    meta = client.call("GET", f"/blocks/{quote(block_id, safe='')}")
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or not same_id(meta.get("id"), block_id):
+        raise fail("CARD_NOT_OWNED")
+    existing = children(client, block_id, fail)
+    if not (existing and existing[0].get("type") in HEADINGS and plain(existing[0]).strip() == title):
+        raise fail("CARD_NOT_OWNED")
+    old_text, ours = [b for b in existing[1:] if b.get("type") in TEXT_KINDS], [b for b in existing[1:] if b.get("type") not in TEXT_KINDS]
+    try:
+        router.check_write(module, [title])
+    except router.RouterError:
+        raise fail("CARD_NOT_OWNED") from None
+    if any(b.get("type") != "column_list" for b in ours):
+        raise fail("CARD_NOT_OWNED")                                                  # anything else under the heading is not ours to rewrite
+    if not live:
+        return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
+    _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
+    before = protected(client, protected_ids, fail)
+    try:
+        changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
+    finally:
+        _prove(client, module, before, protected_ids, tag, fail)
+    if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") == "column_list"], spec, None, fail, False):
+        raise fail("CARD_VERIFY_FAILED")
+    removed = 0
+    for old in old_text:
+        try:
+            client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
+            removed += 1
+        except NotionError as error:
+            if str(error) != "NOTION_HTTP_404":
+                raise
+    _prove(client, module, before, protected_ids, tag, fail)
+    after = children(client, block_id, fail)
+    if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != ["column_list"] * len(spec):
+        raise fail("CARD_VERIFY_FAILED")
+    return changes, removed
 
 
 # ---- The floating region (HIRE-1.2): a heading_3 anchor, one status paragraph and one table, owned by one module and written in place. ----
