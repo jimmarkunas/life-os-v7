@@ -29,7 +29,7 @@ EOF
 [Unit]
 Description=LIFE OS Close Opportunity (one connection)
 [Service]
-ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.edge import close_gate; from lifeos.hiring.close_app import handle; sys.exit(close_gate.main(handle))"
+ExecStart=/usr/bin/python3 -I -c "import sys; sys.path.insert(0, '/opt/lifeos-close/current'); from lifeos.edge import close_gate; from lifeos.sources.close_app import handle; sys.exit(close_gate.main(handle))"
 StandardInput=socket
 StandardOutput=socket
 StandardError=null

@@ -429,18 +429,16 @@ class CompilerTests(unittest.TestCase):
     def applied(self, company, role, decision=None, ident=None):
         return {**T.applied(company, role), "id": ident, "decision": decision}
 
-    def test_a_confirmed_rejected_or_passed_decision_closes_only_that_pursuit(self):
-        for value in ("Rejected", "Passed"):
+    def test_a_confirmed_closure_outcome_or_passed_closes_only_that_pursuit(self):
+        for value in M.OUTCOMES + ("Passed",):
             got = self.rows([self.applied("Acme", "PM", value, "i1"), self.applied("Acme", "Director", None, "i2"), self.applied("Globex", "PM", None, "i3")])
             self.assertEqual(sorted((r["company"], r["role"]) for r in got["rows"]), [("Acme", "Director"), ("Globex", "PM")])
             self.assertEqual(got["closed"], 1)
             self.assertEqual({r["role"]: r["ledger_id"] for r in got["rows"]}, {"Director": "i2", "PM": "i3"})
 
-    def test_the_live_compiler_still_closes_only_on_rejected_or_passed_until_the_new_outcomes_are_activated(self):
-        self.assertEqual(M.CLOSED_DECISIONS, ("Rejected", "Passed"))                       # LIFE-47 S1 is dormant: the closure outcomes added to M.OUTCOMES do not change the live report
-        for value in [o for o in M.OUTCOMES if o != "Rejected"]:
-            got = self.rows([self.applied("Acme", "PM", value, "i1")])
-            self.assertEqual((len(got["rows"]), got["closed"]), (1, 0), value)
+    def test_the_closed_decisions_are_the_six_outcomes_and_passed_and_nothing_else_closes(self):
+        self.assertEqual(M.CLOSED_DECISIONS, M.OUTCOMES + ("Passed",))                     # LIFE-47 S2: a closure the screen records and reads back leaves the hourly report
+        self.assertEqual(M.OUTCOMES, ("Rejected", "Withdrew", "Position filled", "Declined offer", "Hired", "Other"))
 
     def test_an_active_notes_page_does_not_keep_a_confirmed_closure_open(self):
         got = self.rows([self.applied("Acme", "PM", "Rejected", "i1")], [{"id": "p1", "company": "Acme", "role": "PM", "rounds": 3}])
@@ -459,6 +457,9 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual((len(first["rows"]), first["closed"], first["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))     # whichever duplicate carries it, and however many there are
         both = self.rows([self.applied("Acme", "PM", "Rejected", "i1"), self.applied("Acme", "PM", "Rejected", "i2")])
         self.assertEqual((len(both["rows"]), both["closed"], both["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]))        # even when both say so: two applications are not one decision
+        for value in M.OUTCOMES:                                                                                        # and for every outcome: a duplicate is never read as a safely closed pursuit
+            dup = self.rows([self.applied("Acme", "PM", value, "i1"), self.applied("Acme", "PM", None, "i2")])
+            self.assertEqual((len(dup["rows"]), dup["closed"], dup["reasons"]), (1, 0, ["DECISION_AMBIGUOUS"]), value)
         rendered = render.render(got, None, NOW)[0]
         self.assertTrue(rendered.startswith("DEGRADED"))
         self.assertIn("one of several applications", rendered)
