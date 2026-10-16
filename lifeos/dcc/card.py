@@ -174,7 +174,7 @@ def _b(kind, *parts, children=None, icon=None):
 
 
 def render(model):
-    """The approved native layout: a 50/50 row (source health toggle and primary focus | suggested decisions) and a row of four equal KPI callouts."""
+    """The approved native layout: a row of four equal KPI callouts, then a 50/50 row (source health toggle and primary focus | suggested decisions)."""
     def column(ratio, *kids):
         return {"object": "block", "type": "column", "column": {"width_ratio": ratio, "children": list(kids)}}
 
@@ -186,8 +186,8 @@ def render(model):
     right = column(0.5, _b("callout", icon="checkmark-square", children=[_b("paragraph", _t("Suggested next decisions", bold=True)),
                                                                           *[_b("numbered_list_item", _t(a, bold=True, link=l), _t(" — " + d)) for a, d, l in model["items"]],
                                                                           _b("paragraph", _t(model["hiring"], bold=True), _t(" · See Hiring Pipeline below."))]))
-    return [row(left, right), row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
-                                    for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
+    return [row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
+                  for icon, (value, name, text) in zip(ICONS, model["kpis"])]), row(left, right)]
 
 
 def run(limit, live, environ=os.environ, client=None, now=None):
