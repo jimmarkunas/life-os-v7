@@ -57,8 +57,8 @@ class Gate(unittest.TestCase):
             req, who, secrets = self.calls[0]
             self.assertEqual((req["method"], req["path"], req["query"], who), ("GET", "/close", {"l": "abc"}, {"login": LOGIN, "node": node}))
             self.assertEqual(set(secrets), {"link", "reader", "config"})     # GET never receives the Notion token, only the read-only client
-            for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff"):
-                self.assertIn(header, text)
+            for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin"):
+                self.assertIn(header, text)                              # no-referrer would make the browser post `Origin: null`, which the origin check refuses
 
     def test_get_reads_the_current_opportunity_through_a_read_only_client_and_writes_nothing(self):
         class Notion:                                                   # a fake Notion client: one opportunity, every call recorded
