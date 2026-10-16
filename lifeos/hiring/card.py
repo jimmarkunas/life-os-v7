@@ -100,8 +100,7 @@ def present(client, environ, text, cells, live):
     if [R.cells_of(r) for r in rows[:1]] != [list(M.HEADERS)]:
         raise fail("READBACK_MISMATCH")
     if cells is not None:
-        got = [(R.cells_of(r), [x[0] if x else None for x in R._links_of(r)]) for r in rows[1:]]
-        if got != [([t for t, _ in row], [link for _, link in row]) for row in cells]:
+        if [R.live_view(r) for r in rows[1:]] != [R.want_view(row) for row in cells]:
             raise fail("READBACK_MISMATCH")
     counts["verified"] = True
     return counts

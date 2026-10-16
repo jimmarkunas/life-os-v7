@@ -288,6 +288,10 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_no_secret_is_declared_at_the_top(self):
         self.assertEqual([k for k, v in (self.doc.get("env") or {}).items() if "secrets." in str(v)], [])
 
+    def test_no_workflow_injects_the_close_base_url_so_the_s3_link_stays_dormant_until_a_separately_approved_wiring_change(self):
+        for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
+            self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
+
     def test_the_calendar_mass_delete_brake_is_skipped_only_by_a_manual_input_and_that_run_touches_nothing_else(self):
         inputs = self.doc[True]["workflow_dispatch"]["inputs"]
         self.assertIs(inputs["allow_mass_delete"]["default"], False)                         # off unless a person ticks it for one run

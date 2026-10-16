@@ -392,8 +392,22 @@ def cells_of(row):
     return [plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
-def _links_of(row):
-    return [[((part.get("text") or {}).get("link") or {}).get("url") if isinstance(part, dict) else None for part in cell]      # Notion sends "link": null for plain text
+def _segs(cell):
+    return [cell] if isinstance(cell, tuple) else cell                  # a cell is (text, link) or a list of them
+
+
+def _owned(spans):
+    """[(text, link or None)] -> adjacent spans with the same link merged: the view ignores how Notion splits or joins rich text but still says which span owns each link."""
+    return [("".join(t for t, _ in group), link) for link, group in groupby(spans, key=lambda span: span[1])]
+
+
+def want_view(row):
+    """A rendered row as [[(text, link)] runs] per cell: comparable with `live_view`."""
+    return [_owned(_segs(c)) for c in row]
+
+
+def live_view(row):
+    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url")) for part in cell if isinstance(part, dict)])      # Notion sends "link": null for plain text
             for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
@@ -517,8 +531,8 @@ def page_changed(before, after):
 
 
 def cell_blocks(cells):
-    """cells: one row as [(text, link or None)] -> the table_row `cells` field."""
-    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}}] for text, link in cells]
+    """cells: one row, each cell a (text, link or None) or a list of them -> the table_row `cells` field."""
+    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}} for text, link in _segs(cell)] for cell in cells]
 
 
 def write_floating(client, region, status_text, rows, fail):
@@ -529,7 +543,7 @@ def write_floating(client, region, status_text, rows, fail):
     if rows is not None:
         have = region["rows"][1:]
         for row, want in zip(have, rows):
-            if cells_of(row) != [t for t, _ in want] or [x[0] if x else None for x in _links_of(row)] != [link for _, link in want]:
+            if live_view(row) != want_view(want):
                 client.call("PATCH", f"/blocks/{quote(row['id'], safe='')}", {"table_row": {"cells": cell_blocks(want)}})
                 counts["rows_changed"] += 1
         extra = rows[len(have):]
