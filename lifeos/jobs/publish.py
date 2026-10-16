@@ -91,6 +91,12 @@ def properties(row):
     return props
 
 
+def existing_page(client, key):
+    """The Ledger page that already holds this Stable Job Key, or None: a create Notion accepted but the database never recorded is adopted on the next run, never repeated."""
+    found = client.call("POST", f"/data_sources/{client.source}/query", {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 1}).get("results") or []
+    return found[0]["id"] if found else None
+
+
 def ledger_urls(client):
     """Every Apply URL already in the Ledger (paged, 100 per request)."""
     urls, cursor = set(), None
@@ -231,7 +237,7 @@ def run(limit, live, environ=os.environ):
         if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
-            page_id = client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
+            page_id = existing_page(client, key) or client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
         except NotionError as error:
             counts["failed"] += 1
             counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]       # a fixed code (and Notion's own error code), so a job that fails every run says why

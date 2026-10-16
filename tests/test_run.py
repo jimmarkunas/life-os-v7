@@ -147,9 +147,13 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
 
         class Client:
             calls = 0
+            source = "ledger"
 
             def __init__(self, environ=None):
                 pass
+
+            def call(self, method, path, body=None):
+                return {"results": []}
 
             def create(self, props, blocks):
                 job = props["Stable Job Key"]["rich_text"][0]["text"]["content"]
