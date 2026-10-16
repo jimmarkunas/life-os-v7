@@ -84,6 +84,15 @@ class Card(unittest.TestCase):
         self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · Updated Oct 15 · 8:05 AM CT)")
         self.assertEqual((counts["missing"], counts["services_down"]), (3, 1))
 
+    def test_an_unreported_plan_under_sign_in_with_chatgpt_is_said_plainly_and_is_not_degraded(self):
+        rep = report()
+        counts, _ = self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="unreported")).encode())
+        self.assertEqual(rep.plain("obody").split("\n")[-1], "ChatGPT plan: not reported by Sign in with ChatGPT")
+        self.assertEqual((rep.plain("ohead"), counts["missing"]), ("Oracle Cloud (Updated Oct 15 · 8:05 AM CT)", 0))
+        rep = report()
+        self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="anything else")).encode())     # any other string is off contract
+        self.assertIn("DEGRADED", rep.plain("ohead"))
+
     def test_reclaim_risk_is_shown_plainly(self):
         rep = report()
         self.run_card(rep, answer=lambda host: json.dumps(stats(reclaim="AT_RISK")).encode())

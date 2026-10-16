@@ -26,10 +26,11 @@ function run(cmd, args, timeout = 30000) {
   });
 }
 
-// "openai usage: 5h 100% left ⏱4h 19m · Week 100% left ⏱6d 9h" -> { left_5h: 100, left_week: 100 }; anything else -> null.
+// "openai usage: 5h 100% left ⏱4h 19m · Week 100% left ⏱6d 9h" -> { left_5h: 100, left_week: 100 }. With no usage line, a Sign in with ChatGPT profile is
+// "unreported" (OpenClaw prints no plan windows for that sign-in, Oct 16 2026: a known state, not a failure); anything else -> null.
 export function parsePlan(text) {
   const m = /openai usage:\s*5h\s+(\d{1,3})% left\b.*?\bWeek\s+(\d{1,3})% left\b/i.exec(text || "");
-  if (!m) return null;
+  if (!m) return /openai usage:/i.test(text || "") ? null : /\(Sign in with ChatGPT\b/.test(text || "") ? "unreported" : null;
   const [a, b] = [Number(m[1]), Number(m[2])];
   return a <= 100 && b <= 100 ? { left_5h: a, left_week: b } : null;
 }
