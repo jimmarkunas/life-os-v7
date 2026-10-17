@@ -184,7 +184,7 @@ class WorkflowTests(unittest.TestCase):
         job = diag["jobs"]["diag"]
         self.assertEqual(list(diag[True]), ["workflow_dispatch"])                                           # manual only: no schedule, workflow_run, push or repository_dispatch
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|repository_dispatch|push|pull_request\w*):")
-        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic)
+        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job
         self.assertEqual(diag["permissions"], {"contents": "read"})
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
@@ -193,14 +193,23 @@ class WorkflowTests(unittest.TestCase):
         message = diag[True]["workflow_dispatch"]["inputs"]["message_ref"]                                  # LIFE-59: the optional opaque (SHA-256) message selector for alerts-open; an env value, never inlined in the command, and never a raw Gmail id
         self.assertEqual((message["type"], message["default"]), ("string", ""))
         self.assertNotIn("--live", text)
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the Client ID is the trace job's only Gmail GitHub secret
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"])   # the reviewed v3.0.1 commit
-        mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
-        self.assertEqual(sorted(mappings), sorted(f"{uuid} > {name}" for name, uuid in moved.items()))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 7)
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit, once per job
+        head, trace_text = text.split("\n  # LIFE-64:")                                                     # the database-only diagnostics, then the one job that reads Gmail
+        uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted(f"{uuid_} > {name}" for name, uuid_ in moved.items()))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted(f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()))
+        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 9))
+        self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
+        trace = diag["jobs"]["trace"]
+        self.assertEqual((job["if"], trace["if"]), ("${{ inputs.stage != 'newsletter-trace' }}", "${{ inputs.stage == 'newsletter-trace' }}"))   # exactly one of the two jobs runs
+        self.assertEqual(trace["timeout-minutes"], 10)
+        self.assertEqual(trace["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
+        self.assertEqual(trace["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "GMAIL_OAUTH_CLIENT_ID": "${{ secrets.GMAIL_OAUTH_CLIENT_ID }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -441,10 +450,10 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-fit-edge', 'cancel-in-progress': False},
         timeouts={'fit_edge': 5}, digest="62c235d80f490685"),
     "diag": dict(
-        jobs={"diag": DB},
-        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
+        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}},                   # LIFE-64: the trace job alone reads Gmail (list and read only)
+        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-diag', 'cancel-in-progress': False},
-        timeouts={'diag': 10}, digest="e806649a7910dd09"),
+        timeouts={"diag": 10, "trace": 10}, digest="43c47d9281d0c138"),
 }
 # The eight workflows cut over after the pilots: the loader is exported to nothing (set_env: false) and each CONSUMER step receives, as a masked step output, exactly the migrated values it
 # effectively received on main 659de1e (workflow-, job- and step-level env merged), except hourly `report`, which only pushes an alert and needs just the topic. Every step not listed
