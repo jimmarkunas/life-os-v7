@@ -12,7 +12,10 @@ from types import SimpleNamespace
 from lifeos.jobs.fit import judge
 
 PORT, MAX_REQUEST, MAX_REPLY, WAIT = 47341, 16384, 16384, 90
-MANIFEST = Path(__file__).with_name("edge_fixtures.json")        # synthetic fixtures only: {"fixtures": {label: {"title", "request", "sha256", "capped", "exclusion"}}}
+MANIFEST = Path(__file__).with_name("edge_fixtures.json")        # the Oracle operator's export, synthetic only: {"fixtures": [{"id", "request", "request_sha256"}]}
+STATUSES = {"REFUSED", "BUSY", "TIMEOUT", "TIMEOUT_ORPHAN", "ERROR", "MODEL_DRIFT", "OVERSIZE"}
+REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT"}
+MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
 
 
 class EdgeError(RuntimeError):
@@ -59,26 +62,38 @@ def invoke(host, request, base, title, nonce=None, send=exchange):
         raise EdgeError("FIT_EDGE_NO_REPLY")
     try:
         reply = json.loads(raw)
-        receipt = reply["receipt"]
-        assert reply["schema"] == "lifeos.fit.v1" and isinstance(receipt, dict) and isinstance(reply["judgment_raw"], str)
+        receipt, status = reply.get("receipt"), reply["status"]
+        assert reply["schema"] == "lifeos.fit.v1" and isinstance(status, str)
     except (ValueError, KeyError, AssertionError, TypeError):
         raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
     if reply.get("request_hash") != want:
         raise EdgeError("FIT_EDGE_HASH_MISMATCH")
     if reply.get("nonce") != nonce:
         raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
-    if (receipt.get("provider"), receipt.get("model"), receipt.get("fallback"), receipt.get("status")) != ("openai", "gpt-6-luna", False, "ok"):
+    if status != "OK":                                                    # a refused, busy, timed-out or drifted request is a named code, never a Fit
+        raise EdgeError("FIT_EDGE_" + (status if status in STATUSES else "OFF_CONTRACT") + ("_" + reply["reason"] if status == "REFUSED" and reply.get("reason") in REASONS else ""))
+    if not isinstance(receipt, dict) or (receipt.get("provider"), receipt.get("fallback")) != ("openai", False) or receipt.get("model") not in MODELS or not isinstance(reply.get("judgment_raw"), str):
         raise EdgeError("FIT_EDGE_RECEIPT_REJECTED")
     judgment = judge.accept(reply["judgment_raw"], base, title, request)
     if judgment is None:
         raise EdgeError("FIT_EDGE_JUDGMENT_REJECTED")
-    return {"judgment": judgment, "receipt": receipt, "request_hash": want}
+    return {"judgment": judgment, "receipt": receipt, "request_hash": want, "runs_today": reply.get("runs_today"), "limit": reply.get("limit"), "fixture": reply.get("fixture")}
 
 
-def probes():
-    """Requests that must be refused with no model call: malformed framing, an oversize length, a body that is not JSON, an unknown key, and a synthetic request that is not on Oracle's allowlist."""
-    bad, nonce, ghost = b"not-json-body", "0" * 32, {"title": "SYNTHETIC PROBE", "description": "SYNTHETIC PROBE", "profile": {"years": 1}}
-    return {"bad_length": b"fit1 abc\n", "oversize": b"fit1 99999999\n", "not_json": b"fit1 %d\n" % len(bad) + bad, "unknown_key": frame(ghost, nonce, extra=1), "not_allowlisted": frame(ghost, nonce)}
+def probes(fixture=None):
+    """Requests that must be refused with no model call: malformed framing, an oversize length, a body that is not JSON, an unknown key, and a request that is not on Oracle's allowlist (the real fixture with its
+    title changed when there is one)."""
+    bad, nonce = b"not-json-body", "0" * 32
+    ghost = {**fixture, "title": fixture["title"] + " (modified)"} if fixture else {"title": "SYNTHETIC PROBE", "description": "SYNTHETIC PROBE", "profile": {"years": 1}}
+    return {"bad_length": b"fit1 abc\n", "oversize": b"fit1 99999999\n", "not_json": b"fit1 %d\n" % len(bad) + bad, "unknown_key": frame(ghost, nonce, extra=1), "modified_or_unlisted": frame(ghost, nonce)}
+
+
+def refused(raw):
+    """No model ran: the server closed with no output, or answered a refusal status."""
+    try:
+        return not raw or json.loads(raw).get("status") in ("REFUSED", "OVERSIZE")
+    except (ValueError, AttributeError):
+        return False
 
 
 def run(limit, live, environ=os.environ, send=exchange, manifest=MANIFEST):
@@ -91,24 +106,32 @@ def _run(environ, send, manifest):
     host, mode = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip(), (environ.get("FIT_EDGE_MODE") or "").strip()
     if not host or not mode:
         return {"status": "FIT_EDGE_NOT_CONFIGURED"}
+    try:
+        fixtures = {f["id"]: f for f in json.loads(Path(manifest).read_text())["fixtures"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        fixtures = {}
     if mode == "negative":
-        out = {"refused": 0, "hung": 0, "unexpected_reply": 0}
-        for data in probes().values():
+        data, out = probes(next(iter(fixtures.values()), {}).get("request")), {"refused": 0, "hung": 0, "unexpected_reply": 0}
+        for frame_bytes in data.values():
             try:
-                out["unexpected_reply" if send(host, data, wait=10) else "refused"] += 1
+                out["refused" if refused(send(host, frame_bytes, wait=10)) else "unexpected_reply"] += 1
             except EdgeError:
                 out["hung"] += 1
-        return {"status": "OK" if out["refused"] == len(probes()) else "FIT_EDGE_PROBE_FAILED", "probes": len(probes()), **out, "model_calls_expected": 0}
-    try:
-        fixture = json.loads(Path(manifest).read_text())["fixtures"][mode]
-    except (OSError, ValueError, KeyError):
+        return {"status": "OK" if out["refused"] == len(data) else "FIT_EDGE_PROBE_FAILED", "probes": len(data), **out, "model_calls_expected": 0}
+    fixture = fixtures.get(mode)
+    if not fixture or not isinstance(fixture.get("request"), dict) or not fixture.get("request_sha256"):
         return {"status": "FIT_EDGE_FIXTURE_MISSING"}
-    if digest(fixture["request"]) != fixture["sha256"]:
+    request = fixture["request"]
+    if digest(request) != fixture["request_sha256"]:
         return {"status": "FIT_EDGE_FIXTURE_HASH"}                             # a modified fixture never leaves V7
+    nonce = secrets.token_hex(16)
     try:
-        got = invoke(host, fixture["request"], SimpleNamespace(capped=bool(fixture.get("capped")), exclusion=fixture.get("exclusion")), fixture["title"], send=send)
+        got = invoke(host, request, SimpleNamespace(capped=False, exclusion=None), request["title"], nonce=nonce, send=send)
+        replay = send(host, frame(request, nonce), wait=30)                      # the same nonce again: Oracle must refuse it and run no model
     except EdgeError as error:
         return {"status": str(error)}
+    if not refused(replay):
+        return {"status": "FIT_EDGE_REPLAY_ACCEPTED"}
     j, r = got["judgment"], got["receipt"]
-    return {"status": "OK", "fixture": mode, "request_hash": got["request_hash"][:8], "nonce_correlated": True, "provider": r["provider"], "model": r["model"], "fallback": r["fallback"], "run_id": str(r.get("run_id"))[:12],
-            "usage": r.get("usage"), "score": j.score, "decision": j.decision, "confidence": j.confidence, "rationale": j.rationale}
+    return {"status": "OK", "fixture": mode, "request_hash": got["request_hash"][:8], "nonce_correlated": True, "replay_refused": True, "provider": r["provider"], "model": r["model"], "fallback": r["fallback"], "agent": r.get("agent"), "run_ids": [str(x)[:12] for x in (r.get("run_ids") or [])][:3],
+            "run_finished": r.get("run_finished"), "usage": r.get("usage"), "cost": r.get("cost"), "runs_today": got["runs_today"], "limit": got["limit"], "score": j.score, "decision": j.decision, "confidence": j.confidence, "rationale": j.rationale}
