@@ -284,6 +284,33 @@ class GoldenPath(unittest.TestCase):
         self.assertEqual(j.ledger.created, 1)
         self.assertEqual((j.table()["Acme"], j.labels("m1")), (("PUBLISHED", None, True, True), DONE))
 
+    def crashed_after_create(self):
+        j = self.journey(m1=mail("v1"))
+        j.resolve_all(["v1"])
+        j.db.fail_on = ("UPDATE v7_jobs SET status='PUBLISHED'", 1)
+        with self.assertRaises(RuntimeError):
+            j.tick()
+        return j
+
+    def assertRefused(self, j, error):
+        published, closed = j.tick()
+        self.assertEqual((published["failed"], published["error"], j.ledger.created), (1, error, 1))        # nothing created, nothing adopted
+        self.assertEqual((j.table()["Acme"], j.labels("m1"), closed["closed"]), (("READY", None, False, False), NEWSLETTER, 0))
+
+    def test_two_ledger_pages_for_one_key_are_refused_never_resolved_by_picking_one(self):
+        j = self.crashed_after_create()
+        j.ledger.pages["page-dup"] = j.ledger.pages["page1"]                       # a duplicate that already exists in the Ledger
+        self.assertRefused(j, "ledger_key_ambiguous")
+
+    def test_an_unreadable_key_lookup_is_refused_never_treated_as_no_page(self):
+        for answer in ({"results": [{}]}, {"results": None}, {"results": {"id": "page1"}}, {}):
+            with self.subTest(answer=answer):
+                j = self.crashed_after_create()
+                lookup = j.ledger.call
+                j.ledger.call = lambda method, path, body=None, lookup=lookup, answer=answer: (
+                    answer if body and (body.get("filter") or {}).get("rich_text") else lookup(method, path, body))
+                self.assertRefused(j, "ledger_lookup_unreadable")
+
 
 if __name__ == "__main__":
     unittest.main()

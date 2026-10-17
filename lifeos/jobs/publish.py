@@ -92,8 +92,11 @@ def properties(row):
 
 
 def existing_page(client, key):
-    """The Ledger page that already holds this Stable Job Key, or None: a create Notion accepted but the database never recorded is adopted on the next run, never repeated."""
-    found = client.call("POST", f"/data_sources/{client.source}/query", {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 1}).get("results") or []
+    """The Ledger page that already holds this Stable Job Key, or None: a create Notion accepted but the database never recorded is adopted on the next run, never repeated.
+    Two matches or an unreadable answer is refused (a fixed NotionError), never resolved by picking one."""
+    found = client.call("POST", f"/data_sources/{client.source}/query", {"filter": {"property": "Stable Job Key", "rich_text": {"equals": key}}, "page_size": 2}).get("results")
+    if found is None or not isinstance(found, list) or len(found) > 1 or any(not isinstance(page, dict) or not page.get("id") for page in found):
+        raise NotionError("ledger_key_ambiguous" if isinstance(found, list) and len(found) > 1 else "ledger_lookup_unreadable")
     return found[0]["id"] if found else None
 
 
