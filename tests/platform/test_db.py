@@ -2,6 +2,8 @@ import unittest
 
 from lifeos.platform import db
 
+ATTEMPTS = len(db.RETRY_WAITS)
+
 
 class ConnectionConfigTests(unittest.TestCase):
     def test_config_error_names_settings_not_values(self):
@@ -59,25 +61,30 @@ class RetryTests(unittest.TestCase):
         self.assertEqual((result, starts), ("connected", 2))
         self.assertEqual(self.sleeps, [0, 4])
 
-    def test_it_gives_up_after_three_attempts_with_the_fixed_code(self):
-        result, starts = self._run(["Network is unreachable"] * 3)
-        self.assertEqual((result, starts), ("STORE_SSH_NETWORK", 3))
+    def test_it_gives_up_after_the_last_attempt_with_the_fixed_code(self):
+        result, starts = self._run(["Network is unreachable"] * ATTEMPTS)
+        self.assertEqual((result, starts), ("STORE_SSH_NETWORK", ATTEMPTS))
+        self.assertEqual(self.sleeps, [0, 4, 12, 30])                  # the last wait is long enough to outlast a minute-scale blip
+
+    def test_a_blip_that_outlasts_three_attempts_still_connects_on_the_fourth(self):
+        timeout = "ssh: connect to host h port 22: Connection timed out"
+        self.assertEqual(self._run([timeout] * (ATTEMPTS - 1) + [None]), ("connected", ATTEMPTS))
 
     def test_a_dropped_connection_and_an_unanswered_one_get_different_codes(self):
         """MON-1.5: the 46-second failures were all three attempts timing out; the code now says whether sshd answered and dropped us or nothing answered."""
         banner = ["Connection timed out during banner exchange", "kex_exchange_identification: read: Connection reset by peer", "kex_exchange_identification: Connection closed by remote host"]
         for message in banner:
-            self.assertEqual(self._run([message] * 3), ("STORE_SSH_BANNER", 3), message)
-        self.assertEqual(self._run(["ssh: connect to host h port 22: Connection timed out"] * 3), ("STORE_SSH_TCP_TIMEOUT", 3))
-        self.assertEqual(self._run(["No route to host"] * 3), ("STORE_SSH_NETWORK", 3))
+            self.assertEqual(self._run([message] * ATTEMPTS), ("STORE_SSH_BANNER", ATTEMPTS), message)
+        self.assertEqual(self._run(["ssh: connect to host h port 22: Connection timed out"] * ATTEMPTS), ("STORE_SSH_TCP_TIMEOUT", ATTEMPTS))
+        self.assertEqual(self._run(["No route to host"] * ATTEMPTS), ("STORE_SSH_NETWORK", ATTEMPTS))
 
     def test_every_failed_attempt_logs_its_fixed_code_and_nothing_else(self):
         import contextlib
         import io
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            self._run(["Connection timed out during banner exchange", "ssh: connect to host h port 22: Connection timed out", "Connection timed out during banner exchange"])
-        self.assertEqual(err.getvalue().splitlines(), ["store: attempt 1 of 3 STORE_SSH_BANNER", "store: attempt 2 of 3 STORE_SSH_TCP_TIMEOUT", "store: attempt 3 of 3 STORE_SSH_BANNER"])
+            self._run(["Connection timed out during banner exchange", "ssh: connect to host h port 22: Connection timed out", "Connection timed out during banner exchange", "Network is unreachable"])
+        self.assertEqual(err.getvalue().splitlines(), ["store: attempt 1 of 4 STORE_SSH_BANNER", "store: attempt 2 of 4 STORE_SSH_TCP_TIMEOUT", "store: attempt 3 of 4 STORE_SSH_BANNER", "store: attempt 4 of 4 STORE_SSH_NETWORK"])
 
     def test_an_auth_or_host_key_error_is_never_retried(self):
         self.assertEqual(self._run(["Permission denied (publickey)."]), ("STORE_SSH_AUTH", 1))

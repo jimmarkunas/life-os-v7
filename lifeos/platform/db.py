@@ -14,7 +14,7 @@ FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
           "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")
 DB_REMOTE = "127.0.0.1:3306"
 TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_SSH_BANNER", "STORE_SSH_TCP_TIMEOUT", "STORE_DB_CONNECT_FAILED")
-RETRY_WAITS = (0, 4, 12)         # seconds before attempt 1, 2, 3: a Hostinger network blip (D92) must not fail a whole stage; auth and host-key errors are never retried
+RETRY_WAITS = (0, 4, 12, 30)     # seconds before attempts 1-4: a Hostinger network blip (D92; on 2026-10-17 a 36 s window was too short and lost a whole lane) must not fail a stage; auth and host-key errors are never retried
 
 
 class StoreError(RuntimeError):
