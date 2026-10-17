@@ -58,9 +58,13 @@ class Screen(unittest.TestCase):
                  ("Senior Project Manager", "Austin/Remote within the US", None, "kept_remote_in_location"),
                  ("Technical Program Manager", "New York, NY", remote_jd, "kept_remote_in_description"),
                  ("Technical Program Manager", "United States", remote_jd, "kept_remote_in_description"),
-                 ("TPM", "United States", "Lead programs across teams.", "work_mode_unknown"),        # a market is not remote evidence
-                 ("Technical Program Manager", "Austin, Texas, United States", None, "work_mode_unknown"),
-                 ("Program Manager", "Hybrid - Remote, US", None, "not_remote_hybrid"),
+                 ("TPM", "United States", "Lead programs across teams.", "kept_remote_assumed"),      # D204: nothing required: presumed, labelled so
+                 ("Technical Program Manager", "Austin, Texas, United States", None, "kept_remote_assumed"),
+                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed_place_unresolved"),
+                 ("Program Manager", "Hybrid - Remote, US", None, "kept_remote_in_location"),                 # remote offered alongside hybrid
+                 ("Program Manager", "New York, NY", "This is a hybrid role: 3 days a week in our office.", "not_remote_hybrid"),
+                 ("Program Manager", "Seattle, WA", "There is no onsite requirement for this role.", "kept_remote_assumed"),
+                 ("Program Manager", "Algiers, Algeria", None, "non_us"), ("Program Manager", "Remote | North America or Europe", None, "kept_remote_in_location_place_unresolved"),
                  ("Program Manager", "Seattle, WA", "This role is onsite five days a week.", "not_remote_onsite"),
                  ("Project Manager", "Remote - Colombia", remote_jd, "non_us"),
                  ("Program Manager", "Remote - EMEA", None, "non_us"),
@@ -184,7 +188,7 @@ class StillListedIsNotRemoved(unittest.TestCase):
         db = JobsDB()
         board = [{**SOURCES[0], "id": "gh-still", "slug": "still"}]
         listings = [lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager"), job(2, "Program Manager")]),
-                    lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager", "Seattle, WA"), job(2, "Program Manager")]),   # job 1 still listed, no longer remote-shown
+                    lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager", "London, UK"), job(2, "Program Manager")]),    # job 1 still listed, now screened out (non_us)
                     lister.Listing(lister.COMPLETE, [job(2, "Program Manager")])]                                                  # job 1 gone from the board
         state = lambda: dict(db.raw.execute("SELECT provider_job_id, state FROM v7_source_items WHERE source_id='gh-still'").fetchall())
         with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"):

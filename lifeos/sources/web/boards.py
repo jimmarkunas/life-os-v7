@@ -57,23 +57,58 @@ PLACELESS = re.compile(r"^\W*(?:fully\W+)?(?:remote|anywhere|worldwide|global)(?
 WHOLE_US = re.compile(r"^\W*(?:united states(?: of america)?|usa?|u\.s\.(?:a\.)?)\W*$", re.I)                                        # the country, no city
 
 
+# Geography (D204 review): a place is non-US only when it NAMES somewhere outside the US and nothing in it is US; a US city without a state code,
+# or a place that names nothing, is not proof of anything either way: it is kept as `unresolved`, never promoted to verified US.
+NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|nairobi|south africa|morocco|tunisia|saudi|riyadh|dubai|uae|qatar|turkey|istanbul|"
+                          r"pakistan|karachi|lahore|bangladesh|dhaka|sri lanka|china|shanghai|beijing|shenzhen|hong kong|taiwan|taipei|korea|seoul|vietnam|hanoi|"
+                          r"ho chi minh|thailand|bangkok|indonesia|jakarta|malaysia|kuala lumpur|colombia|bogot[a\u00e1]|argentina|buenos aires|brazil|s[a\u00e3]o paulo|"
+                          r"chile|santiago|peru|lima|costa rica|ecuador|nicaragua|uruguay|guatemala|mexico|latam|latin america|emea|apac|europe|asia|africa|middle east|"
+                          r"greece|athens|piraeus|lithuania|vilnius|latvia|riga|estonia|tallinn|romania|bucharest|bulgaria|sofia|serbia|belgrade|croatia|zagreb|"
+                          r"hungary|budapest|czech|prague|slovakia|slovenia|austria|vienna|switzerland|zurich|geneva|belgium|brussels|luxembourg|frankfurt|"
+                          r"düsseldorf|dusseldorf|hamburg|cologne|denmark|copenhagen|sweden|stockholm|norway|oslo|finland|helsinki|italy|milan|rome|"
+                          r"noida|gurgaon|gurugram|chennai|delhi|kolkata|phl|nepal|new zealand|auckland)\b", re.I)
+US_NAMED = re.compile(r"\b(nyc|new york|san francisco|bay area|los angeles|chicago|seattle|boston|austin|denver|atlanta|alabama|alaska|arizona|arkansas|california|"
+                      r"colorado|connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|"
+                      r"minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|north carolina|north dakota|ohio|oklahoma|oregon|"
+                      r"pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)\b", re.I)
+
+
+INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)     # a region that may include the US: unresolved, never non-US
+
+
+def geography(where):
+    """us | non_us | unresolved, from the place text alone."""
+    where = where or ""
+    us = US.search(where) or suppress.US.search(where) or WHOLE_US.match(where) or US_NAMED.search(where)
+    if not us and INCLUDES_US.search(where):
+        return "unresolved"
+    if not us and (lanes.market_of(where) in ("UK", "OTHER") or suppress.NON_US.search(where) or NON_US_NAMED.search(where)):
+        return "non_us"
+    return "us" if us or PLACELESS.match(where) else "unresolved"
+
+
 def screen(job):
-    """One named reason per listed job; a job is stored only when it starts with "kept_". The title must be a plausible role (`role`). Remote must be SHOWN, by the place or title or by an
-    explicit statement in the description (lanes.detect_work_mode); a bare "United States" is a market, not remote evidence, so it is
-    `work_mode_unknown`. Geography: a US place, the whole US, or plain remote. Last, the web pass's own cheap suppression (age is no reason)."""
+    """One named reason per listed job; a job is stored only when it starts with "kept_". The title must be a plausible role (`role`). D204: a US job is presumed workable remotely unless the employer
+    requires office attendance (lanes.detect_work_mode reads only mandatory words); kept jobs say which: remote stated in the place/title or the
+    description, or `kept_remote_assumed`. Geography: `geography` (a named non-US place
+    excludes; an unnamed one is kept as `_place_unresolved`). Last, the web pass's own cheap suppression (age is no reason)."""
     title, where, text = job["title"], job["location"] or "", job.get("content") or ""
     tier, why = role(title)
     if not tier:
         return "title_" + why
-    if not (US.search(where) or suppress.US.search(where) or WHOLE_US.match(where) or PLACELESS.match(where)):
+    place = geography(where)
+    if place == "non_us":
         return "non_us"
+    tail = "_place_unresolved" if place == "unresolved" else ""
     mode = lanes.detect_work_mode(where, title, text)
-    if mode != "remote":
-        return "work_mode_unknown" if mode == "unknown" else "not_remote_" + mode
+    if mode in ("onsite", "hybrid"):
+        return "not_remote_" + mode                           # D204: only an employer requirement excludes
     why = suppress.reason(job, None, LANE, first_party=True)
     if why:
         return "suppressed_" + why
-    return "kept_remote_in_location" if lanes.detect_work_mode(where, title) == "remote" else "kept_remote_in_description"
+    if mode == "unknown":                                     # D204: nothing required either way: remote presumed, kept apart from stated remote
+        return "kept_remote_assumed" + tail
+    return ("kept_remote_in_location" if lanes.detect_work_mode(where, title) == "remote" else "kept_remote_in_description") + tail
 
 
 def keep(job):

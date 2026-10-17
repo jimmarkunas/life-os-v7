@@ -75,6 +75,7 @@ class Facts:
     fit: int | None                      # professional Fit, None = unscorable
     market: str | None = None            # "US" | "UK" | None (unknown)
     work_mode: str = "unknown"           # remote | hybrid | onsite | unknown
+    work_evidence: str | None = None     # D204: the employer's words that require office attendance
     pay_min: int | None = None           # annual minimum, in `pay_currency`, only when explicit
     pay_currency: str | None = None
     posted: date | None = None
@@ -116,10 +117,8 @@ def _qualify(policy, facts, today):
     if facts.fit is not None and facts.fit < REVIEW_FLOOR and not facts.kept:
         return Decision(EXCLUDE, f"Fit {facts.fit} below {REVIEW_FLOOR}")
     if policy.work_mode == "remote_only":
-        if facts.work_mode == "unknown":
-            return Decision(REVIEW, "work mode unresolved")
-        if facts.work_mode != "remote":
-            return Decision(EXCLUDE, "not remote")
+        if facts.work_mode in ("onsite", "hybrid"):                    # D204: only a requirement excludes; its words are the evidence
+            return Decision(EXCLUDE, f"not remote: {facts.work_mode} required" + (f' ("{facts.work_evidence[:40]}")' if facts.work_evidence else ""))
     if (policy.pay_floor and facts.pay_min is not None and facts.pay_currency == policy.currency
             and facts.pay_min < policy.pay_floor):
         return Decision(EXCLUDE, f"explicit pay below {policy.currency}{policy.pay_floor:,}")
@@ -148,7 +147,7 @@ def _qualify(policy, facts, today):
         return Decision(REVIEW, "Fit unscorable")
     if facts.fit < FIT_FLOOR:
         return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}" + (" (on Jim's keep list)" if facts.kept else ""))
-    return Decision(ADMIT)
+    return Decision(ADMIT, "remote assumed" if policy.work_mode == "remote_only" and facts.work_mode == "unknown" else None)     # D204: kept apart from stated remote
 
 
 def qualify_all(facts, today, policies=POLICIES, own=None):
@@ -180,24 +179,57 @@ def parse_pay(text):
     return best if best else (None, None)
 
 
-def detect_work_mode(location, title="", text="", window=1500):
-    """remote | hybrid | onsite | unknown. The location and title decide; the description only confirms explicit statements (in its first `window` characters)."""
-    head = f"{location or ''} {title or ''}".lower()
-    body = (text or "")[:window].lower()
-    if re.search(r"\bhybrid\b", head) or re.search(r"\bhybrid (?:role|work|schedule|position)\b|\bdays? (?:a|per) week in (?:the )?office", body):
-        return "hybrid"
-    if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head):
-        return "remote"
-    if re.search(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|virtual)[- ]first\b|\bwork from anywhere\b|\bthis is a remote (?:role|position)\b|"
-                 r"\bremote\b[^.\n]{0,40}\b(?:based|located|living|anywhere) in (?:the )?(?:continental )?(?:us|u\.s\.|usa|united states)\b|"
-                 r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", body):
-        return "remote"                         # D202 review: "Remote but must be based in the continental US" (SpruceID) is an explicit statement
-    tag = re.search(r"#li-(remote|hybrid|onsite)\b", (text or "").lower())      # the recruiter's own LinkedIn tag, usually the last line (Dave): read anywhere
+# D204 (Jim, Oct 17): a US job is presumed workable remotely unless the employer REQUIRES office attendance. Only mandatory statements count;
+# a negated or optional mention ("no onsite requirement", "optional office access", "occasional travel to our office") is not a requirement.
+_NEGATED = re.compile(r"\b(?:not|no|never|isn't|aren't|without|optional|optionally|occasional|occasionally|if you prefer|flexibility to)\b[^.;\n]{0,30}$", re.I)
+_HYBRID_REQ = re.compile(r"\bhybrid (?:role|work|schedule|position|model|arrangement|working)\b|"
+                         r"\b(?:\d|one|two|three|four)\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:the |our |an? )?(?:office|hq|headquarters|studio|campus)\b|"
+                         r"\b(?:in[- ]office|on-?site)\s+(?:\d|one|two|three|four)\s+days?\b", re.I)
+_ONSITE_REQ = re.compile(r"\b(?:must|required to|requires you to|expected to|will need to|need to)\s+(?:be\s+|work\s+|report\s+)?(?:on-?site|in[- ]office|in (?:the|our) office|(?:from|at|in) (?:the|our) (?:office|hq|headquarters|campus))\b|"
+                         r"\bthis (?:is an? |role is |position is )(?:an? )?(?:on-?site|in[- ]office|office[- ]based)\b|"
+                         r"\b(?:fully|100%|five days)\s+(?:on-?site|in[- ]office|in the office)\b|\b(?:on-?site|in[- ]office|office[- ]based)\s+(?:role|position|job)\b|"
+                         r"\b(?:not|isn't) (?:a )?remote (?:role|position|job)\b|\bremote work is not (?:available|possible|offered)\b", re.I)
+_REMOTE_STATED = re.compile(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|virtual)[- ]first\b|\bwork from anywhere\b|\bthis is a remote (?:role|position)\b|"
+                            r"\bremote\b[^.\n]{0,40}\b(?:based|located|living|anywhere) in (?:the )?(?:continental )?(?:us|u\.s\.|usa|united states)\b|"
+                            r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", re.I)
+
+
+def _required(pattern, text):
+    """The first mandatory (not negated, not optional) match of `pattern` in `text`, else None."""
+    for m in pattern.finditer(text):
+        if not _NEGATED.search(text[max(0, m.start() - 40):m.start()]):
+            return m.group(0)
+    return None
+
+
+def work_mode_evidence(location, title="", text="", window=1500):
+    """(remote | hybrid | onsite | unknown, the employer's own words or None). "unknown" means nothing is required either way: remote is presumed
+    (D204), never stated. Order: a required hybrid schedule; the employer's place/title (remote wins when offered alongside hybrid); an explicit
+    remote statement; the recruiter's #LI- tag (read anywhere: it is usually the last line); a required office attendance."""
+    head = f"{location or ''} {title or ''}"
+    body = (text or "")[:window]
+    found = _required(_HYBRID_REQ, body)
+    if found:
+        return "hybrid", found
+    if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head, re.I):
+        return "remote", None
+    for mode, rx in (("hybrid", r"\bhybrid\b"), ("onsite", r"\bon-?site\b|\bin[- ]office\b")):
+        hit = re.search(rx, head, re.I)
+        if hit and not _NEGATED.search(head[:hit.start()][-40:]):
+            return mode, hit.group(0)
+    found = _REMOTE_STATED.search(body)
+    if found:
+        return "remote", None
+    tag = re.search(r"#li-(remote|hybrid|onsite)\b", text or "", re.I)
     if tag:
-        return tag.group(1)
-    if re.search(r"\bon-?site\b|\bin[- ]office\b|\bonsite\b", head + " " + body):
-        return "onsite"
-    return "unknown"
+        return tag.group(1).lower(), tag.group(0) if tag.group(1).lower() != "remote" else None
+    found = _required(_ONSITE_REQ, body)
+    return ("onsite", found) if found else ("unknown", None)
+
+
+def detect_work_mode(location, title="", text="", window=1500):
+    """remote | hybrid | onsite | unknown (work_mode_evidence without the words)."""
+    return work_mode_evidence(location, title, text, window)[0]
 
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
@@ -266,10 +298,8 @@ _CITY_STATE = re.compile(r"^\s*[A-Za-z][A-Za-z .'-]*,\s*[A-Z]{2}\b")
 
 
 def work_mode_for_fit(location, title, text):
-    """detect_work_mode, then (Fit stage only, D89): a named US city and state with no remote, hybrid or office cue anywhere is an office job.
-    Acquisition filters keep the plain detector, which never guesses."""
-    mode = detect_work_mode(location, title, text, window=FIT_WINDOW)
-    return "onsite" if mode == "unknown" and _CITY_STATE.match(location or "") else mode
+    """detect_work_mode over the Fit window (D92). D89's rule that a named US city and state with no cue is an office job is withdrawn by D204."""
+    return detect_work_mode(location, title, text, window=FIT_WINDOW)      # D204: a named city with no office requirement is no longer read as office
 
 
 def first_party_source(source):
@@ -282,7 +312,8 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
-    return Facts(fit=fit, market=market or market_of(location), work_mode=work_mode_for_fit(location, title, text), pay_min=pay_min,
+    mode, evidence = work_mode_evidence(location, title, text, window=FIT_WINDOW)
+    return Facts(fit=fit, market=market or market_of(location), work_mode=mode, work_evidence=evidence, pay_min=pay_min,
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only)
 
 
