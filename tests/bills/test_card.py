@@ -156,8 +156,13 @@ class WriteTests(unittest.TestCase):
 
     def test_stale_snapshot_is_written_as_stale(self):
         notion = BillsRegions()
-        card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))
-        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 4 5:00 AM CT"))
+        card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-02T05:00:00-05:00")))      # more than a day old: a missed daily cycle
+        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("STALE · last accepted Oct 2 5:00 AM CT"))
+
+    def test_a_snapshot_a_few_hours_old_is_still_current_because_bills_are_paid_about_daily(self):
+        notion = BillsRegions()
+        card.run(0, True, environ=ENV, client=notion, now=NOW, connect=lambda: BillsSnapshotDB(saved(STALE_FOUR, "2026-10-04T05:00:00-05:00")))      # 7.5 hours old
+        self.assertTrue(card._plain(notion.children["bills-callout"][1]).startswith("Updated 5:00 AM CT"))
 
     def test_tracker_link_is_preserved_and_wrong_target_refuses_before_writing(self):
         notion = BillsRegions()
