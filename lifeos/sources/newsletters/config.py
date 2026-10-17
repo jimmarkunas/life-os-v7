@@ -8,7 +8,8 @@ FINALIZE_QUERY = "label:j-newsletters-processed -label:j-newsletters-done newer_
 # Gmail search syntax flattens nested label names; pending = in the folder, not yet Processed.
 RECONCILE_QUERY = "label:j-newsletters-processed {from:jobright.ai from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com} newer_than:5d"   # every live Gmail rule in SENDER_RULES (not the retired ones)
 REOPEN_QUERY = "label:j-newsletters-done newer_than:5d"
-PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed"
+RETIRED_LABEL = "J Newsletters/Retired"                # D201: a retired sender's mail: closed unread, never Processed (Processed means every card was saved)
+PENDING_QUERY = "label:j-newsletters -label:j-newsletters-processed -label:j-newsletters-retired"
 
 # (name, regex matched against the bare lowercase sender address). Order is irrelevant.
 SENDER_RULES = (
@@ -19,7 +20,8 @@ SENDER_RULES = (
     # is deliberately absent: recruiter mail is human outreach.
 )
 
-# D201: senders whose mail is still swept out of the inbox but no longer read for jobs. Their mail is marked Processed at once with this reason; no card is parsed.
+# D201: senders whose mail is still swept out of the inbox but no longer read for jobs. Their mail gets RETIRED_LABEL at once with this count; no
+# card is parsed, and it is never marked Processed, so finalize, reconcile and repair never see it.
 RETIRED_SENDERS = {"lensa": "retired_sender_lensa"}
 
 # Gmail does the sender matching server-side: one search per rule, no per-message fetches.

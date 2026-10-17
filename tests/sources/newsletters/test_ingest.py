@@ -92,17 +92,29 @@ class ExtractTests(unittest.TestCase):
 
 
 class RetiredSenderTests(unittest.TestCase):
-    """D201: Lensa mail still leaves the inbox, but it is closed out at once as retired_sender_lensa: no card is parsed, no job is written, and it never holds a pending slot."""
+    """D201: Lensa mail still leaves the inbox, but it is closed out at once with its own Retired label (count retired_sender_lensa): no card is parsed, no job is written, and it never holds a pending slot."""
     def test_a_dry_run_counts_lensa_mail_as_retired_and_writes_nothing(self):
         gmail = FakeGmail(messages=MESSAGES)
         counts = ingest.extract(gmail, live=False, limit=10)
         self.assertEqual((counts["retired_sender_lensa"], counts["messages"], counts["cards"], counts["unsupported_sender"]), (1, 0, 0, 1))
         self.assertEqual(gmail.calls, [])
 
-    def test_live_marks_lensa_mail_processed_without_reading_a_card_or_writing_a_job(self):
-        gmail, (conn, db) = FakeGmail(messages=MESSAGES), store_double()
-        counts = ingest.extract(gmail, True, 10, conn)
-        self.assertEqual((counts["retired_sender_lensa"], counts["new_jobs"], counts["marked_processed"], len(db["jobs"])), (1, 0, 1, 0))
+    def test_live_labels_lensa_mail_retired_never_processed_and_finalize_never_sees_it(self):
+        """Over the stateful mailbox and the real store: Processed means every card was saved (finalize then closes it Done), so retired mail
+        must carry its own label instead, leave the pending query, and stay out of finalize, reconcile and the repair."""
+        from lifeos.sources.newsletters import finalize
+        from tests.jobs.test_newsletter_golden_path import Mailbox
+        from tests.kit.jobsdb import JobsDB
+        box, db = Mailbox({"l1": (MESSAGES["m1"][0], HTML, time.time() - 60)}), JobsDB()
+        box.labels["l1"].add("j-newsletters")
+        counts = ingest.extract(box, True, 10, db)
+        self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"], counts["new_jobs"]), (1, 1, 0, 0))
+        self.assertEqual(box.labels["l1"] & {"j-newsletters-retired", "j-newsletters-processed", "j-newsletters-done"}, {"j-newsletters-retired"})
+        self.assertEqual(box.list_ids(config.PENDING_QUERY), [])                   # it holds no pending slot on the next run
+        self.assertEqual((box.list_ids(config.FINALIZE_QUERY), box.list_ids(config.RECONCILE_QUERY)), ([], []))
+        self.assertEqual(ingest.extract(box, True, 10, db)["marked_retired"], 0)    # a second run finds nothing to do
+        finalize.finalize(box, True, 10, lambda: db)
+        self.assertNotIn("j-newsletters-done", box.labels["l1"])
 
     def test_lensa_is_no_longer_reconciled(self):
         self.assertNotIn("lensa", config.RECONCILE_QUERY)
