@@ -16,6 +16,7 @@ TZ = ZoneInfo("America/Chicago")
 TITLE = router.DCC_REGION
 MODULE = router.OWNERS[TITLE]
 FRESH_MINUTES = 90                                        # V7's own daily check uses the same figure
+DAILY = ("Bills",)                                       # cards on a daily rhythm: their own STALE or DEGRADED line decides, never this clock
 STAMP = re.compile(r"Updated (\d{1,2}):(\d{2}) ([AP]M) CT")
 TIME = re.compile(r"(\d{1,2}):(\d{2}) ([AP]M) CT")          # the clock in a DEGRADED or STALE line ("failed at 10:05 PM CT")
 # (label, block id secret, where the status text is). "head": the callout's heading carries it; "line": the first text line under the heading; "own": the callout's own text (the headless Attention callout, D131);
@@ -89,7 +90,7 @@ def read_areas(client, environ):
     return out
 
 
-def classify(area, now):
+def classify(area, now, label=None):
     """-> (state, "H:MM AM" stamp or None). state: fresh | stale | degraded | unknown | unreadable | unset."""
     if area.get("unset"):
         return "unset", None
@@ -105,6 +106,8 @@ def classify(area, now):
     found = STAMP.search(text)
     if not found:
         return "unknown", None
+    if label in DAILY:
+        return "fresh", stamp
     hour = int(found.group(1)) % 12 + (12 if found.group(3) == "PM" else 0)
     at = now.replace(hour=hour, minute=int(found.group(2)), second=0, microsecond=0)
     if at > now:
@@ -120,7 +123,7 @@ def _number(text, pattern):
 def compose(areas, now):
     """-> the callout's content as plain data (the approved native layout, LIFE-57). Pure. A count is shown only from a card that is current: a stale, degraded or unreadable card shows
     its own state in place of a number, never a zero."""
-    states = {label: classify(area, now) for label, area in areas.items()}
+    states = {label: classify(area, now, label) for label, area in areas.items()}
     ok, bad = [l for l, (state, _) in states.items() if state == "fresh"], [(l, state) for l, (state, _) in states.items() if state != "fresh"]
 
     def source(label):
@@ -200,7 +203,7 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     areas = read_areas(client, environ)
     if not any("status" in area for area in areas.values()):
         raise _fail("NO_EVIDENCE")                         # nothing could be read: say nothing rather than write an empty summary
-    by_area = {label: classify(area, now)[0] for label, area in areas.items()}
+    by_area = {label: classify(area, now, label)[0] for label, area in areas.items()}
     states = list(by_area.values())
     spec = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}

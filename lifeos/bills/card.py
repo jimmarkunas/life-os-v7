@@ -16,7 +16,7 @@ from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import snapshot as bills_snapshot, state
 
 TZ = ZoneInfo(bills_snapshot.LOCAL_TZ)
-STALE_HOURS = 3
+STALE_HOURS = 26                                  # bills are paid about once a day, so a snapshot is stale only after a missed daily cycle, not after a missed hourly tick
 WINDOW_DAYS = 8                                  # [today, today + 7]: today through one week from now, 8 calendar dates inclusive
 CARD_TITLE = router.BILLS_REGION
 MODULE = router.OWNERS[CARD_TITLE]

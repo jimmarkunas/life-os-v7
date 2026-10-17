@@ -78,6 +78,14 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(card.classify({"status": "Updated 12:05 AM CT · x"}, datetime(2026, 10, 12, 0, 30, tzinfo=TZ))[0], "fresh")
         self.assertEqual(card.classify({"status": "Calendar (Updated 10:06 PM CT)"}, NOW)[0], "fresh")
 
+    def test_a_daily_card_is_not_stale_for_missing_the_hourly_clock_but_its_own_stale_line_still_counts(self):
+        old = {"status": "Updated 8:49 PM CT · x"}                                                              # 91 minutes: stale for an hourly card
+        self.assertEqual(card.classify(old, NOW, "Jira")[0], "stale")
+        self.assertEqual(card.classify(old, NOW, "Bills"), ("fresh", "8:49 PM"))
+        self.assertEqual(card.classify({"status": "STALE · last accepted Oct 11 9:44 AM CT"}, NOW, "Bills")[0], "stale")
+        self.assertEqual(card.classify({"status": "DEGRADED · Bills failed at 10:05 PM CT"}, NOW, "Bills")[0], "degraded")
+        self.assertEqual(card.classify({"status": "no stamp here"}, NOW, "Bills"), ("unknown", None))
+
     def test_degraded_stale_missing_and_unreadable_are_never_fresh(self):
         self.assertEqual(card.classify({"status": "DEGRADED · Attention sync failed at 10:05 PM CT · showing the last accepted exceptions"}, NOW), ("degraded", "10:05 PM"))
         self.assertEqual(card.classify({"status": "STALE · last accepted Oct 11 9:44 AM CT"}, NOW)[0], "stale")
