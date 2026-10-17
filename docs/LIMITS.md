@@ -18,6 +18,7 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 | GitHub Actions | | hourly cron; 30-minute job ceiling; single concurrency group | Variables are NOT masked in logs: every setting is a secret; logs carry counts only |
 
 ## Known provider facts (measured, not assumed)
+- Employer boards (D202): about 10,500 Greenhouse, Ashby and Lever boards from the Open Jobs board list plus the extras. 600 due boards per run on 4 workers (measured: 600 real boards in 65 s, no 429); a board with no target job is read once a day, one with a target every 6 hours; 100 admissions per run; three 429 answers from one ATS stop reading it for the run (`skipped_after_rate_limit_429`). Board failures are named: `blocked_403`, `rate_limited_429`, `not_found`, `http_<status>`, `network`, `bad_json`, `bad_shape`.
 - Lensa job pages returned 403 to GitHub's datacenter addresses even in a real browser (measured before D200), and the D200 follow confirmed it (Oct 17 tick: 1 blocked, 23 stopped). Lensa answers datacenter addresses with a Cloudflare challenge page; a home connection passes. Lensa is retired (D201).
 - LinkedIn's external-apply destination is behind a login wall; V7 resolves those jobs by matching the employer's board.
 - Jobright's free tier opens an upgrade dialog on the Apply click; the employer link is the page's "Original Job Post" anchor.

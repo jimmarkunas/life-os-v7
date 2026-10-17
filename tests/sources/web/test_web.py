@@ -40,7 +40,7 @@ class Listing(unittest.TestCase):
         self.assertEqual(lister.list_board("greenhouse", "x", fetcher({"boards-api": (200, {"jobs": []})})).status, lister.COMPLETE)
 
     def test_failures_are_never_zero(self):
-        for status, body, why in ((429, "", "rate_limited"), (403, "", "rate_limited"), (404, "", "not_found"), (500, "", "http_500"),
+        for status, body, why in ((429, "", "rate_limited_429"), (403, "", "blocked_403"), (404, "", "not_found"), (500, "", "http_500"),
                                   (200, "{not json", "bad_json"), (200, {"nope": 1}, "bad_shape")):
             got = lister.list_board("greenhouse", "x", fetcher({"boards-api": (status, body)}))
             self.assertEqual((got.status, got.jobs, got.reason), (lister.FAILED, [], why), status)
@@ -284,7 +284,7 @@ class Teamtailor(unittest.TestCase):
 
     def test_empty_board_is_complete_but_a_blocked_or_odd_feed_is_not(self):
         self.assertEqual((self.read(200, '<rss><channel><title>x</title></channel></rss>').status, ), ("COMPLETE",))
-        self.assertEqual(self.read(403, "").reason, "rate_limited")
+        self.assertEqual(self.read(403, "").reason, "blocked_403")
         self.assertEqual(self.read(200, "<html>").reason, "bad_xml")
         self.assertEqual(self.read(200, "<rss></rss>").reason, "bad_shape")
         self.assertEqual(self.read(200, '<!DOCTYPE x [<!ENTITY a "b">]><rss><channel/></rss>').reason, "bad_shape")

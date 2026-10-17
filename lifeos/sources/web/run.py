@@ -56,13 +56,14 @@ def unforced(states, sources, force):
     return {k: v for k, v in states.items() if k not in hit}
 
 
-def next_due(source_id, now, complete, failures, pending):
+def next_due(source_id, now, complete, failures, pending, hours=None):
+    hours = hours or limits.WEB_REFRESH_HOURS                           # D202: a seed board carries its own refresh
     if pending:
         return now                                                      # a backlog drains on the next run
     if complete:
         slot = int(sha1(source_id.encode()).hexdigest()[:6], 16) % 60   # spread boards across the hour
-        return now + timedelta(hours=limits.WEB_REFRESH_HOURS, minutes=slot)
-    return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, limits.WEB_REFRESH_HOURS))
+        return now + timedelta(hours=hours, minutes=slot)
+    return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, hours))
 
 
 def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
@@ -141,6 +142,8 @@ class SqlRepo:
                                            [(now, sid, i) for i in o.removed])
             with connection.cursor() as cursor:
                 complete = o.status == "COMPLETE"
+                c = o.counts
+                quiet = complete and o.source.get("quiet") and not any(c.get(k) for k in ("added", "changed", "removed", "admit"))
                 cursor.execute(
                     "INSERT INTO v7_sources (source_id, kind, due_at, last_status, last_reason, last_complete_at, frontier_hash, failures)"
                     " VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE due_at=VALUES(due_at), last_status=VALUES(last_status),"
@@ -148,7 +151,8 @@ class SqlRepo:
                     " frontier_hash=COALESCE(VALUES(frontier_hash), frontier_hash), failures=VALUES(failures)",
                     (sid, o.source["kind"], o.due_at, o.status, o.reason, now if complete else None, o.frontier,
                      0 if complete else failures + 1))
-                c = o.counts
+                if quiet:
+                    return                                           # D202: a seed board read with nothing new writes no run row (v7_sources keeps its status)
                 cursor.execute(
                     "INSERT INTO v7_source_runs (source_id, ran_at, status, reason, added, changed, unchanged, removed, suppressed, ingested)"
                     " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -161,7 +165,7 @@ class SqlRepo:
         provider = PROVIDER.get(source["kind"], "Open Jobs")
         with connection.cursor() as cursor:
             key, is_new = intake.add_job(cursor, {
-                "url": job["url"], "status": "RESOLVED", "title": job["title"], "company": source["company"],
+                "url": job["url"], "status": "RESOLVED", "title": job["title"], "company": job.get("company") or source["company"],
                 "location": job["location"], "salary": None, "source": "web:" + source["id"], "provider": provider, "lane": lane,
                 "age_days": (now.date() - job["posted"]).days if job["posted"] else None, "received": now, "provider_score": None,
                 "posted": job["posted"]}, now)
@@ -190,7 +194,9 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE):
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, keep=None, workers=None):
+    """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `keep` (a job test applied to a COMPLETE
+    listing before the diff, so only possible targets are stored)."""
     now = now or _now()
     sources = sources if sources is not None else registry.for_lane(lane)
     if lane == "Scale-Up":
@@ -202,17 +208,25 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
     states = unforced(states, sources, os.environ.get("WEB_FORCE"))
-    due = pick_due(sources, states, now, min(limit, limits.WEB_BOARDS_PER_RUN))
+    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN))
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": []}
-    with ThreadPoolExecutor(max_workers=limits.ATS_WORKERS) as pool:               # different hosts: no shared limit
+    with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers
         listings = list(pool.map(lister_fn, due))
-    budget = limits.WEB_INGEST_PER_RUN
+    budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
+    if keep:
+        counts["not_kept"] = 0
     for source, listing in zip(due, listings):
+        if keep and listing.status == lister.COMPLETE:
+            kept = [j for j in listing.jobs if keep(j)]
+            counts["not_kept"] += len(listing.jobs) - len(kept)
+            listing = lister.Listing(lister.COMPLETE, kept)
         previous = repo.items(source["id"])
         outcome = plan(source, listing, previous, now, budget, lane)
         failures = states.get(source["id"], {}).get("failures", 0)
-        outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending)
+        hot = previous or outcome.items                                  # D202: a board that lists a target job is read more often
+        outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
+                                  (source.get("hot_hours") if hot else None) or source.get("refresh_hours"))
         if outcome.status == "FAILED":
             counts["failed"] += 1
             counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
