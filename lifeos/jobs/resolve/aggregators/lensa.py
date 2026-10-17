@@ -1,22 +1,68 @@
-"""Lensa rows -> final apply link. Lensa pages are blocked from the runner, so nothing here touches Lensa: the card's
-company / title / location are matched against the employer's public ATS boards, then the free Search API."""
+"""Lensa rows -> final apply link. First V1's mechanic: follow the card's own email tracking link and take the employer page it lands on, or
+the ONE ATS link on the Lensa job page it lands on. Where Lensa blocks the runner (403) or the chain proves nothing, the card's company / title /
+location are matched against the employer's public ATS boards, then the free Search API. A block or 429 stops the follows for the run."""
+import html as htmllib
+import re
+import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlsplit
 
-from lifeos.platform import limits, tinyfish_search
-from lifeos.jobs import lanes
+from lifeos.platform import http, limits, tinyfish_search
+from lifeos.jobs import classify, lanes, quality
 from lifeos.jobs.resolve import ats_match
 from lifeos.jobs.resolve.aggregators import linkedin
 
 TITLE_FIX_AT = datetime(2026, 10, 3, 22, 0)      # UTC: D80 shipped before this; a job that fails again after it is never requeued again
 
 
+HREF = re.compile(r"""href=["']([^"']+)["']""", re.I)
+
+
+def _lensa_host(url):
+    host = classify.host(url)
+    return host == "lensa.com" or host.endswith(".lensa.com")
+
+
+def follow(url):
+    """One card's tracking link -> {'outcome': 'landed', ...} | {'outcome': 'external_hidden', 'redirect': code}. Fixed codes only."""
+    if not url or not _lensa_host(url):
+        return {"outcome": "external_hidden", "redirect": "no_link"}
+    page = http.fetch(url, timeout=limits.LENSA_FOLLOW_TIMEOUT_SECONDS, max_hops=limits.LENSA_FOLLOW_MAX_HOPS, max_bytes=512_000)
+    final = page.final_url or ""
+    if page.status == 0 or page.status in (403, 429):
+        return {"outcome": "external_hidden", "redirect": "blocked" if page.status else "network"}
+    if not _lensa_host(final):                                               # the chain left Lensa: the employer's page itself
+        if page.status == 200 and classify.apply_kind(final) != "aggregator" and not quality.link_problem(final):
+            return {"outcome": "landed", "via": "tracking_redirect", "kind": classify.apply_kind(final), "url": final}
+        return {"outcome": "external_hidden", "redirect": "elsewhere"}
+    if page.status != 200:
+        return {"outcome": "external_hidden", "redirect": "lensa_" + str(page.status)}
+    links = {link for link in (urljoin(final, htmllib.unescape(h)) for h in HREF.findall(page.html or ""))
+             if classify.apply_kind(link) == "ats" and not quality.link_problem(link)}
+    if len(links) == 1:                                                      # exactly one ATS posting on the page (V1 _downstream_candidates, precision first)
+        link = links.pop()
+        return {"outcome": "landed", "via": "lensa_page", "kind": "ats", "url": link}
+    return {"outcome": "external_hidden", "redirect": "lensa_page_" + ("none" if not links else "many")}
+
+
 def make_resolver():
-    """One search budget for the whole run, shared by every batch the stage hands in."""
+    """One search budget for the whole run, shared by every batch the stage hands in. `resolve_rows.redirect` counts what the follows did."""
     budget = {"left": limits.TINYFISH_SEARCH_PER_RUN_LENSA}
     tinyfish_search.solo_after(limits.TINYFISH_SEARCH_SOLO_AFTER_SECONDS)       # LinkedIn's lane is finished by then: use the full 27/min
+    seen, stopped = {}, [False]
 
     def resolve_rows(rows):
-        return linkedin.match_rows(rows, [{"outcome": "external_hidden"} for _ in rows], budget=budget)
+        results = []
+        for row in rows:
+            result = {"outcome": "external_hidden", "redirect": "stopped"} if stopped[0] else follow(row[1])
+            if not stopped[0]:
+                time.sleep(limits.LENSA_FOLLOW_GAP_SECONDS)
+            code = "landed_" + result["via"] if result["outcome"] == "landed" else result.pop("redirect")
+            seen[code] = seen.get(code, 0) + 1
+            stopped[0] = stopped[0] or code == "blocked"
+            results.append(result)
+        return linkedin.match_rows(rows, results, budget=budget)
+    resolve_rows.redirect = seen
     return resolve_rows
 
 

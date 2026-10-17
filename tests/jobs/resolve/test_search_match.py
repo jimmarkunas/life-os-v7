@@ -65,5 +65,50 @@ class OneSearchPerJob(unittest.TestCase):
         self.assertEqual(search.call_args.args[0], "Acme Data senior data engineer careers apply")
 
 
+class DegradedSearchIsNeverAMiss(unittest.TestCase):
+    """A search that failed (429, outage, a 202 or changed answer) is DEGRADED, not "nothing found": the job is not charged an attempt."""
+    def test_a_failed_search_is_degraded_and_pages_that_fail_the_checks_are_no_fit(self):
+        from unittest import mock
+        from lifeos.platform.tinyfish import TinyFishError
+        for code in ("TINYFISH_SEARCH_HTTP_429", "TINYFISH_SEARCH_UNREADABLE", "TINYFISH_SEARCH_NETWORK"):
+            with mock.patch.object(search_match.tinyfish_search, "search", side_effect=TinyFishError(code)):
+                self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("degraded", code.lower()))
+        other = {"url": "https://www.facebook.com/acmedata", "title": "Acme Data", "snippet": ""}
+        with mock.patch.object(search_match.tinyfish_search, "search", return_value=[other]):
+            self.assertEqual(search_match.find("Acme Data", "Senior Data Engineer"), ("miss", "no_fit"))
+
+    def test_an_answer_without_a_results_list_is_unreadable_not_empty(self):
+        import io, json
+        from unittest import mock
+        from lifeos.platform import tinyfish_search
+        from lifeos.platform.tinyfish import TinyFishError
+
+        class Answer(io.BytesIO):
+            def __init__(self, body, status=200):
+                super().__init__(json.dumps(body).encode()); self.status = status
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        with mock.patch.dict("os.environ", {"TINYFISH_API_KEY": "sk-tinyfish-abc"}), mock.patch.object(tinyfish_search, "MIN_GAP_SECONDS", 0), \
+                mock.patch.object(tinyfish_search.limits, "TINYFISH_SEARCH_GAP_SECONDS", 0):
+            for body, status, code in (({"queued": True}, 200, "TINYFISH_SEARCH_UNREADABLE"), ([], 200, "TINYFISH_SEARCH_UNREADABLE"),
+                                       ({"results": []}, 202, "TINYFISH_SEARCH_HTTP_202")):
+                with mock.patch.object(tinyfish_search.urllib.request, "urlopen", return_value=Answer(body, status)):
+                    with self.assertRaises(TinyFishError) as caught:
+                        tinyfish_search.search("acme")
+                    self.assertEqual(str(caught.exception), code)
+            with mock.patch.object(tinyfish_search.urllib.request, "urlopen", return_value=Answer({"results": []})):
+                self.assertEqual(tinyfish_search.search("acme"), [])
+
+    def test_a_degraded_search_is_not_an_attempt_and_stops_the_runs_searches(self):
+        from unittest import mock
+        from lifeos.jobs.resolve.aggregators import linkedin
+        rows = [(1, "u1", "Acme", "PM", ""), (2, "u2", "Globex", "PM", "")]
+        with mock.patch.object(linkedin.ats_match, "match_many", return_value=["no_board", "no_board"]), \
+                mock.patch.object(linkedin.search_match, "find", return_value=("degraded", "tinyfish_search_http_429")) as find:
+            out = linkedin.match_rows(rows, [{"outcome": "external_hidden"}, {"outcome": "external_hidden"}], budget={"left": 5})
+        self.assertEqual([r["outcome"] for r in out], ["rate_limited", "deferred"])
+        self.assertEqual(find.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
