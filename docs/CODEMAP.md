@@ -51,6 +51,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-inspect` -> `lifeos.network.inspect:run`
 - `network-match` -> `lifeos.sources.network_leads:run`
 - `network-surface` -> `lifeos.sources.network_surface:run`
+- `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
 - `openjobs` -> `lifeos.sources.openjobs:run`
 - `oracle-card` -> `lifeos.oraclecloud.card:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
@@ -262,6 +263,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
 - `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
+- `lifeos/sources/newsletters/cardtrace.py`: LIFE-64 live cause check: why a Newsletter message's saved vacancies are fewer than the cards parsed from it. Read-only, counts and fixed codes only.
 - `lifeos/sources/newsletters/config.py`: Phase 1 configuration: which senders are job newsletters and where they go.
 - `lifeos/sources/newsletters/finalize.py`: Stage 4 - finalize: close out a newsletter email only when EVERY job in it has an outcome.
 - `lifeos/sources/newsletters/ingest.py`: Stage 3 - extract: parse job cards out of labeled newsletters into v7_jobs (status NEW).
@@ -292,7 +294,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `amazon.yml`: jobs amazon; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_AMAZON_DATA_SOURCE_ID
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
-- `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
+- `diag.yml`: jobs diag, trace; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
