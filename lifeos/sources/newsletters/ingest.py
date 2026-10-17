@@ -145,15 +145,18 @@ def backfill_dates(gmail, connection):
     return {"backfilled_messages": done, "rows_dated": stale}
 
 
-def reconcile(gmail, connection, limit):
+def reconcile(gmail, connect, limit):
     """Repair (LIFE-64): Processed mail with fewer source rows than cards (marked before a parser fix, or before every card was accounted), for every Gmail sender; then reopen
-    mail labelled Done that now has a vacancy in flight, on hold or unverified. Idempotent: save_cards adds a row only for a (vacancy, message) pair not yet recorded."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT gmail_message_id, COUNT(*) FROM v7_job_sources GROUP BY gmail_message_id")
-        rows = dict(cursor.fetchall())
+    mail labelled Done that now has a vacancy in flight, on hold or unverified. Idempotent: save_cards adds a row only for a (vacancy, message) pair not yet recorded.
+    `connect` opens the store. Reading the mail takes over a minute, so no connection is held while it is read: the first live run lost its idle connection on the first save."""
     counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "suppressed": 0, "still_no_cards": 0,
               "stale_mail": 0, "reopened": 0, "backfilled_messages": 0, "rows_dated": 0}
-    counts.update(backfill_dates(gmail, connection))
+    with connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT gmail_message_id, COUNT(*) FROM v7_job_sources GROUP BY gmail_message_id")
+            rows = dict(cursor.fetchall())
+        counts.update(backfill_dates(gmail, connection))
+    work = []
     for message_id in gmail.list_ids(config.RECONCILE_QUERY, limit=limit):
         sender, html, received = gmail.message(message_id)
         rule = config.classify(sender)
@@ -168,12 +171,15 @@ def reconcile(gmail, connection, limit):
         if not cards:
             counts["still_no_cards"] += 1
             continue
-        if rows.get(message_id, 0) >= len({card.url for card in cards}):       # every card already has its row
-            continue
-        new, _ = save_cards(connection, rule, message_id, cards, received, counts)
-        counts["recovered_messages"] += 1
-        counts["recovered_jobs"] += new
-    held = finalize.blockers(connection, gmail.list_ids(config.REOPEN_QUERY, limit=limit))
+        if rows.get(message_id, 0) < len({card.url for card in cards}):          # fewer rows than cards: a card has no row of its own
+            work.append((rule, message_id, cards, received))
+    done = gmail.list_ids(config.REOPEN_QUERY, limit=limit)
+    with connect() as connection:
+        for rule, message_id, cards, received in work:
+            new, _ = save_cards(connection, rule, message_id, cards, received, counts)
+            counts["recovered_messages"] += 1
+            counts["recovered_jobs"] += new
+        held = finalize.blockers(connection, done)
     if held:
         gmail.relabel(sorted(held), remove=[gmail.label_id(config.DONE_LABEL)])
         counts["reopened"] = len(held)
@@ -194,7 +200,7 @@ def main(argv=None):
                 return 1
             with store.connect() as connection:
                 store.ensure_schema(connection)
-                print("reconcile LIVE:", reconcile(gmail, connection, args.limit))
+            print("reconcile LIVE:", reconcile(gmail, store.connect, args.limit))
             return 0
         if args.live:
             with store.connect() as connection:

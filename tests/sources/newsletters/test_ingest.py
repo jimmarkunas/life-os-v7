@@ -82,10 +82,6 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual((counts["stale_mail"], counts["new_jobs"], counts["marked_processed"]), (1, 0, 1))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class SourceAccountingTests(unittest.TestCase):
     """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
     def world(self, **mails):
@@ -146,10 +142,10 @@ class SourceAccountingTests(unittest.TestCase):
     def test_reconcile_recovers_the_missing_row_of_a_partly_recorded_jobright_mail(self):
         box, db = self.partial_world()
         self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 1))
-        counts = ingest.reconcile(box, db, 50)
+        counts = ingest.reconcile(box, lambda: db, 50)
         self.assertEqual((counts["checked"], counts["recovered_messages"], counts["recovered_jobs"]), (2, 1, 0))
         self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
-        self.assertEqual(ingest.reconcile(box, db, 50)["recovered_messages"], 0)                    # idempotent
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["recovered_messages"], 0)                    # idempotent
 
     def test_reconcile_reopens_done_mail_with_a_vacancy_unfinished_and_leaves_finished_mail_done(self):
         box, db = self.partial_world()
@@ -157,11 +153,39 @@ class SourceAccountingTests(unittest.TestCase):
             labels.add("j-newsletters-done")
         cursor = db.cursor()
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))      # v2 stays NEW: in flight in both mails
-        counts = ingest.reconcile(box, db, 50)
+        counts = ingest.reconcile(box, lambda: db, 50)
         self.assertEqual(counts["reopened"], 2)
         self.assertTrue(all("j-newsletters-done" not in box.labels[i] for i in ("m1", "m2")))
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
         for labels in box.labels.values():
             labels.add("j-newsletters-done")
-        self.assertEqual(ingest.reconcile(box, db, 50)["reopened"], 0)                              # everything finished: stays Done
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["reopened"], 0)                              # everything finished: stays Done
         self.assertTrue(all("j-newsletters-done" in box.labels[i] for i in ("m1", "m2")))
+
+    def test_reconcile_holds_no_connection_while_it_reads_mail(self):
+        """The first live run lost its idle connection: reading the window's mail takes over a minute, so the store is opened only to read the row counts and to write."""
+        box, db = self.partial_world()
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        open_now, read_while_open = [0], []
+
+        class Tracked:
+            def __enter__(self):
+                open_now[0] += 1
+                return db
+
+            def __exit__(self, *exc):
+                open_now[0] -= 1
+                return False
+        real = box.message
+        box.message = lambda message_id: (read_while_open.append(open_now[0]), real(message_id))[1]
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
+        counts = ingest.reconcile(box, Tracked, 50)
+        self.assertEqual((counts["checked"], counts["recovered_messages"], counts["reopened"]), (2, 1, 2))
+        self.assertEqual(read_while_open, [0, 0])                                        # both messages were read with no connection open
+        self.assertEqual(open_now[0], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
