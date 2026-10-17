@@ -255,6 +255,7 @@
    "lifeos/jobs/classify.py": "Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).",
    "lifeos/jobs/enrich.py": "Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.",
    "lifeos/jobs/explain.py": "Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.",
+   "lifeos/jobs/fit/edge.py": "LIFE-60 (Jim's approval, Jira 10361): the dormant V7 side of Oracle's synthetic-only `fit1` verb. The hourly pipeline never imports this; only the manual fit-edge-test wo",
    "lifeos/jobs/fit/exclusions.py": "Step 0: hard exclusions. Generic defaults (lexicon) plus the private profile's own rules.",
    "lifeos/jobs/fit/extract.py": "Job description -> units (a bullet or sentence tagged with its section) and the raw facts the scorer classifies.",
    "lifeos/jobs/fit/judge.py": "Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, c",
@@ -428,6 +429,7 @@
   "expire-holds": "lifeos.jobs.hold:run",
   "explain": "lifeos.jobs.explain:run",
   "fit": "lifeos.jobs.fit.stage:run",
+  "fit-edge-test": "lifeos.jobs.fit.edge:run",
   "fit-review": "lifeos.jobs.review:run",
   "funnel": "lifeos.jobs.funnel:run",
   "hiring": "lifeos.sources.hiring:run",
@@ -605,6 +607,15 @@
     "NOTION_RECRUITERS_DATA_SOURCE_ID",
     "OUTLOOK_CLIENT_ID",
     "V7_CLOSE_BASE_URL"
+   ]
+  },
+  "fit-edge-test.yml": {
+   "jobs": [
+    "fit_edge"
+   ],
+   "manual": true,
+   "secrets": [
+    "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
   "hourly.yml": {
