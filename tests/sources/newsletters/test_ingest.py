@@ -1,4 +1,6 @@
+import time
 import unittest
+from datetime import datetime, timezone
 
 from lifeos.sources.newsletters import ingest
 from lifeos.sources.newsletters.parsers import dice, lensa
@@ -31,7 +33,6 @@ HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><
         '<tr><td>Remote</td></tr></table></a>'
         '<a href="https://email.lensa.com/f/a/J2"><table><tr><td>Globex</td></tr><tr><td>Program Lead</td></tr>'
         '<tr><td>Remote</td></tr></table></a>')
-import time
 NOW = int(time.time())
 MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
             "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW)}
@@ -83,3 +84,51 @@ class ExtractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceAccountingTests(unittest.TestCase):
+    """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
+    def world(self, **mails):
+        from tests.jobs.test_newsletter_golden_path import Mailbox, alert
+        from tests.kit.jobsdb import JobsDB
+        box = Mailbox({i: ("Jobright <alerts@jobright.ai>", alert(*ids), time.time() - 60) for i, ids in mails.items()})
+        for labels in box.labels.values():
+            labels.add("j-newsletters")
+        return box, JobsDB()
+
+    def rows(self, db, message_id):
+        cursor = db.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE gmail_message_id=%s", (message_id,))
+        return cursor.fetchone()[0]
+
+    def test_a_vacancy_repeated_in_a_later_mail_is_accounted_for_that_mail_and_holds_it_open(self):
+        from lifeos.sources.newsletters import finalize
+        box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
+        counts = ingest.extract(box, True, 50, db)
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"]), (3, 1, 0))
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
+        self.assertEqual(finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"})   # v2 is unfinished in BOTH mails
+
+    def test_a_mail_whose_cards_were_all_seen_before_still_has_its_rows_and_a_replay_adds_none(self):
+        box, db = self.world(m1=("v1", "v2"), m2=("v1", "v2"))
+        ingest.extract(box, True, 50, db)
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        ingest.save_cards(db, "jobright", "m2", ingest.PARSERS["jobright"](box.messages["m2"][1]), time.time())
+        ingest.save_cards(db, "jobright", "m1", ingest.PARSERS["jobright"](box.messages["m1"][1]), time.time())
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+
+    def test_a_card_a_tombstone_suppressed_is_a_job_less_row_counted_apart_from_repeats(self):
+        from datetime import timedelta
+        from lifeos.jobs import identity, tombstone
+        from lifeos.sources.newsletters import finalize
+        box, db = self.world(m1=("v1", "v2"))
+        tombstone.write(db.cursor(), identity.url_hash("https://jobright.ai/jobs/info/v2"), "f" * 64, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1))
+        counts = ingest.extract(box, True, 50, db)
+        self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"], self.rows(db, "m1")), (1, 0, 1, 2))
+        cursor = db.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE job_id IS NULL")
+        self.assertEqual(cursor.fetchone()[0], 1)
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
+        self.assertEqual(finalize.blockers(db, ["m1"]), {})                    # suppressed on purpose: accounted, not in flight
