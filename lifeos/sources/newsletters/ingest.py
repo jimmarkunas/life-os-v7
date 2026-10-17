@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import time
 import sys
 
-from lifeos.sources.newsletters import config
+from lifeos.sources.newsletters import config, finalize
 from lifeos.jobs import identity, intake, store
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters.parsers import dice, jobright, lensa, linkedin, reed
@@ -146,16 +146,15 @@ def backfill_dates(gmail, connection):
 
 
 def reconcile(gmail, connection, limit):
-    """Repair: Processed mail that has no rows in v7_job_sources (e.g. marked before a parser fix). Idempotent."""
+    """Repair (LIFE-64): Processed mail with fewer source rows than cards (marked before a parser fix, or before every card was accounted), for every Gmail sender; then reopen
+    mail labelled Done that now has a vacancy in flight, on hold or unverified. Idempotent: save_cards adds a row only for a (vacancy, message) pair not yet recorded."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT DISTINCT gmail_message_id FROM v7_job_sources")
-        known = {row[0] for row in cursor.fetchall()}
-    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "still_no_cards": 0,
-              "stale_mail": 0, "backfilled_messages": 0, "rows_dated": 0}
+        cursor.execute("SELECT gmail_message_id, COUNT(*) FROM v7_job_sources GROUP BY gmail_message_id")
+        rows = dict(cursor.fetchall())
+    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "suppressed": 0, "still_no_cards": 0,
+              "stale_mail": 0, "reopened": 0, "backfilled_messages": 0, "rows_dated": 0}
     counts.update(backfill_dates(gmail, connection))
     for message_id in gmail.list_ids(config.RECONCILE_QUERY, limit=limit):
-        if message_id in known:
-            continue
         sender, html, received = gmail.message(message_id)
         rule = config.classify(sender)
         parser = PARSERS.get(rule)
@@ -169,9 +168,15 @@ def reconcile(gmail, connection, limit):
         if not cards:
             counts["still_no_cards"] += 1
             continue
-        new, _ = save_cards(connection, rule, message_id, cards, received)
+        if rows.get(message_id, 0) >= len({card.url for card in cards}):       # every card already has its row
+            continue
+        new, _ = save_cards(connection, rule, message_id, cards, received, counts)
         counts["recovered_messages"] += 1
         counts["recovered_jobs"] += new
+    held = finalize.blockers(connection, gmail.list_ids(config.REOPEN_QUERY, limit=limit))
+    if held:
+        gmail.relabel(sorted(held), remove=[gmail.label_id(config.DONE_LABEL)])
+        counts["reopened"] = len(held)
     return counts
 
 
