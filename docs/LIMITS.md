@@ -18,7 +18,7 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 | GitHub Actions | | hourly cron; 30-minute job ceiling; single concurrency group | Variables are NOT masked in logs: every setting is a secret; logs carry counts only |
 
 ## Known provider facts (measured, not assumed)
-- Lensa job pages return 403 to GitHub's datacenter addresses even in a real browser; nothing in V7 loads them.
+- Lensa job pages returned 403 to GitHub's datacenter addresses even in a real browser (measured before D200). Since D200 the resolver follows each card's own tracking link once and reports `redirect` counts; the first 403 stops it for the run.
 - LinkedIn's external-apply destination is behind a login wall; V7 resolves those jobs by matching the employer's board.
 - Jobright's free tier opens an upgrade dialog on the Apply click; the employer link is the page's "Original Job Post" anchor.
 
