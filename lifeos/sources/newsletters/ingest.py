@@ -50,8 +50,9 @@ def backfill_provider(connection):
             cursor.execute("UPDATE v7_jobs SET provider=%s WHERE provider IS NULL AND source=%s", (label, rule))
 
 
-def save_cards(connection, rule, message_id, cards, received_epoch=None):
-    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links)."""
+def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=None):
+    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links). Every card leaves one source row for THIS message (LIFE-64): the unique key is the URL, so
+    a vacancy repeated in a later mail is keyed by mail + URL; a card a tombstone suppressed has no job, so its row has no job and is counted in counts["suppressed"]."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     mail_age = mail_age_days(received_epoch) if received_epoch else 0
     received = datetime.fromtimestamp(received_epoch, timezone.utc).replace(tzinfo=None) if received_epoch else None
@@ -67,17 +68,27 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
                 job["identity_url"] = "dice-alert:" + identity.norm(card.company) + "|" + identity.norm(card.title)
             key, is_new = intake.add_job(cursor, job, now)
             new += is_new
-            repeat += not is_new
+            mine = identity.url_hash(message_id + "|" + card.url)
             cursor.execute(
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
-                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s",
-                (rule, identity.url_hash(card.url), message_id, now, key))
+                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s"
+                " AND NOT EXISTS (SELECT 1 FROM v7_job_sources x WHERE x.job_id = v7_jobs.id AND x.gmail_message_id = %s)",
+                (rule, mine, message_id, now, key, message_id))
+            if not cursor.rowcount:
+                cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute("INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at) VALUES (NULL, %s, %s, %s, %s)",
+                                   (rule, mine, message_id, now))
+                    if counts is not None:
+                        counts["suppressed"] += 1
+                    continue
+            repeat += not is_new
     return new, repeat
 
 
 def extract(gmail, live, limit, connection=None):
     processed_label = gmail.label_id(config.PROCESSED_LABEL, create=live)
-    counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0,
+    counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
               "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0}
     done = []
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
@@ -102,7 +113,7 @@ def extract(gmail, live, limit, connection=None):
             continue
         counts["no_cards"] += 0 if cards else 1                # job links but no cards = parser gap: stays pending
         if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
-            new, repeat = save_cards(connection, rule, message_id, cards, received)
+            new, repeat = save_cards(connection, rule, message_id, cards, received, counts)
             counts["new_jobs"] += new
             counts["repeat_links"] += repeat
             done.append(message_id)
