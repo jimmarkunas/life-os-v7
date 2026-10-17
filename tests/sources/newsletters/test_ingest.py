@@ -132,3 +132,36 @@ class SourceAccountingTests(unittest.TestCase):
         self.assertEqual(cursor.fetchone()[0], 1)
         cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
         self.assertEqual(finalize.blockers(db, ["m1"]), {})                    # suppressed on purpose: accounted, not in flight
+
+    def partial_world(self):
+        """Mail saved by the old code: m2's repeat of v2 has no row of its own. Both are Processed; both are Done only if the test says so."""
+        box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
+        parse = ingest.PARSERS["jobright"]
+        ingest.save_cards(db, "jobright", "m1", parse(box.messages["m1"][1]), time.time())
+        ingest.save_cards(db, "jobright", "m2", parse(box.messages["m2"][1])[1:], time.time())      # only v3: what the old code left (v2 collided with m1)
+        for labels in box.labels.values():
+            labels.add("j-newsletters-processed")
+        return box, db
+
+    def test_reconcile_recovers_the_missing_row_of_a_partly_recorded_jobright_mail(self):
+        box, db = self.partial_world()
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 1))
+        counts = ingest.reconcile(box, db, 50)
+        self.assertEqual((counts["checked"], counts["recovered_messages"], counts["recovered_jobs"]), (2, 1, 0))
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        self.assertEqual(ingest.reconcile(box, db, 50)["recovered_messages"], 0)                    # idempotent
+
+    def test_reconcile_reopens_done_mail_with_a_vacancy_unfinished_and_leaves_finished_mail_done(self):
+        box, db = self.partial_world()
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))      # v2 stays NEW: in flight in both mails
+        counts = ingest.reconcile(box, db, 50)
+        self.assertEqual(counts["reopened"], 2)
+        self.assertTrue(all("j-newsletters-done" not in box.labels[i] for i in ("m1", "m2")))
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        self.assertEqual(ingest.reconcile(box, db, 50)["reopened"], 0)                              # everything finished: stays Done
+        self.assertTrue(all("j-newsletters-done" in box.labels[i] for i in ("m1", "m2")))
