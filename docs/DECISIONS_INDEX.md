@@ -197,3 +197,4 @@ This index is checked by a test: add a line here with every new decision.
 - D196 — Hiring Pipeline: the Active Opportunities table in its accepted shape (2026-10-14, Jim; LIFE-47 Slice 1, candidate — not yet live)
 - D197 — Hiring Pipeline: the status paragraph is removed; the region is a heading and its table (2026-10-15, Jim; LIFE-47)
 - D198 — Close Opportunity: the private Close service on Oracle and its Hiring Pipeline link (2026-10-16, Jim; LIFE-47 S2 live; S3 wired, dormant until its secret is set)
+- D199 — Bills: "overdue" cannot tell late from paid-but-never-ticked; the due-state rule is a Finance OS scoping item (2026-10-17, Jim; LIFE-61)
