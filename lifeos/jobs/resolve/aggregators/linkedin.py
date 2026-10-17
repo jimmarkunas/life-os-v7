@@ -83,8 +83,8 @@ def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
             continue
         budget["left"] -= 1
         verdict = search_match.find(rows[i][2], rows[i][3])
-        if verdict[0] == "degraded":                    # the search is down or throttled: not an attempt, and no more searches this run
-            results[i], budget["left"] = {"outcome": "rate_limited"}, 0
+        if verdict[0] == "failed_search":               # the search itself failed: not an attempt, and no more searches this run
+            results[i], budget["left"] = {"outcome": "failed_search:" + verdict[1]}, 0
             continue
         if verdict[0] != "hit":
             results[i] = {"outcome": results[i]["outcome"] + "+" + verdict[1]}
