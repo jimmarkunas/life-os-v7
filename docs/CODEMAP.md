@@ -45,6 +45,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-rollover-scheduled` -> `lifeos.jira.rollover:run`
 - `jira-rollover-watch` -> `lifeos.jira.watch:run`
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
+- `linkedin-search` -> `lifeos.sources.linkedin_search:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
 - `megibow` -> `lifeos.sources.megibow:run`
@@ -259,6 +260,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/sources/
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
+- `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
 - `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.

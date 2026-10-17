@@ -545,6 +545,7 @@ CONSUMER_STEPS = {
         },
         "linkedin": {
             'Step 5 - resolve LinkedIn jobs (no login, no browser)': DB | HRL,
+            'Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)': DB,
         },
         "lensa": {
             'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | HRL,

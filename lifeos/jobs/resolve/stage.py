@@ -21,6 +21,14 @@ def url_key(url):
     return hashlib.sha256(url.strip().lower().encode()).hexdigest()
 
 
+SHARED = {"linkedin-alerts": ("linkedin-alerts", "linkedin-search")}     # D203: one LinkedIn resolve lane reads both; its own source first
+
+
+def _sources(source):
+    names = SHARED.get(source, (source,))
+    return names, ", ".join(["%s"] * len(names))
+
+
 def pick(connection, source, limit):
     with connection.cursor() as cursor:
         cursor.execute("SELECT id, source_url FROM v7_jobs WHERE status='NEW' AND source=%s "
@@ -31,9 +39,10 @@ def pick(connection, source, limit):
 
 def pick_rows(connection, source, limit):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, source_url, company, title, location_text FROM v7_jobs WHERE status='NEW' AND source=%s "
+        names, marks = _sources(source)
+        cursor.execute("SELECT id, source_url, company, title, location_text FROM v7_jobs WHERE status='NEW' AND source IN (" + marks + ") "
                        "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
-                       "ORDER BY resolve_attempts, last_seen DESC LIMIT %s", (source, limits.RESOLVE_MAX_ATTEMPTS, limit))
+                       "ORDER BY source<>%s, resolve_attempts, last_seen DESC LIMIT %s", (*names, limits.RESOLVE_MAX_ATTEMPTS, source, limit))
         return [tuple(row) for row in cursor.fetchall()]
 
 
