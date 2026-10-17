@@ -66,18 +66,20 @@ def next_due(source_id, now, complete, failures, pending, hours=None):
     return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, hours))
 
 
-def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
+def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE, listed=None):
     """Pure: the outcome of one board. previous: {provider job id: (material hash, ingest state)}."""
     if listing.status != lister.COMPLETE:
         return Outcome(source, now, "FAILED", listing.reason)
     new, changed, unchanged, removed = diff.classify({i: h for i, (h, _) in previous.items()}, listing.jobs, True)
+    still = [i for i in removed if listed is not None and i in listed]      # D202: screened out but still on the board: a classification change, never a removal
+    removed = [i for i in removed if i not in still]
     by_id = {j["id"]: j for j in listing.jobs}
     relocate = {i: by_id[i]["location"] for i in unchanged if len(by_id[i].get("location") or "") > 200}
     first_party = source.get("tier") == "employer"
     backlog = [by_id[i] for i in unchanged if previous[i][1] == "PENDING"]       # seen before, not yet admitted
     backlog += [by_id[i] for i in unchanged if previous[i][1] == "SUPPRESSED" and not suppress.reason(by_id[i], now.date(), lane, first_party)]   # D111: a rule that no longer drops it (age) lets it in
     out = Outcome(source, now, "COMPLETE", frontier=diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}),
-                  unchanged=[i for i in unchanged if previous[i][1] != "PENDING"], removed=removed, relocate=relocate)
+                  unchanged=[i for i in unchanged if previous[i][1] != "PENDING"] + still, removed=removed, relocate=relocate)
     suppressed = {}
     for job, digest, is_new in [(j, h, True) for j, h in new] + [(j, h, False) for j, h in changed]:
         why = suppress.reason(job, now.date(), lane, first_party)
@@ -97,7 +99,7 @@ def plan(source, listing, previous, now, budget, lane=DEFAULT_LANE):
             out.pending += 1
     out.pending += sum(1 for _, _, ingest, _, _ in out.items if ingest == "PENDING")
     out.counts = {"added": len(new), "changed": len(changed), "unchanged": len(unchanged), "removed": len(removed),
-                  "suppressed": sum(suppressed.values()), "relocated": len(relocate), "admit": len(out.admit), "pending": out.pending, "why": suppressed}
+                  "suppressed": sum(suppressed.values()), "relocated": len(relocate), "admit": len(out.admit), "pending": out.pending, "why": suppressed, "still_listed": len(still)}
     return out
 
 
@@ -194,9 +196,9 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, keep=None, workers=None):
-    """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `keep` (a job test applied to a COMPLETE
-    listing before the diff, so only possible targets are stored)."""
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None):
+    """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `screen` (job -> reason, applied to a
+    COMPLETE listing before the diff; only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT)."""
     now = now or _now()
     sources = sources if sources is not None else registry.for_lane(lane)
     if lane == "Scale-Up":
@@ -214,15 +216,20 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers
         listings = list(pool.map(lister_fn, due))
     budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
-    if keep:
-        counts["not_kept"] = 0
+    if screen:
+        counts["screen"], counts["still_listed"] = {}, 0
     for source, listing in zip(due, listings):
-        if keep and listing.status == lister.COMPLETE:
-            kept = [j for j in listing.jobs if keep(j)]
-            counts["not_kept"] += len(listing.jobs) - len(kept)
+        listed = None
+        if screen and listing.status == lister.COMPLETE:
+            listed, kept = {j["id"] for j in listing.jobs}, []
+            for job in listing.jobs:
+                why = screen(job)
+                counts["screen"][why] = counts["screen"].get(why, 0) + 1
+                if why.startswith("kept_"):
+                    kept.append(job)
             listing = lister.Listing(lister.COMPLETE, kept)
         previous = repo.items(source["id"])
-        outcome = plan(source, listing, previous, now, budget, lane)
+        outcome = plan(source, listing, previous, now, budget, lane, listed)
         failures = states.get(source["id"], {}).get("failures", 0)
         hot = previous or outcome.items                                  # D202: a board that lists a target job is read more often
         outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
@@ -239,6 +246,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             budget -= len(outcome.admit)
             for k in ("added", "changed", "unchanged", "removed", "suppressed", "admit", "pending"):
                 counts[k] += outcome.counts[k]
+            if screen:
+                counts["still_listed"] += outcome.counts["still_listed"]
             for why, n in outcome.counts["why"].items():
                 counts["why"][why] = counts["why"].get(why, 0) + n
         if live:

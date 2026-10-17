@@ -47,18 +47,29 @@ class Registry(unittest.TestCase):
             registry.boards(seed_file({"ashby": ["x" * 40]}))
 
 
-class Keep(unittest.TestCase):
-    """A seed board is an unknown employer: a job is stored only when its title and place show the target."""
+class Screen(unittest.TestCase):
+    """A seed board is an unknown employer: a job is stored only when its title is in the family and remote is SHOWN (place, title or an
+    explicit description statement). Every other job gets a named reason."""
 
-    def test_keeps_remote_us_target_family_titles_only(self):
-        cases = [("Senior Technical Program Manager", "Remote, US", True), ("Program Manager", "Remote", True), ("TPM", "United States", True),
-                 ("Implementation Project Manager", "USA, Remote", True), ("Senior Project Manager", "Austin/Remote within the US", True),
-                 ("Project Manager", "Remote - Colombia", False), ("Technical Program Manager", "Austin, Texas, United States", False),
-                 ("Program Manager", "Remote - EMEA", False), ("Program Manager", "London, UK", False), ("Staff Engineer", "Remote, US", False),
-                 ("Program Manager", "Hybrid - Remote, US", False), ("Program Manager", "", False)]
-        for title, where, want in cases:
+    def test_each_job_gets_its_reason(self):
+        remote_jd = "About the role. This is a fully remote position open to candidates across the US."
+        cases = [("Senior Technical Program Manager", "Remote, US", None, "kept_remote_in_location"),
+                 ("Program Manager", "Remote", None, "kept_remote_in_location"),
+                 ("Senior Project Manager", "Austin/Remote within the US", None, "kept_remote_in_location"),
+                 ("Technical Program Manager", "New York, NY", remote_jd, "kept_remote_in_description"),
+                 ("Technical Program Manager", "United States", remote_jd, "kept_remote_in_description"),
+                 ("TPM", "United States", "Lead programs across teams.", "work_mode_unknown"),        # a market is not remote evidence
+                 ("Technical Program Manager", "Austin, Texas, United States", None, "work_mode_unknown"),
+                 ("Program Manager", "Hybrid - Remote, US", None, "not_remote_hybrid"),
+                 ("Program Manager", "Seattle, WA", "This role is onsite five days a week.", "not_remote_onsite"),
+                 ("Project Manager", "Remote - Colombia", remote_jd, "non_us"),
+                 ("Program Manager", "Remote - EMEA", None, "non_us"),
+                 ("Program Manager", "London, UK", None, "non_us"),
+                 ("Staff Software Engineer", "Remote, US", None, "title_not_family")]
+        for title, where, text, want in cases:
             with self.subTest(title=title, where=where):
-                self.assertEqual(boards.keep({"title": title, "location": where, "posted": None}), want)
+                self.assertEqual(boards.screen({"title": title, "location": where, "posted": None, "content": text}), want)
+                self.assertEqual(boards.keep({"title": title, "location": where, "posted": None, "content": text}), want.startswith("kept_"))
 
 
 class SeedBuilder(unittest.TestCase):
@@ -80,7 +91,8 @@ class OneRun(unittest.TestCase):
                     "b1": lister.Listing(lister.COMPLETE, [job(4, "Account Executive")]), "b2": lister.Listing(lister.COMPLETE, [])}
         repo = MemRepo()
         got = boards.run(600, True, NOW, lambda s: listings[s["slug"]], repo, SOURCES)
-        self.assertEqual((got["complete"], got["admit"], got["not_kept"], got["pass"]), (3, 1, 3, "employer boards"))
+        self.assertEqual((got["complete"], got["admit"], got["pass"]), (3, 1, "employer boards"))
+        self.assertEqual(got["screen"], {"kept_remote_in_location": 1, "title_not_family": 2, "non_us": 1})
         self.assertEqual(repo.items_by["gh-b0"], {"1": repo.items_by["gh-b0"]["1"]})       # the engineer and the London role were never stored
         self.assertEqual(repo.items_by.get("gh-b1", {}), {})
         admitted = [o for o, _ in repo.commits if o.admit][0].admit[0]
@@ -160,3 +172,22 @@ class QuietRunRow(unittest.TestCase):
         self.assertEqual(self.commit(SOURCES[0], nothing), ["v7_sources"])
         self.assertEqual(self.commit(SOURCES[0], {**nothing, "added": 1}), ["v7_sources", "v7_source_runs"])
         self.assertEqual(self.commit({"id": "affirm", "kind": "greenhouse", "company": "Affirm"}, nothing), ["v7_sources", "v7_source_runs"])
+
+
+class StillListedIsNotRemoved(unittest.TestCase):
+    """Production-shaped (the real SqlRepo statements over the in-memory Jobs store): a stored job that the screen no longer keeps while the
+    employer still lists it stays CURRENT; only a job gone from the complete listing is REMOVED."""
+
+    def test_a_classification_change_never_masquerades_as_a_removal(self):
+        from unittest import mock
+        from tests.kit.jobsdb import JobsDB
+        db = JobsDB()
+        board = [{**SOURCES[0], "id": "gh-still", "slug": "still"}]
+        listings = [lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager"), job(2, "Program Manager")]),
+                    lister.Listing(lister.COMPLETE, [job(1, "Technical Program Manager", "Seattle, WA"), job(2, "Program Manager")]),   # job 1 still listed, no longer remote-shown
+                    lister.Listing(lister.COMPLETE, [job(2, "Program Manager")])]                                                  # job 1 gone from the board
+        state = lambda: dict(db.raw.execute("SELECT provider_job_id, state FROM v7_source_items WHERE source_id='gh-still'").fetchall())
+        with mock.patch.object(run.store, "connect", return_value=db), mock.patch.object(run.store, "ensure_schema"):
+            got = [boards.run(600, True, NOW + timedelta(days=d), lambda s, l=l: l, None, board) for d, l in enumerate(listings)]
+            self.assertEqual(state(), {"1": "REMOVED", "2": "CURRENT"})
+        self.assertEqual([(g["removed"], g["still_listed"]) for g in got], [(0, 0), (0, 1), (1, 0)])
