@@ -113,8 +113,9 @@ def read(fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SECONDS, pages=None):
 def screen(card):
     """A named reason per card; "admitted_" ones become candidates. Never "remote" unless the card itself says so."""
     title, where = card["title"], card["location"] or ""
-    if not boards.FAMILY.search(title):
-        return "title_not_family"
+    tier, why = boards.role(title)                         # the same role screen as the employer boards (D202 review): plausible roles go to Fit
+    if not tier:
+        return "title_" + why
     if not (boards.US.search(where) or suppress.US.search(where) or boards.WHOLE_US.match(where) or boards.PLACELESS.match(where)):
         return "non_us"
     mode = lanes.detect_work_mode(where, title)
