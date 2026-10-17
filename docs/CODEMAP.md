@@ -27,6 +27,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `expire-holds` -> `lifeos.jobs.hold:run`
 - `explain` -> `lifeos.jobs.explain:run`
 - `fit` -> `lifeos.jobs.fit.stage:run`
+- `fit-edge-test` -> `lifeos.jobs.fit.edge:run`
 - `fit-review` -> `lifeos.jobs.review:run`
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `hiring` -> `lifeos.sources.hiring:run`
@@ -147,6 +148,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
 - `lifeos/jobs/enrich.py`: Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
 - `lifeos/jobs/explain.py`: Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.
+- `lifeos/jobs/fit/edge.py`: LIFE-60 (Jim's approval, Jira 10361): the dormant V7 side of Oracle's synthetic-only `fit1` verb. The hourly pipeline never imports this; only the manual fit-edge-test wo
 - `lifeos/jobs/fit/exclusions.py`: Step 0: hard exclusions. Generic defaults (lexicon) plus the private profile's own rules.
 - `lifeos/jobs/fit/extract.py`: Job description -> units (a bullet or sentence tagged with its section) and the raw facts the scorer classifies.
 - `lifeos/jobs/fit/judge.py`: Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, c
@@ -292,6 +294,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
+- `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
