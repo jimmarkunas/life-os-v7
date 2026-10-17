@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 from lifeos.jobs.fit import judge
 
-PORT, MAX_REQUEST, MAX_REPLY, WAIT = 47341, 16384, 16384, 90
+PORT, MAX_REQUEST, MAX_REPLY, WAIT = 47341, 16384, 4096, 90                      # Oracle answers one JSON line under 4 KiB
 MANIFEST = Path(__file__).with_name("edge_fixtures.json")        # the Oracle operator's export, synthetic only: {"fixtures": [{"id", "request", "request_sha256"}]}
 STATUSES = {"REFUSED", "BUSY", "TIMEOUT", "TIMEOUT_ORPHAN", "ERROR", "MODEL_DRIFT", "OVERSIZE"}
 REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT"}
@@ -19,7 +19,8 @@ MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
 
 
 class EdgeError(RuntimeError):
-    """Fixed codes only."""
+    """Fixed codes only. `detail` (when set) names the first receipt field that was not as contracted: a fixed field name, never content."""
+    detail = ""
 
 
 def digest(request):
@@ -52,6 +53,17 @@ def exchange(host, data, port=PORT, wait=WAIT):
         return b""
 
 
+def bad_receipt_field(receipt):
+    """The Oracle-owned completed-run receipt (Edge contract, Jira 10374): the name of the first field that is not as contracted, or None. Checked before any judgment is accepted."""
+    if not isinstance(receipt, dict):
+        return "receipt"
+    ids, text = receipt.get("run_ids"), lambda key: isinstance(receipt.get(key), str) and 0 < len(receipt[key]) <= 64
+    rules = {"provider": receipt.get("provider") == "openai", "model": isinstance(receipt.get("model"), str) and receipt["model"] in MODELS, "transport": receipt.get("transport") == "gateway",
+             "agent": receipt.get("agent") == "fit", "fallback": receipt.get("fallback") is False, "run_ids": isinstance(ids, list) and 0 < len(ids) <= 8 and all(isinstance(i, str) and 0 < len(i) <= 64 for i in ids),
+             "run_finished": receipt.get("run_finished") is True, "started": text("started"), "ended": text("ended")}
+    return next((name for name, ok in rules.items() if not ok), None)
+
+
 def invoke(host, request, base, title, nonce=None, send=exchange):
     """One model invocation, never retried: -> {judgment, receipt, request_hash}, or an EdgeError code at the first thing that does not match."""
     if not host:
@@ -60,10 +72,12 @@ def invoke(host, request, base, title, nonce=None, send=exchange):
     raw = send(host, frame(request, nonce))
     if not raw:
         raise EdgeError("FIT_EDGE_NO_REPLY")
+    if len(raw) > MAX_REPLY:
+        raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")                          # before any parsing
     try:
         reply = json.loads(raw)
+        assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and isinstance(reply["status"], str)
         receipt, status = reply.get("receipt"), reply["status"]
-        assert reply["schema"] == "lifeos.fit.v1" and isinstance(status, str)
     except (ValueError, KeyError, AssertionError, TypeError):
         raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
     if reply.get("request_hash") != want:
@@ -71,9 +85,12 @@ def invoke(host, request, base, title, nonce=None, send=exchange):
     if reply.get("nonce") != nonce:
         raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
     if status != "OK":                                                    # a refused, busy, timed-out or drifted request is a named code, never a Fit
-        raise EdgeError("FIT_EDGE_" + (status if status in STATUSES else "OFF_CONTRACT") + ("_" + reply["reason"] if status == "REFUSED" and reply.get("reason") in REASONS else ""))
-    if not isinstance(receipt, dict) or (receipt.get("provider"), receipt.get("fallback")) != ("openai", False) or receipt.get("model") not in MODELS or not isinstance(reply.get("judgment_raw"), str):
-        raise EdgeError("FIT_EDGE_RECEIPT_REJECTED")
+        raise EdgeError("FIT_EDGE_" + (status if status in STATUSES else "OFF_CONTRACT") + ("_" + reply["reason"] if status == "REFUSED" and isinstance(reply.get("reason"), str) and reply["reason"] in REASONS else ""))
+    field = bad_receipt_field(receipt) or (None if isinstance(reply.get("judgment_raw"), str) else "judgment_raw")
+    if field:
+        error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")
+        error.detail = field
+        raise error
     judgment = judge.accept(reply["judgment_raw"], base, title, request)
     if judgment is None:
         raise EdgeError("FIT_EDGE_JUDGMENT_REJECTED")
@@ -90,9 +107,11 @@ def probes(fixture=None):
 
 def refused(raw):
     """No model ran: the server closed with no output, or answered a refusal status."""
+    if len(raw) > MAX_REPLY:
+        return False
     try:
-        return not raw or json.loads(raw).get("status") in ("REFUSED", "OVERSIZE")
-    except (ValueError, AttributeError):
+        return not raw or (lambda reply: isinstance(reply, dict) and reply.get("status") in ("REFUSED", "OVERSIZE"))(json.loads(raw))
+    except ValueError:
         return False
 
 
@@ -129,7 +148,7 @@ def _run(environ, send, manifest):
         got = invoke(host, request, SimpleNamespace(capped=False, exclusion=None), request["title"], nonce=nonce, send=send)
         replay = send(host, frame(request, nonce), wait=30)                      # the same nonce again: Oracle must refuse it and run no model
     except EdgeError as error:
-        return {"status": str(error)}
+        return {"status": str(error), **({"detail": error.detail} if error.detail else {})}
     if not refused(replay):
         return {"status": "FIT_EDGE_REPLAY_ACCEPTED"}
     j, r = got["judgment"], got["receipt"]

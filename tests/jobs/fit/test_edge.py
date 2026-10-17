@@ -6,6 +6,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 from types import SimpleNamespace
 
 from lifeos.jobs.fit import edge, judge
@@ -90,6 +91,21 @@ class Transport(unittest.TestCase):
         self.assertEqual(got, [data])
         self.assertEqual(edge.exchange("127.0.0.1", data, port=1, wait=1), b"")                       # nothing listening: closed, no output
 
+    def test_the_reader_never_holds_more_than_one_byte_over_the_reply_limit(self):
+        server = socket.create_server(("127.0.0.1", 0))
+
+        def serve():
+            conn, _ = server.accept()
+            with conn:
+                conn.recv(4096)
+                conn.sendall(b"x" * 20000)
+        thread = threading.Thread(target=serve)
+        thread.start()
+        got = edge.exchange("127.0.0.1", b"fit1 2\n{}", port=server.getsockname()[1], wait=5)
+        thread.join()
+        server.close()
+        self.assertEqual(len(got), edge.MAX_REPLY + 1)
+
     def test_a_hung_server_is_a_fixed_timeout_code(self):
         server = socket.create_server(("127.0.0.1", 0))
         with self.assertRaises(edge.EdgeError) as ctx:
@@ -148,6 +164,48 @@ class Invoke(unittest.TestCase):
             self.assertEqual(len(endpoint.sent), 1, label)                                              # one request, never a retry
         self.assertNotIn("Secret", str(ctx.exception))
 
+    def test_a_reply_that_is_not_a_json_object_is_off_contract(self):
+        for raw in (b"[]", b'"text"', b"1", b"null", b"true", b'[{"schema": "lifeos.fit.v1", "status": "OK"}]'):
+            endpoint = Endpoint(lambda s, raw=raw: raw)
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=endpoint)
+            self.assertEqual((str(ctx.exception), len(endpoint.sent)), ("FIT_EDGE_OFF_CONTRACT", 1), raw)
+
+    def test_an_oversized_reply_is_rejected_before_it_is_parsed(self):
+        padded = json.loads(reply(edge.frame(REQUEST, "n")))
+        padded["judgment_raw"] = "x" * 5000
+        for raw in (b"x" * 4097, json.dumps(padded).encode()):                                         # not JSON, and valid JSON, both over 4 KiB
+            with mock.patch.object(edge.json, "loads", side_effect=AssertionError("parsed")):
+                with self.assertRaises(edge.EdgeError) as ctx:
+                    edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], nonce="n", send=Endpoint(lambda s, raw=raw: raw))
+            self.assertEqual(str(ctx.exception), "FIT_EDGE_REPLY_TOO_LARGE")
+
+    def test_a_receipt_must_be_the_complete_oracle_run_record_before_any_judgment_is_accepted(self):
+        bad = {"receipt": "x", "provider": {"provider": "anthropic"}, "model": {"model": ["gpt-6-luna"]}, "transport": {"transport": "http"}, "agent": {"agent": "main"},
+               "fallback": {"fallback": "false"}, "run_ids": {"run_ids": []}, "run_finished": {"run_finished": False}, "started": {"started": ""}, "ended": {"ended": 5}}
+        bad.update({"fallback ": {"fallback": 0}, "fallback  ": {"fallback": None}, "run_ids ": {"run_ids": "run-1"}, "run_ids  ": {"run_ids": [1]}, "run_ids   ": {"run_ids": [""]},
+                    "run_ids    ": {"run_ids": ["r"] * 9}, "run_ids     ": {"run_ids": ["r" * 65]}, "run_finished ": {"run_finished": "true"}, "model ": {"model": "gpt-6-luna-mini"}})
+        for field, change in bad.items():
+            receipt = "x" if field == "receipt" else {**RECEIPT, **change}
+            endpoint = Endpoint(lambda s, receipt=receipt: reply(s, receipt=receipt))
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=endpoint)
+            self.assertEqual((str(ctx.exception), ctx.exception.detail, len(endpoint.sent)), ("FIT_EDGE_RECEIPT_REJECTED", field.strip(), 1), field)
+        for missing in ("provider", "model", "transport", "agent", "fallback", "run_ids", "run_finished", "started", "ended"):
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s, missing=missing: reply(s, receipt={k: v for k, v in RECEIPT.items() if k != missing})))
+            self.assertEqual((str(ctx.exception), ctx.exception.detail), ("FIT_EDGE_RECEIPT_REJECTED", missing))
+        with self.assertRaises(edge.EdgeError) as ctx:
+            edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, judgment_raw=None)))
+        self.assertEqual(ctx.exception.detail, "judgment_raw")
+        extra = {**RECEIPT, "usage": "unavailable", "cost": "unavailable", "deadline_s": 60, "something_new": 1}
+        self.assertEqual(edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, receipt=extra)))["judgment"].score, 90)     # extra contract fields do not break a complete record
+
+    def test_an_unhashable_refusal_reason_is_a_plain_refusal_not_a_crash(self):
+        with self.assertRaises(edge.EdgeError) as ctx:
+            edge.invoke(HOST, REQUEST, BASE, "t", send=Endpoint(lambda s: reply(s, status="REFUSED", reason=["NOT_ALLOWLISTED"], judgment_raw=None, receipt=None)))
+        self.assertEqual(str(ctx.exception), "FIT_EDGE_REFUSED")
+
     def test_no_host_sends_nothing(self):
         endpoint = Endpoint()
         with self.assertRaises(edge.EdgeError):
@@ -177,6 +235,17 @@ class Stage(unittest.TestCase):
             raise edge.EdgeError("FIT_EDGE_TIMEOUT")
         out = edge.run(0, False, NEGATIVE, Endpoint(hang), manifest())
         self.assertEqual((out["status"], out["hung"], out["failed"]), ("FIT_EDGE_PROBE_FAILED", 5, 1))
+
+    def test_a_probe_or_replay_answer_that_is_not_an_object_or_is_oversized_is_not_a_refusal(self):
+        for raw in (b"[]", b'"REFUSED"', b"null", b'{"status":"REFUSED","pad":"' + b"x" * 5000 + b'"}'):
+            self.assertFalse(edge.refused(raw), raw[:20])
+        self.assertTrue(edge.refused(b"") and edge.refused(b'{"status":"REFUSED"}'))
+        out = edge.run(0, False, NEGATIVE, Endpoint(lambda s: b"[]"), manifest())
+        self.assertEqual((out["status"], out["unexpected_reply"]), ("FIT_EDGE_PROBE_FAILED", 5))
+
+    def test_the_stage_names_the_receipt_field_that_failed(self):
+        out = edge.run(0, False, ENV, Endpoint(lambda s: reply(s, receipt={**RECEIPT, "run_finished": False})), manifest())
+        self.assertEqual((out["status"], out["detail"], out["failed"]), ("FIT_EDGE_RECEIPT_REJECTED", "run_finished", 1))
 
     def test_a_fixture_run_is_one_invocation_then_a_replay_that_must_be_refused(self):
         endpoint = Endpoint()
