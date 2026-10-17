@@ -189,7 +189,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
         self.assertEqual(job["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
-        self.assertEqual(job["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "STAGE": "${{ inputs.stage }}"})
+        self.assertEqual(job["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_ID": "${{ inputs.message_id }}"})
+        message = diag[True]["workflow_dispatch"]["inputs"]["message_id"]                                  # LIFE-59: the optional exact-message filter for alerts-open; an env value, never inlined in the command
+        self.assertEqual((message["type"], message["default"]), ("string", ""))
         self.assertNotIn("--live", text)
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])
         for name in moved:

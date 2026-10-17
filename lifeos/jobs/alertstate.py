@@ -1,9 +1,15 @@
 """Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), per source the new jobs in the last 24 hours against the 14-day daily baseline,
-the jobs the stuck_jobs alert counts, grouped by status, whether a link and a Notion page exist, the Fit admission and the stop reason code, and the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts). Counts only. Writes nothing."""
+the jobs the stuck_jobs alert counts, grouped by status, whether a link and a Notion page exist, the Fit admission and the stop reason code, and the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts). Counts only. Writes nothing.
+With ALERTS_MESSAGE_ID (one exact Gmail message id) it returns only that message's trace instead: see trace()."""
 import datetime as dt
+import os
+import re
 import unicodedata
 
 from lifeos.jobs import alerts, funnel, store
+
+MESSAGE_ID = re.compile(r"[0-9a-f]{8,40}")
+IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")          # the newsletter finalize stage's sets (jobs cannot import sources; a test holds them equal)
 
 
 def stuck(cursor, now):
@@ -63,7 +69,52 @@ def publish_bodies(cursor):
     return out
 
 
+class _ReadOnly:
+    """The only cursor trace() touches: it refuses anything but a SELECT before it reaches the database."""
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def execute(self, sql, args=None):
+        if not sql.lstrip().upper().startswith("SELECT"):
+            raise store.StoreError("ALERT_STATE_NOT_READ_ONLY")
+        return self.cursor.execute(sql, args)
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+
+def trace(message_id, now=None):
+    """One message's vacancies in saved order, read-only and counts only: status, reason code, whether a Ledger page and a verification are recorded, and the outcome finalize would give each
+    (a source row with no job is "unlinked", never absent). Totals: associations, terminal, blockers. A repeat link belongs to the message that first carried it."""
+    if not MESSAGE_ID.fullmatch(message_id):
+        raise store.StoreError("ALERT_STATE_MESSAGE_ID_INVALID")
+    try:
+        with store.connect() as connection, connection.cursor() as cursor:
+            cursor = _ReadOnly(cursor)
+            cursor.execute("SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
+                           " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE s.gmail_message_id = %s ORDER BY s.id", (message_id,))
+            rows = cursor.fetchall()
+    except store.StoreError:
+        raise
+    except Exception:
+        raise store.StoreError("ALERT_STATE_QUERY_FAILED") from None
+    vacancies, blockers = [], {}
+    for n, (source, linked, status, reason, page, verified) in enumerate(rows, 1):
+        status = status if isinstance(status, str) else None
+        why = ("unlinked" if not linked else "malformed" if status is None else "in_flight" if status in IN_FLIGHT else "hold" if status == "HOLD"
+               else "unverified" if status == "PUBLISHED" and not verified else None if status in TERMINAL or status.startswith("EXCLUDED_") else "other")      # finalize.blockers' rule
+        if why:
+            blockers[why] = blockers.get(why, 0) + 1
+        vacancies.append({"n": n, "source": str(source)[:40], "status": status or "none", "reason": funnel.reason_code(reason if isinstance(reason, str) else None),
+                          "outcome": why or "terminal", "ledger_page": bool(page), "verified": bool(verified)})
+    return {"observed_at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "message_trace": {"associations": len(rows), "vacancies": vacancies, "terminal": len(rows) - sum(blockers.values()), "blockers": dict(sorted(blockers.items()))}}
+
+
 def run(limit, live):
+    message_id = (os.environ.get("ALERTS_MESSAGE_ID") or "").strip()
+    if message_id:
+        return trace(message_id)
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     with store.connect() as connection:
         open_alerts = alerts.load_state(connection)
