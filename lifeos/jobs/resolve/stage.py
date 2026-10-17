@@ -38,9 +38,10 @@ def pick(connection, source, limit):
 
 
 def pick_rows(connection, source, limit):
+    names, marks = _sources(source)
+    extra = ", source" if source in SHARED else ""             # D203: a shared lane's rows also carry their source, so the resolver can tell them apart
     with connection.cursor() as cursor:
-        names, marks = _sources(source)
-        cursor.execute("SELECT id, source_url, company, title, location_text FROM v7_jobs WHERE status='NEW' AND source IN (" + marks + ") "
+        cursor.execute("SELECT id, source_url, company, title, location_text" + extra + " FROM v7_jobs WHERE status='NEW' AND source IN (" + marks + ") "
                        "AND (unresolved_reason IS NULL OR unresolved_reason NOT LIKE 'closed%%') AND resolve_attempts < %s "
                        "ORDER BY source<>%s, resolve_attempts, last_seen DESC LIMIT %s", (*names, limits.RESOLVE_MAX_ATTEMPTS, source, limit))
         return [tuple(row) for row in cursor.fetchall()]

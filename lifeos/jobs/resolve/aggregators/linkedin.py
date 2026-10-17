@@ -78,6 +78,8 @@ def match_rows(rows, results, search_limit=SEARCH_LIMIT, budget=None):
     for i, result in enumerate(results):
         if not result["outcome"].startswith("no_match_"):
             continue
+        if len(rows[i]) > 5 and rows[i][5] == "linkedin-search":
+            continue                                      # D203: no TinyFish for a search row; a definite no-match takes the LinkedIn page (page_fallback)
         if budget["left"] <= 0:
             results[i] = {"outcome": "deferred"}          # search budget for this run is spent; not an attempt
             continue

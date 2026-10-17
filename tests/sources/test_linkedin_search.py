@@ -49,7 +49,7 @@ class Read(unittest.TestCase):
             with self.subTest(status=status):
                 fetch = pages((200, "".join(card(100000 + i, "Program Manager") for i in range(10))), (status, ""))
                 cards, counts = ls.read(fetch, pause=0, pages=4)
-                self.assertEqual((len(cards), counts["pages"], counts["stopped"]), (10, 2, why))
+                self.assertEqual((len(cards), counts["cards"], counts["pages"], counts["stopped"]), (10, 10, 2, why))
                 self.assertEqual(len(fetch.seen), 2)
 
     def test_a_changed_page_shape_is_named_not_read_as_empty(self):
@@ -88,12 +88,19 @@ class Concert(unittest.TestCase):
         self.assertEqual((again["new"], again["already_known"]), (0, 1))
         self.assertEqual(self.rows()[0][2], 1)                    # repost.is_ghost reads seen_count: a search must not fake a ghost
 
-    def test_only_clear_remote_us_target_cards_are_kept_and_nothing_is_labelled_remote(self):
+    def test_cards_are_candidates_never_labelled_remote_and_each_reason_is_counted(self):
         body = (card(300001, "Technical Program Manager", where="United States") + card(300002, "Technical Program Manager", where="Seattle, WA")
-                + card(300003, "Staff Software Engineer", where="United States") + card(300004, "Program Manager", where="Remote, US"))
+                + card(300003, "Staff Software Engineer", where="United States") + card(300004, "Program Manager", where="Remote, US")
+                + card(300005, "Program Manager", where="London, England, United Kingdom") + card(300006, "Program Manager", where="Austin, TX (Hybrid)"))
         counts = self.run_search((200, body))
-        self.assertEqual((counts["new"], counts["not_kept"]), (2, 2))
-        self.assertEqual([r[4] for r in self.rows()], ["United States", "Remote, US"])
+        self.assertEqual(counts["screen"], {"admitted_remote_in_location": 1, "admitted_work_mode_to_be_read": 1, "place_no_remote_cue": 1,
+                                            "non_us": 1, "not_remote_hybrid": 1, "title_not_family": 1})
+        self.assertEqual(sorted(r[4] for r in self.rows()), ["Remote, US", "United States"])     # LinkedIn's place as given, never "(Remote)"
+
+    def test_cards_that_show_remote_take_the_room_first(self):
+        body = card(310001, "Program Manager", where="United States") + card(310002, "Program Manager", where="Remote, US")
+        counts = self.run_search((200, body), limit=1)
+        self.assertEqual((counts["new"], counts["over_allowance"], [r[4] for r in self.rows()]), (1, 1, ["Remote, US"]))
 
     def test_new_rows_are_capped_per_run(self):
         body = "".join(card(400000 + i, "Program Manager") for i in range(6))
@@ -118,3 +125,26 @@ class SharedLane(unittest.TestCase):
         sources = [db.raw.execute("SELECT source FROM v7_jobs WHERE id=?", (r[0],)).fetchone()[0] for r in picked]
         self.assertEqual(sources, ["linkedin-alerts", "linkedin-alerts", "linkedin-search", "linkedin-search"])
         self.assertEqual(len(stage.pick_rows(db, "jobright", 10)), 1)
+
+
+class NoTinyFishForSearchRows(unittest.TestCase):
+    """Production-shaped: rows picked from the store by the shared lane carry their source; a search row never reaches the free-search step,
+    an alert row still does (that lane's existing behaviour is unchanged)."""
+
+    def test_a_search_row_takes_the_linkedin_page_without_a_search_and_an_alert_row_is_unchanged(self):
+        from unittest import mock
+        from lifeos.jobs.resolve.aggregators import linkedin
+        db = JobsDB()
+        for jid, source in ((700001, "linkedin-alerts"), (700002, "linkedin-search")):
+            url = f"https://www.linkedin.com/jobs/view/{jid}"
+            db.insert("v7_jobs", dedupe_key=identity.url_hash(url), status="NEW", title="TPM", company="Acme", source=source, source_url=url,
+                      first_seen=NOW, last_seen=NOW, updated_at=NOW, lane="US Remote", resolve_attempts=0)
+        rows = stage.pick_rows(db, "linkedin-alerts", 10)
+        self.assertEqual([r[5] for r in rows], ["linkedin-alerts", "linkedin-search"])
+        searched = []
+        with mock.patch.object(linkedin, "read_guest", return_value={"outcome": "external_hidden"}), \
+                mock.patch.object(linkedin.ats_match, "match_many", side_effect=lambda items: ["company"] * len(items)), \
+                mock.patch.object(linkedin.search_match, "find", side_effect=lambda c, t: searched.append(c) or ("miss", "no_result")):
+            got = linkedin.resolve_rows(rows, budget={"left": 10})
+        self.assertEqual(len(searched), 1)                                                          # the alert row only
+        self.assertEqual(got[1], {"outcome": "landed", "via": "linkedin_page", "kind": "aggregator", "url": "https://www.linkedin.com/jobs/view/700002"})

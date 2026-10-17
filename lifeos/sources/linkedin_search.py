@@ -9,9 +9,14 @@ newsletter instead of colliding with it:
 - LinkedIn's patience goes to the alerts first: the hourly step runs AFTER the resolver (both read LinkedIn's guest pages, which answer 429
   after a dozen quick requests), with a small page allowance; the first refusal stops it and is named (`rate_limited_429`,
   `blocked_<status>`, `http_<status>`, `network`, `unreadable_page`).
-- The guest search ignores LinkedIn's remote filter (measured Oct 17: identical results with and without f_WT=2), so "remote" goes in the
-  keywords and a card is kept only on the same evidence a seed board needs (boards.keep: target-family title, remote-US or whole-US place);
-  nothing is labelled remote that the card did not say.
+- No remote claim from a card. The guest search ignores LinkedIn's remote filter (identical results with and without f_WT=2, measured
+  Oct 17), and a card has no description, so a card cannot show remote. A target-family card in the US is admitted as a candidate with its
+  place as LinkedIn gives it when that place is the whole US (or plain remote); the approved US Remote lane decides once the description is
+  read (unknown work mode -> Review, not remote -> Excluded), exactly as for an alert row. A card that says onsite or hybrid, names only a
+  place (a city or state) with no remote cue, names a non-US place, or is outside the family is not admitted,
+  and each reason is counted; cards that do show remote take the per-run room first.
+- No TinyFish. A search row is resolved by the guest page and the employer board match only; the lane's free-search step is skipped for it
+  (linkedin.match_rows), so this source adds no TinyFish use.
 """
 from datetime import date, datetime, timezone
 import html as htmllib
@@ -19,10 +24,10 @@ import re
 import time
 from urllib.parse import urlencode
 
-from lifeos.jobs import identity, intake, store
+from lifeos.jobs import identity, intake, lanes, store
 from lifeos.platform import limits
 from lifeos.platform.http import fetch
-from lifeos.sources.web import boards
+from lifeos.sources.web import boards, suppress
 
 SOURCE = "linkedin-search"
 LANE = "US Remote"
@@ -88,11 +93,11 @@ def read(fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SECONDS, pages=None):
             counts["pages"] += 1
             why = refused(page)
             if why:
-                counts["stopped"] = why                         # the first refusal ends the run: nothing more is asked of LinkedIn
+                counts["stopped"], counts["cards"] = why, len(cards)      # the first refusal ends the run: nothing more is asked of LinkedIn
                 return cards, counts
             found = parse(page.html)
             if not found and "<li" in (page.html or ""):
-                counts["stopped"] = "unreadable_page"            # cards came back in a shape this parser no longer knows
+                counts["stopped"], counts["cards"] = "unreadable_page", len(cards)     # cards came back in a shape this parser no longer knows
                 return cards, counts
             for card in found:
                 if card["id"] not in seen:
@@ -105,12 +110,31 @@ def read(fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SECONDS, pages=None):
     return cards, counts
 
 
+def screen(card):
+    """A named reason per card; "admitted_" ones become candidates. Never "remote" unless the card itself says so."""
+    title, where = card["title"], card["location"] or ""
+    if not boards.FAMILY.search(title):
+        return "title_not_family"
+    if not (boards.US.search(where) or suppress.US.search(where) or boards.WHOLE_US.match(where) or boards.PLACELESS.match(where)):
+        return "non_us"
+    mode = lanes.detect_work_mode(where, title)
+    if mode in ("onsite", "hybrid"):
+        return "not_remote_" + mode
+    if mode == "remote":
+        return "admitted_remote_in_location"
+    if not (boards.WHOLE_US.match(where) or boards.PLACELESS.match(where)):
+        return "place_no_remote_cue"          # Fit's D89 rule reads a US city and state with no remote cue as office; on 600 boards 1 in ~127 such jobs said remote in the text
+    return "admitted_work_mode_to_be_read"
+
+
 def run(limit, live, now=None, fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SECONDS, connection=None):
     now = now or _now()
     cards, counts = read(fetcher, pause)
     counts["cards"] = len(cards)
-    wanted = [c for c in cards if boards.keep(c)]
-    counts.update(not_kept=len(cards) - len(wanted), new=0, already_known=0, tombstoned=0, over_allowance=0, saved=bool(live))
+    reasons = {c["id"]: screen(c) for c in cards}
+    wanted = sorted((c for c in cards if reasons[c["id"]].startswith("admitted_")), key=lambda c: reasons[c["id"]] != "admitted_remote_in_location")
+    counts.update(screen={r: list(reasons.values()).count(r) for r in sorted(set(reasons.values()))}, new=0, already_known=0, tombstoned=0,
+                  over_allowance=0, saved=bool(live))
     if not live or not wanted:
         counts["would_add"] = len(wanted) if not live else 0
         return counts
