@@ -93,9 +93,9 @@ class Concert(unittest.TestCase):
                 + card(300003, "Staff Software Engineer", where="United States") + card(300004, "Program Manager", where="Remote, US")
                 + card(300005, "Program Manager", where="London, England, United Kingdom") + card(300006, "Program Manager", where="Austin, TX (Hybrid)"))
         counts = self.run_search((200, body))
-        self.assertEqual(counts["screen"], {"admitted_remote_in_location": 1, "admitted_work_mode_to_be_read": 1, "place_no_remote_cue": 1,
-                                            "non_us": 1, "not_remote_hybrid": 1, "title_other_profession_engineer": 1})
-        self.assertEqual(sorted(r[4] for r in self.rows()), ["Remote, US", "United States"])     # LinkedIn's place as given, never "(Remote)"
+        self.assertEqual(counts["screen"], {"admitted_remote_assumed": 2, "admitted_remote_in_location": 1, "non_us": 1, "not_remote_hybrid": 1,
+                                            "title_other_profession_engineer": 1})
+        self.assertEqual(sorted(r[4] for r in self.rows()), ["Remote, US", "Seattle, WA", "United States"])     # LinkedIn's place as given, never "(Remote)"
 
     def test_cards_that_show_remote_take_the_room_first(self):
         body = card(310001, "Program Manager", where="United States") + card(310002, "Program Manager", where="Remote, US")

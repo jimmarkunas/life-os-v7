@@ -12,8 +12,8 @@ newsletter instead of colliding with it:
 - No remote claim from a card. The guest search ignores LinkedIn's remote filter (identical results with and without f_WT=2, measured
   Oct 17), and a card has no description, so a card cannot show remote. A target-family card in the US is admitted as a candidate with its
   place as LinkedIn gives it when that place is the whole US (or plain remote); the approved US Remote lane decides once the description is
-  read (unknown work mode -> Review, not remote -> Excluded), exactly as for an alert row. A card that says onsite or hybrid, names only a
-  place (a city or state) with no remote cue, names a non-US place, or is outside the family is not admitted,
+  read (unknown work mode -> Review, not remote -> Excluded), exactly as for an alert row. A card that says onsite or hybrid, names a non-US
+  place, or is outside the family is not admitted; one with no office requirement is admitted as `remote assumed` (D204),
   and each reason is counted; cards that do show remote take the per-run room first.
 - No TinyFish. A search row is resolved by the guest page and the employer board match only; the lane's free-search step is skipped for it
   (linkedin.match_rows), so this source adds no TinyFish use.
@@ -116,16 +116,14 @@ def screen(card):
     tier, why = boards.role(title)                         # the same role screen as the employer boards (D202 review): plausible roles go to Fit
     if not tier:
         return "title_" + why
-    if not (boards.US.search(where) or suppress.US.search(where) or boards.WHOLE_US.match(where) or boards.PLACELESS.match(where)):
+    place = boards.geography(where)                        # D204: the same geography as the boards; only a named foreign place excludes
+    if place == "non_us":
         return "non_us"
+    tail = "_place_unresolved" if place == "unresolved" else ""
     mode = lanes.detect_work_mode(where, title)
     if mode in ("onsite", "hybrid"):
         return "not_remote_" + mode
-    if mode == "remote":
-        return "admitted_remote_in_location"
-    if not (boards.WHOLE_US.match(where) or boards.PLACELESS.match(where)):
-        return "place_no_remote_cue"          # Fit's D89 rule reads a US city and state with no remote cue as office; on 600 boards 1 in ~127 such jobs said remote in the text
-    return "admitted_work_mode_to_be_read"
+    return ("admitted_remote_in_location" if mode == "remote" else "admitted_remote_assumed") + tail     # D204: presumed, never labelled verified
 
 
 def run(limit, live, now=None, fetcher=fetch, pause=limits.LINKEDIN_GUEST_GAP_SECONDS, connection=None):
