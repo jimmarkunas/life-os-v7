@@ -188,8 +188,13 @@ def detect_work_mode(location, title="", text="", window=1500):
         return "hybrid"
     if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head):
         return "remote"
-    if re.search(r"\b(?:fully|100%|completely) remote\b|\bremote[- ]first\b|\bwork from anywhere\b|\bthis is a remote (?:role|position)\b", body):
-        return "remote"
+    if re.search(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|virtual)[- ]first\b|\bwork from anywhere\b|\bthis is a remote (?:role|position)\b|"
+                 r"\bremote\b[^.\n]{0,40}\b(?:based|located|living|anywhere) in (?:the )?(?:continental )?(?:us|u\.s\.|usa|united states)\b|"
+                 r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", body):
+        return "remote"                         # D202 review: "Remote but must be based in the continental US" (SpruceID) is an explicit statement
+    tag = re.search(r"#li-(remote|hybrid|onsite)\b", (text or "").lower())      # the recruiter's own LinkedIn tag, usually the last line (Dave): read anywhere
+    if tag:
+        return tag.group(1)
     if re.search(r"\bon-?site\b|\bin[- ]office\b|\bonsite\b", head + " " + body):
         return "onsite"
     return "unknown"

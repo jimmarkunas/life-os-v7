@@ -71,6 +71,7 @@ STAGES = {
     "web": lazy("lifeos.sources.web.run"),
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
     "boards": lazy("lifeos.sources.web.boards"),          # D202: the employer-board pass
+    "boards-preview": lazy("lifeos.sources.web.boards", "preview"),     # D202 acceptance: read-only, counts only
     "web-titlewatch": lazy("lifeos.sources.web.titlewatch"),
     "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),
     "alerts": lazy("lifeos.jobs.alerts"),

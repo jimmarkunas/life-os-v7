@@ -21,6 +21,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills-snapshot` -> `lifeos.bills.snapshot:run`
 - `board-check` -> `lifeos.sources.web.boardcheck:run`
 - `boards` -> `lifeos.sources.web.boards:run`
+- `boards-preview` -> `lifeos.sources.web.boards:preview`
 - `calendar-sync` -> `lifeos.calendar_bridge.watch:run`
 - `dcc-card` -> `lifeos.dcc.card:run`
 - `discover-jobs` -> `lifeos.sources.web.discover_jobs:run`

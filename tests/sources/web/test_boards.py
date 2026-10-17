@@ -65,7 +65,7 @@ class Screen(unittest.TestCase):
                  ("Project Manager", "Remote - Colombia", remote_jd, "non_us"),
                  ("Program Manager", "Remote - EMEA", None, "non_us"),
                  ("Program Manager", "London, UK", None, "non_us"),
-                 ("Staff Software Engineer", "Remote, US", None, "title_not_family")]
+                 ("Staff Software Engineer", "Remote, US", None, "title_other_profession_engineer")]
         for title, where, text, want in cases:
             with self.subTest(title=title, where=where):
                 self.assertEqual(boards.screen({"title": title, "location": where, "posted": None, "content": text}), want)
@@ -92,7 +92,7 @@ class OneRun(unittest.TestCase):
         repo = MemRepo()
         got = boards.run(600, True, NOW, lambda s: listings[s["slug"]], repo, SOURCES)
         self.assertEqual((got["complete"], got["admit"], got["pass"]), (3, 1, "employer boards"))
-        self.assertEqual(got["screen"], {"kept_remote_in_location": 1, "title_not_family": 2, "non_us": 1})
+        self.assertEqual(got["screen"], {"kept_remote_in_location": 1, "title_other_profession_engineer": 1, "title_other_profession_account_executive": 1, "non_us": 1})
         self.assertEqual(repo.items_by["gh-b0"], {"1": repo.items_by["gh-b0"]["1"]})       # the engineer and the London role were never stored
         self.assertEqual(repo.items_by.get("gh-b1", {}), {})
         admitted = [o for o, _ in repo.commits if o.admit][0].admit[0]
@@ -191,3 +191,69 @@ class StillListedIsNotRemoved(unittest.TestCase):
             got = [boards.run(600, True, NOW + timedelta(days=d), lambda s, l=l: l, None, board) for d, l in enumerate(listings)]
             self.assertEqual(state(), {"1": "REMOVED", "2": "CURRENT"})
         self.assertEqual([(g["removed"], g["still_listed"]) for g in got], [(0, 0), (0, 1), (1, 0)])
+
+
+class MissedJobs(unittest.TestCase):
+    """The review's real cases (Oct 17), each as its employer board listed it: title, place and the work-mode sentence of its description."""
+
+    def screen(self, title, where, text=None):
+        return boards.screen({"title": title, "location": where, "posted": None, "content": text})
+
+    def test_the_named_vacancies_are_kept(self):
+        dave = ("Dave is building a better banking experience. " * 160 + "As a virtual-first company, team members can live and work anywhere in the "
+                "United States, except Hawaii. " + "Benefits. " * 20 + "#LI-REMOTE")                  # the tag ends a 7,900-character description
+        spruce = "Technical Program Manager (TPM) (Remote but must be based in the continental US; Mountain/Central time zone preferred). We build identity software."
+        cases = [("Dave", "Lead Technical Program Manager", "United States", dave, "kept_remote_in_description"),
+                 ("SpruceID", "Technical Program Manager (TPM)", "United States", spruce, "kept_remote_in_description"),
+                 ("Chainguard", "Senior Technical Program Manager", "United States - Remote", None, "kept_remote_in_location"),
+                 ("Runpod", "Technical Program Manager (Software Engineer)", "Remote - USA", None, "kept_remote_in_location"),
+                 ("Human Interest", "Senior Technical Program Manager", "United States, Remote", None, "kept_remote_in_location"),
+                 ("Fluxon", "Senior Program Manager", "United States, Remote", None, "kept_remote_in_location"),
+                 ("Backblaze", "Sr. Technical Program Manager (Security)", "Remote - US", None, "kept_remote_in_location"),
+                 ("Fluxon", "Senior Program Manager", "Canada, Remote", None, "non_us"),
+                 ("Backblaze", "Sr. Technical Program Manager | LATAM", "Remote - Colombia ; Remote - Costa Rica", None, "non_us")]
+        for company, title, where, text, want in cases:
+            with self.subTest(company=company, title=title, where=where):
+                self.assertEqual(self.screen(title, where, text), want)
+
+    def test_fit_reads_the_same_statements_so_the_lane_does_not_park_them_on_review(self):
+        from lifeos.jobs import lanes
+        self.assertEqual(lanes.work_mode_for_fit("United States", "Technical Program Manager (TPM)", "(Remote but must be based in the continental US)"), "remote")
+        self.assertEqual(lanes.work_mode_for_fit("United States", "Lead Technical Program Manager", "x " * 4000 + "#LI-REMOTE"), "remote")
+        self.assertEqual(lanes.detect_work_mode("United States", "Program Manager", "About us. #LI-Hybrid"), "hybrid")      # the tag is read for every mode
+
+    def test_the_review_sample_roles_get_the_right_verdict(self):
+        cases = [("Principal Product Manager", "strong"), ("Sr. Product Manager - Mortgage Lending Technology", "strong"), ("Product Owner - Revenue Systems", "strong"),
+                 ("Director of Product Marketing", "adjacent"), ("AI Strategy & Transformation Expert", "adjacent"), ("Head of Technology & Product (US or Europe, remote)", "adjacent"),
+                 ("Director of Operations & Communications", "adjacent"),
+                 ("Product Management Coach", "title_not_a_role_coach"), ("Operations Specialist I, Lifesciences", "title_other_profession_specialist"),
+                 ("Senior Product Designer II, Growth (Remote US)", "title_other_profession_designer"), ("Revenue Operations Manager", "title_other_profession_revenue"),
+                 ("Senior Program Officer", "title_other_profession_officer"), ("Underwriting Program Leader - Property and Casualty", "title_other_profession_underwriting"),
+                 ("Product Marketing Coordinator", "title_other_profession_marketing"), ("Interested in future Tech positions? (Engineering, IT, Data, Product)", "title_not_a_role_future")]
+        for title, want in cases:
+            with self.subTest(title=title):
+                tier, why = boards.role(title)
+                self.assertEqual(tier or "title_" + why, want)
+
+    def test_runpod_is_read_as_a_hand_added_board(self):
+        self.assertIn(("ashby", "runpod"), {(r["kind"], r["slug"]) for r in registry.boards()})
+
+
+class Preview(unittest.TestCase):
+    """The acceptance preview reads the same sample, scores kept jobs with the shared Fit, and writes nothing."""
+
+    def test_counts_every_stage_and_writes_nothing(self):
+        from tests.kit.jobsdb import JobsDB
+        from lifeos.jobs import identity
+        db = JobsDB()
+        known = "https://boards.greenhouse.io/x/jobs/2"
+        db.insert("v7_jobs", dedupe_key=identity.url_hash(known), status="PUBLISHED", title="TPM", company="A", source="web:x", source_url=known,
+                  first_seen=NOW, last_seen=NOW, updated_at=NOW, lane="US Remote", notion_page_id="p1")
+        listing = lister.Listing(lister.COMPLETE, [job(1, "Senior Technical Program Manager"), job(2, "Technical Program Manager"), job(3, "Staff Software Engineer")])
+        env = {"FIT_PROFILE_JSON": '{"years": 15, "capabilities": [{"id": "a", "label": "A", "class": "direct", "terms": ["alpha"]}], "scope": {"team_size": 10}}'}
+        before = db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0]
+        got = boards.preview(3, False, env, lambda s: listing, connection=db)
+        self.assertEqual((got["boards"], got["kept"], got["fit_evaluated"], got["already_held"], got["already_published"]), (3, 2, 2, 1, 1))
+        self.assertEqual(sum(got["decision"].values()), 2)
+        self.assertEqual(got["screen"]["title_other_profession_engineer"], 3)
+        self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], before)
