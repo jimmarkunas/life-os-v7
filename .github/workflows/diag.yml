@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing)"
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "alerts-open"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"]
         default: "scale-up-holds"
       message_ref:
-        description: "alerts-open only, optional: the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
+        description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
         type: string
         default: ""
 permissions:
@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
+    if: ${{ inputs.stage != 'newsletter-trace' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -39,6 +40,35 @@ jobs:
       - name: Diagnostic (read-only; counts only)
         env:
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          STAGE: ${{ inputs.stage }}
+          ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
+        run: python -m lifeos.run "$STAGE"
+  # LIFE-64: the one stage that reads Gmail. Its own job, so the Gmail values never reach the database-only diagnostics above. Read-only: the code can list ids and read one message, and select from the store.
+  trace:
+    if: ${{ inputs.stage == 'newsletter-trace' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Load the database, SSH and Gmail values from Bitwarden (the job fails if retrieval fails, no fallback)
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+      - name: Newsletter trace (read-only; counts only)
+        env:
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           STAGE: ${{ inputs.stage }}
           ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
         run: python -m lifeos.run "$STAGE"
