@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import time
 import sys
 
-from lifeos.sources.newsletters import config
+from lifeos.sources.newsletters import config, finalize
 from lifeos.jobs import identity, intake, store
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources.newsletters.parsers import dice, jobright, lensa, linkedin, reed
@@ -50,8 +50,9 @@ def backfill_provider(connection):
             cursor.execute("UPDATE v7_jobs SET provider=%s WHERE provider IS NULL AND source=%s", (label, rule))
 
 
-def save_cards(connection, rule, message_id, cards, received_epoch=None):
-    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links)."""
+def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=None):
+    """Emit each card to Jobs OS. Returns (new_jobs, repeat_links). Every card leaves one source row for THIS message (LIFE-64): the unique key is the URL, so
+    a vacancy repeated in a later mail is keyed by mail + URL; a card a tombstone suppressed has no job, so its row has no job and is counted in counts["suppressed"]."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     mail_age = mail_age_days(received_epoch) if received_epoch else 0
     received = datetime.fromtimestamp(received_epoch, timezone.utc).replace(tzinfo=None) if received_epoch else None
@@ -67,17 +68,27 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None):
                 job["identity_url"] = "dice-alert:" + identity.norm(card.company) + "|" + identity.norm(card.title)
             key, is_new = intake.add_job(cursor, job, now)
             new += is_new
-            repeat += not is_new
+            mine = identity.url_hash(message_id + "|" + card.url)
             cursor.execute(
                 "INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at)"
-                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s",
-                (rule, identity.url_hash(card.url), message_id, now, key))
+                " SELECT id, %s, %s, %s, %s FROM v7_jobs WHERE dedupe_key = %s"
+                " AND NOT EXISTS (SELECT 1 FROM v7_job_sources x WHERE x.job_id = v7_jobs.id AND x.gmail_message_id = %s)",
+                (rule, mine, message_id, now, key, message_id))
+            if not cursor.rowcount:
+                cursor.execute("SELECT 1 FROM v7_jobs WHERE dedupe_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute("INSERT IGNORE INTO v7_job_sources (job_id, source, source_url_hash, gmail_message_id, seen_at) VALUES (NULL, %s, %s, %s, %s)",
+                                   (rule, mine, message_id, now))
+                    if counts is not None:
+                        counts["suppressed"] += 1
+                    continue
+            repeat += not is_new
     return new, repeat
 
 
 def extract(gmail, live, limit, connection=None):
     processed_label = gmail.label_id(config.PROCESSED_LABEL, create=live)
-    counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0,
+    counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
               "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0}
     done = []
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
@@ -102,7 +113,7 @@ def extract(gmail, live, limit, connection=None):
             continue
         counts["no_cards"] += 0 if cards else 1                # job links but no cards = parser gap: stays pending
         if live and cards:                      # zero cards = parser gap: leave pending, never mark Processed
-            new, repeat = save_cards(connection, rule, message_id, cards, received)
+            new, repeat = save_cards(connection, rule, message_id, cards, received, counts)
             counts["new_jobs"] += new
             counts["repeat_links"] += repeat
             done.append(message_id)
@@ -134,17 +145,19 @@ def backfill_dates(gmail, connection):
     return {"backfilled_messages": done, "rows_dated": stale}
 
 
-def reconcile(gmail, connection, limit):
-    """Repair: Processed mail that has no rows in v7_job_sources (e.g. marked before a parser fix). Idempotent."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT DISTINCT gmail_message_id FROM v7_job_sources")
-        known = {row[0] for row in cursor.fetchall()}
-    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "still_no_cards": 0,
-              "stale_mail": 0, "backfilled_messages": 0, "rows_dated": 0}
-    counts.update(backfill_dates(gmail, connection))
+def reconcile(gmail, connect, limit):
+    """Repair (LIFE-64): Processed mail with fewer source rows than cards (marked before a parser fix, or before every card was accounted), for every Gmail sender; then reopen
+    mail labelled Done that now has a vacancy in flight, on hold or unverified. Idempotent: save_cards adds a row only for a (vacancy, message) pair not yet recorded.
+    `connect` opens the store. Reading the mail takes over a minute, so no connection is held while it is read: the first live run lost its idle connection on the first save."""
+    counts = {"checked": 0, "recovered_messages": 0, "recovered_jobs": 0, "suppressed": 0, "still_no_cards": 0,
+              "stale_mail": 0, "reopened": 0, "backfilled_messages": 0, "rows_dated": 0}
+    with connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT gmail_message_id, COUNT(*) FROM v7_job_sources GROUP BY gmail_message_id")
+            rows = dict(cursor.fetchall())
+        counts.update(backfill_dates(gmail, connection))
+    work = []
     for message_id in gmail.list_ids(config.RECONCILE_QUERY, limit=limit):
-        if message_id in known:
-            continue
         sender, html, received = gmail.message(message_id)
         rule = config.classify(sender)
         parser = PARSERS.get(rule)
@@ -158,9 +171,18 @@ def reconcile(gmail, connection, limit):
         if not cards:
             counts["still_no_cards"] += 1
             continue
-        new, _ = save_cards(connection, rule, message_id, cards, received)
-        counts["recovered_messages"] += 1
-        counts["recovered_jobs"] += new
+        if rows.get(message_id, 0) < len({card.url for card in cards}):          # fewer rows than cards: a card has no row of its own
+            work.append((rule, message_id, cards, received))
+    done = gmail.list_ids(config.REOPEN_QUERY, limit=limit)
+    with connect() as connection:
+        for rule, message_id, cards, received in work:
+            new, _ = save_cards(connection, rule, message_id, cards, received, counts)
+            counts["recovered_messages"] += 1
+            counts["recovered_jobs"] += new
+        held = finalize.blockers(connection, done)
+    if held:
+        gmail.relabel(sorted(held), remove=[gmail.label_id(config.DONE_LABEL)])
+        counts["reopened"] = len(held)
     return counts
 
 
@@ -178,7 +200,7 @@ def main(argv=None):
                 return 1
             with store.connect() as connection:
                 store.ensure_schema(connection)
-                print("reconcile LIVE:", reconcile(gmail, connection, args.limit))
+            print("reconcile LIVE:", reconcile(gmail, store.connect, args.limit))
             return 0
         if args.live:
             with store.connect() as connection:

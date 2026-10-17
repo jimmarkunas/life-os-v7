@@ -1,4 +1,6 @@
+import time
 import unittest
+from datetime import datetime, timezone
 
 from lifeos.sources.newsletters import ingest
 from lifeos.sources.newsletters.parsers import dice, lensa
@@ -31,7 +33,6 @@ HTML = ('<a href="https://email.lensa.com/f/a/J1"><table><tr><td>Acme</td></tr><
         '<tr><td>Remote</td></tr></table></a>'
         '<a href="https://email.lensa.com/f/a/J2"><table><tr><td>Globex</td></tr><tr><td>Program Lead</td></tr>'
         '<tr><td>Remote</td></tr></table></a>')
-import time
 NOW = int(time.time())
 MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
             "m2": ("someone@example.com", "<p>not a newsletter sender</p>", NOW)}
@@ -79,6 +80,111 @@ class ExtractTests(unittest.TestCase):
         gmail, conn = FakeGmail(messages=old), store_double()[0]
         counts = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((counts["stale_mail"], counts["new_jobs"], counts["marked_processed"]), (1, 0, 1))
+
+
+class SourceAccountingTests(unittest.TestCase):
+    """LIFE-64: every parsed card leaves a source row for ITS message, over the real store and its UNIQUE (source_url_hash)."""
+    def world(self, **mails):
+        from tests.jobs.test_newsletter_golden_path import Mailbox, alert
+        from tests.kit.jobsdb import JobsDB
+        box = Mailbox({i: ("Jobright <alerts@jobright.ai>", alert(*ids), time.time() - 60) for i, ids in mails.items()})
+        for labels in box.labels.values():
+            labels.add("j-newsletters")
+        return box, JobsDB()
+
+    def rows(self, db, message_id):
+        cursor = db.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE gmail_message_id=%s", (message_id,))
+        return cursor.fetchone()[0]
+
+    def test_a_vacancy_repeated_in_a_later_mail_is_accounted_for_that_mail_and_holds_it_open(self):
+        from lifeos.sources.newsletters import finalize
+        box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
+        counts = ingest.extract(box, True, 50, db)
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"]), (3, 1, 0))
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
+        self.assertEqual(finalize.blockers(db, ["m1", "m2"]), {"m1": "in_flight", "m2": "in_flight"})   # v2 is unfinished in BOTH mails
+
+    def test_a_mail_whose_cards_were_all_seen_before_still_has_its_rows_and_a_replay_adds_none(self):
+        box, db = self.world(m1=("v1", "v2"), m2=("v1", "v2"))
+        ingest.extract(box, True, 50, db)
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        ingest.save_cards(db, "jobright", "m2", ingest.PARSERS["jobright"](box.messages["m2"][1]), time.time())
+        ingest.save_cards(db, "jobright", "m1", ingest.PARSERS["jobright"](box.messages["m1"][1]), time.time())
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+
+    def test_a_card_a_tombstone_suppressed_is_a_job_less_row_counted_apart_from_repeats(self):
+        from datetime import timedelta
+        from lifeos.jobs import identity, tombstone
+        from lifeos.sources.newsletters import finalize
+        box, db = self.world(m1=("v1", "v2"))
+        tombstone.write(db.cursor(), identity.url_hash("https://jobright.ai/jobs/info/v2"), "f" * 64, datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1))
+        counts = ingest.extract(box, True, 50, db)
+        self.assertEqual((counts["new_jobs"], counts["repeat_links"], counts["suppressed"], self.rows(db, "m1")), (1, 0, 1, 2))
+        cursor = db.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v7_job_sources WHERE job_id IS NULL")
+        self.assertEqual(cursor.fetchone()[0], 1)
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
+        self.assertEqual(finalize.blockers(db, ["m1"]), {})                    # suppressed on purpose: accounted, not in flight
+
+    def partial_world(self):
+        """Mail saved by the old code: m2's repeat of v2 has no row of its own. Both are Processed; both are Done only if the test says so."""
+        box, db = self.world(m1=("v1", "v2"), m2=("v2", "v3"))
+        parse = ingest.PARSERS["jobright"]
+        ingest.save_cards(db, "jobright", "m1", parse(box.messages["m1"][1]), time.time())
+        ingest.save_cards(db, "jobright", "m2", parse(box.messages["m2"][1])[1:], time.time())      # only v3: what the old code left (v2 collided with m1)
+        for labels in box.labels.values():
+            labels.add("j-newsletters-processed")
+        return box, db
+
+    def test_reconcile_recovers_the_missing_row_of_a_partly_recorded_jobright_mail(self):
+        box, db = self.partial_world()
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 1))
+        counts = ingest.reconcile(box, lambda: db, 50)
+        self.assertEqual((counts["checked"], counts["recovered_messages"], counts["recovered_jobs"]), (2, 1, 0))
+        self.assertEqual((self.rows(db, "m1"), self.rows(db, "m2")), (2, 2))
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["recovered_messages"], 0)                    # idempotent
+
+    def test_reconcile_reopens_done_mail_with_a_vacancy_unfinished_and_leaves_finished_mail_done(self):
+        box, db = self.partial_world()
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))      # v2 stays NEW: in flight in both mails
+        counts = ingest.reconcile(box, lambda: db, 50)
+        self.assertEqual(counts["reopened"], 2)
+        self.assertTrue(all("j-newsletters-done" not in box.labels[i] for i in ("m1", "m2")))
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT'")
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        self.assertEqual(ingest.reconcile(box, lambda: db, 50)["reopened"], 0)                              # everything finished: stays Done
+        self.assertTrue(all("j-newsletters-done" in box.labels[i] for i in ("m1", "m2")))
+
+    def test_reconcile_holds_no_connection_while_it_reads_mail(self):
+        """The first live run lost its idle connection: reading the window's mail takes over a minute, so the store is opened only to read the row counts and to write."""
+        box, db = self.partial_world()
+        for labels in box.labels.values():
+            labels.add("j-newsletters-done")
+        open_now, read_while_open = [0], []
+
+        class Tracked:
+            def __enter__(self):
+                open_now[0] += 1
+                return db
+
+            def __exit__(self, *exc):
+                open_now[0] -= 1
+                return False
+        real = box.message
+        box.message = lambda message_id: (read_while_open.append(open_now[0]), real(message_id))[1]
+        cursor = db.cursor()
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT' WHERE source_url NOT LIKE %s", ("%/v2",))
+        counts = ingest.reconcile(box, Tracked, 50)
+        self.assertEqual((counts["checked"], counts["recovered_messages"], counts["reopened"]), (2, 1, 2))
+        self.assertEqual(read_while_open, [0, 0])                                        # both messages were read with no connection open
+        self.assertEqual(open_now[0], 0)
 
 
 if __name__ == "__main__":
