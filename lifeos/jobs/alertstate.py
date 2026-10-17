@@ -1,6 +1,6 @@
 """Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), per source the new jobs in the last 24 hours against the 14-day daily baseline,
 the jobs the stuck_jobs alert counts, grouped by status, whether a link and a Notion page exist, the Fit admission and the stop reason code, and the shape of the page body publish would send for the admitted jobs that have no page (lengths and character counts). Counts only. Writes nothing.
-With ALERTS_MESSAGE_ID (one exact Gmail message id) it returns only that message's trace instead: see trace()."""
+With ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id, never the id itself) it returns only that message's trace instead: see trace()."""
 import datetime as dt
 import os
 import re
@@ -8,8 +8,13 @@ import unicodedata
 
 from lifeos.jobs import alerts, funnel, store
 
-MESSAGE_ID = re.compile(r"[0-9a-f]{8,40}")
 IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")          # the newsletter finalize stage's sets (jobs cannot import sources; a test holds them equal)
+MESSAGE_REF = re.compile(r"[0-9a-f]{64}")
+KNOWN_STATUSES = frozenset(IN_FLIGHT + TERMINAL + ("HOLD", "EXCLUDED_FIT", "EXCLUDED_STALE", "EXCLUDED_UNRESOLVED"))
+SOURCES = frozenset("dice jobright lensa linkedin-alerts reed".split())                  # the newsletter rules; anything else prints as "other"
+REASONS = frozenset(("none http_N link_mismatch jd_thin jd_template jd_listing description_empty description_empty_tf hold_expired unresolved_after_recovery lane_exclude same_opening in_ledger repost "
+                     "repost_ambiguous recovery_retry screen_pay listing_url no_job_id dup_other_source dup_of_final_url closed unknown Fit_N_below_N audit_url_listing_url audit_url_root audit_url_no_job_id "
+                     "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result").split())
 
 
 def stuck(cursor, now):
@@ -69,31 +74,23 @@ def publish_bodies(cursor):
     return out
 
 
-class _ReadOnly:
-    """The only cursor trace() touches: it refuses anything but a SELECT before it reaches the database."""
-    def __init__(self, cursor):
-        self.cursor = cursor
-
-    def execute(self, sql, args=None):
-        if not sql.lstrip().upper().startswith("SELECT"):
-            raise store.StoreError("ALERT_STATE_NOT_READ_ONLY")
-        return self.cursor.execute(sql, args)
-
-    def fetchall(self):
-        return self.cursor.fetchall()
+def _select(cursor, sql, args):
+    """The only way trace() touches the database: a SELECT, refused before it reaches the driver otherwise."""
+    if not sql.lstrip().upper().startswith("SELECT"):
+        raise store.StoreError("ALERT_STATE_NOT_READ_ONLY")
+    cursor.execute(sql, args)
+    return cursor.fetchall()
 
 
-def trace(message_id, now=None):
+def trace(message_ref, now=None):
     """One message's vacancies in saved order, read-only and counts only: status, reason code, whether a Ledger page and a verification are recorded, and the outcome finalize would give each
     (a source row with no job is "unlinked", never absent). Totals: associations, terminal, blockers. A repeat link belongs to the message that first carried it."""
-    if not MESSAGE_ID.fullmatch(message_id):
-        raise store.StoreError("ALERT_STATE_MESSAGE_ID_INVALID")
+    if not MESSAGE_REF.fullmatch(message_ref):
+        raise store.StoreError("ALERT_STATE_MESSAGE_REF_INVALID")
     try:
         with store.connect() as connection, connection.cursor() as cursor:
-            cursor = _ReadOnly(cursor)
-            cursor.execute("SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
-                           " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE s.gmail_message_id = %s ORDER BY s.id", (message_id,))
-            rows = cursor.fetchall()
+            rows = _select(cursor, "SELECT s.source, j.id IS NOT NULL, j.status, j.unresolved_reason, j.notion_page_id IS NOT NULL, j.verified_at IS NOT NULL FROM v7_job_sources s"
+                           " LEFT JOIN v7_jobs j ON j.id = s.job_id WHERE SHA2(s.gmail_message_id, 256) = %s ORDER BY s.id", (message_ref,))     # the id is matched inside the query, never held or printed
     except store.StoreError:
         raise
     except Exception:
@@ -105,16 +102,17 @@ def trace(message_id, now=None):
                else "unverified" if status == "PUBLISHED" and not verified else None if status in TERMINAL or status.startswith("EXCLUDED_") else "other")      # finalize.blockers' rule
         if why:
             blockers[why] = blockers.get(why, 0) + 1
-        vacancies.append({"n": n, "source": str(source)[:40], "status": status or "none", "reason": funnel.reason_code(reason if isinstance(reason, str) else None),
+        code = funnel.reason_code(reason if isinstance(reason, str) else None).replace(" ", "_")
+        vacancies.append({"n": n, "source": source if source in SOURCES else "other", "status": status if status in KNOWN_STATUSES else "other" if status else "none", "reason": code if code in REASONS else "other",
                           "outcome": why or "terminal", "ledger_page": bool(page), "verified": bool(verified)})
     return {"observed_at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "message_trace": {"associations": len(rows), "vacancies": vacancies, "terminal": len(rows) - sum(blockers.values()), "blockers": dict(sorted(blockers.items()))}}
 
 
 def run(limit, live):
-    message_id = (os.environ.get("ALERTS_MESSAGE_ID") or "").strip()
-    if message_id:
-        return trace(message_id)
+    message_ref = (os.environ.get("ALERTS_MESSAGE_REF") or "").strip()
+    if message_ref:
+        return trace(message_ref)
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     with store.connect() as connection:
         open_alerts = alerts.load_state(connection)

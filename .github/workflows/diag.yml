@@ -8,8 +8,8 @@ on:
         type: choice
         options: ["scale-up-holds", "scale-up-links", "alerts-open"]
         default: "scale-up-holds"
-      message_id:
-        description: "alerts-open only, optional: one exact Gmail message id. Returns only that message's per-vacancy trace (status, reason code, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
+      message_ref:
+        description: "alerts-open only, optional: the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
         type: string
         default: ""
 permissions:
@@ -40,5 +40,5 @@ jobs:
         env:
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           STAGE: ${{ inputs.stage }}
-          ALERTS_MESSAGE_ID: ${{ inputs.message_id }}
+          ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
         run: python -m lifeos.run "$STAGE"

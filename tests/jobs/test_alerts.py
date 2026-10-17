@@ -1,4 +1,5 @@
 import datetime as dt
+import hashlib
 import json
 import os
 import unittest
@@ -122,14 +123,17 @@ class Detect(unittest.TestCase):
 
 
 MSG_A, MSG_B = "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"
+REF_A, REF_B = (hashlib.sha256(m.encode()).hexdigest() for m in (MSG_A, MSG_B))
 SEEN = dt.datetime(2026, 10, 13, 15, 30)
 
 
 class MessageTraceTests(unittest.TestCase):
-    """LIFE-59: ALERTS_MESSAGE_ID turns alerts-open into a read-only, per-vacancy trace of one Gmail message, over the real v7_job_sources / v7_jobs SQL."""
+    """LIFE-59: ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) turns alerts-open into a read-only, allowlisted, per-vacancy trace of that message, over the real v7_job_sources / v7_jobs SQL."""
 
     def setUp(self):
         self.db = JobsDB()
+        self.addCleanup(self.db.raw.close)
+        self.db.raw.create_function("SHA2", 2, lambda value, bits: hashlib.sha256(str(value).encode()).hexdigest())          # MySQL's SHA2(x, 256), which the query uses to match the id without holding it
         self.n = 0
 
     def vacancy(self, message, status, reason=None, page=None, verified=None, source="jobright", title="Secret Title"):
@@ -144,34 +148,34 @@ class MessageTraceTests(unittest.TestCase):
 
     def seed(self):
         for status, reason, page, verified in (("PUBLISHED", None, "page-1", SEEN), ("PUBLISHED", None, "page-2", None), ("HOLD", "http_503", None, None), ("EXCLUDED_FIT", "Fit 67 below 68", None, None),
-                                               ("NEW", None, None, None), ("DUPLICATE", "dup_of_7", None, None), ("WEIRD", None, None, None)):
+                                               ("NEW", None, None, None), ("DUPLICATE", "dup_of_final_url", None, None), ("WEIRD", None, None, None)):
             self.vacancy(MSG_A, status, reason, page, verified)
         self.association(MSG_A, 999)                                                    # a source row whose job row is missing
         self.vacancy(MSG_B, "PUBLISHED", None, "page-9", SEEN)
         self.vacancy(MSG_B, "HOLD", "link_mismatch")
 
-    def trace(self, message_id, now=None):
+    def trace(self, ref, now=None):
         with mock.patch.object(store, "connect", lambda: self.db):
-            return alertstate.trace(message_id, now)
+            return alertstate.trace(ref, now)
 
     def test_each_vacancy_in_saved_order_with_status_reason_ledger_linkage_verification_and_outcome(self):
         self.seed()
-        got = self.trace(MSG_A, dt.datetime(2026, 10, 17, 7, 30, 5, tzinfo=dt.timezone.utc))
+        got = self.trace(REF_A, dt.datetime(2026, 10, 17, 7, 30, 5, tzinfo=dt.timezone.utc))
         self.assertEqual(got["observed_at"], "2026-10-17T07:30:05Z")
         body = got["message_trace"]
         self.assertEqual([(v["n"], v["status"], v["reason"], v["outcome"], v["ledger_page"], v["verified"]) for v in body["vacancies"]], [
             (1, "PUBLISHED", "none", "terminal", True, True), (2, "PUBLISHED", "none", "unverified", True, False), (3, "HOLD", "http_N", "hold", False, False),
-            (4, "EXCLUDED_FIT", "Fit N below N", "terminal", False, False), (5, "NEW", "none", "in_flight", False, False), (6, "DUPLICATE", "dup_of_N", "terminal", False, False),
-            (7, "WEIRD", "none", "other", False, False), (8, "none", "none", "unlinked", False, False)])
+            (4, "EXCLUDED_FIT", "Fit_N_below_N", "terminal", False, False), (5, "NEW", "none", "in_flight", False, False), (6, "DUPLICATE", "dup_of_final_url", "terminal", False, False),
+            (7, "other", "none", "other", False, False), (8, "none", "none", "unlinked", False, False)])
         self.assertEqual((body["associations"], body["terminal"], body["blockers"]), (8, 3, {"hold": 1, "in_flight": 1, "other": 1, "unlinked": 1, "unverified": 1}))
         self.assertEqual({v["source"] for v in body["vacancies"]}, {"jobright"})
 
     def test_only_the_exact_message_is_traced_and_a_near_miss_finds_nothing(self):
         self.seed()
-        b = self.trace(MSG_B)["message_trace"]
+        b = self.trace(REF_B)["message_trace"]
         self.assertEqual((b["associations"], b["terminal"], b["blockers"]), (2, 1, {"hold": 1}))
-        for near in (MSG_A[:-1], "a" + MSG_A, "aaaaaaaa", MSG_A.upper().lower()[:8] + "0" * 8):
-            self.assertEqual(self.trace(near)["message_trace"], {"associations": 0, "vacancies": [], "terminal": 0, "blockers": {}})
+        for near in (MSG_A[:-1], "a" + MSG_A, "aaaaaaaa", MSG_A[:-1] + "b"):
+            self.assertEqual(self.trace(hashlib.sha256(near.encode()).hexdigest())["message_trace"], {"associations": 0, "vacancies": [], "terminal": 0, "blockers": {}})
 
     def test_every_job_status_gets_the_outcome_finalize_gives_its_mail(self):
         self.assertEqual((alertstate.IN_FLIGHT, alertstate.TERMINAL), (finalize.IN_FLIGHT, finalize.TERMINAL))               # the copies jobs keeps (it cannot import sources) stay equal
@@ -180,15 +184,26 @@ class MessageTraceTests(unittest.TestCase):
                                                ("EXCLUDED_FIT", None, None, None), ("EXCLUDED_UNRESOLVED", None, None, None), ("MYSTERY", None, None, None)):
             message = f"{self.n + 1:016x}"
             self.vacancy(message, status, reason, page, verified)
-            outcome = self.trace(message)["message_trace"]["vacancies"][0]["outcome"]
+            outcome = self.trace(hashlib.sha256(message.encode()).hexdigest())["message_trace"]["vacancies"][0]["outcome"]
             self.assertEqual(outcome, finalize.blockers(self.db, [message]).get(message, "terminal"), (status, verified))
+
+    def test_an_unlisted_source_status_or_reason_prints_as_other_and_never_as_its_own_text(self):
+        self.vacancy(MSG_A, "SECRET_STATUS", "Secret free text 99 about Secret Co", None, None, source="secret-provider")
+        self.vacancy(MSG_A, "HOLD", "closed: Secret Co said so", None, None, source="jobright")
+        self.vacancy(MSG_A, "HOLD", "no_match_Secret+no_result", None, None, source="lensa")
+        self.vacancy(MSG_A, "HOLD", "no_match_no_board+no_result", None, None, source="linkedin-alerts")
+        got = self.trace(REF_A)["message_trace"]["vacancies"]
+        self.assertEqual([(v["source"], v["status"], v["reason"]) for v in got], [("other", "other", "other"), ("jobright", "HOLD", "other"), ("lensa", "HOLD", "other"),
+                                                                                  ("linkedin-alerts", "HOLD", "no_match_no_board+no_result")])
+        for private in ("secret", "Secret"):
+            self.assertNotIn(private, json.dumps(got))
 
     def test_it_cannot_write_and_leaves_every_table_as_it_was(self):
         self.seed()
         dump = lambda: {t: self.db.raw.execute(f"SELECT * FROM {t}").fetchall() for t in store.TABLES}      # noqa: E731
         before = dump()
         self.db.raw.execute("PRAGMA query_only = ON")                                                  # the engine itself refuses a write from here on
-        self.trace(MSG_A)
+        self.trace(REF_A)
         self.db.raw.execute("PRAGMA query_only = OFF")
         self.assertEqual(dump(), before)
         seen = []
@@ -196,44 +211,46 @@ class MessageTraceTests(unittest.TestCase):
         class Cur:
             def execute(self, sql, args=None):
                 seen.append(sql)
-        guard = alertstate._ReadOnly(Cur())
+
+            def fetchall(self):
+                return []
         for sql in ("UPDATE v7_jobs SET status='x'", "  delete FROM v7_jobs", "INSERT INTO v7_jobs VALUES (1)", "REPLACE INTO v7_jobs VALUES (1)", "SET SESSION x=1", "DROP TABLE v7_jobs"):
             with self.assertRaises(store.StoreError) as ctx:
-                guard.execute(sql)
+                alertstate._select(Cur(), sql, ())
             self.assertEqual(str(ctx.exception), "ALERT_STATE_NOT_READ_ONLY")
-        guard.execute("select 1")
+        alertstate._select(Cur(), "select 1", ())
         self.assertEqual(seen, ["select 1"])                                                             # only the SELECT ever reached the database
 
-    def test_the_output_carries_no_job_identity_or_message_id(self):
+    def test_the_output_carries_no_job_identity_message_id_or_selector(self):
         self.seed()
-        text = json.dumps(self.trace(MSG_A))
-        for private in ("Secret", "secretkey", "secret.example", "hash", MSG_A, "page-1", "page-2"):
+        text = json.dumps(self.trace(REF_A))
+        for private in ("Secret", "secretkey", "secret.example", "hash", MSG_A, REF_A, "page-1", "page-2"):
             self.assertNotIn(private, text)
 
-    def test_a_malformed_message_id_is_refused_before_the_database_is_touched(self):
+    def test_a_raw_gmail_id_or_any_malformed_selector_is_refused_before_the_database_is_touched(self):
         with mock.patch.object(store, "connect", side_effect=AssertionError("must not connect")):
-            for bad in ("", "ABCDEF0123456789", "aaaaaaa", "a" * 41, "aaaaaaaa%", "aaaaaaaa' OR '1'='1", "aaaa aaaa", "aaaaaaaa\n"):
+            for bad in ("", MSG_A, "1a135d44a5da038f", REF_A.upper(), REF_A[:-1], REF_A + "0", REF_A[:-1] + "%", "a" * 63 + "'", REF_A[:32] + " " + REF_A[33:], REF_A + "\n"):
                 with self.assertRaises(store.StoreError) as ctx:
                     alertstate.trace(bad)
-                self.assertEqual(str(ctx.exception), "ALERT_STATE_MESSAGE_ID_INVALID", bad)
+                self.assertEqual(str(ctx.exception), "ALERT_STATE_MESSAGE_REF_INVALID", bad)
 
     def test_a_failed_or_unreadable_store_gives_a_fixed_code_and_never_driver_text(self):
         with mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_SSH_TCP_TIMEOUT")):
             with self.assertRaises(store.StoreError) as ctx:
-                alertstate.trace(MSG_A)
+                alertstate.trace(REF_A)
             self.assertEqual(str(ctx.exception), "STORE_SSH_TCP_TIMEOUT")
         self.seed()
         self.db.fail_on = ("FROM v7_job_sources", 1)
         with self.assertRaises(store.StoreError) as ctx:
-            self.trace(MSG_A)
+            self.trace(REF_A)
         self.assertEqual(str(ctx.exception), "ALERT_STATE_QUERY_FAILED")
         with mock.patch.object(store, "connect", side_effect=Exception("secret driver text")):
             with self.assertRaises(store.StoreError) as ctx:
-                alertstate.trace(MSG_A)
+                alertstate.trace(REF_A)
         self.assertEqual(str(ctx.exception), "ALERT_STATE_QUERY_FAILED")
 
     def test_malformed_rows_are_blockers_not_a_crash_or_a_false_terminal(self):
-        rows = [("jobright", 1, None, None, 0, 0), ("jobright", 1, 7, 7, 1, 1), ("jobright", 0, None, None, 0, 0)]
+        rows = [("jobright", 1, None, None, 0, 0), ("secret", 1, 7, 7, 1, 1), ("jobright", 0, None, None, 0, 0)]
 
         class Conn:
             def __enter__(self):
@@ -251,19 +268,20 @@ class MessageTraceTests(unittest.TestCase):
             def fetchall(self):
                 return rows
         with mock.patch.object(store, "connect", Conn):
-            body = alertstate.trace(MSG_A)["message_trace"]
+            body = alertstate.trace(REF_A)["message_trace"]
         self.assertEqual([v["outcome"] for v in body["vacancies"]], ["malformed", "malformed", "unlinked"])
         self.assertEqual((body["terminal"], body["blockers"]), (0, {"malformed": 2, "unlinked": 1}))
+        self.assertEqual([v["source"] for v in body["vacancies"]], ["jobright", "other", "jobright"])
 
-    def test_the_stage_returns_only_the_trace_when_the_id_is_set_and_the_old_report_otherwise(self):
+    def test_the_stage_returns_only_the_trace_when_the_selector_is_set_and_the_old_report_otherwise(self):
         self.seed()
-        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_ID": f" {MSG_B} "}), mock.patch.object(store, "connect", lambda: self.db):
+        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": f" {REF_B} "}), mock.patch.object(store, "connect", lambda: self.db):
             got = alertstate.run(0, False)
         self.assertEqual(sorted(got), ["message_trace", "observed_at"])
         self.assertEqual(got["message_trace"]["associations"], 2)
-        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_ID": ""}), mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_CONFIG_MISSING:X")):
+        with mock.patch.dict(os.environ, {"ALERTS_MESSAGE_REF": ""}), mock.patch.object(store, "connect", side_effect=store.StoreError("STORE_CONFIG_MISSING:X")):
             with self.assertRaises(store.StoreError):
-                alertstate.run(0, False)                                                                   # empty id: the original report path, which opens the store as before
+                alertstate.run(0, False)                                                                   # empty selector: the original report path, which opens the store as before
 
 
 if __name__ == "__main__":
