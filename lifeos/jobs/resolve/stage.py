@@ -65,7 +65,7 @@ def apply_result(connection, job_id, result):
                            "unresolved_reason=NULL, updated_at=%s WHERE id=%s", (url, kind, proof, now, job_id))
             return "resolved"
         reason = (result.get("outcome") or "unknown")[:100]
-        bump = 0 if reason in ("deferred", "rate_limited") else 1        # not tried yet = not an attempt
+        bump = 0 if reason in ("deferred", "rate_limited") or reason.startswith("failed_search:") else 1        # not tried yet, or the search failed = not an attempt
         cursor.execute("UPDATE v7_jobs SET unresolved_reason=%s, resolve_attempts=resolve_attempts+%s, "
                        "status=IF(resolve_attempts>=%s, 'HOLD', status), updated_at=%s WHERE id=%s",   # later SET sees the bump
                        (reason, bump, limits.RESOLVE_MAX_ATTEMPTS, now, job_id))

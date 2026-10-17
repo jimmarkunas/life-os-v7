@@ -32,10 +32,19 @@ def _good(result, company, title, need_host):
     return (not need_host) or tokens[0] in ats_match.norm(host).replace(" ", "")
 
 
+FAILED = {"tinyfish_search_http_429": "rate_limited", "tinyfish_search_network": "network", "tinyfish_search_unreadable": "unreadable_answer"}
+
+
+def failed_cause(code):
+    """The search error code -> the specific cause shown after `failed_search:` (Jim, Oct 17: name what failed, never a generic label)."""
+    code = str(code).lower()
+    return FAILED.get(code) or (code.replace("tinyfish_search_", "") if code.startswith("tinyfish_search_http_") else "error")
+
+
 def find(company, title):
-    """('hit', kind, url) | ('miss', reason) | ('degraded', code). Reasons are fixed codes: `no_result` = the search found nothing,
-    `no_fit` = it found pages but none passed the checks below. `degraded` = the search itself failed (rate limit, outage, unreadable
-    answer): not an attempt and never a miss."""
+    """('hit', kind, url) | ('miss', reason) | ('failed_search', cause). Reasons are fixed codes: `no_result` = the search found nothing,
+    `no_fit` = it found pages but none passed the checks below. `failed_search` = the search itself failed, with its specific cause
+    (`rate_limited`, `network`, `unreadable_answer` or `http_<status>`): not an attempt and never a miss."""
     if not company or not title:
         return ("miss", "no_company_or_title")
     try:
@@ -47,5 +56,5 @@ def find(company, title):
             if _good(result, company, title, need_host=not on_ats):
                 return ("hit", classify.apply_kind(result["url"]), result["url"])
     except TinyFishError as error:
-        return ("degraded", str(error).lower())
+        return ("failed_search", failed_cause(error))
     return ("miss", "no_fit" if results else "no_result")
