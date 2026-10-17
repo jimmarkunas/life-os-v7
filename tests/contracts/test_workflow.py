@@ -433,6 +433,11 @@ CONSUMERS = {
         direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_AMAZON_DATA_SOURCE_ID'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}", 'cancel-in-progress': False},
         timeouts={'amazon': 330}, digest="b31adadc25d75d0f"),
+    "fit-edge-test": dict(
+        jobs={"fit_edge": {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}},                 # LIFE-60: the manual synthetic proof of Oracle's fit1 verb; the same ephemeral tag:v7-runner join the iMessage job uses
+        direct=['LIFEOS_BWS_RUNTIME_TOKEN'],
+        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-fit-edge', 'cancel-in-progress': False},
+        timeouts={'fit_edge': 5}, digest="62c235d80f490685"),
     "diag": dict(
         jobs={"diag": DB},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
@@ -568,6 +573,11 @@ CONSUMER_STEPS = {
             'Resolver lanes and the finish job report here (the run fails if any lane failed)': {"NTFY_TOPIC"},
         },
     },
+    "fit-edge-test": {
+        "fit_edge": {
+            'Synthetic Fit proof (writes nothing; synthetic content only in the log)': {"IMESSAGE_ALERTS_HOST"},
+        },
+    },
     "network": {
         "network": {
             'Network (reads the attached CSV through Notion; prints counts only)': DB | {"NOTION_API_TOKEN"},
@@ -586,7 +596,7 @@ CONSUMER_STEPS = {
         },
     },
 }
-CUT_OVER = ("agenda", "bills", "calendar", "domains", "hourly", "network", "outlook", "recruiters")
+CUT_OVER = ("agenda", "bills", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 

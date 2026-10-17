@@ -1,0 +1,71 @@
+{
+ "schema": "lifeos.fit.edge_fixtures.v1",
+ "purpose": "LIFE-60 synthetic-only fit1 end-to-end test (Jim's approval, Jira LIFE-60 comment 10361). Invented employer and a SYNTHETIC candidate; no real person or private data.",
+ "canonicalization": {
+  "rule": "sha256 hex of the UTF-8 bytes of json.dumps(request, sort_keys=True, separators=(',', ':'), ensure_ascii=False)",
+  "applies_to": "the `request` object only (never the nonce or the envelope)",
+  "server": "Oracle computes this hash itself and serves only hashes on its Oracle-owned allowlist; a client-sent hash is never trusted"
+ },
+ "wire": {
+  "framing": "after the Tailscale Serve PROXY v2 header (added by Serve, never by the client): ASCII `fit1 <n>\\n`, then exactly n bytes (1..16384) of UTF-8 JSON",
+  "body": {
+   "request": "<exactly the fixture's request object>",
+   "nonce": "<32 lowercase hex, fresh per call (os.urandom(16).hex()); a nonce seen the same Chicago day is refused>"
+  },
+  "caller": "only the V7 runner's ephemeral tag:v7-runner tailnet node, over the existing 47341 endpoint",
+  "reply": "one JSON line < 4096 bytes, or the connection closes with no output (unauthenticated or malformed input)",
+  "reply_fields": {
+   "schema": "lifeos.fit.v1",
+   "status": "OK | REFUSED | BUSY | TIMEOUT | TIMEOUT_ORPHAN | ERROR | MODEL_DRIFT | OVERSIZE",
+   "request_hash": "server-computed; the caller must check it equals its own canonical hash",
+   "nonce": "echoed; the caller must check it equals what it sent",
+   "fixture": "allowlist id",
+   "judgment_raw": "the model's raw text when status is OK, else null; pass to the unchanged judge.accept()",
+   "receipt": "provider, model, transport, agent, run_ids, run_finished, started, ended, fallback, usage ('unavailable'), cost ('unavailable'), deadline_s",
+   "reason": "on REFUSED: NOT_ALLOWLISTED | NONCE_REPLAYED | COUNTER_UNAVAILABLE | DAILY_LIMIT",
+   "runs_today / limit": "fit model runs today (America/Chicago) / 20"
+  },
+  "fail_closed": "anything other than status OK with matching request_hash and nonce, or a judgment judge.accept() returns None for, is no Fit"
+ },
+ "budget": "each OK, TIMEOUT or ERROR reply is one of the 20 model runs per Chicago day; REFUSED and BUSY run no model",
+ "fixtures": [
+  {
+   "id": "A",
+   "source": "tests/jobs/fit/test_judge.py JOBS['A clear keyword match'] through lifeos.jobs.fit.judge.request() with the synthetic profile brief below",
+   "request_sha256": "26045e94d1d3a825e8fa2835f038175826df5280fd5f09801d68f7ea2bf84069",
+   "request": {
+    "title": "Technical Program Manager",
+    "description": "We are hiring a Technical Program Manager to lead delivery of our commerce platform.\nOwn the program roadmap and drive delivery across multiple teams\nLead integration of NetSuite with the storefront and payment providers\nReport to executive stakeholders on a global enterprise program\n8+ years of experience in program management delivering enterprise software\nExperience with NetSuite, Stripe and Contentful\nStrong communication skills\nExperience leading a team of 8 people\nBachelor's degree\nFamiliarity with Snowflake\nExperience with Kubernetes\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.\nJoin a collaborative remote team shipping software for merchants worldwide.",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   }
+  }
+ ]
+}
