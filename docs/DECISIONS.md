@@ -858,3 +858,13 @@ This supersedes the requirement to find positive remote evidence, and D89's rule
   - Kept: 281 `kept_remote_assumed`, 16 `kept_remote_assumed_place_unresolved`, 61 remote in the place or title, 6 of those with the place unresolved, and 11 remote in the description.
   - Excluded: 221 `non_us` (all name a foreign place; 329 before, of which 121 were unrecognised US places such as "San Diego HQ" and "New York, New York"), 24 `not_remote_hybrid`, 14 `not_remote_onsite` (57 before, when any "onsite" word counted), and 5 suppressed.
 - **Known risk.** D100 recorded that a 6 PM tick published 40 Adobe near-miss jobs with an unknown work mode. Under D204 an employer that never states office attendance will be presumed remote. Fit (72) still decides relevance, and the presumption is visible as `remote assumed`.
+- **Fit audit (Ledger, Oct 17) and Product Marketing.**
+  - Admitted Product Marketing pages scored up to 100 with "Gaps: none" on generic words. Eight of the top 14 are from an aggregator domain the retired Open Jobs feed carried.
+  - Three Adobe Workday pages (Videographer 80, FP&A 85, India People Analytics 86) are "Go" on Adobe's own product boilerplate (AEM, Commerce platforms, Cloud/SaaS), not on the job's duties. All 128 Adobe pages sit in Review only because of the ghost flag.
+  - 172 Admitted pages are below the 72 floor (86 at 68–69, 86 at 70–71).
+
+  So Fit cannot yet tell Product Marketing from the target family, and the board screen rejects it again (`title_other_profession_marketing`). A Fit fix (ignore company boilerplate; weigh duties over shared vocabulary) is a separate, Jim-approved Fit package.
+- **Final benchmark** (with Product Marketing rejected): 599 plausible roles and **346 kept** on 141 boards.
+  - Kept: 264 remote assumed, 16 remote assumed with the place unresolved, 50 remote in the place or title, 5 of those with the place unresolved, and 11 remote in the description.
+  - Excluded: 212 `non_us`, 23 `not_remote_hybrid`, 14 `not_remote_onsite`, and 4 suppressed.
+  - Posting age of the kept jobs: 6 within a day, 9 more within 7 days, 87 more within 30 days, and 242 older. They are first-party listings, open while listed (D111).

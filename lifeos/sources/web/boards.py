@@ -23,9 +23,9 @@ STRONG = re.compile(r"\b(program(?:me)? (?:manag\w*|lead|director|head)|(?:techn
                     r"implementation (?:manag\w*|lead|director|consultant)|product (?:manag\w*|lead|owner|director|head)|(?:director|vp|vice president|head) of product(?! marketing| design)|"
                     r"chief of staff|transformation (?:lead|manag\w*|director|head|program)|pmo|engagement manager|solutions? (?:architect|consultant)|portfolio (?:manag\w*|lead|director)|"
                     r"release manag\w*)\b", re.I)
-# Fit already admits these often though a profession word is in them (Ledger, Oct 17: 55 Product Marketing roles Admitted, average Fit 80): Fit decides.
-FIT_ADMITS = re.compile(r"\bproduct marketing\b", re.I)
 # Adjacent: operations, strategy and transformation leadership, plausible only when no other profession or junior support word is in the title.
+# Product Marketing is NOT passed (Fit audit, Oct 17: Admitted Product Marketing scored up to 100 with "Gaps: none" on generic words such as
+# Cloud/SaaS; Fit cannot tell it from the target family yet, so passing it would admit it).
 ADJACENT = re.compile(r"\b((?:business|strategy (?:and|&)|strategic|technical) operations|(?:director|vp|vice president|head|chief) of (?:operations|strategy)|"
                       r"operations (?:director|lead|manager|head)|strategy (?:and|&) operations|transformation|(?:director|head|vp|vice president)\b[^,]{0,25}\bstrategy|"
                       r"head of (?:technology|engineering) (?:&|and) product)\b", re.I)
@@ -42,9 +42,6 @@ def role(title):
         return None, "not_a_role_" + out.group(1).lower().split()[0]                  # coaching, internships, talent-pool posts
     if STRONG.search(title):
         return "strong", None
-    junior = re.search(r"\b(coordinator|assistant|intern|specialist|associate)\b", title, re.I)
-    if FIT_ADMITS.search(title) and not junior:
-        return "adjacent", None
     hit = NOT_ROLE.search(title)
     if ADJACENT.search(title) and not hit:
         return "adjacent", None

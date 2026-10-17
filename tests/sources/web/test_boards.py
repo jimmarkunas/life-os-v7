@@ -228,7 +228,7 @@ class MissedJobs(unittest.TestCase):
 
     def test_the_review_sample_roles_get_the_right_verdict(self):
         cases = [("Principal Product Manager", "strong"), ("Sr. Product Manager - Mortgage Lending Technology", "strong"), ("Product Owner - Revenue Systems", "strong"),
-                 ("Director of Product Marketing", "adjacent"), ("AI Strategy & Transformation Expert", "adjacent"), ("Head of Technology & Product (US or Europe, remote)", "adjacent"),
+                 ("Director of Product Marketing", "title_other_profession_marketing"), ("AI Strategy & Transformation Expert", "adjacent"), ("Head of Technology & Product (US or Europe, remote)", "adjacent"),
                  ("Director of Operations & Communications", "adjacent"),
                  ("Product Management Coach", "title_not_a_role_coach"), ("Operations Specialist I, Lifesciences", "title_other_profession_specialist"),
                  ("Senior Product Designer II, Growth (Remote US)", "title_other_profession_designer"), ("Revenue Operations Manager", "title_other_profession_revenue"),
