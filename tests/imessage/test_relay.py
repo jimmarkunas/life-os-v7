@@ -389,10 +389,10 @@ class PagedChain(unittest.TestCase):
         home = os.path.join(cls.tmp, "home")
         os.makedirs(os.path.join(home, "Library/Messages"))
         f = reader.Fixture()
-        now = datetime.now(timezone.utc)
-        cls.ids = [f.add(10 + i % 3, timedelta(minutes=400 - i), text="ok %d" % i, read=i % 2) for i in range(137)]
-        for i in range(3):
-            f.add(10, timedelta(minutes=5), text="same %d" % i)                                       # same-timestamp tie at the end
+        with mock.patch.object(reader, "NOW", datetime.now(timezone.utc)):                           # the scan windows on the real clock, so the rows are dated from it (as at line 132)
+            cls.ids = [f.add(10 + i % 3, timedelta(minutes=400 - i), text="ok %d" % i, read=i % 2) for i in range(137)]
+            for i in range(3):
+                f.add(10, timedelta(minutes=5), text="same %d" % i)                                   # same-timestamp tie at the end
         f.con.close()
         shutil.copy(f.db, os.path.join(home, "Library/Messages/chat.db"))
         sock = os.path.join(cls.tmp, "h.sock")
