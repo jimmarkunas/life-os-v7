@@ -1,8 +1,9 @@
 import time
 import unittest
 from datetime import datetime, timezone
+from unittest import mock
 
-from lifeos.sources.newsletters import ingest
+from lifeos.sources.newsletters import config, ingest
 from lifeos.sources.newsletters.parsers import dice, lensa
 from tests.kit.db import FakeConn
 from tests.kit.gmail import FakeGmail
@@ -39,6 +40,14 @@ MESSAGES = {"m1": ("Lensa <jobalert@lensa.com>", HTML, NOW - 3600),
 
 
 class ExtractTests(unittest.TestCase):
+    """The extract mechanics (parse, save, mark Processed, stale and no-card handling), driven by the Lensa card layout as a fixture. Lensa itself is retired (D201),
+    so these tests re-enable its parser for themselves; RetiredSenderTests below is the production behaviour for real Lensa mail."""
+    def setUp(self):
+        for patch in (mock.patch.dict(config.RETIRED_SENDERS, clear=True), mock.patch.dict(ingest.PARSERS, {"lensa": lensa.parse}),
+                      mock.patch.dict(ingest.LOOKS_LIKE_JOBS, {"lensa": lensa.looks_like_jobs})):
+            patch.start()
+            self.addCleanup(patch.stop)
+
     def test_dice_tracking_urls_dedupe_by_company_and_title_across_alerts(self):
         conn, db = store_double()
         first, second = dice.parse(DICE)[0], dice.parse(DICE_DAY2)[0]
@@ -80,6 +89,24 @@ class ExtractTests(unittest.TestCase):
         gmail, conn = FakeGmail(messages=old), store_double()[0]
         counts = ingest.extract(gmail, True, 10, conn)
         self.assertEqual((counts["stale_mail"], counts["new_jobs"], counts["marked_processed"]), (1, 0, 1))
+
+
+class RetiredSenderTests(unittest.TestCase):
+    """D201: Lensa mail still leaves the inbox, but it is closed out at once as retired_sender_lensa: no card is parsed, no job is written, and it never holds a pending slot."""
+    def test_a_dry_run_counts_lensa_mail_as_retired_and_writes_nothing(self):
+        gmail = FakeGmail(messages=MESSAGES)
+        counts = ingest.extract(gmail, live=False, limit=10)
+        self.assertEqual((counts["retired_sender_lensa"], counts["messages"], counts["cards"], counts["unsupported_sender"]), (1, 0, 0, 1))
+        self.assertEqual(gmail.calls, [])
+
+    def test_live_marks_lensa_mail_processed_without_reading_a_card_or_writing_a_job(self):
+        gmail, (conn, db) = FakeGmail(messages=MESSAGES), store_double()
+        counts = ingest.extract(gmail, True, 10, conn)
+        self.assertEqual((counts["retired_sender_lensa"], counts["new_jobs"], counts["marked_processed"], len(db["jobs"])), (1, 0, 1, 0))
+
+    def test_lensa_is_no_longer_reconciled(self):
+        self.assertNotIn("lensa", config.RECONCILE_QUERY)
+        self.assertNotIn("lensa", ingest.PARSERS)
 
 
 class SourceAccountingTests(unittest.TestCase):

@@ -17,7 +17,7 @@ from lifeos.sources.web import registry
 
 SOURCE = "discover"
 PER_SPONSOR = 5                  # candidates kept per sponsor per run
-RESOLVE_SEARCHES = 40            # final-link searches per run (the shared per-hour search allowance is 500; Lensa 300 + LinkedIn 100)
+RESOLVE_SEARCHES = 40            # final-link searches per run (the shared per-hour search allowance is 500: LinkedIn 100 + this 40 + titlewatch 14; Lensa retired, D201)
 _SEPARATORS = re.compile(r"\s+[|\-–—·•]\s+|\s+at\s+|\s+@\s+", re.I)
 _SITE_WORD = re.compile(r"\b(jobs?|careers?|vacanc\w+|indeed|linkedin|startup|reed|totaljobs|glassdoor|adzuna|cv-?library|visa|sponsor\w*|apply|hiring|work (?:at|for)|uk|london)\b", re.I)
 _NOT_A_ROLE = re.compile(r"^(jobs?|careers?|vacancies|current vacancies|open positions?|work (?:at|for) .*|jobs? (?:in|at) .*)$", re.I)

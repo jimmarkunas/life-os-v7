@@ -8,8 +8,9 @@ class LimitsTests(unittest.TestCase):
         self.assertLess(limits.TINYFISH_FETCH_DAILY_CAP, limits.TINYFISH_FETCH_PER_DAY)
         self.assertLessEqual(limits.TINYFISH_SEARCH_LANES * 60 / limits.TINYFISH_SEARCH_GAP_SECONDS,
                              limits.TINYFISH_SEARCH_PER_MINUTE)       # all lanes together, one shared key
-        self.assertLess(limits.TINYFISH_SEARCH_PER_RUN_LENSA + limits.TINYFISH_SEARCH_PER_RUN_LINKEDIN,
-                        limits.TINYFISH_SEARCH_PER_HOUR)
+        from lifeos.sources.web import discover_jobs, titlewatch      # noqa: PLC0415
+        self.assertLess(limits.TINYFISH_SEARCH_PER_RUN_LINKEDIN + discover_jobs.RESOLVE_SEARCHES + titlewatch.MAX_QUERIES_PER_RUN,
+                        limits.TINYFISH_SEARCH_PER_HOUR)                # every per-run search budget on the shared key, in one tick (Lensa retired, D201)
         self.assertLessEqual(1 / limits.NOTION_GAP_SECONDS, limits.NOTION_REQUESTS_PER_SECOND)
         self.assertFalse(limits.TINYFISH_AGENT_ALLOWED)
 

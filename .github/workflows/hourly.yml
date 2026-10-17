@@ -51,20 +51,12 @@ on:
         description: "ENRICH - read final pages of RESOLVED jobs: description, posting date, liveness (saves only when live)"
         type: boolean
         default: false
-      resolve_lensa:
-        description: "Resolve NEW Lensa jobs via ATS board match + free Search (saves only when live)"
-        type: boolean
-        default: false
       web:
         description: "US Remote web acquisition: poll due ATS boards, classify, admit new postings (counts only unless live)"
         type: boolean
         default: false
       web_scale_up:
         description: "UK Scale-Up web acquisition (also scheduled): poll due sponsor boards; counts only unless live"
-        type: boolean
-        default: false
-      openjobs:
-        description: "Open Jobs change feed (US Remote discovery): apply new generations; counts only unless live"
         type: boolean
         default: false
       sponsors:
@@ -404,30 +396,9 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - id: lensa
-        name: Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.resolve_lensa) }}
-        env:
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_lensa.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_lensa.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_lensa.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_lensa.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_lensa.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_lensa.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: ${{ steps.bws_lensa.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run resolve-lensa --limit 400 $([ "$LIVE" = "true" ] && echo --live)
       - id: discover
         continue-on-error: true
-        name: Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (runs after Lensa on the same search pace)
+        name: Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)
         if: ${{ always() && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.discover)) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_lensa.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -575,28 +546,6 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run web --limit 12 $([ "$LIVE" = "true" ] && echo --live)
-      - id: openjobs
-        continue-on-error: true
-        name: Step 5d - Open Jobs change feed (tail of new generations)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.openjobs) }}
-        env:
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run openjobs $([ "$LIVE" = "true" ] && echo --live)
       - id: web_scale_up
         continue-on-error: true
         name: Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)
@@ -1026,7 +975,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} openjobs=${{ steps.openjobs.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
