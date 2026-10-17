@@ -4,6 +4,7 @@ Free: Chromium runs inside the GitHub Actions runner (no paid browser). Selector
 Only the link chain is done here - no descriptions, dates or parsing. Logs: fixed outcome codes and counts only.
 """
 import asyncio
+import json
 import os
 import re
 from urllib.parse import urlsplit
@@ -68,15 +69,19 @@ async def login(page, email, password):
     return "login_failed:" + "/".join(seen) + ":" + ",".join(marks)
 
 
-DATA_KEYS = ("originalUrl", "applyLink", "companyApplyUrl", "externalApplyUrl", "jobApplyLink")
-DATA_JS = """(keys) => { const out = [];
-  const walk = (o, d) => { if (!o || d > 12) return;
-    if (Array.isArray(o)) { o.forEach(x => walk(x, d + 1)); return; }
-    if (typeof o === 'object') for (const [k, v] of Object.entries(o)) {
-      if (keys.includes(k) && typeof v === 'string' && v.startsWith('http')) out.push(v); else walk(v, d + 1); } };
-  const el = document.getElementById('__NEXT_DATA__');
-  if (el) { try { walk(JSON.parse(el.textContent), 0); } catch (e) {} }
-  return out; }"""
+DATA_JS = "() => { const el = document.getElementById('__NEXT_DATA__'); return el ? el.textContent : null; }"
+
+
+def job_result_link(data_text):
+    """The ONE employer URL of this job (V2 rule): only props.pageProps.dataSource.jobResult.{originalUrl, applyLink}, never another job's
+    link elsewhere in the page data (similar or recommended jobs); two different links, or none, give None and the Apply click decides."""
+    try:
+        job = json.loads(data_text)["props"]["pageProps"]["dataSource"]["jobResult"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    found = {strip_tracking(job[k]) for k in ("originalUrl", "applyLink") if isinstance(job, dict) and isinstance(job.get(k), str)
+             and job[k].startswith("http") and not is_internal(job[k])}
+    return found.pop() if len(found) == 1 else None
 
 
 STATE_JS = """() => { const out = new Set();
@@ -124,12 +129,9 @@ async def original_post_link(page):
 async def page_data_link(page):
     """Employer URL carried in the logged-in job page's own data (no click), or None."""
     try:
-        for url in await page.evaluate(DATA_JS, list(DATA_KEYS)):
-            if not is_internal(url):
-                return url
+        return job_result_link(await page.evaluate(DATA_JS))
     except Exception:                                           # noqa: BLE001
-        pass
-    return None
+        return None
 
 
 async def follow(context, page, job_url, wait_ms=12000):

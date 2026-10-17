@@ -33,16 +33,19 @@ def _good(result, company, title, need_host):
 
 
 def find(company, title):
-    """('hit', kind, url) | ('miss', reason). Reasons are fixed codes."""
+    """('hit', kind, url) | ('miss', reason) | ('degraded', code). Reasons are fixed codes: `no_result` = the search found nothing,
+    `no_fit` = it found pages but none passed the checks below. `degraded` = the search itself failed (rate limit, outage, unreadable
+    answer): not an attempt and never a miss."""
     if not company or not title:
         return ("miss", "no_company_or_title")
     try:
         # ONE search per job (it used to be two, ATS domains then any site: live runs showed the any-site hits dominate and the second call doubled the time and the budget).
         # Each result is judged by the rule for its own kind: an ATS-domain page needs the job title and company; an employer page also needs the company in its host.
-        for result in tinyfish_search.search(f"{company} {ats_match.title_variants(title)[-1]} careers apply")[:8]:        # the cleanest form: "(Fully Remote)" only dilutes the query
+        results = tinyfish_search.search(f"{company} {ats_match.title_variants(title)[-1]} careers apply")[:8]        # the cleanest form: "(Fully Remote)" only dilutes the query
+        for result in results:
             on_ats = any(domain in classify.host(result["url"]) for domain in ATS_DOMAINS)
             if _good(result, company, title, need_host=not on_ats):
                 return ("hit", classify.apply_kind(result["url"]), result["url"])
     except TinyFishError as error:
-        return ("miss", str(error).lower())
-    return ("miss", "no_result")
+        return ("degraded", str(error).lower())
+    return ("miss", "no_fit" if results else "no_result")

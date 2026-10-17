@@ -46,8 +46,9 @@ def _lensa(limit, live):
             if live:
                 requeued = lensa.requeue_held(cursor)             # the one-time catch-up for D80; finds nothing after it has run
             screened = lensa.screen(cursor, live)                 # D88: settle what the other producers already settled, before any search is spent
-    counts = stage.run_rows("lensa", limit, live, lensa.make_resolver(), deadline_minutes=limits.LENSA_DEADLINE_MINUTES)
-    return {**counts, "requeued": requeued, **screened}
+    resolver = lensa.make_resolver()
+    counts = stage.run_rows("lensa", limit, live, resolver, deadline_minutes=limits.LENSA_DEADLINE_MINUTES)
+    return {**counts, "requeued": requeued, **screened, "redirect": resolver.redirect}
 
 
 def _linkedin(limit, live):

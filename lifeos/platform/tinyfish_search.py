@@ -35,7 +35,8 @@ def _key():
 
 
 def search(query, include_domains=None, timeout=30):
-    """[{url,title,snippet,site_name}] (possibly empty). Raises TinyFishError('TINYFISH_SEARCH_HTTP_<code>')."""
+    """[{url,title,snippet,site_name}] (possibly empty). Raises TinyFishError('TINYFISH_SEARCH_HTTP_<code>'), and TINYFISH_SEARCH_UNREADABLE for an
+    answer that is not a 200 with a results list (a queued 202, a changed shape): that is DEGRADED, never "nothing found"."""
     wait = gap_seconds() - (time.monotonic() - _last[0])
     if wait > 0:
         time.sleep(wait)
@@ -47,6 +48,8 @@ def search(query, include_domains=None, timeout=30):
     _last[0] = time.monotonic()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise TinyFishError(f"TINYFISH_SEARCH_HTTP_{response.status}")
             data = json.loads(response.read())
     except urllib.error.HTTPError as error:
         if error.code == 429:
@@ -54,4 +57,6 @@ def search(query, include_domains=None, timeout=30):
         raise TinyFishError(f"TINYFISH_SEARCH_HTTP_{error.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         raise TinyFishError("TINYFISH_SEARCH_NETWORK") from None
-    return [r for r in (data.get("results") or []) if isinstance(r, dict) and r.get("url")]
+    if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+        raise TinyFishError("TINYFISH_SEARCH_UNREADABLE")
+    return [r for r in data["results"] if isinstance(r, dict) and r.get("url")]
