@@ -312,7 +312,7 @@ class HourlyJobTests(unittest.TestCase):
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
         self.assertIn("github.event_name == 'workflow_run'", job.split("runs-on")[0])
-        self.assertEqual(job.count("continue-on-error: true"), 2)
+        self.assertEqual(job.count("continue-on-error: true"), 3)            # + the first Bitwarden load, whose one retry fails the job (D209)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
 

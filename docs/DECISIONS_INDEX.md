@@ -205,3 +205,6 @@ This index is checked by a test: add a line here with every new decision.
 - D204 — US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
 - D205 — One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)
 - D206 — Jobs runner: the fast path runs before bulk discovery, a quick proof run reads few boards, and store connects are spread out (2026-10-18, Jim; LIFE-76 PR 1)
+- D207 — One store tunnel per process; every connect is a short MySQL session through it (2026-10-18, Jim; LIFE-76 PR 4a)
+- D208 — One process runs a whole Jobs tick in a fixed order, the fast path first, with stage budgets (2026-10-18, Jim; LIFE-76 PR 4b)
+- D209 — A Bitwarden credential load gets one identical retry after a jittered pause; a failed retry still fails the job (2026-10-18, Jim; LIFE-76)

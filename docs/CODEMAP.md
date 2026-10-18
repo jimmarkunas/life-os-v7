@@ -191,6 +191,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/safety.py`: SAFE-1.1: two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes only.
 - `lifeos/jobs/sponsors.py`: UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?
 - `lifeos/jobs/store.py`: Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db.
+- `lifeos/jobs/tick.py`: LIFE-76 PR 4b (D208): one process runs a whole Jobs tick, in a fixed order, through ONE store tunnel (D207).
 - `lifeos/jobs/tombstone.py`: Suppression tombstones (machine state only): after a canonical job is retired, keep the minimum identity for 90 days so the same stale or reposted vacancy is not immediat
 ### lifeos/megibow/
 - `lifeos/megibow/card.py`: The MegIBOW block writer (D134). Writes only inside the one machine-owned callout whose id is MEGIBOW_BLOCK_ID: the callout's own text (status line, warnings) and the cel
@@ -226,7 +227,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
-- `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
+- `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on 
 - `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a
 - `lifeos/platform/egress.py`: Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used
 - `lifeos/platform/gate.py`: Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate keeps the effective cadence at about one run per hou
@@ -299,7 +300,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `diag.yml`: jobs diag, trace; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
-- `hourly.yml`: jobs prep, jobright, linkedin, lensa, dice, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
+- `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `pr-tests.yml`: jobs unit-tests; manual no; secrets -
@@ -510,3 +511,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D204: US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
 - D205: One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)
 - D206: Jobs runner: the fast path runs before bulk discovery, a quick proof run reads few boards, and store connects are spread out (2026-10-18, Jim; LIFE-76 PR 1)
+- D207: One store tunnel per process; every connect is a short MySQL session through it (2026-10-18, Jim; LIFE-76 PR 4a)
+- D208: One process runs a whole Jobs tick in a fixed order, the fast path first, with stage budgets (2026-10-18, Jim; LIFE-76 PR 4b)
+- D209: A Bitwarden credential load gets one identical retry after a jittered pause; a failed retry still fails the job (2026-10-18, Jim; LIFE-76)

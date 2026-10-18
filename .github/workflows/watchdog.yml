@@ -24,7 +24,20 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
-      - name: Load the push topic from Bitwarden (EDGE-1.3, the one secret this job reads; the job fails if retrieval fails, no fallback)
+      - id: bws_watch
+        name: Load the push topic from Bitwarden (EDGE-1.3, the one secret this job reads; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_watch.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_watch_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_watch.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}

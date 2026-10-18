@@ -134,7 +134,7 @@ class WorkflowWiring(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch'", job.split("runs-on")[0])
         for name in ("NOTION_API_TOKEN", "GMAIL_OAUTH_REFRESH_TOKEN", "TINYFISH_API_KEY", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "FIT_PROFILE_JSON"):
             self.assertIn(f'{name}: ""', job)
-        self.assertEqual(len(re.findall(r"secrets\.\w+", job)), 2)   # the Interview token and the acceptance case
+        self.assertEqual(len(re.findall(r"secrets\.\w+", job)), 3)   # the Bitwarden bootstrap token in the load and its one retry (D209), and the acceptance case
 
     def test_command_never_embeds_the_case(self):
         step = self.step()
