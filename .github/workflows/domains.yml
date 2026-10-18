@@ -93,6 +93,29 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_jira
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_jira.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_jira_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_jira.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -114,8 +137,8 @@ jobs:
         name: Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)
         if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
         env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover-scheduled $([ "$LIVE" = "true" ] && echo --live)
       - id: jrollwatch
         continue-on-error: true
@@ -123,15 +146,15 @@ jobs:
         if: ${{ always() && steps.jrollauto.outcome != 'skipped' }}
         env:
           JIRA_ROLLOVER_OUTCOME: ${{ steps.jrollauto.outcome }}
-          NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC }}
+          NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC || steps.bws_jira_retry.outputs.NTFY_TOPIC }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-rollover-watch $([ "$LIVE" = "true" ] && echo --live)
       - id: jsnap
         continue-on-error: true
@@ -139,15 +162,15 @@ jobs:
         if: ${{ inputs.jira == 'snapshot' || inputs.jira == 'both' || inputs.jira == 'report' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
         env:
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run jira-snapshot $([ "$LIVE" = "true" ] && echo --live)
       - id: jcard
         continue-on-error: true
@@ -159,32 +182,32 @@ jobs:
           JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
           JIRA_GTV_CONTEXT_URL: ${{ secrets.JIRA_GTV_CONTEXT_URL }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_DB_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN || steps.bws_jira_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)
         if: ${{ inputs.jira == 'probe' }}
         env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-probe
       - id: jroll
         continue-on-error: true
         name: Jira sprint rollover (dry run unless live; never before the sprint ends)
         if: ${{ inputs.jira == 'rollover' || inputs.jira == 'both' }}
         env:
-          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN }}
-          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
         if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
@@ -203,6 +226,27 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_outlook
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 9; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_outlook.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_outlook_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_outlook.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -224,13 +268,13 @@ jobs:
         env:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run outlook-newsletters $([ "$LIVE" = "true" ] && echo --live)
       - id: calsync
         continue-on-error: true
@@ -239,16 +283,16 @@ jobs:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
           CALENDAR_ALLOW_MASS_DELETE: ${{ inputs.allow_mass_delete && 'true' || '' }}
-          NTFY_TOPIC: ${{ steps.bws_outlook.outputs.NTFY_TOPIC }}
+          NTFY_TOPIC: ${{ steps.bws_outlook.outputs.NTFY_TOPIC || steps.bws_outlook_retry.outputs.NTFY_TOPIC }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_outlook.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_outlook_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_DB_USER || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_outlook.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_outlook_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run calendar-sync $([ "$LIVE" = "true" ] && echo --live)
       - name: Outlook warning (does not fail the run)
         if: ${{ always() && (steps.outnews.outcome == 'failure' || steps.calsync.outcome == 'failure') }}
@@ -267,6 +311,27 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_bills
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 9; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            815268ba-fa49-4461-afb3-b4db015ef189 > NOTION_BILLS_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_bills.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_bills_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_bills.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -288,14 +353,14 @@ jobs:
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN || steps.bws_bills_retry.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-paid $([ "$LIVE" = "true" ] && echo --live)
       - id: bsnap
         continue-on-error: true
@@ -303,14 +368,14 @@ jobs:
         env:
           NOTION_BILLS_DATA_SOURCE_ID: ${{ secrets.NOTION_BILLS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_BILLS_TOKEN: ${{ steps.bws_bills.outputs.NOTION_BILLS_TOKEN || steps.bws_bills_retry.outputs.NOTION_BILLS_TOKEN }}
         run: python -m lifeos.run bills-snapshot $([ "$LIVE" = "true" ] && echo --live)
       - id: bcard
         continue-on-error: true
@@ -322,14 +387,14 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_bills.outputs.NOTION_JIRA_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_bills_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_bills.outputs.NOTION_JIRA_TOKEN || steps.bws_bills_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run bills-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Bills warning (does not fail the Jobs run)
         if: ${{ always() && (steps.bsnap.outcome == 'failure' || steps.bpaid.outcome == 'failure' || steps.bcard.outcome == 'failure') }}
@@ -348,6 +413,27 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_agenda
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 9; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_agenda.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_agenda_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_agenda.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -368,14 +454,14 @@ jobs:
         env:
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_agenda.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_agenda_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run agenda-snapshot --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
@@ -385,14 +471,14 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_USER || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_agenda.outputs.NOTION_JIRA_TOKEN || steps.bws_agenda_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run agenda-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Agenda warning (does not fail the Jobs run)
         if: ${{ always() && (steps.asnap.outcome == 'failure' || steps.acard.outcome == 'failure') }}
@@ -412,6 +498,22 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_amazon
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 4; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_amazon.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_amazon_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_amazon.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -427,9 +529,9 @@ jobs:
         env:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
@@ -443,8 +545,8 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
-          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN || steps.bws_amazon_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: aretain
         continue-on-error: true
@@ -454,9 +556,9 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
           RETENTION_LIVE: "true"    # D139: live since Jim read the dry-run counts (Oct 5): mail older than 30 days with a recorded order goes to the Trash, at most 200 a run (Jim approved raising it from 40)
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
         run: python -m lifeos.run amazon-retention --limit 200 $([ "$RETENTION_LIVE" = "true" ] && echo --live)
       - name: Amazon Orders warning (does not fail the Jobs run)
         if: ${{ always() && (steps.amazon.outcome == 'failure' || steps.acard.outcome == 'failure' || steps.aretain.outcome == 'failure') }}
@@ -474,6 +576,29 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_mail
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_mail.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_mail_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_mail.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -497,16 +622,16 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
-          NTFY_TOPIC: ${{ steps.bws_mail.outputs.NTFY_TOPIC }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_mail_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_mail_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_mail.outputs.NTFY_TOPIC || steps.bws_mail_retry.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
       - id: mcard
         continue-on-error: true
@@ -522,14 +647,14 @@ jobs:
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_USER || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN || steps.bws_mail_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run mail-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Mail Alerts warning (does not fail the Jobs run)
         if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure') }}
@@ -548,6 +673,29 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_hiring
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_hiring.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_hiring_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_hiring.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -577,17 +725,17 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_API_TOKEN }}
-          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_INTERVIEW_TOKEN }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_hiring_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_DB_USER || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_hiring.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_hiring_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_API_TOKEN || steps.bws_hiring_retry.outputs.NOTION_API_TOKEN }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_hiring_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN || steps.bws_hiring_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run hiring --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
@@ -604,6 +752,29 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_attention
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 11; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_attention.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_attention_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_attention.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -627,17 +798,17 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN }}
-          NTFY_TOPIC: ${{ steps.bws_attention.outputs.NTFY_TOPIC }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_attention_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_attention.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_attention_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_attention_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_attention_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_DB_USER || steps.bws_attention_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_attention_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_attention_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_attention_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_attention.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_attention_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN || steps.bws_attention_retry.outputs.NOTION_JIRA_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_attention.outputs.NTFY_TOPIC || steps.bws_attention_retry.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run attention $([ "$LIVE" = "true" ] && echo --live)
       - id: attncard
         continue-on-error: true
@@ -651,7 +822,7 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           ATTENTION_SYNC_OUTCOME: ${{ steps.attention.outcome }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN || steps.bws_attention_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Attention warning (does not fail the Jobs run)
         if: ${{ always() && (steps.attention.outcome == 'failure' || steps.attncard.outcome == 'failure') }}
@@ -668,6 +839,30 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_megibow
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_megibow.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_megibow_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_megibow.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -696,18 +891,18 @@ jobs:
           MEGIBOW_REVIEW_DB_ID: ${{ secrets.MEGIBOW_REVIEW_DB_ID }}
           MEGIBOW_EXCLUDED_DOMAINS: ${{ secrets.MEGIBOW_EXCLUDED_DOMAINS }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_megibow.outputs.NOTION_JIRA_TOKEN }}
-          NTFY_TOPIC: ${{ steps.bws_megibow.outputs.NTFY_TOPIC }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_megibow.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_megibow_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_megibow_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_megibow.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_megibow_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_DB_USER || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_megibow.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_megibow_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_megibow.outputs.NOTION_JIRA_TOKEN || steps.bws_megibow_retry.outputs.NOTION_JIRA_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_megibow.outputs.NTFY_TOPIC || steps.bws_megibow_retry.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run megibow --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: MegIBOW warning (does not fail the Jobs run)
         if: ${{ always() && steps.megibow.outcome == 'failure' }}
@@ -725,6 +920,20 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_dcc
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+            b78d1476-663e-496d-9bc4-b4e1003b61b0 > DCC_CARD_BLOCK_ID
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_dcc.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_dcc_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_dcc.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -736,7 +945,7 @@ jobs:
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
         env:
-          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID }}
+          DCC_CARD_BLOCK_ID: ${{ steps.bws_dcc.outputs.DCC_CARD_BLOCK_ID || steps.bws_dcc_retry.outputs.DCC_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
@@ -744,7 +953,7 @@ jobs:
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN || steps.bws_dcc_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Daily Command Center warning (does not fail the Jobs run)
         if: ${{ always() && steps.dcccard.outcome == 'failure' }}
@@ -761,6 +970,28 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_recruiters
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 10; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_recruiters.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_recruiters_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_recruiters.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -784,16 +1015,16 @@ jobs:
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_recruiters_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_recruiters_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: houtcomes
         continue-on-error: true
@@ -802,15 +1033,15 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_recruiters_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_recruiters.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_recruiters_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_DB_USER || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run hiring-outcomes --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Recruiters warning (does not fail the Jobs run)
         if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure') }}
@@ -830,6 +1061,30 @@ jobs:
       - uses: ./.github/actions/python
       - id: bws_imessage
         name: Load the iMessage alert credentials from Bitwarden (exactly these 12; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+            454e12df-637f-4f65-9ec1-b4e30052942f > TAILSCALE_OAUTH_CLIENT_ID
+            e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
+            6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_imessage.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_imessage_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_imessage.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -850,8 +1105,8 @@ jobs:
       - name: Join the tailnet as an ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
         with:
-          oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          oauth-client-id: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.bws_imessage_retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ steps.bws_imessage.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_imessage_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
       - id: imsg
@@ -859,15 +1114,15 @@ jobs:
         name: iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)
         env:
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER }}
-          NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC }}
-          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC || steps.bws_imessage_retry.outputs.NTFY_TOPIC }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
         run: python -m lifeos.run imessage-alerts $([ "$LIVE" = "true" ] && echo --live)
       - name: iMessage alerts warning (does not fail the run)
         if: ${{ always() && steps.imsg.outcome == 'failure' }}
@@ -879,8 +1134,8 @@ jobs:
         # newest sender's name scrambled under this run's own key; the name is unscrambled only in memory for the Notion write and is never logged or stored.
         name: Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)
         env:
-          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
@@ -898,8 +1153,8 @@ jobs:
         # metrics and limits read as the VM itself; local memory, disk, services, ChatGPT plan). Each tick reads only the heading unless the card is due.
         name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
         env:
-          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
           ORACLE_CARD_FORCE: ${{ github.event_name == 'workflow_dispatch' }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
@@ -923,6 +1178,19 @@ jobs:
       - uses: actions/checkout@v5
       - id: bws_report
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_report.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_report_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_report.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
@@ -931,7 +1199,7 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
       - name: Domain jobs report here (the run is already red; this pushes the phone)
         env:
-          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC }}
+          NTFY_TOPIC: ${{ steps.bws_report.outputs.NTFY_TOPIC || steps.bws_report_retry.outputs.NTFY_TOPIC }}
         run: |
           failed=""
           for pair in jira=${{ needs.jira.result }} outlook=${{ needs.outlook.result }} bills=${{ needs.bills.result }} agenda=${{ needs.agenda.result }} amazon=${{ needs.amazon.result }} mail=${{ needs.mail.result }} hiring=${{ needs.hiring.result }} attention=${{ needs.attention.result }} megibow=${{ needs.megibow.result }} recruiters=${{ needs.recruiters.result }} dcc=${{ needs.dcc.result }} imessage=${{ needs.imessage.result }}; do

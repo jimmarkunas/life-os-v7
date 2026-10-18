@@ -159,11 +159,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_AMAZON_DATA_SOURCE_ID"])
         for moved in ("GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"):
             self.assertNotIn(f"secrets.{moved}", text)                                                    # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"])   # the reviewed v3.0.1 commit
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit: the load and its one retry (D209)
         mappings = re.findall(r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*>\s*\w+)\s*$", text, re.M)
-        self.assertEqual(sorted(mappings), sorted(["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
+        self.assertEqual(sorted(mappings), sorted(2 * ["08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET", "672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN",
                                                    "46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN"]))
-        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 3)
+        self.assertEqual(len(re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", text)), 6)
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the Amazon command
         self.assertIn("--live", text)                                                                      # the existing live switch is still the only way to write
 
@@ -210,13 +210,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the Client ID is the trace job's only Gmail GitHub secret
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)   # the reviewed v3.0.1 commit, once per job
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 4)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
         head, trace_text = text.split("\n  # LIFE-64:")                                                     # the database-only diagnostics, then the one job that reads Gmail
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted(f"{uuid_} > {name}" for name, uuid_ in moved.items()))
-        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted(f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()))
-        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (7, 9))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()] * 2))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()] * 2))
+        self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (14, 18))                    # each in the load and its identical retry (D209)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
         trace = diag["jobs"]["trace"]
@@ -382,7 +382,7 @@ class DomainsWorkflowTests(unittest.TestCase):
         condition = job["if"]
         for part in ("always()", "github.event_name == 'workflow_run'", "display_title == 'tick'", "contains(needs.*.result, 'failure')"):
             self.assertIn(part, condition)
-        (step,) = [s for s in job["steps"] if "run" in s]
+        (step,) = [s for s in job["steps"] if "run" in s and not s["run"].startswith("sleep ")]                   # not the Bitwarden retry pause (D209)
         self.assertIn("lifeos.platform.alerts push --severity page", step["run"])
         self.assertFalse(step.get("continue-on-error"))                                                           # a push the provider refuses turns the job red
         self.assertEqual(sorted(re.findall(r"needs\.(\w+)\.result", step["run"])), sorted(job["needs"]))         # every domain job is named in the failed list
@@ -653,7 +653,8 @@ SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so t
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class BitwardenConsumerTests(unittest.TestCase):
     ACTION = "bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"
-    OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \}\}")
+    OUTPUT = re.compile(r"\$\{\{ steps\.(\w+)\.outputs\.(\w+) \|\| steps\.(\w+)\.outputs\.(\w+) \}\}")   # D209: the load's output, else its one retry's
+    PAUSE = "sleep $((30 + RANDOM % 45))"
 
     @classmethod
     def setUpClass(cls):
@@ -670,21 +671,30 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), want["direct"], name)             # non-migrated refs + the Bitwarden bootstrap token, nothing else
             self.assertIn("LIFEOS_BWS_RUNTIME_TOKEN", want["direct"], name)
             self.assertFalse([n for n in UUIDS if re.search(rf"secrets\.{n}\b", text)], name)                    # no migrated value is read from GitHub any more
-            self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), [self.ACTION] * len(want["jobs"]), name)
+            self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), [self.ACTION] * 2 * len(want["jobs"]), name)   # each load and its one retry
             self.assertTrue(set(want["jobs"]) <= set(doc["jobs"]), name)
             for job, names in want["jobs"].items():
-                (at, loader), = self.loaders(name, job)
+                (at, loader), (retry_at, retry) = self.loaders(name, job)
                 steps = doc["jobs"][job]["steps"]
                 self.assertEqual(steps[0]["uses"], "actions/checkout@v5", (name, job))
                 self.assertEqual(loader["uses"], self.ACTION, (name, job))
                 self.assertEqual(loader["with"]["access_token"], "${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}", (name, job))
                 self.assertEqual(sorted(re.findall(r"^([0-9a-f-]{36}) > (\w+)$", loader["with"]["secrets"], re.M)), sorted((UUIDS[n], n) for n in names), (name, job))
                 self.assertEqual(len(re.findall(r" > ", loader["with"]["secrets"])), len(names), (name, job))
-                self.assertFalse({"if", "continue-on-error", "env"} & set(loader), (name, job))                  # no bypass, no retry, no fallback source: a failed load fails the job
+                self.assertFalse({"if", "env"} & set(loader), (name, job))                                       # no bypass, no fallback source
+                self.assertIs(loader.get("continue-on-error"), True, (name, job))                                  # D209: Bitwarden's 429 / 5xx gets one retry ...
+                failed = "${{ steps.%s.outcome == 'failure' }}" % loader["id"]
+                self.assertEqual(retry_at, at + 2, (name, job))
+                self.assertEqual(steps[at + 1], {"name": steps[at + 1]["name"], "if": failed, "run": self.PAUSE}, (name, job))   # ... after a jittered pause, only when the load failed
+                self.assertEqual(retry["id"], loader["id"] + "_retry", (name, job))
+                self.assertEqual(retry["if"], failed, (name, job))
+                self.assertEqual((retry["uses"], retry["with"]), (loader["uses"], loader["with"]), (name, job))   # the same pinned action, the same ids
+                self.assertFalse({"continue-on-error", "env"} & set(retry), (name, job))                           # ... and a failed retry fails the job: no fallback
                 if name in CUT_OVER:
                     self.assertEqual(loader["id"], f"bws_{job}", (name, job))                                      # deterministic, unique id
                     self.assertIs(loader["with"]["set_env"], False, (name, job))                                  # nothing is exported job-wide
-                    self.assertEqual(set(loader), {"id", "name", "uses", "with"}, (name, job))
+                    self.assertEqual(set(loader), {"id", "name", "continue-on-error", "uses", "with"}, (name, job))
+                    self.assertEqual(set(retry), {"id", "name", "if", "uses", "with"}, (name, job))
                     self.assertEqual(set(loader["with"]), {"access_token", "set_env", "secrets"}, (name, job))
 
     def test_each_consumer_step_receives_exactly_its_pre_cutover_migrated_secrets_and_no_other_step_receives_any(self):
@@ -693,7 +703,7 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertFalse([k for k, v in (doc.get("env") or {}).items() if k in UUIDS], name)                  # nothing at workflow level
             for job, body in doc["jobs"].items():
                 self.assertFalse([k for k, v in (body.get("env") or {}).items() if k in UUIDS and v != ""], (name, job))   # nothing at job level (the Interview job's blanks stay)
-                (at, loader), = self.loaders(name, job)
+                (at, loader), (_, retry) = self.loaders(name, job)
                 expected_all = CONSUMER_STEPS.get(name, {}).get(job, {})
                 seen = set()
                 for i, step in enumerate(body["steps"]):
@@ -702,15 +712,15 @@ class BitwardenConsumerTests(unittest.TestCase):
                     for key, value in (step.get("env") or {}).items():
                         if key in UUIDS:
                             m = self.OUTPUT.fullmatch(str(value).strip())
-                            self.assertTrue(m and m.group(2) == key and m.group(1) == loader["id"], (name, job, label, key))
+                            self.assertTrue(m and m.group(2) == m.group(4) == key and (m.group(1), m.group(3)) == (loader["id"], retry["id"]), (name, job, label, key))
                             got.add(key)
                             self.assertGreater(i, at, (name, job, label))                                          # the loader precedes every step that consumes its outputs
-                    if step is loader:
+                    if step is loader or step is retry:
                         continue
                     passed = {k: self.OUTPUT.fullmatch(str(v).strip()) for k, v in (step.get("with") or {}).items()}
                     passed = {k: m for k, m in passed.items() if m}
                     if step.get("uses") == TAILSCALE_ACTION:              # LIFE-31: the pinned join gets exactly its two OAuth values, from this job's loader
-                        self.assertEqual({k: (m.group(1), m.group(2)) for k, m in passed.items()}, {k: (loader["id"], n) for k, n in TAILSCALE_WITH.items()}, (name, job))
+                        self.assertEqual({k: (m.group(1), m.group(3), m.group(2), m.group(4)) for k, m in passed.items()}, {k: (loader["id"], retry["id"], n, n) for k, n in TAILSCALE_WITH.items()}, (name, job))
                         self.assertGreater(i, at, (name, job, label))
                         seen |= set(TAILSCALE_WITH.values())
                     else:
@@ -725,7 +735,7 @@ class BitwardenConsumerTests(unittest.TestCase):
         for name, want in CONSUMERS.items():
             doc = self.doc[name]
             on = doc[True]
-            runs = [s["run"] for j in doc["jobs"].values() for s in j["steps"] if "run" in s]
+            runs = [s["run"] for j in doc["jobs"].values() for s in j["steps"] if "run" in s and s["run"] != self.PAUSE]   # the D209 retry pause is pinned by the loader test
             self.assertEqual(sorted(on), want["on"], name)
             self.assertEqual([c["cron"] for c in on.get("schedule", [])], want["crons"], name)
             self.assertEqual((doc.get("permissions"), doc.get("concurrency")), (want["perms"], want["conc"]), name)
