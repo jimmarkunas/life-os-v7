@@ -56,7 +56,8 @@ class Detect(unittest.TestCase):
                     return [("braze",)]
                 if "v7_feed" in self.last:                              # the Open Jobs feed: OK when its last run read it without error
                     return feed_rows
-                return [("lensa", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400), ("web:openjobs", 0, 3400)]
+                return [("dice", 0, 700), ("jobright", 5, 300), ("quiet-board", 0, 6), ("brand-new", 0, None), ("web:braze", 0, 400), ("web:figma", 0, 400), ("web:examplefeed", 0, 3400),
+                        ("lensa", 0, 700), ("web:openjobs", 0, 3400)]                     # D201: retired sources, busy before and silent now
 
         class Conn:
             def cursor(self):
@@ -64,11 +65,16 @@ class Detect(unittest.TestCase):
         return jobs_alerts.gather(Conn(), NOW)["stopped_sources"]
 
     def test_gather_flags_only_a_busy_source_that_went_quiet(self):
-        self.assertEqual(self.gather_stopped([("openjobs",)]), [("lensa", 50.0), ("web:figma", 28.6)])
+        self.assertEqual(self.gather_stopped([("examplefeed",)]), [("dice", 50.0), ("web:figma", 28.6)])
 
     def test_a_feed_read_without_error_is_idle_but_a_degraded_feed_still_pages(self):
-        self.assertNotIn("web:openjobs", [name for name, _ in self.gather_stopped([("openjobs",)])])
-        self.assertIn(("web:openjobs", 242.9), self.gather_stopped([]))                         # no OK feed row: the read failed (DEGRADED) or never ran
+        self.assertNotIn("web:examplefeed", [name for name, _ in self.gather_stopped([("examplefeed",)])])
+        self.assertIn(("web:examplefeed", 242.9), self.gather_stopped([]))                      # no OK feed row: the read failed (DEGRADED) or never ran
+
+    def test_a_retired_source_never_pages_even_with_no_feed_row(self):
+        stopped = [name for name, _ in self.gather_stopped([])]
+        self.assertFalse({"lensa", "web:openjobs"} & set(stopped), stopped)                     # D201: Lensa retired, Open Jobs ended 10 Oct 2026
+        self.assertTrue(all(reason for reason in jobs_alerts.RETIRED_SOURCES.values()))          # each says why, specifically
 
 
     def test_stuck_breakdown_groups_by_state_and_keeps_only_counts_and_codes(self):

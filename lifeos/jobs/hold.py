@@ -17,7 +17,8 @@ RECOVER_PER_RUN = 25
 EXCLUDED = "EXCLUDED_UNRESOLVED"
 REASON = "hold_expired"
 FAILED_RECOVERY = "unresolved_after_recovery"      # the alert counts this reason
-RESOLVED_BY = ("jobright", "lensa", "linkedin-alerts", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
+RESOLVED_BY = ("jobright", "linkedin-alerts", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
+RETIRED = {"lensa": "source_retired_lensa"}               # D201: a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason (its RESOLVED jobs carry on)
 
 
 def worthwhile(lane, posted, first_seen, reason, now):
@@ -68,6 +69,16 @@ def run(limit, live, now=None):
                 by_reason[reason] = by_reason.get(reason, 0) + int(n)
                 by_source[source] = by_source.get(source, 0) + int(n)
                 matrix.setdefault(source, {})[reason] = int(n)           # where each producer loses its jobs
+            retired = {}
+            for source, reason in RETIRED.items():
+                cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE source=%s AND status IN ('NEW', 'HOLD')", (source,))
+                open_rows = int(cursor.fetchone()[0] or 0)
+                retired[reason] = open_rows
+                if live and open_rows:
+                    cursor.execute("UPDATE v7_jobs SET status=%s, unresolved_reason=%s, updated_at=%s WHERE source=%s AND status IN ('NEW', 'HOLD')", (EXCLUDED, reason, now, source))
+                    cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE source=%s AND status IN ('NEW', 'HOLD')", (source,))
+                    if int(cursor.fetchone()[0] or 0):                  # read-back: none of the retired source's open jobs is left open
+                        raise store.StoreError("HOLD_RETIRE_READBACK_MISMATCH")
             excluded = 0
             if live and due:
                 cursor.execute("UPDATE v7_jobs SET status=%s, unresolved_reason=CASE WHEN recovered_at IS NULL THEN %s ELSE %s END, updated_at=%s WHERE " + DUE,
@@ -77,4 +88,4 @@ def run(limit, live, now=None):
                 if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:         # read-back: every due job is now terminal with its reason, as many as were counted
                     raise store.StoreError("HOLD_READBACK_MISMATCH")
     return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "by_source_reason": matrix, "saved": bool(live),
-            "recovery_candidates": candidates, "recovered": requeued}
+            "recovery_candidates": candidates, "recovered": requeued, "retired": retired}

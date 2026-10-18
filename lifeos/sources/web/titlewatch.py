@@ -18,7 +18,7 @@ from lifeos.sources.web import registry
 
 LANE = "Scale-Up"
 PREFIX = "web:titlewatch:"
-MAX_QUERIES_PER_RUN = 14                  # the search key is shared (500 an hour; Lensa and LinkedIn use 400): pairs rotate by the hour
+MAX_QUERIES_PER_RUN = 14                  # the search key is shared (500 an hour; LinkedIn uses 100, Lensa is retired, D201): pairs rotate by the hour
 MAX_NEW_PER_RUN = 10
 EXPIRE_DAYS = 10
 DEFAULT_TITLES = ("Product Owner", "Head of Product", "Product Manager", "Program Manager", "Project Manager", "Campaign Creative Lead",

@@ -199,3 +199,4 @@ This index is checked by a test: add a line here with every new decision.
 - D198 — Close Opportunity: the private Close service on Oracle and its Hiring Pipeline link (2026-10-16, Jim; LIFE-47 S2 live; S3 wired, dormant until its secret is set)
 - D199 — Bills: "overdue" cannot tell late from paid-but-never-ticked; the due-state rule is a Finance OS scoping item (2026-10-17, Jim; LIFE-61)
 - D200 — Newsletter resolution: Lensa follows its own tracking link again, Jobright reads only its own job's link, a failed search is a Failed Search with its cause (2026-10-17, Jim; LIFE-59)
+- D201 — Lensa is retired and the ended Open Jobs feed is removed; both are closed out with specific labels (2026-10-17, Jim)

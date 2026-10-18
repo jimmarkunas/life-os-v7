@@ -34,23 +34,6 @@ def _jobright(limit, live):
     return stage.run("jobright", limit, live, jobright.resolve_many_sync)
 
 
-def _lensa(limit, live):
-    from lifeos.jobs.resolve.aggregators import lensa
-    from lifeos.jobs.resolve import stage
-    from lifeos.platform import limits
-    from lifeos.jobs import store
-    requeued = 0
-    with store.connect() as connection:
-        store.ensure_schema(connection)
-        with connection.cursor() as cursor:
-            if live:
-                requeued = lensa.requeue_held(cursor)             # the one-time catch-up for D80; finds nothing after it has run
-            screened = lensa.screen(cursor, live)                 # D88: settle what the other producers already settled, before any search is spent
-    resolver = lensa.make_resolver()
-    counts = stage.run_rows("lensa", limit, live, resolver, deadline_minutes=limits.LENSA_DEADLINE_MINUTES)
-    return {**counts, "requeued": requeued, **screened, "redirect": resolver.redirect}
-
-
 def _linkedin(limit, live):
     from lifeos.jobs.resolve.aggregators import linkedin
     from lifeos.jobs.resolve import stage
@@ -84,7 +67,6 @@ def _purge(limit, live):
 STAGES = {
     "resolve-jobright": _jobright,
     "resolve-linkedin": _linkedin,
-    "resolve-lensa": _lensa,
     "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
     "web": lazy("lifeos.sources.web.run"),
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
@@ -140,7 +122,6 @@ STAGES = {
     "network-audit": lazy("lifeos.network.importer", "audit"),
     "network-match": lazy("lifeos.sources.network_leads"),
     "network-surface": lazy("lifeos.sources.network_surface"),
-    "openjobs": lazy("lifeos.sources.openjobs"),
     "sponsors": lazy("lifeos.sources.sponsor_register"),
     "probe": lazy("lifeos.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),

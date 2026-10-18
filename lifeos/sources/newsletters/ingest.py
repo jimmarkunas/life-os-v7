@@ -12,12 +12,12 @@ import sys
 from lifeos.sources.newsletters import config, finalize
 from lifeos.jobs import identity, intake, store
 from lifeos.platform.gmail import Gmail, GmailError
-from lifeos.sources.newsletters.parsers import dice, jobright, lensa, linkedin, reed
+from lifeos.sources.newsletters.parsers import dice, jobright, linkedin, reed
 
-PARSERS = {"lensa": lensa.parse, "jobright": jobright.parse, "linkedin-alerts": linkedin.parse,
+PARSERS = {"jobright": jobright.parse, "linkedin-alerts": linkedin.parse,
            "dice": dice.parse, "reed": reed.parse}
 PARSERS_WITH_COUNTS = {"dice": dice.parse_counted, "reed": reed.parse_counted}
-LOOKS_LIKE_JOBS = {"lensa": lensa.looks_like_jobs, "jobright": jobright.looks_like_jobs,
+LOOKS_LIKE_JOBS = {"jobright": jobright.looks_like_jobs,
                    "linkedin-alerts": linkedin.looks_like_jobs, "dice": dice.looks_like_jobs, "reed": reed.looks_like_jobs}
 from lifeos.jobs import lanes                                                # noqa: E402
 
@@ -88,12 +88,18 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
 
 def extract(gmail, live, limit, connection=None):
     processed_label = gmail.label_id(config.PROCESSED_LABEL, create=live)
+    retired_label = gmail.label_id(config.RETIRED_LABEL, create=live)
     counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
-              "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0}
-    done = []
+              "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0, "retired_sender_lensa": 0, "marked_retired": 0}
+    done, retired = [], []
     for message_id in gmail.list_ids(config.PENDING_QUERY, limit=limit):
         sender, html, received = gmail.message(message_id)
         rule = config.classify(sender)
+        if rule in config.RETIRED_SENDERS:                     # D201: its own label at once (never Processed), so it holds no pending slot; no card is read
+            counts[config.RETIRED_SENDERS[rule]] += 1
+            if live:
+                retired.append(message_id)
+            continue
         parser = PARSERS.get(rule)
         if parser is None:
             counts["unsupported_sender"] += 1
@@ -120,6 +126,9 @@ def extract(gmail, live, limit, connection=None):
     if live and done:
         gmail.relabel(done, add=[processed_label])
         counts["marked_processed"] = len(done)
+    if live and retired:
+        gmail.relabel(retired, add=[retired_label])
+        counts["marked_retired"] = len(retired)
     return counts
 
 
