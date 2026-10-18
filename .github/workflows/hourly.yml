@@ -96,7 +96,7 @@ on:
         type: boolean
         default: false
       quick:
-        description: "Quick proof run (LIFE-76): small caps for bulk discovery (employer boards 50 instead of 600), so a manual end-to-end run takes minutes; ticks never set it"
+        description: "Quick proof run (LIFE-76, D208): runs exactly what a tick runs (lifeos.jobs.tick in the finish job) with small caps (employer boards 50, publish 10), so the tick path is proven by hand first; the lane jobs do not run; ticks never set it"
         type: boolean
         default: false
       publish_limit:
@@ -290,7 +290,7 @@ jobs:
 
   jobright:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -374,7 +374,7 @@ jobs:
 
   linkedin:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -469,7 +469,7 @@ jobs:
 
   lensa:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -562,13 +562,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - name: Semantic layer (optional, shadow) - local embedding model, cached
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
         uses: actions/cache@v4
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-v1
       - name: Install semantic layer
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish || inputs.quick)) }}
         run: pip install -r requirements-fit.txt || echo "semantic layer unavailable (scoring unchanged)"
       - id: bws_finish
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
@@ -626,7 +626,7 @@ jobs:
       - id: tick
         continue-on-error: true
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
-        if: ${{ env.PIPELINE == 'true' }}
+        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}   # a manual quick run proves exactly this path
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
@@ -647,7 +647,7 @@ jobs:
         run: |
           pip install -r requirements-browser.txt
           python -m playwright install --with-deps chromium
-          python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live)
+          python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live) ${{ inputs.quick && '--quick' || '' }}
       - id: web
         continue-on-error: true
         name: Step 5b - US Remote web acquisition (due ATS boards)

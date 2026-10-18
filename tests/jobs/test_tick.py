@@ -75,6 +75,10 @@ class TickTests(unittest.TestCase):
         self.assertEqual(out, {"a": "ok", "publish": "ok"})
         self.assertEqual([a for a in alarms if a], [50, tick.FAST_FLOOR_SECONDS])
 
+    def test_quick_publishes_few_pages(self):
+        tick.tick(True, quick=True, plan=(Step("publish", 10, 60),), stages={"publish": self.stage("publish")}, clock=self.clock)
+        self.assertEqual(self.calls, [("publish", 10, True)])
+
     def test_quick_reads_few_boards(self):
         tick.tick(True, quick=True, plan=(Step("boards", 10, 600, bulk=True),), stages={"boards": self.stage("boards")}, clock=self.clock)
         self.assertEqual(self.calls, [("boards", 50, True)])

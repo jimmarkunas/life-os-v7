@@ -81,12 +81,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("dice", data["jobs"])
         self.assertIn("resolve-dice", [s.name for s in tick.PLAN])
         for lane in ("jobright", "linkedin", "lensa"):
-            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick", data["jobs"][lane]["if"], lane)
+            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick", data["jobs"][lane]["if"], lane)   # a quick proof runs the tick path instead
         finish = data["jobs"]["finish"]
         self.assertIn("vars.V7_PIPELINE == 'true'", finish["if"])
         steps = finish["steps"]
         step = next(s for s in steps if s.get("id") == "tick")
-        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' }}")
+        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}")   # a manual quick run proves exactly what a tick runs
+        self.assertIn("${{ inputs.quick && '--quick' || '' }}", step["run"])
         self.assertTrue(step.get("continue-on-error"))
         self.assertIn("python -m lifeos.jobs.tick", step["run"])
         self.assertIn("tick=${{ steps.tick.outcome }}", next(s for s in steps if s.get("id") == "lanes")["run"])
@@ -452,7 +453,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="f33ee55562d3d83b"),   # D208 (LIFE-76 PR 4b): a tick runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="7b3b586d63b2316a"),   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],

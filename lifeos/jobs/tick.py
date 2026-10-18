@@ -48,7 +48,7 @@ PLAN = (
     Step("discover-jobs", 300, 12, bulk=True),
     Step("sponsors", 120, bulk=True),
 )
-QUICK_LIMITS = {"boards": 50}          # a quick proof run (D206) reads few boards
+QUICK_LIMITS = {"boards": 50, "publish": 10}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
 
 class StageTimeout(BaseException):
