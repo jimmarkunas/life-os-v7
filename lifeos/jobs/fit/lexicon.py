@@ -59,6 +59,8 @@ OPTIONAL = (r"preferred|nice to have|nice-to-have|a plus|bonus|ideally|desirable
 
 # Section headings (matched on a short line).
 HEADINGS = (
+    # LIFE-41: an "About <Employer>" heading is company marketing, not the role (checked first: product names can contain "Experience").
+    ("skip", r"^about (?!(?:the |this |your )?(?:role|job|position|opportunity|team|work)\b|you\b)\S"),
     ("preferred", r"preferred|nice to have|nice-to-have|bonus|a plus|desired|desirable|extra credit|great to have"),
     ("required", r"requirement|must[- ]have|minimum|basic qualification|qualification|what you.?ll bring|what you bring|"
                  r"what we.?re looking for|you have|you.?ll need|who you are|about you|your background|skills|"
@@ -129,6 +131,7 @@ HARD_FAMILY = (
     "devops engineer", "site reliability", "infrastructure engineer", "cloud engineer", "database administrator",
     "sap basis", "salesforce administrator", "security engineer", "security architect", "penetration", "accountant",
     "accounting", "financial modeling", "financial analyst", "chief marketing officer", "cmo",
+    "videographer", "video producer", "video editor", "product marketing",   # LIFE-41: a different profession, not product management
 )
 
 # Generic shape of each dimension (a requirement belongs to exactly one, first match wins in this order).
