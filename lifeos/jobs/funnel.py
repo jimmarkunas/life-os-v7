@@ -22,15 +22,13 @@ def reason_code(reason):
     return _DIGITS.sub("N", reason or "")[:60] or "none"          # "Fit 67 below 68" -> "Fit N below N"
 
 
-_SHAPE = re.compile(r"[a-z][a-z0-9_+]*(?: \d+)*|Fit \d+(?:\.\d+)? below \d+")      # a fixed store code ("no_job_id 3") or a bare Fit floor
-
-
 def public_code(reason):
-    """reason_code for a PUBLIC log (the funnel report and explain): a fixed code or bare Fit floor keeps its shape; any other lane reason prints only
-    its enumerated code (lanes.PUBLIC_REASONS), never a rule name, an employer quote or other text (M6C)."""
-    if not reason or _SHAPE.fullmatch(reason):
-        return reason_code(reason)
-    return lanes.public_reason(reason)
+    """reason_code for a PUBLIC log (the funnel report and explain). A stored reason prints only when its code is in the one allowlist of stored
+    reason codes the public diag trace already uses (alertstate.REASONS); a lane reason prints only as its enumerated code (lanes.PUBLIC_REASONS);
+    anything else is "other". No shape is trusted: a lowercase word can be a private rule name (M6I)."""
+    from lifeos.jobs.alertstate import REASONS                     # noqa: PLC0415 (alertstate imports this module)
+    code = reason_code(reason)
+    return code if code.replace(" ", "_") in REASONS else lanes.public_reason(reason)
 
 
 def _add(table, *keys, n):
