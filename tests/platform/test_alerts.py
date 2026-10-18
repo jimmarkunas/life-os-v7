@@ -43,6 +43,12 @@ class Delivery(unittest.TestCase):
         self.assertIn("Next: renew it", body)
         self.assertEqual(severity, alerts.PAGE)
 
+    def setUp(self):                                          # the send path itself, as it behaves when Jim turns alerts back on
+        self._hibernated, alerts.HIBERNATED = alerts.HIBERNATED, False
+
+    def tearDown(self):
+        alerts.HIBERNATED = self._hibernated
+
     def test_ntfy_needs_a_topic_and_never_raises(self):
         self.assertFalse(alerts.ntfy("", "t", "b", alerts.PAGE))
 
@@ -84,6 +90,30 @@ class Delivery(unittest.TestCase):
         finally:
             alerts.ntfy = old
 
+
+
+class Hibernated(unittest.TestCase):
+    """LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended until Jim explicitly approves reactivation."""
+
+    def test_alerts_are_hibernated_on_this_commit(self):
+        self.assertIs(alerts.HIBERNATED, True)                  # turning alerts back on must change this test too, in a reviewed commit
+
+    def test_nothing_is_posted_and_the_push_counts_as_not_sent(self):
+        def post(request, timeout):
+            raise AssertionError("no push may leave while hibernated")
+        self.assertFalse(alerts.ntfy("topic", "Title", "Body", alerts.PAGE, post=post))
+        self.assertEqual(alerts.deliver(alerts.reconcile([A, I], {}, NOW), "topic"), {"sent": 0, "failed": 2})
+
+    def test_the_push_cli_sends_nothing_and_keeps_the_step_green(self):
+        import contextlib, io
+        out, old = io.StringIO(), alerts.ntfy
+        try:
+            alerts.ntfy = lambda *a: (_ for _ in ()).throw(AssertionError("ntfy called"))
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(alerts.main(["push", "--title", "T"]), 0)
+        finally:
+            alerts.ntfy = old
+        self.assertEqual(out.getvalue().strip(), '{"push": "hibernated"}')
 
 if __name__ == "__main__":
     unittest.main()
