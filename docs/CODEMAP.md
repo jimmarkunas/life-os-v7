@@ -226,7 +226,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
-- `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
+- `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on 
 - `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a
 - `lifeos/platform/egress.py`: Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used
 - `lifeos/platform/gate.py`: Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate keeps the effective cadence at about one run per hou
@@ -510,3 +510,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D204: US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
 - D205: One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)
 - D206: Jobs runner: the fast path runs before bulk discovery, a quick proof run reads few boards, and store connects are spread out (2026-10-18, Jim; LIFE-76 PR 1)
+- D207: One store tunnel per process; every connect is a short MySQL session through it (2026-10-18, Jim; LIFE-76 PR 4a)

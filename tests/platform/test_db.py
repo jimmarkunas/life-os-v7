@@ -27,8 +27,10 @@ class RetryTests(unittest.TestCase):
         self.patches = [mock.patch.object(db.time, "sleep", side_effect=self.sleeps.append), mock.patch.object(db, "_jitter", return_value=0)]
         for p in self.patches:
             p.start()
+        db._tunnel.update(directory=None, port=None, exit=None, check=None)        # each test starts with no open tunnel
 
     def tearDown(self):
+        db._tunnel.update(directory=None, port=None, exit=None, check=None)
         self.env.stop()
         for p in self.patches:
             p.stop()
@@ -60,9 +62,21 @@ class RetryTests(unittest.TestCase):
         from unittest import mock
         with mock.patch.object(db, "_jitter", return_value=3), mock.patch.object(db, "_spread", [True]):
             self._run([None])                                             # the process's first connect: spread out
-            self._run([None])                                             # a later connect in the same stage (publish opens hundreds): at once
-            self._run(["ssh: connect to host h port 22: Connection timed out", None])     # a retry is spread out again
+            self._run([])                                                 # a later connect reuses the tunnel at once (publish opens hundreds)
+            db._tunnel.update(directory=None, port=None, exit=None, check=None)
+            self._run(["ssh: connect to host h port 22: Connection timed out", None])     # a new tunnel's retry is spread out again
         self.assertEqual(self.sleeps, [3, 0, 0, 7])
+
+    def test_one_tunnel_serves_every_connect_of_the_process(self):
+        self.assertEqual(self._run([None]), ("connected", 1))
+        self.assertEqual(self._run([]), ("connected", 0))                  # no second ssh start: the open tunnel is reused
+        self.assertEqual(self._run([]), ("connected", 0))
+
+    def test_a_dead_tunnel_is_reopened(self):
+        from unittest import mock
+        self.assertEqual(self._run([None]), ("connected", 1))
+        with mock.patch.object(db, "_alive", return_value=False):           # the master died between stages
+            self.assertEqual(self._run([None]), ("connected", 1))          # a fresh tunnel, not a failed stage
 
     def test_a_network_blip_is_retried_and_then_connects(self):
         result, starts = self._run(["ssh: connect to host h port 22: Connection timed out", None])
