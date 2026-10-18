@@ -66,6 +66,196 @@
      ]
     }
    }
+  },
+  {
+   "id": "L41-B01",
+   "source": "LIFE-41 v2 synthetic mirror B01 (invented employer) through judge.request() on main + life41-extraction-v3.patch, with fixture A's SYNTHETIC candidate brief",
+   "request": {
+    "title": "Senior Videographer",
+    "description": "Join Northwind's Social Creative Studio as a Senior Videographer and help build the visual identity of our in-house video content.\nThis role offers the chance to work independently on fast-turn shoots and lead production with external crews on larger projects.\n- Film internal video projects of varying sizes, from individual shoots to bigger productions involving external crews\n- Develop and maintain the visual appearance and style of Northwind's video content\n- Apply strong social-first content understanding in framing, pacing, and composition for social platforms\n- Occasionally edit quick turn videos when fast turnaround is needed\n- Manage and maintain production equipment, ensuring everything is organized and shoot-ready\n- Proven experience as a videographer, ideally within a social, brand, or in-house studio environment\n- Working knowledge of video editing (We use Northwind Cut Pro)\n- Knowledge of video filming equipment, lighting, and audio capture standards\n- Experience managing, maintaining, and troubleshooting production equipment\nThe U.S.",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   },
+   "request_sha256": "949241a44e8de4fa5f8154e7fb5d0125b6bb31636f50d0613cc33a1ecd6e049e"
+  },
+  {
+   "id": "L41-B02",
+   "source": "LIFE-41 v2 synthetic mirror B02 (invented employer) through judge.request() on main + life41-extraction-v3.patch, with fixture A's SYNTHETIC candidate brief",
+   "request": {
+    "title": "Product Marketing Manager",
+    "description": "Product Marketing Manager - K-12 EdTech - Remote\nYou own product marketing for three of Contoso's products.\nYou'll decide how they're positioned, launched, sold, and adopted, translate product capabilities into narratives, and give Sales and Customer Success what they need to win.\n- Product marketing strategy for three products\n- End-to-end go-to-market planning and execution for new products, features, and releases\n- Differentiated positioning and messaging for school administrators and education leaders\n- Sales enablement that helps Sales and Customer Success communicate value and win\n- Customer insight, win-loss, and competitive intelligence that shape marketing and product decisions\nWho we're looking for\n- 2+ years of B2B SaaS product marketing experience\n- Experience launching software products or meaningful product features\n- A track record of positioning, messaging, and enablement that revenue teams actually use\n- Experience partnering closely with Product Management and Sales\n- Cross-functional leadership: you drive multiple initiatives and influence without relying on authority\n- Strategy and execution: you can set direction and also roll up your sleeves to ship it",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   },
+   "request_sha256": "ed7079f98b7ab604d9c7190d2573ef2e7b54ca7183463476cac85ae5523012c1"
+  },
+  {
+   "id": "L41-B03",
+   "source": "LIFE-41 v2 synthetic mirror B03 (invented employer) through judge.request() on main + life41-extraction-v3.patch, with fixture A's SYNTHETIC candidate brief",
+   "request": {
+    "title": "Senior Technical Program Manager",
+    "description": "We are seeking a Senior Technical Program Manager to join a growing Security team, with a focus on program delivery, portfolio management and operating model practices.\n- Lead end-to-end planning and execution of enterprise programs from initiation through delivery\n- Develop and maintain detailed program plans, timelines, budgets, and resource allocation across multiple concurrent initiatives\n- Identify, track, and mitigate program risks and dependencies, escalating blockers to leadership with clear options\n- Drive cross-functional coordination between engineering, product, legal, and third-party vendors\n- Establish and report on program goals, dashboards, and status updates for executive and board-level audiences\n- Strong understanding of program management methodologies and delivery\n- Proven ability to manage multiple complex, cross-functional programs simultaneously\n- Experience using program management and ticketing tools\n- Demonstrated ability to build trust and influence without direct authority across engineering and executive teams",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   },
+   "request_sha256": "a5807f4be8d21a9cbca5d631eca2ddc3b1b6a62e8fb765988644b1bd08b636f4"
+  },
+  {
+   "id": "L41-B04",
+   "source": "LIFE-41 v2 synthetic mirror B04 (invented employer) through judge.request() on main + life41-extraction-v3.patch, with fixture A's SYNTHETIC candidate brief",
+   "request": {
+    "title": "Senior Program Manager",
+    "description": "Senior Program Manager\nTailspin\nUnited States\nJoin or sign in to find your next job\n- Own the program roadmap, release plans and cross-team delivery for enterprise e-commerce platform programs spanning several client and Tailspin engineering teams\n- Lead ERP integration workstreams (NetSuite) between client storefronts, order management and finance systems\n- Run payments integration programs (Stripe) from solution design through launch, managing dependencies, risks and critical blockers\n- Serve as the primary point of contact for client executives, running solution-design workshops and reporting program status and trade-offs\n- Manage program budgets and a delivery team of up to ten people across multiple regions\n- 8+ years of experience in technical program management for enterprise commerce or other highly technical environments\n- Proven experience leading large-scale, cross-functional programs involving multiple product and engineering teams\n- Strong understanding of software development lifecycles, system integration and APIs\n- Experience in a client-facing, consulting or professional services environment",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   },
+   "request_sha256": "dff5ff0fec0de2ec68989ff959e01e8d22f0920d6a9e1142071f27386a24168b"
+  },
+  {
+   "id": "L41-B05",
+   "source": "LIFE-41 v2 synthetic mirror B05 (invented employer) through judge.request() on main + life41-extraction-v3.patch, with fixture A's SYNTHETIC candidate brief",
+   "request": {
+    "title": "Senior Technical Program Manager",
+    "description": "Woodgrove is on a mission to ensure that people in all lines of work have access to retirement benefits.\nThe Senior Technical Program Manager for Money Movement will be the engine of trust and precision at the heart of our financial operations, ensuring deposits and withdrawals are tracked with accuracy.\nWhat you get to do every day\n- Collaborate closely with design, product management, and engineering to drive planning and execution across teams\n- Identify and mitigate risks to execution by clarifying scope, removing blockers, and ensuring efficient communication\n- Support teams by creating schedules, setting goals, and identifying milestones at the project and portfolio level\n- Ensure longer-term strategic activities such as roadmap planning, resourcing, and cost management are completed\n- Bachelor's degree in Engineering, Computer Science, or related technical field\n- 3+ years of Technical Program Management experience in a related industry\n- Experience working with cloud-based service-oriented architectures\n- Proven record of building and delivering successful products\n- Very strong ability to dive deeply into technical problems, and to explore and leverage data to find solutions\n- 3+ years delivering money movement products on bank rails (ACH, NACHA, wires) in a regulated fintech\n- Working knowledge of money transmission compliance, ledgers and reconciliation, including writing SQL to investigate breaks",
+    "profile": {
+     "notice": "SYNTHETIC TEST CANDIDATE: invented for LIFE-60 model testing; not a real person",
+     "years_experience": 15,
+     "headline": "Technical program manager for enterprise commerce platforms",
+     "direct": [
+      "Technical program management of enterprise e-commerce platform programs across multiple teams",
+      "Owning program roadmaps, release plans and cross-team delivery",
+      "ERP integration programs (NetSuite) with storefronts",
+      "Payments integration programs (Stripe)",
+      "Leading delivery teams of up to 10 people",
+      "Global, multi-region enterprise programs with budgets up to 20M USD"
+     ],
+     "adjacent": [
+      "Headless CMS (Contentful) implementations",
+      "Reporting to executive stakeholders",
+      "Client solution-design workshops during implementations"
+     ],
+     "method_equivalent": [
+      "Coordinating data-pipeline (ETL, Snowflake) work delivered by data engineers",
+      "Introducing AI and automation into delivery processes"
+     ],
+     "unsupported": [
+      "Hands-on software engineering or writing production code",
+      "Machine-learning model development",
+      "Operating cloud infrastructure or Kubernetes",
+      "Cloud architecture certifications",
+      "Healthcare or clinical domain"
+     ]
+    }
+   },
+   "request_sha256": "51845b65bd2d57de2af24e7d3cfae2bb0c4d36ec4b8f2fe8323a25df9b285a76"
   }
  ]
 }
