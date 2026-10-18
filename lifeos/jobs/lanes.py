@@ -110,7 +110,7 @@ def _qualify(policy, facts, today):
         return Decision(DISABLED, "lane disabled")
     if facts.market and facts.market != policy.market:
         return Decision(EXCLUDE, f"market {facts.market} is not {policy.market}")
-    if policy.market_required and not facts.market:
+    if not facts.market and (policy.market_required or (facts.first_party and policy.market == "US")):     # M5: an employer board lists the world
         return Decision(REVIEW, "market unresolved")
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
@@ -317,13 +317,33 @@ def first_party_source(source):
     return bool(source) and source.startswith("web:") and source != "web:openjobs"
 
 
+# US places and statements that show US eligibility (M5 review). Used for an employer-board job only, where the board lists the whole world: its
+# market is US when its place names a US city or state or the employer says so; remote alone is not US eligibility.
+US_PLACES = re.compile(r"(?i:\b(?:nyc|new york|san francisco|bay area|los angeles|chicago|seattle|boston|austin|denver|atlanta|san jose|houston|phoenix|"
+                       r"philadelphia|san diego|dallas|fort worth|portland|sunnyvale|mountain view|palo alto|redwood city|menlo park|boise|salt lake city|miami|"
+                       r"fort lauderdale|jacksonville|charlotte|raleigh|nashville|minneapolis|pittsburgh|detroit|columbus|cincinnati|indianapolis|baltimore|"
+                       r"alpharetta|tampa|orlando|las vegas|sacramento|oakland|irvine|santa monica|boulder|omaha|tucson|albuquerque|honolulu|st\.? louis|"
+                       r"kansas city|new orleans|milwaukee|washington,? d\.?c\.?|district of columbia|alabama|alaska|arizona|arkansas|california|colorado|"
+                       r"connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|"
+                       r"minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|north carolina|north dakota|ohio|oklahoma|"
+                       r"oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|"
+                       r"wyoming)\b)|\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|"
+                       r"SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC) - ")
+_US_ELIGIBLE = re.compile(r"(?i:\b(?:based|located|living|resid\w*|work\w*)\s+(?:anywhere\s+)?(?:in|within)\s+the\s+(?:continental\s+)?(?:u\.s\.a?|usa|united states)\b|"
+                          r"\bauthori[sz]ed to work in the (?:u\.s\.|united states)\b)|\b(?:based|located|living|resid\w*|work\w*)\s+(?:anywhere\s+)?(?:in|within)\s+"
+                          r"the\s+(?:continental\s+)?US\b|\bU\.?S\.?[- ]based\b|\bauthori[sz]ed to work in the US\b")
+
+
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     mode, evidence = work_mode_evidence(location, title, text, window=FIT_WINDOW)
-    return Facts(fit=fit, market=market or market_of(location), work_mode=mode, work_evidence=evidence, pay_min=pay_min,
+    market = market or market_of(location)
+    if first_party and not market and (US_PLACES.search(location or "") or _US_ELIGIBLE.search(text or "")):
+        market = "US"
+    return Facts(fit=fit, market=market, work_mode=mode, work_evidence=evidence, pay_min=pay_min,
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only)
 
 

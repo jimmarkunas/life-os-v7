@@ -93,11 +93,11 @@ class Concert(unittest.TestCase):
         body = (card(300001, "Technical Program Manager", where="United States") + card(300002, "Technical Program Manager", where="Seattle, WA")
                 + card(300003, "Staff Software Engineer", where="United States") + card(300004, "Program Manager", where="Remote, US")
                 + card(300005, "Program Manager", where="London, England, United Kingdom") + card(300006, "Program Manager", where="Austin, TX (Hybrid)")
-                + card(300007, "Delivery Manager", where="Denver, CO (On-site)") + card(300008, "Implementation Manager", where="Dallas-Fort Worth Metroplex"))
+                + card(300007, "Delivery Manager", where="Denver, CO (On-site)") + card(300008, "Implementation Manager", where="North America"))
         counts = self.run_search((200, body))
         self.assertEqual(counts["screen"], {"admitted_remote_assumed": 2, "admitted_remote_assumed_place_unresolved": 1, "admitted_remote_in_location": 1,
                                             "non_us": 1, "not_remote_hybrid": 1, "not_remote_onsite": 1, "title_other_profession_engineer": 1})
-        self.assertEqual(sorted(r[4] for r in self.rows()), ["Dallas-Fort Worth Metroplex", "Remote, US", "Seattle, WA", "United States"])   # as given, never "(Remote)"
+        self.assertEqual(sorted(r[4] for r in self.rows()), ["North America", "Remote, US", "Seattle, WA", "United States"])   # as given, never "(Remote)"
 
     def test_cards_that_show_remote_take_the_room_first(self):
         body = card(310001, "Program Manager", where="United States") + card(310002, "Program Manager", where="Remote, US")

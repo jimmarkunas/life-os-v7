@@ -50,7 +50,6 @@ def role(title):
 
 US = re.compile(r"united states|\busa?\b|\bu\.s\.", re.I)
 REMOTE = re.compile(r"\bremote\b|\banywhere\b", re.I)
-PLACELESS = re.compile(r"^\W*(?:fully\W+)?(?:remote|anywhere|worldwide|global)(?:\W+(?:remote|anywhere|worldwide|global))*\W*$", re.I)   # "Remote", "Remote - Anywhere"
 WHOLE_US = re.compile(r"^\W*(?:united states(?: of america)?|usa?|u\.s\.(?:a\.)?)\W*$", re.I)                                        # the country, no city
 
 
@@ -63,11 +62,9 @@ NON_US_NAMED = re.compile(r"\b(algeria|algiers|egypt|cairo|nigeria|lagos|kenya|n
                           r"greece|athens|piraeus|lithuania|vilnius|latvia|riga|estonia|tallinn|romania|bucharest|bulgaria|sofia|serbia|belgrade|croatia|zagreb|"
                           r"hungary|budapest|czech|prague|slovakia|slovenia|austria|vienna|switzerland|zurich|geneva|belgium|brussels|luxembourg|frankfurt|"
                           r"düsseldorf|dusseldorf|hamburg|cologne|denmark|copenhagen|sweden|stockholm|norway|oslo|finland|helsinki|italy|milan|rome|"
-                          r"noida|gurgaon|gurugram|chennai|delhi|kolkata|phl|nepal|new zealand|auckland)\b", re.I)
-US_NAMED = re.compile(r"\b(nyc|new york|san francisco|bay area|los angeles|chicago|seattle|boston|austin|denver|atlanta|alabama|alaska|arizona|arkansas|california|"
-                      r"colorado|connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|"
-                      r"minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|north carolina|north dakota|ohio|oklahoma|oregon|"
-                      r"pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)\b", re.I)
+                          r"noida|gurgaon|gurugram|chennai|delhi|kolkata|phl|nepal|new zealand|auckland|espoo|abu dhabi|united arab emirates|calgary|edmonton|"
+                          r"guadalajara|wroc[lł]aw|krak[oó]w|kyiv|kiev|taoyuan|cyprus|baku|canberra|lilongwe|malawi|maputo|mozambique|kinshasa|mauritius|"
+                          r"tel[- ]aviv)\b", re.I)
 
 
 INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anywhere)\b", re.I)     # a region that may include the US: unresolved, never non-US
@@ -76,12 +73,12 @@ INCLUDES_US = re.compile(r"\b(north america|namer|americas|global|worldwide|anyw
 def geography(where):
     """us | non_us | unresolved, from the place text alone."""
     where = where or ""
-    us = US.search(where) or suppress.US.search(where) or WHOLE_US.match(where) or US_NAMED.search(where)
+    us = US.search(where) or suppress.US.search(where) or WHOLE_US.match(where) or lanes.US_PLACES.search(where)
     if not us and INCLUDES_US.search(where):
         return "unresolved"
     if not us and (lanes.market_of(where) in ("UK", "OTHER") or suppress.NON_US.search(where) or NON_US_NAMED.search(where)):
         return "non_us"
-    return "us" if us or PLACELESS.match(where) else "unresolved"
+    return "us" if us else "unresolved"                                                   # M5: "Remote" alone names no market
 
 
 def screen(job):

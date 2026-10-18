@@ -54,13 +54,17 @@ class Screen(unittest.TestCase):
     def test_each_job_gets_its_reason(self):
         remote_jd = "About the role. This is a fully remote position open to candidates across the US."
         cases = [("Senior Technical Program Manager", "Remote, US", None, "kept_remote_in_location"),
-                 ("Program Manager", "Remote", None, "kept_remote_in_location"),
+                 ("Program Manager", "Remote", None, "kept_remote_in_location_place_unresolved"),          # M5: remote alone names no market
                  ("Senior Project Manager", "Austin/Remote within the US", None, "kept_remote_in_location"),
                  ("Technical Program Manager", "New York, NY", remote_jd, "kept_remote_in_description"),
                  ("Technical Program Manager", "United States", remote_jd, "kept_remote_in_description"),
                  ("TPM", "United States", "Lead programs across teams.", "kept_remote_assumed"),      # D204: nothing required: presumed, labelled so
                  ("Technical Program Manager", "Austin, Texas, United States", None, "kept_remote_assumed"),
-                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed_place_unresolved"),
+                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed"),                 # M5: a US city (lanes.US_PLACES)
+                 ("Technical Program Manager", "RWC HQ", None, "kept_remote_assumed_place_unresolved"),          # names nothing known: unresolved
+                 ("Program Manager", "Espoo", None, "non_us"), ("Program Manager", "Abu Dhabi", None, "non_us"),   # foreign places seen in the M4 sample
+                 ("Program Manager", "Calgary", None, "non_us"), ("Program Manager", "Wrocław", None, "non_us"),
+                 ("Program Manager", "UT - Cottonwood Heights; FL - Jacksonville", None, "kept_remote_assumed"),
                  ("Program Manager", "Hybrid - Remote, US", None, "kept_remote_in_location"),                 # remote offered alongside hybrid
                  ("Program Manager", "New York, NY", "This is a hybrid role: 3 days a week in our office.", "not_remote_hybrid"),
                  ("Program Manager", "Seattle, WA", "There is no onsite requirement for this role.", "kept_remote_assumed"),

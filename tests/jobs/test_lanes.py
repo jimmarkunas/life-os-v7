@@ -397,3 +397,33 @@ class ContradictoryWorkMode(unittest.TestCase):
         decision = qualify(US, us(work_mode=mode, work_evidence=words), TODAY)
         self.assertEqual((decision.status, decision.reason), (EXCLUDE, 'not remote: onsite required ("must work onsite")'))
         self.assertEqual(lanes.detect_work_mode("Remote - US", "", "Great team. #LI-Hybrid"), "hybrid")
+
+
+class FirstPartyUsEligibility(unittest.TestCase):
+    """M5 review: an employer board lists the world, so a board job's US eligibility must be shown by its place (a US city or state) or the
+    employer's own statement; remote alone is not US eligibility. Unknown is Review, never Admit. Newsletter rows are unchanged."""
+
+    def decide(self, where, text="", first_party=True):
+        from lifeos.jobs import lanes
+        facts = lanes.facts_for(80, "Technical Program Manager", where, text, None, ago(1), None, first_party=first_party)
+        got = qualify(US, facts, TODAY)
+        return got.status, got.reason, facts.market
+
+    def test_a_us_city_or_state_or_a_stated_us_eligibility_is_us(self):
+        for where, text in (("San Jose", ""), ("Phoenix", ""), ("UT - Cottonwood Heights; FL - Jacksonville", ""), ("Palo Alto, California", ""),
+                            ("Remote", "You can be based anywhere in the United States."), ("Remote", "Candidates must be authorized to work in the US."),
+                            ("Remote", "This is a US-based remote role.")):
+            with self.subTest(where=where, text=text):
+                self.assertEqual(self.decide(where, text)[::2], (ADMIT, "US"))
+
+    def test_remote_alone_a_region_or_an_unknown_place_is_review_not_admit(self):
+        for where, text in (("Remote", ""), ("Remote, North America", ""), ("Americas", ""), ("RWC HQ", ""), ("Newcastle", ""),
+                            ("Remote", "We serve US customers across the world."), ("Remote", "Fully remote team.")):
+            with self.subTest(where=where, text=text):
+                self.assertEqual(self.decide(where, text), (REVIEW, "market unresolved", None))
+
+    def test_a_named_foreign_market_still_excludes(self):
+        self.assertEqual(self.decide("Remote - Germany")[0], EXCLUDE)
+
+    def test_a_newsletter_row_with_no_place_keeps_its_existing_decision(self):
+        self.assertEqual(self.decide("Remote", first_party=False)[:2], (ADMIT, None))
