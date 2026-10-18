@@ -67,7 +67,7 @@ def parse(text):
             [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
         units += [Unit(p, section, strict) for p in pieces if len(p) > 3 and not _BOILER.search(p)]
     if not any(u.section in ("required", "preferred", "duty") for u in units):
-        units = [Unit(u.text, "required", False) for u in units]       # no recognisable headings: every sentence is judged on its shape
+        units = [u if u.section == "skip" else Unit(u.text, "required", False) for u in units]   # no recognisable headings: every non-skip sentence is judged on its shape
     return units
 
 
