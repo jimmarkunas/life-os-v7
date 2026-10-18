@@ -345,9 +345,6 @@ class PublicationOrderTests(unittest.TestCase):
                 created.append(props["Stable Job Key"]["rich_text"][0]["text"]["content"])
                 return "page-" + created[-1]
 
-            def create_page(self, props, blocks):
-                return {"id": self.create(props, blocks)}
-
         with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
                 mock.patch.object(publish.store, "connect", return_value=self.db), mock.patch.object(publish.store, "ensure_schema"), \
                 mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}), \

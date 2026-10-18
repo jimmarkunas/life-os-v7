@@ -62,6 +62,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
+- `readback-recheck` -> `lifeos.jobs.readback:recheck`
 - `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`
@@ -516,3 +517,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D209: A Bitwarden credential load gets one identical retry after a jittered pause; a failed retry still fails the job (2026-10-18, Jim; LIFE-76)
 - D210: Ticks and manual runs take turns: a tick queues behind an older manual run instead of cancelling itself (2026-10-18, Jim; LIFE-76)
 - D211: Publish verifies a page it creates from Notion's create response and records the Fit it wrote (2026-10-18, Jim; LIFE-76)
+- D212: Every Ledger page is verified by reading Notion: one batched key query plus the per-page body marker; D211's create-response check is withdrawn (2026-10-18, Jim; LIFE-76)

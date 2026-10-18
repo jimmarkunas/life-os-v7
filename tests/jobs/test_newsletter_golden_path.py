@@ -118,13 +118,12 @@ class JobLedger:
         self.blocks[page_id] = [{"type": b["type"], b["type"]: {"rich_text": [{"plain_text": "".join(r["text"]["content"] for r in b[b["type"]]["rich_text"])}]}} for b in blocks]
         return page_id
 
-    def create_page(self, props, blocks):
-        """As Notion answers a create: the page with its stored properties (a wrong Apply URL when the Ledger holds a different one)."""
-        page_id = self.create(props, blocks)
-        props = dict(self.pages[page_id]["props"])
+    def _shown(self, page):
+        """The page's properties as Notion returns them (a wrong Apply URL when `break_url`)."""
+        props = dict(page["props"])
         if self.break_url:
             props["Apply URL"] = {"url": "https://wrong.example/x"}
-        return {"id": page_id, "archived": False, "properties": props}
+        return props
 
     def call(self, method, path, body=None):
         from lifeos.jobs import ledger
@@ -132,15 +131,14 @@ class JobLedger:
         if method == "GET" and path.startswith("/data_sources/"):
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "POST" and path.endswith("/query"):
-            wanted = (((body or {}).get("filter") or {}).get("rich_text") or {}).get("equals")                      # the Stable Job Key lookup; no filter = the URL read
-            return {"results": [{"id": i, "properties": p["props"]} for i, p in self.pages.items()
-                                if wanted is None or p["props"]["Stable Job Key"]["rich_text"][0]["plain_text"] == wanted], "has_more": False}
+            where = (body or {}).get("filter") or {}
+            ors = where.get("or")
+            wanted = {f["rich_text"]["equals"] for f in ors} if ors else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)   # one key, a batch (D212 read-back) or none (the URL read)
+            return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
+                                and (wanted is None or p["props"]["Stable Job Key"]["rich_text"][0]["plain_text"] in wanted)], "has_more": False}
         if method == "GET" and path.startswith("/pages/"):
             found = self.pages[path.rsplit("/", 1)[1]]
-            props = dict(found["props"])
-            if self.break_url:
-                props["Apply URL"] = {"url": "https://wrong.example/x"}
-            return {"archived": found["archived"], "properties": props}
+            return {"archived": found["archived"], "properties": self._shown(found)}
         if method == "GET" and "/children" in path:
             return {"results": self.blocks[path.split("/blocks/")[1].split("/children")[0]][:3]}
         if method == "PATCH" and path.startswith("/pages/"):
@@ -217,8 +215,7 @@ class GoldenPath(unittest.TestCase):
         self.assertEqual((j.labels("m1"), j.labels("m2")), (NEWSLETTER, DONE))     # m1 still has a pending vacancy; m2 is complete and verified
         self.assertEqual((closed["closed"], closed["in_flight"]), (1, 1))
         self.assertEqual(j.ledger.created, 3)                                      # one canonical Ledger page per qualifying vacancy, no more
-        self.assertEqual(published["verified"], 3)                                 # D211: each created page is verified from Notion's create response ...
-        self.assertEqual(published["readback"], {"checked": 0, "verified": 0, "failed": 0, "why": {}})   # ... so the read-back has nothing left to read
+        self.assertEqual(published["readback"], {"checked": 3, "verified": 3, "failed": 0, "why": {}})   # D212: every created page is read back from Notion
         self.assertEqual(published["fit_sync"]["due"], 0)                          # and the Fit publish wrote is not written a second time
 
     def test_the_us_remote_view_carries_the_admitted_vacancy_with_its_employer_link_key_and_fit(self):

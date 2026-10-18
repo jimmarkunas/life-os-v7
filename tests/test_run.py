@@ -72,7 +72,7 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
 
     def test_every_other_stage_keeps_exit_0_even_when_its_counts_say_failed(self):
-        others = sorted(name for name in run.STAGES if name != "publish")
+        others = sorted(name for name in run.STAGES if name not in run.PARTIAL_FAILURE)
         self.assertGreater(len(others), 40)
         for name in others:
             code, out, err = self._main(name, {"failed": 3, "lane": "x"})
@@ -80,8 +80,8 @@ class PartialFailureExitTests(unittest.TestCase):
             self.assertEqual(out, f"{name}: " + json.dumps({"failed": 3, "lane": "x"}, sort_keys=True) + "\n")
 
     def test_only_publish_is_registered_for_the_partial_failure_exit(self):
-        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["publish"])
-        self.assertIn("publish", run.STAGES)
+        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["publish", "readback-recheck"])   # D212: a recheck page that does not read back fails its step, visibly
+        self.assertTrue(set(run.PARTIAL_FAILURE) <= set(run.STAGES))
 
     def test_a_raised_store_or_notion_error_still_returns_1_with_its_own_code(self):
         err = io.StringIO()
@@ -163,9 +163,6 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
                     raise refused
                 created.append(job)
                 return "page-" + job
-
-            def create_page(self, props, blocks):
-                return {"id": self.create(props, blocks)}
 
         rows = [self._row(1, "key-1"), self._row(2, "key-2")]
         out, err = io.StringIO(), io.StringIO()
