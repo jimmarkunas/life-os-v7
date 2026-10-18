@@ -116,10 +116,14 @@ class Client:
         raise NotionError("NOTION_RATE_LIMITED")
 
     def create(self, props, blocks):
+        return self.create_page(props, blocks)["id"]
+
+    def create_page(self, props, blocks):
+        """-> the created page as Notion returned it (its stored properties), after any blocks past the first 100 are appended."""
         first, rest = blocks[:limits.NOTION_MAX_CHILD_BLOCKS], blocks[limits.NOTION_MAX_CHILD_BLOCKS:]
         page = self.call("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": self.source},
                                             "properties": props, "children": first})
         for start in range(0, len(rest), limits.NOTION_MAX_CHILD_BLOCKS):
             self.call("PATCH", f"/blocks/{page['id']}/children",
                       {"children": rest[start:start + limits.NOTION_MAX_CHILD_BLOCKS]})
-        return page["id"]
+        return page

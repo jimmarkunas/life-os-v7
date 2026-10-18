@@ -515,3 +515,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D208: One process runs a whole Jobs tick in a fixed order, the fast path first, with stage budgets (2026-10-18, Jim; LIFE-76 PR 4b)
 - D209: A Bitwarden credential load gets one identical retry after a jittered pause; a failed retry still fails the job (2026-10-18, Jim; LIFE-76)
 - D210: Ticks and manual runs take turns: a tick queues behind an older manual run instead of cancelling itself (2026-10-18, Jim; LIFE-76)
+- D211: Publish verifies a page it creates from Notion's create response and records the Fit it wrote (2026-10-18, Jim; LIFE-76)
