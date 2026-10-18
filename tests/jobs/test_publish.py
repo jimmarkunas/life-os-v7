@@ -78,6 +78,19 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(identity.url_key("https://Boards.Greenhouse.io/a/jobs/1/?gh_src=x"),
                          identity.url_key("https://boards.greenhouse.io/a/jobs/1"))
 
+    def test_url_key_names_the_ats_vacancy_so_distinct_jobs_stay_apart_and_one_job_converges(self):        # LIFE-59
+        k = identity.url_key
+        embed = "https://job-boards.greenhouse.io/embed/job_app?for={}&token={}"
+        self.assertNotEqual(k("https://www.example.com/careers?gh_jid=1"), k("https://www.example.com/careers?gh_jid=2"))
+        self.assertNotEqual(k(embed.format("acme", 1)), k(embed.format("other", 2)))
+        self.assertEqual(k("https://www.example.com/careers?gh_jid=1&gh_src=x&utm_source=y"), k("https://WWW.example.com/careers/?gh_jid=1"))   # tracking ignored
+        one = {k(embed.format("acme", 7007)), k("https://boards.greenhouse.io/acme/jobs/7007"), k("https://job-boards.greenhouse.io/acme/jobs/7007?gh_src=li"),
+               k("https://www.acme.example/careers?gh_jid=7007")}
+        self.assertEqual(len(one), 1)                                    # the newsletter's embed link, the board page and the careers page: one vacancy
+        self.assertEqual(k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100/apply"), k("https://jobs.lever.co/acme/0f0e1d2c-3b4a-5968-7766-554433221100"))
+        self.assertNotEqual(k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R1"), k("https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM_R2"))
+        self.assertEqual(k("https://careers.example.com/jobs/director-ta"), __import__("hashlib").sha256(b"careers.example.com/jobs/director-ta").hexdigest())  # no id: key unchanged
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -93,13 +106,48 @@ class VisibleLaneLabel(unittest.TestCase):
 
 
 class SameOpeningTests(unittest.TestCase):
-    def test_a_published_page_with_the_same_company_and_title_makes_a_duplicate_and_generic_titles_are_never_merged(self):
-        from tests.kit.db import FakeCursor
-        cursor = FakeCursor(script={"SELECT id FROM v7_jobs WHERE status='PUBLISHED'": (7,)})
-        self.assertEqual(publish.same_opening(cursor, 9, "ServiceNow", "Director, TA Infrastructure"), 7)
-        self.assertIsNone(publish.same_opening(cursor, 9, "Adobe", "Product Manager"))             # two words: generic
-        self.assertIsNone(publish.same_opening(cursor, 9, "", "Director, TA Infrastructure"))
-        self.assertEqual(len(cursor.sql), 1)
+    """D90 over the real store SQL: one opening under several links is one page; LIFE-59: two links naming different ATS vacancies are two."""
+
+    def setUp(self):
+        from datetime import datetime
+        from tests.kit.jobsdb import JobsDB
+        self.db, self.now, self.n = JobsDB(), datetime(2026, 10, 18, 12, 0), 0
+
+    def published(self, company, title, url):
+        self.n += 1
+        self.db.insert("v7_jobs", dedupe_key=identity.url_hash(url + str(self.n)), status="PUBLISHED", title=title, company=company, source="web:x",
+                       source_url=url, final_apply_url=url, first_seen=self.now, last_seen=self.now, updated_at=self.now, lane="US Remote", notion_page_id=f"p{self.n}")
+        return self.db.raw.execute("SELECT MAX(id) FROM v7_jobs").fetchone()[0]
+
+    def same(self, company, title, url):
+        with self.db.cursor() as cursor:
+            return publish.same_opening(cursor, 999, company, title, url)
+
+    def test_the_same_company_and_title_with_no_vacancy_ids_is_one_opening_and_generic_titles_never_merge(self):
+        first = self.published("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta")
+        self.assertEqual(self.same("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta-chicago"), first)
+        self.assertIsNone(self.same("ServiceNow", "Product Manager", "https://careers.example.com/pm"))          # two words: generic
+        self.assertIsNone(self.same("", "Director, TA Infrastructure", "https://careers.example.com/director-ta"))
+
+    def test_two_requisitions_with_the_same_company_title_and_path_stay_two_openings(self):
+        self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=1001")
+        self.assertIsNone(self.same("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002"))
+        self.published("Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=3003")
+        self.assertIsNone(self.same("Acme", "Senior Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=4004"))
+        self.published("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R5005")
+        self.assertIsNone(self.same("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R6006"))
+
+    def test_one_vacancy_under_another_link_or_provider_is_still_one_opening(self):
+        board = self.published("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/7007")
+        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=7007"), board)
+        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://www.linkedin.com/jobs/view/4478543856"), board)    # no id on one side
+        req = self.published("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Chicago/Delivery-PM_R8008")
+        self.assertEqual(self.same("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/Delivery-PM_R8008-1"), req)   # one req, two places
+
+    def test_a_matching_page_with_another_vacancy_does_not_hide_one_that_is_the_same(self):
+        self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=1001")
+        same = self.published("Acme", "Senior Technical Program Manager", "https://www.acme.example/careers?gh_jid=2002")
+        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/2002"), same)
 
 
 class LedgerReseedTests(unittest.TestCase):
@@ -306,3 +354,67 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(created, ["k2", "k1"])                                               # strongest first: the admitted 91, then the admitted 70
         status = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
         self.assertEqual(status, {1: "PUBLISHED", 2: "PUBLISHED", 3: "READY"})                # the Review job (80) waits behind both admitted jobs
+
+
+class ReseedUnderVacancyKeys(unittest.TestCase):
+    """LIFE-59 M6B: SEED_MARKER 3 re-reads the Ledger's Apply URLs once under the vacancy-naming url_key, through publish.run's own seed path and the
+    production SQL. A job held only because the old key dropped its vacancy id goes back to READY; a real duplicate stays held; the old collapsed
+    hashes (seed and source='v7') suppress nothing distinct; a second run reads nothing and changes nothing; a failed Ledger read changes nothing."""
+
+    EMBED = "https://job-boards.greenhouse.io/embed/job_app?for=acme&token={}"
+    CAREERS = "https://www.acme.example/careers?gh_jid={}"
+    ON_LEDGER = (EMBED.format(1001), CAREERS.format(2002), "https://careers.example.com/jobs/director-ta")
+    HELD = {"distinct_embed": EMBED.format(3003), "same_as_1001": "https://boards.greenhouse.io/acme/jobs/1001", "distinct_careers": CAREERS.format(4004),
+            "exact_2002": CAREERS.format(2002), "plain_on_ledger": "https://careers.example.com/jobs/director-ta"}
+
+    def setUp(self):
+        from hashlib import sha256
+        from unittest import mock
+        from lifeos.jobs import store
+        from tests.jobs.test_newsletter_golden_path import ENV, JobLedger
+        from tests.kit.jobsdb import JobsDB
+        self.db, self.ledger, self.env, now = JobsDB(), JobLedger(), ENV, datetime.datetime(2026, 10, 18, 12, 0)
+        for n, url in enumerate(self.ON_LEDGER):
+            self.ledger.pages[f"old{n}"] = {"props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": f"k{n}"}]}}, "archived": False}
+        legacy = [("0" * 64, "seed"), ("0" * 63 + "2", "seed"), (sha256(b"job-boards.greenhouse.io/embed/job_app").hexdigest(), "seed"),
+                  (sha256(b"www.acme.example/careers").hexdigest(), "v7"), (sha256(b"careers.example.com/jobs/director-ta").hexdigest(), "seed")]
+        for key, source in legacy:                                                              # what the old url_key stored
+            self.db.insert("v7_ledger_urls", url_hash=key, source=source, seen_at=now)
+        for name, url in self.HELD.items():
+            self.db.insert("v7_jobs", dedupe_key=identity.url_hash(name), status="DUPLICATE", unresolved_reason="in_ledger", title="Senior Program Manager",
+                           company=name, source="jobright", source_url=url, final_apply_url=url, first_seen=now, last_seen=now, updated_at=now, lane="US Remote")
+        for p in (mock.patch.object(store, "connect", lambda: self.db), mock.patch.object(store, "ensure_schema", lambda c: None),
+                  mock.patch.object(publish, "Client", lambda environ: self.ledger)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def states(self):
+        return dict(self.db.raw.execute("SELECT company, status FROM v7_jobs").fetchall())
+
+    def test_only_the_jobs_held_by_a_dropped_vacancy_id_are_released(self):
+        counts = publish.run(0, True, self.env)
+        self.assertEqual((counts["seeded"], counts["released"]), (3, 2))
+        self.assertEqual(self.states(), {"distinct_embed": "READY", "distinct_careers": "READY", "same_as_1001": "DUPLICATE", "exact_2002": "DUPLICATE",
+                                         "plain_on_ledger": "DUPLICATE"})
+        self.assertEqual(self.ledger.created, 0)                                                # the Ledger is only read
+
+    def test_a_second_run_reads_no_ledger_urls_and_changes_nothing(self):
+        publish.run(0, True, self.env)
+        before, calls = self.states(), self.ledger.calls
+        again = publish.run(0, True, self.env)
+        self.assertEqual((again["seeded"], again.get("released", 0), self.states()), (0, 0, before))
+        self.assertLessEqual(self.ledger.calls - calls, 1)                                      # at most the target check, never the URL scan
+
+    def test_an_unreadable_ledger_read_releases_nothing_and_keeps_the_old_seed(self):
+        rows = self.db.raw.execute("SELECT url_hash, source FROM v7_ledger_urls ORDER BY url_hash").fetchall()
+        real = self.ledger.call
+
+        def failing(method, path, body=None):
+            if method == "POST" and path.endswith("/query"):
+                raise notion_client.NotionError("http_502")
+            return real(method, path, body)
+        self.ledger.call = failing
+        with self.assertRaises(notion_client.NotionError):
+            publish.run(0, True, self.env)
+        self.assertEqual(self.db.raw.execute("SELECT url_hash, source FROM v7_ledger_urls ORDER BY url_hash").fetchall(), rows)
+        self.assertEqual(set(self.states().values()), {"DUPLICATE"})

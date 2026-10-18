@@ -203,3 +203,4 @@ This index is checked by a test: add a line here with every new decision.
 - D202 — Employer boards: the Open Jobs board list plus hand-added boards, read by the same web pass (2026-10-17, Jim)
 - D203 — LinkedIn job search works in concert with the LinkedIn job alerts (2026-10-17, Jim)
 - D204 — US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
+- D205 — One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)

@@ -123,3 +123,34 @@ class UsRemoteGoldenPath(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# LIFE-59 M6: the vacancy's ATS id is its identity. 8001 reaches the newsletter as Greenhouse's embed link and the board as its board page.
+# (8002 and 8003, two requisitions with one company, title and place, are held back at intake by repost.link: see the M6 report.)
+REQS = {i: ("Senior Technical Program Manager", "Remote - US", f"https://boards.greenhouse.io/acme/jobs/{i}", gate.PM_BODY) for i in ("8001", "8002", "8003")}
+EMBED_8001 = "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=8001"
+
+
+class VacancyIdentity(unittest.TestCase):
+    def setUp(self):
+        self.j = gate.Journey(self, {"m1": gate.mail("v2")})
+        for p in (mock.patch.object(enrich, "fetch", fetch), mock.patch.dict(LISTED, REQS, clear=True)):
+            p.start()
+            self.addCleanup(p.stop)
+        self.j.resolved["https://jobright.ai/jobs/info/v2"] = {"outcome": "landed", "url": EMBED_8001, "kind": "ats", "via": "original_post"}
+
+    def run_all(self):
+        self.j.tick()
+        boards.run(40, True, NOW, lister_fn=listing, sources=[BOARD])
+        gate.enrich.run(50, True)
+        gate.fit_stage.run(100, True, gate.ENV)
+        return gate.publish.run(60, True, gate.ENV)
+
+    def pages_for(self, ident):
+        return [p for p in self.j.ledger.pages.values() if identity.vacancy_id(p["props"]["Apply URL"]["url"]) == "greenhouse:" + ident]
+
+    def test_one_vacancy_from_the_newsletter_and_the_board_is_one_page(self):
+        self.run_all()
+        self.assertEqual(len(self.pages_for("8001")), 1)
+        board_row = self.j.db.raw.execute("SELECT status, unresolved_reason FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8001"][2]),)).fetchone()
+        self.assertEqual(tuple(board_row), ("DUPLICATE", "in_ledger"))

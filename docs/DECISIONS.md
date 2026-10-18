@@ -879,3 +879,10 @@ This supersedes the requirement to find positive remote evidence, and D89's rule
   - Kept: 264 remote assumed, 16 remote assumed with the place unresolved, 50 remote in the place or title, 5 of those with the place unresolved, and 11 remote in the description.
   - Excluded: 212 `non_us`, 23 `not_remote_hybrid`, 14 `not_remote_onsite`, and 4 suppressed.
   - Posting age of the kept jobs: 6 within a day, 9 more within 7 days, 87 more within 30 days, and 242 older. They are first-party listings, open while listed (D111).
+
+## D205 — One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)
+`identity.url_key` used to hash host + path and drop the whole query, so every Greenhouse embed link (`/embed/job_app?for=…&token=N`, the form Jobright resolves to) and every `?gh_jid=N` careers page at one employer shared one key: once one of them was on the Ledger, `publish._pick` set the others aside as `DUPLICATE in_ledger`. On the M4 board sample 29 of 435 kept jobs at 5 employers collided.
+- `identity.vacancy_id(url)` names the vacancy when the link does: Greenhouse `/jobs/N`, `?token=N` (embed) and `?gh_jid=N` are one id (Greenhouse ids are global); Lever and Ashby by the posting UUID; Workday by the requisition suffix (`_R123`). `url_key` uses it, else host + path as before (a URL without an id keeps its stored key). Tracking parameters never count.
+- `publish.same_opening` (D90) no longer merges two published jobs whose links name different vacancies; same company and title with an id on only one side still merges (the cross-provider case).
+- `publish.SEED_MARKER` 3: the existing D112 re-seed re-reads the Ledger's Apply URLs once under the new key and `release_in_ledger` returns a job held only by a collapsed key to READY; a job whose vacancy is on the Ledger under another link stays held. Old collapsed hashes (seed and `source='v7'`) match no vacancy key. A failed Ledger read changes nothing.
+- Not yet covered (needs Jim's scoped approval, M6 report): intake's repost link and tombstone (`fuzzy_key`: company + title + place) and the audit's D90 page check still merge two requisitions with one company and title.
