@@ -193,7 +193,7 @@ def _pick(connection, limit, gated=False, hour=None):
 def run(limit, live, environ=os.environ):
     gated = environ.get("V7_FIT_GATE") == "true"       # shadow mode: the lane decision is stored but not shown as Admission Status
     """No database connection is ever held across slow work (Notion calls): read, close, call, reconnect, write."""
-    counts = {"picked": 0, "created": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
+    counts = {"picked": 0, "created": 0, "verified": 0, "duplicate": 0, "failed": 0, "seeded": 0, "calls": 0}
     client = Client(environ)
     counts["target"] = ledger.OK if not live else ledger.verify(client)           # a live run never writes to a data source that is not the Job Ledger
     if counts["target"] != ledger.OK:
@@ -240,17 +240,27 @@ def run(limit, live, environ=os.environ):
                "location": location, "route": route, "text": full}
         if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
+        blocks = body_blocks(key, desc)
         try:
-            page_id = existing_page(client, key) or client.create(properties(row), body_blocks(key, desc))   # slow: no connection open
+            page_id, page = existing_page(client, key), None                       # slow: no connection open
+            if not page_id:
+                page = client.create_page(properties(row), blocks)
+                page_id = page["id"]
         except NotionError as error:
             counts["failed"] += 1
             counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]       # a fixed code (and Notion's own error code), so a job that fails every run says why
             if counts["failed"] >= 3:          # systemic (auth/schema/limit): stop instead of hammering
                 break
             continue
+        # D211: a page this run created is verified from Notion's own create response (its stored properties; the body went in the same atomic create),
+        # so the read-back's two reads are not needed; an adopted page, or one whose response disagrees, is left to the read-back. The Fit it carries is recorded as synced.
+        from lifeos.jobs import readback                                             # noqa: PLC0415
+        verified = page is not None and len(blocks) >= 2 and readback.properties_match(page, key, url, fit) is None
+        synced = page is not None and fit is not None
+        counts["verified"] += int(verified)
         with store.connect() as connection, connection.cursor() as cursor:  # record at once: a crash cannot duplicate
-            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s WHERE id=%s",
-                           (page_id, _now(), job_id))
+            cursor.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=%s, updated_at=%s, verified_at=%s, fit_synced_at=%s, meta_v=%s WHERE id=%s",
+                           (page_id, _now(), _now() if verified else None, _now() if synced else None, meta.META_VERSION if synced else None, job_id))
             cursor.execute("INSERT IGNORE INTO v7_ledger_urls (url_hash, source, seen_at) VALUES (%s,'v7',%s)",
                            (url_key(url), _now()))
         counts["created"] += 1

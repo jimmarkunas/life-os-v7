@@ -17,9 +17,8 @@ def _text(prop, kind):
     return "".join(t.get("plain_text", "") for t in (prop or {}).get(kind) or [])
 
 
-def check(client, page_id, key, url, fit):
-    """-> None when the page matches, else a fixed reason."""
-    page = client.call("GET", f"/pages/{page_id}")
+def properties_match(page, key, url, fit):
+    """-> None when the page's stored properties match what was sent, else a fixed reason. Shared by the read-back and publish's check of the create response (D211)."""
     if page.get("archived") or page.get("in_trash"):
         return "page_gone"
     props = page.get("properties") or {}
@@ -31,6 +30,14 @@ def check(client, page_id, key, url, fit):
         return "no_title"
     if fit is not None and (props.get("LIFE OS Fit") or {}).get("number") is None:
         return "fit_missing"                                                  # a later re-score may change the number; it must be present
+    return None
+
+
+def check(client, page_id, key, url, fit):
+    """-> None when the page matches, else a fixed reason."""
+    why = properties_match(client.call("GET", f"/pages/{page_id}"), key, url, fit)
+    if why:
+        return why
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
     first = _text((children[0].get("paragraph") if children else None) or {}, "rich_text")
     if not first.startswith("v7-jd:1") or len(children) < 2:
