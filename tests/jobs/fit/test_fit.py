@@ -524,3 +524,52 @@ class KeptPromotion(unittest.TestCase):
         out = stage.promote_kept(Cur())
         self.assertEqual([u for u in updated if isinstance(u, int)], [1, 3])
         self.assertEqual((out["promoted"], out["kept_resolved"], out["no_link"], out["has_page"]), (2, 4, 1, 1))
+
+
+class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
+    """LIFE-41: an employer's "About <Company>" block, a headingless posting's skip sections and an off-family title earn no professional Fit."""
+    ABOUT = "About Acme\nAcme makes NetSuite and ERP integration products and a payment platform used by enterprise teams.\n"
+    ROLE = ("About the role\nWe are hiring a Technical Program Manager to run our roadmap.\n\nResponsibilities\n"
+            "• Own the program roadmap and drive delivery across multiple teams\n"
+            "• Report to executive stakeholders on a global enterprise program\n\nRequirements\n"
+            "• 8+ years of experience in program management\n• Experience leading a team of 8 people\n• Strong communication skills\n\n")
+    FILLER = "Join a collaborative remote team shipping software for merchants worldwide. " * 12
+
+    def test_an_employer_about_heading_is_skipped_but_role_and_you_headings_are_not(self):
+        for line in ("About Acme", "About Acme Inc.", "About Us"):
+            self.assertEqual(extract._heading(line), "skip", line)
+        self.assertEqual(extract._heading("About You"), "required")
+        self.assertEqual(extract._heading("About the Role"), "summary")
+        self.assertEqual(extract._heading("About the Team"), "summary")
+
+    def test_the_employers_products_are_not_platform_evidence(self):
+        with_about = self.ROLE + self.ABOUT + self.FILLER                  # the block closes the posting, after the requirements
+        self.assertEqual(extract.platform_hits(extract.parse(with_about)), [])
+        bare = evaluate("Technical Program Manager", "Acme", self.ROLE + self.FILLER, PROFILE, TODAY)
+        about = evaluate("Technical Program Manager", "Acme", with_about, PROFILE, TODAY)
+        self.assertEqual(about.score, bare.score)
+        strengths = about.line.split("Strengths:")[1].split("|")[0]
+        for product in ("ERP integrations", "payments"):
+            self.assertNotIn(product, strengths)
+
+    def test_a_headingless_posting_keeps_its_benefits_out_of_requirements(self):
+        text = ("We need a program manager with 5 years of experience in delivery.\nBenefits\n"
+                "We offer a generous payment of experience bonuses and 5 years of required tenure.\n")
+        self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))],
+                         ["We need a program manager with 5 years of experience in delivery."])
+
+    def test_off_family_titles_are_capped(self):
+        for title in ("Senior Videographer", "Senior Product Marketing Manager"):
+            r = evaluate(title, "Acme", GOOD, PROFILE, TODAY)
+            self.assertTrue(r.capped, title)
+            self.assertLessEqual(r.score, 40, title)
+            self.assertEqual(r.decision, "No-Go", title)
+
+    def test_program_and_product_titles_are_not_capped(self):
+        for title in ("Technical Program Manager", "Senior Program Manager"):
+            self.assertEqual(evaluate(title, "Acme", GOOD, PROFILE, TODAY).decision, "Go", title)
+        for title in ("Senior Product Manager", "Product Owner"):
+            self.assertFalse(evaluate(title, "Acme", GOOD, PROFILE, TODAY).capped, title)
+
+    def test_a_posting_that_is_only_an_employer_about_block_is_unscorable(self):
+        self.assertEqual(evaluate("Technical Program Manager", "Acme", self.ABOUT, PROFILE, TODAY).decision, "Unscorable")
