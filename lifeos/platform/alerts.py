@@ -71,9 +71,12 @@ def render(kind, item):
     return redact.redact(prefix + item.title), redact.redact(body), item.severity
 
 
+HIBERNATED = True        # LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended, with no expiry. Only a reviewed commit made on Jim's explicit instruction turns it back on.
+
+
 def ntfy(topic, title, body, severity, post=None):
-    """Phone push through ntfy (https://ntfy.sh): the topic name is the secret. Returns True when accepted. Never raises."""
-    if not topic:
+    """Phone push through ntfy (https://ntfy.sh): the topic name is the secret. Returns True when accepted. Never raises. While HIBERNATED nothing is posted (not sent)."""
+    if HIBERNATED or not topic:
         return False
     request = urllib.request.Request(f"https://ntfy.sh/{topic}", data=(body or title).encode(), method="POST", headers={
         "Title": title.encode("ascii", "replace").decode(), "Priority": PRIORITY.get(severity, "default"), "Tags": TAGS.get(severity, "")})
@@ -103,6 +106,9 @@ def main(argv=None):
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")
     args = parser.parse_args(argv)
+    if HIBERNATED:
+        print(json.dumps({"push": "hibernated"}))
+        return 0                                              # LIFE-71: a suspended push is not a failed step
     ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), args.severity)
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
     return 0 if ok else 1                                     # a push the provider did not accept turns the step red, never a silent success
