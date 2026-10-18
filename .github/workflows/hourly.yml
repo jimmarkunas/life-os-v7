@@ -115,12 +115,12 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # ticks and manual runs never share a slot, so a tick cannot replace a queued manual run; lifeos.platform.gate keeps them from overlapping
+  group: life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}   # ticks and manual runs never share a slot, so neither can replace the other's queued run; lifeos.platform.gate makes them take turns in creation order (D210)
   cancel-in-progress: false
 jobs:
   prep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45                 # a manual run may wait up to 25 minutes in the gate for a running tick
+    timeout-minutes: 45                 # a run may wait up to 25 minutes in the gate for an older run of the other kind (D210)
     permissions:
       contents: read
       actions: write

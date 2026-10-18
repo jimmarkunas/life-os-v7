@@ -42,12 +42,30 @@ def decide(runs, now, current_id, gap=MIN_GAP_MINUTES):
 
 
 ACTIVE = ("queued", "in_progress", "pending", "waiting")
-WAIT_MINUTES = 25                  # a manual run waits this long for a tick that is already running, then goes on
+WAIT_MINUTES = 25                  # how long a run waits in line for an older run of the other kind (D210)
 
 
 def active(runs, current_id, title):
     """Other runs of this workflow with this title (tick | manual) that are queued or running now."""
     return [r for r in runs if r["id"] != current_id and r.get("status") in ACTIVE and r.get("display_title") == title]
+
+
+def ahead(runs, current_id, title, created):
+    """D210: the active runs of this title that were created before this run. Ticks and manual runs take turns in creation order:
+    each waits only for OLDER runs of the other kind, so two runs can never wait on each other."""
+    return [r for r in active(runs, current_id, title) if (r.get("created_at") or "") < created]
+
+
+def wait_turn(title, current_id, created, fetch, sleep, minutes=WAIT_MINUTES):
+    """Wait while an older `title` run is active. -> (minutes waited, True when it is this run's turn, False when the wait ran out)."""
+    waited = 0
+    while True:
+        if not ahead(fetch(), current_id, title, created):
+            return waited // 60, True
+        if waited >= minutes * 60:
+            return waited // 60, False
+        sleep(30)
+        waited += 30
 
 
 def stale(runs, now, current_id, minutes=STALE_MINUTES):
@@ -165,23 +183,22 @@ def watch(now=None, push=None):
 def main():
     if "--watch" in sys.argv:
         return watch()
+    import time
     current = int(os.environ["GITHUB_RUN_ID"])
+    created = _api(f"actions/runs/{current}")["created_at"]
+
+    def fetch():
+        return _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
+
     if os.environ.get("GITHUB_EVENT_NAME") != "schedule" and os.environ.get("TICK") != "true":
-        import time
-        waited = 0                                                  # a manual run never cancels or replaces a tick: it has its own concurrency group and waits here for a running tick
-        while waited < WAIT_MINUTES * 60:
-            runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
-            if not active(runs, current, TICK_TITLE):
-                break
-            time.sleep(30)
-            waited += 30
-        print(f"gate: manual run -> run (waited {waited // 60} min for a tick)")
+        waited, _ = wait_turn(TICK_TITLE, current, created, fetch, time.sleep)   # a manual run never cancels a tick: it waits for an older one, then goes on
+        print(f"gate: manual run -> run (waited {waited} min for a tick)")
         return 0
-    runs = _api("actions/workflows/hourly.yml/runs?per_page=15")["workflow_runs"]
-    now = dt.datetime.now(dt.timezone.utc)
-    verdict = decide(runs, now, current)
-    if verdict == "run" and active(runs, current, "manual"):
-        verdict = "skip"                                            # a manual run is queued or running: it has priority, the next tick covers the hour
+    verdict = decide(fetch(), dt.datetime.now(dt.timezone.utc), current)
+    if verdict == "run":
+        waited, turn = wait_turn("manual", current, created, fetch, time.sleep)  # D210: a tick queues behind an older manual run instead of cancelling itself
+        verdict = "run" if turn else "skip"                         # still busy after the wait: the next tick covers the hour
+        print(f"gate: waited {waited} min for a manual run")
     print(f"gate: {verdict}")
     if verdict == "skip":
         _api(f"actions/runs/{current}/cancel", "POST")
