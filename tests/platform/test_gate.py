@@ -29,6 +29,49 @@ class Gate(unittest.TestCase):
         self.assertEqual([r["id"] for r in gate.active(runs, 9, "manual")], [1])
         self.assertEqual([r["id"] for r in gate.active(runs, 9, "tick")], [3])
 
+    def test_runs_take_turns_in_creation_order_so_two_runs_never_wait_on_each_other(self):
+        """D210: a tick waits only for OLDER manual runs and a manual run only for OLDER ticks."""
+        manual = dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")
+        tick = dict(run(2, "2026-10-01T17:07:00Z", None), status="in_progress")
+        runs = [manual, tick]
+        self.assertEqual(gate.ahead(runs, 2, "manual", tick["created_at"]), [manual])          # the tick waits for the older manual run
+        self.assertEqual(gate.ahead(runs, 1, "tick", manual["created_at"]), [])                 # the older manual run does not wait for the tick
+        later = dict(run(3, "2026-10-01T17:09:00Z", None, title="manual"), status="queued")
+        self.assertEqual(gate.ahead(runs + [later], 3, "tick", later["created_at"]), [tick])   # a newer manual run waits for the tick
+
+    def test_a_tick_runs_after_the_manual_run_ahead_of_it_finishes(self):
+        busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")]
+        done = [dict(run(1, "2026-10-01T17:00:00Z", "success", title="manual"), status="completed")]
+        answers, sleeps = [busy, busy, done], []
+        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: answers.pop(0), sleeps.append), (1, True))
+        self.assertEqual(sleeps, [30, 30])
+
+    def test_a_tick_still_blocked_after_the_wait_gives_up_and_the_next_tick_covers_the_hour(self):
+        busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress")]
+        sleeps = []
+        self.assertEqual(gate.wait_turn("manual", 2, "2026-10-01T17:07:00Z", lambda: busy, sleeps.append, minutes=2), (2, False))
+        self.assertEqual(len(sleeps), 4)
+
+    def test_main_never_cancels_a_tick_for_a_manual_run_it_can_wait_for(self):
+        import os
+        from unittest import mock
+        posts = []
+        manual_busy = [dict(run(1, "2026-10-01T17:00:00Z", None, title="manual"), status="in_progress"), run(5, "2026-10-01T15:07:00Z")]
+        manual_done = [dict(run(1, "2026-10-01T17:00:00Z", "success", title="manual"), status="completed"), run(5, "2026-10-01T15:07:00Z")]
+        lists = [manual_busy, manual_busy, manual_done]
+
+        def api(path, method="GET", body=None):
+            if method == "POST":
+                posts.append(path)
+                return {}
+            if path == "actions/runs/2":
+                return {"created_at": "2026-10-01T17:07:00Z"}
+            return {"workflow_runs": lists.pop(0)}
+        with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "2", "GITHUB_EVENT_NAME": "schedule"}), mock.patch.object(gate, "_api", side_effect=api), \
+                mock.patch("time.sleep"):
+            self.assertEqual(gate.main(), 0)
+        self.assertEqual(posts, [])                                                            # no cancel: the tick ran after its turn came
+
     def test_a_dropped_slot_is_covered_by_the_next(self):
         later = NOW + dt.timedelta(minutes=20)
         self.assertEqual(gate.decide([run(1, "2026-10-01T16:07:00Z")], later, 9), "run")
