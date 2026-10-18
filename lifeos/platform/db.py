@@ -2,6 +2,7 @@
 from contextlib import contextmanager, suppress
 import os
 from pathlib import Path
+import random
 import socket
 import subprocess
 import sys
@@ -15,6 +16,7 @@ FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
 DB_REMOTE = "127.0.0.1:3306"
 TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_SSH_BANNER", "STORE_SSH_TCP_TIMEOUT", "STORE_DB_CONNECT_FAILED")
 RETRY_WAITS = (0, 4, 12, 30)     # seconds before attempts 1-4: a Hostinger network blip (D92; on 2026-10-17 a 36 s window was too short and lost a whole lane) must not fail a stage; auth and host-key errors are never retried
+JITTER_SECONDS = 5                 # LIFE-76: up to this much extra before each attempt, so lanes that start in the same second do not open their tunnels together (D206)
 
 
 class StoreError(RuntimeError):
@@ -47,6 +49,10 @@ def _ssh_code(error):
     return "STORE_SSH_FAILED"
 
 
+def _jitter():
+    return random.uniform(0, JITTER_SECONDS)
+
+
 @contextmanager
 def connect():
     cfg = _cfg()
@@ -66,7 +72,7 @@ def connect():
                     "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10"]
             exit_cmd = ["ssh", "-F", "/dev/null", "-S", control, "-O", "exit", "--", cfg["SSH_HOST"]]
             for attempt, wait in enumerate(RETRY_WAITS):
-                time.sleep(wait)
+                time.sleep(wait + _jitter())
                 try:
                     try:
                         subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",

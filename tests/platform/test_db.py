@@ -24,7 +24,7 @@ class RetryTests(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"LIFEOS_ACQ_" + f: "x" for f in db.FIELDS})
         self.env.start()
         self.sleeps = []
-        self.patches = [mock.patch.object(db.time, "sleep", side_effect=self.sleeps.append)]
+        self.patches = [mock.patch.object(db.time, "sleep", side_effect=self.sleeps.append), mock.patch.object(db, "_jitter", return_value=0)]
         for p in self.patches:
             p.start()
 
@@ -89,6 +89,16 @@ class RetryTests(unittest.TestCase):
     def test_an_auth_or_host_key_error_is_never_retried(self):
         self.assertEqual(self._run(["Permission denied (publickey)."]), ("STORE_SSH_AUTH", 1))
         self.assertEqual(self._run(["Host key verification failed."]), ("STORE_SSH_HOSTKEY", 1))
+
+
+class ConnectJitterTests(unittest.TestCase):
+    """LIFE-76 / D206: lanes that start in the same second must not open their tunnels together."""
+    def test_every_attempt_waits_its_retry_time_plus_a_bounded_random_extra(self):
+        from unittest import mock
+        with mock.patch.object(db.random, "uniform", return_value=2.5) as uniform:
+            self.assertEqual(db._jitter(), 2.5)
+        uniform.assert_called_once_with(0, db.JITTER_SECONDS)
+        self.assertLessEqual(db.JITTER_SECONDS, 5)                         # small next to the 30 s last wait: a blip window is still covered
 
 
 if __name__ == "__main__":

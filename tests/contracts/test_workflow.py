@@ -235,6 +235,31 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
 
+class FastPathFirstTests(unittest.TestCase):
+    """D206 (LIFE-76 PR 1): the Ledger never waits on bulk discovery, and a quick proof run reads few boards."""
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml
+        except ImportError:
+            raise unittest.SkipTest("PyYAML not installed")
+        root = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows"
+        cls.hourly = yaml.safe_load((root / "hourly.yml").read_text())
+
+    def test_bulk_discovery_runs_after_publish_and_finalize(self):
+        ids = [s.get("id") for s in self.hourly["jobs"]["finish"]["steps"]]
+        fast = [ids.index(i) for i in ("enrich", "fit", "audit", "publish", "holds", "finalize")]
+        bulk = [ids.index(i) for i in ("boards", "web_scale_up", "titlewatch", "sponsors")]
+        self.assertEqual(fast, sorted(fast))
+        self.assertLess(max(fast), min(bulk))
+
+    def test_quick_caps_the_boards_read_and_a_tick_keeps_the_full_cap(self):
+        inputs = self.hourly[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual((inputs["quick"]["type"], inputs["quick"]["default"]), ("boolean", False))
+        step = next(s for s in self.hourly["jobs"]["finish"]["steps"] if s.get("id") == "boards")
+        self.assertIn("--limit ${{ inputs.quick && '50' || '600' }}", step["run"])        # a schedule event has no inputs, so a tick reads the full 600
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -413,7 +438,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="d828aba5c5415cee"),   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="81a03c5cafc9a124"),   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
