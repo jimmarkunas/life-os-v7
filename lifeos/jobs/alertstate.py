@@ -11,7 +11,7 @@ from lifeos.jobs import alerts, funnel, store
 IN_FLIGHT, TERMINAL = ("NEW", "RESOLVED", "READY"), ("PUBLISHED", "CLOSED", "DUPLICATE", "PURGED")          # the newsletter finalize stage's sets (jobs cannot import sources; a test holds them equal)
 MESSAGE_REF = re.compile(r"[0-9a-f]{64}")
 KNOWN_STATUSES = frozenset(IN_FLIGHT + TERMINAL + ("HOLD", "EXCLUDED_FIT", "EXCLUDED_STALE", "EXCLUDED_UNRESOLVED"))
-SOURCES = frozenset("dice jobright lensa linkedin-alerts reed".split())                  # the newsletter rules; anything else prints as "other"
+SOURCES = frozenset("dice jobright lensa linkedin-alerts linkedin-search reed".split())                  # the newsletter rules; anything else prints as "other"
 REASONS = frozenset(("none http_N link_mismatch jd_thin jd_template jd_listing description_empty description_empty_tf hold_expired unresolved_after_recovery lane_exclude same_opening in_ledger repost "
                      "repost_ambiguous recovery_retry screen_pay listing_url no_job_id dup_other_source dup_of_final_url closed unknown Fit_N_below_N audit_url_listing_url audit_url_root audit_url_no_job_id "
                      "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result no_match_no_board+no_fit no_match_no_title+no_fit no_match_ambiguous+no_fit").split())

@@ -7,7 +7,7 @@ import hashlib
 import os
 
 from lifeos.jobs import store
-from lifeos.jobs.funnel import reason_code
+from lifeos.jobs.funnel import public_code
 
 DONE = ("PUBLISHED", "EXCLUDED_FIT", "EXCLUDED_STALE", "CLOSED", "DUPLICATE", "PURGED")
 MAX_OPEN = 40
@@ -22,10 +22,10 @@ def summarize(rows):
     by_status, by_reason, open_jobs = {}, {}, []
     for job_id, status, source, score, why, stop in rows:
         by_status[status] = by_status.get(status, 0) + 1
-        key = f"{status}: {reason_code(why or stop)}"
+        key = f"{status}: {public_code(why or stop)}"
         by_reason[key] = by_reason.get(key, 0) + 1
         if status not in DONE and len(open_jobs) < MAX_OPEN:
-            open_jobs.append({"h": short(job_id), "status": status, "fit": score, "why": reason_code(why), "stop": reason_code(stop),
+            open_jobs.append({"h": short(job_id), "status": status, "fit": score, "why": public_code(why), "stop": public_code(stop),
                               "via": ((source or "").split(":")[0] or "unknown")[:20]})
     return {"matched": len(rows), "by_status": by_status, "by_reason": by_reason, "open": open_jobs, "open_total": sum(n for s, n in by_status.items() if s not in DONE)}
 

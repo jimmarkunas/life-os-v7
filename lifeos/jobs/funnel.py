@@ -5,7 +5,7 @@ terminal reason), per source the Fit admission by score band and lane reason, an
 import re
 from datetime import timedelta
 
-from lifeos.jobs import store
+from lifeos.jobs import lanes, store
 
 WINDOWS = (24, 168)
 BANDS = ((60, "lt60"), (68, "60_67"), (72, "68_71"), (80, "72_79"))      # exclusive upper edges; 80 and up is "80_up"
@@ -20,6 +20,15 @@ def band(score):
 
 def reason_code(reason):
     return _DIGITS.sub("N", reason or "")[:60] or "none"          # "Fit 67 below 68" -> "Fit N below N"
+
+
+def public_code(reason):
+    """reason_code for a PUBLIC log (the funnel report and explain). A stored reason prints only when its code is in the one allowlist of stored
+    reason codes the public diag trace already uses (alertstate.REASONS); a lane reason prints only as its enumerated code (lanes.PUBLIC_REASONS);
+    anything else is "other". No shape is trusted: a lowercase word can be a private rule name (M6I)."""
+    from lifeos.jobs.alertstate import REASONS                     # noqa: PLC0415 (alertstate imports this module)
+    code = reason_code(reason)
+    return code if code.replace(" ", "_") in REASONS else lanes.public_reason(reason)
 
 
 def _add(table, *keys, n):
@@ -55,7 +64,7 @@ def canary(rows, status_24h):
     for source, st, reason, resolve_n, enrich_n, kind, proof, admission, score, age in rows:
         traces = per.setdefault(source, [])
         if len(traces) < CANARY_PER_SOURCE:
-            traces.append({"stage": STAGE.get(st, st), "status": st, "reason": reason_code(reason), "resolve_attempts": int(resolve_n or 0),
+            traces.append({"stage": STAGE.get(st, st), "status": st, "reason": public_code(reason), "resolve_attempts": int(resolve_n or 0),
                            "enrich_attempts": int(enrich_n or 0), "link": kind or None, "proof": proof or None,
                            "fit": f"{admission}:{band(score)}" if admission else None, "age_h": int(age or 0)})
     sources = set(per) | set(status_24h)
@@ -80,7 +89,7 @@ def run(limit, live, now=None):
                 fit_bands, fit_reasons = {}, {}
                 for source, admission, reason, score, n in cursor.fetchall():
                     _add(fit_bands, source, f"{admission or 'none'}:{band(score)}", n=n)
-                    _add(fit_reasons, source, f"{admission or 'none'}:{reason_code(reason)}", n=n)
+                    _add(fit_reasons, source, f"{admission or 'none'}:{public_code(reason)}", n=n)
                 out["windows"][f"{hours}h"] = {"status": status, "fit_by_band": fit_bands, "fit_by_reason": fit_reasons}
             cursor.execute("SELECT COALESCE(source, 'unknown'), TIMESTAMPDIFF(HOUR, MAX(first_seen), %s),"
                            " TIMESTAMPDIFF(HOUR, MAX(CASE WHEN status = 'PUBLISHED' THEN updated_at END), %s) FROM v7_jobs GROUP BY 1", (now, now))

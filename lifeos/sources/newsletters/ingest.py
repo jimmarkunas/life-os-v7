@@ -87,8 +87,8 @@ def save_cards(connection, rule, message_id, cards, received_epoch=None, counts=
 
 
 def extract(gmail, live, limit, connection=None):
-    processed_label = gmail.label_id(config.PROCESSED_LABEL, create=live)
-    retired_label = gmail.label_id(config.RETIRED_LABEL, create=live)
+    processed_label = gmail.label_id(config.PROCESSED_LABEL, create=True) if live else None   # M5: a dry run moves nothing, so it needs no label
+    retired_label = gmail.label_id(config.RETIRED_LABEL, create=True) if live else None
     counts = {"messages": 0, "cards": 0, "new_jobs": 0, "repeat_links": 0, "suppressed": 0,
               "unsupported_sender": 0, "no_cards": 0, "non_job_mail": 0, "stale_mail": 0, "marked_processed": 0, "retired_sender_lensa": 0, "marked_retired": 0}
     done, retired = [], []

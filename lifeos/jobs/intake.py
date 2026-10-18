@@ -9,7 +9,7 @@ def add_job(cursor, job, now):
     becomes a DUPLICATE of the original (D6). Producers may supply identity_url when their tracking URLs change
     per observation; url remains the stored source_url."""
     key = identity.url_hash(job.get("identity_url") or job["url"])
-    fuzzy = identity.fuzzy_key(job["company"], job["title"], job["location"])
+    fuzzy = identity.fuzzy_key(job["company"], job["title"], job["location"], job.get("identity_url") or job["url"])
     if tombstone.blocked(cursor, key, fuzzy, job.get("posted"), now):
         return key, False                                    # retired in the last 90 days and nothing proves it is a new vacancy
     cursor.execute(

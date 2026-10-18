@@ -110,7 +110,7 @@ def _qualify(policy, facts, today):
         return Decision(DISABLED, "lane disabled")
     if facts.market and facts.market != policy.market:
         return Decision(EXCLUDE, f"market {facts.market} is not {policy.market}")
-    if policy.market_required and not facts.market:
+    if not facts.market and (policy.market_required or (facts.first_party and policy.market == "US")):     # M5: an employer board lists the world
         return Decision(REVIEW, "market unresolved")
     if facts.closed:
         return Decision(EXCLUDE, "vacancy closed")
@@ -194,37 +194,47 @@ _REMOTE_STATED = re.compile(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|v
                             r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", re.I)
 
 
+# Not a requirement for everyone: a condition earlier in the same sentence ("if you live near our Chicago office, ...") or a qualifier right after
+# the words ("... onsite for quarterly planning", "... in the office occasionally", "... onsite at customer sites").
+_CONDITIONAL = re.compile(r"\b(?:if you|for (?:candidates|those|employees|team members) (?:who|located|based|living|near|in|within)|local (?:candidates|employees)|"
+                          r"within \d+ miles|when (?:needed|required|necessary)|we offer|you (?:can|may) (?:choose|opt)|(?:the )?option to)\b", re.I)
+_OCCASIONAL = re.compile(r"^[^.;\n]{0,25}?\b(?:occasional(?:ly)?|as needed|when needed|if needed|periodically|for (?:quarterly|annual|team|company|occasional|key)\b|"
+                         r"(?:once|twice) a (?:month|quarter|year)|a few times a (?:year|quarter)|at (?:a )?(?:customer|client)|with (?:customers|clients)|"
+                         r"for (?:those|anyone|people) who (?:want|prefer|choose|like)|if (?:you )?(?:prefer|wish|want|desired))", re.I)
+
+
 def _required(pattern, text):
-    """The first mandatory (not negated, not optional) match of `pattern` in `text`, else None."""
+    """The first mandatory (not negated, not optional, not conditional) match of `pattern` in `text`, else None."""
     for m in pattern.finditer(text):
-        if not _NEGATED.search(text[max(0, m.start() - 40):m.start()]):
+        sentence = re.split(r"[.;\n]", text[:m.start()])[-1]
+        if not (_NEGATED.search(text[max(0, m.start() - 40):m.start()]) or _CONDITIONAL.search(sentence) or _OCCASIONAL.search(text[m.end():])):
             return m.group(0)
     return None
 
 
 def work_mode_evidence(location, title="", text="", window=1500):
     """(remote | hybrid | onsite | unknown, the employer's own words or None). "unknown" means nothing is required either way: remote is presumed
-    (D204), never stated. Order: a required hybrid schedule; the employer's place/title (remote wins when offered alongside hybrid); an explicit
-    remote statement; the recruiter's #LI- tag (read anywhere: it is usually the last line); a required office attendance."""
+    (D204), never stated. A mandatory attendance requirement wins over any remote cue it contradicts (M3 review): first a required hybrid schedule
+    or office attendance in the description, then the recruiter's #LI-Hybrid/#LI-Onsite tag (read anywhere: it is usually the last line); then
+    the employer's place/title (remote wins when offered alongside hybrid); an explicit remote statement; #LI-Remote."""
     head = f"{location or ''} {title or ''}"
     body = (text or "")[:window]
-    found = _required(_HYBRID_REQ, body)
-    if found:
-        return "hybrid", found
+    for mode, pattern in (("hybrid", _HYBRID_REQ), ("onsite", _ONSITE_REQ)):
+        found = _required(pattern, body)
+        if found:
+            return mode, found
+    tag = re.search(r"#li-(hybrid|onsite)\b", text or "", re.I)
+    if tag:
+        return tag.group(1).lower(), tag.group(0)
     if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head, re.I):
         return "remote", None
     for mode, rx in (("hybrid", r"\bhybrid\b"), ("onsite", r"\bon-?site\b|\bin[- ]office\b")):
         hit = re.search(rx, head, re.I)
         if hit and not _NEGATED.search(head[:hit.start()][-40:]):
             return mode, hit.group(0)
-    found = _REMOTE_STATED.search(body)
-    if found:
+    if _REMOTE_STATED.search(body) or re.search(r"#li-remote\b", text or "", re.I):
         return "remote", None
-    tag = re.search(r"#li-(remote|hybrid|onsite)\b", text or "", re.I)
-    if tag:
-        return tag.group(1).lower(), tag.group(0) if tag.group(1).lower() != "remote" else None
-    found = _required(_ONSITE_REQ, body)
-    return ("onsite", found) if found else ("unknown", None)
+    return "unknown", None
 
 
 def detect_work_mode(location, title="", text="", window=1500):
@@ -307,13 +317,33 @@ def first_party_source(source):
     return bool(source) and source.startswith("web:") and source != "web:openjobs"
 
 
+# US places and statements that show US eligibility (M5 review). Used for an employer-board job only, where the board lists the whole world: its
+# market is US when its place names a US city or state or the employer says so; remote alone is not US eligibility.
+US_PLACES = re.compile(r"(?i:\b(?:nyc|new york|san francisco|bay area|los angeles|chicago|seattle|boston|austin|denver|atlanta|san jose|houston|phoenix|"
+                       r"philadelphia|san diego|dallas|fort worth|portland|sunnyvale|mountain view|palo alto|redwood city|menlo park|boise|salt lake city|miami|"
+                       r"fort lauderdale|jacksonville|charlotte|raleigh|nashville|minneapolis|pittsburgh|detroit|columbus|cincinnati|indianapolis|baltimore|"
+                       r"alpharetta|tampa|orlando|las vegas|sacramento|oakland|irvine|santa monica|boulder|omaha|tucson|albuquerque|honolulu|st\.? louis|"
+                       r"kansas city|new orleans|milwaukee|washington,? d\.?c\.?|district of columbia|alabama|alaska|arizona|arkansas|california|colorado|"
+                       r"connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|"
+                       r"minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|north carolina|north dakota|ohio|oklahoma|"
+                       r"oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|"
+                       r"wyoming)\b)|\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|"
+                       r"SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC) - ")
+_US_ELIGIBLE = re.compile(r"(?i:\b(?:based|located|living|resid\w*|work\w*)\s+(?:anywhere\s+)?(?:in|within)\s+the\s+(?:continental\s+)?(?:u\.s\.a?|usa|united states)\b|"
+                          r"\bauthori[sz]ed to work in the (?:u\.s\.|united states)\b)|\b(?:based|located|living|resid\w*|work\w*)\s+(?:anywhere\s+)?(?:in|within)\s+"
+                          r"the\s+(?:continental\s+)?US\b|\bU\.?S\.?[- ]based\b|\bauthori[sz]ed to work in the US\b")
+
+
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
     when = posted or (first_seen.date() if hasattr(first_seen, "date") else first_seen)
     mode, evidence = work_mode_evidence(location, title, text, window=FIT_WINDOW)
-    return Facts(fit=fit, market=market or market_of(location), work_mode=mode, work_evidence=evidence, pay_min=pay_min,
+    market = market or market_of(location)
+    if first_party and not market and (US_PLACES.search(location or "") or _US_ELIGIBLE.search(text or "")):
+        market = "US"
+    return Facts(fit=fit, market=market, work_mode=mode, work_evidence=evidence, pay_min=pay_min,
                  pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only)
 
 
@@ -338,3 +368,29 @@ def decide(row_lane, facts, today, exclusion=None):
     """-> (Decision, lane name)."""
     decision, lane, _ = decide_all(row_lane, facts, today, exclusion)
     return decision, lane
+
+
+# Public reasons (M3 review): a lane reason as a fixed code a public log may print; boards-preview, funnel and explain use it.
+_N = r"\d+(?:\.\d+)?"
+PUBLIC_REASONS = (                                       # (lane reason, the fixed code a public log may print); nothing of the reason is copied
+    (rf"Fit {_N} below {NEAR_MISS_FLOOR} and .+", "fit_below_near_miss_with_open_question"),
+    (rf"Fit {_N} below {REVIEW_FLOOR}", "fit_below_review_floor"),
+    (rf"Fit {_N} below {FIT_FLOOR}", "fit_below_admit_floor"),
+    (rf"Fit {_N} below {FIT_FLOOR} \(on Jim's keep list\)", "fit_below_admit_floor_keep_list"),
+    (r"not remote: hybrid required(?: \(.*\))?", "not_remote_hybrid_required"),
+    (r"not remote: onsite required(?: \(.*\))?", "not_remote_onsite_required"),
+    (r"remote assumed", "remote_assumed"), (r"Fit unscorable", "fit_unscorable"), (r"vacancy closed", "vacancy_closed"),
+    (r"explicit pay below .+", "pay_below_floor"), (r"posting date unresolved", "posting_date_unresolved"),
+    (r"posting date in the future", "posting_date_future"), (rf"older than {_N} days", "older_than_max_age"),
+    (r"market unresolved", "market_unresolved"), (r"market .+ is not .+", "market_mismatch"), (r"market not shown to be .+", "market_not_shown"),
+    (r"geography unresolved", "geography_unresolved"), (r"geography does not qualify", "geography_not_qualifying"), (r"not in London", "not_in_london"),
+    (r".+ route negative", "route_negative"), (r".+ route unresolved", "route_unresolved"), (r"lane disabled", "lane_disabled"),
+    (re.escape(TITLE_ONLY_REASON), "title_only"), (r"excluded: .*", "excluded_private_rule"), (rf"Fit {_N} below {_N}", "fit_below_floor"))     # last: an older floor
+
+
+def public_reason(reason):
+    """A preview reason fit for a public log: one of the fixed codes in PUBLIC_REASONS, "none" for no reason, and "other" for anything not
+    enumerated there. No rule name, profile content, employer quotation or exception text is ever copied."""
+    if not reason:
+        return "none"
+    return next((code for pattern, code in PUBLIC_REASONS if re.fullmatch(pattern, reason, re.S)), "other")

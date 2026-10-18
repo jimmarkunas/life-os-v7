@@ -52,14 +52,26 @@ class ProvenLinkTests(unittest.TestCase):
 
 class DuplicatePageTests(unittest.TestCase):
     def test_later_pages_for_the_same_opening_are_counted_and_the_earliest_stays(self):
+        self.assertEqual(self.audit([(1, "PUBLISHED", "https://x.example/1", "p1", None, "ServiceNow", "Director, TA Infrastructure"),
+                                     (2, "PUBLISHED", "https://x.example/2", "p2", None, "ServiceNow", "Director, TA Infrastructure"),
+                                     (3, "PUBLISHED", "https://x.example/3", "p3", None, "ServiceNow", "Director, TA Infrastructure"),
+                                     (4, "PUBLISHED", "https://x.example/4", "p4", None, "Adobe", "Product Manager"),
+                                     (5, "PUBLISHED", "https://x.example/5", "p5", None, "Adobe", "Product Manager")]), 2)       # ids 2 and 3; two-word titles never merge
+
+    def test_pages_whose_links_name_different_vacancies_are_never_duplicates_and_one_vacancy_still_is(self):     # D205
+        gh = "https://www.acme.example/careers?gh_jid={}"
+        self.assertEqual(self.audit([(1, "PUBLISHED", gh.format(1001), "p1", None, "Acme", "Senior Technical Program Manager"),
+                                     (2, "PUBLISHED", gh.format(2002), "p2", None, "Acme", "Senior Technical Program Manager"),
+                                     (3, "PUBLISHED", "https://boards.greenhouse.io/acme/jobs/2002", "p3", None, "Acme", "Senior Technical Program Manager"),
+                                     (4, "PUBLISHED", "https://www.linkedin.com/jobs/view/44", "p4", None, "Acme", "Senior Technical Program Manager")]), 1)   # only 3 (= 2): 4 has no id, so not shown
+        self.assertEqual(self.audit([(1, "PUBLISHED", "https://careers.acme.example/a", "p1", None, "Acme", "Senior Technical Program Manager"),
+                                     (2, "PUBLISHED", "https://careers.acme.example/b", "p2", None, "Acme", "Senior Technical Program Manager")]), 1)   # no ids: D90 as before
+
+    def audit(self, pages):
         from unittest import mock
         from lifeos.jobs import audit
 
-        pages = [(1, "PUBLISHED", "https://x.example/1", "p1", None, "ServiceNow", "Director, TA Infrastructure"),
-                 (2, "PUBLISHED", "https://x.example/2", "p2", None, "ServiceNow", "Director, TA Infrastructure"),
-                 (3, "PUBLISHED", "https://x.example/3", "p3", None, "ServiceNow", "Director, TA Infrastructure"),
-                 (4, "PUBLISHED", "https://x.example/4", "p4", None, "Adobe", "Product Manager"),
-                 (5, "PUBLISHED", "https://x.example/5", "p5", None, "Adobe", "Product Manager")]
+        pages = list(pages)
 
         class Cur:
             def __enter__(self):
@@ -84,8 +96,7 @@ class DuplicatePageTests(unittest.TestCase):
             def cursor(self):
                 return Cur()
 
-        from lifeos.jobs import audit as a
-        with mock.patch.object(a.store, "connect", return_value=Conn()), mock.patch.object(a.store, "ensure_schema"):
-            counts = a.run(100, False, environ={})
-        self.assertEqual(counts["by_reason"], {"duplicate_page": 2})                  # ids 2 and 3; two-word titles are never merged
-        self.assertEqual(counts["failed"], 2)
+        with mock.patch.object(audit.store, "connect", return_value=Conn()), mock.patch.object(audit.store, "ensure_schema"):
+            counts = audit.run(100, False, environ={})
+        self.assertEqual(counts["failed"], counts["by_reason"].get("duplicate_page", 0))
+        return counts["by_reason"].get("duplicate_page", 0)
