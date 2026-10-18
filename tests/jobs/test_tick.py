@@ -36,6 +36,11 @@ class TickTests(unittest.TestCase):
         self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"})
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
+    def test_the_publish_cap_fits_its_budget(self):
+        """Tick 39170290502 (Oct 18): 60 pages at about 13 s each overran the 720 s publish budget."""
+        step = next(s for s in tick.PLAN if s.name == "publish")
+        self.assertLessEqual(step.limit * 13, step.budget * 0.8)                      # room for a slow Notion minute
+
     def test_stages_run_in_order_with_their_limits_and_the_live_switch(self):
         plan = (Step("a", 10, 5), Step("b", 10, 7, bulk=True))
         out = tick.tick(True, plan=plan, stages={"a": self.stage("a"), "b": self.stage("b")}, clock=self.clock)
