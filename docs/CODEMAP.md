@@ -509,3 +509,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D203: LinkedIn job search works in concert with the LinkedIn job alerts (2026-10-17, Jim)
 - D204: US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
 - D205: One vacancy is one ATS id, whatever its link (2026-10-18, Jim, LIFE-59 M6)
+- D206: Jobs runner: the fast path runs before bulk discovery, a quick proof run reads few boards, and store connects are spread out (2026-10-18, Jim; LIFE-76 PR 1)
