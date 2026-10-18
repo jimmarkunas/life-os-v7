@@ -97,7 +97,7 @@ class FirstPartyReaders(unittest.TestCase):
         self.assertEqual(listing("veramed_html", '<section data-role="x"><h2>No link</h2></section>').status, "FAILED")
 
     def test_http_errors_are_failed_never_zero(self):
-        for status, reason in ((403, "rate_limited"), (404, "not_found"), (500, "http_500")):
+        for status, reason in ((403, "blocked_403"), (429, "rate_limited_429"), (404, "not_found"), (500, "http_500")):
             got = lister.list_source(src("static_complete_html"), fetcher({"https://acme.example/careers": Page("", status)}))
             self.assertEqual((got.status, got.reason), ("FAILED", reason))
 

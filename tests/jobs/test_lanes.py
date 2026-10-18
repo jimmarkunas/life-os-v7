@@ -27,7 +27,7 @@ class UsRemote(unittest.TestCase):
         self.assertEqual(qualify(US, us(), TODAY).status, ADMIT)
         self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).status, EXCLUDE)
-        self.assertEqual(qualify(US, us(work_mode="unknown"), TODAY).status, REVIEW)      # never guessed
+        self.assertEqual((qualify(US, us(work_mode="unknown"), TODAY).status, qualify(US, us(work_mode="unknown"), TODAY).reason), (ADMIT, "remote assumed"))   # D204: presumed, recorded as such
         self.assertEqual(qualify(US, us(pay_min=74_999, pay_currency="$"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(pay_min=75_000, pay_currency="$"), TODAY).status, ADMIT)
         self.assertEqual(qualify(US, us(pay_min=70_000, pay_currency="$"), TODAY).reason, "explicit pay below $75,000")   # the documented reason
@@ -121,7 +121,7 @@ class CrossLane(unittest.TestCase):
         self.assertEqual(qualify(US, us(fit=95, work_mode="onsite"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(fit=95, market="UK"), TODAY).status, EXCLUDE)
         self.assertEqual(qualify(US, us(fit=95, pay_min=50_000, pay_currency="$"), TODAY).status, EXCLUDE)
-        self.assertEqual(qualify(US, us(fit=72, work_mode="unknown"), TODAY).status, REVIEW)               # 72 passes Fit but another question is still open
+        self.assertEqual(qualify(US, us(fit=72, work_mode="unknown"), TODAY).status, ADMIT)                # D204: no office requirement is not an open question
 
     def test_target_does_not_lower_fit(self):
         self.assertEqual(SCALE.bucket, "Target")
@@ -217,25 +217,24 @@ class LondonAndRemote(unittest.TestCase):
 
     def test_a_us_job_must_still_be_remote(self):
         self.assertEqual(qualify(US, us(work_mode="remote"), TODAY).status, ADMIT)
-        self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).reason, "not remote")
-        self.assertEqual(qualify(US, us(work_mode="hybrid"), TODAY).reason, "not remote")
+        self.assertEqual(qualify(US, us(work_mode="onsite"), TODAY).reason, "not remote: onsite required")
+        self.assertEqual(qualify(US, us(work_mode="hybrid", work_evidence="3 days a week in the office"), TODAY).reason, 'not remote: hybrid required ("3 days a week in the office")')
 
 
 class TwoDoubts(unittest.TestCase):
     """D100: the 6 PM tick published 40 Adobe near-miss jobs with an unknown work mode as Review. One doubt is a question; two doubts on a weak fit is a miss."""
 
     def test_a_near_miss_fit_with_another_unresolved_fact_is_excluded(self):
-        decision = qualify(US, us(fit=66, work_mode="unknown"), TODAY)
-        self.assertEqual(decision.status, EXCLUDE)
-        self.assertEqual(decision.reason, "Fit 66 below 68 and work mode unresolved")
         self.assertEqual(qualify(US, us(fit=63, posted=None), TODAY).status, EXCLUDE)               # posting date unresolved
+        decision = qualify(US, us(fit=66, work_mode="unknown"), TODAY)                               # D204: an unstated work mode is no longer a doubt
+        self.assertEqual((decision.status, decision.reason), (REVIEW, "Fit 66 below 72"))
 
     def test_one_doubt_is_still_review(self):
         self.assertEqual(qualify(US, us(fit=66), TODAY).status, REVIEW)                                  # near-miss alone
-        self.assertEqual(qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, REVIEW)             # clear fit, unknown mode
-        self.assertEqual(qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW)
-        self.assertEqual(qualify(US, us(fit=71, work_mode="unknown"), TODAY).status, REVIEW)             # D191 moved the admission floor, not this rule: 68-71 with a second doubt stays Review
-        self.assertEqual(qualify(US, us(fit=67, work_mode="unknown"), TODAY).status, EXCLUDE)
+        self.assertEqual(qualify(US, us(fit=75, work_mode="unknown"), TODAY).status, ADMIT)              # D204: clear fit, remote presumed
+        self.assertEqual(qualify(US, us(fit=68, work_mode="unknown"), TODAY).status, REVIEW)             # Fit below 72 is the one doubt
+        self.assertEqual(qualify(US, us(fit=71, work_mode="unknown"), TODAY).status, REVIEW)
+        self.assertEqual(qualify(US, us(fit=67, work_mode="unknown"), TODAY).status, REVIEW)
 
     def test_nothing_else_changes(self):
         self.assertEqual(qualify(US, us(fit=59, work_mode="unknown"), TODAY).status, EXCLUDE)
@@ -315,3 +314,39 @@ class KeepListTests(unittest.TestCase):
     def test_a_hard_exclusion_still_wins(self):
         decision = lanes.decide("Scale-Up", self.facts(80, True), date(2026, 10, 4), exclusion="clinical")[0]
         self.assertEqual(decision.status, lanes.EXCLUDE)
+
+
+class RemoteDefault(unittest.TestCase):
+    """D204 (Jim, Oct 17): remote is presumed unless the employer REQUIRES office attendance; only mandatory words are evidence."""
+
+    def mode(self, text, where="San Diego, CA", title="Technical Program Manager"):
+        from lifeos.jobs import lanes
+        return lanes.work_mode_evidence(where, title, text)
+
+    def test_mandatory_attendance_excludes_with_the_employers_words(self):
+        self.assertEqual(self.mode("You must work onsite at our Austin office."), ("onsite", "must work onsite"))
+        self.assertEqual(self.mode("This is an on-site role in Seattle."), ("onsite", "This is an on-site"))
+        self.assertEqual(self.mode("We work 3 days a week in the office."), ("hybrid", "3 days a week in the office"))
+        self.assertEqual(self.mode("Hybrid schedule with your team."), ("hybrid", "Hybrid schedule"))
+        self.assertEqual(self.mode("", where="Hybrid - New York, NY"), ("hybrid", "Hybrid"))
+        self.assertEqual(self.mode("This is not a remote position."), ("onsite", "not a remote position"))
+
+    def test_optional_negated_or_incidental_office_words_are_not_requirements(self):
+        for text in ("There is no onsite requirement for this role.", "Optional office access in Denver.", "Occasional travel to our NYC office for planning.",
+                     "Lead onsite customer visits twice a quarter.", "You are not required to be in the office.", "This is not a hybrid role.",
+                     "Coordinate with onsite and remote teams."):
+            with self.subTest(text=text):
+                self.assertEqual(self.mode(text)[0], "unknown")
+
+    def test_a_named_city_with_no_requirement_is_presumed_remote_not_office(self):
+        from lifeos.jobs import lanes
+        self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "unknown")
+        self.assertEqual(qualify(US, us(work_mode=lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "")), TODAY).reason, "remote assumed")
+
+    def test_remote_offered_alongside_hybrid_is_remote_and_a_stated_remote_is_verified(self):
+        self.assertEqual(self.mode("", where="Remote or Hybrid - Chicago, IL")[0], "remote")
+        self.assertEqual(self.mode("This is a fully remote role.")[0], "remote")
+        self.assertIsNone(qualify(US, us(work_mode="remote"), TODAY).reason)                            # verified remote carries no "assumed" reason
+
+    def test_a_non_us_market_still_excludes_whatever_the_work_mode(self):
+        self.assertEqual(qualify(US, us(work_mode="unknown", market="UK"), TODAY).status, EXCLUDE)

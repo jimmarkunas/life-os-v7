@@ -20,6 +20,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills-paid` -> `lifeos.bills.paid:run`
 - `bills-snapshot` -> `lifeos.bills.snapshot:run`
 - `board-check` -> `lifeos.sources.web.boardcheck:run`
+- `boards` -> `lifeos.sources.web.boards:run`
+- `boards-preview` -> `lifeos.sources.web.boards:preview`
 - `calendar-sync` -> `lifeos.calendar_bridge.watch:run`
 - `dcc-card` -> `lifeos.dcc.card:run`
 - `discover-jobs` -> `lifeos.sources.web.discover_jobs:run`
@@ -274,6 +276,8 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/newsletters/sweep.py`: Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
+- `lifeos/sources/web/boards.py`: D202: the employer-board pass. About 10,700 Greenhouse, Ashby and Lever boards (the Open Jobs board list, CC0, plus the extras in boards.json) read through the same web r
+- `lifeos/sources/web/boards_seed.py`: D202: rebuild boards.json from an Open Jobs board list (slugs.json, CC0). Run by hand when a newer list is wanted; V7 never downloads it.
 - `lifeos/sources/web/diff.py`: Classify a board listing against the accepted state: NEW, MATERIAL_CHANGE, UNCHANGED and (only after a COMPLETE listing) REMOVED.
 - `lifeos/sources/web/discover_jobs.py`: Scale-Up sponsors with no job board of their own: find their jobs through web search (free TinyFish Search), then let the normal pipeline decide.
 - `lifeos/sources/web/html_readers.py`: First-party careers-page readers for the Scale-Up sponsors that have no public ATS API.
@@ -499,3 +503,5 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D199: Bills: "overdue" cannot tell late from paid-but-never-ticked; the due-state rule is a Finance OS scoping item (2026-10-17, Jim; LIFE-61)
 - D200: Newsletter resolution: Lensa follows its own tracking link again, Jobright reads only its own job's link, a failed search is a Failed Search with its cause (2026-10-17, Jim; LIFE-59)
 - D201: Lensa is retired and the ended Open Jobs feed is removed; both are closed out with specific labels (2026-10-17, Jim)
+- D202: Employer boards: the Open Jobs board list plus hand-added boards, read by the same web pass (2026-10-17, Jim)
+- D204: US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)

@@ -30,8 +30,10 @@ class Listing:
 def _json(url, fetcher, body=None):
     extra = {"data": json.dumps(body).encode(), "headers": {"Content-Type": "application/json", "Accept": "application/json"}} if body is not None else {}
     page = fetcher(url, timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES, **extra)
-    if page.status in (403, 429):
-        return None, "rate_limited"
+    if page.status == 429:
+        return None, "rate_limited_429"
+    if page.status == 403:
+        return None, "blocked_403"               # refused, not throttled: named apart (D202)
     if page.status == 404:
         return None, "not_found"
     if page.status != 200:
@@ -58,9 +60,9 @@ def _text(markup):
     return jd.html_to_text(htmllib.unescape(markup or "")) or None
 
 
-def _job(ident, title, location, url, posted=None, content=None):
+def _job(ident, title, location, url, posted=None, content=None, company=None):
     return {"id": str(ident), "title": (title or "").strip(), "location": (location or "").strip(), "url": url or "",
-            "posted": _day(posted), "content": content}
+            "posted": _day(posted), "content": content, "company": (company or "").strip() or None}     # company: the board's own name, when it gives one (not hashed)
 
 
 def _greenhouse(slug, fetcher):
@@ -68,7 +70,7 @@ def _greenhouse(slug, fetcher):
     if err or not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
         return Listing(FAILED, reason=err or "bad_shape")
     return Listing(COMPLETE, [_job(j.get("id"), j.get("title"), (j.get("location") or {}).get("name"), j.get("absolute_url"),
-                                   j.get("first_published"), _text(j.get("content"))) for j in data["jobs"]])
+                                   j.get("first_published"), _text(j.get("content")), j.get("company_name")) for j in data["jobs"]])
 
 
 def _ashby(slug, fetcher):
@@ -225,7 +227,7 @@ def _teamtailor(source, fetcher):
     """Teamtailor career sites publish every open job as an RSS feed at <jobs url>.rss (found by the shape probe; the HTML list has no JSON-LD)."""
     page = fetcher(source["url"].rstrip("/") + ".rss", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2, max_bytes=MAX_BYTES)
     if page.status in (403, 429):
-        return Listing(FAILED, reason="rate_limited")
+        return Listing(FAILED, reason="rate_limited_429" if page.status == 429 else "blocked_403")
     if page.status == 404:
         return Listing(FAILED, reason="not_found")
     if page.status != 200:
@@ -279,7 +281,7 @@ def _first_party_html(source, fetcher):
     else:
         page = fetcher(source["url"], timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=3, max_bytes=MAX_BYTES)
     if page.status in (403, 429):
-        return Listing(FAILED, reason="rate_limited")
+        return Listing(FAILED, reason="rate_limited_429" if page.status == 429 else "blocked_403")
     if page.status == 404:
         return Listing(FAILED, reason="not_found")
     if page.status != 200:

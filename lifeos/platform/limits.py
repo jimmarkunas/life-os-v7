@@ -47,6 +47,14 @@ WEB_REFRESH_HOURS = 6                    # a COMPLETE board is due again after t
 WEB_RETRY_HOURS = 1                      # a FAILED board is retried after this (doubling, capped at WEB_REFRESH_HOURS)
 WEB_INGEST_PER_RUN = 300                 # new or changed postings admitted into Jobs OS per run; the rest stay PENDING
 
+# Employer boards (D202): the Open Jobs board list (CC0) plus the extras, read by the same web pass; ours, polite to three shared hosts
+BOARDS_PER_RUN = 600                     # due seed boards read per run (about 10,700 boards: a first full pass takes about 18 runs)
+BOARDS_REFRESH_HOURS = 24                # a COMPLETE board that lists no target job is due again after this (also caps a failing board's retry)
+BOARDS_HOT_HOURS = 6                     # a board that lists a target job is due again after this, like a priority board
+BOARDS_INGEST_PER_RUN = 100              # postings admitted per run; the rest stay PENDING and drain next run
+BOARDS_WORKERS = 4                       # most seed boards share the Greenhouse, Ashby and Lever API hosts
+BOARDS_RATE_LIMIT_STOP = 3               # this many 429 answers from one ATS stops reading that ATS for the run
+
 # Gmail (REST, gmail.modify): per-user quota 250 units/s; list/get = 5 units, batchModify = 50
 GMAIL_REQUESTS_PER_SECOND = 10
 

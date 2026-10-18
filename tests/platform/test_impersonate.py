@@ -53,7 +53,7 @@ class Impersonate(unittest.TestCase):
         plain = mock.Mock(side_effect=AssertionError("plain fetch must not be used"))
         with mock.patch.object(lister.impersonate, "fetch", return_value=impersonate.Fetched("u", 403, "", 0, "http")) as imp:
             got = lister.list_source(source, plain)
-        self.assertEqual((got.status, got.reason, imp.call_count), ("FAILED", "rate_limited", 1))
+        self.assertEqual((got.status, got.reason, imp.call_count), ("FAILED", "blocked_403", 1))
 
 
 if __name__ == "__main__":
