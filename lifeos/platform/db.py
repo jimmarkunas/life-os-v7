@@ -1,12 +1,17 @@
-"""Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code."""
+"""Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code.
+One tunnel per process (LIFE-76 PR 4a, D207): it is opened on the first connect(), checked before reuse, reopened after a failure and closed
+at exit; every connect() is its own short MySQL session through it, so no stage holds a database session across network I/O."""
+import atexit
 from contextlib import contextmanager, suppress
 import os
 from pathlib import Path
 import random
+import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 # All six are GitHub *Secrets* (masked in logs). Variables are NOT masked and this repo is public.
@@ -56,55 +61,91 @@ def _jitter():
 _spread = [True]                   # cleared by the first attempt of the process's first connect
 
 
+_tunnel = {"directory": None, "port": None, "exit": None, "check": None}      # one SSH tunnel per process (LIFE-76 PR 4a); each connect() is a fresh MySQL session through it
+_lock = threading.Lock()                                                      # stages that connect from threads open the tunnel once
+
+
+def _close_tunnel():
+    """Close the process's tunnel (at exit, or after a failed attempt so the next one starts clean)."""
+    exit_cmd, directory = _tunnel["exit"], _tunnel["directory"]
+    _tunnel.update(directory=None, port=None, exit=None, check=None)
+    with suppress(Exception):
+        if exit_cmd is not None:
+            subprocess.run(exit_cmd, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with suppress(Exception):
+        if directory is not None:
+            shutil.rmtree(directory)
+
+
+atexit.register(_close_tunnel)
+
+
+def _alive():
+    """True when the open tunnel's master still answers (a local control-socket check, no network round trip)."""
+    if _tunnel["check"] is None:
+        return False
+    try:
+        subprocess.run(_tunnel["check"], check=True, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:                                                         # noqa: BLE001 - any failure means reopen
+        return False
+
+
+def _open_tunnel(cfg):
+    directory = tempfile.mkdtemp(prefix="v7-store-")
+    key, hosts = Path(directory, "key"), Path(directory, "known_hosts")
+    for path, content in ((key, cfg["SSH_PRIVATE_KEY"]), (hosts, cfg["SSH_KNOWN_HOSTS"])):
+        path.touch(mode=0o600)
+        path.write_text(content.rstrip() + "\n")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        local_port = probe.getsockname()[1]
+    control = str(Path(directory, "control"))
+    opts = ["-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={hosts}",
+            "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10"]
+    _tunnel.update(directory=directory, port=local_port,
+                   exit=["ssh", "-F", "/dev/null", "-S", control, "-O", "exit", "--", cfg["SSH_HOST"]],
+                   check=["ssh", "-F", "/dev/null", "-S", control, "-O", "check", "--", cfg["SSH_HOST"]])
+    try:
+        subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
+                        "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
+                        "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
+                       check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    except Exception as error:
+        raise StoreError(_ssh_code(error)) from None
+
+
 @contextmanager
 def connect():
     cfg = _cfg()
-    connection = exit_cmd = None
-    with tempfile.TemporaryDirectory(prefix="v7-store-") as directory:
+    connection = None
+    for attempt, wait in enumerate(RETRY_WAITS):
+        extra = _jitter() if attempt or _spread[0] else 0
+        _spread[0] = False
+        time.sleep(wait + extra)
         try:
-            key, hosts = Path(directory, "key"), Path(directory, "known_hosts")
-            for path, content in ((key, cfg["SSH_PRIVATE_KEY"]), (hosts, cfg["SSH_KNOWN_HOSTS"])):
-                path.touch(mode=0o600)
-                path.write_text(content.rstrip() + "\n")
-            with socket.socket() as probe:
-                probe.bind(("127.0.0.1", 0))
-                local_port = probe.getsockname()[1]
-            control = str(Path(directory, "control"))
-            opts = ["-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-                    "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={hosts}",
-                    "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10"]
-            exit_cmd = ["ssh", "-F", "/dev/null", "-S", control, "-O", "exit", "--", cfg["SSH_HOST"]]
-            for attempt, wait in enumerate(RETRY_WAITS):
-                extra = _jitter() if attempt or _spread[0] else 0
-                _spread[0] = False
-                time.sleep(wait + extra)
-                try:
-                    try:
-                        subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
-                                        "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
-                                        "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
-                                       check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-                    except Exception as error:
-                        raise StoreError(_ssh_code(error)) from None
-                    try:
-                        import pymysql
-                        connection = pymysql.connect(host="127.0.0.1", port=local_port, user=cfg["DB_USER"],
-                                                     password=cfg["DB_PASSWORD"], database=cfg["DB_NAME"], charset="utf8mb4",
-                                                     autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
-                    except Exception:
-                        raise StoreError("STORE_DB_CONNECT_FAILED") from None
-                    break
-                except StoreError as error:
-                    print(f"store: attempt {attempt + 1} of {len(RETRY_WAITS)} {error}", file=sys.stderr)          # the fixed code of every failed attempt, so a lane that gives up shows whether all three failed alike
-                    with suppress(Exception):
-                        subprocess.run(exit_cmd, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)    # a half-open tunnel must not block the next attempt
-                    if str(error) not in TRANSIENT or attempt == len(RETRY_WAITS) - 1:
-                        raise
-            yield connection
-        finally:
-            with suppress(Exception):
-                if connection is not None:
-                    connection.close()
-            with suppress(Exception):
-                if exit_cmd is not None:
-                    subprocess.run(exit_cmd, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with _lock:
+                if not _alive():
+                    _close_tunnel()
+                    _open_tunnel(cfg)
+                port = _tunnel["port"]
+            try:
+                import pymysql
+                connection = pymysql.connect(host="127.0.0.1", port=port, user=cfg["DB_USER"],
+                                             password=cfg["DB_PASSWORD"], database=cfg["DB_NAME"], charset="utf8mb4",
+                                             autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
+            except Exception:
+                raise StoreError("STORE_DB_CONNECT_FAILED") from None
+            break
+        except StoreError as error:
+            print(f"store: attempt {attempt + 1} of {len(RETRY_WAITS)} {error}", file=sys.stderr)          # the fixed code of every failed attempt, so a lane that gives up shows whether all three failed alike
+            with _lock:
+                _close_tunnel()                                                                         # a half-open tunnel must not block the next attempt
+            if str(error) not in TRANSIENT or attempt == len(RETRY_WAITS) - 1:
+                raise
+    try:
+        yield connection
+    finally:
+        with suppress(Exception):
+            connection.close()                                                                          # the session ends; the tunnel stays for the next connect

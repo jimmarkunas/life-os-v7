@@ -30,7 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
-      - name: Load the Gmail and Notion credentials from Bitwarden (EDGE-1.3, exactly these 3; the job fails if retrieval fails, no fallback)
+      - id: bws_amazon
+        name: Load the Gmail and Notion credentials from Bitwarden (EDGE-1.3, exactly these 3; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
+            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
+            46fe195b-82e2-416e-8272-b4db015eea12 > NOTION_AMAZON_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_amazon.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_amazon_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_amazon.outcome == 'failure' }}
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
           access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
