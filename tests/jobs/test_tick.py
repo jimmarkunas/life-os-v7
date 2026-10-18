@@ -88,6 +88,11 @@ class TickTests(unittest.TestCase):
             with mock.patch.object(tick, "tick", return_value=outcome):
                 self.assertEqual(tick.main(["--live"]), code)
 
+    def test_main_prints_each_stage_line_as_it_happens(self):
+        with mock.patch.object(tick, "tick", return_value={"a": "ok"}), mock.patch.object(tick.sys.stdout, "reconfigure") as reconfigure:
+            tick.main([])
+        reconfigure.assert_called_once_with(line_buffering=True)                   # proof run 39163729298 printed every stage's line only at exit
+
     def test_every_planned_stage_exists(self):
         from lifeos import run
         import importlib

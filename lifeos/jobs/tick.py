@@ -102,6 +102,7 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--quick", action="store_true", help="small caps for a manual end-to-end proof (D206)")
     args = parser.parse_args(argv)
+    sys.stdout.reconfigure(line_buffering=True)                                     # each stage's counts line reaches the log when it is printed, not at exit
     outcome = tick(args.live, args.quick)
     print("tick:", json.dumps(outcome, sort_keys=True))
     return 1 if any(v in ("failed", "timeout") for v in outcome.values()) else 0
