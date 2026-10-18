@@ -246,6 +246,12 @@ class MissedJobs(unittest.TestCase):
 class Preview(unittest.TestCase):
     """The acceptance preview reads the same sample, scores kept jobs with the shared Fit, and writes nothing."""
 
+    def test_a_public_reason_never_names_a_private_rule_or_quotes_the_employer(self):
+        self.assertEqual(boards.public_reason("excluded: acme-recruiting"), "excluded: private rule")
+        self.assertEqual(boards.public_reason('not remote: hybrid required ("3 days a week in the office")'), "not remote: hybrid required")
+        self.assertEqual(boards.public_reason("Fit 67 below 68"), "Fit N below N")
+        self.assertEqual(boards.public_reason(None), "none")
+
     def test_the_acceptance_cuts_sit_around_the_fit_floor(self):
         got = [boards.acceptance_band(s) for s in (None, 0, 59.9, 60, 69, 69.5, 70, 71.9, 72, 100)]
         self.assertEqual(got, ["unscored", "lt60", "lt60", "60_69", "60_69", "60_69", "70_71", "70_71", "72_up", "72_up"])

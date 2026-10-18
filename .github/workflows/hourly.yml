@@ -908,7 +908,7 @@ jobs:
           LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
-        run: python -m lifeos.run boards-preview
+        run: python -m lifeos.run boards-preview --limit 600     # the whole seed-99 benchmark sample (run.py defaults to 40)
       - id: probe
         continue-on-error: true
         name: Probe - source shapes (dispatch only, counts only)

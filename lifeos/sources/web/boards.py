@@ -137,6 +137,15 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     return counts
 
 
+def public_reason(reason):
+    """A preview reason fit for a public log: a private exclusion rule is never named and an employer quote is dropped (fixed codes only)."""
+    from lifeos.jobs import funnel                                                              # noqa: PLC0415
+    reason = reason or ""
+    if reason.startswith("excluded:"):
+        return "excluded: private rule"
+    return funnel.reason_code(reason.split(' ("')[0])
+
+
 def acceptance_band(score):
     """The acceptance cuts around the Fit floor of 72: lt60, 60_69, 70_71, 72_up (or unscored)."""
     if score is None:
@@ -176,7 +185,7 @@ def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sampl
         out["decision"][decision.status] = out["decision"].get(decision.status, 0) + 1
         band = funnel.band(result.score)
         out["band"][band] = out["band"].get(band, 0) + 1
-        code = funnel.reason_code(decision.reason)
+        code = public_reason(decision.reason)
         out["reason"][code] = out["reason"].get(code, 0) + 1
         out["already_held"] += key in held
         out["already_published"] += bool(held.get(key))
