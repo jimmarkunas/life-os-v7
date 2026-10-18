@@ -17,7 +17,7 @@ RECOVER_PER_RUN = 25
 EXCLUDED = "EXCLUDED_UNRESOLVED"
 REASON = "hold_expired"
 FAILED_RECOVERY = "unresolved_after_recovery"      # the alert counts this reason
-RESOLVED_BY = ("jobright", "linkedin-alerts", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
+RESOLVED_BY = ("jobright", "linkedin-alerts", "linkedin-search", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
 RETIRED = {"lensa": "source_retired_lensa"}               # D201: a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason (its RESOLVED jobs carry on)
 
 

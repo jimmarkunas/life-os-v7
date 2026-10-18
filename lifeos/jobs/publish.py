@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import meta, lanes, ledger, store
-from lifeos.jobs.identity import norm, url_key
+from lifeos.jobs.identity import norm, url_key, vacancy_id
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -26,15 +26,16 @@ def _block(kind, content):
     return {"object": "block", "type": kind, kind: {"rich_text": rich_text(content)}}
 
 
-def same_opening(cursor, job_id, company, title):
+def same_opening(cursor, job_id, company, title, url=None):
     """D90: the id of a PUBLISHED job with the same company and title (three words or more, so a generic title is never merged), else None.
-    One opening posted under several locations or links is one page."""
+    One opening posted under several locations or links is one page. D205: only when both links name the same ATS vacancy (identity.vacancy_id) or
+    neither names one; different vacancies, or an id on one link only (identity not shown), are two openings, whatever their company and title."""
     if len(norm(title).split()) < 3 or not norm(company):
         return None
-    cursor.execute("SELECT id FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
-                   " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) LIMIT 1", (job_id, company, title))
-    row = cursor.fetchone()
-    return row[0] if row else None
+    cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
+                   " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id", (job_id, company, title))
+    mine = vacancy_id(url)
+    return next((row[0] for row in cursor.fetchall() if vacancy_id(row[1]) == mine), None)
 
 
 def body_blocks(key, description):
@@ -117,7 +118,7 @@ def ledger_urls(client):
         cursor = data.get("next_cursor")
 
 
-SEED_MARKER = "0" * 63 + "2"        # D112: the Ledger read is repeated once after Jim's 9/30 purge (marker 2); the first seed (marker 1, all zeros) still held every archived URL
+SEED_MARKER = "0" * 63 + "3"        # D112: the Ledger read is repeated once per marker: 2 after Jim's 9/30 purge; 3 when url_key began naming the ATS vacancy (LIFE-59)
 
 
 def _seeded(connection):
@@ -218,7 +219,7 @@ def run(limit, live, environ=os.environ):
             continue
         if live:
             with store.connect() as connection, connection.cursor() as cursor:
-                original = same_opening(cursor, job_id, company, title)
+                original = same_opening(cursor, job_id, company, title, url)
                 if original:
                     cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
                                    (original, _now(), job_id))

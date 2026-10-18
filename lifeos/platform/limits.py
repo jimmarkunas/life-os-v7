@@ -27,6 +27,8 @@ BILLS_PAID_PER_RUN = 20                  # paid commands are individually read b
 # LinkedIn (public guest pages only; never logged in)
 LINKEDIN_GUEST_GAP_SECONDS = 1.2         # ours; stop the stage on the first HTTP 429
 LINKEDIN_PER_RUN = 150
+LINKEDIN_SEARCH_PAGES_PER_RUN = 4          # D203: guest search pages per run (10 cards each), one per LINKEDIN_GUEST_GAP_SECONDS; LinkedIn answered 429 after about 12 quick requests (Oct 17)
+LINKEDIN_SEARCH_NEW_PER_RUN = 40           # D203: new rows per run, so search never crowds the newsletter in the shared resolve lane
 DICE_GAP_SECONDS = 1.0                   # polite spacing between anonymous tracking-link requests
 DICE_PER_RUN = 15                        # Dice is low value: a small bounded batch, never a long job
 DICE_DEADLINE_MINUTES = 3                # stop starting batches after this; the workflow step is also capped at 4 minutes

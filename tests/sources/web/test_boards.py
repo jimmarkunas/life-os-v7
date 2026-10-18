@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lifeos.jobs import lanes
 from lifeos.platform import limits
 from lifeos.sources.web import boards, boards_seed, lister, registry, run
 from tests.sources.web.test_web import MemRepo
@@ -54,13 +55,17 @@ class Screen(unittest.TestCase):
     def test_each_job_gets_its_reason(self):
         remote_jd = "About the role. This is a fully remote position open to candidates across the US."
         cases = [("Senior Technical Program Manager", "Remote, US", None, "kept_remote_in_location"),
-                 ("Program Manager", "Remote", None, "kept_remote_in_location"),
+                 ("Program Manager", "Remote", None, "kept_remote_in_location_place_unresolved"),          # M5: remote alone names no market
                  ("Senior Project Manager", "Austin/Remote within the US", None, "kept_remote_in_location"),
                  ("Technical Program Manager", "New York, NY", remote_jd, "kept_remote_in_description"),
                  ("Technical Program Manager", "United States", remote_jd, "kept_remote_in_description"),
                  ("TPM", "United States", "Lead programs across teams.", "kept_remote_assumed"),      # D204: nothing required: presumed, labelled so
                  ("Technical Program Manager", "Austin, Texas, United States", None, "kept_remote_assumed"),
-                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed_place_unresolved"),
+                 ("Technical Program Manager", "San Diego HQ", None, "kept_remote_assumed"),                 # M5: a US city (lanes.US_PLACES)
+                 ("Technical Program Manager", "RWC HQ", None, "kept_remote_assumed_place_unresolved"),          # names nothing known: unresolved
+                 ("Program Manager", "Espoo", None, "non_us"), ("Program Manager", "Abu Dhabi", None, "non_us"),   # foreign places seen in the M4 sample
+                 ("Program Manager", "Calgary", None, "non_us"), ("Program Manager", "Wrocław", None, "non_us"),
+                 ("Program Manager", "UT - Cottonwood Heights; FL - Jacksonville", None, "kept_remote_assumed"),
                  ("Program Manager", "Hybrid - Remote, US", None, "kept_remote_in_location"),                 # remote offered alongside hybrid
                  ("Program Manager", "New York, NY", "This is a hybrid role: 3 days a week in our office.", "not_remote_hybrid"),
                  ("Program Manager", "Seattle, WA", "There is no onsite requirement for this role.", "kept_remote_assumed"),
@@ -246,6 +251,41 @@ class MissedJobs(unittest.TestCase):
 class Preview(unittest.TestCase):
     """The acceptance preview reads the same sample, scores kept jobs with the shared Fit, and writes nothing."""
 
+    def test_every_lane_reason_has_a_fixed_public_code(self):
+        from lifeos.jobs import lanes
+        cases = {f"Fit 55 below {lanes.REVIEW_FLOOR}": "fit_below_review_floor", f"Fit 70 below {lanes.FIT_FLOOR}": "fit_below_admit_floor",
+                 f"Fit 70.5 below {lanes.FIT_FLOOR} (on Jim's keep list)": "fit_below_admit_floor_keep_list",
+                 f"Fit 65 below {lanes.NEAR_MISS_FLOOR} and market unresolved": "fit_below_near_miss_with_open_question",
+                 "not remote: hybrid required": "not_remote_hybrid_required", "not remote: onsite required": "not_remote_onsite_required",
+                 "remote assumed": "remote_assumed", "Fit unscorable": "fit_unscorable", "vacancy closed": "vacancy_closed",
+                 "explicit pay below $120,000": "pay_below_floor", "posting date unresolved": "posting_date_unresolved",
+                 "posting date in the future": "posting_date_future", "older than 30 days": "older_than_max_age", "market unresolved": "market_unresolved",
+                 "market UK is not US": "market_mismatch", "market not shown to be UK": "market_not_shown", "geography unresolved": "geography_unresolved",
+                 "geography does not qualify": "geography_not_qualifying", "not in London": "not_in_london", "Skilled Worker route negative": "route_negative",
+                 "Skilled Worker route unresolved": "route_unresolved", "lane disabled": "lane_disabled", lanes.TITLE_ONLY_REASON: "title_only",
+                 None: "none", "": "none"}
+        for reason, code in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(lanes.public_reason(reason), code)
+
+    def test_a_public_reason_never_copies_a_private_rule_a_quote_or_unknown_text(self):
+        private = {"excluded: acme-recruiting-rule": "excluded_private_rule",
+                   'not remote: hybrid required ("3 days a week in our Chicago office")': "not_remote_hybrid_required",
+                   'not remote: onsite required ("must work onsite")': "not_remote_onsite_required",
+                   "Fit 71 below 72 because of profile capability secret-alpha": "other", "Traceback: KeyError 'FIT_PROFILE_JSON'": "other",
+                   "remote assumed; profile: secret-alpha": "other", "Fit 71 below 99": "fit_below_floor", "not remote: hybrid required, see secret-alpha": "other"}
+        for reason, code in private.items():
+            with self.subTest(reason=reason):
+                got = lanes.public_reason(reason)
+                self.assertEqual(got, code)
+                self.assertIn(got, {c for _, c in lanes.PUBLIC_REASONS} | {"none", "other"})     # only enumerated codes ever leave
+                for word in ("acme", "Chicago", "secret", "Traceback", "must work"):
+                    self.assertNotIn(word.casefold(), got.casefold())
+
+    def test_the_acceptance_cuts_sit_around_the_fit_floor(self):
+        got = [boards.acceptance_band(s) for s in (None, 0, 59.9, 60, 69, 69.5, 70, 71.9, 72, 100)]
+        self.assertEqual(got, ["unscored", "lt60", "lt60", "60_69", "60_69", "60_69", "70_71", "70_71", "72_up", "72_up"])
+
     def test_counts_every_stage_and_writes_nothing(self):
         from tests.kit.jobsdb import JobsDB
         from lifeos.jobs import identity
@@ -260,4 +300,7 @@ class Preview(unittest.TestCase):
         self.assertEqual((got["boards"], got["kept"], got["fit_evaluated"], got["already_held"], got["already_published"]), (3, 2, 2, 1, 1))
         self.assertEqual(sum(got["decision"].values()), 2)
         self.assertEqual(got["screen"]["title_other_profession_engineer"], 3)
+        self.assertEqual(sum(got["fit_band"].values()), 2)
+        self.assertEqual(list(got["by_evidence"]), ["remote_in_location"])                  # decisions split by remote stated / assumed
+        self.assertEqual(sum(v for k, v in got["by_evidence"]["remote_in_location"].items() if not k.startswith("fit_")), 2)
         self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], before)
