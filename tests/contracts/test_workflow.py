@@ -95,6 +95,32 @@ class WorkflowTests(unittest.TestCase):
             if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "boards", "web_scale_up", "titlewatch", "sponsors"):
                 self.assertNotIn("PIPELINE", s["if"], s["id"])
 
+    def test_the_readback_recheck_mode_reads_no_mail_and_runs_only_its_own_step(self):
+        """D212: report = readback-recheck runs the one-time read-back and nothing that moves mail or writes elsewhere (Jim's approved footprint)."""
+        from pathlib import Path
+        data = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text())
+        prep = {s.get("name"): s for s in data["jobs"]["prep"]["steps"]}
+        mode = "inputs.report == 'readback-recheck'"
+        for name in ("Stage 1 - sweep", "Stage - extract cards from mail"):
+            self.assertIn("!(github.event_name == 'workflow_dispatch' && " + mode + ")", prep[name]["if"], name)
+        finish = data["jobs"]["finish"]["steps"]
+        step = next(s for s in finish if s.get("id") == "recheck")
+        self.assertEqual(step["if"], "${{ github.event_name == 'workflow_dispatch' && " + mode + " }}")
+        self.assertIn("python -m lifeos.run readback-recheck", step["run"])
+        self.assertIn("recheck=${{ steps.recheck.outcome }}", next(s for s in finish if s.get("id") == "lanes")["run"])      # a page that does not read back fails the run
+        for s in finish:
+            if s.get("id") in ("review", "explain"):                                  # the other report modes keep their own value
+                self.assertIn("inputs.report != 'readback-recheck'", s["if"], s["id"])
+
+    def test_only_a_tick_or_a_domains_dispatch_starts_the_jira_job(self):
+        """D212: after a manual (or cancelled) hourly run the workflow_run event has no inputs, and `inputs.jira != 'none'` was true for an empty input, so every manual
+        hourly run also wrote the Jira snapshot and card. Only a completed tick or a domains dispatch that asks for Jira starts it now."""
+        from pathlib import Path
+        condition = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["jobs"]["jira"]["if"]
+        self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.jira != 'none')", condition)
+        self.assertIn("github.event.workflow_run.display_title == 'tick'", condition)
+        self.assertNotIn("|| inputs.jira != 'none'", condition)
+
     def test_domain_jobs_left_hourly_and_run_after_a_tick_from_domains(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2] / ".github/workflows"
@@ -453,7 +479,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="7b3b586d63b2316a"),   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="c8383b6c12b53f6e"),   # D212: + the one-time readback-recheck command;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -595,6 +621,7 @@ CONSUMER_STEPS = {
             'Step 5b - US Remote web acquisition (due ATS boards)': DB | HRL,
             'Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)': DB,
             'Employer boards acceptance preview (dispatch only, read-only, counts only, D202)': DB | {'FIT_PROFILE_EXTRA_JSON', 'FIT_PROFILE_JSON'},
+            "Read-back recheck (dispatch only; report = readback-recheck; D212 one time; writes only those pages' verified_at)": DB | {'NOTION_API_TOKEN'},
             'Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)': DB | HRL,
             "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)": DB | HRL,
             'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | HRL,
