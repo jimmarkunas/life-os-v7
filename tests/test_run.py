@@ -164,6 +164,9 @@ class PublishThroughTheRealStageTests(unittest.TestCase):
                 created.append(job)
                 return "page-" + job
 
+            def create_page(self, props, blocks):
+                return {"id": self.create(props, blocks)}
+
         rows = [self._row(1, "key-1"), self._row(2, "key-2")]
         out, err = io.StringIO(), io.StringIO()
         with patch.object(publish, "Client", Client), patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
