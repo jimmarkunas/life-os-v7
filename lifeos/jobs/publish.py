@@ -28,14 +28,14 @@ def _block(kind, content):
 
 def same_opening(cursor, job_id, company, title, url=None):
     """D90: the id of a PUBLISHED job with the same company and title (three words or more, so a generic title is never merged), else None.
-    One opening posted under several locations or links is one page. LIFE-59: two jobs whose links name different ATS vacancies
-    (identity.vacancy_id) are two openings, whatever their company and title."""
+    One opening posted under several locations or links is one page. D205: only when both links name the same ATS vacancy (identity.vacancy_id) or
+    neither names one; different vacancies, or an id on one link only (identity not shown), are two openings, whatever their company and title."""
     if len(norm(title).split()) < 3 or not norm(company):
         return None
     cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
                    " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id", (job_id, company, title))
     mine = vacancy_id(url)
-    return next((row[0] for row in cursor.fetchall() if not (mine and vacancy_id(row[1]) and vacancy_id(row[1]) != mine)), None)
+    return next((row[0] for row in cursor.fetchall() if vacancy_id(row[1]) == mine), None)
 
 
 def body_blocks(key, description):

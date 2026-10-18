@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import guard, hiring_pipeline, lanes, ledger, quality, store
-from lifeos.jobs.identity import norm, url_key
+from lifeos.jobs.identity import norm, url_key, vacancy_id
 from lifeos.platform import notion_client
 
 
@@ -65,13 +65,14 @@ def run(limit, live, environ=os.environ):
     bad += [(r, "excluded_fit") for r in excluded if r[0] not in already]
     first_page = {}
     for r in pages:                                         # D90: one page per opening; the earliest stays, a later one with the same company and title goes
-        key = (norm(r[5]), norm(r[6]))
-        if len(key[1].split()) < 3:
+        key = (norm(r[5]), norm(r[6]))                      # D205: and the same ATS vacancy (or no id on either link): trashing needs identity shown,
+        if len(key[1].split()) < 3:                         # so an id on one link only, or two different ids, keeps both pages
             continue
-        if key in first_page and r[0] not in already:
+        earlier = next((p for p in first_page.get(key, []) if vacancy_id(p[2]) == vacancy_id(r[2])), None)
+        if earlier and r[0] not in already:
             bad.append((r, "duplicate_page"))
-            dupe_of[r[0]] = first_page[key]
-        first_page.setdefault(key, r[0])
+            dupe_of[r[0]] = earlier[0]
+        first_page.setdefault(key, []).append(r)
     counts["failed"] = len(bad)
     for _, why in bad:
         counts["by_reason"][why] = counts["by_reason"].get(why, 0) + 1

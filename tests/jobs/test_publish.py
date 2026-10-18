@@ -137,10 +137,10 @@ class SameOpeningTests(unittest.TestCase):
         self.published("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R5005")
         self.assertIsNone(self.same("Acme", "Technical Program Manager II", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/TPM-II_R6006"))
 
-    def test_one_vacancy_under_another_link_or_provider_is_still_one_opening(self):
+    def test_one_vacancy_under_another_link_converges_and_a_one_sided_id_is_not_proof(self):
         board = self.published("Acme", "Senior Technical Program Manager", "https://boards.greenhouse.io/acme/jobs/7007")
         self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=7007"), board)
-        self.assertEqual(self.same("Acme", "Senior Technical Program Manager", "https://www.linkedin.com/jobs/view/4478543856"), board)    # no id on one side
+        self.assertIsNone(self.same("Acme", "Senior Technical Program Manager", "https://www.linkedin.com/jobs/view/4478543856"))      # id on one side only: not shown
         req = self.published("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Chicago/Delivery-PM_R8008")
         self.assertEqual(self.same("Acme", "Delivery Program Manager", "https://acme.wd5.myworkdayjobs.com/ext/job/Remote/Delivery-PM_R8008-1"), req)   # one req, two places
 

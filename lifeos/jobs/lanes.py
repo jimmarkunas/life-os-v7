@@ -368,3 +368,29 @@ def decide(row_lane, facts, today, exclusion=None):
     """-> (Decision, lane name)."""
     decision, lane, _ = decide_all(row_lane, facts, today, exclusion)
     return decision, lane
+
+
+# Public reasons (M3 review): a lane reason as a fixed code a public log may print; boards-preview, funnel and explain use it.
+_N = r"\d+(?:\.\d+)?"
+PUBLIC_REASONS = (                                       # (lane reason, the fixed code a public log may print); nothing of the reason is copied
+    (rf"Fit {_N} below {NEAR_MISS_FLOOR} and .+", "fit_below_near_miss_with_open_question"),
+    (rf"Fit {_N} below {REVIEW_FLOOR}", "fit_below_review_floor"),
+    (rf"Fit {_N} below {FIT_FLOOR}", "fit_below_admit_floor"),
+    (rf"Fit {_N} below {FIT_FLOOR} \(on Jim's keep list\)", "fit_below_admit_floor_keep_list"),
+    (r"not remote: hybrid required(?: \(.*\))?", "not_remote_hybrid_required"),
+    (r"not remote: onsite required(?: \(.*\))?", "not_remote_onsite_required"),
+    (r"remote assumed", "remote_assumed"), (r"Fit unscorable", "fit_unscorable"), (r"vacancy closed", "vacancy_closed"),
+    (r"explicit pay below .+", "pay_below_floor"), (r"posting date unresolved", "posting_date_unresolved"),
+    (r"posting date in the future", "posting_date_future"), (rf"older than {_N} days", "older_than_max_age"),
+    (r"market unresolved", "market_unresolved"), (r"market .+ is not .+", "market_mismatch"), (r"market not shown to be .+", "market_not_shown"),
+    (r"geography unresolved", "geography_unresolved"), (r"geography does not qualify", "geography_not_qualifying"), (r"not in London", "not_in_london"),
+    (r".+ route negative", "route_negative"), (r".+ route unresolved", "route_unresolved"), (r"lane disabled", "lane_disabled"),
+    (re.escape(TITLE_ONLY_REASON), "title_only"), (r"excluded: .*", "excluded_private_rule"), (rf"Fit {_N} below {_N}", "fit_below_floor"))     # last: an older floor
+
+
+def public_reason(reason):
+    """A preview reason fit for a public log: one of the fixed codes in PUBLIC_REASONS, "none" for no reason, and "other" for anything not
+    enumerated there. No rule name, profile content, employer quotation or exception text is ever copied."""
+    if not reason:
+        return "none"
+    return next((code for pattern, code in PUBLIC_REASONS if re.fullmatch(pattern, reason, re.S)), "other")

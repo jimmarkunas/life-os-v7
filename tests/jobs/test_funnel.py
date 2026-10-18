@@ -90,3 +90,26 @@ class FunnelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PublicCodes(unittest.TestCase):
+    """M6C: the funnel report and explain print to the public Actions log through funnel.public_code: a fixed store code or a bare Fit floor keeps
+    its shape; a lane reason prints only its enumerated code, never a rule name, an employer quote or other text. reason_code itself is unchanged."""
+
+    def test_store_codes_keep_their_shape_and_any_other_reason_is_enumerated(self):
+        cases = {None: "none", "": "none", "lane_exclude": "lane_exclude", "no_job_id 3": "no_job_id N", "http_404": "http_N",
+                 "no_match_no_board+no_result": "no_match_no_board+no_result", "Fit 67 below 68": "Fit N below N", "remote assumed": "remote_assumed",
+                 "excluded: acme-recruiting-rule": "excluded_private_rule", 'not remote: onsite required ("must work onsite at our Chicago office")': "not_remote_onsite_required",
+                 "remote assumed; profile: secret-alpha": "other", "Traceback: KeyError 'FIT_PROFILE_JSON'": "other"}
+        for reason, code in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(funnel.public_code(reason), code)
+        self.assertEqual(funnel.reason_code("excluded: sales_role"), "excluded: sales_role")            # the private review page keeps its words
+
+    def test_the_funnel_report_never_prints_a_rule_or_a_quote(self):
+        from lifeos.jobs import explain
+        got = explain.summarize([(1, "EXCLUDED_FIT", "jobright", 50, "excluded: acme-recruiting-rule", None),
+                                 (2, "READY", "web:x", 70, 'not remote: hybrid required ("3 days a week in our Chicago office")', None)])
+        text = repr(got)
+        for word in ("acme", "Chicago", "3 days"):
+            self.assertNotIn(word, text)

@@ -13,11 +13,6 @@ def url_hash(url):
     return sha256(url.encode()).hexdigest()
 
 
-def fuzzy_key(company, title, location):
-    """Same opening seen under another URL: normalized company + title + location."""
-    return sha256("|".join(norm(x) for x in (company, title, location)).encode()).hexdigest()
-
-
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 _WORKDAY_REQ = re.compile(r"_(J?R[-_]?\d+)(?:-\d+)?$", re.I)
 
@@ -50,3 +45,10 @@ def url_key(url):
         return sha256(("vacancy|" + named).encode()).hexdigest()
     parts = urlsplit((url or "").strip())
     return sha256(((parts.hostname or "") + parts.path.rstrip("/")).lower().encode()).hexdigest()
+
+
+def fuzzy_key(company, title, location, url=None):
+    """Same opening seen under another URL: normalized company + title + location, plus the ATS vacancy id when the link names one (D205), so two
+    requisitions with one company, title and place are two openings. A link with no id keeps its stored key."""
+    parts = [norm(x) for x in (company, title, location)] + ([vacancy_id(url)] if vacancy_id(url) else [])
+    return sha256("|".join(parts).encode()).hexdigest()

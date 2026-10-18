@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lifeos.jobs import lanes
 from lifeos.platform import limits
 from lifeos.sources.web import boards, boards_seed, lister, registry, run
 from tests.sources.web.test_web import MemRepo
@@ -265,19 +266,19 @@ class Preview(unittest.TestCase):
                  None: "none", "": "none"}
         for reason, code in cases.items():
             with self.subTest(reason=reason):
-                self.assertEqual(boards.public_reason(reason), code)
+                self.assertEqual(lanes.public_reason(reason), code)
 
     def test_a_public_reason_never_copies_a_private_rule_a_quote_or_unknown_text(self):
         private = {"excluded: acme-recruiting-rule": "excluded_private_rule",
                    'not remote: hybrid required ("3 days a week in our Chicago office")': "not_remote_hybrid_required",
                    'not remote: onsite required ("must work onsite")': "not_remote_onsite_required",
                    "Fit 71 below 72 because of profile capability secret-alpha": "other", "Traceback: KeyError 'FIT_PROFILE_JSON'": "other",
-                   "remote assumed; profile: secret-alpha": "other", "Fit 71 below 99": "other", "not remote: hybrid required, see secret-alpha": "other"}
+                   "remote assumed; profile: secret-alpha": "other", "Fit 71 below 99": "fit_below_floor", "not remote: hybrid required, see secret-alpha": "other"}
         for reason, code in private.items():
             with self.subTest(reason=reason):
-                got = boards.public_reason(reason)
+                got = lanes.public_reason(reason)
                 self.assertEqual(got, code)
-                self.assertIn(got, {c for _, c in boards.PUBLIC_REASONS} | {"none", "other"})     # only enumerated codes ever leave
+                self.assertIn(got, {c for _, c in lanes.PUBLIC_REASONS} | {"none", "other"})     # only enumerated codes ever leave
                 for word in ("acme", "Chicago", "secret", "Traceback", "must work"):
                     self.assertNotIn(word.casefold(), got.casefold())
 

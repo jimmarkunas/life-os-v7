@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
 
 # LIFE-59 M6: the vacancy's ATS id is its identity. 8001 reaches the newsletter as Greenhouse's embed link and the board as its board page.
-# (8002 and 8003, two requisitions with one company, title and place, are held back at intake by repost.link: see the M6 report.)
+# 8002 and 8003 are two requisitions with one company, one title and one place (D205: intake, publish and audit keep them apart).
 REQS = {i: ("Senior Technical Program Manager", "Remote - US", f"https://boards.greenhouse.io/acme/jobs/{i}", gate.PM_BODY) for i in ("8001", "8002", "8003")}
 EMBED_8001 = "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=8001"
 
@@ -154,3 +154,78 @@ class VacancyIdentity(unittest.TestCase):
         self.assertEqual(len(self.pages_for("8001")), 1)
         board_row = self.j.db.raw.execute("SELECT status, unresolved_reason FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8001"][2]),)).fetchone()
         self.assertEqual(tuple(board_row), ("DUPLICATE", "in_ledger"))
+    def test_two_requisitions_with_one_company_and_title_are_two_pages(self):
+        self.run_all()
+        self.assertEqual((len(self.pages_for("8002")), len(self.pages_for("8003"))), (1, 1))
+        rows = self.j.db.raw.execute("SELECT status FROM v7_jobs WHERE dedupe_key IN (?, ?)", tuple(identity.url_hash(REQS[i][2]) for i in ("8002", "8003"))).fetchall()
+        self.assertEqual(sorted(r[0] for r in rows), ["PUBLISHED", "PUBLISHED"])
+
+    def test_a_replay_keeps_three_vacancies_on_three_pages(self):
+        self.run_all()
+        self.run_all()
+        self.assertEqual([len(self.pages_for(i)) for i in ("8001", "8002", "8003")], [1, 1, 1])
+
+    # M6E/M6F: the rest of the chain for two requisitions, and the audit, which can move a Ledger page to Trash, over the same store and Ledger.
+    def audit(self, applied=()):
+        """A live audit where every page carries the Ledger's real safety properties (else the guard protects everything and proves nothing)."""
+        from lifeos.jobs import audit
+        trashed, real = [], self.j.ledger.call
+
+        def call(method, path, body=None):
+            if method == "PATCH" and body == {"in_trash": True}:
+                trashed.append(path.rsplit("/", 1)[1])
+                return {}
+            return real(method, path, body)
+        for page_id, page in self.j.ledger.pages.items():
+            page["props"].update({"Applied": {"checkbox": page_id in applied}, "Applied On": {"date": None}, "Saturn Decision": {"select": None}})
+        with mock.patch.object(self.j.ledger, "call", call), mock.patch.object(audit.notion_client, "Client", lambda environ: self.j.ledger):
+            counts = audit.run(500, True, gate.ENV)
+        return counts, trashed
+
+    def published_copy(self, url, page_id, source="web:x"):
+        """Another published row and page, with 8002's stored description, so only identity can make the audit act on it."""
+        self.j.ledger.pages[page_id] = {"props": {"Apply URL": {"url": url}, "Stable Job Key": {"rich_text": [{"plain_text": page_id}]}}, "archived": False}
+        self.j.db.insert("v7_jobs", dedupe_key=identity.url_hash(url), status="PUBLISHED", title=REQS["8002"][0], company="Acme", source=source, source_url=url,
+                         final_apply_url=url, first_seen=NOW, last_seen=NOW, updated_at=NOW, lane="US Remote", notion_page_id=page_id)
+        new_id = self.j.db.raw.execute("SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(url),)).fetchone()[0]
+        old_id = self.j.db.raw.execute("SELECT id FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(REQS["8002"][2]),)).fetchone()[0]
+        cols = [r[1] for r in self.j.db.raw.execute("PRAGMA table_info(v7_job_descriptions)").fetchall() if r[1] not in ("job_id", "id")]
+        self.j.db.raw.execute(f"INSERT INTO v7_job_descriptions (job_id, {', '.join(cols)}) SELECT ?, {', '.join(cols)} FROM v7_job_descriptions WHERE job_id=?", (new_id, old_id))
+
+    def status(self, url):
+        return self.j.db.raw.execute("SELECT status, unresolved_reason, repost_of, fuzzy_key FROM v7_jobs WHERE dedupe_key=?", (identity.url_hash(url),)).fetchone()
+
+    def test_two_requisitions_are_kept_apart_at_intake_by_repost_and_tombstone_and_by_the_audit(self):
+        from lifeos.jobs import tombstone
+        self.run_all()
+        a, b = self.status(REQS["8002"][2]), self.status(REQS["8003"][2])
+        self.assertNotEqual(a[3], b[3])                                                   # intake: two fuzzy keys, no repost link
+        self.assertEqual((a[2], b[2]), (None, None))
+        self.assertNotEqual(identity.url_key(REQS["8002"][2]), identity.url_key(REQS["8003"][2]))
+        counts, trashed = self.audit()
+        self.assertEqual((counts["by_reason"].get("duplicate_page", 0), trashed), (0, []))
+        self.assertEqual((self.status(REQS["8002"][2])[0], self.status(REQS["8003"][2])[0]), ("PUBLISHED", "PUBLISHED"))
+        with self.j.db.cursor() as cursor:                                                # one requisition retired: only it is blocked
+            tombstone.write(cursor, identity.url_hash(REQS["8002"][2]), a[3], NOW)
+            self.assertTrue(tombstone.blocked(cursor, "relisted-8002", a[3], None, NOW))
+            self.assertFalse(tombstone.blocked(cursor, "relisted-8003", b[3], None, NOW))
+
+    def test_a_second_page_for_one_vacancy_is_trashed_unless_a_human_is_pursuing_it(self):
+        self.run_all()
+        original = self.status(REQS["8002"][2])
+        for n, url in enumerate(("https://www.acme.example/careers?gh_jid=8002", "https://job-boards.greenhouse.io/acme/jobs/8002?gh_src=x")):
+            self.published_copy(url, f"dup{n}")
+        counts, trashed = self.audit(applied={"dup1"})
+        self.assertEqual((trashed, counts["protected"].get("applied")), (["dup0"], 1))       # the pursued page stays
+        self.assertEqual(self.status("https://www.acme.example/careers?gh_jid=8002")[:2], ("DUPLICATE", "same_opening"))
+        self.assertEqual(self.status(REQS["8002"][2])[0], original[0])                   # the first page is never the one that goes
+
+    def test_an_unknown_or_one_sided_identity_is_never_trashed(self):
+        self.run_all()
+        url = "https://www.linkedin.com/jobs/view/4455667788"                               # same company and title, no vacancy id on this link
+        self.published_copy(url, "li", source="linkedin-alerts")
+        counts, trashed = self.audit()
+        self.assertEqual((counts["by_reason"].get("duplicate_page", 0), trashed), (0, []))
+        self.j.ledger.pages["li"]["props"].pop("Saturn Decision")                         # and an unreadable safety property protects, never guesses
+        from lifeos.jobs import guard
+        self.assertEqual(guard.protection(self.j.ledger, "li", "Acme", REQS["8002"][0]), guard.UNREADABLE)
