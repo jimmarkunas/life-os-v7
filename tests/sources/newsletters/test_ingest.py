@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest import mock
 
+from lifeos.platform.gmail import GmailError
 from lifeos.sources.newsletters import config, ingest
 from lifeos.sources.newsletters.parsers import dice, lensa
 from tests.kit.db import FakeConn
@@ -228,3 +229,52 @@ class SourceAccountingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MissingLabelTests(unittest.TestCase):
+    """M5 (run 39143395726): a dry run moves nothing, so it must not need a label only a live move uses (J Newsletters/Retired did not exist yet);
+    a live run creates the label it needs. The mailbox answers like the real client: an unknown label is an error unless it is created."""
+
+    class Box(FakeGmail):
+        def __init__(self, labels, **kw):
+            super().__init__(**kw)
+            self.labels, self.created = set(labels), []
+
+        def label_id(self, name, create=False):
+            if name not in self.labels:
+                if not create:
+                    raise GmailError(f"label not found: {name}")
+                self.created.append(name)
+                self.labels.add(name)
+            return name
+
+    def test_a_dry_run_with_the_retired_label_missing_counts_and_creates_nothing(self):
+        box = self.Box({config.PROCESSED_LABEL}, messages=MESSAGES)
+        counts = ingest.extract(box, live=False, limit=10)
+        self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"]), (1, 0))
+        self.assertEqual((box.created, box.calls), ([], []))
+
+    def test_a_dry_run_with_no_labels_at_all_still_runs(self):
+        self.assertEqual(ingest.extract(self.Box(set(), messages=MESSAGES), live=False, limit=10)["retired_sender_lensa"], 1)
+
+    def test_a_dry_run_with_every_label_present_reads_no_label_and_moves_nothing(self):
+        box = self.Box({config.PROCESSED_LABEL, config.RETIRED_LABEL}, messages=MESSAGES)
+        looked = []
+        box.label_id = lambda name, create=False: looked.append(name) or name
+        counts = ingest.extract(box, live=False, limit=10)
+        self.assertEqual((counts["retired_sender_lensa"], counts["marked_retired"], counts["marked_processed"]), (1, 0, 0))
+        self.assertEqual((looked, box.created, box.calls), ([], [], []))           # zero mutation: no label read, created or applied
+
+    def test_a_live_run_uses_a_preexisting_retired_label_without_creating_it(self):
+        retired_only = {k: v for k, v in MESSAGES.items() if config.classify(v[0]) in config.RETIRED_SENDERS}
+        box = self.Box({config.PROCESSED_LABEL, config.RETIRED_LABEL}, messages=retired_only)
+        counts = ingest.extract(box, live=True, limit=10)
+        self.assertEqual((counts["marked_retired"], counts["marked_processed"], box.created), (1, 0, []))
+        self.assertEqual(box.calls, [(list(retired_only), [config.RETIRED_LABEL], [])])     # Retired only, never Processed (D201)
+
+    def test_a_live_run_creates_the_missing_retired_label_and_uses_it(self):
+        retired_only = {k: v for k, v in MESSAGES.items() if config.classify(v[0]) in config.RETIRED_SENDERS}
+        box = self.Box({config.PROCESSED_LABEL}, messages=retired_only)
+        counts = ingest.extract(box, live=True, limit=10)
+        self.assertEqual((counts["marked_retired"], box.created), (1, [config.RETIRED_LABEL]))
+        self.assertEqual(box.calls, [(list(retired_only), [config.RETIRED_LABEL], [])])
