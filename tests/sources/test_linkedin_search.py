@@ -36,11 +36,12 @@ class Parse(unittest.TestCase):
         self.assertEqual(got, [{"id": "4463152620", "url": "https://www.linkedin.com/jobs/view/4463152620", "title": "Senior Technical Program Manager & Lead",
                                 "company": "Ripple", "location": "United States", "posted": date(2026, 10, 17)}])
 
-    def test_the_remote_filter_is_not_sent_because_the_guest_search_ignores_it(self):
-        url = ls.search_url("program manager remote", 10)
+    def test_the_search_is_role_first_with_no_work_mode_filter_or_keyword(self):
+        url = ls.search_url("program manager", 10)
         self.assertNotIn("f_WT", url)
-        self.assertIn("keywords=program+manager+remote", url)
+        self.assertIn("keywords=program+manager&", url)
         self.assertIn("f_TPR=r86400", url)
+        self.assertEqual([q for q in ls.QUERIES if "remote" in q.split()], [])      # D204: a job that never says remote is still a candidate
 
 
 class Read(unittest.TestCase):
@@ -91,11 +92,12 @@ class Concert(unittest.TestCase):
     def test_cards_are_candidates_never_labelled_remote_and_each_reason_is_counted(self):
         body = (card(300001, "Technical Program Manager", where="United States") + card(300002, "Technical Program Manager", where="Seattle, WA")
                 + card(300003, "Staff Software Engineer", where="United States") + card(300004, "Program Manager", where="Remote, US")
-                + card(300005, "Program Manager", where="London, England, United Kingdom") + card(300006, "Program Manager", where="Austin, TX (Hybrid)"))
+                + card(300005, "Program Manager", where="London, England, United Kingdom") + card(300006, "Program Manager", where="Austin, TX (Hybrid)")
+                + card(300007, "Delivery Manager", where="Denver, CO (On-site)") + card(300008, "Implementation Manager", where="Dallas-Fort Worth Metroplex"))
         counts = self.run_search((200, body))
-        self.assertEqual(counts["screen"], {"admitted_remote_assumed": 2, "admitted_remote_in_location": 1, "non_us": 1, "not_remote_hybrid": 1,
-                                            "title_other_profession_engineer": 1})
-        self.assertEqual(sorted(r[4] for r in self.rows()), ["Remote, US", "Seattle, WA", "United States"])     # LinkedIn's place as given, never "(Remote)"
+        self.assertEqual(counts["screen"], {"admitted_remote_assumed": 2, "admitted_remote_assumed_place_unresolved": 1, "admitted_remote_in_location": 1,
+                                            "non_us": 1, "not_remote_hybrid": 1, "not_remote_onsite": 1, "title_other_profession_engineer": 1})
+        self.assertEqual(sorted(r[4] for r in self.rows()), ["Dallas-Fort Worth Metroplex", "Remote, US", "Seattle, WA", "United States"])   # as given, never "(Remote)"
 
     def test_cards_that_show_remote_take_the_room_first(self):
         body = card(310001, "Program Manager", where="United States") + card(310002, "Program Manager", where="Remote, US")

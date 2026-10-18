@@ -32,7 +32,7 @@ from lifeos.sources.web import boards, suppress
 SOURCE = "linkedin-search"
 LANE = "US Remote"
 SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-QUERIES = ("technical program manager remote", "program manager remote", "delivery manager remote", "implementation manager remote")
+QUERIES = ("technical program manager", "program manager", "delivery manager", "implementation manager")    # D204: role first; no "remote" in the query
 PAGE = 10                                                      # cards per guest search page
 
 CARD = re.compile(r'<li>(.*?)</li>', re.S)
@@ -48,7 +48,8 @@ def _now():
 
 
 def search_url(query, start):
-    """Roles in the United States posted in the last 24 hours (f_TPR=r86400); "remote" is in the query because the guest search ignores f_WT."""
+    """Roles in the United States posted in the last 24 hours (f_TPR=r86400). No work-mode filter: the guest search ignores f_WT, and D204 presumes
+    remote unless the employer requires the office, so a "remote" keyword would only drop jobs that never mention it (Oct 18: no card in common)."""
     return SEARCH + "?" + urlencode({"keywords": query, "location": "United States", "f_TPR": "r86400", "start": start})
 
 
