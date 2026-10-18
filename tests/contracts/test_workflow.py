@@ -70,15 +70,29 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("stages: $STAGES", report["run"])
         self.assertFalse(report.get("continue-on-error"))                              # a push the provider refuses turns the job red
 
-    def test_dice_resolver_is_pipeline_only_and_adds_no_dispatch_input(self):
+    def test_a_tick_runs_the_whole_chain_in_one_job_and_the_lanes_are_manual_only(self):
+        """D208 (LIFE-76 PR 4b): a pipeline tick runs lifeos.jobs.tick in the finish job (one credential load, one store tunnel); the
+        separate lane jobs run only on a manual run; Dice has no job of its own (the tick resolves it); a parked tick starts no Jobs job."""
         from pathlib import Path
+        from lifeos.jobs import tick
         path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml"
         data = yaml.safe_load(path.read_text())
         self.assertNotIn("resolve_dice", data[True]["workflow_dispatch"]["inputs"])
-        job = data["jobs"]["dice"]
-        step = next(step for step in job["steps"] if step.get("id") == "dice")
-        self.assertIn("PIPELINE", step["if"])
-        self.assertNotIn("inputs.", step["if"])
+        self.assertNotIn("dice", data["jobs"])
+        self.assertIn("resolve-dice", [s.name for s in tick.PLAN])
+        for lane in ("jobright", "linkedin", "lensa"):
+            self.assertIn("github.event_name == 'workflow_dispatch' && !inputs.tick", data["jobs"][lane]["if"], lane)
+        finish = data["jobs"]["finish"]
+        self.assertIn("vars.V7_PIPELINE == 'true'", finish["if"])
+        steps = finish["steps"]
+        step = next(s for s in steps if s.get("id") == "tick")
+        self.assertEqual(step["if"], "${{ env.PIPELINE == 'true' }}")
+        self.assertTrue(step.get("continue-on-error"))
+        self.assertIn("python -m lifeos.jobs.tick", step["run"])
+        self.assertIn("tick=${{ steps.tick.outcome }}", next(s for s in steps if s.get("id") == "lanes")["run"])
+        for s in steps:                                                           # no stage the tick runs runs a second time on a tick
+            if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "boards", "web_scale_up", "titlewatch", "sponsors"):
+                self.assertNotIn("PIPELINE", s["if"], s["id"])
 
     def test_domain_jobs_left_hourly_and_run_after_a_tick_from_domains(self):
         from pathlib import Path
@@ -435,10 +449,10 @@ CONSUMERS = {
         on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
         timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 20, 'imessage': 10, 'report': 5}, digest="63c4a1b6e30fb164"),   # LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning
     "hourly": dict(
-        jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
+        jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="81a03c5cafc9a124"),   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="f33ee55562d3d83b"),   # D208 (LIFE-76 PR 4b): a tick runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -575,10 +589,8 @@ CONSUMER_STEPS = {
         "lensa": {
             'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | HRL,
         },
-        "dice": {
-            'Step 5 - resolve Dice job alert links': DB | HRL,
-        },
         "finish": {
+            'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)': DB | HRL,
             'Step 5b - US Remote web acquisition (due ATS boards)': DB | HRL,
             'Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)': DB,
             'Employer boards acceptance preview (dispatch only, read-only, counts only, D202)': DB | {'FIT_PROFILE_EXTRA_JSON', 'FIT_PROFILE_JSON'},

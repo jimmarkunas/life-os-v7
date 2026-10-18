@@ -2,7 +2,7 @@
 
     python -m lifeos.jobs.tick [--live] [--quick]
 
-The fast path runs first, so jobs already found reach the Ledger before any bulk work: sweep -> extract -> the resolvers -> the US Remote
+The workflow's prep job has already swept and extracted the mail. The fast path runs first, so jobs already found reach the Ledger before any bulk work: the resolvers -> the US Remote
 boards -> enrich -> fit -> audit -> publish -> hold expiry -> finalize. Bulk discovery runs after it, while the run's time lasts: the employer
 boards (D202), the Scale-Up lane (its own budget; D206 canon: shared store, Ledger and Fit), title watch, discovery search, the sponsor register.
 Each stage has a wall-clock budget, cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is stopped and counted `timeout`, a failing stage never stops the next one, and a bulk
@@ -27,12 +27,10 @@ class Step:
     budget: int                       # seconds this stage may run
     limit: int = 40                   # its --limit (the same caps the separate workflow steps used)
     bulk: bool = False                # bulk discovery: runs after the fast path, only while the run's time lasts
-    module: str = ""                  # a module whose main(argv) is the stage (sweep, extract, finalize); otherwise a lifeos.run stage
+    module: str = ""                  # a module whose main(argv) is the stage (finalize); otherwise a lifeos.run stage
 
 
 PLAN = (
-    Step("sweep", 120, module="lifeos.sources.newsletters.sweep"),
-    Step("extract", 300, 100, module="lifeos.sources.newsletters.ingest"),
     Step("resolve-jobright", 600, 40),
     Step("resolve-linkedin", 420, 150),
     Step("linkedin-search", 180, 40),
@@ -63,7 +61,7 @@ def _alarm(_signum, _frame):
 
 def _run_step(step, live, limit, stages):
     if step.module:
-        argv = (["--live"] if live else []) + ([] if step.name == "sweep" else ["--limit", str(limit)])
+        argv = (["--live"] if live else []) + ["--limit", str(limit)]
         code = importlib.import_module(step.module).main(argv)
         return "ok" if code == 0 else "failed"
     from lifeos import run                                                          # noqa: PLC0415 - the one stage registry

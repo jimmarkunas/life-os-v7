@@ -262,7 +262,7 @@ jobs:
 
   jobright:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' }}
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -318,7 +318,7 @@ jobs:
 
   linkedin:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' }}
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -385,7 +385,7 @@ jobs:
 
   lensa:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' }}
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -437,73 +437,13 @@ jobs:
           TINYFISH_API_KEY: ${{ steps.bws_lensa.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run discover-jobs --limit 12 $([ "$LIVE" = "true" ] && echo --live)
 
-  dice:
-    # Dice is low value: a small bounded batch (15 links, 3-minute deadline). The step is capped at 4 minutes and a failure or timeout is a
-    # warning that never fails the Jobs run or pages anyone.
-    needs: prep
-    if: ${{ always() && needs.prep.result == 'success' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/python
-      - id: bws_dice
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
-        with:
-          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
-          set_env: false
-          secrets: |
-            3e264d79-3af4-4f2a-a86a-b4db015a68de > FIT_PROFILE_EXTRA_JSON
-            31a07198-aa35-450f-913c-b4db015a690d > FIT_PROFILE_JSON
-            08245c07-728f-438e-940b-b4db015a6967 > GMAIL_OAUTH_CLIENT_SECRET
-            672a44e9-235f-4121-a99d-b4db015a6987 > GMAIL_OAUTH_REFRESH_TOKEN
-            f207f236-5ede-43c1-bd45-b4db015ec857 > JOBRIGHT_EMAIL
-            187ac5b0-200b-4800-973f-b4db015ecc0a > JOBRIGHT_PASSWORD
-            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
-            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
-            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
-            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
-            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
-            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
-            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
-            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
-            7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
-            f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
-      - id: dice
-        continue-on-error: true
-        timeout-minutes: 4
-        name: Step 5 - resolve Dice job alert links
-        if: ${{ env.PIPELINE == 'true' }}
-        env:
-          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_dice.outputs.FIT_PROFILE_EXTRA_JSON }}
-          FIT_PROFILE_JSON: ${{ steps.bws_dice.outputs.FIT_PROFILE_JSON }}
-          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_dice.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
-          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_dice.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
-          JOBRIGHT_EMAIL: ${{ steps.bws_dice.outputs.JOBRIGHT_EMAIL }}
-          JOBRIGHT_PASSWORD: ${{ steps.bws_dice.outputs.JOBRIGHT_PASSWORD }}
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_dice.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_dice.outputs.NOTION_API_TOKEN }}
-          OPEN_JOBS_CONTACT: ${{ steps.bws_dice.outputs.OPEN_JOBS_CONTACT }}
-          TINYFISH_API_KEY: ${{ steps.bws_dice.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run resolve-dice --limit 15 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Dice warning (does not fail the run)
-        if: ${{ always() && steps.dice.outcome == 'failure' }}
-        run: echo "::warning title=Dice::the Dice link resolver failed or timed out; the Jobs pipeline is unaffected"
-
   finish:
     outputs:
       failed: ${{ steps.lanes.outputs.failed }}      # the failed stage names (fixed words), so the phone push says which stage
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
-    if: ${{ always() && needs.prep.result == 'success' }}
+    if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || vars.V7_PIPELINE == 'true') }}   # D208: a parked tick (V7_PIPELINE=false) starts no Jobs job and loads no credentials here
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 50                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
@@ -542,10 +482,35 @@ jobs:
             83c553e9-23a6-45aa-9006-b4db015f00ac > NTFY_TOPIC
             7b62e076-8a46-4228-9977-b4db015f0463 > OPEN_JOBS_CONTACT
             f45f29e2-acbc-4be7-9749-b4db015f0817 > TINYFISH_API_KEY
+      - id: tick
+        continue-on-error: true
+        name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
+        if: ${{ env.PIPELINE == 'true' }}
+        env:
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+          JOBRIGHT_EMAIL: ${{ steps.bws_finish.outputs.JOBRIGHT_EMAIL }}
+          JOBRIGHT_PASSWORD: ${{ steps.bws_finish.outputs.JOBRIGHT_PASSWORD }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN }}
+          OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT }}
+          TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY }}
+        run: |
+          pip install -r requirements-browser.txt
+          python -m playwright install --with-deps chromium
+          python -m lifeos.jobs.tick $([ "$LIVE" = "true" ] && echo --live)
       - id: web
         continue-on-error: true
         name: Step 5b - US Remote web acquisition (due ATS boards)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -567,7 +532,7 @@ jobs:
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.enrich) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.enrich }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -589,7 +554,7 @@ jobs:
       - id: fit
         continue-on-error: true
         name: Step 6a - fit scoring (deterministic, private profile)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish)) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.fit || inputs.publish) }}
         env:
           FIT_ALL: ${{ inputs.fit_all && 'true' || '' }}
           FIT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
@@ -613,7 +578,7 @@ jobs:
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish)) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.audit || inputs.publish) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -635,7 +600,7 @@ jobs:
       - id: publish
         continue-on-error: true
         name: Step 7 - publish READY jobs to Notion
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -657,7 +622,7 @@ jobs:
       - id: holds
         continue-on-error: true
         name: Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -679,7 +644,7 @@ jobs:
       - id: finalize
         continue-on-error: true
         name: Step 7b - close out newsletter mail whose jobs all have an outcome
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize)) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.publish || inputs.finalize) }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON }}
@@ -702,7 +667,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 12
         name: Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web }}
         env:                                   # D202: the store only; it reads public boards and writes no page
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -715,7 +680,7 @@ jobs:
       - id: web_scale_up
         continue-on-error: true
         name: Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
         env:
           WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -738,7 +703,7 @@ jobs:
       - id: titlewatch
         continue-on-error: true
         name: Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.web_scale_up) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.web_scale_up }}
         env:
           WEB_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.report || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -761,7 +726,7 @@ jobs:
       - id: sponsors
         continue-on-error: true
         name: Step 5e - UK sponsor register (weekly refresh; forced when dispatched)
-        if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.sponsors) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sponsors }}
         env:
           SPONSORS_FORCE: ${{ inputs.sponsors && 'true' || '' }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1023,7 +988,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
@@ -1094,7 +1059,7 @@ jobs:
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
   report:
-    needs: [prep, jobright, linkedin, lensa, dice, finish]
+    needs: [prep, jobright, linkedin, lensa, finish]
     if: ${{ always() && needs.prep.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1114,7 +1079,7 @@ jobs:
           STAGES: ${{ needs.finish.outputs.failed }}
         run: |
           failed=""
-          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} dice=${{ needs.dice.result }} finish=${{ needs.finish.result }}; do
+          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then

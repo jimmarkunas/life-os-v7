@@ -29,11 +29,12 @@ class TickTests(unittest.TestCase):
 
     def test_the_plan_runs_the_fast_path_before_any_bulk_discovery(self):
         names = [s.name for s in tick.PLAN]
-        fast = [names.index(n) for n in ("extract", "resolve-jobright", "resolve-linkedin", "enrich", "fit", "publish", "finalize")]
+        fast = [names.index(n) for n in ("resolve-jobright", "resolve-linkedin", "enrich", "fit", "publish", "finalize")]
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
         self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"})
+        self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
     def test_stages_run_in_order_with_their_limits_and_the_live_switch(self):
         plan = (Step("a", 10, 5), Step("b", 10, 7, bulk=True))
