@@ -56,6 +56,14 @@ class RetryTests(unittest.TestCase):
             except db.StoreError as error:
                 return str(error), len(starts)
 
+    def test_only_the_first_connect_of_a_process_and_retries_are_spread_out(self):
+        from unittest import mock
+        with mock.patch.object(db, "_jitter", return_value=3), mock.patch.object(db, "_spread", [True]):
+            self._run([None])                                             # the process's first connect: spread out
+            self._run([None])                                             # a later connect in the same stage (publish opens hundreds): at once
+            self._run(["ssh: connect to host h port 22: Connection timed out", None])     # a retry is spread out again
+        self.assertEqual(self.sleeps, [3, 0, 0, 7])
+
     def test_a_network_blip_is_retried_and_then_connects(self):
         result, starts = self._run(["ssh: connect to host h port 22: Connection timed out", None])
         self.assertEqual((result, starts), ("connected", 2))
