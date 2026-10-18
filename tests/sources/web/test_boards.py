@@ -246,11 +246,36 @@ class MissedJobs(unittest.TestCase):
 class Preview(unittest.TestCase):
     """The acceptance preview reads the same sample, scores kept jobs with the shared Fit, and writes nothing."""
 
-    def test_a_public_reason_never_names_a_private_rule_or_quotes_the_employer(self):
-        self.assertEqual(boards.public_reason("excluded: acme-recruiting"), "excluded: private rule")
-        self.assertEqual(boards.public_reason('not remote: hybrid required ("3 days a week in the office")'), "not remote: hybrid required")
-        self.assertEqual(boards.public_reason("Fit 67 below 68"), "Fit N below N")
-        self.assertEqual(boards.public_reason(None), "none")
+    def test_every_lane_reason_has_a_fixed_public_code(self):
+        from lifeos.jobs import lanes
+        cases = {f"Fit 55 below {lanes.REVIEW_FLOOR}": "fit_below_review_floor", f"Fit 70 below {lanes.FIT_FLOOR}": "fit_below_admit_floor",
+                 f"Fit 70.5 below {lanes.FIT_FLOOR} (on Jim's keep list)": "fit_below_admit_floor_keep_list",
+                 f"Fit 65 below {lanes.NEAR_MISS_FLOOR} and market unresolved": "fit_below_near_miss_with_open_question",
+                 "not remote: hybrid required": "not_remote_hybrid_required", "not remote: onsite required": "not_remote_onsite_required",
+                 "remote assumed": "remote_assumed", "Fit unscorable": "fit_unscorable", "vacancy closed": "vacancy_closed",
+                 "explicit pay below $120,000": "pay_below_floor", "posting date unresolved": "posting_date_unresolved",
+                 "posting date in the future": "posting_date_future", "older than 30 days": "older_than_max_age", "market unresolved": "market_unresolved",
+                 "market UK is not US": "market_mismatch", "market not shown to be UK": "market_not_shown", "geography unresolved": "geography_unresolved",
+                 "geography does not qualify": "geography_not_qualifying", "not in London": "not_in_london", "Skilled Worker route negative": "route_negative",
+                 "Skilled Worker route unresolved": "route_unresolved", "lane disabled": "lane_disabled", lanes.TITLE_ONLY_REASON: "title_only",
+                 None: "none", "": "none"}
+        for reason, code in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(boards.public_reason(reason), code)
+
+    def test_a_public_reason_never_copies_a_private_rule_a_quote_or_unknown_text(self):
+        private = {"excluded: acme-recruiting-rule": "excluded_private_rule",
+                   'not remote: hybrid required ("3 days a week in our Chicago office")': "not_remote_hybrid_required",
+                   'not remote: onsite required ("must work onsite")': "not_remote_onsite_required",
+                   "Fit 71 below 72 because of profile capability secret-alpha": "other", "Traceback: KeyError 'FIT_PROFILE_JSON'": "other",
+                   "remote assumed; profile: secret-alpha": "other", "Fit 71 below 99": "other", "not remote: hybrid required, see secret-alpha": "other"}
+        for reason, code in private.items():
+            with self.subTest(reason=reason):
+                got = boards.public_reason(reason)
+                self.assertEqual(got, code)
+                self.assertIn(got, {c for _, c in boards.PUBLIC_REASONS} | {"none", "other"})     # only enumerated codes ever leave
+                for word in ("acme", "Chicago", "secret", "Traceback", "must work"):
+                    self.assertNotIn(word.casefold(), got.casefold())
 
     def test_the_acceptance_cuts_sit_around_the_fit_floor(self):
         got = [boards.acceptance_band(s) for s in (None, 0, 59.9, 60, 69, 69.5, 70, 71.9, 72, 100)]

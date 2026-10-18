@@ -194,37 +194,47 @@ _REMOTE_STATED = re.compile(r"\b(?:fully|100%|completely) remote\b|\b(?:remote|v
                             r"\bwork (?:from )?anywhere in the (?:us|u\.s\.|united states)\b", re.I)
 
 
+# Not a requirement for everyone: a condition earlier in the same sentence ("if you live near our Chicago office, ...") or a qualifier right after
+# the words ("... onsite for quarterly planning", "... in the office occasionally", "... onsite at customer sites").
+_CONDITIONAL = re.compile(r"\b(?:if you|for (?:candidates|those|employees|team members) (?:who|located|based|living|near|in|within)|local (?:candidates|employees)|"
+                          r"within \d+ miles|when (?:needed|required|necessary)|we offer|you (?:can|may) (?:choose|opt)|(?:the )?option to)\b", re.I)
+_OCCASIONAL = re.compile(r"^[^.;\n]{0,25}?\b(?:occasional(?:ly)?|as needed|when needed|if needed|periodically|for (?:quarterly|annual|team|company|occasional|key)\b|"
+                         r"(?:once|twice) a (?:month|quarter|year)|a few times a (?:year|quarter)|at (?:a )?(?:customer|client)|with (?:customers|clients)|"
+                         r"for (?:those|anyone|people) who (?:want|prefer|choose|like)|if (?:you )?(?:prefer|wish|want|desired))", re.I)
+
+
 def _required(pattern, text):
-    """The first mandatory (not negated, not optional) match of `pattern` in `text`, else None."""
+    """The first mandatory (not negated, not optional, not conditional) match of `pattern` in `text`, else None."""
     for m in pattern.finditer(text):
-        if not _NEGATED.search(text[max(0, m.start() - 40):m.start()]):
+        sentence = re.split(r"[.;\n]", text[:m.start()])[-1]
+        if not (_NEGATED.search(text[max(0, m.start() - 40):m.start()]) or _CONDITIONAL.search(sentence) or _OCCASIONAL.search(text[m.end():])):
             return m.group(0)
     return None
 
 
 def work_mode_evidence(location, title="", text="", window=1500):
     """(remote | hybrid | onsite | unknown, the employer's own words or None). "unknown" means nothing is required either way: remote is presumed
-    (D204), never stated. Order: a required hybrid schedule; the employer's place/title (remote wins when offered alongside hybrid); an explicit
-    remote statement; the recruiter's #LI- tag (read anywhere: it is usually the last line); a required office attendance."""
+    (D204), never stated. A mandatory attendance requirement wins over any remote cue it contradicts (M3 review): first a required hybrid schedule
+    or office attendance in the description, then the recruiter's #LI-Hybrid/#LI-Onsite tag (read anywhere: it is usually the last line); then
+    the employer's place/title (remote wins when offered alongside hybrid); an explicit remote statement; #LI-Remote."""
     head = f"{location or ''} {title or ''}"
     body = (text or "")[:window]
-    found = _required(_HYBRID_REQ, body)
-    if found:
-        return "hybrid", found
+    for mode, pattern in (("hybrid", _HYBRID_REQ), ("onsite", _ONSITE_REQ)):
+        found = _required(pattern, body)
+        if found:
+            return mode, found
+    tag = re.search(r"#li-(hybrid|onsite)\b", text or "", re.I)
+    if tag:
+        return tag.group(1).lower(), tag.group(0)
     if re.search(r"\bremote\b|\bwork from home\b|\banywhere\b", head, re.I):
         return "remote", None
     for mode, rx in (("hybrid", r"\bhybrid\b"), ("onsite", r"\bon-?site\b|\bin[- ]office\b")):
         hit = re.search(rx, head, re.I)
         if hit and not _NEGATED.search(head[:hit.start()][-40:]):
             return mode, hit.group(0)
-    found = _REMOTE_STATED.search(body)
-    if found:
+    if _REMOTE_STATED.search(body) or re.search(r"#li-remote\b", text or "", re.I):
         return "remote", None
-    tag = re.search(r"#li-(remote|hybrid|onsite)\b", text or "", re.I)
-    if tag:
-        return tag.group(1).lower(), tag.group(0) if tag.group(1).lower() != "remote" else None
-    found = _required(_ONSITE_REQ, body)
-    return ("onsite", found) if found else ("unknown", None)
+    return "unknown", None
 
 
 def detect_work_mode(location, title="", text="", window=1500):

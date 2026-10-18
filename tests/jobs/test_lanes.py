@@ -350,3 +350,50 @@ class RemoteDefault(unittest.TestCase):
 
     def test_a_non_us_market_still_excludes_whatever_the_work_mode(self):
         self.assertEqual(qualify(US, us(work_mode="unknown", market="UK"), TODAY).status, EXCLUDE)
+
+
+class ContradictoryWorkMode(unittest.TestCase):
+    """M3 review (D204): a mandatory attendance requirement wins over any remote cue it contradicts; a genuine remote option, an optional or
+    occasional visit, customer-site work and a condition for local candidates only are not requirements."""
+
+    def mode(self, text, where="Remote - US"):
+        from lifeos.jobs import lanes
+        return lanes.work_mode_evidence(where, "Technical Program Manager", text)
+
+    def test_a_required_attendance_beats_a_remote_place_a_remote_statement_and_a_remote_tag(self):
+        self.assertEqual(self.mode("You must work onsite at our Chicago office."), ("onsite", "must work onsite"))
+        self.assertEqual(self.mode("This is a hybrid role: 3 days a week in the office."), ("hybrid", "hybrid role"))
+        self.assertEqual(self.mode("This is a fully remote role. You must work onsite at our Chicago office.", "Chicago, IL"), ("onsite", "must work onsite"))
+        self.assertEqual(self.mode("#LI-Remote You must work onsite at our Chicago office.", "Chicago, IL"), ("onsite", "must work onsite"))
+        self.assertEqual(self.mode("Remote work is not available for this role."), ("onsite", "Remote work is not available"))
+
+    def test_a_recruiters_hybrid_or_onsite_tag_beats_a_remote_place(self):
+        self.assertEqual(self.mode("Great team. #LI-Hybrid"), ("hybrid", "#LI-Hybrid"))
+        self.assertEqual(self.mode("Great team. #LI-Onsite"), ("onsite", "#LI-Onsite"))
+        self.assertEqual(self.mode("Fully remote. #LI-Remote", "Chicago, IL"), ("remote", None))
+
+    def test_negated_optional_occasional_and_conditional_attendance_keeps_the_remote_place(self):
+        for text in ("There is no onsite requirement.", "You will be expected to be onsite for quarterly planning.",
+                     "You will need to work in the office occasionally.", "You may need to be onsite at customer sites.",
+                     "If you live within 50 miles of our Chicago office, you will need to be in the office two days a week.",
+                     "If you live near Chicago, you must work onsite 2 days a week. Otherwise this role is fully remote.",
+                     "Our office is not required; we offer onsite 3 days a week for those who want it.",
+                     "You have the option to work in the office 2 days a week.", "This is not a hybrid role.  #li-remote"):
+            with self.subTest(text=text):
+                self.assertEqual(self.mode(text), ("remote", None))
+
+    def test_the_same_qualifiers_leave_an_unstated_place_presumed_not_verified(self):
+        for text in ("You will need to work in the office occasionally.", "If you are local, you are expected to be onsite 2 days a week."):
+            with self.subTest(text=text):
+                self.assertEqual(self.mode(text, "Seattle, WA"), ("unknown", None))
+
+    def test_remote_offered_alongside_hybrid_stays_remote_and_a_hybrid_place_beats_a_remote_claim(self):
+        self.assertEqual(self.mode("", "Remote or Hybrid - Chicago, IL"), ("remote", None))
+        self.assertEqual(self.mode("This is a fully remote role.", "Hybrid - Austin, TX"), ("hybrid", "Hybrid"))
+
+    def test_a_contradicted_remote_place_is_excluded_by_the_lane_with_the_employers_words(self):
+        from lifeos.jobs import lanes
+        mode, words = self.mode("You must work onsite at our Chicago office.")
+        decision = qualify(US, us(work_mode=mode, work_evidence=words), TODAY)
+        self.assertEqual((decision.status, decision.reason), (EXCLUDE, 'not remote: onsite required ("must work onsite")'))
+        self.assertEqual(lanes.detect_work_mode("Remote - US", "", "Great team. #LI-Hybrid"), "hybrid")
