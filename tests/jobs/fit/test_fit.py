@@ -188,7 +188,7 @@ class Stage(unittest.TestCase):
         from lifeos.jobs.fit import stage
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)
         self.assertEqual((out[0][0], out[0][2].decision), (1, "Go"))
-        self.assertEqual(out[0][3].status, "REVIEW")                 # no location or pay evidence: work mode unresolved
+        self.assertEqual((out[0][3].status, out[0][3].reason), ("ADMIT", "remote assumed"))     # D204: no office requirement: remote presumed
         self.assertEqual(stage.run(10, False, environ={})["profile"], "missing")
 
 
@@ -285,10 +285,10 @@ class ProfessionGate(unittest.TestCase):
         self.assertEqual(result.decision, "No-Go")
         self.assertIn("matches your functions", result.why)
 
-    def test_a_city_and_state_with_no_remote_cue_is_an_office_job_in_the_fit_stage_only(self):
-        from lifeos.jobs import lanes
-        self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "onsite")
-        self.assertEqual(lanes.work_mode_for_fit("Rochester, MN", "Project Manager", ""), "onsite")
+    def test_a_city_and_state_is_no_longer_an_office_job_but_a_stated_requirement_is(self):
+        from lifeos.jobs import lanes                                                      # D204 withdraws D89's city rule
+        self.assertEqual(lanes.work_mode_for_fit("New York, NY", "Vice President", "We are hiring."), "unknown")
+        self.assertEqual(lanes.work_mode_for_fit("Rochester, MN", "Project Manager", "You must work onsite in Rochester."), "onsite")
         self.assertEqual(lanes.work_mode_for_fit("United States", "Project Manager", ""), "unknown")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX (Remote)", "Project Manager", ""), "remote")
         self.assertEqual(lanes.work_mode_for_fit("Austin, TX", "Project Manager", "This is a fully remote role."), "remote")

@@ -41,7 +41,7 @@ Greenhouse list `updated_at` is not a posting date: verify `first_published` in 
 A crawl time is never used as a posting date; First Surfaced is the age fallback (docs/LANES.md).
 
 ## Channel A: Open Jobs change feed (broad coverage)
-**Ended (D201):** the Open Jobs project shut down on 10 Oct 2026 (last snapshot 5 Oct) and V7's `openjobs` stage is removed. Its `slugs.json` board list (CC0) is the seed for the direct-board source that replaces it. The text below is kept as history.
+**Ended (D201):** the Open Jobs project shut down on 10 Oct 2026 (last snapshot 5 Oct) and V7's `openjobs` stage is removed. Its `slugs.json` board list (CC0) is the seed for the direct-board source that replaces it. The text below is kept as history. The replacement is the employer-board pass (D202).
 
 Open Jobs (CC0) publishes daily diffs and a verified change feed (`/data/diffs/`, `/data/changes/`): `upsert` and `remove` events keyed `ats/slug#id`,
 each upsert with title, location, url, full content, published and first-seen dates (no company name; derive it from the board slug). Consume it as a

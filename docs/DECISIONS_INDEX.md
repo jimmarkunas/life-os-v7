@@ -200,3 +200,5 @@ This index is checked by a test: add a line here with every new decision.
 - D199 — Bills: "overdue" cannot tell late from paid-but-never-ticked; the due-state rule is a Finance OS scoping item (2026-10-17, Jim; LIFE-61)
 - D200 — Newsletter resolution: Lensa follows its own tracking link again, Jobright reads only its own job's link, a failed search is a Failed Search with its cause (2026-10-17, Jim; LIFE-59)
 - D201 — Lensa is retired and the ended Open Jobs feed is removed; both are closed out with specific labels (2026-10-17, Jim)
+- D202 — Employer boards: the Open Jobs board list plus hand-added boards, read by the same web pass (2026-10-17, Jim)
+- D204 — US Remote: remote is presumed unless the employer requires office attendance (2026-10-17, Jim, through the Tech Lead review)
