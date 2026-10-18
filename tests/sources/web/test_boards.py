@@ -246,6 +246,10 @@ class MissedJobs(unittest.TestCase):
 class Preview(unittest.TestCase):
     """The acceptance preview reads the same sample, scores kept jobs with the shared Fit, and writes nothing."""
 
+    def test_the_acceptance_cuts_sit_around_the_fit_floor(self):
+        got = [boards.acceptance_band(s) for s in (None, 0, 59.9, 60, 69, 69.5, 70, 71.9, 72, 100)]
+        self.assertEqual(got, ["unscored", "lt60", "lt60", "60_69", "60_69", "60_69", "70_71", "70_71", "72_up", "72_up"])
+
     def test_counts_every_stage_and_writes_nothing(self):
         from tests.kit.jobsdb import JobsDB
         from lifeos.jobs import identity
@@ -260,4 +264,7 @@ class Preview(unittest.TestCase):
         self.assertEqual((got["boards"], got["kept"], got["fit_evaluated"], got["already_held"], got["already_published"]), (3, 2, 2, 1, 1))
         self.assertEqual(sum(got["decision"].values()), 2)
         self.assertEqual(got["screen"]["title_other_profession_engineer"], 3)
+        self.assertEqual(sum(got["fit_band"].values()), 2)
+        self.assertEqual(list(got["by_evidence"]), ["remote_in_location"])                  # decisions split by remote stated / assumed
+        self.assertEqual(sum(v for k, v in got["by_evidence"]["remote_in_location"].items() if not k.startswith("fit_")), 2)
         self.assertEqual(db.raw.execute("SELECT COUNT(*) FROM v7_jobs").fetchone()[0], before)

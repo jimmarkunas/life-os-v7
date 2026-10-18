@@ -137,6 +137,13 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     return counts
 
 
+def acceptance_band(score):
+    """The acceptance cuts around the Fit floor of 72: lt60, 60_69, 70_71, 72_up (or unscored)."""
+    if score is None:
+        return "unscored"
+    return next((name for edge, name in ((60, "lt60"), (70, "60_69"), (72, "70_71")) if score < edge), "72_up")
+
+
 def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sample=600, seed=99, connection=None):
     """D202 acceptance, read-only, counts only (`live` is ignored): the same random sample of seed boards the review benchmark used (seed 99),
     listed now, screened, and the kept jobs scored by the shared Fit and lane policy with the private profile in memory. The store is only read,
@@ -153,18 +160,19 @@ def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sampl
         why = screen(job)
         out["screen"][why] = out["screen"].get(why, 0) + 1
         if why.startswith("kept_"):
-            kept.append((source, job))
-    kept = list({j["url"]: (s, j) for s, j in kept}.values())                                   # one vacancy per URL
+            kept.append((source, job, why))
+    kept = list({j["url"]: (s, j, w) for s, j, w in kept}.values())                             # one vacancy per URL
     today = date.today()
     rows = [(i, j["title"], j.get("company") or s["company"], j.get("content") or "", None, LANE, j["location"], None, j["posted"], today, None, "web:" + s["id"])
-            for i, (s, j) in enumerate(kept)]
+            for i, (s, j, _) in enumerate(kept)]
     scored = fit_stage.score_rows(rows, fit_profile.load(environ), today)
-    keys = [identity.url_hash(j["url"]) for _, j in kept]
+    keys = [identity.url_hash(j["url"]) for _, j, _ in kept]
     with (connection or store.connect()) as conn, conn.cursor() as cursor:
         cursor.execute("SELECT dedupe_key, notion_page_id IS NOT NULL FROM v7_jobs WHERE dedupe_key IN %s", (tuple(keys) or ("",),))
         held = dict(cursor.fetchall())
-    out.update(kept=len(kept), fit_evaluated=len(scored), decision={}, band={}, reason={}, already_held=0, already_published=0, new_admits=0, new_reviews=0)
-    for (_, _, result, decision, _, _, _), key in zip(scored, keys):
+    out.update(kept=len(kept), fit_evaluated=len(scored), decision={}, band={}, reason={}, already_held=0, already_published=0, new_admits=0, new_reviews=0,
+               fit_band={}, by_evidence={})
+    for (_, _, result, decision, _, _, _), key, (_, _, why) in zip(scored, keys, kept):
         out["decision"][decision.status] = out["decision"].get(decision.status, 0) + 1
         band = funnel.band(result.score)
         out["band"][band] = out["band"].get(band, 0) + 1
@@ -174,5 +182,10 @@ def preview(limit, live, environ=os.environ, lister_fn=lister.list_source, sampl
         out["already_published"] += bool(held.get(key))
         out["new_admits"] += decision.status == lanes.ADMIT and key not in held       # would be a new Notion page, under the per-run publish cap
         out["new_reviews"] += decision.status == lanes.REVIEW and key not in held
+        cut = acceptance_band(result.score)
+        out["fit_band"][cut] = out["fit_band"].get(cut, 0) + 1
+        cell = out["by_evidence"].setdefault(why[len("kept_"):], {})                          # remote stated vs assumed, place unresolved
+        for name in (decision.status, "fit_" + cut):
+            cell[name] = cell.get(name, 0) + 1
     return out
 
