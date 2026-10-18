@@ -15,6 +15,7 @@ QUIET_HOURS = 24             # no job published for this long
 STOP_WINDOW_HOURS = 24       # SAFE-1.1: a source that normally delivers new jobs ...
 STOP_BASELINE_DAYS = 14      # ... (measured over the 14 days before the window) ...
 STOP_PER_DAY = 3.0           # ... at least this many a day, and delivered none in the window, has stopped
+RETIRED_SOURCES = {"lensa": "Lensa retired (D201): Cloudflare blocks it from the runners", "web:openjobs": "Open Jobs ended: the project shut down on 10 Oct 2026 (D201)"}   # never "stopped"
 
 
 def detect(counts, now, expiries=None):
@@ -65,7 +66,7 @@ def gather(connection, now):
         cursor.execute("SELECT feed_id FROM v7_feed WHERE status='OK'")
         healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}    # D178: the Open Jobs feed whose last run read it without error is idle, not stopped (a failed read stores DEGRADED, and that still pages)
         stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
-                   if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy]
+                   if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy and source not in RETIRED_SOURCES]
     return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped)}
 
 

@@ -52,7 +52,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-match` -> `lifeos.sources.network_leads:run`
 - `network-surface` -> `lifeos.sources.network_surface:run`
 - `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
-- `openjobs` -> `lifeos.sources.openjobs:run`
 - `oracle-card` -> `lifeos.oraclecloud.card:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
@@ -63,7 +62,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`
-- `resolve-lensa` -> `lifeos.run:_lensa`
 - `resolve-linkedin` -> `lifeos.run:_linkedin`
 - `safety-fit-capture` -> `lifeos.jobs.safety:run_fit_capture`
 - `safety-fit-golden` -> `lifeos.jobs.safety:run_fit_golden`
@@ -180,7 +178,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/repost.py`: D6 - reposts. One real opening is one row: a repost never creates a second row or resets the original age.
 - `lifeos/jobs/resolve/aggregators/dice.py`: Resolve anonymous Dice alert redirects to canonical Dice job pages.
 - `lifeos/jobs/resolve/aggregators/jobright.py`: Jobright final apply link: log in with the saved secrets, click Apply, read where the chain lands (D12/D14).
-- `lifeos/jobs/resolve/aggregators/lensa.py`: Lensa rows -> final apply link. First V1's mechanic: follow the card's own email tracking link and take the employer page it lands on, or the ONE ATS link on the Lensa jo
 - `lifeos/jobs/resolve/aggregators/li_apply.py`: LinkedIn apply-type and employer link WITHOUT logging in (ported from V2's proven logic, D12/D14).
 - `lifeos/jobs/resolve/aggregators/linkedin.py`: LinkedIn rows -> final apply link WITHOUT logging in (D14). Order: guest page (external URL, Easy Apply, closed) -> employer ATS board match by company/title/location -> 
 - `lifeos/jobs/resolve/ats_match.py`: Find a job on its employer's public ATS board by company + title (+ location). Plain HTTP, no login, no browser.
@@ -275,7 +272,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/newsletters/parsers/linkedin.py`: LinkedIn job-alert emails (jobalerts-noreply / jobs-noreply). One job = two links (image + text) to /comm/jobs/view/<id>?<tracking tokens>. The tracking query carries per
 - `lifeos/sources/newsletters/parsers/reed.py`: Reed job-alert cards. Reed course links are intentionally outside this parser.
 - `lifeos/sources/newsletters/sweep.py`: Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
-- `lifeos/sources/openjobs.py`: Open Jobs change feed (CC0, public) as a US Remote discovery channel.
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
 - `lifeos/sources/web/diff.py`: Classify a board listing against the accepted state: NEW, MATERIAL_CHANGE, UNCHANGED and (only after a COMPLETE listing) REMOVED.
@@ -502,3 +498,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D198: Close Opportunity: the private Close service on Oracle and its Hiring Pipeline link (2026-10-16, Jim; LIFE-47 S2 live; S3 wired, dormant until its secret is set)
 - D199: Bills: "overdue" cannot tell late from paid-but-never-ticked; the due-state rule is a Finance OS scoping item (2026-10-17, Jim; LIFE-61)
 - D200: Newsletter resolution: Lensa follows its own tracking link again, Jobright reads only its own job's link, a failed search is a Failed Search with its cause (2026-10-17, Jim; LIFE-59)
+- D201: Lensa is retired and the ended Open Jobs feed is removed; both are closed out with specific labels (2026-10-17, Jim)

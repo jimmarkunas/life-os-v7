@@ -37,7 +37,7 @@ Phase 2 (later): RESOLVED ──6 triage──> ──7 score──> Notion (Fit
 - **No unresolved jobs, no tiered publishing** (DECISIONS D1, D2): a job is published only when fully resolved; a failing resolver is a bug to fix, not a state to ship.
 
 ## Learned from real mail (structure only; no content)
-- **Lensa** (two layouts: "jobalert/aggregated" digests with ~20 cards, and "career advocate" notes with ~3): each job is a tracked-link card with company, title, salary *estimate*, location. **No posting date**, so freshness comes from the destination page at resolve time.
+- **Lensa** (retired by D201: Cloudflare blocks it from the runners; its mail is closed out unread) (two layouts: "jobalert/aggregated" digests with ~20 cards, and "career advocate" notes with ~3): each job is a tracked-link card with company, title, salary *estimate*, location. **No posting date**, so freshness comes from the destination page at resolve time.
 - Card links are **per-recipient tracking redirects** (same job = different URL in every email). So: dedupe cannot use the email URL; it happens after the final apply URL is resolved (Step 5). Until then a cheap `fuzzy_key` (company|title|location) prevents resolving the same job repeatedly.
 - Following a tracked link counts as a "click" for Lensa; that is expected and harmless.
 

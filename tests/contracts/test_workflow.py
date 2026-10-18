@@ -413,7 +413,7 @@ CONSUMERS = {
         jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "dice": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
-        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="5a110f69cfc781f8"),
+        timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'dice': 8, 'finish': 40, 'interview': 15, 'report': 5}, digest="c48d6dd23be8dad1"),   # D201 removed the resolve-lensa and openjobs commands; nothing else
     "network": dict(
         jobs={"network": DB | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
@@ -547,15 +547,13 @@ CONSUMER_STEPS = {
             'Step 5 - resolve LinkedIn jobs (no login, no browser)': DB | HRL,
         },
         "lensa": {
-            'Step 5 - resolve Lensa jobs (board match + search, no Lensa page access)': DB | HRL,
-            'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (runs after Lensa on the same search pace)': DB | HRL,
+            'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | HRL,
         },
         "dice": {
             'Step 5 - resolve Dice job alert links': DB | HRL,
         },
         "finish": {
             'Step 5b - US Remote web acquisition (due ATS boards)': DB | HRL,
-            'Step 5d - Open Jobs change feed (tail of new generations)': DB | HRL,
             'Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)': DB | HRL,
             "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)": DB | HRL,
             'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | HRL,
