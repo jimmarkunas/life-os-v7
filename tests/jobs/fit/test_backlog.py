@@ -263,3 +263,67 @@ class PublishedJobs(Batch):
         with mock.patch.object(publish, "_now", return_value=T):
             rows, _ = publish._pick(self.db, 10, gated=True)
         self.assertEqual(rows, [])                                                               # publish creates pages only for READY jobs: no duplicate page
+
+
+class FailureReachesTheRun(Batch):
+    """Career TL review of #350 (3b07c08): the batch step is continue-on-error, so its failure must be carried by the finish job's lane aggregation; a clean batch,
+    and every run that does not ask for a batch (a tick, any other dispatch), must leave the run green."""
+
+    def workflow(self):
+        import pathlib
+        import yaml
+        data = yaml.safe_load((pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "hourly.yml").read_text())
+        steps = data["jobs"]["finish"]["steps"]
+        return data, steps, next(s for s in steps if s.get("id") == "fit_cloud_backlog"), next(s for s in steps if s.get("id") == "lanes")
+
+    def lanes(self, lanes, outcome):
+        import os
+        import pathlib
+        import re
+        import subprocess
+        import tempfile
+        script = re.sub(r"\$\{\{\s*([^}]+?)\s*\}\}", lambda m: outcome if m.group(1) == "steps.fit_cloud_backlog.outcome" else "success", lanes["run"])
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory, "out")
+            done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
+            return done.returncode, done.stdout.strip(), output.read_text().strip()
+
+    def test_a_failed_batch_fails_the_finish_job_and_names_the_stage_while_a_clean_or_absent_batch_stays_green(self):
+        data, steps, step, lanes = self.workflow()
+        self.assertTrue(step.get("continue-on-error"))                                           # later stages still run after a failed batch ...
+        self.assertIn("python -m lifeos.run fit-cloud-backlog", step["run"])
+        self.assertNotIn("|| true", step["run"])                                                 # ... and nothing swallows its exit code
+        self.assertEqual((lanes.get("if"), data["jobs"]["finish"]["outputs"]["failed"]), ("${{ always() }}", "${{ steps.lanes.outputs.failed }}"))
+        self.assertLess(steps.index(step), steps.index(lanes))
+        self.assertEqual(self.lanes(lanes, "failure"), (1, "FAILED STAGES: fit_cloud_backlog", "failed=fit_cloud_backlog"))
+        self.assertEqual(self.lanes(lanes, "success"), (0, "", "failed="))
+        self.assertEqual(self.lanes(lanes, "skipped"), (0, "", "failed="))                       # a tick or any other dispatch never runs the step
+
+    def test_the_stage_exits_1_on_a_degraded_batch_and_0_on_a_clean_one(self):
+        import contextlib
+        import io
+        from lifeos import run as lifeos_run
+        for counts, code in (({"cloud_fit": "DEGRADED(LEDGER_SYNC_INCOMPLETE)", "failed": 1}, 1), ({"cloud_fit": "DEGRADED(BACKLOG_NOT_AUTHORIZED)", "failed": 1}, 1),
+                             ({"cloud_fit": "OK", "failed": 0}, 0)):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(backlog, "run", return_value=counts), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                self.assertEqual(lifeos_run.main(["fit-cloud-backlog", "--limit", "3", "--live"]), code, counts)
+            self.assertEqual(err.getvalue().strip(), "FIT-CLOUD-BACKLOG FAILED: FIT_CLOUD_DEGRADED" if code else "")
+
+    def test_a_real_degraded_batch_reaches_exit_1_end_to_end(self):
+        import contextlib
+        import io
+        import os
+        from lifeos import run as lifeos_run
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        real = backlog.run
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), \
+                mock.patch.object(stage.sponsors, "load", return_value=None), mock.patch.object(edge, "exchange", Endpoint(measured)), \
+                mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), mock.patch.object(backlog.guard, "protection", return_value=None), \
+                mock.patch.object(backlog.fit_sync, "run", return_value={"due": 1, "synced": 0, "failed": 1}), mock.patch.dict(os.environ, ENV), \
+                mock.patch.object(backlog, "run", side_effect=lambda limit, live: real(limit, live, os.environ, client=mock.Mock())), \
+                contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code = lifeos_run.main(["fit-cloud-backlog", "--limit", "3", "--live"])
+        self.assertEqual((code, err.getvalue().strip()), (1, "FIT-CLOUD-BACKLOG FAILED: FIT_CLOUD_DEGRADED"))    # the batch's own failure -> exit 1 -> a failed step
+        self.assertIn('"cloud_fit": "DEGRADED(LEDGER_SYNC_INCOMPLETE)"', out.getvalue())
+        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # the score is kept; only the signal is a failure
