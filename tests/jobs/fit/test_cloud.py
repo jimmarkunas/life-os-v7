@@ -120,6 +120,59 @@ class Selection(Base):
         self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 0, 0))     # an invalid explicit value fails closed
 
 
+class ScanPastSkips(Base):
+    """LIFE-41 G6 (proof run 39202038517 picked one candidate, skipped it and made no call): skips cost no network, so a run examines up to SCAN candidates and
+    asks the first sendable one. Still at most one call; later candidates stay unasked and untouched; the counts say why rows were skipped, never which."""
+
+    def unsendable(self):
+        self.job(1, url="https://www.dice.com/job-detail/abc", source="dice")                 # NOT_PUBLIC_POSTING
+        self.job(2, seen=T + datetime.timedelta(minutes=1))
+        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=2", ("Senior Technical Program Manager London",))   # TITLE_LOCATION
+        self.job(3, seen=T + datetime.timedelta(minutes=2), text="Short.")                     # NO_SUBSTANTIVE_TEXT
+
+    def test_unsendable_oldest_candidates_do_not_use_up_the_one_call(self):
+        self.unsendable()
+        self.job(4, seen=T + datetime.timedelta(minutes=3))
+        self.job(5, seen=T + datetime.timedelta(minutes=4))
+        endpoint = Endpoint()
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_skipped"], len(endpoint.sent)), ("OK", 1, 1, 3, 1))
+        self.assertEqual(counts["cloud_skip_reasons"], {"NOT_PUBLIC_POSTING": 1, "TITLE_LOCATION": 1, "NO_SUBSTANTIVE_TEXT": 1})
+        self.assertEqual([self.row(i, ("cloud_status", "cloud_reason")) for i in (1, 2, 3, 4)],
+                         [("SKIPPED", "NOT_PUBLIC_POSTING"), ("SKIPPED", "TITLE_LOCATION"), ("SKIPPED", "NO_SUBSTANTIVE_TEXT"), ("OK", None)])
+        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))                             # after the one call: never examined, never written
+        again = Endpoint()
+        self.assertEqual((self.run_cloud(SHADOW, again)["cloud_calls"], len(again.sent)), (1, 1))     # the next tick asks job 5, and only it
+        self.assertEqual(self.row(5, ("cloud_status",))[0], "OK")
+
+    def test_the_scan_is_bounded_and_resumes_on_the_next_run(self):
+        for i in range(1, cloud.SCAN + 3):
+            self.job(i, seen=T + datetime.timedelta(minutes=i), url="https://www.lensa.com/job/1", source="lensa")
+        self.job(cloud.SCAN + 3, seen=T + datetime.timedelta(minutes=cloud.SCAN + 3))
+        endpoint = Endpoint()
+        first = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((first["cloud_calls"], first["cloud_skipped"], first["cloud_skip_reasons"], endpoint.sent), (0, cloud.SCAN, {"NOT_PUBLIC_POSTING": cloud.SCAN}, []))
+        second = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((second["cloud_calls"], second["cloud_skipped"], len(endpoint.sent)), (1, 2, 1))
+        self.assertEqual(self.row(cloud.SCAN + 3, ("cloud_status",))[0], "OK")
+
+    def test_a_refusal_after_skips_keeps_the_skips_writes_nothing_for_the_asked_job_and_stops(self):
+        self.unsendable()
+        self.job(4, seen=T + datetime.timedelta(minutes=3))
+        self.job(5, seen=T + datetime.timedelta(minutes=4))
+        endpoint = Endpoint(lambda data: refusal(data, "DAILY_LIMIT"))
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_skipped"], len(endpoint.sent)), ("DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", 1, 3, 1))
+        self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2, 3, 4, 5)], ["SKIPPED", "SKIPPED", "SKIPPED", None, None])
+
+    def test_off_and_unconfigured_runs_still_examine_nothing(self):
+        self.unsendable()
+        for environ in ({}, {**SHADOW, "V7_CLOUD_FIT_PROFILE_REF": ""}, {**SHADOW, "V7_CLOUD_FIT_PER_RUN": "0"}):
+            counts = self.run_cloud(environ, Endpoint())
+            self.assertEqual((counts["cloud_skipped"], counts["cloud_skip_reasons"]), (0, {}))
+        self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2, 3)], [None, None, None])
+
+
 class ShadowNeverChangesWhatIsVisible(Base):
     def test_the_static_fit_admission_and_job_row_are_untouched_and_the_answer_is_stored_privately(self):
         self.job(1)
