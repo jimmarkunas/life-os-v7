@@ -18,7 +18,8 @@ def _stop(status, eyebrow, title, text, detail, css="alert"):
 
 
 def job(client, config, pid):
-    """The ONE open Job Ledger job with this exact page id -> {id, company, role}, or a fixed refusal. Read only."""
+    """The ONE open Job Ledger job with this exact page id -> {id, company, role}, or a fixed refusal. Read only. Open follows the Close rules (D194): a recorded
+    Hiring Decision closes the job (JOB_CLOSED); a Ledger page without the Hiring Decision property is not provably open and is refused (JOB_STATE_UNKNOWN)."""
     try:
         page = client.get_page(pid)
     except NotionError:
@@ -28,6 +29,11 @@ def job(client, config, pid):
     company, role = D._text(props.get("Company"), "rich_text"), D._text(props.get("Job"), "title")
     if page.get("archived") or page.get("in_trash") or O._id(parent) != O._id(config.get("ledger")) or not company or not role:
         raise D.fail("NOT_FOUND")
+    decision = props.get(D.DECISION)
+    if not isinstance(decision, dict) or decision.get("type") != "select":
+        raise D.fail("JOB_STATE_UNKNOWN")
+    if (decision.get("select") or {}).get("name"):
+        raise D.fail("JOB_CLOSED")
     return {"id": D._page_id(page.get("id")) or pid, "company": company, "role": role}
 
 
@@ -107,9 +113,15 @@ def _post(req, who, secrets):
         return _stop(500, "Unavailable", "Could not verify Mark as Sent", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {code}", "danger")
     if done.get("verified") is not True:
         return _stop(500, "Unavailable", "Could not verify Mark as Sent", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
-    again = " (already recorded)" if done["status"] == "already_recorded" else ""
-    return _stop(200, "Recorded", "Marked as sent", "The canonical record was written and read back.",
-                 f"{current['company']} — {current['role']} · {person} · Waiting · follow-up {done['follow_up']}{again}.", "ok")
+    head = f"{current['company']} — {current['role']} · {person}"
+    if done["status"] == "recorded":
+        return _stop(200, "Recorded", "Marked as sent", "The canonical record was written and read back.", f"{head} · Waiting · follow-up {done['follow_up']}.", "ok")
+    if done["state"] == "closed":                                              # never relabel a closed, inactive or finished conversation (D221)
+        return _stop(409, "Not changed", "This conversation is already closed", "It was recorded before and is no longer open.",
+                     f"{head} · {done['action'] or 'no status'} · nothing was changed.")
+    follow = f" · follow-up {done['follow_up']}" if done["follow_up"] else ""
+    return _stop(200, "Already recorded", "Already marked as sent", "This conversation was recorded before; nothing was changed.",
+                 f"{head} · currently {done['action'] or 'no status'}{follow}.", "")
 
 
 def handle(req, who, secrets):
