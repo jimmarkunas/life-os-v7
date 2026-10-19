@@ -30,6 +30,16 @@ GOOD = RECEIPT["usage"]
 
 
 class UsageRule(unittest.TestCase):
+    def test_optional_counts_may_be_omitted_or_unavailable_but_never_malformed(self):
+        """Career TL review of #353 (2efd914): a present cached / reasoning value that is not an integer was treated as clean."""
+        for key in ("cached_input_tokens", "reasoning_tokens"):
+            omitted = {k: v for k, v in GOOD.items() if k != key}
+            self.assertTrue(cloud.usage_ok(omitted), key)
+            self.assertTrue(cloud.usage_ok({**GOOD, key: "unavailable"}), key)
+            self.assertTrue(cloud.usage_ok({**GOOD, key: 0}), key)
+            for bad in ("corrupt", "", "UNAVAILABLE", True, False, None, 1.0, {}, [], {"n": 1}, -1):
+                self.assertFalse(cloud.usage_ok({**GOOD, key: bad}), (key, bad))
+
     def test_only_whole_consistent_counts_are_usable(self):
         self.assertTrue(cloud.usage_ok(GOOD))                                                   # reasoning "unavailable" (the Gateway omitted it on a real call) is allowed
         for bad in ("unavailable", None, {}, {**GOOD, "total_tokens": "unavailable"}, {**GOOD, "input_tokens": -1}, {**GOOD, "output_tokens": 1.5},
@@ -48,6 +58,13 @@ class CanaryStopsWithoutUsage(Base):
             self.assertEqual((counts["cloud_fit"], counts["cloud_promoted"], counts["failed"], counts["cloud_usage_unavailable"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1, 1), usage)
             self.assertEqual(self.visible(1)[4], "CANARY")                                       # the answer and its promotion stand; only the measurement failed
 
+    def test_a_malformed_optional_count_stops_the_canary_like_a_missing_total(self):
+        for bad in ("corrupt", True, {"n": 1}):
+            self.setUp()
+            self.job(1)
+            counts = self.stage_run(self.CANARY, Endpoint(lambda d, b=bad: reply(d, receipt={**RECEIPT, "usage": {**GOOD, "cached_input_tokens": b}})))
+            self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_usage_unavailable"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1), bad)
+
     def test_oracles_usage_refusal_is_the_same_code_with_no_model_call_and_the_job_stays_askable(self):
         self.job(1)
         counts = self.stage_run(self.CANARY, Endpoint(lambda d: refusal(d, "USAGE_UNAVAILABLE")))
@@ -62,6 +79,14 @@ class BatchStopsWithoutUsage(Batch):
         endpoint = Endpoint(lambda d: reply(d, receipt={**RECEIPT, "usage": {**GOOD, "total_tokens": 9}}))
         counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], len(endpoint.sent), counts["cloud_promoted"], counts["cloud_tokens_total"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1, 0))
+
+    def test_a_malformed_reasoning_count_halts_the_batch_after_its_one_answer(self):
+        self.titled(1, "Program Manager A")
+        self.titled(2, "Program Manager B", score=70)
+        endpoint = Endpoint(lambda d: reply(d, receipt={**RECEIPT, "usage": {**GOOD, "reasoning_tokens": "corrupt"}}))
+        counts = self.batch(5, endpoint)
+        self.assertEqual((counts["cloud_fit"], len(endpoint.sent), counts["cloud_tokens_total"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 0))
+        self.assertEqual(self.status(2), None)                                                   # the halt: job 2 never asked
 
     def test_oracles_usage_refusal_stops_a_batch_before_any_model_call(self):
         self.titled(1, "Program Manager A")

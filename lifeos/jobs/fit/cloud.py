@@ -251,12 +251,15 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
 
 
 def usage_ok(u):
-    """LIFE-41 usage integrity: the receipt's own counts are usable only when input, output and total are non-negative integers with total = input + output;
-    cached and reasoning counts may be absent (the Gateway omits some), but when present must fit inside input and output. Never estimated, never zero-filled."""
+    """LIFE-41 usage integrity: the receipt's own counts are usable only when input, output and total are non-negative integers with total = input + output.
+    Cached and reasoning counts may be omitted or the literal "unavailable" (Oracle's form when the Gateway did not report one); any other present value must be
+    an integer inside input / output, so a malformed one (a string, bool, container, None, float) is never treated as clean. Never estimated, never zero-filled."""
     if not isinstance(u, dict) or not all(type(u.get(k)) is int and u[k] >= 0 for k in ("input_tokens", "output_tokens", "total_tokens")):
         return False
-    within = lambda key, cap: not (type(u.get(key)) is int) or 0 <= u[key] <= cap          # noqa: E731
-    return u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and within("cached_input_tokens", u["input_tokens"]) and within("reasoning_tokens", u["output_tokens"])
+    def optional(key, cap):
+        value = u.get(key, "unavailable")
+        return (isinstance(value, str) and value == "unavailable") or (type(value) is int and 0 <= value <= cap)
+    return u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and optional("cached_input_tokens", u["input_tokens"]) and optional("reasoning_tokens", u["output_tokens"])
 
 
 def _degraded(counts, code):
