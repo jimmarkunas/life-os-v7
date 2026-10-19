@@ -1,9 +1,9 @@
-"""Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only."""
+"""Manual-only private acceptance harness: one case from a secret, through LIFE-42 progression into the existing stage. Counts and fixed codes only."""
 import json
 import os
 from . import stage
 from .identity import valid_date
-from .models import ParentQuery, RoundQuery
+from .progression import Invite, progress
 
 KEYS = ("company", "role", "confirmed_round", "interview_date", "interviewer", "ordinal")
 
@@ -19,8 +19,8 @@ def _text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-def parse(raw):
-    """(ParentQuery, RoundQuery) or None for anything but the exact contract."""
+def resolve(raw):
+    """The case's Progression, or None for anything but the exact contract. No Ledger rows are read here, so the link is `unverified`."""
     try:
         data = json.loads(raw, object_pairs_hook=_object)
     except (TypeError, ValueError, RecursionError):
@@ -35,10 +35,13 @@ def parse(raw):
         return None
     if ordinal is not None and (type(ordinal) is not int or ordinal <= 0):
         return None
-    if who is None and ordinal is None:
-        return None
-    return (ParentQuery(data["company"].strip(), data["role"].strip()),
-            RoundQuery(True, data["interview_date"], who.strip() if who else None, ordinal))
+    return progress(Invite(data["company"], data["role"], data["interview_date"], who, ordinal), rows=None)
+
+
+def parse(raw):
+    """(ParentQuery, RoundQuery) or None for anything but the exact contract."""
+    result = resolve(raw)
+    return (result.parent, result.round) if result is not None and result.code == "ready" else None
 
 
 def _refuse(code):
@@ -51,7 +54,8 @@ def run(limit, live, environ=os.environ, **kwargs):
     raw = environ.get("INTERVIEW_ACCEPTANCE_JSON")
     if not raw or not raw.strip():
         return _refuse("acceptance_secret_missing")
-    pair = parse(raw)
-    if pair is None:
+    result = resolve(raw)
+    if result is None or result.code != "ready":
         return _refuse("acceptance_secret_invalid")
-    return stage.run(limit, live, environ=environ, evidence=(pair,), **kwargs)
+    counts = stage.run(limit, live, environ=environ, evidence=((result.parent, result.round),), **kwargs)
+    return {**counts, "ledger": result.ledger}
