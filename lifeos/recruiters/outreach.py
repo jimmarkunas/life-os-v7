@@ -69,7 +69,8 @@ def _props(job, person, now):
 
 
 def mark_sent(notion, job, person, now, ledger_source):
-    """Jim's confirmed Mark as Sent for one exact job and one person. -> {"status": "recorded" | "already_recorded", "verified": True, "follow_up": date}
+    """Jim's confirmed Mark as Sent for one exact job and one person. -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
+    "action", "follow_up"}; an existing row for (job, person) is returned as it is (never rewritten, never relabelled Waiting).
     One non-retried create after absence is proven for (job, person), then a fresh read must show exactly that one row, Waiting, linked to the job."""
     person = valid_person(person)
     if not person or not job.get("id") or not job.get("company") or not job.get("role"):
@@ -78,8 +79,10 @@ def mark_sent(notion, job, person, now, ledger_source):
     mine = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
     if len(mine) > 1:
         raise store.RecruitersError("OUTREACH_AMBIGUOUS")
-    if mine:
-        return {"status": "already_recorded", "verified": True, "follow_up": mine[0]["follow_up"]}
+    if mine:                                                          # a replay never writes; it reports the persisted state truthfully (D221)
+        row = mine[0]
+        state = "closed" if row["done"] or not row["active"] or row["action"] in store.HISTORY else "open"
+        return {"status": "already_recorded", "verified": True, "state": state, "action": row["action"], "follow_up": row["follow_up"]}
     props = _props(job, person, now)
     try:
         notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": notion.source}, "properties": props})
@@ -89,7 +92,7 @@ def mark_sent(notion, job, person, now, ledger_source):
     want = props["Follow-up Date"]["date"]["start"]
     if len(after) != 1 or after[0]["action"] != store.WAITING or after[0]["follow_up"] != want or after[0]["done"] or not after[0]["active"]:
         raise store.RecruitersError("OUTREACH_READBACK_MISMATCH")
-    return {"status": "recorded", "verified": True, "follow_up": want}
+    return {"status": "recorded", "verified": True, "state": "open", "action": store.WAITING, "follow_up": want}
 
 
 def project(rows, jobs, today):

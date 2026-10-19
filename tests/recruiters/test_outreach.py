@@ -20,9 +20,10 @@ WHO = {"login": LOGIN, "node": "node-1"}
 SCHEMA = {"Job": {"type": "relation", "relation": {"data_source_id": LEDGER}}}
 
 
-def ledger_page(pid, company, role, parent=LEDGER, archived=False):
+def ledger_page(pid, company, role, parent=LEDGER, archived=False, decision=None):
     return {"id": pid, "archived": archived, "parent": {"type": "data_source_id", "data_source_id": parent},
-            "properties": {"Company": {"type": "rich_text", "rich_text": [{"plain_text": company}]}, "Job": {"type": "title", "title": [{"plain_text": role}]}}}
+            "properties": {"Company": {"type": "rich_text", "rich_text": [{"plain_text": company}]}, "Job": {"type": "title", "title": [{"plain_text": role}]},
+                           "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None}}}
 
 
 class Ledger:
@@ -94,7 +95,8 @@ class MarkAsSent(unittest.TestCase):
         mark(svc, JOB_A, "Avery Synthetic")
         status, _, body, _ = mark(svc, JOB_A, " avery  synthetic ")
         self.assertEqual((status, len(rec.pages), len([w for w in rec.writes if w[0] == "create"])), (200, 1, 1))
-        self.assertIn(b"already recorded", body)
+        self.assertIn(b"Already marked as sent", body)
+        self.assertIn(b"currently Waiting", body)
 
     def test_distinct_jobs_and_people_are_distinct_conversations(self):
         ledger, rec = self.world()
@@ -139,6 +141,47 @@ class MarkAsSent(unittest.TestCase):
         self.assertEqual((status, rec.writes), (409, []))
         wrong = FakeRecruiters(schema={"Job": {"type": "relation", "relation": {"data_source_id": "9" * 32}}})
         self.assertEqual((mark(Service(ledger, wrong), JOB_A, "Avery Synthetic")[0], wrong.writes), (409, []))
+
+    def test_replay_reports_the_persisted_state_and_never_relabels_or_writes(self):
+        for kind, action, extra, code, words in (("due", "Needs Action", {}, 200, b"currently Needs Action"),
+                                                 ("completed", "Completed", {}, 409, b"already closed"),
+                                                 ("dismissed", "Dismissed", {}, 409, b"already closed"),
+                                                 ("done", "Waiting", {"done": True}, 409, b"already closed"),
+                                                 ("inactive", "Waiting", {"active": False}, 409, b"already closed")):
+            with self.subTest(kind=kind):
+                ledger, rec = self.world()
+                svc = Service(ledger, rec)
+                mark(svc, JOB_A, "Avery Synthetic")
+                target = rec.pages[0]["properties"]
+                target["Action Status"] = {"type": "select", "select": {"name": action}}
+                for name, value in extra.items():
+                    target[{"done": "Done", "active": "Active"}[name]] = {"type": "checkbox", "checkbox": value}
+                prior, writes = store.read(rec.pages[0]), len(rec.writes)
+                status, _, body, _ = mark(svc, JOB_A, "Avery Synthetic")
+                self.assertEqual((status, len(rec.writes), len(rec.pages)), (code, writes, 1), body)
+                self.assertIn(words, body)
+                self.assertNotIn(b"Waiting \xc2\xb7 follow-up", body)
+                self.assertEqual(store.read(rec.pages[0]), prior)
+
+    def test_a_closed_or_unknown_ledger_job_is_refused_at_open_and_at_confirm(self):
+        for decision in ("Rejected", "Withdrew", "Hired"):
+            with self.subTest(decision=decision):
+                ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager", decision=decision))
+                rec = FakeRecruiters(schema=SCHEMA)
+                status, _, body, _ = Service(ledger, rec)("GET", "/sent", {"j": JOB_A})
+                self.assertEqual((status, rec.writes), (409, []))
+                self.assertIn(b"JOB_CLOSED", body)
+        ledger, rec = self.world()                                      # open when the form is shown, closed before Confirm: the fresh read refuses
+        svc = Service(ledger, rec)
+        status, _, body, _ = svc("GET", "/sent", {"j": JOB_A})
+        review = svc("POST", "/sent", form={**fields(body), "person": "Avery Synthetic", "step": "review"})
+        ledger.pages[JOB_A]["properties"]["Hiring Decision"]["select"] = {"name": "Position filled"}
+        status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual((status, rec.writes), (409, []))
+        self.assertIn(b"JOB_CLOSED", body)
+        unknown = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"))
+        del unknown.pages[JOB_A]["properties"]["Hiring Decision"]
+        self.assertEqual(Service(unknown, FakeRecruiters(schema=SCHEMA))("GET", "/sent", {"j": JOB_A})[0], 409)
 
     def test_hostile_text_is_escaped(self):
         ledger = Ledger(ledger_page(JOB_A, "<script>x</script> Co", "<b>Role</b>"))
