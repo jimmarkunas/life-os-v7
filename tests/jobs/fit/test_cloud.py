@@ -173,6 +173,53 @@ class ScanPastSkips(Base):
         self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2, 3)], [None, None, None])
 
 
+class AuditGuardBeforeEgress(Base):
+    """LIFE-41 G6 (run 39219054103 spent its only call on a row the same tick's audit then demoted with audit_url_listing_url): the precision audit's own
+    verdict (lifeos.jobs.audit.judge, same inputs) is the last gate before egress, so a listing, root or no-job-id link never consumes the call."""
+    BAD = (("https://boards.greenhouse.io/acme/jobs/search?q=program+manager", "AUDIT_URL_LISTING_URL"),
+           ("https://boards.greenhouse.io/", "AUDIT_URL_ROOT"),
+           ("https://jobs.lever.co/acme/", "AUDIT_URL_NO_JOB_ID"))
+
+    def test_audit_failing_links_are_skipped_and_the_first_eligible_candidate_gets_the_one_call_and_persists(self):
+        for i, (url, _) in enumerate(self.BAD, 1):
+            self.job(i, seen=T + datetime.timedelta(minutes=i), url=url)
+        self.job(4, seen=T + datetime.timedelta(minutes=4))
+        self.job(5, seen=T + datetime.timedelta(minutes=5))
+        endpoint = Endpoint()
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_skipped"], len(endpoint.sent)), ("OK", 1, 1, 3, 1))
+        self.assertEqual(counts["cloud_skip_reasons"], {code: 1 for _, code in self.BAD})
+        for i, (_, code) in enumerate(self.BAD, 1):
+            self.assertEqual(self.row(i, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", code, None))
+        status, score, confidence, model, run_id, request_hash = self.row(4, ("cloud_status", "cloud_score", "cloud_confidence", "cloud_model", "cloud_run_id", "cloud_request_hash"))
+        self.assertEqual(status, "OK")                                                          # the valid Oracle result persists privately
+        self.assertIsInstance(score, int)
+        self.assertTrue(confidence and model and run_id and request_hash)
+        self.assertEqual(self.row(5, CLOUD), (None,) * len(CLOUD))                             # after the one call: untouched
+
+    def test_the_verdict_is_exactly_the_audits_including_its_title_proof_exemption(self):
+        from lifeos.jobs import audit
+        for url, code in self.BAD:
+            self.assertEqual(cloud.audit_problem(url, GOOD, None, "jobright", "Acme", "Technical Program Manager"), code)
+            self.assertEqual(code, audit.judge(url, GOOD).upper())
+        ambiguous = "https://jobs.lever.co/acme/"                                               # no_job_id is ambiguous: a page proven by title is kept by the audit
+        self.assertIsNone(audit.judge(ambiguous, GOOD, proven=True))
+        self.assertIsNone(cloud.audit_problem(ambiguous, GOOD, "title", "jobright", "Acme", "Technical Program Manager"))
+        self.job(1, url=ambiguous)
+        self.db.raw.execute("UPDATE v7_jobs SET link_proof='title' WHERE id=1")
+        endpoint = Endpoint()
+        self.assertEqual((self.run_cloud(SHADOW, endpoint)["cloud_ok"], len(endpoint.sent)), (1, 1))     # so the shadow sends it too
+        self.assertEqual(cloud.audit_problem("https://boards.greenhouse.io/", GOOD, "title", "jobright", "Acme", "Technical Program Manager"), "AUDIT_URL_ROOT")  # a root never qualifies
+
+    def test_an_audit_skip_writes_only_the_private_cloud_columns(self):
+        self.job(1, url=self.BAD[0][0])
+        before = self.row(1, STATIC)
+        job_before = self.db.raw.execute("SELECT status, final_apply_url, notion_page_id FROM v7_jobs WHERE id=1").fetchone()
+        self.run_cloud(SHADOW, Endpoint())
+        self.assertEqual(self.row(1, STATIC), before)                                          # static Fit and admission unchanged; the audit itself still decides demotion
+        self.assertEqual(self.db.raw.execute("SELECT status, final_apply_url, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), job_before)
+
+
 class ShadowNeverChangesWhatIsVisible(Base):
     def test_the_static_fit_admission_and_job_row_are_untouched_and_the_answer_is_stored_privately(self):
         self.job(1)
