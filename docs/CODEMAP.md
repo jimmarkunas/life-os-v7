@@ -21,6 +21,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills-snapshot` -> `lifeos.bills.snapshot:run`
 - `board-check` -> `lifeos.sources.web.boardcheck:run`
 - `boards` -> `lifeos.sources.web.boards:run`
+- `boards-backfill` -> `lifeos.sources.web.boards:backfill`
 - `boards-preview` -> `lifeos.sources.web.boards:preview`
 - `calendar-sync` -> `lifeos.calendar_bridge.watch:run`
 - `dcc-card` -> `lifeos.dcc.card:run`
@@ -522,3 +523,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D214: A switchable cloud-Fit shadow, off by default, that never changes what Jim sees; the static Fit write keeps the cloud columns (2026-10-18, Jim; LIFE-41)
 - D215: Publish looks up Stable Job Keys in one batched Ledger query per 25 keys (2026-10-19, Jim; LIFE-76 saving 3)
 - D216: A board that has not changed is confirmed cheaply: conditional GET, a whole-board fingerprint skip and a quiet backoff (2026-10-19, Jim; LIFE-76 PR 2)
+- D217: A board's first read belongs to a hibernatable backfill; the hourly board pass only re-reads (2026-10-19, Jim; LIFE-76 PR 3)

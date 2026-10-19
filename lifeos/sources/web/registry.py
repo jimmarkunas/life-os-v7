@@ -66,8 +66,8 @@ def boards(path=BOARDS_PATH):
     known = {(r["kind"], str(r.get("slug") or "").lower()) for p in PATHS.values() for r in load(p) if r.get("slug")}
     skip = {(s.split(":", 1)[0], s.split(":", 1)[1].lower()) for s in data.get("skip", [])}
     rows, seen = [], set()
-    pairs = [(e["kind"], e["slug"], e["company"]) for e in data.get("extras", [])] + [(k, slug, None) for k in BOARD_KINDS for slug in data["seed"].get(k, [])]   # an extra's name wins
-    for kind, slug, company in pairs:
+    pairs = [(e["kind"], e["slug"], e["company"], True) for e in data.get("extras", [])] + [(k, slug, None, False) for k in BOARD_KINDS for slug in data["seed"].get(k, [])]   # an extra's name wins
+    for kind, slug, company, extra in pairs:
         key = (kind, slug.lower())
         if kind not in BOARD_KINDS or key in known or key in skip or key in seen:
             continue
@@ -76,5 +76,6 @@ def boards(path=BOARDS_PATH):
         if len(ident) > MAX_ID:
             raise RegistryError(f"{ident}: longer than {MAX_ID} characters")
         rows.append({"id": ident, "company": company or company_from_slug(slug), "tier": "employer", "kind": kind, "status": "ready",
-                     "enabled": True, "slug": slug, "refresh_hours": limits.BOARDS_REFRESH_HOURS, "hot_hours": limits.BOARDS_HOT_HOURS, "quiet": True})
+                     "enabled": True, "slug": slug, "refresh_hours": limits.BOARDS_REFRESH_HOURS, "hot_hours": limits.BOARDS_HOT_HOURS, "quiet": True,
+                     **({"extra": True} if extra else {})})                       # D217: a curated extra is read by the hourly pass from its first read
     return rows
