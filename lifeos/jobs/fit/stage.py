@@ -17,7 +17,8 @@ from lifeos.jobs.fit.score import evaluate
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
         " j.posted_date, j.first_seen, j.route_evidence, j.source FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-        " WHERE j.status IN (%s) AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
+        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D218: a cloud-Fit canary score is never overwritten by the static scorer
+        " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
 AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also re-scores published jobs whose score is stale (model, policy, profile or description changed); the audit then clears the ones now excluded
@@ -54,21 +55,59 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def score_rows(rows, profile, today, semantic=None, register=None):
+def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
     """[(job_id, fingerprint, Result, Decision, lane, work_mode, eligible)] for rows of (id, title, company, full_text, fingerprint,
-    [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence). Pure."""
+    [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence).
+    `fit` (D218 cloud-Fit canary): {job_id: score} replaces the static score in the lane decision; every other rule is the same code. Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
         result = evaluate(title, company, text, profile, today, semantic)
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
-        facts = lanes.facts_for(result.score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
+        score = (fit or {}).get(job_id, result.score)
+        facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
                                 kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source),
                                 title_only=lanes.title_watch_source(source))
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, result.exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out
+
+
+def _gate(cursor, job_id, decision, gate, counts):
+    """The lane gate's effect on the job row, for a static score and a cloud-Fit canary score alike."""
+    if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D106: an excluded job that now qualifies (a wrong place, a profile that now knows its evidence) comes back
+        cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
+                       " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
+        counts["revived"] += cursor.rowcount
+    if gate and decision.status == lanes.EXCLUDE:
+        cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
+                       " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
+        counts["gated"] += cursor.rowcount
+
+
+CANARY_ROW = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source"
+              " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id = %s")
+PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confidence=%s, admission=%s, admission_reason=%s, work_mode=%s, lane=%s, eligible=%s,"
+           " scored_at=%s WHERE job_id=%s AND cloud_status='CANARY'")
+
+
+def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts, register=None):
+    """D218 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
+    visible Fit: the same score_rows lane decision decides admission with it, and the same gate moves the job. The provenance is in the line ('Cloud Fit ...'),
+    which publish writes to Why It Fits. Only a row the shadow has just marked CANARY is touched. -> True when promoted."""
+    cursor.execute(CANARY_ROW, (job_id,))
+    row = cursor.fetchone()
+    if row is None or judgment.score is None:
+        return False
+    (_, _, _, decision, lane_name, work_mode, eligible), = score_rows([row], profile, today, None, register, fit={job_id: judgment.score})
+    line = f"Cloud Fit {judgment.score}% ({model}): {judgment.rationale}"
+    cursor.execute(PROMOTE, (judgment.score, judgment.decision, line[:600], judgment.rationale[:300], judgment.confidence, decision.status,
+                             (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible), _now(), job_id))
+    if cursor.rowcount != 1:
+        return False
+    _gate(cursor, job_id, decision, gate, counts)
+    return True
 
 
 def requeue_floor(cursor):
@@ -152,7 +191,8 @@ def run(limit, live, environ=os.environ):
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
-    scored = score_rows(rows, profile, _now().date(), matcher, sponsors.load())      # slow work: no connection is open here
+    register = sponsors.load()
+    scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
         key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
@@ -174,14 +214,8 @@ def run(limit, live, environ=os.environ):
                     (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
                      json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
                      decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
-                if gate and decision.status in (lanes.ADMIT, lanes.REVIEW):          # D106: an excluded job that now qualifies (a wrong place, a profile that now knows its evidence) comes back
-                    cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='requeued_fit', updated_at=%s WHERE id=%s AND status='EXCLUDED_FIT'"
-                                   " AND unresolved_reason='lane_exclude' AND notion_page_id IS NULL", (_now(), job_id))
-                    counts["revived"] += cursor.rowcount
-                if gate and decision.status == lanes.EXCLUDE:
-                    cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
-                                   " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
-                    counts["gated"] += cursor.rowcount
-    counts.update(fit_cloud.run(environ, live, started, profile))                    # D214: after the static write; off by default, never changes it
+                _gate(cursor, job_id, decision, gate, counts)
+    promote = lambda cursor, job_id, judgment, model: promote_cloud(cursor, job_id, judgment, model, profile, _now().date(), gate, counts, register)   # D218: canary only
+    counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))   # D214: after the static write; off by default, shadow never changes it
     counts["failed"] = counts["cloud_degraded"]                     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
     return counts
