@@ -63,6 +63,7 @@ BACKLOG_CALLS_MAX = 100                 # D219: the hard ceiling of one batch, w
 BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
 BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
 NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
+USAGE_UNAVAILABLE = "USAGE_UNAVAILABLE"   # LIFE-41: the fixed code for missing, invalid or inconsistent usage, from Oracle's refusal or the receipt itself
 USAGE_SUMS = {"cloud_tokens_input": "input_tokens", "cloud_tokens_cached": "cached_input_tokens", "cloud_tokens_output": "output_tokens",
               "cloud_tokens_reasoning": "reasoning_tokens", "cloud_tokens_total": "total_tokens"}     # the receipts' own counts, summed; never estimated
 
@@ -210,7 +211,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             code = str(error)
             if code in NO_CALL:                                          # refused before any model call: the job goes back to the queue, the run stops
                 write(RELEASE, (job_id, token))                          # cloud_calls still counts the request sent
-                _degraded(counts, code)
+                _degraded(counts, USAGE_UNAVAILABLE if code == "FIT_EDGE_REFUSED_USAGE_UNAVAILABLE" else code)
                 break
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
             counts["cloud_failed"] += 1
@@ -220,7 +221,8 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             break                                                        # anything else (a model may have run): recorded so it is never repeated, and the run stops
         receipt = got.get("receipt") or {}
         u = receipt.get("usage")
-        if isinstance(u, dict) and type(u.get("total_tokens")) is int:
+        measured = usage_ok(u)
+        if measured:
             for key, name in USAGE_SUMS.items():
                 counts[key] += u[name] if type(u.get(name)) is int else 0
         else:
@@ -240,12 +242,24 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             else:
                 counts["cloud_ok"] -= 1
                 _degraded(counts, PROMOTION_FAILED)
-        if batch and not (isinstance(u, dict) and type(u.get("total_tokens")) is int):
-            _degraded(counts, "USAGE_UNAVAILABLE")                       # the answer is kept; no further measured call is made without token counts
+        if not measured:
+            _degraded(counts, USAGE_UNAVAILABLE)                         # LIFE-41 usage integrity, every mode: the answer is kept; no further call this run
             break
     if counts["cloud_fit"] in ("shadow", "canary", "backlog"):
         counts["cloud_fit"] = "OK"
     return counts
+
+
+def usage_ok(u):
+    """LIFE-41 usage integrity: the receipt's own counts are usable only when input, output and total are non-negative integers with total = input + output.
+    Cached and reasoning counts may be omitted or the literal "unavailable" (Oracle's form when the Gateway did not report one); any other present value must be
+    an integer inside input / output, so a malformed one (a string, bool, container, None, float) is never treated as clean. Never estimated, never zero-filled."""
+    if not isinstance(u, dict) or not all(type(u.get(k)) is int and u[k] >= 0 for k in ("input_tokens", "output_tokens", "total_tokens")):
+        return False
+    def optional(key, cap):
+        value = u.get(key, "unavailable")
+        return (isinstance(value, str) and value == "unavailable") or (type(value) is int and 0 <= value <= cap)
+    return u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and optional("cached_input_tokens", u["input_tokens"]) and optional("reasoning_tokens", u["output_tokens"])
 
 
 def _degraded(counts, code):

@@ -172,7 +172,7 @@ class Interruption(Batch):
     def test_missing_token_counts_stop_the_batch_after_keeping_that_answer(self):
         self.titled(1, "Program Manager A")
         self.titled(2, "Program Manager B", score=70)
-        endpoint = Endpoint(lambda data: reply(data))                                           # usage "unavailable": an upgraded OpenClaw without the pass-through
+        endpoint = Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": "unavailable"}))   # an upgraded OpenClaw without the pass-through
         counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], len(endpoint.sent), counts["cloud_promoted"], counts["cloud_usage_unavailable"]), ("DEGRADED(USAGE_UNAVAILABLE)", 1, 1, 1))
         self.assertEqual((self.status(1), self.status(2)), ("CANARY", None))
@@ -286,7 +286,7 @@ class FailureReachesTheRun(Batch):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory, "out")
             done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
-            return done.returncode, done.stdout.strip(), output.read_text().strip()
+            return done.returncode, done.stdout.strip(), next(line for line in output.read_text().splitlines() if line.startswith("failed="))
 
     def test_a_failed_batch_fails_the_finish_job_and_names_the_stage_while_a_clean_or_absent_batch_stays_green(self):
         data, steps, step, lanes = self.workflow()

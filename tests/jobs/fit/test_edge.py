@@ -14,7 +14,8 @@ from lifeos.jobs.fit import edge, judge
 REQUEST = {"title": "Technical Program Manager", "description": "Run delivery for a synthetic commerce platform.", "profile": {"years": 15}}
 BASE, CAPPED = SimpleNamespace(capped=False, exclusion=None), SimpleNamespace(capped=True, exclusion=None)
 RECEIPT = {"provider": "openai", "model": "gpt-6-luna", "transport": "gateway", "agent": "fit", "run_ids": ["run-1234567890"], "run_finished": True, "started": "t0", "ended": "t1", "fallback": False,
-           "usage": "unavailable", "cost": "unavailable", "deadline_s": 60}
+           "usage": {"input_tokens": 1389, "cached_input_tokens": 0, "cache_write_tokens": 0, "output_tokens": 69, "reasoning_tokens": "unavailable", "total_tokens": 1458},
+           "cost": "unavailable", "deadline_s": 60}                                # LIFE-41: Oracle's receipt carries the run's own token counts (a real 16:45Z receipt's shape)
 JUDGMENT = json.dumps({"score": 90, "rationale": "Aligned on delivery ownership.", "confidence": "high"})
 HOST = "oracle.example"
 
@@ -254,7 +255,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(endpoint.sent[0], endpoint.sent[1])                                              # the replay is the same frame, same nonce
         self.assertEqual((out["provider"], out["model"], out["fallback"], out["agent"], out["usage"], out["cost"], out["score"], out["decision"], out["confidence"], out["nonce_correlated"],
                           out["replay_refused"], out["runs_today"], out["limit"], out["run_ids"]),
-                         ("openai", "gpt-6-luna", False, "fit", "unavailable", "unavailable", 90, "Go", "high", True, True, 6, 20, ["run-12345678"]))
+                         ("openai", "gpt-6-luna", False, "fit", RECEIPT["usage"], "unavailable", 90, "Go", "high", True, True, 6, 20, ["run-12345678"]))
         self.assertEqual(out["request_hash"], edge.digest(REQUEST)[:8])
 
     def test_a_replay_the_server_accepts_is_a_failure_that_names_it(self):

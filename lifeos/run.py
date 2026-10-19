@@ -9,6 +9,7 @@ import functools
 import importlib
 import json
 import os
+import re
 import sys
 
 from lifeos.calendar_bridge.sync import BridgeError
@@ -148,6 +149,16 @@ STAGES = {
 PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
+def _step_code(counts):
+    """LIFE-41: a degraded cloud Fit's fixed code (e.g. USAGE_UNAVAILABLE) becomes the step output `cloud_fit_code`, so the finish job's lane list and the
+    existing phone push name it. Fixed upper-case codes only; nothing else is ever written."""
+    match = re.fullmatch(r"DEGRADED\(([A-Z0-9_]{1,48})\)", str(counts.get("cloud_fit") or ""))
+    target = os.environ.get("GITHUB_OUTPUT")
+    if match and target:
+        with open(target, "a") as handle:
+            handle.write(f"cloud_fit_code={match.group(1)}\n")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=sorted(STAGES))
@@ -163,6 +174,7 @@ def main(argv=None):
     failed = counts.get("failed") if isinstance(counts, dict) else None
     if args.stage in PARTIAL_FAILURE and isinstance(failed, int) and failed > 0:
         print(f"{args.stage.upper()} FAILED: {PARTIAL_FAILURE[args.stage]}", file=sys.stderr)
+        _step_code(counts)
         return 1
     return 0
 
