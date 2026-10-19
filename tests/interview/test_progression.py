@@ -1,8 +1,12 @@
 """LIFE-42: progression is fail-closed, and a replayed real-shaped invite writes nothing through the existing writer."""
+import json
+import os
 import unittest
+from unittest.mock import patch
 from lifeos.interview import create, notion, stage
 from lifeos.interview.models import RoundQuery
 from lifeos.interview.progression import Invite, ledger_link, progress
+from lifeos.run import STAGES
 from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV, block, page
 
@@ -59,6 +63,23 @@ class Progress(unittest.TestCase):
                          ("requisition_ambiguous", None))
 
 
+    def test_contradictory_authoritative_ids_fail_closed(self):
+        a = {"page_id": "L1", "company": "Example Rides", "role": "Technical Project Manager", "stable_job_key": "k1", "requisition": "R-1"}
+        b = dict(a, page_id="L2", stable_job_key="k2", requisition="R-2")
+        split = Invite("Example Rides", "Technical Project Manager", "2026-09-28", ordinal=1, requisition="R-2", stable_job_key="k1")
+        self.assertEqual(ledger_link(split, [a, b]), ("identity_conflict", None))
+        result = progress(split, [a, b])
+        self.assertEqual((result.code, result.parent, result.round, result.ledger_page_id), ("identity_conflict", None, None, None))
+        # One row found by key, but it records a different requisition: still a conflict, never a link.
+        other = Invite("Example Rides", "Technical Project Manager", "2026-09-28", ordinal=1, requisition="R-9", stable_job_key="k1")
+        self.assertEqual(ledger_link(other, [a]), ("identity_conflict", None))
+        agree = Invite("Example Rides", "Technical Project Manager", "2026-09-28", ordinal=1, requisition="r-1", stable_job_key="k1")
+        self.assertEqual(ledger_link(agree, [a, b]), ("linked", "L1"))
+
+    def test_unread_ledger_is_unverified_never_none_or_linked(self):
+        self.assertEqual(ledger_link(REAL_SHAPE, None), ("unverified", None))
+        self.assertEqual(progress(REAL_SHAPE, None).ledger, "unverified")
+
 class Replay(unittest.TestCase):
     def run_invite(self, client, invite=REAL_SHAPE, live=True, copies=1):
         result = progress(invite)
@@ -86,6 +107,36 @@ class Replay(unittest.TestCase):
         self.assertEqual((result["writes"], result["why"]["child_match"]), (0, 1))
         self.assertEqual(len(client.posts), 1)
 
+
+class AcceptanceEntrypoint(unittest.TestCase):
+    """The production route: lifeos.run STAGES['interview-acceptance'] -> acceptance.run -> progress -> stage.run."""
+    CASE = {"company": "Example Rides", "role": "Technical Project Manager", "confirmed_round": True,
+            "interview_date": "2026-09-28", "interviewer": None, "ordinal": 1}
+
+    def run_stage(self, client, live, case=None):
+        environ = {**ENV, "GITHUB_EVENT_NAME": "workflow_dispatch", "INTERVIEW_ACCEPTANCE_JSON": json.dumps(case or self.CASE)}
+        with patch.dict(os.environ, environ), patch.object(notion, "make_client", return_value=client):
+            return STAGES["interview-acceptance"](1, live)
+
+    def test_replay_through_the_stage_writes_nothing_and_reports_an_unverified_link(self):
+        client = real_shape_client()
+        parent_before, round_before = notion.protected_snapshot(client, "opp"), notion.protected_snapshot(client, "r1")
+        for live in (False, True):
+            result = self.run_stage(client, live)
+            self.assertEqual((result["writes"], result["writes_planned"], result["why"].get("child_match")), (0, 0, 1))
+            self.assertEqual(result["ledger"], "unverified")
+            for private in ("Example Rides", "Technical Project Manager", "2026-09-28"):
+                self.assertNotIn(private, json.dumps(result))
+        self.assertEqual(client.posts, [])
+        self.assertEqual(notion.protected_snapshot(client, "opp"), parent_before)
+        self.assertEqual(notion.protected_snapshot(client, "r1"), round_before)
+
+    def test_refused_progression_never_reaches_the_writer(self):
+        client = real_shape_client()
+        with patch.object(stage, "run", side_effect=AssertionError("must not delegate")):
+            result = self.run_stage(client, True, {**self.CASE, "ordinal": None})
+        self.assertEqual((result["writes"], result["why"]), (0, {"acceptance_secret_invalid": 1}))
+        self.assertEqual(client.posts, [])
 
 if __name__ == "__main__":
     unittest.main()
