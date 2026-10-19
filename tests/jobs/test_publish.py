@@ -418,3 +418,37 @@ class ReseedUnderVacancyKeys(unittest.TestCase):
             publish.run(0, True, self.env)
         self.assertEqual(self.db.raw.execute("SELECT url_hash, source FROM v7_ledger_urls ORDER BY url_hash").fetchall(), rows)
         self.assertEqual(set(self.states().values()), {"DUPLICATE"})
+
+
+class BatchedKeyLookup(unittest.TestCase):
+    """LIFE-76 saving 3: one Ledger query per readback.KEY_CHUNK keys replaces one per key; two pages for one key are still refused."""
+
+    def test_thirty_keys_take_two_queries_and_an_unreadable_answer_falls_back(self):
+        from lifeos.jobs import publish, readback
+        sizes = []
+
+        class Client:
+            source = "ledger"
+
+            def call(self, method, path, body=None):
+                sizes.append(len(body["filter"]["or"]))
+                return {"results": [], "has_more": False}
+        counts = {}
+        found = publish._listed(Client(), [f"k{i}" for i in range(30)] + ["k0", None], counts)
+        self.assertEqual((sizes, len(found), counts), ([readback.KEY_CHUNK, 30 - readback.KEY_CHUNK], 30, {}))   # duplicates and empty keys asked once / not at all
+
+        class Broken(Client):
+            def call(self, method, path, body=None):
+                return {"results": None}
+        self.assertIsNone(publish._listed(Broken(), ["k1"], counts))
+        self.assertEqual(counts, {"key_lookup": "per_key"})
+        self.assertEqual(publish._listed(Client(), [], {}), {})
+
+    def test_adopted_is_existing_page_for_a_batched_answer(self):
+        from lifeos.jobs import publish
+        from lifeos.platform.notion_client import NotionError
+        self.assertIsNone(publish.adopted([]))
+        self.assertEqual(publish.adopted([{"id": "p1"}]), "p1")
+        with self.assertRaises(NotionError) as raised:
+            publish.adopted([{"id": "p1"}, {"id": "p2"}])
+        self.assertEqual(str(raised.exception), "ledger_key_ambiguous")
