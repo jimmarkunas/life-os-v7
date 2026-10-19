@@ -315,8 +315,36 @@ class GoldenPath(unittest.TestCase):
                 j = self.crashed_after_create()
                 lookup = j.ledger.call
                 j.ledger.call = lambda method, path, body=None, lookup=lookup, answer=answer: (
-                    answer if body and (body.get("filter") or {}).get("rich_text") else lookup(method, path, body))
+                    answer if body and set(body.get("filter") or {}) & {"rich_text", "or"} else lookup(method, path, body))     # the batched lookup (saving 3) and the per-key fallback both unreadable
                 self.assertRefused(j, "ledger_lookup_unreadable")
+
+    def test_an_unreadable_batched_lookup_falls_back_to_the_per_key_lookup_and_adopts(self):
+        """LIFE-76 saving 3: a batched key answer that cannot be read is never `no page`; the per-key lookup then finds and adopts the page the crash left, creating nothing."""
+        j = self.crashed_after_create()
+        lookup, batches = j.ledger.call, []
+
+        def call(method, path, body=None):
+            if body and (body.get("filter") or {}).get("or"):
+                batches.append(1)
+                if len(batches) == 1:                                                  # publish's batched lookup only; the D212 read-back still reads Notion
+                    return {"results": None}
+            return lookup(method, path, body)
+        j.ledger.call = call
+        published, _ = j.tick()
+        self.assertEqual((published["failed"], published.get("key_lookup"), j.ledger.created), (0, "per_key", 1))
+
+    def test_one_batched_key_query_serves_every_page_a_run_publishes(self):
+        """LIFE-76 saving 3: the jobs a run publishes are looked up with one data-source query, not one each; the per-key query is never used."""
+        j = self.journey(m1=mail("v1", "v2"))
+        j.resolve_all(["v1", "v2"])
+        queries = []
+        lookup = j.ledger.call
+        j.ledger.call = lambda method, path, body=None: (queries.append("or" if (body.get("filter") or {}).get("or") else "one" if (body.get("filter") or {}).get("rich_text") else "all")
+                                                          if body and method == "POST" and path.endswith("/query") else None) or lookup(method, path, body)
+        published, _ = j.tick()
+        self.assertEqual((published["created"], published["failed"], j.ledger.created), (2, 0, 2))
+        self.assertNotIn("one", queries)
+        self.assertEqual(queries.count("or"), 2)                                      # the publish lookup, then the D212 read-back
 
 
 if __name__ == "__main__":
