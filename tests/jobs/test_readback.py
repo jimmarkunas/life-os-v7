@@ -1,5 +1,5 @@
-"""D212: the Ledger read-back reads Notion for every page (one batch property query per KEY_CHUNK keys plus the per-page body marker), and the one-time
-recheck reads back exactly the pages D211 verified from a create response. Production SQL over the sqlite kit; only the Notion client is doubled."""
+"""D212: the Ledger read-back reads Notion for every page (one batch property query per KEY_CHUNK keys plus the per-page body marker), refuses a pagination answer it cannot
+follow, and a page that does not read back fails the publish stage. Production SQL over the sqlite kit; only the Notion client is doubled."""
 import datetime
 import unittest
 from unittest import mock
@@ -103,6 +103,31 @@ class BatchedReadback(ReadbackBase):
         self.assertEqual(counts["why"], {"ledger_lookup_unreadable": 1})
         self.assertIsNone(self.verified()[1])
 
+    def test_a_missing_or_repeated_pagination_cursor_is_refused_never_read_as_no_page(self):
+        self.published(1, "page1")
+        for cursor in (None, "c1"):                                              # has_more with no cursor, or the same cursor handed back again
+            class Paged(Ledger):
+                def call(self, method, path, body=None, cursor=cursor):
+                    if path.endswith("/query"):
+                        self.calls += 1
+                        return {"results": [], "has_more": True, "next_cursor": cursor if body.get("start_cursor") is None or cursor is None else body["start_cursor"]}
+                    return super().call(method, path, body)
+            counts = self.run_with(readback.run, Paged({}), True)
+            self.assertEqual(counts["why"], {"ledger_lookup_unreadable": 1}, cursor)
+            self.assertIsNone(self.verified()[1])
+
+    def test_a_second_page_of_results_is_followed(self):
+        self.published(1, "page1")
+
+        class TwoPages(Ledger):
+            def call(self, method, path, body=None):
+                if path.endswith("/query") and not body.get("start_cursor"):
+                    self.calls += 1
+                    return {"results": [], "has_more": True, "next_cursor": "c1"}
+                return super().call(method, path, body)
+        counts = self.run_with(readback.run, TwoPages({"page1": props("k1")}), True)
+        self.assertEqual(counts["verified"], 1)
+
     def test_a_dry_run_reads_but_writes_nothing(self):
         self.published(1, "page1")
         counts = self.run_with(readback.run, Ledger({"page1": props("k1")}), False)
@@ -110,63 +135,24 @@ class BatchedReadback(ReadbackBase):
         self.assertIsNone(self.verified()[1])
 
 
-class CreateVerifiedRecheck(ReadbackBase):
-    """Only the pages D211 verified in the same write as their publish, inside proof run 39174107353's publish window, are cleared and read back."""
-
-    def setUp(self):
-        super().setUp()
-        for i in range(1, 11):                                                    # the 10 the proof run created: verified_at written with the publish
-            at = T + datetime.timedelta(seconds=10 * i)
-            self.published(i, f"page{i}", updated=at, verified=at)
-        earlier = datetime.datetime(2026, 10, 18, 22, 10)
-        self.published(11, "page11", updated=earlier, verified=T)                  # one of the 60 the same run verified by reading Notion: untouched
-        self.published(12, "page12", updated=T, verified=None)                     # an unverified page: not this correction's
-        later = datetime.datetime(2026, 10, 19, 1, 0)
-        self.published(13, "page13", updated=later, verified=later)                # outside the window: untouched
-        self.before = self.verified()
-
-    def recheck(self, ledger, live=True):
-        with mock.patch.object(readback, "Client", return_value=ledger), mock.patch.object(readback.ledger, "verify", return_value=readback.ledger.OK):
-            return self.run_with(readback.recheck, 10, live, {})
-
-    def test_exactly_the_ten_are_read_back_and_nothing_else_changes(self):
-        ledger = Ledger({f"page{i}": props(f"k{i}") for i in range(1, 14)})
-        counts = self.recheck(ledger)
-        self.assertEqual((counts["found"], counts["cleared"], counts["failed"]), (10, 10, 0))
-        self.assertEqual(counts["readback"]["results"], {str(i): "PASS" for i in range(1, 11)})
-        after = self.verified()
-        self.assertTrue(all(after[i] and after[i] != self.before[i] for i in range(1, 11)))        # set again, by the read-back
-        self.assertEqual({i: after[i] for i in (11, 12, 13)}, {i: self.before[i] for i in (11, 12, 13)})
-        self.assertEqual(ledger.queries, [10])                                                       # one query, then ten body reads
-        self.assertEqual(ledger.calls, 11)
-
-    def test_a_page_that_does_not_read_back_stays_unverified_and_fails_the_step(self):
-        ledger = Ledger({f"page{i}": props(f"k{i}") for i in range(2, 14)})                          # page1 is gone from the Ledger
-        counts = self.recheck(ledger)
-        self.assertEqual((counts["failed"], counts["readback"]["results"]["1"]), (1, "page_gone"))
-        self.assertIsNone(self.verified()[1])
-
-    def test_any_other_count_is_refused_before_a_write(self):
-        self.db.raw.execute("UPDATE v7_jobs SET updated_at=? WHERE id=1", (datetime.datetime(2026, 10, 18, 23, 30),))    # a later write moved one: 9 found
-        before = self.verified()
-        counts = self.recheck(Ledger({}))
-        self.assertEqual((counts["found"], counts["refused"], counts["failed"]), (9, "RECHECK_COUNT_MISMATCH", 1))
-        self.assertEqual(self.verified(), before)
-
-    def test_a_dry_run_reads_the_ten_but_clears_and_writes_nothing(self):
-        counts = self.recheck(Ledger({f"page{i}": props(f"k{i}") for i in range(1, 11)}), live=False)
-        self.assertEqual((counts["found"], counts["readback"]["verified"]), (10, 10))
-        self.assertNotIn("cleared", counts)
-        self.assertEqual(self.verified(), self.before)
-
-    def test_a_live_run_off_the_job_ledger_touches_nothing(self):
-        with mock.patch.object(readback, "Client", return_value=Ledger({})), mock.patch.object(readback.ledger, "verify", return_value="wrong_target"):
-            counts = self.run_with(readback.recheck, 10, True, {})
-        self.assertEqual(counts, {"target": "wrong_target"})
-        self.assertEqual(self.verified(), self.before)
-
-
 class PublishNeverVerifies(unittest.TestCase):
+    def test_a_page_that_does_not_read_back_fails_the_publish_stage(self):
+        from lifeos.jobs import fit_sync, publish
+
+        class Client:
+            calls, source = 0, "ledger"
+
+            def __init__(self, environ=None):
+                pass
+        with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
+                mock.patch.object(publish.store, "connect"), mock.patch.object(publish.store, "ensure_schema"), mock.patch.object(publish, "_seeded", return_value=True), \
+                mock.patch.object(publish, "_pick", return_value=([], set())), mock.patch.object(fit_sync, "run", return_value={}), \
+                mock.patch.object(readback, "run", return_value={"checked": 2, "verified": 1, "failed": 1, "why": {"page_gone": 1}}):
+            counts = publish.run(10, True, {})
+        self.assertEqual(counts["failed"], 1)                                                         # run.PARTIAL_FAILURE turns it into PUBLISH_RECORDS_FAILED, exit 1
+        from lifeos import run
+        self.assertIn("publish", run.PARTIAL_FAILURE)
+
     def test_publish_records_the_fit_it_wrote_but_never_sets_verified_at(self):
         import pathlib
         source = pathlib.Path(readback.__file__).with_name("publish.py").read_text()

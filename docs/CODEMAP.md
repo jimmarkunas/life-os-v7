@@ -62,7 +62,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
-- `readback-recheck` -> `lifeos.jobs.readback:recheck`
 - `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`

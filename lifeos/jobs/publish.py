@@ -264,5 +264,6 @@ def run(limit, live, environ=os.environ):
     if live:
         from lifeos.jobs import readback                                              # noqa: PLC0415
         counts["readback"] = readback.run(client, live)
+        counts["failed"] += counts["readback"].get("failed", 0)                       # D212: a page that does not read back fails the stage (PUBLISH_RECORDS_FAILED), never a green run
     counts["calls"] = client.calls
     return counts

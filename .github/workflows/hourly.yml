@@ -68,7 +68,7 @@ on:
         type: boolean
         default: false
       report:
-        description: "Report (read-only; never moves mail): type funnel for the per-provider funnel and canary (counts only), or a company or source name (3+ letters) for a private Notion page of every job of it and why it was or was not published (that page is written only when live). readback-recheck (D212, one time): read back the 10 pages verified from a create response; no mail, no page created; writes only their verified_at when live"
+        description: "Report (read-only; never moves mail): type funnel for the per-provider funnel and canary (counts only), or a company or source name (3+ letters) for a private Notion page of every job of it and why it was or was not published (that page is written only when live)"
         type: string
         default: ""
       fit:
@@ -207,7 +207,6 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.report == 'readback-recheck') }}   # D212: the one-time read-back recheck reads no mail
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_JSON }}
@@ -269,7 +268,7 @@ jobs:
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail
-        if: ${{ (github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true') && !(github.event_name == 'workflow_dispatch' && inputs.report == 'readback-recheck') }}
+        if: ${{ github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true' }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_JSON }}
@@ -916,7 +915,7 @@ jobs:
       - id: review
         continue-on-error: true
         name: Fit review (dispatch only; a private Notion page, counts only in the log)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && inputs.report != 'readback-recheck' && !startsWith(inputs.report, 'board:') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
         env:
           REVIEW_COMPANY: ${{ inputs.report }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -939,7 +938,7 @@ jobs:
       - id: explain
         continue-on-error: true
         name: Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && inputs.report != 'readback-recheck' && !startsWith(inputs.report, 'board:') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report != '' && inputs.report != 'funnel' && inputs.report != 'boards-preview' && !startsWith(inputs.report, 'board:') }}
         env:
           EXPLAIN_COMPANY: ${{ inputs.report }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
@@ -1020,21 +1019,6 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run boards-preview --limit 600     # the whole seed-99 benchmark sample (run.py defaults to 40)
-      - id: recheck
-        continue-on-error: true
-        timeout-minutes: 5
-        name: Read-back recheck (dispatch only; report = readback-recheck; D212 one time; writes only those pages' verified_at)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.report == 'readback-recheck' }}
-        env:                                   # the store and the Job Ledger token only
-          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_NAME }}
-          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
-          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_USER }}
-          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
-          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
-          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
-          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_USER }}
-          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN || steps.bws_finish_retry.outputs.NOTION_API_TOKEN }}
-        run: python -m lifeos.run readback-recheck $([ "$LIVE" = "true" ] && echo --live)
       - id: probe
         continue-on-error: true
         name: Probe - source shapes (dispatch only, counts only)
@@ -1145,7 +1129,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} recheck=${{ steps.recheck.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"

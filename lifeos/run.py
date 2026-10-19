@@ -131,7 +131,6 @@ STAGES = {
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
     "audit": lazy("lifeos.jobs.audit", floor=2000),
     "publish": lazy("lifeos.jobs.publish"),
-    "readback-recheck": lazy("lifeos.jobs.readback", "recheck"),          # D212 one-time: the 10 pages D211 verified from a create response
     "expire-holds": lazy("lifeos.jobs.hold"),
     "funnel": lazy("lifeos.jobs.funnel"),
     "fit-review": lazy("lifeos.jobs.review"),
@@ -144,7 +143,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED", "readback-recheck": "READBACK_RECHECK_FAILED"}
+PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED"}
 
 
 def main(argv=None):
