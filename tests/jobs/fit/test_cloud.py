@@ -320,6 +320,26 @@ class CloudFitCanary(Base):
         self.assertEqual(self.stage_run(self.CANARY, Endpoint())["cloud_promoted"], 1)
         self.assertEqual(self.visible(1)[0::4], (90, "CANARY"))
 
+    def test_a_promotion_whose_gate_write_fails_fails_the_tick_loudly_and_the_next_tick_moves_the_job_without_asking_again(self):
+        self.job(1)
+        low = Endpoint(lambda data: reply(data, judgment_raw=json.dumps({"score": 41, "rationale": "Different discipline.", "confidence": "high"})))
+        real = stage._gate
+
+        def broken(cursor, job_id, decision, gate, counts):
+            if decision.status == "EXCLUDE":                                                    # only the canary's gate write fails (the static pass admits this job)
+                raise RuntimeError("store write failed")
+            return real(cursor, job_id, decision, gate, counts)
+        with mock.patch.object(stage, "_gate", side_effect=broken), self.assertRaises(RuntimeError):
+            self.stage_run(self.CANARY, low)                                                    # never reported as success
+        self.assertEqual((self.visible(1)[0], self.visible(1)[3], self.visible(1)[4]), (41, "EXCLUDE", "CANARY"))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")    # promoted but not yet gated
+        endpoint = Endpoint()
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["canary_regated"], endpoint.sent), (1, []))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
+        self.assertIsNone(self.published_fit(1))
+        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["canary_regated"], 0)            # idempotent
+
     def test_a_rejected_candidate_is_never_asked_or_promoted(self):
         self.job(1, url="https://boards.greenhouse.io/acme/jobs/search?q=program+manager")      # the audit would demote it
         endpoint = Endpoint()

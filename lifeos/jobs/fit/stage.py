@@ -111,6 +111,18 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
     return True
 
 
+def regate_canary(cursor):
+    """D218: every tick re-applies the lane gate to each CANARY row from its stored admission (the same two idempotent moves as _gate), because the static pass never
+    re-picks a canary row. A promotion whose gate write failed (the tick then fails loudly) is therefore moved on the next tick; an already-gated job is untouched. -> jobs moved."""
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='EXCLUDED_FIT', j.unresolved_reason='lane_exclude', j.updated_at=%s"
+                   " WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='READY'", (_now(),))
+    moved = int(cursor.rowcount or 0)
+    cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
+                   " WHERE f.cloud_status='CANARY' AND f.admission IN ('ADMIT', 'REVIEW') AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude'"
+                   " AND j.notion_page_id IS NULL", (_now(),))
+    return moved + int(cursor.rowcount or 0)
+
+
 def requeue_floor(cursor):
     """D84, one time: jobs excluded only for Fit under the old floor (reason text 'Fit N below 72', score 60 and up) go back to READY so the new
     floor and the Review band judge them. The new decision text never says 'below 72', so a job is requeued at most once."""
@@ -187,6 +199,7 @@ def run(limit, live, environ=os.environ):
             counts["requeued"] = requeue_floor(cursor) if live else 0
             counts.update(promote_kept(cursor) if live and gate else {"promoted": 0})
             counts["rejudged"] = rejudge_excluded(cursor) if live and gate else 0
+            counts["canary_regated"] = regate_canary(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
             query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
