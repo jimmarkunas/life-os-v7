@@ -528,3 +528,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D216: A board that has not changed is confirmed cheaply: conditional GET, a whole-board fingerprint skip and a quiet backoff (2026-10-19, Jim; LIFE-76 PR 2)
 - D217: A board's first read belongs to a hibernatable backfill; the hourly board pass only re-reads (2026-10-19, Jim; LIFE-76 PR 3)
 - D218: An interview request progresses only on verified round identity; a Ledger link needs a Stable Job Key or requisition (2026-10-19, Jim; LIFE-42)
+- D220: Recruiter rows carry an action state: Needs Action on a new contact or reply, a follow-up two business days after Waiting (2026-10-19, Jim; LIFE-21 / LIFE-78 M2)
