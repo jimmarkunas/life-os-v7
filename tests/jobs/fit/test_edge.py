@@ -301,7 +301,12 @@ class Dormant(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])
         self.assertIn("inputs.confirm == 'SYNTHETIC'", text)
         importers = [str(p.relative_to(self.ROOT)) for p in (self.ROOT / "lifeos").rglob("*.py") if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())]
-        self.assertEqual(importers, ["lifeos/run.py"])                                                    # the stage table only: the hourly pipeline and the Fit stage never import the transport
+        self.assertEqual(sorted(importers), ["lifeos/jobs/fit/cloud.py", "lifeos/run.py"])               # the stage table, and the D214 shadow (off unless V7_CLOUD_FIT is set)
+        workflows = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()]
+        self.assertEqual(workflows, ["hourly.yml"])                                                        # D214: only the tick reads the switch, from the repository variable
+        hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
+        self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ vars.V7_CLOUD_FIT || 'off' }}"])     # off unless Jim sets the variable (G6); never a dispatch input or a literal
+        self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == 'shadow'", hourly)), 1)                    # the tailnet join runs only in shadow
 
 
 if __name__ == "__main__":

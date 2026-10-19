@@ -212,3 +212,4 @@ This index is checked by a test: add a line here with every new decision.
 - D211 — Publish verifies a page it creates from Notion's create response and records the Fit it wrote (2026-10-18, Jim; LIFE-76)
 - D212 — Every Ledger page is verified by reading Notion: one batched key query plus the per-page body marker; D211's create-response check is withdrawn (2026-10-18, Jim; LIFE-76)
 - D213 — Fit extraction reads roles, not employer copy; an open application is not a vacancy (2026-10-18, Jim; LIFE-41)
+- D214 — A switchable cloud-Fit shadow, off by default, that never changes what Jim sees; the static Fit write keeps the cloud columns (2026-10-18, Jim; LIFE-41)

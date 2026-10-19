@@ -8,9 +8,10 @@ only ADMIT / REVIEW publish; without it everything is recorded in shadow mode an
 from datetime import datetime, timezone
 import json
 import os
+import time
 
 from lifeos.jobs import lanes, sponsors, store
-from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, profile as fit_profile, semantic as fit_semantic
+from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, cloud as fit_cloud, profile as fit_profile, semantic as fit_semantic
 from lifeos.jobs.fit.score import evaluate
 
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
@@ -21,6 +22,13 @@ PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.
 OPEN = ("'READY'", "'RESOLVED'")
 AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also re-scores published jobs whose score is stale (model, policy, profile or description changed); the audit then clears the ones now excluded
 ALL = AUTO + ("'EXCLUDED_FIT'",)                         # FIT_ALL=true (by hand): also re-score excluded jobs (calibration)
+
+
+# D214: an upsert of the static columns only. REPLACE INTO deleted the row first, so it wiped every column it did not name (the cloud shadow's private result).
+_STATIC = ("job_id", "score", "decision", "line", "why", "exclusion", "confidence", "buckets", "trace", "model_version", "profile_hash", "jd_fingerprint", "scored_at",
+           "shadow_score", "shadow_changes", "admission", "admission_reason", "work_mode", "lane", "eligible")
+WRITE = (f"INSERT INTO v7_job_fit ({', '.join(_STATIC)}) VALUES ({','.join(['%s'] * len(_STATIC))})"
+         " ON DUPLICATE KEY UPDATE " + ", ".join(f"{c}=VALUES({c})" for c in _STATIC[1:]))
 
 
 PROFILE_TAG_WIDTH = 16                                   # v7_job_fit.profile_hash is CHAR(16)
@@ -82,10 +90,11 @@ def _title_description(cursor, job_id, title):
 
 
 def rejudge_excluded(cursor):
-    """A READY job whose stored decision is EXCLUDE is judged again: its Fit row is dropped so the pass below re-scores it, and the gate then moves it to EXCLUDED_FIT (or admits it
+    """A READY job whose stored decision is EXCLUDE is judged again: its Fit row is made stale so the pass below re-scores it, and the gate then moves it to EXCLUDED_FIT (or admits it
     if the facts changed). The gate acts only on a job scored in that pass, so a job that came back to READY with an old EXCLUDE (an age or place rule since changed) was never re-picked
-    and sat READY for days (40 on Oct 12). Same mechanism as the D111 title and place correction. -> rows dropped."""
-    cursor.execute("DELETE f FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'")
+    and sat READY for days (40 on Oct 12). Same mechanism as the D111 title and place correction. D214: the row is marked stale (model_version '0', which PICK
+    re-scores) instead of deleted, so its private cloud columns survive. -> rows marked."""
+    cursor.execute("UPDATE v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id SET f.model_version='0' WHERE j.status='READY' AND j.notion_page_id IS NULL AND f.admission='EXCLUDE'")
     return int(cursor.rowcount or 0)
 
 
@@ -118,6 +127,7 @@ def promote_kept(cursor):
 
 
 def run(limit, live, environ=os.environ):
+    started = time.monotonic()
     counts = {"picked": 0, "go": 0, "no_go": 0, "excluded": 0, "unscorable": 0, "low_confidence": 0, "gated": 0, "profile": "ok",
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
               "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0, "promoted": 0}
@@ -160,11 +170,7 @@ def run(limit, live, environ=os.environ):
     if live and scored:
         with store.connect() as connection, connection.cursor() as cursor:
             for job_id, fingerprint, r, decision, lane_name, work_mode, eligible in scored:
-                cursor.execute(
-                    "REPLACE INTO v7_job_fit (job_id, score, decision, line, why, exclusion, confidence, buckets, trace,"
-                    " model_version, profile_hash, jd_fingerprint, scored_at, shadow_score, shadow_changes,"
-                    " admission, admission_reason, work_mode, lane, eligible)"
-                    " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                cursor.execute(WRITE,
                     (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
                      json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
                      decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
@@ -176,4 +182,6 @@ def run(limit, live, environ=os.environ):
                     cursor.execute("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason=%s, updated_at=%s"
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
                     counts["gated"] += cursor.rowcount
+    counts.update(fit_cloud.run(environ, live, started, profile))                    # D214: after the static write; off by default, never changes it
+    counts["failed"] = counts["cloud_degraded"]                     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
     return counts
