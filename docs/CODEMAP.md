@@ -520,3 +520,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D212: Every Ledger page is verified by reading Notion: one batched key query plus the per-page body marker; D211's create-response check is withdrawn (2026-10-18, Jim; LIFE-76)
 - D213: Fit extraction reads roles, not employer copy; an open application is not a vacancy (2026-10-18, Jim; LIFE-41)
 - D214: A switchable cloud-Fit shadow, off by default, that never changes what Jim sees; the static Fit write keeps the cloud columns (2026-10-18, Jim; LIFE-41)
+- D215: Publish looks up Stable Job Keys in one batched Ledger query per 25 keys (2026-10-19, Jim; LIFE-76 saving 3)
