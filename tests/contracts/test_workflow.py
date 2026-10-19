@@ -58,7 +58,7 @@ class WorkflowTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 output = pathlib.Path(directory, "out")
                 done = subprocess.run(["bash", "-e", "-c", script], env={**os.environ, "GITHUB_OUTPUT": str(output)}, capture_output=True, text=True, check=False)
-                return done.returncode, done.stdout.strip(), output.read_text().strip()
+                return done.returncode, done.stdout.strip(), next(line for line in output.read_text().splitlines() if line.startswith("failed="))   # LIFE-41: codes= is its own line
 
         self.assertEqual(lane_result("publish"), (1, "FAILED STAGES: publish", "failed=publish"))
         self.assertEqual(lane_result("none"), (0, "", "failed="))
