@@ -105,6 +105,25 @@ class Skip(unittest.TestCase):
         counts, read_items, (runs, *_ ) = self.tick(provider, 3)
         self.assertEqual((counts["added"], read_items, runs), (1, True, 0))             # a different board: full diff, streak reset
 
+    def test_the_employer_board_pass_keeps_the_validators_through_its_screen(self):
+        """TL gate on d2754d7: boards.run always screens; the screened listing must carry the 200's validators to v7_sources, so the next allowed read
+        sends them and a legitimate 304 is counted unchanged, while the screen and admission still work."""
+        from lifeos.sources.web import boards
+        source = {**BOARD, "tier": "employer", "status": "ready", "enabled": True, "refresh_hours": 24, "hot_hours": 6, "quiet": True}
+        provider = Provider(body={"jobs": GH["jobs"] + [{**GH["jobs"][0], "id": 2, "title": "Staff Software Engineer",
+                                                          "absolute_url": "https://boards.greenhouse.io/acme/jobs/2"}]})
+        got = []
+        for day in range(3):
+            with mock.patch.object(run.store, "connect", return_value=self.db), mock.patch.object(run.store, "ensure_schema"):
+                counts = boards.run(40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), run.SqlRepo(), [source])
+            row = self.db.raw.execute("SELECT unchanged_runs, etag, last_modified FROM v7_sources WHERE source_id='gh-acme'").fetchone()
+            got.append((counts["added"], counts["admit"], counts["not_modified"], provider.seen[-1].get("If-None-Match"), *row))
+        self.assertEqual(got, [
+            (1, 1, 0, None, 0, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),     # first 200: the TPM admitted, the engineer screened out, validators stored
+            (0, 0, 0, None, 1, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT"),     # a quiet full read earns the skip
+            (0, 0, 1, '"v1"', 2, '"v1"', "Sun, 19 Oct 2026 05:00:00 GMT")])  # the stored validators go out and the 304 is unchanged
+        self.assertEqual(counts["screen"], {})                                                   # the 304 read listed nothing to screen
+
     def test_a_quiet_board_backs_off_up_to_three_times_and_a_change_returns_to_normal(self):
         periods = []
         for quiet in (0, 1, 2, 3, 4, 9):

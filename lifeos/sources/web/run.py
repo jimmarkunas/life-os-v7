@@ -260,7 +260,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 counts["screen"][why] = counts["screen"].get(why, 0) + 1
                 if why.startswith("kept_"):
                     kept.append(job)
-            listing = lister.Listing(lister.COMPLETE, kept)
+            listing = lister.Listing(lister.COMPLETE, kept, validators=listing.validators)     # D216: the screen keeps the answer's ETag / Last-Modified
         state = states.get(source["id"]) or {}
         failures = state.get("failures", 0)
         skip = None
