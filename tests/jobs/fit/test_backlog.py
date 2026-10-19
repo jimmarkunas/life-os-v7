@@ -23,7 +23,8 @@ class Batch(Base):
                 mock.patch.object(stage.sponsors, "load", return_value=None), mock.patch.object(edge, "exchange", endpoint), \
                 mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), \
                 mock.patch.object(backlog.guard, "protection", side_effect=ledger or (lambda client, page_id, company, title, opportunities=(): None)):
-            return backlog.run(limit, live, environ, client=object())
+            self.client = mock.Mock()                                                           # the Notion client: records every call, answers nothing
+            return backlog.run(limit, live, environ, client=self.client)
 
     def asked(self, endpoint):
         return [json.loads(f.split(b"\n", 1)[1])["request"]["title"] for f in endpoint.sent]
@@ -187,15 +188,43 @@ class PublishedJobs(Batch):
         self.assertEqual((score, admission, status), (90, "ADMIT", "CANARY"))
         self.assertTrue(line.startswith("Cloud Fit 90% (gpt-6-luna): "))
         self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), ("PUBLISHED", "page-1"))
+        self.assertEqual(counts["ledger_pages_pending"], 0)                                     # the batch synced the page itself (see the backlog-only test)
         with mock.patch.object(fit_sync.store, "connect", return_value=self.db):
-            client = mock.Mock()
-            synced = fit_sync.run(client, live=True, gated=True)
-        self.assertEqual(synced["synced"], 1)
-        method, path, body = client.call.call_args.args
-        self.assertEqual((method, path), ("PATCH", "/pages/page-1"))
-        self.assertEqual(body["properties"]["LIFE OS Fit"], {"number": 90})
-        self.assertTrue(body["properties"]["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("Cloud Fit 90%"))
-        self.assertFalse({"Applied", "Applied On", "Saturn Decision", "Job"} & set(body["properties"]))   # human state and the title are never written
+            again = fit_sync.run(mock.Mock(), live=True, gated=True)
+        self.assertEqual(again["due"], 0)                                                        # nothing left for the next tick's sync: written exactly once
+
+    def test_a_backlog_only_dispatch_updates_the_existing_ledger_page_itself_with_machine_fields_only(self):
+        """Review of #350: the publish step (which runs fit_sync) does not run on a cloud_backlog-only dispatch; the batch must reach the page by itself."""
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        self.titled(2, "Program Manager B", score=70)                                           # an unpublished job promoted in the same batch: no page to write
+        self.db.raw.execute("UPDATE v7_jobs SET fit_synced_at=? WHERE id=1", (T,))
+        counts = self.batch(5, Endpoint(measured))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_promoted"], counts["ledger_pages_promoted"], counts["ledger_pages_pending"], counts["failed"]), ("OK", 2, 1, 0, 0))
+        patches = [c.args for c in self.client.call.call_args_list if c.args[0] == "PATCH"]
+        self.assertEqual([(m, p) for m, p, _ in patches], [("PATCH", "/pages/page-1")])                # exactly the one existing page; nothing created, nothing trashed
+        props = patches[0][2]["properties"]
+        self.assertEqual(props["LIFE OS Fit"], {"number": 90})
+        self.assertTrue(props["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("Cloud Fit 90% (gpt-6-luna): "))
+        self.assertEqual(props["Admission Status"], {"select": {"name": "Admitted"}})
+        self.assertFalse({"Applied", "Applied On", "Saturn Decision", "Job"} & set(props))      # human state and the title are never written
+        self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] in ("POST", "DELETE")] or any("in_trash" in (c.args[2] if len(c.args) > 2 else {}) for c in self.client.call.call_args_list))
+        synced, scored = self.db.raw.execute("SELECT j.fit_synced_at, f.scored_at FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.id = 1").fetchone()
+        self.assertGreaterEqual(str(synced), str(scored))
+
+    def test_a_page_the_sync_could_not_write_is_a_named_failure_and_the_score_is_kept(self):
+        from lifeos.platform.notion_client import NotionError
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        with mock.patch.object(backlog.fit_sync, "run", side_effect=lambda client, live, gated=False, limit=150: {"due": 1, "synced": 0, "failed": 1}):
+            counts = self.batch(5, Endpoint(measured))
+        self.assertEqual((counts["cloud_fit"], counts["ledger_pages_pending"], counts["failed"]), ("DEGRADED(LEDGER_SYNC_INCOMPLETE)", 1, 1))
+        self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # kept: the next sync (any tick) retries the page
+        self.assertTrue(NotionError)
+
+    def test_a_held_published_job_is_never_synced(self):
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        counts = self.batch(5, Endpoint(lambda d: measured(d, score=41)))
+        self.assertEqual((counts["cloud_held"], counts["ledger_pages_promoted"]), (1, 0))
+        self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] == "PATCH"])
 
     def test_a_published_job_the_cloud_would_exclude_is_held_privately_and_its_page_is_untouched(self):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
