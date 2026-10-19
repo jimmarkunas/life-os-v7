@@ -111,7 +111,7 @@ class OutlookNewsletterTests(unittest.TestCase):
         self.assertEqual(outlook.rule_of("no-reply@jobs.reed.co.uk"), ("reed", True))
         course_sender = "updates" + chr(64) + "courses.reed.co.uk"
         self.assertEqual(outlook.rule_of(course_sender), ("reed-course", False))
-        for human in ("abc-def-ghi@user.dice.com", "kosi@recruiter.dice.com", "someone@example.com"):
+        for human in ("synthetic-private-fixture@user.dice.com", "synthetic-recruiter-fixture@recruiter.dice.com", "someone@example.com"):
             self.assertEqual(outlook.rule_of(human), (None, False))
 
     def test_job_alert_mail_is_filed_in_the_folder_saved_and_remembered_other_mail_is_left_alone(self):
@@ -126,8 +126,8 @@ class OutlookNewsletterTests(unittest.TestCase):
 
     def test_dice_and_reed_job_alerts_are_ingested_but_courses_and_private_mail_are_not(self):
         messages = [msg("d1", "dice@connect.dice.com"), msg("r1", "no-reply@jobs.reed.co.uk"),
-                    msg("c1", "updates" + chr(64) + "courses.reed.co.uk"), msg("p1", "abc@user.dice.com"),
-                    msg("p2", "human@recruiter.dice.com")]
+                    msg("c1", "updates" + chr(64) + "courses.reed.co.uk"), msg("p1", "synthetic-private-fixture@user.dice.com"),
+                    msg("p2", "synthetic-recruiter-fixture@recruiter.dice.com")]
         html = {
             "d1": ('<p>Job alert</p><table><tr><td style="font-size:20px;font-weight:bold"><p>'
                    '<a href="https://elinks.dice.com/a/sc/EX123">Platform Analyst</a></p></td></tr>'
