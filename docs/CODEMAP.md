@@ -136,6 +136,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/interview/notion.py`: Notion evidence and reusable protected read-back primitives.
 - `lifeos/interview/post_interview.py`: Grounded, deterministic contracts for post-interview review output.
 - `lifeos/interview/prep.py`: Deterministic, append-once Interview Derived content.
+- `lifeos/interview/progression.py`: LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.
 - `lifeos/interview/stage.py`: Counts-only Interview probe and bounded B2 evidence execution.
 ### lifeos/jira/
 - `lifeos/jira/boards.py`: Which Jira boards V7 manages: JIRA_BOARDS="KEY:board_id[:flag...],..." (a secret; keys and ids stay out of the public repo). Flags: all = triage every non-Epic item; read
@@ -526,3 +527,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D215: Publish looks up Stable Job Keys in one batched Ledger query per 25 keys (2026-10-19, Jim; LIFE-76 saving 3)
 - D216: A board that has not changed is confirmed cheaply: conditional GET, a whole-board fingerprint skip and a quiet backoff (2026-10-19, Jim; LIFE-76 PR 2)
 - D217: A board's first read belongs to a hibernatable backfill; the hourly board pass only re-reads (2026-10-19, Jim; LIFE-76 PR 3)
+- D218: An interview request progresses only on verified round identity; a Ledger link needs a Stable Job Key or requisition (2026-10-19, Jim; LIFE-42)

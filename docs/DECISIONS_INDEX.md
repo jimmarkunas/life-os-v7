@@ -216,3 +216,4 @@ This index is checked by a test: add a line here with every new decision.
 - D215 — Publish looks up Stable Job Keys in one batched Ledger query per 25 keys (2026-10-19, Jim; LIFE-76 saving 3)
 - D216 — A board that has not changed is confirmed cheaply: conditional GET, a whole-board fingerprint skip and a quiet backoff (2026-10-19, Jim; LIFE-76 PR 2)
 - D217 — A board's first read belongs to a hibernatable backfill; the hourly board pass only re-reads (2026-10-19, Jim; LIFE-76 PR 3)
+- D218 — An interview request progresses only on verified round identity; a Ledger link needs a Stable Job Key or requisition (2026-10-19, Jim; LIFE-42)
