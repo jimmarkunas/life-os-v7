@@ -6,14 +6,15 @@ CELL = lambda t: [{"type": "text", "plain_text": t, "text": {"content": t}}]
 
 
 def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:00+00:00", done=False, what="", client="", review=False, active=True, pid=None,
-         url=None, created_by="bot-1", edited_by="bot-1"):
+         url=None, created_by="bot-1", edited_by="bot-1", action=None, follow_up=None):
     return {"id": pid or f"page-{person}-{company}-{role}".replace(" ", "-"), "created_by": {"object": "user", "id": created_by},
             "last_edited_by": {"object": "user", "id": edited_by}, "properties": {
         "Recruiter / Person": {"type": "title", "title": CELL(person)}, "Recruiter Company": {"type": "rich_text", "rich_text": CELL(company)},
         "Client": {"type": "rich_text", "rich_text": CELL(client)}, "Role": {"type": "rich_text", "rich_text": CELL(role)}, "Medium": {"type": "rich_text", "rich_text": CELL("Email")},
         "What they want": {"type": "rich_text", "rich_text": CELL(what)}, "Last Contact": {"type": "date", "date": {"start": last}}, "Week Ending": {"type": "date", "date": {"start": week}},
         "Done": {"type": "checkbox", "checkbox": done}, "Active": {"type": "checkbox", "checkbox": active}, "Needs review": {"type": "checkbox", "checkbox": review},
-        "Source URL": {"type": "url", "url": url}}}
+        "Source URL": {"type": "url", "url": url}, "Action Status": {"type": "select", "select": {"name": action} if action else None},
+        "Follow-up Date": {"type": "date", "date": {"start": follow_up} if follow_up else None}}}
 
 
 class FakeRecruiters:
@@ -31,6 +32,9 @@ class FakeRecruiters:
         self.queries += 1
         if self.fail_query:
             raise NotionError("NOTION_HTTP_500")
+        if "select" in body["filter"]:
+            wanted = body["filter"]["select"]["equals"]
+            return {"results": [p for p in self.pages if ((p["properties"].get("Action Status") or {}).get("select") or {}).get("name") == wanted], "has_more": False}
         week = body["filter"]["date"]["equals"]
         return {"results": [p for p in self.pages if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
 
