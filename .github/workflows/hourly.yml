@@ -1172,7 +1172,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
