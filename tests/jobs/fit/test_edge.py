@@ -310,7 +310,7 @@ class Dormant(unittest.TestCase):
         self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == 'canary'", hourly)), 1)                    # or in the D218 canary; never for on or off
         # LIFE-41 (TL 10517/10524): the brief reference is masked. A repository variable is printed unmasked in the step's env header of a public repo's
         # log, so it may only ever arrive as a secret, and only to the tick step.
-        self.assertEqual(re.findall(r"V7_CLOUD_FIT_PROFILE_REF: (\S.*?\}\})", hourly), ["${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}"])
+        self.assertEqual(re.findall(r"V7_CLOUD_FIT_PROFILE_REF: (\S.*?\}\})", hourly), ["${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}"] * 2)   # the tick and the D219 manual backlog step, both the masked secret
         for path in (self.ROOT / ".github/workflows").glob("*.y*ml"):
             self.assertNotIn("vars.V7_CLOUD_FIT_PROFILE_REF", path.read_text(), path.name)
 
