@@ -110,6 +110,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             counts["cloud_skipped"] += 1
             continue
         sent = judge.request(title, text, {"ref": ref}, location)
+        if sent is None and judge.title_place(judge.request_title(title, location)):
+            results.append((job_id, "SKIPPED", "TITLE_LOCATION", None, None, fingerprint))      # fail closed: a place left in the title is never sent
+            counts["cloud_skipped"] += 1
+            continue
         if sent is None:
             results.append((job_id, "SKIPPED", "NO_SUBSTANTIVE_TEXT", None, None, fingerprint))
             counts["cloud_skipped"] += 1

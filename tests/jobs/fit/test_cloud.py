@@ -267,6 +267,23 @@ class ContactDetailsNeverLeave(Base):
         self.assertEqual((counts["cloud_calls"], counts["cloud_skipped"], endpoint.sent), (0, 1, []))
 
 
+class TitlePlaceNeverLeaves(Base):
+    def test_an_unseparated_place_in_the_title_is_skipped_with_no_network_call(self):
+        self.job(1)
+        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=1", ("Senior Technical Program Manager London",))
+        endpoint = Endpoint()
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_calls"], counts["cloud_skipped"], endpoint.sent), (0, 1, []))
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("SKIPPED", "TITLE_LOCATION"))
+
+    def test_a_clean_role_title_is_still_sent(self):
+        self.job(1)
+        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=1", ("Senior Technical Program Manager",))
+        endpoint = Endpoint()
+        self.assertEqual(self.run_cloud(SHADOW, endpoint)["cloud_ok"], 1)
+        self.assertEqual(json.loads(endpoint.sent[0].split(b"\n", 1)[1])["request"]["title"], "Senior Technical Program Manager")
+
+
 class DegradedIsAFailedFitStage(Base):
     """TL review of #339: an enabled shadow that fails makes the Fit stage fail through the existing run.PARTIAL_FAILURE exit; off never does. Static Fit is written either way."""
 
