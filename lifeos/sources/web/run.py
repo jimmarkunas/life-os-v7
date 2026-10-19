@@ -36,6 +36,8 @@ class Outcome:
     pending: int = 0
     due_at: datetime | None = None
     counts: dict = field(default_factory=dict)
+    validators: dict = field(default_factory=dict)   # D216: the answer's ETag / Last-Modified to store
+    unchanged_runs: int = 0                          # D216: consecutive quiet reads after this one
 
 
 def pick_due(sources, states, now, limit):
@@ -56,8 +58,15 @@ def unforced(states, sources, force):
     return {k: v for k, v in states.items() if k not in hit}
 
 
-def next_due(source_id, now, complete, failures, pending, hours=None):
-    hours = hours or limits.WEB_REFRESH_HOURS                           # D202: a seed board carries its own refresh
+def skip_allowed(state):
+    """D216: a board may be skipped (304 or an identical fingerprint) only after a quiet full read (nothing added, changed, removed, admitted or pending), and
+    never on every WEB_FULL_EVERY-th read, so a backlog, a changed screen or a policy change is always seen within a few reads."""
+    runs = (state or {}).get("unchanged_runs") or 0
+    return runs >= 1 and runs % limits.WEB_FULL_EVERY != 0
+
+
+def next_due(source_id, now, complete, failures, pending, hours=None, quiet_runs=0):
+    hours = (hours or limits.WEB_REFRESH_HOURS) * min(1 + max(quiet_runs - 1, 0), limits.WEB_BACKOFF_MAX)   # D202: a seed board carries its own refresh; D216: a quiet board backs off
     if pending:
         return now                                                      # a backlog drains on the next run
     if complete:
@@ -108,8 +117,9 @@ class SqlRepo:
 
     def states(self, ids):
         with store.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT source_id, due_at, failures FROM v7_sources")
-            return {r[0]: {"due_at": r[1], "failures": r[2]} for r in cursor.fetchall() if r[0] in ids}
+            cursor.execute("SELECT source_id, due_at, failures, etag, last_modified, frontier_hash, unchanged_runs FROM v7_sources")
+            return {r[0]: {"due_at": r[1], "failures": r[2], "etag": r[3], "last_modified": r[4], "frontier": r[5], "unchanged_runs": r[6] or 0}
+                    for r in cursor.fetchall() if r[0] in ids}
 
     def items(self, source_id):
         with store.connect() as connection, connection.cursor() as cursor:
@@ -142,6 +152,12 @@ class SqlRepo:
                     if o.removed:
                         cursor.executemany("UPDATE v7_source_items SET state='REMOVED', last_seen=%s WHERE source_id=%s AND provider_job_id=%s",
                                            [(now, sid, i) for i in o.removed])
+            if o.status == "UNCHANGED":                                     # D216: confirmed unchanged (304 or the same fingerprint): no item read, no item write, no run row
+                with connection.cursor() as cursor:
+                    cursor.execute("UPDATE v7_sources SET due_at=%s, last_status='COMPLETE', last_reason=%s, last_complete_at=%s, failures=0, unchanged_runs=%s,"
+                                   " etag=COALESCE(%s, etag), last_modified=COALESCE(%s, last_modified) WHERE source_id=%s",
+                                   (o.due_at, o.reason, now, o.unchanged_runs, o.validators.get("etag"), o.validators.get("last_modified"), sid))
+                return
             with connection.cursor() as cursor:
                 complete = o.status == "COMPLETE"
                 c = o.counts
@@ -153,6 +169,8 @@ class SqlRepo:
                     " frontier_hash=COALESCE(VALUES(frontier_hash), frontier_hash), failures=VALUES(failures)",
                     (sid, o.source["kind"], o.due_at, o.status, o.reason, now if complete else None, o.frontier,
                      0 if complete else failures + 1))
+                cursor.execute("UPDATE v7_sources SET unchanged_runs=%s, etag=%s, last_modified=%s WHERE source_id=%s",       # D216: a full read resets or extends the quiet streak
+                               (o.unchanged_runs if complete else 0, o.validators.get("etag"), o.validators.get("last_modified"), sid))
                 if quiet:
                     return                                           # D202: a seed board read with nothing new writes no run row (v7_sources keeps its status)
                 cursor.execute(
@@ -212,14 +230,17 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     states = unforced(states, sources, os.environ.get("WEB_FORCE"))
     due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN))
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
-              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": []}
+              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "not_modified": 0, "same_frontier": 0}
+    asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
+             if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers
-        listings = list(pool.map(lister_fn, due))
+        listings = list(pool.map(lister_fn, asked))
     budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
     if screen:
         counts["screen"], counts["still_listed"] = {}, 0
     for source, listing in zip(due, listings):
         listed = None
+        raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
         if screen and listing.status == lister.COMPLETE:
             listed, kept = {j["id"] for j in listing.jobs}, []
             for job in listing.jobs:
@@ -228,12 +249,32 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
                 if why.startswith("kept_"):
                     kept.append(job)
             listing = lister.Listing(lister.COMPLETE, kept)
+        state = states.get(source["id"]) or {}
+        failures = state.get("failures", 0)
+        skip = None
+        if listing.status == lister.UNCHANGED:
+            skip = "not_modified"
+        elif listing.status == lister.COMPLETE and skip_allowed(state) and state.get("frontier") and raw == state["frontier"]:
+            skip = "same_frontier"                                       # D216: an identical listing skips the per-posting diff and its writes
+        if skip:
+            outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
+                              unchanged_runs=state.get("unchanged_runs", 0) + 1)
+            outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
+            counts["complete"] += 1
+            counts[skip] += 1
+            if live:
+                repo.commit(outcome, failures, lane)
+            continue
         previous = repo.items(source["id"])
         outcome = plan(source, listing, previous, now, budget, lane, listed)
-        failures = states.get(source["id"], {}).get("failures", 0)
+        if raw:
+            outcome.frontier = raw                                       # D216: stored as the whole-board fingerprint, so a screened-out job leaving the board is never skipped
         hot = previous or outcome.items                                  # D202: a board that lists a target job is read more often
+        quiet = outcome.status == "COMPLETE" and not any(outcome.counts.get(k) for k in ("added", "changed", "removed", "admit", "pending"))
+        outcome.unchanged_runs = state.get("unchanged_runs", 0) + 1 if quiet else 0
+        outcome.validators = listing.validators
         outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
-                                  (source.get("hot_hours") if hot else None) or source.get("refresh_hours"))
+                                  (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
         if outcome.status == "FAILED":
             counts["failed"] += 1
             counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
