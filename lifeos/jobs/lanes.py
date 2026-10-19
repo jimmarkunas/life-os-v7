@@ -86,6 +86,7 @@ class Facts:
     kept: bool = False                   # D115: on Jim's keep list (or found by a title watch: Jim chose the title)
     title_only: bool = False             # D123: found by a title search; the page text could not be read, so the Fit rests on the title alone
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
+    open_application: bool = False       # D213: an unsolicited / general application ("Initiativbewerbung", "Talent Pool"): not a vacancy
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,8 @@ def qualify(policy, facts, today):
 def _qualify(policy, facts, today):
     if not policy.enabled:
         return Decision(DISABLED, "lane disabled")
+    if facts.open_application:
+        return Decision(EXCLUDE, "not a vacancy: open application")
     if facts.market and facts.market != policy.market:
         return Decision(EXCLUDE, f"market {facts.market} is not {policy.market}")
     if not facts.market and (policy.market_required or (facts.first_party and policy.market == "US")):     # M5: an employer board lists the world
@@ -334,6 +337,15 @@ _US_ELIGIBLE = re.compile(r"(?i:\b(?:based|located|living|resid\w*|work\w*)\s+(?
                           r"the\s+(?:continental\s+)?US\b|\bU\.?S\.?[- ]based\b|\bauthori[sz]ed to work in the US\b")
 
 
+# D213: titles that invite an application with no vacancy behind it. Judged on the title only: a posting that merely mentions a talent pool is still a job.
+_OPEN_APPLICATION = re.compile(r"\b(?:initiativ|spontan|blind)bewerbung\b|\b(?:open|unsolicited|speculative|general|spontaneous) application\b|"
+                               r"\btalent (?:pool|community|network)\b|\bcandidature spontan[ée]e\b|\bfuture opportunities\b", re.I)
+
+
+def open_application(title):
+    return bool(_OPEN_APPLICATION.search(title or ""))
+
+
 def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
@@ -344,7 +356,8 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     if first_party and not market and (US_PLACES.search(location or "") or _US_ELIGIBLE.search(text or "")):
         market = "US"
     return Facts(fit=fit, market=market, work_mode=mode, work_evidence=evidence, pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only)
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only,
+                 open_application=open_application(title))
 
 
 def decide_all(row_lane, facts, today, exclusion=None):
@@ -379,7 +392,7 @@ PUBLIC_REASONS = (                                       # (lane reason, the fix
     (rf"Fit {_N} below {FIT_FLOOR} \(on Jim's keep list\)", "fit_below_admit_floor_keep_list"),
     (r"not remote: hybrid required(?: \(.*\))?", "not_remote_hybrid_required"),
     (r"not remote: onsite required(?: \(.*\))?", "not_remote_onsite_required"),
-    (r"remote assumed", "remote_assumed"), (r"Fit unscorable", "fit_unscorable"), (r"vacancy closed", "vacancy_closed"),
+    (r"remote assumed", "remote_assumed"), (r"Fit unscorable", "fit_unscorable"), (r"vacancy closed", "vacancy_closed"), (r"not a vacancy: open application", "not_a_vacancy"),
     (r"explicit pay below .+", "pay_below_floor"), (r"posting date unresolved", "posting_date_unresolved"),
     (r"posting date in the future", "posting_date_future"), (rf"older than {_N} days", "older_than_max_age"),
     (r"market unresolved", "market_unresolved"), (r"market .+ is not .+", "market_mismatch"), (r"market not shown to be .+", "market_not_shown"),

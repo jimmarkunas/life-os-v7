@@ -33,11 +33,20 @@ class Unit:
         return self.section == "preferred" or bool(_OPTIONAL.search(self.text))
 
 
-def _heading(line):
+_BULLET = re.compile(r"^(?:[•·▪◦‣–—-]|\*(?!\*)|\d{1,2}[.)])\s")      # LIFE-41: a bullet is content, never a heading ("**Requirements**" is bold, not a bullet)
+_ABOUT = re.compile(lexicon.ABOUT_EMPLOYER)
+_ROLE_INTRO = re.compile(lexicon.ROLE_INTRO, re.I)
+
+
+def _heading(line, about=False):
+    """The section a short line opens, or None. `about`: inside an employer's own section a heading must end with its cue word ("Requirements",
+    "What you'll need"), so a product name such as "Northwind Experience Manager" stays employer copy (LIFE-41)."""
     bare = line.strip(" :*-•#\t").lower()
-    if not bare or line.startswith("•") or len(bare) > 70 or len(bare.split()) > 9:
+    if not bare or line.startswith("•") or _BULLET.match(line) or len(bare) > 70 or len(bare.split()) > 9:
         return None
     for kind, pattern in lexicon.HEADINGS:
+        if about and kind != "skip" and not line.rstrip().endswith(":"):
+            pattern = rf"(?:{pattern})\w*[\W]*$"
         if re.search(pattern, bare):
             return kind
     return None
@@ -51,21 +60,27 @@ _BOILER = re.compile(r"encourage applications|diverse backgrounds?|by submitting
 
 def parse(text):
     """Units in document order. A line that is a known heading switches section; long paragraphs split to sentences."""
-    units, section, strict = [], "summary", False
+    units, section, strict, about = [], "summary", False, False
     for line in (text or "").split("\n"):
         line = line.strip()
         if not line:
             continue
-        kind = _heading(line)
+        kind = _heading(line, about)
         if kind:
             section = kind
             strict = kind == "required" and bool(_STRICT.search(line))
+            about = kind == "skip" and bool(_ABOUT.search(line.strip(" :*-•#\t").lower()))
             continue
         if line.endswith(":") and len(line) < 90:
             continue
         pieces = [line.lstrip("• ").strip()] if line.startswith("•") or len(line) < 220 else \
             [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", line)]
-        units += [Unit(p, section, strict) for p in pieces if len(p) > 3 and not _BOILER.search(p)]
+        kept = [p for p in pieces if len(p) > 3 and not _BOILER.search(p)]
+        if about:                                                    # LIFE-41: a role introduction inside About is the role summary, from that sentence on
+            at = next((i for i, p in enumerate(kept) if _ROLE_INTRO.search(p)), len(kept))
+            units += [Unit(p, section, strict) for p in kept[:at]] + [Unit(p, "summary", False) for p in kept[at:]]
+            continue
+        units += [Unit(p, section, strict) for p in kept]
     if not any(u.section in ("required", "preferred", "duty") for u in units):
         units = [u if u.section == "skip" else Unit(u.text, "required", False) for u in units]   # no recognisable headings: every non-skip sentence is judged on its shape
     return units
