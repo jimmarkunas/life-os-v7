@@ -105,8 +105,17 @@ class Skip(unittest.TestCase):
         counts, read_items, (runs, *_ ) = self.tick(provider, 3)
         self.assertEqual((counts["added"], read_items, runs), (1, True, 0))             # a different board: full diff, streak reset
 
-    def test_a_quiet_board_backs_off_up_to_four_times_and_a_change_returns_to_normal(self):
-        hours = [run.next_due("b", NOW, True, 0, 0, 6, quiet) - NOW for quiet in (0, 1, 2, 3, 4, 9)]
-        slot = hours[0] - timedelta(hours=6)
-        self.assertEqual([h - slot for h in hours], [timedelta(hours=h) for h in (6, 6, 12, 18, 24, 24)])
-        self.assertEqual(limits.WEB_BACKOFF_MAX * 6, 24)
+    def test_a_quiet_board_backs_off_up_to_three_times_and_a_change_returns_to_normal(self):
+        periods = []
+        for quiet in (0, 1, 2, 3, 4, 9):
+            first = run.next_due("b", NOW, True, 0, 0, 6, quiet)
+            periods.append(run.next_due("b", first, True, 0, 0, 6, quiet) - first)       # read on its phase: the next read is exactly one period later
+            self.assertTrue(periods[-1] / 2 <= first - NOW < periods[-1] * 3 / 2)
+        self.assertEqual(periods, [timedelta(hours=h) for h in (6, 6, 12, 18, 18, 18)])
+        self.assertEqual(limits.WEB_BACKOFF_MAX, 3)
+
+    def test_boards_keep_a_fixed_phase_spread_over_the_day(self):
+        due = [run.next_due(f"gh-{i}", NOW, True, 0, 0, 24) for i in range(240)]
+        self.assertEqual({d.time() for d in due}, {run.next_due(f"gh-{i}", NOW + timedelta(minutes=7), True, 0, 0, 24).time() for i in range(240)})
+        hours = [sum(1 for d in due if d.hour == h) for h in range(24)]
+        self.assertLess(max(hours), 25)                                             # ~10 an hour, never bunched where the reads happened

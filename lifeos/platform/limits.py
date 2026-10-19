@@ -48,7 +48,7 @@ WEB_BOARDS_PER_RUN = 12                  # due boards polled per run (26 ready b
 WEB_REFRESH_HOURS = 6                    # a COMPLETE board is due again after this
 WEB_RETRY_HOURS = 1                      # a FAILED board is retried after this (doubling, capped at WEB_REFRESH_HOURS)
 WEB_FULL_EVERY = 4                       # D216: every 4th read of a quiet board is a full diff, whatever its validators or fingerprint say
-WEB_BACKOFF_MAX = 4                      # D216: a board that stays unchanged is read up to 4x less often (back to 1x on any change)
+WEB_BACKOFF_MAX = 3                      # D216: a board that stays unchanged is read up to 3x less often (a daily seed board: every 3 days, LIFE-76 Part 2); back to 1x on any change
 WEB_INGEST_PER_RUN = 300                 # new or changed postings admitted into Jobs OS per run; the rest stay PENDING
 
 # Employer boards (D202): the Open Jobs board list (CC0) plus the extras, read by the same web pass; ours, polite to three shared hosts

@@ -65,13 +65,25 @@ def skip_allowed(state):
     return runs >= 1 and runs % limits.WEB_FULL_EVERY != 0
 
 
+SLOT_EPOCH = datetime(2026, 1, 1)
+
+
+def slot_due(source_id, now, hours):
+    """D216 (LIFE-76 Part 2): a board keeps one fixed phase of its period (minutes from a fixed epoch, hashed from its id), so reads spread evenly over the
+    day instead of bunching where a first pass happened to read them. The next read is the board's first phase at least half a period from now: read on
+    its phase, the next read is exactly one period later."""
+    period = max(int(hours * 60), 1)
+    phase = int(sha1(source_id.encode()).hexdigest()[:8], 16) % period
+    since = (now - SLOT_EPOCH).total_seconds() / 60 + period / 2 - phase
+    return SLOT_EPOCH + timedelta(minutes=phase + -(-since // period) * period)      # ceil: the first phase at or after half a period from now
+
+
 def next_due(source_id, now, complete, failures, pending, hours=None, quiet_runs=0):
     hours = (hours or limits.WEB_REFRESH_HOURS) * min(1 + max(quiet_runs - 1, 0), limits.WEB_BACKOFF_MAX)   # D202: a seed board carries its own refresh; D216: a quiet board backs off
     if pending:
         return now                                                      # a backlog drains on the next run
     if complete:
-        slot = int(sha1(source_id.encode()).hexdigest()[:6], 16) % 60   # spread boards across the hour
-        return now + timedelta(hours=hours, minutes=slot)
+        return slot_due(source_id, now, hours)
     return now + timedelta(hours=min(limits.WEB_RETRY_HOURS * 2 ** failures, hours))
 
 
