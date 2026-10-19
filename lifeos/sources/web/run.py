@@ -42,13 +42,14 @@ class Outcome:
 
 def pick_due(sources, states, now, limit, select=None, forced=()):
     """Sources never run, or due, oldest first, at most `limit` (never-run boards in id order: the backfill's resume cursor is simply "no state row yet").
-    D217 `select`: None reads both; "known" only boards read before (plus a curated extra and a forced board); "unread" only boards never read."""
+    D217 `select`, classified against the PERSISTED states: None reads both; "known" only boards read before (plus a curated extra); "unread" only boards never
+    read. A forced board (`forced`) skips only the due-time check and goes first, so it is read once, by the pass its state belongs to."""
     if select == "known":
-        sources = [s for s in sources if s["id"] in states or s.get("extra") or s["id"] in forced]
+        sources = [s for s in sources if s["id"] in states or s.get("extra")]
     elif select == "unread":
         sources = [s for s in sources if s["id"] not in states]
-    due = [s for s in sources if s["id"] not in states or states[s["id"]]["due_at"] <= now]
-    return sorted(due, key=lambda s: (states.get(s["id"], {}).get("due_at") or datetime.min, s["id"]))[:limit]
+    due = [s for s in sources if s["id"] in forced or s["id"] not in states or states[s["id"]]["due_at"] <= now]
+    return sorted(due, key=lambda s: (datetime.min if s["id"] in forced else states.get(s["id"], {}).get("due_at") or datetime.min, s["id"]))[:limit]
 
 
 def forced_ids(sources, force):
@@ -248,12 +249,13 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
     forced = forced_ids(sources, os.environ.get("WEB_FORCE"))
-    states = {k: v for k, v in states.items() if k not in forced}
-    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)
+    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)   # classified against the persisted states
+    unread = sum(s["id"] not in states for s in sources)
+    states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "not_modified": 0, "same_frontier": 0}
     if select:
-        counts["unread"] = sum(s["id"] not in states for s in sources)          # D217: boards never read (before this run)
+        counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers

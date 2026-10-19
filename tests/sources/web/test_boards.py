@@ -120,10 +120,10 @@ class Backfill(unittest.TestCase):
     def test_it_drains_in_id_order_resumes_where_it_stopped_and_hands_boards_to_the_hourly_pass(self):
         seen, repo = [], MemRepo()
         first = boards.backfill(2, True, NOW, self.read(seen), repo, SEED, self.ON)
-        self.assertEqual(seen, ["gh-s0", "gh-s1"])
+        self.assertEqual(sorted(seen), ["gh-s0", "gh-s1"])                                      # the first two in id order (read in parallel)
         self.assertEqual({k: first[k] for k in ("read", "errors", "remaining", "backfill")}, {"read": 2, "errors": 1, "remaining": 3, "backfill": "on"})
         rest = boards.backfill(450, True, NOW, self.read(seen), repo, SEED, self.ON)
-        self.assertEqual(seen[2:], ["gh-s2", "gh-s3", "gh-s4"])                           # nothing read twice
+        self.assertEqual(sorted(seen[2:]), ["gh-s2", "gh-s3", "gh-s4"])                   # nothing read twice
         self.assertEqual((rest["remaining"], rest["backfill"]), (0, "drained"))
         self.assertEqual(boards.backfill(450, True, NOW, self.read(seen), repo, SEED, self.ON)["read"], 0)
         later = boards.run(600, True, NOW + timedelta(days=2), self.read(seen), repo, SEED)
@@ -135,11 +135,23 @@ class Backfill(unittest.TestCase):
         got = boards.backfill(2, False, NOW, self.read(seen), repo, SEED, self.ON)
         self.assertEqual((got["read"], got["remaining"], repo.state), (2, 5, {}))
 
-    def test_a_forced_board_is_read_by_the_hourly_pass(self):
-        seen = []
-        with mock.patch.dict("os.environ", {"WEB_FORCE": "board:gh-s3"}):
-            boards.run(600, False, NOW, self.read(seen), MemRepo(), SEED)
-        self.assertEqual(seen, ["gh-s3"])
+    def test_one_tick_reads_a_forced_known_board_once_and_still_drains_the_never_read_ones(self):
+        """TL gate on 9c366e5: known / unread is classified against the persisted state; forcing only overrides the due time. Both stages of the real
+        tick plan run in one tick with WEB_FORCE naming a board read before."""
+        from lifeos.jobs import tick
+        seen, repo = [], MemRepo()
+        boards.backfill(450, True, NOW, self.read(seen), repo, SEED[:3], self.ON)               # gh-s0..s2 read before: known, not due for a day
+        del seen[:]
+        steps = tuple(s for s in tick.PLAN if s.name in ("boards", "boards-backfill"))
+        stages = {"boards": lambda limit, live: boards.run(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED),
+                  "boards-backfill": lambda limit, live: boards.backfill(limit, live, NOW + timedelta(hours=1), self.read(seen), repo, SEED, self.ON)}
+        with mock.patch.dict("os.environ", {"WEB_FORCE": "board:gh-s2"}):
+            out = tick.tick(True, plan=steps, stages=stages)
+        self.assertEqual(out, {"boards": "ok", "boards-backfill": "ok"})
+        self.assertEqual(sorted(seen[:2]), ["gh-s1", "gh-s2"])           # hourly: the forced known board and the failed one's 1 h retry
+        self.assertEqual(sorted(seen[2:]), ["gh-s3", "gh-s4"])           # backfill: only the never-read backlog
+        self.assertEqual(seen.count("gh-s2"), 1)
+        self.assertEqual(boards.backfill(450, False, NOW, self.read(seen), repo, SEED, self.ON)["remaining"], 0)
 
 
 class OneRun(unittest.TestCase):
