@@ -9,8 +9,15 @@ allowlisted recipient of each OpenClaw channel (WhatsApp: Jim's number = self-ch
 `openclaw message send`. Each channel keeps its own position, so one channel's failure never repeats or drops an alert on the other. It adds no alert, decision or schedule of its own.
 
 The topic is the only credential: resolved from Bitwarden at start through the existing resolver (`lifeos/github-actions/NTFY_TOPIC`), kept in memory.
-Only the last forwarded ntfy message id is written (0600), so a restart resumes with `since=<id>`: nothing is lost or sent twice. A missing secret,
-a recipient list that is not exactly one number, or a failed send is retried later; nothing else is ever messaged. Stdlib only; no output."""
+Only the last forwarded ntfy message id is written (0600), so a restart resumes with `since=<id>`. A missing secret or a recipient list that is not
+exactly one number is retried later; nothing else is ever messaged. Stdlib only; no output.
+
+LIFE-71 (the Oct 17-18 floods): `openclaw message send` sometimes exited non-zero AFTER delivering, and this relay re-sent the same alert every poll. Each send
+now runs with --json and is classified from OpenClaw's own result: DELIVERED (exit 0, a messageId, sentBeforeError, or a send result that is not ok:false),
+NOT_DELIVERED (an explicit ok:false with no delivery evidence) or AMBIGUOUS (no result: a crash, timeout or unparseable output). Only NOT_DELIVERED is retried,
+at most MAX_ATTEMPTS times per alert per channel; AMBIGUOUS is never re-sent (at most once: a possible loss is recorded, a flood is impossible). The attempt is
+written before the send, so a relay killed mid-send finds it on restart and treats it as AMBIGUOUS instead of replaying. Every outcome is appended to a
+size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text."""
 import json
 import os
 import re
@@ -32,6 +39,9 @@ SECRET = "lifeos/github-actions/NTFY_TOPIC"
 MAX_TEXT = 1500
 POLL = 20
 ICON = {5: "🚨", 4: "🔔"}
+MAX_ATTEMPTS = 3                                                        # LIFE-71: explicit non-delivery is retried at most this often per alert per channel
+DIAGNOSTICS, DIAGNOSTICS_KEEP = "deliveries.jsonl", 500
+DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP = "DELIVERED", "NOT_DELIVERED", "AMBIGUOUS", "GAVE_UP"
 
 
 def topic(run=subprocess.run):
@@ -78,9 +88,44 @@ def events(lines):
             yield e
 
 
+def result_json(stdout):
+    """OpenClaw's --json result object, or None when there is none (it may be pretty-printed, and other lines may precede it)."""
+    out = (stdout or "").strip()
+    for candidate in (out, out[out.find("{"):out.rfind("}") + 1] if "{" in out else ""):
+        try:
+            value = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def classify(returncode, stdout):
+    """-> (outcome, fixed class). Delivery evidence wins over the exit code: the floods were deliveries that exited non-zero."""
+    if returncode == 0:
+        return DELIVERED, "exit0"
+    result = result_json(stdout)
+    if result is None:
+        return AMBIGUOUS, "no_result"
+    if result.get("messageId") or result.get("sentBeforeError") is True:
+        return DELIVERED, "evidence_nonzero_exit"
+    if result.get("ok") is False:
+        return NOT_DELIVERED, "result_not_ok"
+    if result.get("action") == "send" and result.get("dryRun") is False:
+        return DELIVERED, "ok_result_nonzero_exit"                       # the send succeeded; something after it (e.g. a plugin stop hook) failed
+    return AMBIGUOUS, "unrecognized_result"
+
+
 def send(to, body, run=subprocess.run, channel="whatsapp"):
-    done = run([OPENCLAW, "message", "send", "--channel", channel, "--target", to, "-m", body], capture_output=True, text=True, timeout=90)
-    return done.returncode == 0
+    """-> (outcome, class, exit code). Never raises for a send problem."""
+    try:
+        done = run([OPENCLAW, "message", "send", "--json", "--channel", channel, "--target", to, "-m", body], capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return AMBIGUOUS, "timeout", None                                  # it may have sent: never retried
+    except OSError:
+        return NOT_DELIVERED, "not_started", None                          # the CLI never ran: nothing was sent
+    return (*classify(done.returncode, done.stdout), done.returncode)
 
 
 def _position(channel):
@@ -105,15 +150,87 @@ def remember(message_id, channel="whatsapp"):
     os.replace(tmp, _position(channel))
 
 
+def _attempts_path(channel):
+    return os.path.join(STATE, f"attempts-{channel}")
+
+
+def attempts(channel):
+    """-> {"id", "count", "pending"} for the alert this channel is working on, or {}."""
+    try:
+        with open(_attempts_path(channel)) as f:
+            value = json.load(f)
+        return value if isinstance(value, dict) and isinstance(value.get("id"), str) and type(value.get("count")) is int else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_attempts(channel, value):
+    os.makedirs(STATE, mode=0o700, exist_ok=True)
+    tmp = _attempts_path(channel) + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(value, f)
+    os.replace(tmp, _attempts_path(channel))
+
+
+def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
+    """One line per send outcome (no alert text), kept to the last DIAGNOSTICS_KEEP lines. Best effort: it never stops the relay."""
+    try:
+        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        path = os.path.join(STATE, DIAGNOSTICS)
+        try:
+            with open(path) as f:
+                lines = f.read().splitlines()[-(DIAGNOSTICS_KEEP - 1):]
+        except OSError:
+            lines = []
+        lines.append(json.dumps({"at": int(now()), "channel": channel, "id": message_id, "outcome": outcome, "class": cls, "exit": code}, sort_keys=True))
+        tmp = path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _done(channel, message_id):
+    remember(message_id, channel)
+    try:
+        os.unlink(_attempts_path(channel))
+    except OSError:
+        pass
+
+
 def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsapp"):
-    """One poll for one channel: every message after its last forwarded one, oldest first. A failed send stops here so the next poll retries it."""
+    """One poll for one channel: every message after its last forwarded one, oldest first. Only an explicit non-delivery stops here (the next poll retries
+    it, at most MAX_ATTEMPTS in all); a delivery, an ambiguous outcome or an exhausted alert moves the position on, so no alert can be sent forever."""
     since = last_id(channel) or "10m"
     with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since}", timeout=30) as stream:
         lines = [line.decode("utf-8", "replace") for line in stream]
         for e in events(lines):
-            if not sender(to, text(e)):
-                return
-            remember(e["id"], channel)
+            state = attempts(channel)
+            mine = state if state.get("id") == e["id"] else {}
+            if mine.get("pending"):
+                diagnose(channel, e["id"], AMBIGUOUS, "interrupted")          # the relay died mid-send last time: it may have been delivered; never replayed
+                _done(channel, e["id"])
+                continue
+            if mine.get("count", 0) >= MAX_ATTEMPTS:
+                diagnose(channel, e["id"], GAVE_UP, "max_attempts")
+                _done(channel, e["id"])
+                continue
+            count = mine.get("count", 0) + 1
+            _write_attempts(channel, {"id": e["id"], "count": count, "pending": True})     # written BEFORE the send
+            got = sender(to, text(e))
+            outcome, cls, code = got if isinstance(got, tuple) else ((DELIVERED, "sender_true", 0) if got else (NOT_DELIVERED, "sender_false", 1))
+            diagnose(channel, e["id"], outcome, cls, code)
+            if outcome == NOT_DELIVERED:
+                if count >= MAX_ATTEMPTS:
+                    diagnose(channel, e["id"], GAVE_UP, "max_attempts")
+                    _done(channel, e["id"])
+                    continue
+                _write_attempts(channel, {"id": e["id"], "count": count, "pending": False})
+                return                                                   # keep the order: the next poll retries this alert first
+            _done(channel, e["id"])                                      # DELIVERED or AMBIGUOUS: never sent again
 
 
 def main():
