@@ -113,8 +113,9 @@ class OneRun(unittest.TestCase):
         repo = MemRepo()
         boards.run(600, True, NOW, lambda s: listings[s["slug"]], repo, SOURCES)
         hot, cold = repo.state["gh-b0"]["due_at"], repo.state["gh-b1"]["due_at"]
-        self.assertTrue(NOW + timedelta(hours=6) <= hot < NOW + timedelta(hours=7))
-        self.assertTrue(NOW + timedelta(hours=24) <= cold < NOW + timedelta(hours=25))
+        self.assertTrue(NOW + timedelta(hours=3) <= hot < NOW + timedelta(hours=9))          # D216: the board's fixed phase, at least half a period away
+        self.assertTrue(NOW + timedelta(hours=12) <= cold < NOW + timedelta(hours=36))
+        self.assertLess(hot, cold)
 
     def test_three_429s_from_one_ats_stop_reading_it_this_run(self):
         calls = []

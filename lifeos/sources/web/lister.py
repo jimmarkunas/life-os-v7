@@ -15,7 +15,8 @@ from lifeos.sources.web import html_readers
 from lifeos.platform import egress, impersonate, limits
 from lifeos.platform.http import fetch
 
-COMPLETE, FAILED = "COMPLETE", "FAILED"
+COMPLETE, FAILED, UNCHANGED = "COMPLETE", "FAILED", "UNCHANGED"     # UNCHANGED (D216): the provider answered 304 to our own validators
+CONDITIONAL = ("greenhouse", "ashby", "lever")          # D216: one plain GET returns the whole board, so a 304 means the whole board is unchanged
 MAX_BYTES = 25_000_000                      # a large Greenhouse board with full content is several MB
 SMARTRECRUITERS_PAGES = 30                  # 3,000 postings; a board that is still not finished is FAILED, not COMPLETE
 
@@ -25,6 +26,7 @@ class Listing:
     status: str
     jobs: list = field(default_factory=list)       # dicts: id, title, location, url, posted (date|None), content (text|None)
     reason: str | None = None
+    validators: dict = field(default_factory=dict)  # D216: the board answer's ETag / Last-Modified (CONDITIONAL kinds only)
 
 
 def _json(url, fetcher, body=None):
@@ -309,16 +311,32 @@ READERS = {"greenhouse": _by_slug(_greenhouse), "ashby": _by_slug(_ashby), "leve
 
 
 def list_source(source, fetcher=fetch):
-    """The listing for one registry source (any reader above)."""
+    """The listing for one registry source (any reader above). D216: for a CONDITIONAL kind, the source's stored validators (`if_etag`, `if_modified`, set by
+    the run only when a skip is allowed) go out as If-None-Match / If-Modified-Since; a 304 to them is UNCHANGED, a 304 nobody asked for is FAILED, and a
+    COMPLETE answer carries its own validators for next time. Every other kind and every error path is unchanged: a full read."""
     reader = READERS.get(source["kind"])
     if reader is None:
         return Listing(FAILED, reason="no_reader")
+    conditional = source["kind"] in CONDITIONAL
+    sent = {k: v for k, v in (("If-None-Match", source.get("if_etag")), ("If-Modified-Since", source.get("if_modified"))) if v} if conditional else {}
+    pages = []
+
+    def counted(url, **kw):
+        if sent and kw.get("data") is None:
+            kw["headers"] = {**(kw.get("headers") or {}), **sent}
+        page = fetcher(url, **kw)
+        pages.append(page)
+        return page
     try:
-        listing = reader(source, fetcher)
+        listing = reader(source, counted)
     except (OSError, ValueError, KeyError):
         return Listing(FAILED, reason="network")
+    if any(getattr(p, "status", None) == 304 for p in pages):
+        return Listing(UNCHANGED) if sent else Listing(FAILED, reason="ambiguous_304")
     if listing.status == COMPLETE:
         listing.jobs = [j for j in listing.jobs if j["id"] and j["title"] and j["url"]]     # a row without identity is not a job
+        if conditional and len(pages) == 1:
+            listing.validators = dict(getattr(pages[0], "validators", None) or {})
     return listing
 
 

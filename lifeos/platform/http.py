@@ -17,14 +17,23 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 class Fetched:
-    __slots__ = ("final_url", "status", "html", "hops", "error", "codes")
+    __slots__ = ("final_url", "status", "html", "hops", "error", "codes", "validators")
 
-    def __init__(self, final_url, status, html="", hops=0, error="", codes=()):
+    def __init__(self, final_url, status, html="", hops=0, error="", codes=(), validators=None):
         self.final_url, self.status, self.html, self.hops, self.error = final_url, status, html, hops, error
         self.codes = tuple(codes)      # status code of every hop, e.g. (302, 403)
+        self.validators = validators or {}     # D216: the answer's ETag / Last-Modified, for a later conditional GET
 
 
 MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+
+
+def _validators(headers):
+    """D216: the cache validators an answer carries ({"etag": ..., "last_modified": ...}), each only when present and of a sane length."""
+    if not headers:
+        return {}
+    out = {"etag": headers.get("ETag"), "last_modified": headers.get("Last-Modified")}
+    return {k: v.strip() for k, v in out.items() if isinstance(v, str) and 0 < len(v.strip()) <= 200}
 
 
 def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None, data=None):
@@ -36,14 +45,14 @@ def fetch(url, timeout=12, max_hops=8, max_bytes=1_500_000, headers=None, data=N
             with _OPENER.open(request, timeout=timeout) as response:
                 body = response.read(max_bytes).decode(response.headers.get_content_charset() or "utf-8", "replace")
                 codes.append(response.status)
-                return Fetched(current, response.status, body, hop, codes=codes)
+                return Fetched(current, response.status, body, hop, codes=codes, validators=_validators(response.headers))
         except urllib.error.HTTPError as error:
             codes.append(error.code)
             location = error.headers.get("Location") if error.headers else None
             if error.code in REDIRECTS and location:
                 current = urljoin(current, location)
                 continue
-            return Fetched(current, error.code, "", hop, "http", codes)
+            return Fetched(current, error.code, "", hop, "http", codes, _validators(error.headers) if error.code == 304 else None)
         except (http.client.InvalidURL, ValueError):                 # a redirect to a malformed address (a bot-protection page): a miss, never a crash
             return Fetched(current, 0, "", hop, "bad_url", codes)
         except (urllib.error.URLError, TimeoutError, OSError) as error:
