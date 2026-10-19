@@ -219,3 +219,4 @@ This index is checked by a test: add a line here with every new decision.
 - D218 — An interview request progresses only on verified round identity; a Ledger link needs a Stable Job Key or requisition (2026-10-19, Jim; LIFE-42)
 - D220 — Recruiter rows carry an action state: Needs Action on a new contact or reply, a follow-up two business days after Waiting (2026-10-19, Jim; LIFE-21 / LIFE-78 M2)
 - D221 — Role-specific outreach: Mark as Sent on the private Close service creates one Waiting row on the Recruiters data source linked to the exact Job Ledger job; Job Outreach is one row per job (2026-10-19, Jim; LIFE-21 / LIFE-47 / LIFE-78 M2)
+- D222 — The native Job Outreach table is a second V7-owned floating region beneath Active Opportunities, dormant until its two block ids are set (2026-10-19, Jim; LIFE-47 / LIFE-78 M2)
