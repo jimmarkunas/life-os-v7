@@ -126,7 +126,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/imessage/openclaw_imessage.py`: COMM-1.4: Luna's iMessage commands on Oracle, installed as ~/.local/bin/openclaw-imessage and allowlisted for exactly these argument forms:
 - `lifeos/imessage/stage.py`: COMM-1.4b: urgent iMessage alerts in V7's hourly domain run (LIFE-31; Jim's approval of Oct 13, 2026).
 ### lifeos/interview/
-- `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one evidence pair from a secret, through the existing stage. Counts and fixed codes only.
+- `lifeos/interview/acceptance.py`: Manual-only private acceptance harness: one case from a secret, through LIFE-42 progression into the existing stage. Counts and fixed codes only.
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
 - `lifeos/interview/advisor_queue.py`: Immutable Request/Response handoff for the private Interview Advisor queue.
 - `lifeos/interview/advisor_store.py`: Bounded private Notion store and immutable Advisor preview pages.

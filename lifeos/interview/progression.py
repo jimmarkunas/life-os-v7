@@ -2,7 +2,8 @@
 
 Pure: no Notion, Gmail or Ledger I/O. The caller hands in the invite's evidence and, when it has them, the Job Ledger rows
 already read for that company. The Ledger link is made only by an exact Stable Job Key or requisition match; a
-company/title match alone is reported as `unverified`, and two same-title rows with no requisition to tell them apart
+company/title match alone is reported as `unverified`, as is every request when no Ledger rows were read (rows=None).
+Two same-title rows with no requisition to tell them apart, or a Stable Job Key and requisition naming different rows,
 block (D218). Never serialize Invite or Ledger rows into public logs.
 """
 from dataclasses import dataclass
@@ -36,16 +37,26 @@ def _text(value):
 
 
 def ledger_link(invite, rows):
-    """('linked', page_id) | ('unverified', None) | ('none', None) | ('requisition_ambiguous', None)."""
-    key, req = _text(invite.stable_job_key), _text(invite.requisition)
+    """('linked', page_id) | ('unverified', None) | ('none', None) | ('requisition_ambiguous' | 'identity_conflict', None)."""
+    if rows is None:
+        return "unverified", None
+    ids = {"stable_job_key": _text(invite.stable_job_key), "requisition": _text(invite.requisition)}
     same = [r for r in rows if same_company(r.get("company") or "", invite.company) and same_role(r.get("role") or "", invite.role)]
-    for field, value in (("stable_job_key", key), ("requisition", req)):
+    hits = {}
+    for field, value in ids.items():
         if value:
-            hits = [r for r in same if norm(r.get(field) or "") == norm(value)]
-            if len(hits) == 1:
-                return "linked", hits[0]["page_id"]
-            if len(hits) > 1:
+            found = [r for r in same if norm(r.get(field) or "") == norm(value)]
+            if len(found) > 1:
                 return "requisition_ambiguous", None
+            if found:
+                hits[field] = found[0]
+    if len({r["page_id"] for r in hits.values()}) > 1:
+        return "identity_conflict", None
+    if hits:
+        row = next(iter(hits.values()))
+        if any(value and _text(row.get(field)) and norm(row[field]) != norm(value) for field, value in ids.items()):
+            return "identity_conflict", None
+        return "linked", row["page_id"]
     if len(same) > 1:
         return "requisition_ambiguous", None
     return ("unverified", None) if same else ("none", None)
@@ -62,6 +73,6 @@ def progress(invite, rows=()):
     if not who and ordinal is None:
         return Progression("round_identity_incomplete")
     ledger, page_id = ledger_link(invite, rows)
-    if ledger == "requisition_ambiguous":
+    if ledger in ("requisition_ambiguous", "identity_conflict"):
         return Progression(ledger, ledger=ledger)
     return Progression("ready", ParentQuery(company, role), RoundQuery(True, invite.interview_date, who, ordinal), ledger, page_id)
