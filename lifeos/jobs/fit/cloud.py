@@ -13,6 +13,7 @@ writes nothing, so the job is asked again on a later tick and no static score is
 from datetime import datetime, timezone
 import os
 import re
+import signal
 import time
 
 from lifeos.jobs import classify, lanes, store
@@ -25,9 +26,11 @@ MAX_PER_RUN = 1                         # the hard ceiling, whatever the variabl
 # placeholder, and any other source, is never sent.
 PUBLIC_SOURCES = ("ats_api", "jsonld", "next_data", "page_text")
 STAGE_BUDGET = 240                      # the tick's Fit budget (tick.PLAN): a call starts only when the stage can still finish it
-CALL_SECONDS = 15 + edge.WAIT           # connect timeout + the longest reply wait
+READ_WAIT = 150                         # LIFE-41 10504 C4: Oracle's real worst case is ~110 s (60 s deadline + 20 s orphan wait + purge lock waits + audit)
+CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 s, so one call fits the 240 s stage and a second never could
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
+STOP_AND_RECORD = {"FIT_EDGE_PURGE_FAILED"}   # 10504 C5: a model ran, so its provenance (no score) is kept on the row, and no further request is sent
 
 PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
         " JOIN v7_job_descriptions d ON d.job_id = j.id"
@@ -61,6 +64,14 @@ def public_posting(url, source):
         return False
     kind = classify.apply_kind(url)
     return kind == "ats" or (kind == "employer" and lanes.first_party_source(source))
+
+
+def remaining(elapsed):
+    """Seconds this Fit stage may still run: the tick's own alarm when one is set (it can cut the stage below 240 s when the run is short of time), never more than
+    STAGE_BUDGET from the stage's start. Read without disturbing the alarm."""
+    own = STAGE_BUDGET - elapsed
+    alarm = signal.getitimer(signal.ITIMER_REAL)[0]
+    return min(own, alarm) if alarm > 0 else own
 
 
 def _now():
@@ -103,14 +114,18 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             results.append((job_id, "SKIPPED", "NO_SUBSTANTIVE_TEXT", None, None, fingerprint))
             counts["cloud_skipped"] += 1
             continue
-        if clock() - started + CALL_SECONDS > STAGE_BUDGET:
+        if remaining(clock() - started) < CALL_SECONDS:
             _degraded(counts, "STAGE_BUDGET")
             break
         counts["cloud_calls"] += 1
         try:
-            got = edge.invoke(host, sent, evaluate(title, company, text, profile, _now().date()), title, send=send)
+            got = edge.invoke(host, sent, evaluate(title, company, text, profile, _now().date()), title, send=send, wait=READ_WAIT)
         except edge.EdgeError as error:
             code = str(error)
+            if code in STOP_AND_RECORD:
+                results.append((job_id, "DEGRADED", code, {"receipt": error.receipt}, edge.digest(sent)[:16], fingerprint))
+                _degraded(counts, code)
+                break
             if code not in JOB_OUTCOMES:
                 _degraded(counts, code)                                    # not about this job: nothing written, no further call this run
                 break

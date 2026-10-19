@@ -330,3 +330,128 @@ class StaticWritePreservesCloudColumns(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OracleContract10504(Base):
+    """LIFE-41 10504: the installed Oracle fit1 front (front.py 8e8d724b…) as V7 sees it. Synthetic stub vectors only; no Oracle or model is reached."""
+    VECTOR = {"title": "Technical Program Manager", "description": "Synthetic duty: lead delivery of an invented platform migration across five teams.",
+              "profile": {"ref": "976d1682938e988e"}}
+
+    def receipt(self, **extra):
+        from tests.jobs.fit.test_edge import RECEIPT
+        return {**RECEIPT, **extra}
+
+    def test_the_request_hash_matches_oracle_for_the_real_shaped_vector(self):
+        self.assertEqual(edge.digest(self.VECTOR), "34cf89e0a24582ba05e6df0b710e815f625767384a2ae131e2481445f83c52e4")
+
+    def test_the_frame_nonce_and_read_wait_are_as_contracted(self):
+        self.job(1)
+        self.job(2, seen=T + datetime.timedelta(hours=1))
+        seen = []
+
+        def endpoint(host, data, wait=None):
+            seen.append((data, wait))
+            return reply(data)
+        self.run_cloud(SHADOW, endpoint)
+        self.run_cloud(SHADOW, endpoint)
+        nonces = []
+        for data, wait in seen:
+            head, body = data.split(b"\n", 1)
+            self.assertEqual(head, b"fit1 %d" % len(body))
+            framed = json.loads(body)
+            self.assertEqual(set(framed), {"request", "nonce"})
+            self.assertRegex(framed["nonce"], r"^[0-9a-f]{32}$")
+            self.assertEqual(set(framed["request"]), {"title", "description", "profile"})
+            self.assertEqual(framed["request"]["profile"], {"ref": REF})
+            self.assertGreaterEqual(wait, 150)
+            nonces.append(framed["nonce"])
+        self.assertEqual(len(set(nonces)), 2)                                                    # fresh for every request
+
+    def test_busy_without_hash_or_nonce_is_busy_not_a_hash_mismatch(self):
+        self.job(1)
+        counts = self.run_cloud(SHADOW, Endpoint(lambda data: json.dumps({"schema": "lifeos.fit.v1", "status": "BUSY"}).encode()))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"]), ("DEGRADED(FIT_EDGE_BUSY)", 1))
+        self.assertIsNone(self.row(1, ("cloud_status",))[0])                                     # asked again on a later tick, never a score
+
+    def test_every_installed_refusal_reason_keeps_its_fixed_code_and_never_scores(self):
+        for reason in ("NOT_ALLOWLISTED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE", "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH",
+                       "LIMIT_UNCONFIGURED", "PURGE_FAILED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT"):
+            self.setUp()
+            self.job(1)
+            counts = self.run_cloud(SHADOW, Endpoint(lambda data, reason=reason: refusal(data, reason)))
+            self.assertEqual(counts["cloud_fit"], f"DEGRADED(FIT_EDGE_REFUSED_{reason})", reason)
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_score")), (None, None), reason)
+
+    def test_accepted_real_reply_with_purge_ok_is_stored(self):
+        self.job(1)
+        counts = self.run_cloud(SHADOW, Endpoint(lambda data: reply(data, fixture="REAL", receipt=self.receipt(purge="ok"))))
+        self.assertEqual(counts["cloud_fit"], "OK")
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_score")), ("OK", 90))
+
+    def test_a_failed_purge_is_degraded_keeps_provenance_without_a_score_and_stops(self):
+        self.job(1)
+        self.job(2, seen=T + datetime.timedelta(hours=1))
+        endpoint = Endpoint(lambda data: reply(data, fixture="REAL", receipt=self.receipt(purge="failed")))
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_ok"], len(endpoint.sent)), ("DEGRADED(FIT_EDGE_PURGE_FAILED)", 0, 1))
+        status, reason, score, confidence, rationale, request_hash, model, run_id, fingerprint, at = self.row(1, CLOUD)
+        self.assertEqual((status, reason, score, confidence, rationale, model, run_id), ("DEGRADED", "FIT_EDGE_PURGE_FAILED", None, None, None, "gpt-6-luna", "run-1234567890"))
+        self.assertTrue(request_hash and at)
+        self.assertIsNone(self.row(2, ("cloud_status",))[0])
+
+    def test_a_real_reply_without_purge_and_an_unknown_purge_value_are_rejected(self):
+        for receipt in (self.receipt(), self.receipt(purge="maybe")):
+            self.setUp()
+            self.job(1)
+            counts = self.run_cloud(SHADOW, Endpoint(lambda data, receipt=receipt: reply(data, fixture="REAL", receipt=receipt)))
+            self.assertEqual(counts["cloud_fit"], "DEGRADED(FIT_EDGE_RECEIPT_REJECTED)")
+            self.assertIsNone(self.row(1, ("cloud_status",))[0])
+
+    def test_a_synthetic_receipt_without_purge_still_passes(self):
+        self.assertIsNone(edge.bad_receipt_field(self.receipt()))
+        self.assertNotIn("purge", self.receipt())
+
+    def test_unavailable_malformed_and_timeout_states(self):
+        def timed_out(data):
+            raise edge.EdgeError("FIT_EDGE_TIMEOUT")
+        for answer, code in ((lambda data: b"", "FIT_EDGE_NO_REPLY"), (lambda data: b"not json", "FIT_EDGE_OFF_CONTRACT"),
+                             (lambda data: json.dumps({"schema": "other", "status": "OK"}).encode(), "FIT_EDGE_OFF_CONTRACT"),
+                             (timed_out, "FIT_EDGE_TIMEOUT"), (lambda data: reply(data, status="TIMEOUT", judgment_raw=None), "FIT_EDGE_TIMEOUT"),
+                             (lambda data: reply(data, status="TIMEOUT_ORPHAN", judgment_raw=None), "FIT_EDGE_TIMEOUT_ORPHAN"),
+                             (lambda data: reply(data, status="ERROR", judgment_raw=None), "FIT_EDGE_ERROR")):
+            self.setUp()
+            self.job(1)
+            endpoint = Endpoint(answer)
+            counts = self.run_cloud(SHADOW, endpoint)
+            self.assertEqual((counts["cloud_fit"], len(endpoint.sent)), (f"DEGRADED({code})", 1), code)     # one attempt, no retry
+            self.assertIsNone(self.row(1, ("cloud_status",))[0])
+
+    def test_the_call_respects_the_ticks_actual_remaining_alarm(self):
+        import signal
+        self.job(1)
+        previous = signal.signal(signal.SIGALRM, lambda *a: None)
+        try:
+            for alarm, calls in ((100, 0), (200, 1)):                                            # a short tick cut the stage to 100 s: one 165 s call cannot start
+                signal.alarm(alarm)
+                counts = self.run_cloud(SHADOW, Endpoint())
+                signal.alarm(0)
+                self.assertEqual(counts["cloud_calls"], calls, alarm)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
+        self.assertEqual(cloud.CALL_SECONDS, 165)
+
+
+class StaticPublishingIsNeverSuppressed(unittest.TestCase):
+    def test_a_failed_fit_stage_does_not_stop_publish_or_the_rest_of_the_tick(self):
+        """D214: an enabled shadow that fails makes `fit` exit 1; the tick still runs audit, publish and finalize (each stage independent), and reports fit=failed."""
+        from lifeos.jobs import tick
+        ran = []
+        stages = {s.name: (lambda limit, live, name=s.name: ran.append(name) or (1 if name == "fit" else 0)) for s in tick.PLAN}
+        finalize = mock.Mock(main=lambda argv: ran.append("finalize") or 0)                    # the module stage (finalize) is stubbed the same way
+        with mock.patch.object(tick.importlib, "import_module", return_value=finalize):
+            outcome = tick.tick(True, stages=stages)
+        self.assertEqual(outcome["fit"], "failed")
+        for name in ("audit", "publish", "expire-holds", "finalize"):
+            self.assertIn(name, ran)
+            self.assertEqual(outcome[name], "ok")
