@@ -112,6 +112,31 @@ def read_page(client, page_id):
     return top, owned
 
 
+def leads_on_page(client, page_id, limit=10):
+    """LIFE-21 (Mark as Sent): the people the page's owned block lists and Jim has not dismissed, in page order -> [{person_id, evidence_hash, name, reason}].
+    Read only. No owned block -> []; two (an interrupted replacement) -> the newest, as apply converges; a lead without its Dismiss tick or an unreadable page raises."""
+    owned = None
+    for block in children(client, page_id):
+        if block.get("type") == "toggle" and block.get("has_children", True):
+            inner = children(client, block["id"])
+            if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
+                owned = inner
+    leads = []
+    for child in (owned or [])[1:]:
+        text = _plain(child)
+        found = TICK.match(text) if child.get("type") == "to_do" else None
+        if child.get("type") == "paragraph":
+            name, _, reason = text.removesuffix("open profile").strip().removesuffix("·").strip().partition(" · ")
+            leads.append({"name": name, "reason": reason, "person_id": None})
+        elif found and found.group(1) == "Dismiss":
+            if not leads or leads[-1]["person_id"] is not None:
+                raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+            leads[-1].update(person_id=int(found.group(2)), evidence_hash=found.group(3), dismissed=bool((child.get("to_do") or {}).get("checked")))
+    if any(lead["person_id"] is None or not lead["name"] for lead in leads):
+        raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+    return [{k: lead[k] for k in ("person_id", "evidence_hash", "name", "reason")} for lead in leads if not lead["dismissed"]][:limit]
+
+
 def guard(page, top, job_key, source_id):
     """None when the page is the canonical Ledger page for this job, else a fixed reason. Nothing is written when this fails."""
     if page.get("archived") or page.get("in_trash"):

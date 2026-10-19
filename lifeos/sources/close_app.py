@@ -11,7 +11,8 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.hiring import close_screen as S, decision as D, models as M
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
-           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py")
+           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
+           "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py")
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
 
 
