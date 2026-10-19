@@ -1,8 +1,10 @@
-"""LIFE-47 (D222): the native job-first Job Outreach table, a floating region beneath Active Opportunities on the Daily Report, written the way the Hiring Pipeline is
-(lifeos/hiring/card.py): a heading_3 `🤝 Job Outreach (Updated 2:00 PM CT)` and the four-column table right under it, both pinned by id
-(JOB_OUTREACH_CARD_BLOCK_ID, JOB_OUTREACH_TABLE_BLOCK_ID) and proven to sit on the same page as the Hiring Pipeline heading (HIRING_CARD_BLOCK_ID). Only the heading's
-stamp and the table's data rows are written; the rest of the page is digested before and after and must be identical. Dormant until both ids are set: `run` then
-returns NOT_CONFIGURED without reading or writing anything. Rows come from lifeos.recruiters.outreach.project (one per exact open Ledger job, D221). Fixed codes only."""
+"""LIFE-47 (D222, Claude-proposed implementation of the Jim-approved native two-table direction, LIFE-47 10177; visuals not yet Jim-accepted): the job-first Job
+Outreach table beneath Active Opportunities on the Daily Report. Shape: a heading_3 `🤝 Job Outreach (Updated 2:00 PM CT)`, one status paragraph (the compact count
+line, the empty-state explanation or the DEGRADED warning) and the four-column table (Job · Outreach · Next follow-up · Notes). The heading and table are pinned by id
+(JOB_OUTREACH_CARD_BLOCK_ID, JOB_OUTREACH_TABLE_BLOCK_ID) and proven to sit on the same page as the Hiring Pipeline heading (HIRING_CARD_BLOCK_ID). Only the heading
+stamp, the status paragraph and the table's data rows are written; the rest of the page is digested before and after and must be identical. Dormant until both ids
+are set. Rows come from lifeos.recruiters.outreach.project (one per exact open Ledger job, D221). Partial by design: a job leaves the table only when its Ledger
+Hiring Decision closes it; promotion to Active Opportunities on a verified interview request is NOT inferred here (LIFE-42 / LIFE-46). Fixed codes only."""
 import json
 import os
 import re
@@ -17,7 +19,9 @@ from lifeos.recruiters import notion as store, outreach as O
 TITLE = router.JOB_OUTREACH_REGION
 MODULE = router.OWNERS[TITLE]
 HEADERS = ("Job", "Outreach", "Next follow-up", "Notes")
-EMPTY = "No job-specific outreach is being tracked."
+EMPTY = "0 jobs · No job-specific outreach is being tracked. Outreach appears here only after Mark as Sent on a Job Ledger job."
+STAMP = re.compile(r"\((Updated \d{1,2}:\d{2} [AP]M CT)\)\s*$")
+LAST = re.compile(r"showing last accepted state \((Updated \d{1,2}:\d{2} [AP]M CT)\)")
 SKIP = hiring_card.SKIP
 CT = ZoneInfo("America/Chicago")
 
@@ -55,7 +59,7 @@ def validate(client, environ):
             raise fail(f"NOT_CONFIGURED:{name}")
         if not re.fullmatch(r"[0-9a-fA-F]{32}", raw):
             raise fail(f"ID_INVALID:{name}:len{len(raw)}")
-    region = _step("ANCHOR", lambda: R.floating_region(client, R.clean_id(environ["JOB_OUTREACH_CARD_BLOCK_ID"]), TITLE, fail, with_status=False))
+    region = _step("ANCHOR", lambda: R.floating_region(client, R.clean_id(environ["JOB_OUTREACH_CARD_BLOCK_ID"]), TITLE, fail, with_status=True))
     if not R.same_id(region["table"]["id"], R.clean_id(environ["JOB_OUTREACH_TABLE_BLOCK_ID"])):
         raise fail("PINNED_BLOCK_MISMATCH")
     hiring = _step("HIRING_BLOCK", lambda: R._meta(client, R.clean_id(environ["HIRING_CARD_BLOCK_ID"])))
@@ -63,7 +67,7 @@ def validate(client, environ):
         raise fail("WRONG_PAGE")
     if R.cells_of(region["rows"][0]) != list(HEADERS):
         raise fail("HEADERS_CHANGED")
-    own = [region["heading"]["id"], region["table"]["id"]]
+    own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
     digest = _step("DIGEST", lambda: R.page_digest(client, region["page_id"], own, fail, SKIP))
     if any(R.titled(text, TITLE) for text in digest["h3"]):
         raise fail("HEADING_NOT_UNIQUE")
@@ -75,23 +79,39 @@ def validate(client, environ):
 
 
 def cells(rows):
-    """project() rows -> table cells; the empty state is one explicit row, never a silent blank table."""
-    if not rows:
-        return [[(EMPTY, None), ("", None), ("", None), ("", None)]]
+    """project() rows -> table cells. No rows -> no data rows: the empty state is said in the status line, never as a pseudo-job."""
     return [[(r["job"], None), (r["outreach"], None), (r["next"], None), ("Job Ledger ↗", r["link"])] for r in rows]
 
 
-def present(client, environ, stamp, rows, live):
-    """Dry run: validate only. Live: write, read back, prove the rest of the page unchanged. rows=None (DEGRADED) changes only the heading.
-    -> {"rows_changed", "rows_added", "rows_removed", "verified"}"""
+def status_line(rows):
+    if not rows:
+        return EMPTY
+    jobs, contacted = len(rows), sum(r["contacted"] for r in rows)
+    return f"{jobs} job{'s' if jobs != 1 else ''} · {contacted} contacted · replies and referrals not tracked yet"
+
+
+def degraded_line(region):
+    """The warning names the last trustworthy state only when the region itself proves it: the stamp of the heading as last written successfully, or the
+    one an earlier warning already carried. Never the time of this failed run."""
+    last = STAMP.search(R.plain(region["heading"]).strip()) or LAST.search(R.plain(region["status"]) if region["status"] else "")
+    shown = f"showing last accepted state ({last.group(1)})" if last else "last accepted time unknown"
+    return f"⚠️ DEGRADED · outreach source unreadable · {shown} · follow-up dates may be out of date · not a trustworthy zero"
+
+
+def present(client, environ, stamp, rows, live, status=None):
+    """Dry run: validate only. Live: write, read back, prove the rest of the page unchanged. rows=None (DEGRADED) keeps the table rows and writes only the heading
+    and the warning line. -> {"rows_changed", "rows_added", "rows_removed", "verified"}"""
     region, before = validate(client, environ)
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
     if not live:
         return counts
-    own = [region["heading"]["id"], region["table"]["id"]]
+    own = [region["heading"]["id"], region["status"]["id"], region["table"]["id"]]
     heading = heading_text(stamp)
+    status = degraded_line(region) if rows is None else status
+    if not isinstance(status, str) or not status:
+        raise fail("STATUS_MISSING")
     try:
-        counts.update(R.write_floating(client, region, None, rows, fail))
+        counts.update(R.write_floating(client, region, status, rows, fail))
         if R.plain(region["heading"]).strip() != heading:
             client.call("PATCH", f"/blocks/{region['heading']['id']}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": heading}}]}})
     except Exception:
@@ -100,10 +120,12 @@ def present(client, environ, stamp, rows, live):
         except Exception:
             pass
         raise fail("WRITE_FAILED") from None
-    after_region = R.floating_region(client, region["heading"]["id"], TITLE, fail, with_status=False)
+    after_region = R.floating_region(client, region["heading"]["id"], TITLE, fail, with_status=True)
     after = R.page_digest(client, after_region["page_id"], own, fail, SKIP)
     if after_region["heading"]["id"] != region["heading"]["id"] or R.plain(after_region["heading"]).strip() != heading:
         raise fail("HEADING_CHANGED")
+    if R.plain(after_region["status"]) != status:
+        raise fail("READBACK_MISMATCH")
     if before["nodes"] != after["nodes"] or before["layout"] != after["layout"]:
         print("job-outreach: protected content changed", json.dumps(R.page_changed(before, after)))
         raise fail("PROTECTED_REGION_CHANGED")
@@ -167,5 +189,5 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
     except NotionError as error:
         present(writer, environ, "DEGRADED", None, live)
         raise fail(f"SOURCE_UNREADABLE:{str(error)[:40]}") from None
-    done = present(writer, environ, stamp, cells(shown), live)
+    done = present(writer, environ, stamp, cells(shown), live, status_line(shown))
     return {"job_outreach": "written" if live else "dry_run", "jobs": len(shown), "conversations": sum(len(r["jobs"]) for r in found), **done}
