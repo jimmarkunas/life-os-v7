@@ -226,24 +226,25 @@ class RequeueFloorTests(unittest.TestCase):
 
 
 class RejudgeExcludedTests(unittest.TestCase):
-    def test_drops_only_the_fit_row_of_a_ready_job_with_no_page_and_an_exclude_decision(self):
+    def test_marks_stale_only_the_fit_row_of_a_ready_job_with_no_page_and_an_exclude_decision(self):
         from lifeos.jobs.fit import stage
         from tests.kit.db import FakeConn
         conn = FakeConn()
         conn.cur.rowcount = 39
         self.assertEqual(stage.rejudge_excluded(conn.cursor()), 39)
-        self.assertEqual([w for w, _ in conn.cur.sql], ["DELETE f"])
+        self.assertEqual([w for w, _ in conn.cur.sql], ["UPDATE v7_job_fit"])                     # D214: marked stale, never deleted (its cloud columns survive)
         import inspect
         sql = inspect.getsource(stage.rejudge_excluded)
         for part in ("j.status='READY'", "j.notion_page_id IS NULL", "f.admission='EXCLUDE'"):
             self.assertIn(part, sql)
         self.assertNotIn("v7_jobs SET", sql)                                      # the job row is never edited here: the scoring pass decides
+        self.assertIn("SET f.model_version='0'", sql)
 
     def test_the_statement_survives_the_driver_formatting(self):
         import inspect
         from lifeos.jobs.fit import stage
         source = inspect.getsource(stage.rejudge_excluded)
-        sql = source[source.index('"DELETE'):source.index('")\n    return')]
+        sql = source[source.index('"UPDATE'):source.index('")\n    return')]
         "".join(sql.split('"')) % ()                                              # no stray % in the statement
 
 

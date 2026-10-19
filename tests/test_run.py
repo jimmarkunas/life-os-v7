@@ -72,16 +72,25 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
 
     def test_every_other_stage_keeps_exit_0_even_when_its_counts_say_failed(self):
-        others = sorted(name for name in run.STAGES if name != "publish")
+        others = sorted(name for name in run.STAGES if name not in ("publish", "fit"))
         self.assertGreater(len(others), 40)
         for name in others:
             code, out, err = self._main(name, {"failed": 3, "lane": "x"})
             self.assertEqual((name, code, err), (name, 0, ""))
             self.assertEqual(out, f"{name}: " + json.dumps({"failed": 3, "lane": "x"}, sort_keys=True) + "\n")
 
-    def test_only_publish_is_registered_for_the_partial_failure_exit(self):
-        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["publish"])
+    def test_only_publish_and_fit_are_registered_for_the_partial_failure_exit(self):
+        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["fit", "publish"])
         self.assertIn("publish", run.STAGES)
+        self.assertIn("fit", run.STAGES)
+
+    def test_fit_fails_only_when_its_enabled_cloud_shadow_degraded(self):
+        """D214: an off-mode Fit run (failed 0) exits 0; a shadow failure (failed 1, cloud_fit DEGRADED) exits 1 with FIT_CLOUD_DEGRADED, its counts still printed."""
+        code, _, err = self._main("fit", {"cloud_fit": "off", "cloud_degraded": 0, "failed": 0, "picked": 3})
+        self.assertEqual((code, err), (0, ""))
+        code, out, err = self._main("fit", {"cloud_fit": "DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", "cloud_degraded": 1, "failed": 1, "picked": 3})
+        self.assertEqual((code, err), (1, "FIT FAILED: FIT_CLOUD_DEGRADED\n"))
+        self.assertIn("DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", out)
 
     def test_a_raised_store_or_notion_error_still_returns_1_with_its_own_code(self):
         err = io.StringIO()

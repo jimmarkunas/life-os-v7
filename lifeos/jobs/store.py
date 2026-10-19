@@ -134,6 +134,17 @@ COLUMNS = (
     ("v7_job_fit", "admission_reason", "VARCHAR(80) NULL", None),
     ("v7_job_fit", "work_mode", "VARCHAR(8) NULL", None),
     ("v7_job_fit", "lane", "VARCHAR(24) NULL", None),
+    # LIFE-41 cloud-Fit shadow (D214): private, nullable, written only by lifeos.jobs.fit.cloud; the static Fit write never touches them
+    ("v7_job_fit", "cloud_status", "VARCHAR(10) NULL", None),
+    ("v7_job_fit", "cloud_reason", "VARCHAR(48) NULL", None),
+    ("v7_job_fit", "cloud_score", "SMALLINT NULL", None),
+    ("v7_job_fit", "cloud_confidence", "VARCHAR(8) NULL", None),
+    ("v7_job_fit", "cloud_rationale", "VARCHAR(300) NULL", None),
+    ("v7_job_fit", "cloud_request_hash", "CHAR(16) NULL", None),
+    ("v7_job_fit", "cloud_model", "VARCHAR(40) NULL", None),
+    ("v7_job_fit", "cloud_run_id", "VARCHAR(64) NULL", None),
+    ("v7_job_fit", "cloud_jd_fingerprint", "CHAR(64) NULL", None),
+    ("v7_job_fit", "cloud_at", "DATETIME NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
 )
 def existing_v7_tables(connection):

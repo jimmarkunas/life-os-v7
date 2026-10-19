@@ -14,13 +14,17 @@ from lifeos.jobs.fit import judge
 PORT, MAX_REQUEST, MAX_REPLY, WAIT = 47341, 16384, 4096, 90                      # Oracle answers one JSON line under 4 KiB
 MANIFEST = Path(__file__).with_name("edge_fixtures.json")        # the Oracle operator's export, synthetic only: {"fixtures": [{"id", "request", "request_sha256"}]}
 STATUSES = {"REFUSED", "BUSY", "TIMEOUT", "TIMEOUT_ORPHAN", "ERROR", "MODEL_DRIFT", "OVERSIZE"}
-REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT"}
+REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT",
+           "LIMIT_UNCONFIGURED",                                                 # LIFE-41 G3: Oracle's fail-closed daily cap has no limit.json
+           "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE", "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH", "PURGE_FAILED"}   # LIFE-41 G5 real gate (10489/10491)
 MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
 
 
 class EdgeError(RuntimeError):
-    """Fixed codes only. `detail` (when set) names the first receipt field that was not as contracted: a fixed field name, never content."""
+    """Fixed codes only. `detail` (when set) names the first receipt field that was not as contracted: a fixed field name, never content. `receipt` (FIT_EDGE_PURGE_FAILED only):
+    the validated Oracle receipt, kept privately as provenance."""
     detail = ""
+    receipt = None
 
 
 def digest(request):
@@ -60,16 +64,17 @@ def bad_receipt_field(receipt):
     ids, text = receipt.get("run_ids"), lambda key: isinstance(receipt.get(key), str) and 0 < len(receipt[key]) <= 64
     rules = {"provider": receipt.get("provider") == "openai", "model": isinstance(receipt.get("model"), str) and receipt["model"] in MODELS, "transport": receipt.get("transport") == "gateway",
              "agent": receipt.get("agent") == "fit", "fallback": receipt.get("fallback") is False, "run_ids": isinstance(ids, list) and 0 < len(ids) <= 8 and all(isinstance(i, str) and 0 < len(i) <= 64 for i in ids),
-             "run_finished": receipt.get("run_finished") is True, "started": text("started"), "ended": text("ended")}
+             "run_finished": receipt.get("run_finished") is True, "started": text("started"), "ended": text("ended"),
+             "purge": receipt.get("purge", "absent") in ("absent", "ok", "failed")}                 # LIFE-41 10504: real replies only; absent on synthetic ones
     return next((name for name, ok in rules.items() if not ok), None)
 
 
-def invoke(host, request, base, title, nonce=None, send=exchange):
+def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
     """One model invocation, never retried: -> {judgment, receipt, request_hash}, or an EdgeError code at the first thing that does not match."""
     if not host:
         raise EdgeError("FIT_EDGE_NO_HOST")
     nonce, want = nonce or secrets.token_hex(16), digest(request)
-    raw = send(host, frame(request, nonce))
+    raw = send(host, frame(request, nonce), wait=wait)
     if not raw:
         raise EdgeError("FIT_EDGE_NO_REPLY")
     if len(raw) > MAX_REPLY:
@@ -80,6 +85,8 @@ def invoke(host, request, base, title, nonce=None, send=exchange):
         receipt, status = reply.get("receipt"), reply["status"]
     except (ValueError, KeyError, AssertionError, TypeError):
         raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
+    if status == "BUSY":                                                  # LIFE-41 10504 C2: Oracle's in-flight refusal carries no hash or nonce; no run was counted
+        raise EdgeError("FIT_EDGE_BUSY")
     if reply.get("request_hash") != want:
         raise EdgeError("FIT_EDGE_HASH_MISMATCH")
     if reply.get("nonce") != nonce:
@@ -90,6 +97,14 @@ def invoke(host, request, base, title, nonce=None, send=exchange):
     if field:
         error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")
         error.detail = field
+        raise error
+    if reply.get("fixture") == "REAL" and receipt.get("purge") not in ("ok", "failed"):
+        error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")                  # a real run must say whether its transcript was purged
+        error.detail = "purge"
+        raise error
+    if receipt.get("purge") == "failed":                                  # LIFE-41 10504 C5: the deletion control failed, so this is not a clean result; Oracle refuses further real requests
+        error = EdgeError("FIT_EDGE_PURGE_FAILED")
+        error.receipt = receipt
         raise error
     judgment = judge.accept(reply["judgment_raw"], base, title, request)
     if judgment is None:

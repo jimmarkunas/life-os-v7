@@ -143,7 +143,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED"}
+PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def main(argv=None):

@@ -251,10 +251,17 @@ class Envelope(unittest.TestCase):
         for title in ("Remote - Chicago", "(Hybrid) Austin", "", None):
             self.assertIsNone(sent_for(title, self.text, "Austin, TX"), title)
 
-    def test_the_residual_limit_is_explicit_so_zero_leakage_is_never_claimed(self):
-        self.assertIn("RESIDUAL LIMIT", judge.__doc__)
-        self.assertIn("no model egress may be enabled", judge.__doc__.lower())
-        self.assertEqual(sent_for("Product Manager Chicago", self.text)["title"], "Product Manager Chicago")      # a place with no separator, absent from the location field, is NOT recognised: closing it needs a new boundary, then this test changes
+    def test_a_place_left_in_the_title_with_no_separator_sends_nothing(self):
+        """TL review of #339 (5567054574) closed the former RESIDUAL LIMIT: a place absent from the location field and unseparated in the title fails closed."""
+        self.assertNotIn("RESIDUAL LIMIT", judge.__doc__)
+        for title, location in (("Senior Technical Program Manager London", "Remote - United States"), ("Product Manager Chicago", None),
+                                ("Program Manager Toronto", "Remote"), ("Delivery Lead Berlin", ""), ("TPM California", None)):
+            self.assertIsNone(sent_for(title, self.text, location), title)
+            self.assertTrue(judge.title_place(judge.request_title(title, location)), title)
+        for title in ("Senior Technical Program Manager", "Global Program Manager", "Product Owner, Platform", "Technical Program Manager - London"):
+            sent = sent_for(title, self.text, "Remote - United States")                                     # a clean role title (or a separated place, cut as before) is sent
+            self.assertIsNotNone(sent, title)
+            self.assertFalse(judge.title_place(sent["title"]), title)
 
     BOILERPLATE = ("About the Role\nWe are a mission-driven company reimagining how teams everywhere collaborate. Our culture rewards curiosity, kindness and bold ideas, and our customers "
                    "span every industry and continent. Join a passionate group that celebrates wins together, learns from every setback and believes the best work happens when people feel they belong "
