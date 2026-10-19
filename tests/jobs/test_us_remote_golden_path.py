@@ -1,7 +1,8 @@
 """US_REMOTE_GOLDEN_PATH (LIFE-59 M5D): employer-board vacancies and a job-alert newsletter through the REAL shared V7 Jobs stages to the Job Ledger.
 
-RUNTIME DECLARATION. ENTRY POINT: the hourly `boards` stage (lifeos.sources.web.boards.run) beside the newsletter chain of NEWSLETTER_GOLDEN_PATH_GATE, then
-enrich, fit and publish (with its read-back) as `python -m lifeos.run` calls them. CALL CHAIN: boards.run -> web.run -> SqlRepo.commit -> intake.add_job ->
+RUNTIME DECLARATION. ENTRY POINT: the employer-board stages (a board's first read by `boards-backfill`, lifeos.sources.web.boards.backfill, D217; every
+later read by the hourly `boards` stage, boards.run) beside the newsletter chain of NEWSLETTER_GOLDEN_PATH_GATE, then
+enrich, fit and publish (with its read-back) as `python -m lifeos.run` calls them. CALL CHAIN: boards.backfill / boards.run -> web.run -> SqlRepo.commit -> intake.add_job ->
 enrich.run -> fit.stage.run (lanes) -> publish.run (same_opening, v7_ledger_urls, existing_page, readback). MUTATION OWNER: the Jobs store (v7_*) and publish for
 the one Ledger page per qualifying vacancy. CANONICAL STATE: v7_jobs / v7_job_fit / v7_sources and the Ledger page. AUTHORITATIVE READ-BACK: readback.check.
 LIVE ACCEPTANCE BOUNDARY: the real boards, the real Ledger and Jim's acceptance (not claimed here).
@@ -21,6 +22,14 @@ from tests.jobs import test_newsletter_golden_path as gate
 NOW = datetime.now().replace(microsecond=0)
 BOARD = {"id": "gh-acme", "company": "Acme", "tier": "employer", "kind": "greenhouse", "status": "ready", "enabled": True, "slug": "acme",
          "refresh_hours": 6, "hot_hours": 1, "quiet": True}
+
+
+def board_pass():
+    """One tick's employer-board work: the backfill reads the board the first time (D217, switched on), the hourly pass every later due read."""
+    boards.backfill(40, True, NOW, lister_fn=listing, sources=[BOARD], environ={"BOARDS_BACKFILL": "on"})
+    return boards.run(40, True, NOW, lister_fn=listing, sources=[BOARD])
+
+
 SHARED = gate.VACANCIES["v1"][2]                       # the employer page the newsletter's Acme card resolves to: one opening, two providers
 
 # board job id -> (title, place, url, page body or None for an employer page that is gone)
@@ -57,7 +66,7 @@ class UsRemoteGoldenPath(unittest.TestCase):
         self.addCleanup(patch.stop)
 
     def board_pass(self):
-        return boards.run(40, True, NOW, lister_fn=listing, sources=[BOARD])
+        return board_pass()
 
     def run_all(self):
         self.j.resolve_all(["v1", "v2", "v3"])
@@ -141,7 +150,7 @@ class VacancyIdentity(unittest.TestCase):
 
     def run_all(self):
         self.j.tick()
-        boards.run(40, True, NOW, lister_fn=listing, sources=[BOARD])
+        board_pass()
         gate.enrich.run(50, True)
         gate.fit_stage.run(100, True, gate.ENV)
         return gate.publish.run(60, True, gate.ENV)

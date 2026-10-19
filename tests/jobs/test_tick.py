@@ -33,7 +33,8 @@ class TickTests(unittest.TestCase):
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
-        self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors"})
+        self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors", "boards-backfill"})
+        self.assertEqual(names[-1], "boards-backfill")                       # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
     def test_the_publish_cap_fits_its_budget(self):

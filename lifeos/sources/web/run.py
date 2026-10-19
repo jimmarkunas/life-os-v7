@@ -40,22 +40,30 @@ class Outcome:
     unchanged_runs: int = 0                          # D216: consecutive quiet reads after this one
 
 
-def pick_due(sources, states, now, limit):
-    """Sources never run, or due, oldest first, at most `limit`."""
+def pick_due(sources, states, now, limit, select=None, forced=()):
+    """Sources never run, or due, oldest first, at most `limit` (never-run boards in id order: the backfill's resume cursor is simply "no state row yet").
+    D217 `select`: None reads both; "known" only boards read before (plus a curated extra and a forced board); "unread" only boards never read."""
+    if select == "known":
+        sources = [s for s in sources if s["id"] in states or s.get("extra") or s["id"] in forced]
+    elif select == "unread":
+        sources = [s for s in sources if s["id"] not in states]
     due = [s for s in sources if s["id"] not in states or states[s["id"]]["due_at"] <= now]
     return sorted(due, key=lambda s: (states.get(s["id"], {}).get("due_at") or datetime.min, s["id"]))[:limit]
 
 
-def unforced(states, sources, force):
+def forced_ids(sources, force):
     """D104/D111: a dispatch may name companies (comma separated, 3+ letters each, `board:` ignored; the Hourly `report` input) whose boards are read now whether or not they
-    are due: the states of the sources that match are dropped."""
+    are due."""
     force = (force or "").strip().lower()
     force = force[len("board:"):] if force.startswith("board:") else force
     names = [n.strip() for n in force.split(",") if len(n.strip()) >= 3 and n.strip() != "funnel"]
-    if not names:
-        return states
-    hit = {s["id"] for s in sources if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)}
-    return {k: v for k, v in states.items() if k not in hit}
+    return {s["id"] for s in sources if any(n in s["id"].lower() or n in (s.get("company") or "").lower() for n in names)}
+
+
+def unforced(states, sources, force):
+    """The states of the forced sources (`forced_ids`) are dropped, so they are due now."""
+    hit = forced_ids(sources, force)
+    return {k: v for k, v in states.items() if k not in hit} if hit else states
 
 
 def skip_allowed(state):
@@ -226,7 +234,7 @@ class SqlRepo:
         return job_id
 
 
-def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None):
+def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, lane=DEFAULT_LANE, cap=None, budget=None, screen=None, workers=None, select=None):
     """D202: the employer-board pass reuses this run with its own cap, admission budget, workers and `screen` (job -> reason, applied to a
     COMPLETE listing before the diff; only "kept_" jobs are stored, and a stored job screened out while still listed stays CURRENT)."""
     now = now or _now()
@@ -239,10 +247,13 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         with store.connect() as connection:
             store.ensure_schema(connection)
     states = repo.states({s["id"] for s in sources})
-    states = unforced(states, sources, os.environ.get("WEB_FORCE"))
-    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN))
+    forced = forced_ids(sources, os.environ.get("WEB_FORCE"))
+    states = {k: v for k, v in states.items() if k not in forced}
+    due = pick_due(sources, states, now, min(limit, cap or limits.WEB_BOARDS_PER_RUN), select, forced)
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
               "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "not_modified": 0, "same_frontier": 0}
+    if select:
+        counts["unread"] = sum(s["id"] not in states for s in sources)          # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
     with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers
