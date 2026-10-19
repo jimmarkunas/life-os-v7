@@ -687,7 +687,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         for module in (amazon, attention, mail):
             self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
         for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py"):
-            self.assertIn("HIRING_CARD_BLOCK_ID", (ROOT / module).read_text())
+            self.assertIn("report_region.floating_ids(environ)", (ROOT / module).read_text())          # D222: Hiring and Job Outreach, by their configured anchors
+        self.assertEqual(R.floating_ids({"HIRING_CARD_BLOCK_ID": "a", "JOB_OUTREACH_CARD_BLOCK_ID": "b"}), {router.HIRING_REGION: "a", router.JOB_OUTREACH_REGION: "b"})
 
 
 class FakeStore:
