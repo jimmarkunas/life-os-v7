@@ -573,3 +573,76 @@ class ContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionStateTests(unittest.TestCase):
+    """RECR-1.4 (D220): Needs Action on a new contact or a new reply, a follow-up two business days after Waiting, and Needs Action again when it comes due."""
+    ROW = dict(person="Pat Example", company="Acme Staffing", role="Data Engineer", last="2026-10-06T15:00:00+00:00")
+
+    def test_a_new_contact_starts_needs_action_and_is_read_back(self):
+        notion = FakeRecruiters()
+        run([signed()], notion, live=True)
+        self.assertEqual(store.read(notion.pages[0])["action"], "Needs Action")
+
+    def test_a_new_reply_reopens_waiting_and_blank_but_never_completed_dismissed_or_done(self):
+        for before in ("Waiting", None, "Needs Action"):
+            with self.subTest(before=before):
+                notion = FakeRecruiters([page(**self.ROW, action=before, follow_up="2026-10-20" if before == "Waiting" else None)])
+                counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
+                row = store.read(notion.pages[0])
+                self.assertEqual((counts["updated"], counts["failed"], row["action"]), (1, 0, "Needs Action"))
+                if before == "Waiting":
+                    self.assertEqual(row["follow_up"], "2026-10-20")       # the human's date is kept; the row is simply back in Needs Action
+        for before in ("Completed", "Dismissed"):                          # history: zero writes and the full row unchanged
+            with self.subTest(before=before):
+                notion = FakeRecruiters([page(**self.ROW, action=before)])          # newer message; blank What they want / Client the open path would fill
+                prior = store.read(notion.pages[0])
+                counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
+                self.assertEqual((counts["updated"], counts["created"], counts["failed"], notion.writes), (0, 0, 0, []))
+                self.assertEqual(store.read(notion.pages[0]), prior)
+        notion = FakeRecruiters([page(**self.ROW, done=True, active=False, action="Waiting", follow_up="2026-10-01")])
+        counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
+        self.assertEqual((counts["done_kept"], notion.writes), (1, []))
+
+    def test_an_older_message_does_not_reopen(self):
+        notion = FakeRecruiters([page(**dict(self.ROW, last="2026-10-09T15:00:00+00:00"), action="Waiting", follow_up="2026-10-20")])
+        run([signed(received="2026-10-07T09:00:00+00:00")], notion, live=True)
+        self.assertEqual((store.read(notion.pages[0])["action"], notion.writes), ("Waiting", []))
+
+    def test_waiting_without_a_date_gets_two_business_days_and_replay_is_stable(self):
+        notion = FakeRecruiters([page(**self.ROW, action="Waiting")])
+        counts = run([], notion, live=True)                                  # Thursday Oct 8 -> Monday Oct 12
+        row = store.read(notion.pages[0])
+        self.assertEqual((counts["waiting"], counts["scheduled"], counts["failed"], row["action"], row["follow_up"]), (1, 1, 0, "Waiting", "2026-10-12"))
+        again = run([], notion, live=True)
+        self.assertEqual((again["scheduled"], again["reopened_due"], len(notion.writes)), (0, 0, 1))
+
+    def test_a_due_follow_up_returns_to_needs_action_and_a_future_one_waits(self):
+        notion = FakeRecruiters([page(**self.ROW, action="Waiting", follow_up="2026-10-08", pid="due"),
+                                 page(**dict(self.ROW, person="Sam Sample"), action="Waiting", follow_up="2026-10-09", pid="later")])
+        counts = run([], notion, live=True)
+        rows = {p["id"]: store.read(p) for p in notion.pages}
+        self.assertEqual((counts["reopened_due"], rows["due"]["action"], rows["due"]["follow_up"], rows["later"]["action"]), (1, "Needs Action", "2026-10-08", "Waiting"))
+
+    def test_an_inactive_waiting_row_is_never_scheduled_or_reopened(self):
+        notion = FakeRecruiters([page(**self.ROW, active=False, action="Waiting", pid="blank"),
+                                 page(**dict(self.ROW, person="Sam Sample"), active=False, action="Waiting", follow_up="2026-10-01", pid="due")])
+        prior = [store.read(p) for p in notion.pages]
+        counts = run([], notion, live=True)
+        self.assertEqual((counts["waiting"], counts["would_schedule"], counts["would_reopen_due"], notion.writes), (2, 0, 0, []))
+        self.assertEqual([store.read(p) for p in notion.pages], prior)
+
+    def test_dry_run_counts_follow_ups_and_writes_nothing(self):
+        notion = FakeRecruiters([page(**self.ROW, action="Waiting"), page(**dict(self.ROW, person="Sam Sample"), action="Waiting", follow_up="2026-10-01")])
+        counts = run([], notion)
+        self.assertEqual((counts["would_schedule"], counts["would_reopen_due"], notion.writes), (1, 1, []))
+
+    def test_a_lost_follow_up_write_is_a_failure(self):
+        notion = FakeRecruiters([page(**self.ROW, action="Waiting")], drop_writes=True)
+        counts = failed_run(lambda: run([], notion, live=True))
+        self.assertEqual((counts["scheduled"], counts["failed"]), (0, 1))
+
+    def test_business_days_skip_the_weekend(self):
+        from datetime import date
+        self.assertEqual(store.add_business_days(date(2026, 10, 8), 2), date(2026, 10, 12))   # Thu -> Mon
+        self.assertEqual(store.add_business_days(date(2026, 10, 10), 2), date(2026, 10, 13))  # Sat -> Tue

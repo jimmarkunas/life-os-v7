@@ -117,6 +117,7 @@
   "D217": "A board's first read belongs to a hibernatable backfill; the hourly board pass only re-reads (2026-10-19, Jim; LIFE-76 PR 3)",
   "D218": "An interview request progresses only on verified round identity; a Ledger link needs a Stable Job Key or requisition (2026-10-19, Jim; LIFE-42)",
   "D22": "Newsletter closure, Ledger read-back, market detection, shape probes",
+  "D220": "Recruiter rows carry an action state: Needs Action on a new contact or reply, a follow-up two business days after Waiting (2026-10-19, Jim; LIFE-21 / LIFE-78 M2)",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
