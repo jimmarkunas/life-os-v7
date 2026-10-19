@@ -81,7 +81,7 @@ jobs:
   jira:
     # Jira runs in its OWN job, like Interview: scheduled and tick runs refresh the snapshot and the report card (rollover stays manual), only the Jira secrets (the database secrets are
     # re-supplied to the snapshot step alone), and a failure is a warning that never fails the Jobs run.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.jira != 'none' }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || (github.event_name == 'workflow_dispatch' && inputs.jira != 'none') }}   # D212: an empty input (a workflow_run after a manual or cancelled hourly run) is not a request
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
