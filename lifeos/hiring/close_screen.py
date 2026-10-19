@@ -67,10 +67,10 @@ def _hidden(fields):
     return "".join(f'<input type="hidden" name="{e(k)}" value="{e(v)}">' for k, v in fields.items())
 
 
-def page(title, sub, body):
+def page(title, sub, body, path="Daily Report / Active Opportunities / Close", tab="Close opportunity"):
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark">'
-            f'<title>LIFE OS · Close opportunity</title><link rel="stylesheet" href="/close.css"></head><body><div class="wrap"><header class="mast"><div class="brand"><div class="brandmark" aria-hidden="true">L</div>'
-            f'<div><strong>LIFE OS</strong><span>Hiring · Opportunity actions</span></div></div></header><div class="pagehead"><div class="path">Daily Report / Active Opportunities / Close</div><h1>{e(title)}</h1>'
+            f'<title>LIFE OS · {e(tab)}</title><link rel="stylesheet" href="/close.css"></head><body><div class="wrap"><header class="mast"><div class="brand"><div class="brandmark" aria-hidden="true">L</div>'
+            f'<div><strong>LIFE OS</strong><span>Hiring · Opportunity actions</span></div></div></header><div class="pagehead"><div class="path">{e(path)}</div><h1>{e(title)}</h1>'
             f'<p class="subtitle">{e(sub)}</p></div><main class="surface">{body}</main><div class="foot">LIFE OS · Closing a LinkedIn contact is separate from closing a hiring opportunity.</div></div></body></html>').encode()
 
 
