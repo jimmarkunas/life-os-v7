@@ -20,18 +20,22 @@ def page(person, company="", role="", week="2026-10-11", last="2026-10-07T15:00:
 class FakeRecruiters:
     source = "source-example"
 
-    def __init__(self, pages=None, fail_query=False, drop_writes=False):
+    def __init__(self, pages=None, fail_query=False, drop_writes=False, schema=None):
         self.pages, self.writes, self.queries, self.fail_query, self.drop_writes = list(pages or []), [], 0, fail_query, drop_writes
+        self.schema = {n: {"type": t} for n, t in store.SCHEMA.items()} | (schema or {})
 
     def call(self, method, path, body=None):
         if method == "GET" and path.startswith("/data_sources/"):
-            return {"properties": {n: {"type": t} for n, t in store.SCHEMA.items()}}
+            return {"properties": self.schema}
         raise AssertionError((method, path))
 
     def query_data_source(self, source_id, body):
         self.queries += 1
         if self.fail_query:
             raise NotionError("NOTION_HTTP_500")
+        if "relation" in body["filter"]:
+            wanted = body["filter"]["relation"]["contains"]
+            return {"results": [p for p in self.pages if wanted in [r["id"] for r in (p["properties"].get("Job") or {}).get("relation") or []]], "has_more": False}
         if "select" in body["filter"]:
             wanted = body["filter"]["select"]["equals"]
             return {"results": [p for p in self.pages if ((p["properties"].get("Action Status") or {}).get("select") or {}).get("name") == wanted], "has_more": False}

@@ -10,7 +10,8 @@ from lifeos.jobs import hiring_pipeline
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.hiring import close_screen as S, decision as D, models as M
 
-CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py")
+CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
+           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py")
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
 
 
@@ -132,6 +133,9 @@ def handle(req, who, secrets):
     try:
         if req["method"] == "GET" and req["path"] == "/close.css":
             return 200, "text/css; charset=utf-8", S.CSS.encode(), ()
+        if req["path"] == "/sent" and req["method"] in ("GET", "POST"):                       # D221: Mark as Sent, same gate and signing key
+            from . import outreach_app
+            return outreach_app.handle(req, who, secrets)
         if req["path"] != "/" or req["method"] not in ("GET", "POST"):
             return _stop(404, "Not found", "Nothing here", "This service only closes one opportunity at a time.", "Nothing was changed.")
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)
