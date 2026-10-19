@@ -115,7 +115,8 @@ class Skip(unittest.TestCase):
         got = []
         for day in range(3):
             with mock.patch.object(run.store, "connect", return_value=self.db), mock.patch.object(run.store, "ensure_schema"):
-                counts = boards.run(40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), run.SqlRepo(), [source])
+                read = boards.run if day else lambda *a: boards.backfill(*a, environ={"BOARDS_BACKFILL": "on"})      # D217: a first read is the backfill's
+                counts = read(40, True, NOW + timedelta(days=2 * day), lambda s: lister.list_source(s, provider), run.SqlRepo(), [source])
             row = self.db.raw.execute("SELECT unchanged_runs, etag, last_modified FROM v7_sources WHERE source_id='gh-acme'").fetchone()
             got.append((counts["added"], counts["admit"], counts["not_modified"], provider.seen[-1].get("If-None-Match"), *row))
         self.assertEqual(got, [
