@@ -22,10 +22,10 @@ class Base(unittest.TestCase):
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
-    def job(self, job_id, status="READY", admission="ADMIT", page=None, exclusion=None, cloud_status=None, seen=T, text=GOOD):
+    def job(self, job_id, status="READY", admission="ADMIT", page=None, exclusion=None, cloud_status=None, seen=T, text=GOOD, kind="ats_api"):
         self.db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id:03d}", status=status, title="Technical Program Manager", company="Acme", first_seen=seen, last_seen=seen,
                        updated_at=seen, lane="Newsletter", location_text="Remote - United States", notion_page_id=page)
-        self.db.insert("v7_job_descriptions", job_id=job_id, source_kind="ats", full_text=text, fingerprint=f"fp{job_id}", fetched_at=seen)
+        self.db.insert("v7_job_descriptions", job_id=job_id, source_kind=kind, full_text=text, fingerprint=f"fp{job_id}", fetched_at=seen)
         self.db.insert("v7_job_fit", job_id=job_id, score=80, decision="Go", line="fits", confidence="high", model_version="6", profile_hash="p", jd_fingerprint=f"fp{job_id}",
                        scored_at=seen, admission=admission, admission_reason=None, lane="US Remote", eligible="US Remote", exclusion=exclusion, cloud_status=cloud_status)
 
@@ -89,12 +89,15 @@ class Selection(Base):
         self.job(6, status="EXCLUDED_FIT")
         self.job(8, seen=T + datetime.timedelta(hours=1))
         self.job(7, status="RESOLVED", admission="REVIEW")
-        endpoint = Endpoint()
-        counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "2"}, endpoint)
-        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"]), ("OK", 2, 2))
-        asked = [r[0] for r in self.db.raw.execute("SELECT job_id FROM v7_job_fit WHERE cloud_status='OK' AND job_id <> 5 ORDER BY job_id")]
-        self.assertEqual(asked, [7, 8])
-        self.assertEqual(self.run_cloud(SHADOW, Endpoint())["cloud_calls"], 0)                 # idempotent: nothing left to ask
+        self.job(9, kind="title_only")                                                         # LIFE-41 10500: not a public employer / ATS posting
+        self.job(10, kind="title_watch")
+        asked = []
+        for _ in range(4):                                                                     # one a tick, oldest first, then nothing left
+            counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "2"}, Endpoint())
+            asked.append((counts["cloud_fit"], counts["cloud_calls"]))
+        self.assertEqual(asked, [("OK", 1), ("OK", 1), ("OK", 0), ("OK", 0)])
+        done = [r[0] for r in self.db.raw.execute("SELECT job_id FROM v7_job_fit WHERE cloud_status IS NOT NULL AND job_id <> 5 ORDER BY job_id")]
+        self.assertEqual(done, [7, 8])                                                         # 7 (RESOLVED, first seen T) then 8; never 1-4, 6, 9 or 10
 
     def test_a_published_job_whose_description_changed_is_still_never_asked(self):
         self.job(1, status="PUBLISHED", page="page1")
@@ -104,11 +107,14 @@ class Selection(Base):
         self.assertEqual(self.run_cloud(SHADOW, endpoint)["cloud_calls"], 0)
         self.assertEqual(endpoint.sent, [])
 
-    def test_the_per_run_ceiling_is_one_by_default_and_never_above_two(self):
+    def test_at_most_one_cloud_call_a_tick_whatever_the_variable_says(self):
         for i in range(1, 6):
             self.job(i)
-        self.assertEqual(self.run_cloud(SHADOW, Endpoint())["cloud_calls"], 1)
-        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "50"}, Endpoint())["cloud_calls"], 2)
+        for value in (None, "1", "2", "50"):
+            endpoint = Endpoint()
+            self.assertEqual(self.run_cloud({**SHADOW, **({"V7_CLOUD_FIT_PER_RUN": value} if value else {})}, endpoint)["cloud_calls"], 1, value)
+            self.assertEqual(len(endpoint.sent), 1, value)
+        self.assertEqual(cloud.MAX_PER_RUN, 1)
         self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 1, 0))
 
 
@@ -133,6 +139,11 @@ class ShadowNeverChangesWhatIsVisible(Base):
         text = json.dumps(counts)
         for private in ("k001", "Aligned on delivery", "run-1234567890", REF, "oracle.example", "Acme"):
             self.assertNotIn(private, text)
+        self.job(2, seen=T + datetime.timedelta(hours=1))
+        failed = json.dumps(self.run_cloud(SHADOW, Endpoint(lambda data: reply(data, receipt={**json.loads(reply(data))["receipt"], "fallback": True}))))
+        self.assertIn("DEGRADED(FIT_EDGE_RECEIPT_REJECTED)", failed)
+        for private in ("k002", "fallback", "Run delivery", "Technical Program Manager", "8+ years", REF):      # no field name, JD text, title or reference
+            self.assertNotIn(private, failed)
 
 
 class FailuresAreVisiblyDegraded(Base):
@@ -141,7 +152,7 @@ class FailuresAreVisiblyDegraded(Base):
         self.job(2)
         for reason in ("LIMIT_UNCONFIGURED", "DAILY_LIMIT", "REAL_DISABLED", "NOT_ALLOWLISTED", "PURGE_FAILED"):
             endpoint = Endpoint(lambda data, reason=reason: refusal(data, reason))
-            counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "2"}, endpoint)
+            counts = self.run_cloud(SHADOW, endpoint)
             self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], len(endpoint.sent)), (f"DEGRADED(FIT_EDGE_REFUSED_{reason})", 1, 1))
             self.assertEqual([self.row(i, ("cloud_status",))[0] for i in (1, 2)], [None, None])     # asked again on a later tick, never shown as a cloud answer
 
@@ -156,14 +167,13 @@ class FailuresAreVisiblyDegraded(Base):
             self.assertEqual(counts["cloud_fit"], f"DEGRADED({code})")
             self.assertIsNone(self.row(1, ("cloud_status",))[0])
 
-    def test_an_unusable_judgment_is_recorded_on_its_job_and_the_run_continues(self):
+    def test_an_unusable_judgment_is_recorded_on_its_job_never_as_a_score_and_the_next_tick_moves_on(self):
         self.job(1)
         self.job(2, seen=T + datetime.timedelta(hours=1))
-        answers = iter([lambda data: reply(data, judgment_raw="not json"), reply])
-        endpoint = Endpoint(lambda data: next(answers)(data))
-        counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT_PER_RUN": "2"}, endpoint)
-        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"]), ("DEGRADED(FIT_EDGE_JUDGMENT_REJECTED)", 2, 1))
+        counts = self.run_cloud(SHADOW, Endpoint(lambda data: reply(data, judgment_raw="not json")))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"]), ("DEGRADED(FIT_EDGE_JUDGMENT_REJECTED)", 1, 0))
         self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", "FIT_EDGE_JUDGMENT_REJECTED", None))
+        self.assertEqual(self.run_cloud(SHADOW, Endpoint())["cloud_fit"], "OK")
         self.assertEqual(self.row(2, ("cloud_status",))[0], "OK")
 
     def test_nothing_substantive_to_send_is_skipped_without_a_call(self):

@@ -1,11 +1,11 @@
 """LIFE-41 (10472 C, 10474, 10475): the switchable cloud-Fit shadow. `V7_CLOUD_FIT` = off (default, unset or anything unknown) | shadow | canary | on.
 
 Only off is authorized today. shadow asks Oracle's existing `fit1` verb (lifeos.jobs.fit.edge, the same framing, receipt and judge.accept envelope) for at most
-`V7_CLOUD_FIT_PER_RUN` judgments a tick (default 1, never more than MAX_PER_RUN) and stores the answer privately in nullable `cloud_*` columns of the job's
+one judgment a tick (MAX_PER_RUN; `V7_CLOUD_FIT_PER_RUN` can only lower it to 0) and stores the answer privately in nullable `cloud_*` columns of the job's
 existing v7_job_fit row. It never changes the visible Fit, the decision, the admission, the Ledger, Gmail, the audit or Trash: the static score stays the
 authority. canary and on are refused with no call (G8 is a separate later decision).
 
-Candidates are NEW records only: READY / RESOLVED, no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
+Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
 (`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
 text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (16 hex); without it nothing is sent. Every failure is a fixed code shown as
 `cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
@@ -20,7 +20,10 @@ from lifeos.jobs.fit import edge, judge
 from lifeos.jobs.fit.score import evaluate
 
 MODES = ("off", "shadow", "canary", "on")
-MAX_PER_RUN = 2                         # the hard ceiling, whatever the variable says (10472 C.2)
+MAX_PER_RUN = 1                         # the hard ceiling, whatever the variable says: one cloud call a tick when activated (Jim, LIFE-41)
+# LIFE-41 10500: only a public employer / ATS posting may be judged (the description enrich read from the employer's own page); a title-only or title-watch
+# placeholder, and any other source, is never sent.
+PUBLIC_SOURCES = ("ats_api", "jsonld", "next_data", "page_text")
 STAGE_BUDGET = 240                      # the tick's Fit budget (tick.PLAN): a call starts only when the stage can still finish it
 CALL_SECONDS = 15 + edge.WAIT           # connect timeout + the longest reply wait
 _REF = re.compile(r"^[0-9a-f]{16}$")
@@ -28,7 +31,7 @@ JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT
 
 PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
         " JOIN v7_job_descriptions d ON d.job_id = j.id"
-        " WHERE j.status IN ('READY', 'RESOLVED') AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
+        " WHERE j.status IN ('READY', 'RESOLVED') AND j.notion_page_id IS NULL AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
         " AND f.score IS NOT NULL AND f.cloud_status IS NULL ORDER BY j.first_seen, j.dedupe_key LIMIT %s")
 WRITE = ("UPDATE v7_job_fit SET cloud_status=%s, cloud_reason=%s, cloud_score=%s, cloud_confidence=%s, cloud_rationale=%s, cloud_request_hash=%s,"
          " cloud_model=%s, cloud_run_id=%s, cloud_jd_fingerprint=%s, cloud_at=%s WHERE job_id=%s AND cloud_status IS NULL")
@@ -72,7 +75,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=edge.ex
     if profile is None:
         return _degraded(counts, "PROFILE_MISSING")
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute(PICK, (cap,))
+        cursor.execute(PICK, (PUBLIC_SOURCES, cap))
         rows = cursor.fetchall()
     started = clock() if started is None else started
     results = []
