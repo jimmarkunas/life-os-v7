@@ -13,10 +13,13 @@ Only the last forwarded ntfy message id is written (0600), so a restart resumes 
 exactly one number is retried later; nothing else is ever messaged. Stdlib only; no output.
 
 LIFE-71 (the Oct 17-18 floods): `openclaw message send` sometimes exited non-zero AFTER delivering, and this relay re-sent the same alert every poll. Each send
-now runs with --json and is classified from OpenClaw's own result: DELIVERED (exit 0, a messageId, sentBeforeError, or a send result that is not ok:false),
-NOT_DELIVERED (an explicit ok:false with no delivery evidence) or AMBIGUOUS (no result: a crash, timeout or unparseable output). Only NOT_DELIVERED is retried,
-at most MAX_ATTEMPTS times per alert per channel; AMBIGUOUS is never re-sent (at most once: a possible loss is recorded, a flood is impossible). The attempt is
-written before the send, so a relay killed mid-send finds it on restart and treats it as AMBIGUOUS instead of replaying. Every outcome is appended to a
+now runs with --json and is classified from OpenClaw 2026.9.9's own result contract, never from the exit code: DELIVERED only on verified evidence (a
+messageId, a "sent"/"delivered" status, or sentBeforeError / partial_failed: something went out); NOT_DELIVERED only when the send provably never reached the
+transport (deliveryStatus "suppressed" without sentBeforeError, or the CLI never started); everything else is AMBIGUOUS (a generic ok:false or "failed", a
+gateway-queued delivery, no or contradictory result, a timeout). Only NOT_DELIVERED is retried, at most MAX_ATTEMPTS times per alert per channel; AMBIGUOUS is
+never re-sent (at most once: a possible loss is recorded, a flood is impossible). The attempt is written before the send, so a relay killed mid-send finds it
+on restart and treats it as AMBIGUOUS instead of replaying. Saved state fails closed: an attempt or cursor file that exists but is unreadable or invalid holds
+that channel (no poll, no send; one HELD diagnostic) until a person repairs it; only an absent file is a fresh start. Every outcome is appended to a
 size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text."""
 import json
 import os
@@ -41,7 +44,8 @@ POLL = 20
 ICON = {5: "🚨", 4: "🔔"}
 MAX_ATTEMPTS = 3                                                        # LIFE-71: explicit non-delivery is retried at most this often per alert per channel
 DIAGNOSTICS, DIAGNOSTICS_KEEP = "deliveries.jsonl", 500
-DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP = "DELIVERED", "NOT_DELIVERED", "AMBIGUOUS", "GAVE_UP"
+DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP, HELD = "DELIVERED", "NOT_DELIVERED", "AMBIGUOUS", "GAVE_UP", "HELD"
+ID = re.compile(r"[A-Za-z0-9]{1,32}")                                  # an ntfy message id, or a Unix time written as a fresh-start cursor
 
 
 def topic(run=subprocess.run):
@@ -84,7 +88,7 @@ def events(lines):
             e = json.loads(line)
         except ValueError:
             continue
-        if isinstance(e, dict) and e.get("event") == "message" and isinstance(e.get("id"), str):
+        if isinstance(e, dict) and e.get("event") == "message" and isinstance(e.get("id"), str) and ID.fullmatch(e["id"]):
             yield e
 
 
@@ -102,19 +106,28 @@ def result_json(stdout):
 
 
 def classify(returncode, stdout):
-    """-> (outcome, fixed class). Delivery evidence wins over the exit code: the floods were deliveries that exited non-zero."""
-    if returncode == 0:
-        return DELIVERED, "exit0"
+    """-> (outcome, fixed class), from OpenClaw 2026.9.9's --json result only (buildMessageCliJson / resolveMessageSendOutcome); the exit code proves nothing
+    either way (the floods were deliveries that exited 1, and exit 0 can carry an explicit failure). It is kept only in the diagnostics line."""
     result = result_json(stdout)
     if result is None:
-        return AMBIGUOUS, "no_result"
-    if result.get("messageId") or result.get("sentBeforeError") is True:
-        return DELIVERED, "evidence_nonzero_exit"
+        return AMBIGUOUS, "no_result"                                    # a thrown error (pre- or post-send) prints only to stderr: unprovable
+    if result.get("dryRun") is not False or result.get("action") not in (None, "send"):
+        return AMBIGUOUS, "not_a_send_result"
+    payload = result.get("payload") if isinstance(result.get("payload"), dict) else {}
+    status = result.get("deliveryStatus")
+    if result.get("sentBeforeError") is True or status == "partial_failed":
+        return DELIVERED, "sent_before_error"                            # something reached the transport: never re-sent
     if result.get("ok") is False:
-        return NOT_DELIVERED, "result_not_ok"
-    if result.get("action") == "send" and result.get("dryRun") is False:
-        return DELIVERED, "ok_result_nonzero_exit"                       # the send succeeded; something after it (e.g. a plugin stop hook) failed
-    return AMBIGUOUS, "unrecognized_result"
+        if status == "suppressed":
+            return NOT_DELIVERED, "suppressed_before_send"               # refused before the transport, with nothing sent
+        return AMBIGUOUS, "failed_unproven"                              # "failed" or unknown: it may have reached the transport
+    if payload.get("status") == "delivery_queued" or payload.get("delivered") is False:
+        return AMBIGUOUS, "gateway_queued"                               # OpenClaw: the gateway owns retry; do not resend
+    if isinstance(result.get("messageId"), str) and result["messageId"].strip():
+        return DELIVERED, "message_id"
+    if status in ("sent", "delivered") or payload.get("deliveryStatus") in ("sent", "delivered"):
+        return DELIVERED, "status_sent"
+    return AMBIGUOUS, "no_delivery_evidence"
 
 
 def send(to, body, run=subprocess.run, channel="whatsapp"):
@@ -132,13 +145,22 @@ def _position(channel):
     return LAST if channel == "whatsapp" else f"{LAST}-{channel}"
 
 
-def last_id(channel="whatsapp"):
+def cursor(channel="whatsapp"):
+    """-> ("absent", None) only when no cursor file exists (a first start), ("valid", id), or ("invalid", None) for one that exists but cannot be read or
+    is malformed: that channel is held, never restarted from the 10-minute window."""
     try:
         with open(_position(channel)) as f:
             value = f.read().strip()
-        return value if re.fullmatch(r"[A-Za-z0-9]{1,32}", value) else None
-    except OSError:
-        return None
+    except FileNotFoundError:
+        return "absent", None
+    except (OSError, UnicodeDecodeError):
+        return "invalid", None
+    return ("valid", value) if ID.fullmatch(value) else ("invalid", None)
+
+
+def last_id(channel="whatsapp"):
+    state, value = cursor(channel)
+    return value
 
 
 def remember(message_id, channel="whatsapp"):
@@ -154,14 +176,23 @@ def _attempts_path(channel):
     return os.path.join(STATE, f"attempts-{channel}")
 
 
-def attempts(channel):
-    """-> {"id", "count", "pending"} for the alert this channel is working on, or {}."""
+def attempt_state(channel):
+    """-> ("absent", {}) when no attempt file exists, ("valid", {"id", "count", "pending"}) or ("invalid", {}) for one that exists but cannot be read or is
+    not exactly that shape (an id like ntfy's, a count 1..MAX_ATTEMPTS, a boolean pending). An invalid one holds the channel: it may hide a sent alert."""
     try:
         with open(_attempts_path(channel)) as f:
             value = json.load(f)
-        return value if isinstance(value, dict) and isinstance(value.get("id"), str) and type(value.get("count")) is int else {}
+    except FileNotFoundError:
+        return "absent", {}
     except (OSError, ValueError):
-        return {}
+        return "invalid", {}
+    ok = (isinstance(value, dict) and set(value) == {"id", "count", "pending"} and isinstance(value["id"], str) and ID.fullmatch(value["id"])
+          and type(value["count"]) is int and 1 <= value["count"] <= MAX_ATTEMPTS and type(value["pending"]) is bool)
+    return ("valid", value) if ok else ("invalid", {})
+
+
+def attempts(channel):
+    return attempt_state(channel)[1]
 
 
 def _write_attempts(channel, value):
@@ -201,11 +232,28 @@ def _done(channel, message_id):
         pass
 
 
+def _held(channel, cls):
+    """One HELD diagnostic per cause (not one every poll): the channel waits for a person; nothing is polled or sent."""
+    try:
+        with open(os.path.join(STATE, DIAGNOSTICS)) as f:
+            last = [json.loads(x) for x in f.read().splitlines() if x.strip()]
+        last = next((x for x in reversed(last) if x.get("channel") == channel), {})
+    except (OSError, ValueError):
+        last = {}
+    if not (last.get("outcome") == HELD and last.get("class") == cls):
+        diagnose(channel, None, HELD, cls)
+
+
 def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsapp"):
-    """One poll for one channel: every message after its last forwarded one, oldest first. Only an explicit non-delivery stops here (the next poll retries
-    it, at most MAX_ATTEMPTS in all); a delivery, an ambiguous outcome or an exhausted alert moves the position on, so no alert can be sent forever."""
-    since = last_id(channel) or "10m"
-    with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since}", timeout=30) as stream:
+    """One poll for one channel: every message after its last forwarded one, oldest first. Only a proven non-delivery stops here (the next poll retries
+    it, at most MAX_ATTEMPTS in all); a delivery, an ambiguous outcome or an exhausted alert moves the position on, so no alert can be sent forever. A cursor
+    or attempt file that exists but is unreadable or invalid holds this channel (fail closed); the other channel is unaffected."""
+    position, since = cursor(channel)
+    if position == "invalid":
+        return _held(channel, "invalid_cursor")
+    if attempt_state(channel)[0] == "invalid":
+        return _held(channel, "invalid_attempts")
+    with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since or '10m'}", timeout=30) as stream:
         lines = [line.decode("utf-8", "replace") for line in stream]
         for e in events(lines):
             state = attempts(channel)

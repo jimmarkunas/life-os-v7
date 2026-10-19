@@ -85,7 +85,13 @@ def done(code, stdout="", stderr=""):
     return subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
 
 
-DELIVERED_EXIT_1 = done(1, json.dumps({"action": "send", "channel": "telegram", "dryRun": False, "handledBy": "plugin", "messageId": "131", "payload": {}}, indent=2))
+def result(**fields):                                                                      # the shape of OpenClaw 2026.9.9 buildMessageCliJson
+    return json.dumps({"action": "send", "channel": "telegram", "dryRun": False, "handledBy": "plugin", "payload": {}, **fields}, indent=2)
+
+
+DELIVERED_EXIT_1 = done(1, result(messageId="131"))                                         # the flood signature: delivered, then exit 1
+OK = done(0, result(messageId="m1"))
+REFUSED = done(1, result(ok=False, error="Message send suppressed: policy.", deliveryStatus="suppressed"))      # proven never sent
 
 
 class Relay:
@@ -132,19 +138,30 @@ class ReplaySafetyTests(unittest.TestCase):
         path = os.path.join(self.dir, fa.DIAGNOSTICS)
         return [json.loads(x) for x in open(path).read().splitlines()] if os.path.exists(path) else []
 
-    def test_the_cli_result_decides_delivery_not_the_exit_code(self):
-        self.assertEqual(fa.classify(0, ""), (fa.DELIVERED, "exit0"))
-        self.assertEqual(fa.classify(1, DELIVERED_EXIT_1.stdout), (fa.DELIVERED, "evidence_nonzero_exit"))
-        self.assertEqual(fa.classify(1, "warn: x\n" + json.dumps({"ok": False, "error": "partial", "sentBeforeError": True})), (fa.DELIVERED, "evidence_nonzero_exit"))
-        self.assertEqual(fa.classify(1, json.dumps({"action": "send", "dryRun": False, "channel": "whatsapp", "payload": {}})), (fa.DELIVERED, "ok_result_nonzero_exit"))
-        self.assertEqual(fa.classify(1, json.dumps({"ok": False, "error": "unknown target", "deliveryStatus": "failed"})), (fa.NOT_DELIVERED, "result_not_ok"))
-        for stdout in ("", "Error: boom", "{not json", json.dumps({"something": "else"})):
-            self.assertEqual(fa.classify(1, stdout)[0], fa.AMBIGUOUS, stdout)
+    def test_only_verified_evidence_is_delivered_and_only_a_proven_refusal_is_retried(self):
+        """Career TL review 5576359134: the exit code proves nothing either way; a generic failure is never retried."""
+        cases = [
+            ((1, result(messageId="131")), (fa.DELIVERED, "message_id")),                       # exit 1 with an authoritative message id
+            ((0, result(messageId="m1")), (fa.DELIVERED, "message_id")),
+            ((1, "noise\n" + result(ok=False, error="partial", deliveryStatus="partial_failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
+            ((1, result(ok=False, error="x", deliveryStatus="failed", sentBeforeError=True)), (fa.DELIVERED, "sent_before_error")),
+            ((0, result(payload={"deliveryStatus": "sent"})), (fa.DELIVERED, "status_sent")),
+            ((1, REFUSED.stdout), (fa.NOT_DELIVERED, "suppressed_before_send")),                # confirmed pre-send refusal: the only retry
+            ((0, result(ok=False, error="send failed", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),   # exit 0 contradicting an explicit failure
+            ((1, result(ok=False, error="closed after send", deliveryStatus="failed")), (fa.AMBIGUOUS, "failed_unproven")),  # post-send failure, no id
+            ((1, result(ok=False, error="generic")), (fa.AMBIGUOUS, "failed_unproven")),
+            ((0, result()), (fa.AMBIGUOUS, "no_delivery_evidence")),                            # exit 0 alone is not delivery evidence
+            ((0, result(payload={"status": "delivery_queued", "delivered": False})), (fa.AMBIGUOUS, "gateway_queued")),
+            ((0, result(dryRun=True, messageId="x")), (fa.AMBIGUOUS, "not_a_send_result")),
+            ((0, ""), (fa.AMBIGUOUS, "no_result")), ((1, "Error: gateway rejected"), (fa.AMBIGUOUS, "no_result")), ((1, "{not json"), (fa.AMBIGUOUS, "no_result")),
+        ]
+        for (code, stdout), want in cases:
+            self.assertEqual(fa.classify(code, stdout), want, (code, stdout[:60]))
 
     def test_send_uses_json_and_a_timeout_is_ambiguous_and_a_missing_cli_is_not_delivered(self):
         import subprocess
-        relay = Relay(done(0, "{}"))
-        self.assertEqual(fa.send("123", "hi", run=relay, channel="telegram"), (fa.DELIVERED, "exit0", 0))
+        relay = Relay(OK)
+        self.assertEqual(fa.send("123", "hi", run=relay, channel="telegram"), (fa.DELIVERED, "message_id", 0))
         self.assertIn("--json", relay.runs[0])
         self.assertEqual(fa.send("123", "hi", run=Relay(subprocess.TimeoutExpired("openclaw", 90)))[:2], (fa.AMBIGUOUS, "timeout"))
         self.assertEqual(fa.send("123", "hi", run=Relay(FileNotFoundError()))[:2], (fa.NOT_DELIVERED, "not_started"))
@@ -157,14 +174,13 @@ class ReplaySafetyTests(unittest.TestCase):
         self.assertEqual([d["outcome"] for d in self.diagnostics()], [fa.DELIVERED, fa.DELIVERED])
 
     def test_an_ambiguous_outcome_is_never_resent(self):
-        relay = Relay(done(1, "", "Error: gateway closed"))
+        relay = Relay(done(1, "", "Error: gateway closed"))                                    # no result at all
         self.poll(relay, times=20)
         self.assertEqual(len(relay.runs), 2)
         self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()], [("a1", fa.AMBIGUOUS, "no_result"), ("a2", fa.AMBIGUOUS, "no_result")])
 
     def test_an_explicit_failure_is_retried_a_bounded_number_of_times_in_order_then_given_up(self):
-        not_ok = done(1, json.dumps({"ok": False, "error": "rate limited"}))
-        relay = Relay(not_ok)
+        relay = Relay(REFUSED)
         self.poll(relay, times=10)
         a1 = [r for r in relay.runs]
         self.assertEqual(len(relay.runs), 2 * fa.MAX_ATTEMPTS)                                   # a1 three times, then a2 three times: bounded, never forever
@@ -174,7 +190,7 @@ class ReplaySafetyTests(unittest.TestCase):
         self.assertTrue(a1)
 
     def test_a_transient_failure_then_success_delivers_once_and_keeps_order(self):
-        relay = Relay(done(1, json.dumps({"ok": False, "error": "busy"})), done(0, "{}"), done(0, "{}"))
+        relay = Relay(REFUSED, OK, OK)
         self.poll(relay)                                                                         # a1 fails: a2 is NOT sent ahead of it
         self.assertEqual((len(relay.runs), fa.last_id("telegram")), (1, None))
         self.poll(relay, times=5)
@@ -197,21 +213,21 @@ class ReplaySafetyTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             self.poll(crash)
         self.assertEqual(fa.attempts("telegram"), {"id": "a1", "count": 1, "pending": True})
-        after = Relay(done(0, "{}"))
+        after = Relay(OK)
         self.poll(after)
         self.assertEqual([r for r in after.runs].__len__(), 1)                                   # only a2: a1 may have gone out, so it is not replayed
         self.assertEqual([(d["id"], d["outcome"], d["class"]) for d in self.diagnostics()][:1], [("a1", fa.AMBIGUOUS, "interrupted")])
         self.assertEqual(fa.last_id("telegram"), "a2")
 
     def test_channels_keep_separate_positions_and_attempts(self):
-        self.poll(Relay(done(0, "{}")), channel="whatsapp")
-        bad = Relay(done(1, json.dumps({"ok": False, "error": "x"})))
+        self.poll(Relay(OK), channel="whatsapp")
+        bad = Relay(REFUSED)
         self.poll(bad, channel="telegram")
         self.assertEqual((fa.last_id("whatsapp"), fa.last_id("telegram")), ("a2", None))
         self.assertEqual((fa.attempts("whatsapp"), fa.attempts("telegram")["count"]), ({}, 1))
 
     def test_repeated_polls_with_nothing_new_send_nothing_and_the_diagnostics_stay_bounded_and_private(self):
-        relay = Relay(done(0, "{}"))
+        relay = Relay(OK)
         self.poll(relay)
         self.poll(relay, times=30)
         self.assertEqual(len(relay.runs), 2)
@@ -222,6 +238,72 @@ class ReplaySafetyTests(unittest.TestCase):
         self.assertEqual(lines[-1]["id"], f"x{fa.DIAGNOSTICS_KEEP + 49}")
         self.assertEqual(os.stat(os.path.join(self.dir, fa.DIAGNOSTICS)).st_mode & 0o777, 0o600)
         self.assertNotIn("domain jobs", open(os.path.join(self.dir, fa.DIAGNOSTICS)).read())      # never the alert text
+
+
+
+class CorruptStateFailsClosedTests(unittest.TestCase):
+    """Career TL review 5576359134: saved state that EXISTS but is unreadable or invalid holds that channel (no poll, no send, no 10-minute fallback, one HELD
+    line); an ABSENT file is a fresh start; the other channel keeps working."""
+
+    setUp, tearDown, poll, diagnostics = ReplaySafetyTests.setUp, ReplaySafetyTests.tearDown, ReplaySafetyTests.poll, ReplaySafetyTests.diagnostics
+
+    def held(self, channel="telegram"):
+        opener, relay = Stream(stream(*self.cache)), Relay(OK)
+        for _ in range(5):                                                                       # repeated polls: still nothing, and one HELD line per cause
+            fa.follow("topic", "123456789", opener, relay.sender(channel), channel=channel)
+        return opener.urls, relay.runs
+
+    def write(self, name, data):
+        mode = "wb" if isinstance(data, bytes) else "w"
+        with open(os.path.join(self.dir, name), mode) as f:
+            f.write(data)
+
+    def test_invalid_or_unreadable_attempts_hold_the_channel_with_zero_sends(self):
+        bad = ["{not json", "[]", json.dumps({"id": "a1", "count": 1}), json.dumps({"id": "a1", "count": "1", "pending": True}),
+               json.dumps({"id": "a1", "count": 0, "pending": False}), json.dumps({"id": "a1", "count": 99, "pending": False}),
+               json.dumps({"id": "a1", "count": 1, "pending": "yes"}), json.dumps({"id": "a/1", "count": 1, "pending": True}),
+               json.dumps({"id": "a1", "count": 1, "pending": True, "extra": 1}), b"\xff\xfe"]
+        for data in bad:
+            self.setUp()
+            fa.remember("a0", "telegram")
+            self.write("attempts-telegram", data)
+            urls, runs = self.held()
+            self.assertEqual((urls, runs), ([], []), data)                                      # no poll, no send attempt
+            self.assertEqual(fa.last_id("telegram"), "a0", data)
+            self.assertEqual([(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_attempts")], data)
+        self.setUp()
+        os.mkdir(os.path.join(self.dir, "attempts-telegram"))                                   # unreadable (a directory where the file should be)
+        self.assertEqual(self.held(), ([], []))
+
+    def test_invalid_or_unreadable_cursor_holds_the_channel_and_never_falls_back_to_ten_minutes(self):
+        for data in ("", "a/1", "x" * 40, "a1 a2", b"\xff\xfe"):
+            self.setUp()
+            self.write("last-id-telegram", data)
+            urls, runs = self.held()
+            self.assertEqual((urls, runs), ([], []), data)
+            self.assertEqual([(d["outcome"], d["class"]) for d in self.diagnostics()], [(fa.HELD, "invalid_cursor")], data)
+        self.setUp()
+        os.mkdir(os.path.join(self.dir, "last-id-telegram"))
+        self.assertEqual(self.held(), ([], []))
+
+    def test_a_held_channel_does_not_stop_the_other_and_absent_state_is_a_fresh_start(self):
+        self.write("attempts-telegram", "{not json")
+        self.assertEqual(self.held("telegram"), ([], []))
+        whatsapp = Relay(OK)
+        self.poll(whatsapp, channel="whatsapp")                                                  # absent cursor and attempts: a first start
+        self.assertEqual((len(whatsapp.runs), fa.last_id("whatsapp")), (2, "a2"))
+        os.unlink(os.path.join(self.dir, "attempts-telegram"))                                  # a person repaired it (removed the bad file, kept the cursor)
+        fa.remember("a1", "telegram")
+        repaired = Relay(OK)
+        self.poll(repaired, channel="telegram")
+        self.assertEqual((len(repaired.runs), fa.last_id("telegram")), (1, "a2"))
+
+    def test_valid_saved_state_still_works(self):
+        fa.remember("a0", "telegram")
+        fa._write_attempts("telegram", {"id": "a1", "count": 1, "pending": False})               # a proven refusal last time: retried now
+        relay = Relay(OK)
+        self.poll(relay)
+        self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
 
 
 if __name__ == "__main__":
