@@ -156,15 +156,12 @@ def outreach_rows(notion):
 
 
 def open_jobs(ledger, rows, ledger_source):
-    """{Ledger page id: {company, role, url}} for every linked job that is still open by the Close rules (D221); a closed or foreign page is left out."""
+    """{Ledger page id: {company, role, url}} for every linked job that is still open by the Close rules (D221). A page Notion returns as archived, in trash,
+    closed by a Hiring Decision or outside the Ledger is left out; a page that cannot be read at all (any error, 404 included) is NOT proof of closure, so it raises
+    and the run is DEGRADED with the last accepted rows kept."""
     jobs = {}
     for jid in {O._id(j) for r in rows for j in r["jobs"]}:
-        try:
-            page = ledger.get_page(jid)
-        except NotionError as error:
-            if "404" in str(error):
-                continue
-            raise
+        page = ledger.get_page(jid)                                          # NotionError (404 included) -> SOURCE_UNREADABLE in run()
         props = page.get("properties") or {}
         decision = props.get(D.DECISION)
         if (page.get("archived") or page.get("in_trash") or O._id((page.get("parent") or {}).get("data_source_id")) != O._id(ledger_source)
