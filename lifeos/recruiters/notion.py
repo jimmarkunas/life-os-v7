@@ -59,7 +59,8 @@ def read(page):
             "week_ending": date("Week Ending")[:10], "done": bool((props.get("Done") or {}).get("checkbox")), "active": bool((props.get("Active") or {}).get("checkbox")),
             "needs_review": bool((props.get("Needs review") or {}).get("checkbox")), "source_url": (props.get("Source URL") or {}).get("url") or "",
             "created_by": _actor(page.get("created_by")), "edited_by": _actor(page.get("last_edited_by")),
-            "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10]}
+            "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10],
+            "jobs": [str(r.get("id") or "") for r in (props.get("Job") or {}).get("relation") or [] if isinstance(r, dict)]}
 
 
 def week_rows(notion, week):
@@ -85,7 +86,7 @@ def week_rows(notion, week):
 
 def matches(rows, candidate):
     wanted = key(candidate["week_ending"], candidate["person"], candidate["company"], candidate["role"])
-    return [r for r in rows if key(r["week_ending"], r["person"], r["company"], r["role"]) == wanted]
+    return [r for r in rows if not r["jobs"] and key(r["week_ending"], r["person"], r["company"], r["role"]) == wanted]     # a job-linked outreach row is never an inbound match (D221)
 
 
 def _blank(value):
@@ -100,7 +101,7 @@ def enrichable(rows, candidate):
     if not source:
         return out
     for r in rows:
-        if r["week_ending"] != candidate["week_ending"] or norm(r["person"]) != norm(candidate["person"]):
+        if r["jobs"] or r["week_ending"] != candidate["week_ending"] or norm(r["person"]) != norm(candidate["person"]):
             continue
         if r["source_url"] != source:
             continue

@@ -124,6 +124,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     creds = creds or os.environ.get("CREDENTIALS_DIRECTORY", "")
     secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
+    if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
+        secrets["config"]["recruiters"] = policy["recruiters"]
     try:
         if req["method"] == "GET":
             secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))
