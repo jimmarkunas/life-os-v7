@@ -208,7 +208,7 @@ class WorkflowTests(unittest.TestCase):
         job = diag["jobs"]["diag"]
         self.assertEqual(list(diag[True]), ["workflow_dispatch"])                                           # manual only: no schedule, workflow_run, push or repository_dispatch
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|repository_dispatch|push|pull_request\w*):")
-        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job
+        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "cloud-fit-trace"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job
         self.assertEqual(diag["permissions"], {"contents": "read"})
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)

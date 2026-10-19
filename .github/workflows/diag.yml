@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). cloud-fit-trace: counts of the private Cloud Fit outcomes (status and reason codes, score bands, per-day counts, HELD published jobs); no job, score value, rationale or text; writes nothing, no model call"
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "cloud-fit-trace"]
         default: "scale-up-holds"
       message_ref:
         description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."

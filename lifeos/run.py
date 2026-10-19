@@ -95,6 +95,7 @@ STAGES = {
     "scale-up-holds": lazy("lifeos.jobs.holds"),
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
     "alerts-open": lazy("lifeos.jobs.alertstate"),
+    "cloud-fit-trace": lazy("lifeos.jobs.fit.cloudtrace"),                  # LIFE-41: read-only counts of the private Cloud Fit columns (diag.yml job `diag`); never on a tick, no model call
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
     "fit-edge-test": lazy("lifeos.jobs.fit.edge"),                       # LIFE-60: manual and synthetic-only (fit-edge-test.yml); never on a tick
     "safety-sql-smoke": lazy("lifeos.jobs.safety", "run_sql_smoke"),
