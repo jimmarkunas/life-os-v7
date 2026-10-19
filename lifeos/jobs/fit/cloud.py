@@ -6,7 +6,9 @@ existing v7_job_fit row. It never changes the visible Fit, the decision, the adm
 authority. canary and on are refused with no call (G8 is a separate later decision).
 
 Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
-(`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
+(`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. Up to SCAN of them are examined a run: one that cannot be sent (not a public
+posting, a place in its title, nothing substantive) is recorded SKIPPED with its fixed reason at no network cost, and the run moves on to the next, so an
+unsendable backlog never uses up the run's one call (LIFE-41 G6 proof run 39202038517 spent its only pick on a skip). A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
 text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (16 hex); without it nothing is sent. Every failure is a fixed code shown as
 `cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
 writes nothing, so the job is asked again on a later tick and no static score is ever presented as a cloud answer. Counts only in the log."""
@@ -22,6 +24,7 @@ from lifeos.jobs.fit.score import evaluate
 
 MODES = ("off", "shadow", "canary", "on")
 MAX_PER_RUN = 1                         # the hard ceiling, whatever the variable says: one cloud call a tick when activated (Jim, LIFE-41)
+SCAN = 25                               # candidates examined a run; a skip costs no network or model call, so it never consumes the one call
 # LIFE-41 10500: only a public employer / ATS posting may be judged (the description enrich read from the employer's own page); a title-only or title-watch
 # placeholder, and any other source, is never sent.
 PUBLIC_SOURCES = ("ats_api", "jsonld", "next_data", "page_text")
@@ -81,7 +84,7 @@ def _now():
 def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic):
     """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded. Called by the Fit stage after its static write, with its
     profile: the static result of the same text is the base, so the hard-family and junior caps and the gate apply to the cloud score exactly as to the static one."""
-    counts = {"cloud_fit": mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0}
+    counts = {"cloud_fit": mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {}}
     if counts["cloud_fit"] == "off":
         return counts                                                    # no store read, no network, no model
     if counts["cloud_fit"] != "shadow":
@@ -100,23 +103,27 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     if profile is None:
         return _degraded(counts, "PROFILE_MISSING")
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute(PICK, (PUBLIC_SOURCES, cap))
+        cursor.execute(PICK, (PUBLIC_SOURCES, SCAN))
         rows = cursor.fetchall()
     started = clock() if started is None else started
     results = []
+    def skip(job_id, reason, fingerprint):
+        results.append((job_id, "SKIPPED", reason, None, None, fingerprint))
+        counts["cloud_skipped"] += 1
+        counts["cloud_skip_reasons"][reason] = counts["cloud_skip_reasons"].get(reason, 0) + 1     # fixed codes only: why, never which job
+
     for job_id, title, company, location, text, fingerprint, url, source in rows:     # no store session is open across a network call
+        if counts["cloud_calls"] >= cap:
+            break                                                        # the one call is spent (or attempted): later candidates stay unasked, untouched
         if not public_posting(url, source):
-            results.append((job_id, "SKIPPED", "NOT_PUBLIC_POSTING", None, None, fingerprint))
-            counts["cloud_skipped"] += 1
+            skip(job_id, "NOT_PUBLIC_POSTING", fingerprint)
             continue
         sent = judge.request(title, text, {"ref": ref}, location)
         if sent is None and judge.title_place(judge.request_title(title, location)):
-            results.append((job_id, "SKIPPED", "TITLE_LOCATION", None, None, fingerprint))      # fail closed: a place left in the title is never sent
-            counts["cloud_skipped"] += 1
+            skip(job_id, "TITLE_LOCATION", fingerprint)                  # fail closed: a place left in the title is never sent
             continue
         if sent is None:
-            results.append((job_id, "SKIPPED", "NO_SUBSTANTIVE_TEXT", None, None, fingerprint))
-            counts["cloud_skipped"] += 1
+            skip(job_id, "NO_SUBSTANTIVE_TEXT", fingerprint)
             continue
         if remaining(clock() - started) < CALL_SECONDS:
             _degraded(counts, "STAGE_BUDGET")
