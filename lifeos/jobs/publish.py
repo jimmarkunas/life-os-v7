@@ -101,6 +101,27 @@ def existing_page(client, key):
     return found[0]["id"] if found else None
 
 
+def adopted(pages):
+    """existing_page()'s answer from a batched lookup: the one page that holds the key, None for none, and the same refusal for two (never resolved by picking one)."""
+    if len(pages) > 1:
+        raise NotionError("ledger_key_ambiguous")
+    return pages[0]["id"] if pages else None
+
+
+def _listed(client, keys, counts):
+    """LIFE-76 saving 3: the Ledger pages for every key this run may publish, one query per readback.KEY_CHUNK keys instead of one per key. An unreadable
+    answer is never read as `no page`: publish falls back to the per-key lookup (None), which refuses on its own."""
+    from lifeos.jobs import readback                                                  # noqa: PLC0415
+    keys = list(dict.fromkeys(k for k in keys if k))
+    if not keys:
+        return {}
+    try:
+        return readback.ledger_pages(client, keys)
+    except NotionError:
+        counts["key_lookup"] = "per_key"
+        return None
+
+
 def ledger_urls(client):
     """Every Apply URL already in the Ledger (paged, 100 per request)."""
     urls, cursor = set(), None
@@ -209,6 +230,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
+    listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
     for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible, location, route) in rows:
         if job_id in known:
             counts["duplicate"] += 1
@@ -241,7 +263,7 @@ def run(limit, live, environ=os.environ):
         if gated and fit_lane:                                           # the lane policy chose the visible lane (a UK job at a sponsor is Skilled Worker)
             row["lane"], row["eligible"] = fit_lane, [n for n in (eligible or "").split(",") if n]
         try:
-            page_id, created = existing_page(client, key), False                   # slow: no connection open
+            page_id, created = (adopted(listed[key]) if listed is not None and key in listed else existing_page(client, key)), False   # slow: no connection open
             if not page_id:
                 page_id, created = client.create(properties(row), body_blocks(key, desc)), True
         except NotionError as error:
