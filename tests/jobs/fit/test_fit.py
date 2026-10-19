@@ -438,7 +438,7 @@ class RevivedStatement(unittest.TestCase):
     def test_the_revive_statement_survives_driver_formatting_and_is_guarded(self):
         import inspect, re
         from lifeos.jobs.fit import stage
-        source = inspect.getsource(stage.run)
+        source = inspect.getsource(stage._gate)                 # D218: the gate is shared by the static write and the cloud-Fit canary
         start = source.index('"UPDATE v7_jobs SET status=\'READY\', unresolved_reason=\'requeued_fit\'')
         end = source.index("(_now(), job_id))", start)
         literal = "".join(re.findall(r'"([^"]*)"', source[start:end]))
