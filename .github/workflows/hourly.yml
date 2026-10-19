@@ -103,6 +103,10 @@ on:
         description: "How many READY jobs to publish this run (keep small for the first live batch)"
         type: string
         default: "60"
+      cloud_backlog:
+        description: "Cloud Fit backlog (LIFE-41 D219, manual only): ask at most this many jobs through Oracle fit1, one at a time, never more than the V7_CLOUD_FIT_BACKLOG_MAX variable (Jim's approved ceiling; unset = nothing asked). Empty or 0: off"
+        type: string
+        default: ""
 env:
   PIPELINE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tick)) && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
   GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
@@ -630,7 +634,7 @@ jobs:
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
       - name: Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
-        if: ${{ (vars.V7_CLOUD_FIT == 'shadow' || vars.V7_CLOUD_FIT == 'canary') && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick)) }}
+        if: ${{ ((vars.V7_CLOUD_FIT == 'shadow' || vars.V7_CLOUD_FIT == 'canary') && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick))) || (github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: also a manual backlog batch
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
         with:
           oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -734,6 +738,27 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT || steps.bws_finish_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY || steps.bws_finish_retry.outputs.TINYFISH_API_KEY }}
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
+      - id: fit_cloud_backlog
+        continue-on-error: true
+        name: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219, manual only, one Oracle request at a time, bounded by Jim's V7_CLOUD_FIT_BACKLOG_MAX)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' }}
+        env:
+          CLOUD_BACKLOG: ${{ inputs.cloud_backlog }}
+          FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
+          FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN || steps.bws_finish_retry.outputs.NOTION_API_TOKEN }}
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
+          V7_CLOUD_FIT_BACKLOG_MAX: ${{ vars.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling; 0 (unset) asks nothing
+          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}
+          V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}
+        run: python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
@@ -1147,7 +1172,7 @@ jobs:
         if: ${{ always() }}
         run: |
           failed=""
-          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
+          for pair in extract=${{ needs.prep.outputs.extract }} tick=${{ steps.tick.outcome }} web=${{ steps.web.outcome }} scale_up=${{ steps.web_scale_up.outcome }} boards=${{ steps.boards.outcome }} titlewatch=${{ steps.titlewatch.outcome }} sponsors=${{ steps.sponsors.outcome }} enrich=${{ steps.enrich.outcome }} fit=${{ steps.fit.outcome }} fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }} audit=${{ steps.audit.outcome }} publish=${{ steps.publish.outcome }} finalize=${{ steps.finalize.outcome }} holds=${{ steps.holds.outcome }} probe=${{ steps.probe.outcome }} sync_seen=${{ steps.sync_seen.outcome }} purge=${{ steps.purge.outcome }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           echo "failed=${failed# }" >> "$GITHUB_OUTPUT"
