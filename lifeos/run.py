@@ -130,6 +130,7 @@ STAGES = {
     "probe": lazy("lifeos.probe"),
     "enrich": lazy("lifeos.jobs.enrich"),
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
+    "fit-cloud-backlog": lazy("lifeos.jobs.fit.backlog"),           # D219: Jim's separately approved bounded Cloud Fit batch (manual only)
     "audit": lazy("lifeos.jobs.audit", floor=2000),
     "publish": lazy("lifeos.jobs.publish"),
     "expire-holds": lazy("lifeos.jobs.hold"),
@@ -144,7 +145,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def main(argv=None):

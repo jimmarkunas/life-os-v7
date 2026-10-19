@@ -21,6 +21,7 @@ import os
 import re
 import signal
 import time
+import uuid
 
 from lifeos.jobs import audit, classify, lanes, store
 from lifeos.jobs.fit import edge, judge
@@ -46,7 +47,24 @@ PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.finger
         " WHERE j.status IN ('READY', 'RESOLVED') AND j.notion_page_id IS NULL AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
         " AND f.score IS NOT NULL AND f.cloud_status IS NULL ORDER BY j.first_seen, j.dedupe_key LIMIT %s")
 WRITE = ("UPDATE v7_job_fit SET cloud_status=%s, cloud_reason=%s, cloud_score=%s, cloud_confidence=%s, cloud_rationale=%s, cloud_request_hash=%s,"
-         " cloud_model=%s, cloud_run_id=%s, cloud_jd_fingerprint=%s, cloud_at=%s WHERE job_id=%s AND cloud_status IS NULL")
+         " cloud_model=%s, cloud_run_id=%s, cloud_jd_fingerprint=%s, cloud_at=%s WHERE job_id=%s AND cloud_status='CLAIMED' AND cloud_run_id=%s")
+# D219: a job is claimed by one conditional write before its call (the token is this run's), released only when Oracle refused before any model call.
+CLAIM = "UPDATE v7_job_fit SET cloud_status='CLAIMED', cloud_reason=NULL, cloud_run_id=%s, cloud_at=%s WHERE job_id=%s AND cloud_status IS NULL"
+RELEASE = "UPDATE v7_job_fit SET cloud_status=NULL, cloud_run_id=NULL, cloud_at=NULL WHERE job_id=%s AND cloud_status='CLAIMED' AND cloud_run_id=%s"
+SKIP = "UPDATE v7_job_fit SET cloud_status='SKIPPED', cloud_reason=%s, cloud_jd_fingerprint=%s, cloud_at=%s WHERE job_id=%s AND cloud_status IS NULL"
+# D219 backlog (Jim's separately approved bounded batch): the same predicates without "never published", most useful first (Admit before Review, the higher
+# static Fit, the newer posting), so a batch spends its calls on the jobs Jim is most likely to apply to rather than on the oldest records.
+BACKLOG_PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source, j.link_proof, j.notion_page_id"
+                " FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id"
+                " WHERE j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
+                " AND f.score IS NOT NULL AND f.cloud_status IS NULL"
+                " ORDER BY (f.admission = 'ADMIT') DESC, f.score DESC, j.posted_date IS NULL, j.posted_date DESC, j.first_seen, j.dedupe_key LIMIT %s")
+BACKLOG_CALLS_MAX = 100                 # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
+BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
+BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
+NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
+USAGE_SUMS = {"cloud_tokens_input": "input_tokens", "cloud_tokens_cached": "cached_input_tokens", "cloud_tokens_output": "output_tokens",
+              "cloud_tokens_reasoning": "reasoning_tokens", "cloud_tokens_total": "total_tokens"}     # the receipts' own counts, summed; never estimated
 
 
 def mode(environ):
@@ -84,10 +102,10 @@ def audit_problem(url, text, link_proof, source, company, title):
     return why.upper() if why else None
 
 
-def remaining(elapsed):
+def remaining(elapsed, budget=STAGE_BUDGET):
     """Seconds this Fit stage may still run: the tick's own alarm when one is set (it can cut the stage below 240 s when the run is short of time), never more than
-    STAGE_BUDGET from the stage's start. Read without disturbing the alarm."""
-    own = STAGE_BUDGET - elapsed
+    `budget` (the tick's STAGE_BUDGET, or a backlog batch's) from the stage's start. Read without disturbing the alarm."""
+    own = budget - elapsed
     alarm = signal.getitimer(signal.ITIMER_REAL)[0]
     return min(own, alarm) if alarm > 0 else own
 
@@ -96,17 +114,26 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic, promote=None):
-    """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded. Called by the Fit stage after its static write, with its
-    profile: the static result of the same text is the base, so the hard-family and junior caps and the gate apply to the cloud score exactly as to the static one."""
-    counts = {"cloud_fit": mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {}, "cloud_promoted": 0}
+def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic, promote=None, batch=None, ledger_check=None):
+    """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded, cloud_promoted, cloud_held and the receipts' own token
+    sums. Called by the Fit stage after its static write (shadow / canary: V7_CLOUD_FIT, at most one call), or by the backlog stage with `batch` (D219, Jim's
+    separately approved bounded batch: {"calls": n, "budget": seconds}; it never reads V7_CLOUD_FIT). The static result of the same text is the base, so the hard-family
+    and junior caps and the gate apply to the cloud score exactly as to the static one.
+
+    Every asked job is first CLAIMED (one conditional write with this run's token), so two workers never ask the same job, and its result is written right after its
+    call, so an interrupted run keeps every finished answer. A refusal made before any model call (BUSY, REFUSED_*) releases the claim and stops the run; any other
+    failure is recorded on the row, so a model call that may have run is never repeated."""
+    counts = {"cloud_fit": "backlog" if batch else mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {},
+              "cloud_promoted": 0, "cloud_held": 0, "cloud_failed": 0, "cloud_claim_lost": 0, **{k: 0 for k in USAGE_SUMS}, "cloud_usage_unavailable": 0}
     if counts["cloud_fit"] == "off":
         return counts                                                    # no store read, no network, no model
-    canary = counts["cloud_fit"] == "canary"
-    if counts["cloud_fit"] not in ("shadow", "canary"):
+    canary = counts["cloud_fit"] in ("canary", "backlog")                # both make an accepted answer visible through the stage's promotion
+    if counts["cloud_fit"] not in ("shadow", "canary", "backlog"):
         return _degraded(counts, "MODE_NOT_AUTHORIZED")
     if canary and promote is None:
         return _degraded(counts, "CANARY_WITHOUT_PROMOTION")              # canary is only meaningful inside the Fit stage, which owns admission
+    if batch and ledger_check is None:
+        return _degraded(counts, "BACKLOG_WITHOUT_LEDGER_CHECK")          # a published job is asked only after its page is read for human state
     if not live:
         counts["cloud_fit"] = "dry_run"                                  # a dry run asks nothing
         return counts
@@ -115,24 +142,41 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         return _degraded(counts, "PROFILE_REF_UNCONFIGURED")
     if not host:
         return _degraded(counts, "FIT_EDGE_NO_HOST")
-    cap, send = per_run(environ), send or edge.exchange                 # looked up at call time: a test's patched transport is the one used
+    cap = batch["calls"] if batch else per_run(environ)
+    budget = batch["budget"] if batch else STAGE_BUDGET
+    send = send or edge.exchange                                         # looked up at call time: a test's patched transport is the one used
     if not cap:
         return _degraded(counts, "PER_RUN_ZERO")
     if profile is None:
         return _degraded(counts, "PROFILE_MISSING")
     with store.connect() as connection, connection.cursor() as cursor:
-        cursor.execute(PICK, (PUBLIC_SOURCES, SCAN))
+        if batch:
+            cursor.execute(BACKLOG_PICK, (PUBLIC_SOURCES, min(cap * BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX)))
+        else:
+            cursor.execute(PICK, (PUBLIC_SOURCES, SCAN))
         rows = cursor.fetchall()
     started = clock() if started is None else started
-    results = []
-    def skip(job_id, reason, fingerprint):
-        results.append((job_id, "SKIPPED", reason, None, None, fingerprint))
-        counts["cloud_skipped"] += 1
-        counts["cloud_skip_reasons"][reason] = counts["cloud_skip_reasons"].get(reason, 0) + 1     # fixed codes only: why, never which job
+    token = f"claim:{uuid.uuid4().hex[:24]}"
 
-    for job_id, title, company, location, text, fingerprint, url, source, link_proof in rows:     # no store session is open across a network call
+    def write(sql, args):
+        with store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, args)
+            return cursor.rowcount
+
+    def skip(job_id, reason, fingerprint):
+        if write(SKIP, (reason, fingerprint, _now(), job_id)) == 1:
+            counts["cloud_skipped"] += 1
+            counts["cloud_skip_reasons"][reason] = counts["cloud_skip_reasons"].get(reason, 0) + 1     # fixed codes only: why, never which job
+
+    def record(job_id, status, reason, got, request_hash, fingerprint):
+        """The one write of an asked job's outcome, guarded by this run's claim. -> rows written (0: the claim was lost)."""
+        j, receipt = (got or {}).get("judgment"), (got or {}).get("receipt") or {}
+        return write(WRITE, (status, reason, j.score if j else None, j.confidence if j else None, j.rationale[:300] if j else None, request_hash,
+                             str(receipt.get("model") or "")[:40] or None, str((receipt.get("run_ids") or [""])[0])[:64] or None, fingerprint, _now(), job_id, token))
+
+    for job_id, title, company, location, text, fingerprint, url, source, link_proof, page_id in (r if len(r) == 10 else (*r, None) for r in rows):
         if counts["cloud_calls"] >= cap:
-            break                                                        # the one call is spent (or attempted): later candidates stay unasked, untouched
+            break                                                        # the run's calls are spent (or attempted): later candidates stay unasked, untouched
         if not public_posting(url, source):
             skip(job_id, "NOT_PUBLIC_POSTING", fingerprint)
             continue
@@ -147,45 +191,59 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         if audited:
             skip(job_id, audited, fingerprint)                         # LIFE-41 G6, the last gate before egress: the same tick's audit would demote it; never spend the call on it
             continue
-        if remaining(clock() - started) < CALL_SECONDS:
+        if page_id:
+            held = ledger_check(page_id, company, title)                 # D219: applied (or unreadable) Ledger pages never use a call; the page itself is never changed here
+            if held:
+                counts["cloud_skipped"] += 1
+                counts["cloud_skip_reasons"]["LEDGER_" + held.upper()] = counts["cloud_skip_reasons"].get("LEDGER_" + held.upper(), 0) + 1
+                continue                                                 # not recorded: the human state can change, so it is checked again next time
+        if remaining(clock() - started, budget) < CALL_SECONDS:
             _degraded(counts, "STAGE_BUDGET")
             break
+        if write(CLAIM, (token, _now(), job_id)) != 1:
+            counts["cloud_claim_lost"] += 1                              # another worker holds (or finished) this job: never asked twice
+            continue
         counts["cloud_calls"] += 1
         try:
             got = edge.invoke(host, sent, evaluate(title, company, text, profile, _now().date()), title, send=send, wait=READ_WAIT)
         except edge.EdgeError as error:
             code = str(error)
-            if code in STOP_AND_RECORD:
-                results.append((job_id, "DEGRADED", code, {"receipt": error.receipt}, edge.digest(sent)[:16], fingerprint))
+            if code in NO_CALL:                                          # refused before any model call: the job goes back to the queue, the run stops
+                write(RELEASE, (job_id, token))                          # cloud_calls still counts the request sent
                 _degraded(counts, code)
                 break
-            if code not in JOB_OUTCOMES:
-                _degraded(counts, code)                                    # not about this job: nothing written, no further call this run
-                break
-            results.append((job_id, "DEGRADED", code, None, None, fingerprint))
+            record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
+            counts["cloud_failed"] += 1
             _degraded(counts, code)
-            continue
-        results.append((job_id, "CANARY" if canary else "OK", None, got, edge.digest(sent)[:16], fingerprint))
+            if code in JOB_OUTCOMES:
+                continue                                                 # about this job only: recorded, never re-asked; the next job may be asked
+            break                                                        # anything else (a model may have run): recorded so it is never repeated, and the run stops
+        receipt = got.get("receipt") or {}
+        u = receipt.get("usage")
+        if isinstance(u, dict) and type(u.get("total_tokens")) is int:
+            for key, name in USAGE_SUMS.items():
+                counts[key] += u[name] if type(u.get(name)) is int else 0
+        else:
+            counts["cloud_usage_unavailable"] += 1
         counts["cloud_ok"] += 1
-    if results:
-        with store.connect() as connection, connection.cursor() as cursor:
-            for job_id, status, reason, got, request_hash, fingerprint in results:
-                j, receipt = (got or {}).get("judgment"), (got or {}).get("receipt") or {}
-                answer = status == "CANARY"
-                if answer:
-                    status, reason = "DEGRADED", PROMOTION_FAILED             # D218: fail closed until the promotion's own write marks it CANARY
-                cursor.execute(WRITE, (status, reason, j.score if j else None, j.confidence if j else None, j.rationale[:300] if j else None, request_hash,
-                                       str(receipt.get("model") or "")[:40] or None, str((receipt.get("run_ids") or [""])[0])[:64] or None, fingerprint, _now(), job_id))
-                if answer and cursor.rowcount != 1:
-                    counts["cloud_ok"] -= 1
-                    _degraded(counts, WRITE_CONFLICT)
-                elif answer:
-                    if promote(cursor, job_id, j, str(receipt.get("model") or "model")):
-                        counts["cloud_promoted"] += 1                    # D218: only an accepted, receipt-checked, purged answer that was just stored
-                    else:
-                        counts["cloud_ok"] -= 1
-                        _degraded(counts, PROMOTION_FAILED)
-    if counts["cloud_fit"] in ("shadow", "canary"):
+        status, reason = ("DEGRADED", PROMOTION_FAILED) if canary else ("OK", None)     # D218: fail closed until the promotion's own write marks it CANARY
+        if record(job_id, status, reason, got, edge.digest(sent)[:16], fingerprint) != 1:
+            counts["cloud_ok"] -= 1
+            _degraded(counts, WRITE_CONFLICT)
+            continue
+        if canary:
+            outcome = promote(job_id, got["judgment"], str(receipt.get("model") or "model"))
+            if outcome == "HELD":
+                counts["cloud_held"] += 1                                # D219: a published job the cloud would exclude: kept private for Jim's decision, page untouched
+            elif outcome:
+                counts["cloud_promoted"] += 1                            # D218: only an accepted, receipt-checked, purged answer that was just stored
+            else:
+                counts["cloud_ok"] -= 1
+                _degraded(counts, PROMOTION_FAILED)
+        if batch and not (isinstance(u, dict) and type(u.get("total_tokens")) is int):
+            _degraded(counts, "USAGE_UNAVAILABLE")                       # the answer is kept; no further measured call is made without token counts
+            break
+    if counts["cloud_fit"] in ("shadow", "canary", "backlog"):
         counts["cloud_fit"] = "OK"
     return counts
 
