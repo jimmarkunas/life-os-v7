@@ -146,6 +146,10 @@ COLUMNS = (
     ("v7_job_fit", "cloud_jd_fingerprint", "CHAR(64) NULL", None),
     ("v7_job_fit", "cloud_at", "DATETIME NULL", None),
     ("v7_spend", "browser_seconds", "INT NOT NULL DEFAULT 0", None),
+    # D216 (LIFE-76 PR 2): a board's cache validators and how many reads in a row found it unchanged
+    ("v7_sources", "etag", "VARCHAR(200) NULL", None),
+    ("v7_sources", "last_modified", "VARCHAR(64) NULL", None),
+    ("v7_sources", "unchanged_runs", "SMALLINT NOT NULL DEFAULT 0", None),
 )
 def existing_v7_tables(connection):
     with connection.cursor() as cursor:
