@@ -183,6 +183,28 @@ class Stage(unittest.TestCase):
         self.assertEqual(self.stage(t)["jobs"], 0)
         self.assertEqual((table_state(t, TABLE), status(t)), ([], J.EMPTY))
 
+    def test_an_unreadable_linked_ledger_job_is_degraded_never_a_smaller_table(self):
+        svc = Service(self.ledger, self.rec)
+        mark(svc, JOB_A, "Avery Synthetic")
+        mark(svc, JOB_B, "Avery Synthetic")
+        t = report()
+        self.stage(t)
+        accepted = (table_state(t, TABLE), status(t))
+        self.assertEqual(len(accepted[0]), 2)
+        del self.ledger.pages[JOB_B]                                         # the Ledger page can no longer be read (404): not proof the job closed
+        with self.assertRaises(J.JobOutreachError) as caught:
+            J.run(0, True, environ=ENV, recruiters=self.rec, ledger=self.ledger, client=t, now=NOW.replace(hour=15))
+        self.assertIn("SOURCE_UNREADABLE", str(caught.exception))
+        self.assertEqual(table_state(t, TABLE), accepted[0])
+        self.assertEqual(R.plain(t.blocks[HEAD]), "🤝 Job Outreach (DEGRADED)")
+        self.assertIn("showing last accepted state (Updated 2:00 PM CT)", status(t))
+
+    def test_an_archived_page_notion_returns_is_still_left_out(self):
+        mark(Service(self.ledger, self.rec), JOB_A, "Avery Synthetic")
+        self.ledger.pages[JOB_A]["archived"] = True
+        t = report()
+        self.assertEqual(self.stage(t)["jobs"], 0)
+
     def test_an_unreadable_source_marks_degraded_and_keeps_the_rows(self):
         t = report(rows=1, heading="🤝 Job Outreach (Updated 1:00 PM CT)")
         before = table_state(t, TABLE)
