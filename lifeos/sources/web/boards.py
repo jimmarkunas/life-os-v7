@@ -128,9 +128,26 @@ class StopOnRateLimit:
 
 
 def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None):
+    """The hourly pass (D217): re-reads boards already read once (plus the curated extras and a forced board); a board's first read is the backfill's."""
     counts = web.run(limit, live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources, LANE,
-                     cap=limits.BOARDS_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS)
+                     cap=limits.BOARDS_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="known")
     counts["pass"] = "employer boards"
+    return counts
+
+
+def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=None, environ=os.environ):
+    """D217: the hibernatable first-pass drainer. Off (hibernated) unless BOARDS_BACKFILL=on: then it reads nothing and opens no store session. On, it is the
+    last bulk stage of a tick: at most BOARDS_BACKFILL_PER_RUN never-read boards, in id order (the resume cursor is "no v7_sources row yet", so an interrupted
+    run resumes where it stopped and nothing is read twice), through the same screen, diff, admission budget and FAILED rule as the hourly pass. A read board
+    (COMPLETE or FAILED) gets its state row and joins the hourly pass; once none is left it reports `drained` and reads nothing. Counts only."""
+    if (environ.get("BOARDS_BACKFILL") or "off").strip().lower() != "on":
+        return {"pass": "employer boards backfill", "backfill": "off"}
+    counts = web.run(min(limit, limits.BOARDS_BACKFILL_PER_RUN), live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources,
+                     LANE, cap=limits.BOARDS_BACKFILL_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="unread")
+    counts["pass"] = "employer boards backfill"
+    counts["read"], counts["errors"] = counts["due"], counts["failed"]
+    counts["remaining"] = counts["unread"] - (counts["due"] if live else 0)
+    counts["backfill"] = "drained" if counts["remaining"] == 0 else "on"
     return counts
 
 
