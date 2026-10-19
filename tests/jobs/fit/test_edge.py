@@ -307,6 +307,7 @@ class Dormant(unittest.TestCase):
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()
         self.assertEqual(re.findall(r"V7_CLOUD_FIT: (\S.*?\}\})", hourly), ["${{ vars.V7_CLOUD_FIT || 'off' }}"])     # off unless Jim sets the variable (G6); never a dispatch input or a literal
         self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == 'shadow'", hourly)), 1)                    # the tailnet join runs only in shadow
+        self.assertEqual(len(re.findall(r"vars\.V7_CLOUD_FIT == 'canary'", hourly)), 1)                    # or in the D218 canary; never for on or off
         # LIFE-41 (TL 10517/10524): the brief reference is masked. A repository variable is printed unmasked in the step's env header of a public repo's
         # log, so it may only ever arrive as a secret, and only to the tick step.
         self.assertEqual(re.findall(r"V7_CLOUD_FIT_PROFILE_REF: (\S.*?\}\})", hourly), ["${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}"])

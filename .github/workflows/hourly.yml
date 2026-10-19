@@ -630,7 +630,7 @@ jobs:
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
       - name: Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
-        if: ${{ vars.V7_CLOUD_FIT == 'shadow' && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick)) }}
+        if: ${{ (vars.V7_CLOUD_FIT == 'shadow' || vars.V7_CLOUD_FIT == 'canary') && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick)) }}
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
         with:
           oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -660,7 +660,7 @@ jobs:
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT || steps.bws_finish_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY || steps.bws_finish_retry.outputs.TINYFISH_API_KEY }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
-          V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6); canary/on are refused in code
+          V7_CLOUD_FIT: ${{ vars.V7_CLOUD_FIT || 'off' }}                 # D214: off unless the repository variable says shadow (G6) or canary (D218); on is refused in code
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}   # LIFE-41: the 16-hex reference to Oracle's own brief (G5), a SECRET so it is masked: a repository variable is printed in this step's env header and the repo is public
         run: |
           pip install -r requirements-browser.txt

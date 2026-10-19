@@ -50,12 +50,11 @@ class OffByDefault(Base):
         self.assertEqual(endpoint.sent, [])
         self.assertEqual(self.row(1, CLOUD), (None,) * len(CLOUD))
 
-    def test_canary_and_on_are_refused_with_no_call(self):
+    def test_on_is_refused_and_canary_outside_the_fit_stage_asks_nothing(self):
         self.job(1)
         endpoint = Endpoint()
-        for value in ("canary", "on"):
-            counts = self.run_cloud({**SHADOW, "V7_CLOUD_FIT": value}, endpoint)
-            self.assertEqual((counts["cloud_fit"], counts["cloud_calls"]), ("DEGRADED(MODE_NOT_AUTHORIZED)", 0))
+        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "on"}, endpoint)["cloud_fit"], "DEGRADED(MODE_NOT_AUTHORIZED)")      # G8 full on: a separate decision
+        self.assertEqual(self.run_cloud({**SHADOW, "V7_CLOUD_FIT": "canary"}, endpoint)["cloud_fit"], "DEGRADED(CANARY_WITHOUT_PROMOTION)")   # admission is the stage's
         self.assertEqual(endpoint.sent, [])
 
     def test_a_dry_run_and_missing_configuration_ask_nothing(self):
@@ -218,6 +217,154 @@ class AuditGuardBeforeEgress(Base):
         self.run_cloud(SHADOW, Endpoint())
         self.assertEqual(self.row(1, STATIC), before)                                          # static Fit and admission unchanged; the audit itself still decides demotion
         self.assertEqual(self.db.raw.execute("SELECT status, final_apply_url, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), job_before)
+
+
+class CloudFitCanary(Base):
+    """D218 (Jim, LIFE-41 10555): canary. The one job a tick the model judges gets the accepted cloud score as its visible Fit, decided by the Fit stage's own lane
+    rules and gate, provenance 'Cloud Fit ...' in Why It Fits; the static scorer never overwrites it; every failure leaves the visible Fit exactly as the static one."""
+    CANARY = {**SHADOW, "V7_CLOUD_FIT": "canary", "V7_FIT_GATE": "true"}
+
+    def stage_run(self, environ, endpoint):
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
+                mock.patch.object(edge, "exchange", endpoint):
+            return stage.run(10, True, environ)
+
+    def visible(self, job_id):
+        return self.row(job_id, ("score", "decision", "line", "admission", "cloud_status"))
+
+    def published_fit(self, job_id):
+        from lifeos.jobs import publish
+        with mock.patch.object(publish, "_now", return_value=T):
+            rows, _ = publish._pick(self.db, 10, gated=True)
+        row = next((r for r in rows if r[0] == job_id), None)
+        if row is None:
+            return None
+        props = publish.properties({"title": row[2], "company": row[3], "url": row[4], "source": row[5], "provider": row[6], "lane": row[7], "key": row[1],
+                                    "first_seen": row[8].date() if hasattr(row[8], "date") else row[8], "posted": None, "fit": row[15], "fit_line": row[16],
+                                    "admission": row[17], "admission_reason": row[18], "eligible": (row[23] or "").split(",")})
+        return props["LIFE OS Fit"]["number"], props["Why It Fits"]["rich_text"][0]["text"]["content"]
+
+    def test_a_valid_employer_ats_job_gets_its_cloud_score_as_the_visible_fit_and_reaches_the_ledger_properties(self):
+        self.job(1)
+        endpoint = Endpoint()
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)), (1, 1, 1, 1))
+        score, decision, line, admission, cloud_status = self.visible(1)
+        self.assertEqual((score, decision, admission, cloud_status), (90, "Go", "ADMIT", "CANARY"))            # the fake Oracle judged 90
+        self.assertTrue(line.startswith("Cloud Fit 90% (gpt-6-luna): "))
+        self.assertEqual(self.row(1, ("cloud_score", "cloud_model")), (90, "gpt-6-luna"))
+        self.assertEqual(self.published_fit(1), (90, line))                                     # the Ledger page would carry LIFE OS Fit 90 and the Cloud Fit line
+
+    def test_a_low_cloud_score_is_judged_by_the_same_floor_and_gate_and_never_published(self):
+        self.job(1)
+        low = Endpoint(lambda data: reply(data, judgment_raw=json.dumps({"score": 41, "rationale": "Different discipline.", "confidence": "high"})))
+        self.assertEqual(self.stage_run(self.CANARY, low)["cloud_promoted"], 1)
+        score, decision, _, admission, _ = self.visible(1)
+        self.assertEqual((score, decision, admission), (41, "No-Go", "EXCLUDE"))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
+        self.assertIsNone(self.published_fit(1))
+
+    def test_the_static_scorer_never_overwrites_a_canary_score(self):
+        self.job(1)
+        self.stage_run(self.CANARY, Endpoint())
+        self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")      # a description change would normally re-score
+        self.db.raw.execute("UPDATE v7_job_fit SET profile_hash='other' WHERE job_id=1")
+        endpoint = Endpoint()
+        counts = self.stage_run({**SHADOW, "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true"}, endpoint)
+        self.assertEqual(counts["picked"], 0)
+        self.assertEqual(self.visible(1)[0], 90)
+        self.assertEqual(endpoint.sent, [])
+
+    def test_no_failure_path_can_produce_a_visible_cloud_score(self):
+        bad = {
+            "refusal": (self.CANARY, Endpoint(lambda data: refusal(data, "DAILY_LIMIT"))),
+            "purge failed": (self.CANARY, Endpoint(lambda data: reply(data, fixture="REAL", receipt={**json.loads(reply(data))["receipt"], "purge": "failed"}))),
+            "receipt mismatch": (self.CANARY, Endpoint(lambda data: reply(data, receipt={**json.loads(reply(data))["receipt"], "fallback": True}))),
+            "wrong hash": (self.CANARY, Endpoint(lambda data: reply(data, request_hash="0" * 64))),
+            "unusable judgment": (self.CANARY, Endpoint(lambda data: reply(data, judgment_raw="not json"))),
+            "no reply": (self.CANARY, Endpoint(lambda data: b"")),
+            "missing profile reference": ({**self.CANARY, "V7_CLOUD_FIT_PROFILE_REF": ""}, Endpoint()),
+            "missing Oracle host": ({**self.CANARY, "IMESSAGE_ALERTS_HOST": ""}, Endpoint()),
+        }
+        for label, (environ, endpoint) in bad.items():
+            self.setUp()
+            self.job(1)
+            counts = self.stage_run(environ, endpoint)
+            score, decision, line, admission, cloud_status = self.visible(1)
+            self.assertEqual(counts["cloud_promoted"], 0, label)
+            self.assertNotEqual(cloud_status, "CANARY", label)
+            self.assertFalse((line or "").startswith("Cloud Fit"), label)
+            self.assertNotEqual(score, 90, label)                                               # the visible Fit is the static scorer's
+
+    def test_a_failed_promotion_after_a_valid_answer_leaves_the_named_failure_not_a_stuck_canary_and_stays_recoverable(self):
+        self.job(1)
+        self.stage_run({**self.CANARY, "V7_CLOUD_FIT": "off"}, Endpoint())
+        static = self.visible(1)[:4]                                                            # what the static scorer alone makes visible
+        self.setUp()
+        self.job(1)
+        endpoint = Endpoint()                                                                   # a valid Oracle answer (90) is received and stored
+        with mock.patch.object(stage, "promote_cloud", return_value=False):
+            counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
+                         ("DEGRADED(CANARY_PROMOTION_FAILED)", 1, 0, 0, 1))
+        self.assertEqual(self.visible(1)[:4], static)                                           # no visible overwrite
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("DEGRADED", "CANARY_PROMOTION_FAILED"))   # no stuck CANARY
+        published = self.published_fit(1)
+        self.assertFalse(published and published[1].startswith("Cloud Fit"))                  # the Ledger would carry the static Fit, never the unpromoted answer
+        again = Endpoint()
+        self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")
+        counts = self.stage_run(self.CANARY, again)
+        self.assertEqual((counts["picked"], again.sent), (1, []))                              # the static scorer still owns it; the model is not asked again
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL WHERE job_id=1")   # an operator clear makes it askable again
+        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["cloud_promoted"], 1)
+        self.assertEqual(self.visible(1)[0::4], (90, "CANARY"))
+
+    def test_an_answer_the_guarded_write_does_not_store_is_a_named_conflict_never_a_success_or_a_visible_score(self):
+        self.job(1)
+        self.stage_run({**self.CANARY, "V7_CLOUD_FIT": "off"}, Endpoint())
+        static = self.visible(1)[:4]
+        self.setUp()
+        self.job(1)
+
+        def racing(data):                                                                       # another writer records this row while the answer is in flight
+            self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='SKIPPED', cloud_reason='RACE' WHERE job_id=1")
+            return reply(data)
+        endpoint = Endpoint(racing)
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
+                         ("DEGRADED(CANARY_WRITE_CONFLICT)", 1, 0, 0, 1))                       # WRITE rowcount 0: no success, no retry, no second call
+        self.assertEqual(self.visible(1)[:4], static)                                           # the static result stays visible
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", "RACE", None))   # never CANARY, nothing of the answer stored
+        published = self.published_fit(1)
+        self.assertFalse(published and published[1].startswith("Cloud Fit"))
+
+    def test_a_promotion_whose_gate_write_fails_fails_the_tick_loudly_and_the_next_tick_moves_the_job_without_asking_again(self):
+        self.job(1)
+        low = Endpoint(lambda data: reply(data, judgment_raw=json.dumps({"score": 41, "rationale": "Different discipline.", "confidence": "high"})))
+        real = stage._gate
+
+        def broken(cursor, job_id, decision, gate, counts):
+            if decision.status == "EXCLUDE":                                                    # only the canary's gate write fails (the static pass admits this job)
+                raise RuntimeError("store write failed")
+            return real(cursor, job_id, decision, gate, counts)
+        with mock.patch.object(stage, "_gate", side_effect=broken), self.assertRaises(RuntimeError):
+            self.stage_run(self.CANARY, low)                                                    # never reported as success
+        self.assertEqual((self.visible(1)[0], self.visible(1)[3], self.visible(1)[4]), (41, "EXCLUDE", "CANARY"))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")    # promoted but not yet gated
+        endpoint = Endpoint()
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["canary_regated"], endpoint.sent), (1, []))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
+        self.assertIsNone(self.published_fit(1))
+        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["canary_regated"], 0)            # idempotent
+
+    def test_a_rejected_candidate_is_never_asked_or_promoted(self):
+        self.job(1, url="https://boards.greenhouse.io/acme/jobs/search?q=program+manager")      # the audit would demote it
+        endpoint = Endpoint()
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_calls"], counts["cloud_promoted"], endpoint.sent), (0, 0, []))
+        self.assertEqual(self.visible(1)[4], "SKIPPED")
 
 
 class ShadowNeverChangesWhatIsVisible(Base):
