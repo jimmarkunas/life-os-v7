@@ -320,6 +320,25 @@ class CloudFitCanary(Base):
         self.assertEqual(self.stage_run(self.CANARY, Endpoint())["cloud_promoted"], 1)
         self.assertEqual(self.visible(1)[0::4], (90, "CANARY"))
 
+    def test_an_answer_the_guarded_write_does_not_store_is_a_named_conflict_never_a_success_or_a_visible_score(self):
+        self.job(1)
+        self.stage_run({**self.CANARY, "V7_CLOUD_FIT": "off"}, Endpoint())
+        static = self.visible(1)[:4]
+        self.setUp()
+        self.job(1)
+
+        def racing(data):                                                                       # another writer records this row while the answer is in flight
+            self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='SKIPPED', cloud_reason='RACE' WHERE job_id=1")
+            return reply(data)
+        endpoint = Endpoint(racing)
+        counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
+                         ("DEGRADED(CANARY_WRITE_CONFLICT)", 1, 0, 0, 1))                       # WRITE rowcount 0: no success, no retry, no second call
+        self.assertEqual(self.visible(1)[:4], static)                                           # the static result stays visible
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("SKIPPED", "RACE", None))   # never CANARY, nothing of the answer stored
+        published = self.published_fit(1)
+        self.assertFalse(published and published[1].startswith("Cloud Fit"))
+
     def test_a_promotion_whose_gate_write_fails_fails_the_tick_loudly_and_the_next_tick_moves_the_job_without_asking_again(self):
         self.job(1)
         low = Endpoint(lambda data: reply(data, judgment_raw=json.dumps({"score": 41, "rationale": "Different discipline.", "confidence": "high"})))

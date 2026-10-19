@@ -37,6 +37,7 @@ READ_WAIT = 150                         # LIFE-41 10504 C4: Oracle's real worst 
 CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 s, so one call fits the 240 s stage and a second never could
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
+WRITE_CONFLICT = "CANARY_WRITE_CONFLICT"     # D218: the guarded write stored nothing (the row was no longer unasked): an unpersisted answer is never a success
 PROMOTION_FAILED = "CANARY_PROMOTION_FAILED"   # D218: a canary answer is stored as this until the promotion itself marks it CANARY, so no failure can leave a stuck CANARY
 STOP_AND_RECORD = {"FIT_EDGE_PURGE_FAILED"}   # 10504 C5: a model ran, so its provenance (no score) is kept on the row, and no further request is sent
 
@@ -175,7 +176,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                     status, reason = "DEGRADED", PROMOTION_FAILED             # D218: fail closed until the promotion's own write marks it CANARY
                 cursor.execute(WRITE, (status, reason, j.score if j else None, j.confidence if j else None, j.rationale[:300] if j else None, request_hash,
                                        str(receipt.get("model") or "")[:40] or None, str((receipt.get("run_ids") or [""])[0])[:64] or None, fingerprint, _now(), job_id))
-                if answer and cursor.rowcount == 1:
+                if answer and cursor.rowcount != 1:
+                    counts["cloud_ok"] -= 1
+                    _degraded(counts, WRITE_CONFLICT)
+                elif answer:
                     if promote(cursor, job_id, j, str(receipt.get("model") or "model")):
                         counts["cloud_promoted"] += 1                    # D218: only an accepted, receipt-checked, purged answer that was just stored
                     else:
