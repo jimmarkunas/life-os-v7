@@ -89,13 +89,14 @@ def _gate(cursor, job_id, decision, gate, counts):
 CANARY_ROW = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source"
               " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id = %s")
 PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confidence=%s, admission=%s, admission_reason=%s, work_mode=%s, lane=%s, eligible=%s,"
-           " scored_at=%s WHERE job_id=%s AND cloud_status='CANARY'")
+           " scored_at=%s, cloud_status='CANARY', cloud_reason=NULL WHERE job_id=%s AND cloud_status='DEGRADED' AND cloud_reason=%s")
 
 
 def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts, register=None):
     """D218 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
     visible Fit: the same score_rows lane decision decides admission with it, and the same gate moves the job. The provenance is in the line ('Cloud Fit ...'),
-    which publish writes to Why It Fits. Only a row the shadow has just marked CANARY is touched. -> True when promoted."""
+    which publish writes to Why It Fits. Only the row the shadow has just stored as CANARY_PROMOTION_FAILED is touched, and the one UPDATE that writes the
+    visible Fit is the one that marks it CANARY, so the marker and the visible score exist together or not at all. -> True when promoted."""
     cursor.execute(CANARY_ROW, (job_id,))
     row = cursor.fetchone()
     if row is None or judgment.score is None:
@@ -103,7 +104,7 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
     (_, _, _, decision, lane_name, work_mode, eligible), = score_rows([row], profile, today, None, register, fit={job_id: judgment.score})
     line = f"Cloud Fit {judgment.score}% ({model}): {judgment.rationale}"
     cursor.execute(PROMOTE, (judgment.score, judgment.decision, line[:600], judgment.rationale[:300], judgment.confidence, decision.status,
-                             (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible), _now(), job_id))
+                             (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible), _now(), job_id, fit_cloud.PROMOTION_FAILED))
     if cursor.rowcount != 1:
         return False
     _gate(cursor, job_id, decision, gate, counts)

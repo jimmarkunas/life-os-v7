@@ -297,6 +297,29 @@ class CloudFitCanary(Base):
             self.assertFalse((line or "").startswith("Cloud Fit"), label)
             self.assertNotEqual(score, 90, label)                                               # the visible Fit is the static scorer's
 
+    def test_a_failed_promotion_after_a_valid_answer_leaves_the_named_failure_not_a_stuck_canary_and_stays_recoverable(self):
+        self.job(1)
+        self.stage_run({**self.CANARY, "V7_CLOUD_FIT": "off"}, Endpoint())
+        static = self.visible(1)[:4]                                                            # what the static scorer alone makes visible
+        self.setUp()
+        self.job(1)
+        endpoint = Endpoint()                                                                   # a valid Oracle answer (90) is received and stored
+        with mock.patch.object(stage, "promote_cloud", return_value=False):
+            counts = self.stage_run(self.CANARY, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], len(endpoint.sent)),
+                         ("DEGRADED(CANARY_PROMOTION_FAILED)", 1, 0, 0, 1))
+        self.assertEqual(self.visible(1)[:4], static)                                           # no visible overwrite
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("DEGRADED", "CANARY_PROMOTION_FAILED"))   # no stuck CANARY
+        published = self.published_fit(1)
+        self.assertFalse(published and published[1].startswith("Cloud Fit"))                  # the Ledger would carry the static Fit, never the unpromoted answer
+        again = Endpoint()
+        self.db.raw.execute("UPDATE v7_job_descriptions SET fingerprint='changed' WHERE job_id=1")
+        counts = self.stage_run(self.CANARY, again)
+        self.assertEqual((counts["picked"], again.sent), (1, []))                              # the static scorer still owns it; the model is not asked again
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL WHERE job_id=1")   # an operator clear makes it askable again
+        self.assertEqual(self.stage_run(self.CANARY, Endpoint())["cloud_promoted"], 1)
+        self.assertEqual(self.visible(1)[0::4], (90, "CANARY"))
+
     def test_a_rejected_candidate_is_never_asked_or_promoted(self):
         self.job(1, url="https://boards.greenhouse.io/acme/jobs/search?q=program+manager")      # the audit would demote it
         endpoint = Endpoint()
