@@ -1,14 +1,18 @@
 """LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person
 about one exact Job Ledger job; only the confirm POST writes, through lifeos.recruiters.outreach.mark_sent, and success is shown only after its read-back.
-GET and Review never write; nothing is sent to anyone. Fixed codes only."""
+GET and Review never write; nothing is sent to anyone. Fixed codes only.
+The people offered are the job page's own Network Leads (lifeos.network.surface, read only, dismissed leads left out), signed into the form with the job so a tampered
+name is refused; "Other" takes a typed name."""
 from html import escape as e
 
 from lifeos.hiring import close_screen as S, decision as D
+from lifeos.network import surface as N
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import outreach as O
 from .close_app import TTL, HTML, _mac, _now, _same
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
+PEOPLE_MAX = 10
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
@@ -42,12 +46,33 @@ def _job_section(j):
             '<span class="status">Job Ledger</span></div></section>')
 
 
-def _form(j, fields, person="", notice=""):
+def _people_fields(secret, login, pid, st, exp, people):
+    """The offered people as hidden fields, signed with the job: l0/r0 (name, reason) ... and lm."""
+    out = {}
+    for i, (name, why) in enumerate(people):
+        out[f"l{i}"], out[f"r{i}"] = name, why
+    out["lm"] = _mac(secret, "l", login, pid, st, exp, *[part for pair in people for part in pair])
+    return out
+
+
+def _people(form):
+    people = []
+    while f"l{len(people)}" in form and len(people) < PEOPLE_MAX:
+        people.append((form[f"l{len(people)}"], form.get(f"r{len(people)}", "")))
+    return people
+
+
+def _form(j, fields, people=(), choice="", person="", notice=""):
     warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
+    picked = choice or ("" if people else "other")
+    options = "".join(f'<label class="reason"><input type="radio" name="who" value="lead:{i}" required{" checked" if picked == f"lead:{i}" else ""}>'
+                      f'<span><strong>{e(name)}</strong>{f"""<span class="fine">{e(why)}</span>""" if why else ""}</span></label>' for i, (name, why) in enumerate(people))
+    options += f'<label class="reason"><input type="radio" name="who" value="other" required{" checked" if picked == "other" else ""}><span><strong>Other</strong></span></label>'
     return S.page("Mark as Sent", "Confirm only after you have sent the message yourself. LIFE OS never sends it.", _job_section(j) + (
         f'<form method="post" action="/sent">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Mark as Sent</div>'
-        '<label class="fieldname" for="person">Who did you message about this job?</label>'
-        f'<textarea id="person" name="person" maxlength="{O.PERSON_MAX}" required>{e(person)}</textarea>{warn}'
+        f'<fieldset><legend class="step-title">Who did you message about this job? <span aria-label="Required">*</span></legend><div class="people">{options}</div></fieldset>'
+        '<label class="fieldname" for="person">Other — their name <span class="fine inl">(only when Other is chosen)</span></label>'
+        f'<textarea id="person" name="person" maxlength="{O.PERSON_MAX}">{e(person)}</textarea>{warn}'
         '<div class="notice">This records one tracked conversation for this exact job, sets it to Waiting and schedules a follow-up two business days out.</div></section>'
         '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'),
         PATH, "Mark as Sent")
@@ -71,10 +96,11 @@ def _get(req, who, secrets):
     if not pid:
         return _stop(400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed.")
     j = job(secrets["reader"], secrets["config"], pid)
+    people = [(O.valid_person(lead["name"]), lead["reason"]) for lead in N.leads_on_page(secrets["reader"], j["id"], PEOPLE_MAX) if O.valid_person(lead["name"])]
     exp = str(int(_now().timestamp()) + TTL)
     st = _fp(j)
     fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "t": _mac(secrets["link"], "s", who["login"], j["id"], st, exp)}
-    return 200, HTML, _form(j, fields), ()
+    return 200, HTML, _form(j, {**fields, **_people_fields(secrets["link"], who["login"], j["id"], st, exp, people)}, people), ()
 
 
 def _post(req, who, secrets):
@@ -87,15 +113,24 @@ def _post(req, who, secrets):
     shown = {"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}
     if not _same(_fp(shown), st):
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
-    fields = {k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}
-    person = O.valid_person(form.get("person"))
+    people = _people(form)
+    if not _same(form.get("lm"), _people_fields(secret, login, pid, st, exp, people)["lm"]):
+        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+    fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_fields(secret, login, pid, st, exp, people)}
+    choice = form.get("who") or ("" if people else "other")                 # with people offered, a choice is required; without, the typed name is the only one
+    if step == "review":                                                   # the choice decides the person: an offered lead's signed name, or the typed Other
+        index = choice[5:] if choice.startswith("lead:") else ""
+        person = O.valid_person(people[int(index)][0]) if index.isdigit() and int(index) < len(people) else O.valid_person(form.get("person")) if choice == "other" else ""
+    else:
+        person = O.valid_person(form.get("person"))                        # edit and confirm carry the reviewed person, bound by the confirmation signature
     if step == "edit":
-        return 200, HTML, _form(shown, fields, person), ()
+        return 200, HTML, _form(shown, fields, people, choice, person if choice == "other" else ""), ()
     if not person:
-        return 400, HTML, _form(shown, fields, "", f"Enter the person's name (up to {O.PERSON_MAX} characters)."), ()
+        ask = "Choose who you messaged, or choose Other and enter their name" if people else "Enter the person's name"
+        return 400, HTML, _form(shown, fields, people, choice, "", f"{ask} (up to {O.PERSON_MAX} characters)."), ()
     sign = _mac(secret, "m", login, pid, st, exp, person)
     if step == "review":
-        return 200, HTML, _review(shown, {**fields, "person": person, "c": sign}, person), ()
+        return 200, HTML, _review(shown, {**fields, "who": choice, "person": person, "c": sign}, person), ()
     if not _same(form.get("c"), sign):
         return _stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
     config = secrets["config"]

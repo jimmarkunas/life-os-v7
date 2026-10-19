@@ -4,10 +4,11 @@ import html
 import json
 import re
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest import mock
 from zoneinfo import ZoneInfo
 
+from lifeos.network import match, surface
 from lifeos.recruiters import notion as store, outreach as O, stage
 from lifeos.sources import close_app, outreach_app
 from tests.kit.recruiters import FakeRecruiters, mail, page
@@ -27,8 +28,8 @@ def ledger_page(pid, company, role, parent=LEDGER, archived=False, decision=None
 
 
 class Ledger:
-    def __init__(self, *pages):
-        self.pages, self.source, self.writes = {p["id"]: p for p in pages}, LEDGER, []
+    def __init__(self, *pages, blocks=None):
+        self.pages, self.source, self.writes, self.blocks = {p["id"]: p for p in pages}, LEDGER, [], blocks or {}
 
     def get_page(self, pid):
         if pid not in self.pages:
@@ -36,8 +37,27 @@ class Ledger:
         return self.pages[pid]
 
     def call(self, method, path, body=None):
+        if method == "GET" and path.startswith("/blocks/"):                   # a page's blocks (its Network Leads), read only
+            return {"results": self.blocks.get(path.split("/")[2], []), "has_more": False, "next_cursor": None}
         self.writes.append((method, path))
         raise AssertionError("the Ledger is never written")
+
+
+def lead(person_id, name, title="Program Manager"):
+    return {"person_id": person_id, "tier": match.CURRENT, "freshness": "FRESH", "age_days": 12, "name": name, "company": "Northwind Labs", "title": title,
+            "verified": date(2026, 10, 3), "url_key": f"invented-{person_id}", "evidence_hash": f"{person_id:012x}"}
+
+
+def network_blocks(page_id, leads, dismissed=()):
+    """The page's blocks exactly as lifeos.network.surface writes them: the description marker, then the owned Network Leads toggle."""
+    toggle = surface.build_block(leads)
+    kids = [{**k, "id": f"k{i}", "has_children": False} for i, k in enumerate(toggle["toggle"].pop("children"))]
+    for k in kids:
+        if k["type"] == "to_do" and int(k["to_do"]["rich_text"][0]["text"]["content"].split(" · ")[1].split(":")[0]) in dismissed:
+            k["to_do"]["checked"] = True
+    top = [{"id": "p0", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "v7-jd:1 | key=invented"}]}, "has_children": False},
+           {"id": "net", "type": "toggle", "toggle": toggle["toggle"], "has_children": True}]
+    return {page_id: top, "net": kids}
 
 
 class Service:
@@ -198,6 +218,91 @@ class MarkAsSent(unittest.TestCase):
         status, _, body, _ = mark(Service(ledger, rec), JOB_A, "Avery Synthetic")
         self.assertEqual(status, 500)
         self.assertIn(b"DEGRADED", body)
+
+
+class ChooseThePerson(unittest.TestCase):
+    """Jim (LIFE-21): a Network Lead on the job's page is offered as a choice, with no typing; Other takes a typed name."""
+
+    def world(self, dismissed=()):
+        leads = [lead(7, "Casey Example", "Account Executive"), lead(8, "Drew Invented"), lead(9, "Emery Sample")]
+        ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"), blocks=network_blocks(JOB_A, leads, dismissed))
+        return ledger, FakeRecruiters(schema=SCHEMA)
+
+    def open(self, svc):
+        status, _, body, _ = svc("GET", "/sent", {"j": JOB_A})
+        self.assertEqual(status, 200, body)
+        return body, {k: v for k, v in fields(body).items() if k != "who"}
+
+    def test_the_page_leads_are_the_choices_and_a_dismissed_one_is_not_offered(self):
+        ledger, rec = self.world(dismissed={8})
+        body, _ = self.open(Service(ledger, rec))
+        self.assertEqual(re.findall(rb'name="who" value="([^"]+)"', body), [b"lead:0", b"lead:1", b"other"])
+        self.assertIn(b"Casey Example", body)
+        self.assertIn(b"Listed at Northwind Labs as Account Executive", body)
+        self.assertIn(b"Emery Sample", body)
+        self.assertNotIn(b"Drew Invented", body)
+        self.assertEqual((rec.writes, ledger.writes), ([], []))
+
+    def test_choosing_a_lead_records_that_person_without_typing(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        review = svc("POST", "/sent", form={**form, "who": "lead:0", "person": "", "step": "review"})
+        self.assertEqual(review[0], 200, review[2])
+        self.assertIn(b"Casey Example", review[2])
+        status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        [row] = [store.read(p) for p in rec.pages]
+        self.assertEqual((row["person"], row["action"], row["jobs"]), ("Casey Example", "Waiting", [JOB_A]))
+
+    def test_other_takes_the_typed_name_and_needs_one(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        self.assertEqual(svc("POST", "/sent", form={**form, "who": "other", "person": " ", "step": "review"})[0], 400)
+        self.assertEqual(svc("POST", "/sent", form={**form, "person": "Fallon Typed", "step": "review"})[0], 400)        # nothing chosen
+        review = svc("POST", "/sent", form={**form, "who": "other", "person": "Fallon Typed", "step": "review"})
+        status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual((status, [store.read(p)["person"] for p in rec.pages]), (200, ["Fallon Typed"]))
+
+    def test_a_tampered_or_unknown_choice_writes_nothing(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        self.assertEqual(svc("POST", "/sent", form={**form, "l0": "Someone Else", "who": "lead:0", "step": "review"})[0], 403)    # the offered names are signed
+        self.assertEqual(svc("POST", "/sent", form={**{k: v for k, v in form.items() if k != "l2"}, "who": "lead:0", "step": "review"})[0], 403)
+        self.assertEqual(svc("POST", "/sent", form={**form, "who": "lead:9", "step": "review"})[0], 400)
+        self.assertEqual(rec.writes, [])
+
+    def test_edit_returns_to_the_same_choice(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        review = svc("POST", "/sent", form={**form, "who": "lead:1", "step": "review"})
+        status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "edit"})
+        self.assertEqual(status, 200)
+        self.assertIn(b'value="lead:1" required checked', body)
+        self.assertEqual(rec.writes, [])
+
+    def test_a_job_without_leads_offers_only_other(self):
+        ledger = Ledger(ledger_page(JOB_A, "Northwind Labs", "Senior Technical Program Manager"))
+        status, _, body, _ = Service(ledger, FakeRecruiters(schema=SCHEMA))("GET", "/sent", {"j": JOB_A})
+        self.assertEqual((status, re.findall(rb'name="who" value="([^"]+)"', body)), (200, [b"other"]))
+        self.assertIn(b'value="other" required checked', body)
+
+    def test_an_unreadable_leads_block_is_refused_not_shown_empty(self):
+        ledger, rec = self.world()
+        ledger.blocks["net"] = [k for k in ledger.blocks["net"] if not (k["type"] == "to_do" and "· 8:" in k["to_do"]["rich_text"][0]["text"]["content"])]
+        status, _, body, _ = Service(ledger, rec)("GET", "/sent", {"j": JOB_A})
+        self.assertEqual((status, rec.writes), (409, []))
+        self.assertIn(b"NETWORK_SURFACE_PAGE_INCOMPLETE", body)
+
+    def test_the_reader_round_trips_the_block_the_network_stage_writes(self):
+        leads = [lead(7, "Casey Example"), lead(8, "Drew Invented")]
+        found = surface.leads_on_page(Ledger(blocks=network_blocks(JOB_A, leads)), JOB_A)
+        self.assertEqual([(x["person_id"], x["evidence_hash"], x["name"]) for x in found], [(7, f"{7:012x}", "Casey Example"), (8, f"{8:012x}", "Drew Invented")])
+        self.assertTrue(found[0]["reason"].startswith("Listed at Northwind Labs as Program Manager, as of Oct 3"))
+        self.assertEqual(surface.leads_on_page(Ledger(blocks={JOB_A: []}), JOB_A), [])
 
 
 class Lifecycle(unittest.TestCase):
