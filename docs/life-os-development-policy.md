@@ -1,0 +1,332 @@
+# LIFE OS Development Policy
+
+**Status:** Canonical active LIFE OS V7 development methodology, owned by `jimmarkunas/life-os-v7`; V1 and V2 are historical references only. **Owner:** Jim Markunas; material changes require Jim's explicit approval. For V7 runtime, Jim's current instructions and the live V7 implementation/workflow are authoritative; the V1 `life-os-automation` production contract is historical reference only; Notion `Development Projects` is coordination-only (ownership, concurrency, takeover, handoff). Repo supplements may add mechanics but may not override this policy.
+
+**Machine bootstrap routing index:** V7 `AGENTS.md` and `docs/CODEMAP.md`. They are pointer-only and adds no product, runtime, roadmap, or architectural authority. Use it to select the smallest canonical source set before reading further.
+
+## 1. Mission and authority
+
+Ship useful behavior through a codebase safe to change in minutes, not hours: `user outcome → bounded mutation → targeted proof → land or stop`. The process must remain smaller than the product; stop and simplify when work becomes exploratory, historical, or process-heavy.
+
+### UI/UX-first delivery — Jim-approved October 14, 2026
+
+For every user-facing LIFE OS feature, **build and show the smallest usable UI in the intended surface first**, using clearly identified synthetic data where source integration is not yet authorized. Require Jim's UI/UX acceptance before expanding the backend. After UI acceptance, connect one approved source/data contract and prove end-to-end behavior; defer speculative adapters, abstractions, and infrastructure until the already-visible product requires them. A passing backend test without the accepted user-facing outcome is not product completion.
+
+### Deterministic UI-first applicability and proof gate — Jim-approved October 14, 2026
+
+Before a development package changes code, classify its user-facing effect against the exact approved Jira issue, owning product requirements, and current presentation surface. This is an **applicability decision**, not a new queue, review workflow, approval status, or documentation system:
+
+1. **NEW or CHANGED UI:** Show the smallest functional preview **in the intended client/surface** using explicitly synthetic data where live data is not yet authorized. Include representative normal, empty, and degraded states where applicable. Obtain Jim's visual and interaction acceptance **before expanding backend implementation**. Static screenshots or attractive but inert controls do not prove working interactions.
+2. **EXISTING UI, CHANGED RESULTS:** Keep the accepted layout. Before changing underlying logic, show representative **current versus intended output in its existing presentation format**, and establish the expected behavior with Jim where it has not already been explicitly approved. Reuse previously accepted product behavior and evidence; do not demand a new mockup or redesign for a data-quality, ranking, classification, or Fit correction. Protect the agreed examples with targeted tests.
+3. **NO USER-VISIBLE CHANGE:** Name the existing downstream user outcome and the smallest relevant deterministic regression or operational proof. Do not fabricate a UI preview, request design approval, or block a bounded infrastructure-only change on an irrelevant interface gate.
+
+After the applicable first gate, implement only the necessary approved vertical slice and prove **authoritative input → expected processing → actual destination**, including user interaction in the real client where relevant. Verify navigation, launch actions, state, and failure modes rather than treating a link, button, component test, or CI success as end-to-end proof. A preview is not permission to expose private data or broaden backend/source access; privacy and authorization gates remain independent.
+
+Use the **existing Jira LIFE issue and associated PR** to record the classification, exact preview or representative output, Jim's applicable approval (or pre-existing approved behavior), and the final user-outcome evidence. No extra artifact, Jira workflow, QA hierarchy, scheduling, or coordination store is authorized. If required UI or changed-behavior acceptance is genuinely missing, stop the affected package as `BLOCKED: UI acceptance pending`; resume that same package after approval, rather than moving to another Jira issue. Existing approved outcomes must not be retroactively treated as missing approval. `LANDED`, passing tests, or a deployment do not establish product Done without the applicable real-boundary proof and Jim's final acceptance. Preserve the applicable execution boundary (including the Claude Code end-to-end mode below) and existing release, concurrency, and work-selection rules.
+
+For private embedded UI, **first prove real Notion embedding and authenticated/non-public access with synthetic payloads**. Never assume that a private Notion page protects an independently hosted embed; never publish real message contents, contact identifiers or private state to GitHub Pages, anonymous URLs, URL tokens, public JSON, logs or artifacts. If the actual Notion client cannot render an authenticated/private embed safely, **stop and report the architecture/privacy blocker** rather than invent a separate server, auth workaround or public payload. Reuse the existing V7 hourly production tick for data updates, not a new scheduler. This UI-first order does not waive capability, privacy, ownership, release or approval gates; infrastructure-only work may use an evidence-first proof where no human UI exists.
+
+Authority order: (1) Jim's explicit current instruction; (2) Production Contract for scheduled/runtime behavior; (3) this Development Policy for development method; (4) current Notion LIFE OS Platform canon for architecture/platform boundaries; (5) Jira Product Discovery `LOS` for approved product priorities and planning, and Jira Software `LIFE` for delivery backlog, status, blockers, dependencies, and sprints; (6) the exact owning current Notion product/domain canon for durable product requirements; (7) V7 `docs/MASTER_ROADMAP.md` as a dated technical WBS/evidence reference, not a second live planning board; (8) Development Projects only for ownership/concurrency/handoffs; (9) current implementation for what exists; (10) historical chats, handoffs, retired QA artifacts, old roadmap prose, and similar material only as background. A repo-local policy, `AGENTS.md`, or `CLAUDE.md` is subordinate unless this policy transfers ownership.
+
+### Jira product and development planning authority — Jim-approved October 13, 2026
+
+- **LOS (Jira Product Discovery)** owns product ideas, portfolio priority, discovery/ready/delivery stages, and deferred reactivation decisions. Its product records link to the owning Notion requirements, not copies of them.
+- **LIFE (Jira Software)** owns actionable development issues, current execution status, sequencing/dependencies, sprint planning, blockers, assignees, dates, and delivery commitments. Product OS Epics group work; the stable existing WBS ID stays in the delivery ticket for traceability.
+- **GitHub** owns implementation, technical scope, code/test/CI/release evidence and historical WBS descriptions. The V7 `docs/MASTER_ROADMAP.md` snapshot is not authoritative for current task priority, sprint, or status after reconciliation. Do not operate or reintroduce a competing live WBS status table.
+- **Notion** owns product/domain requirements, decisions, and durable context; the old Product Backlog and roadmap pages remain historical/reference, not a second live prioritization board. Reviewed Phase-2 ideas stay in LOS Parking lot until explicitly promoted.
+- **Cutover safety:** preserve the previously approved Jobs→Platform→Recruiters→Interview→Meeting→Cockpit dependency order and existing active Edge/Career ownership. Migrate non-overlapping planning records without changing code, production authority, or pending release gates. Unreconciled ideas remain clearly identified, not silently deleted.
+- **Acceptance:** a PR, CI, deploy, or Jira workflow transition alone does not establish product Done. Preserve live production-shaped proof and Jim's required final approval; no automated status/approval writes without an approved workflow.
+
+### LIFE Jira OS component and release versioning — Jim-approved October 16, 2026
+
+LIFE's Jira Software components and Fix Versions use one OS-aligned scheme. This schema governs all LIFE issues and is the deterministic assignment rule for ChatGPT, Codex, Claude Code, and other authorized agents.
+
+- **Component = owning OS.** Every LIFE issue has exactly one component. Use its owning product OS component; child issues inherit the parent Epic's component. Cross-OS work stays with one primary owning OS, while dependencies are represented with Jira issue links. Do not infer or change ownership from labels, assignee, status, or implementation detail.
+- **Fix Version = that OS's target release.** Every LIFE issue has exactly one Fix Version whose name is exactly `<component name> X.Y.Z`, and the version's OS prefix must match the issue's component. Examples: `Jobs OS 1.0.0`, `Interview OS 1.0.0`, `Platform / Core OS 1.0.0`. Never assign a version belonging to another OS or use a shared platform release for an issue owned by another OS.
+- **Issue creation and edits.** When creating a child issue, copy the parent Epic's component and Fix Version. When changing a parent Epic's OS component or target release, update its children only as part of an explicit Jira planning-owner decision; agents must not mass-move release scope. Existing LIFE issues were bootstrapped to their owning OS's `1.0.0` release on October 16, 2026.
+- **Independent SemVer per OS.** Each OS advances its own version sequence. Patch (`X.Y.Z+1`) is for backward-compatible fixes or maintenance; minor (`X.Y+1.0`) is for backward-compatible capability; major (`X+1.0.0`) is for an explicitly approved breaking contract or baseline reset. Do not advance another OS's sequence when one OS releases.
+- **Release authority and fail-closed behavior.** Only the Jira planning owner creates a new release, sets its release date/status, or changes an Epic's target release. Agents assign work only to an existing unreleased Fix Version on the owning OS Epic. If no such version exists, the component is missing or ambiguous, or component and version disagree, stop with `QUEUE_NOT_READY` and name the exact Jira field for the planning owner. Never invent a release, infer release readiness from status, or silently leave an issue without a matching version.
+
+This Jira metadata records OS ownership and target release scope; status, blockers, dependencies, sprint order, and acceptance remain governed by the live Jira issue and this Policy.
+
+### Deterministic agent work selection — mandatory when an authorized execution session starts or resumes
+
+This is a **pull rule**, not a ChatGPT dispatch queue. When an authorized coding agent is invoked, resumes its existing package, or completes a Jim-accepted package, **the agent** selects the next eligible LIFE issue from live Jira. ChatGPT does not routinely nominate an issue or generate a handoff prompt. Instructions alone do not wake an idle Claude/Codex session; use only an existing approved invocation mechanism, never a new scheduler, poller, watchdog or dispatcher.
+
+1. **Resume before selecting.** Fresh-read the current active LIFE issue, attached PR/head and the exact lane claim in Development Projects when concurrent writers are possible. A valid unfinished package is sticky until accepted Done, formally blocked, or explicitly reassigned. Also check for same-lane `acceptance-pending` issues: unresolved live acceptance is a **hold on next-package selection** even when the Jira status remains To Do, until that package is accepted or Jim explicitly reprioritizes the hold. This label never authorizes a diagnostic/live run. Do not abandon an active package merely because another issue appears higher in the backlog.
+2. **Select from live Jira, not documents.** With no valid active package, query LIFE actionable leaf issues in the agent's approved delivery lane; exclude Epics, Done, blocked, parked/unapproved products, and issues owned by another lane. A candidate must have an owning Epic, a clear product/maintenance authorization, known current lane/assignee or explicit approved claim, and all incoming `Blocks` predecessors accepted Done. A `To Do` status or a linked LOS idea alone does not authorize execution. If a task's product approval, priority or lane is ambiguous, it is **not eligible**.
+3. **Order only among eligible candidates.** Use Jira's deliberately curated delivery order (current sprint/order and Jira Rank) *after* the approved dependency chain and active lane have been established; do not use historical WBS-row order, issue creation date, raw Rank on an uncurated board, alphabetical issue keys or generic Medium priority as substitutes for a product decision. A tie or contradictory rank/dependency must be resolved by the Jira planning owner before automatic selection.
+4. **Preflight and claim.** Re-read the candidate's status, assignee/ownership, predecessor links, scope and approval just before starting; verify repository/workspace affinity and that the mutation surface is free. Make only the already-authorized narrow status/claim update, verify Jira/coordination read-back, then execute the established Jira-first lifecycle. A claimed `In Progress` issue is not proof of an authorized or functioning agent session.
+5. **Fail closed, do not dispatch around missing data.** If Jira access, authorization, lane assignment, product readiness, ordering or predecessor completion cannot be established, report `QUEUE_NOT_READY — <exact issue/field or access gap>` and stop automatic selection. Surface the Jira planning correction for the owning product/Tech Lead; do not ask ChatGPT to choose an arbitrary next ticket, invent a priority, copy a new backlog, or silently substitute a cached snapshot. When there is genuinely no eligible ticket, report `NO_ELIGIBLE_WORK` without mutation.
+6. **Completion remains gated.** PR/CI success is `LANDED`, not Done. After the applicable proof and Jim's final acceptance, the authorized Jira owner transitions the LIFE issue to Done and reads it back. Only at that verified completion boundary may the same authorized, correctly anchored execution session repeat this selection rule.
+
+**Queue readiness requirement:** Jira must actually contain usable lane ownership, curated delivery order/priority, truthful statuses, and issue-level dependency/approval evidence. Merely documenting this selector does not make an unassigned or unprioritized Jira board autonomously executable. Review and repair planning data **in Jira**, without creating another source of truth; do not silently mass-assign or reorder work as part of a development session.
+
+**Approved initial Jira lane-label convention (October 13):** Native LIFE issue labels `lane-career-v7` and `lane-edge-comm` identify the two existing authorized lanes; `pull-ready` is an explicit Jira issue-level readiness marker, **not** permission to bypass live blockers, product acceptance, workspace affinity, or the single V7 repo-heavy writer. Each authorized session first resumes its own valid In Progress package, then queries its own lane **and** `pull-ready` on actionable issues. A candidate with a non-Done incoming `Blocks` predecessor is not eligible, even when labeled `pull-ready`; this permits a reviewed next task to become eligible only after the predecessor's approved Done read-back. If multiple eligible issues remain, use explicitly curated Jira delivery order; otherwise return `QUEUE_NOT_READY` for missing ordering. Do not infer lane from unassigned human Jira assignee, old WBS owner text, or generic Medium priority. Only the Jira planning owner authorizes applying/changing these labels. The selector does not awaken idle external coding agents or grant Jira credentials.
+
+### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers
+
+1. **Intake and product decision.** Use the current LOS idea for new product outcomes and priorities; move a reviewed idea out of Parking lot only after Jim's approved prioritization. Implementation bugs and maintenance can start directly as LIFE issues under the owning Epic. Reuse an existing issue before creating one; never create a parallel planning record to keep work moving.
+2. **Retrieve the exact live LIFE issue before accepting work.** Inspect its key, parent Epic, current status, blocker/dependency links, scope, acceptance boundary and WBS ID, plus the linked LOS idea where relevant. Read the owning Notion product canon and only the directly applicable technical contracts. The frozen V7 roadmap cannot resolve current priority or state. No ticket or ambiguous scope: the authorized Jira owner must first reconcile/create the narrow issue; do not invent an implementation commitment.
+3. **Check ownership only when overlap is plausible.** Fresh-read Notion Development Projects for current concurrency/claim facts and preserve one repo-heavy writer per V7 mutation surface. The authorized Jira owner may set LIFE In Progress when execution actually starts, with direct read-back; do not change status or claim ownership merely from a prompt or a branch name.
+4. **Implement in the approved workspace.** Follow this Policy's workspace, scope, architecture, permission and proof gates. Include the actual LIFE key in PR/title/commit references, retain the stable WBS ID, and preserve relevant LOS delivery links. One bounded branch/PR per coherent package; do not simultaneously mutate another owner's work.
+5. **Report truthful milestones.** `LANDED` requires the intended PR and targeted proof, not Done. For runtime-facing work require same-head CI, the production-shaped pre-merge gate, and then live authoritative acceptance as applicable. Set or request meaningful LIFE blocker/in-progress/acceptance updates only from verified evidence; never auto-complete a ticket because CI or a PR is green.
+6. **Accept and close.** Once required real-boundary evidence is verified and Jim's final Done approval is obtained (or an owning workflow explicitly authorizes closure), transition the LIFE issue to Done and read it back. Preserve LOS idea-to-delivery links and update product stage only when supported by actual approved product state; no unrelated issue/idea changes.
+7. **Unavailable Jira/tool access.** Independent next-task selection requires authorized fresh Jira access. A verified exact-issue handoff from the ChatGPT/Tech Lead may support a *specifically authorized one-off implementation*, but cannot substitute for autonomous queue selection. Such a handoff is evidence for that bounded code package, **not** a claim of live Jira access or permission to mutate Jira. If fresh scope/dependency/owner state cannot be established, fail closed for the affected execution or write and report the specific unavailable gate. Do not fall back to GitHub/Notion status snapshots or add a sync service.
+
+## 2. Locked architecture and execution constitution
+
+LIFE OS is one unified composable platform: one live implementation per behavior; product flows are explainable as `Acquire → Normalize → Decide → Persist → Present`, with stages combined or absent when unnecessary; domain policy stays with its owner and shared infrastructure owns only reusable mechanics. Reuse before abstraction: do not introduce a framework, dispatcher, adapter layer, shared base class, orchestration layer, or utility abstraction for one consumer. Do not create a replacement platform, second repo architecture, second scheduler, second orchestration stack, or duplicate datastore/source of truth without Jim's explicit approval. When a replacement works, remove the superseded live path in the same coherent package whenever safe. Current behavior must not depend on milestone-era numbered QA namespaces; when that boundary is touched, move still-needed behavior into its owning product domain. Git is the archive: production source does not retain obsolete implementations, one-shot recovery utilities, investigation code, stale milestone artifacts, or historical compatibility paths merely for reference. Runtime dependencies belong in the canonical dependency declaration where practical; isolated runtime dependencies may have their own declaration, but workflows/scripts may not inline packages.
+
+Only Jim may supersede these locked rules. A conflicting request or path stops with:
+
+`ARCHITECTURAL DRIFT DETECTED — NO MUTATION`
+
+The non-mutable execution constitution is:
+
+1. `LIFE OS Daily Runs` may schedule and issue the minimum deterministic trigger; approved code owns deterministic execution, recovery mechanics, classification, and lane orchestration.
+2. Standard public GitHub-hosted Actions in the public `jimmarkunas/life-os-v7` repository are an approved stateless executor when triggered by Daily Runs or an authorized operator. Daily Runs schedules ChatGPT-side work. V7 owns exactly one recurring executor of its own, the hourly workflow (its GitHub `schedule` triggers plus an external timer tick, held to about one run an hour by the gate) with the domain workflow that follows each tick, so V7 runs correctly with ChatGPT unavailable (D54). No larger/paid runner, additional recurring schedule, competing scheduler, or second orchestration layer is authorized. Actions artifacts/caches are neither canonical state nor required production handoff storage; production secrets/private payloads must never enter Git history, logs, artifacts, or caches.
+3. Diagnose runtime failures in this order: `trigger → runtime actually started → code ran → source accessed → canonical state persisted → authoritative read-back`; if an earlier boundary failed, do not debug downstream product logic.
+4. One failure boundary gets one retry. A second failure stops the run for boundary/architecture diagnosis; do not cycle retries, transports, or alternate paths.
+5. If a simple operation needs more than two cycles or roughly ten minutes of active debugging, stop and challenge the architecture, execution boundary, or executor before adding machinery.
+6. ChatGPT owns scheduling, judgment, product decisions, architecture, decomposition, bounded handoff, review, approval-aware orchestration, and acceptance; approved code owns deterministic production execution, recovery mechanics, classification, and lane orchestration. Repository-heavy work belongs in Codex, Claude Code, or equivalent. Before substantive work, route multi-file mutation, nontrivial code/config refactoring, local test loops, large documentation/config rewrites, broad inspection, bulk evidence generation, or work likely to exceed two connector cycles/five minutes by telling Jim: **`Do this in Codex or Claude Code.`** Direct ChatGPT execution is limited to clearly tiny, reversible, surgical work whose complete affected surface is safely inspectable and has complete deterministic proof in the Fast Path.
+7. Do not add compensating trigger-file RPC, recovery, workflow, coordination, scheduler, dispatcher, or orchestration machinery for a brittle boundary without Jim's explicit approval.
+8. Prefer subtraction over repair: remove or bypass unnecessary machinery before hardening it.
+
+Before creating a new scheduler/workflow, new datastore/source of truth, second live implementation, generic framework/orchestrator/dispatcher, numbered QA hierarchy, permanent recovery subsystem, new development/governance artifact, or shared abstraction with only one real consumer, stop for explicit Tech Lead architectural review. A locked-architecture conflict reports the exact phrase above.
+
+## 3. Bootstrap and outcome-bounded execution
+
+**ChatGPT and Codex only:** Coding runs are hard-bounded to five minutes, including bootstrap, inspection, mutation, and targeted proof; at five minutes stop as `LANDED`, `TARGETED PROOF FAILED`, or `BLOCKED: <exact dependency>`. This five-minute rule does **not** apply to Claude Code. For ChatGPT/Codex, split only on meaningful independently provable boundaries, never meaningless micro-tasks. External runtime/connector/CI acceptance may continue separately.
+
+### Claude Code end-to-end delivery mode — Jim-directed October 17, 2026
+
+For a Jim-authorized, sufficiently scoped LIFE Jira issue, the **single designated repository-heavy Claude Code implementer** owns the coherent vertical-slice outcome in one sustained execution: inspect the relevant implementation, build across needed modules, repair defects, run targeted and final deterministic proof, open/update the candidate PR, and address same-issue review corrections. **One approved Jira outcome → one sustained implementation effort.** Do not impose five-minute implementation stops, artificial 50-line increments, arbitrary test-file limits or repeated Tech Lead micro-handoffs. The shared temporary **300 production-code-line ceiling** and default **three-production-file maximum** in §8 still apply to Claude; a cohesive package needing more requires Jim's scoped approval, not artificial fragmentation. The **2% of the active five-hour allowance** is also retained: Claude **alone** may proactively request Jim's approval for extra usage, before exceeding it; without approval, stop spending at the limit while preserving the working candidate. The approved Jira outcome, canonical contracts, architecture, single-writer ownership and repository scope remain controlling. No new paid capacity, API charges or unauthorized tool usage is implied.
+
+**Management by milestones, not micro-tasks:** Claude reports material milestones and blockers approximately every **15 minutes** (or on completed proof/PR); it should target an integrated candidate within **60–90 minutes** when feasible. If substantial work remains after about two hours, report actual progress, remaining scope and a continuation recommendation to Jim; do not quietly switch tasks or expand scope. These are delivery targets, not artificial stops in the middle of safe productive work. Preserve the warm workspace and continue the same approved issue until a coherent candidate is ready or a real stop condition applies. Run the complete deterministic suite at most once per final candidate and use exact-head CI/review as usual.
+
+**Permission and safety boundaries remain unchanged:** fresh-main/delta checks, approved product behavior, test quality, fail-closed evidence, the Runtime Completeness Gate, required Jim review/acceptance, and separately authorized production merge/dispatch, live Gmail/Notion or other source mutations, schema/scheduler/security changes, model spending and external private-data transfer. One repo-heavy writer; no TinyFish. ChatGPT is the reviewer/acceptance coordinator, not the implementation task slicer. This mode does not authorize a new runtime, datastore, scheduler or overlapping agent. A genuine blocked gate stops only the affected action; complete the remaining safe implementation within the same package.
+
+Bootstrap uses the smallest live context. Start from V7 `AGENTS.md` as the routing index, then read this policy; the exact LIFE Jira ticket and linked LOS idea where one exists (consult the legacy V7 WBS row only for technical scope/evidence not yet on the Jira ticket); the one relevant current product/domain canon or section; `CODEMAP` only when repo navigation is needed; and the exact affected implementation/direct callers. Read the Production Contract only when runtime facts are needed and Development Projects only for ownership/concurrency. Do not perform broad repository audits, historical searches, broad dependency archaeology, coordination reads, or secondary reviews unless a concrete fact makes them necessary. If implementation has not begun and no concrete blocker exists, stop reading and implement. Before implementation or code-review analysis, fetch `origin`, record current `origin/main`, and if main moved inspect only the affected delta; if it changes the claimed surface stop with `BASE_MOVED_STOP`. Before mutation also verify the correct repo, intended current base, no unrelated diff, and exact mutation boundary.
+
+Fast Path: define outcome; name mutation surface/direct callers; name smallest failing proof and negative control; inspect narrowly; mutate once; remove directly superseded local code; prove once; land or stop. A concrete dependency outside the boundary may be added only if trivial and within the cap; otherwise stop with `BLOCKED: <exact dependency>`. No silent scope expansion or neighboring cleanup. Clean-as-you-touch covers only directly obsolete local code, tests, fixtures, wrappers, imports, and duplicate paths; new semantics, architecture, or budget requires rescoping.
+
+### Delivery and activation contract — Jim-directed October 19, 2026
+
+**User outcome is the deliverable.** For requests to *build, finish, ship, enable, activate, or turn on* a feature, the Tech Lead and implementer must work backward from the actual enabled user-visible behavior in its canonical destination. A green test, PR, merge, successful transport, private/shadow persistence, partial proof, or running workflow is **not** an operational feature. Do not report `DONE`, `LIVE`, `READY FOR ACTIVATION`, or “end to end” unless the requested mode is actually executable, the real path has completed, and the authoritative destination has been read back. `LANDED — ACCEPTANCE PENDING` is permissible for completed code awaiting an external live gate, but is not product delivery.
+
+1. **Discover activation blockers before building intermediates.** At the start of the *same* user-outcome package, inspect the actual production entry point, mode gates/switches, deployment/dispatch authority, budgets, and downstream user-visible consumer. If a requested `on` mode is a stub, intentionally rejected, cannot influence presentation, or exceeds the authorized capacity, surface that **before** spending time on shadow-only proofs or subsidiary PRs. Make the smallest explicit mode/quality/capacity decision immediately; never silently reinterpret “full on” as “shadow” or “canary.” When a real user choice is required, ask it once, early, with a recommended bounded alternative and its limits.
+2. **One accountable delivery owner, verified operators.** The designated implementer owns the complete usable vertical slice through deterministic proof and PR corrections. The Tech Lead owns direct same-head review and acceptance coordination. Before assigning a live operation, verify the named operator actually has the necessary tool, repository-variable, credential and deployment permissions. A session that cannot execute it must not be the dispatcher. Preserve ownership boundaries, but coordinate a **single executable handoff** to the capable operator; no circular agent-to-agent permission loops, repeated handoffs, or requiring Jim to relay unchanged evidence. Reuse approvals within their exact scope; ask again only for an unapproved consequential change.
+3. **Prove the actual destination.** Define the minimum pass case before implementation: one representative real eligible input → the production entry point → required computation/validation → canonical persisted state → user-facing output or action → authoritative read-back, with at least one fail-closed negative control. An external/paid execution requires its specific permission. Static/shadow-only proof can be a milestone but cannot close a request for visible, enabled behavior. Include any missing activation wiring or visible consumer in the *same outcome scope* or disclose the missing functionality as a blocking product gap before calling the package ready.
+4. **No diagnostic or review treadmill.** Each factual gate is checked once; share its evidence across owners and related issues. Repeat it only when the relevant code, runtime, or failure evidence changes. Repair an invalid diagnostic at its smallest failing query; do not expand it into unrelated QA programs. One direct Tech Lead delta review and one integrated handoff are the default. An unchanged blocker must not trigger another identical plan, prompt, agent referral, review, or production run.
+5. **Urgency changes priorities, not safety.** When Jim gives a deadline, immediately prioritize the smallest *working, visible* release over more internal architecture/proof milestones. Within the first useful inspection, disclose any mode that cannot run, missing authorized dispatcher, or hard capacity limit; provide the concrete achievable scope and the shortest path. Never spend the deadline discovering that the requested mode was disabled from the beginning. Existing security/privacy gates, one-owner rules, explicit paid-model permission, no-paid-TinyFish rule, runtime integrity, and production write authorization remain mandatory.
+6. **Truthful five-state report, not ceremonial status.** When relevant, distinguish: `IMPLEMENTED` (candidate code), `CI PASS` (deterministic tests), `MERGED` (main), `RUNNING/ENABLED` (actual runtime), and `ACCEPTED` (real output and authoritative read-back). State only verified stages. If not accepted, give **the single concrete remaining blocker and named executor**. Do not celebrate a partial gate as the completed request.
+
+**Tech Lead enforcement:** A candidate that omits the actual activation/consumer path, treats unavailable permissions as a downstream surprise, substitutes shadow-only success for requested live behavior, or claims completion without authoritative read-back fails the **Delivery/Activation Gate** (`DELIVERY_CONTRACT_VIOLATION — CORRECTION REQUIRED`). Correct the existing Jira issue/PR; do not create another governance artifact, approval tier, scheduler, datastore, or permanent QA workflow. This gate enforces the existing User Outcome and Runtime Completeness Gates; it does not replace them or waive Jim's required production permissions.
+
+### User Outcome Gate
+
+Before substantive architecture, refactor, decomposition, migration, or platform work:
+
+1. Read the relevant canonical product requirements.
+2. Identify the user-visible product outcome the package must preserve or improve.
+3. Identify the production-shaped acceptance that proves that outcome.
+4. Treat that acceptance as a release gate for the package.
+
+A package may not be declared `LANDED` when its relevant user-outcome gate fails, even if unit tests, component tests, repository contracts, CI, architecture boundaries, or a cleaner/more-composable implementation pass. Internal architectural correctness is necessary where required, but it is not a substitute for working product behavior.
+
+For decomposition or refactoring of a previously working vertical slice:
+- preserve the last known-good vertical slice continuously;
+- extract one seam at a time;
+- rerun the same user-outcome acceptance after each material extraction;
+- stop the refactor immediately if the user-outcome gate regresses.
+
+> No horizontal rewrite before one vertical slice passes.
+
+Shared platform/core/repository/query/integration abstractions may not be treated as sufficient product progress when no real source can complete the full user journey.
+
+### Blocker Qualification Gate
+
+`BLOCKED` is permitted only when a concrete dependency outside the approved package boundary prevents safe implementation or required deterministic proof. A blocker must prevent execution, not merely make execution less convenient.
+
+Before declaring `BLOCKED`, the implementer must:
+
+1. identify the exact blocked operation;
+2. identify the exact external dependency preventing it;
+3. prove the dependency cannot be resolved within the approved mutation boundary and execution budget;
+4. complete every remaining non-blocked part of the package;
+5. publish a deterministic candidate when implementation is complete and only live/external acceptance remains unavailable.
+
+The following are not blockers by themselves: an unclean working tree whose changes do not overlap the mutation surface; unrelated existing changes; uncertainty resolvable by one bounded direct read; unavailable live credentials when deterministic implementation/proof can still complete; unavailable browser/screenshot tooling when implementation can still complete and visual review is an external acceptance boundary; unavailable live production acceptance after deterministic implementation is complete; a future dependency that does not prevent the current package; fear of a conflict when no concrete conflict has been identified; or unavailable optional proof beyond the package's required acceptance.
+
+`BLOCKED` must never mean “I stopped because proceeding required judgment.” When canonical authority already defines intended behavior and mutation scope, execute within that boundary.
+
+If deterministic implementation and targeted proof are complete but live/external acceptance is unavailable, report `LANDED — ACCEPTANCE PENDING`, not `BLOCKED`. If one narrow part is externally blocked but the remaining package can complete, complete the rest first and report `PARTIAL CANDIDATE — BLOCKED ON <exact external dependency>`.
+
+After one `BLOCKED` result, the next Tech Lead handoff must either remove the exact blocker or materially change the execution boundary. Do not resend substantially the same package and expect a different result.
+
+This gate does not weaken hard stops for wrong workspace, unavailable required canonical authority, destructive ambiguity, locked-architecture conflict, missing required implementation inputs, or deterministic proof failure.
+
+### Fast shipping mode
+
+For an already-approved coherent feature, default to **one branch/PR, one compiled implementation handoff, and continuous execution through internal checkpoints**. Internal checkpoints are commits and proof boundaries, not new planning or permission gates. Re-open planning only for a real stop condition, scope expansion, architectural conflict, or changed authority.
+
+Within the first two minutes of an implementation run, verify the execution boundary: writable intended workspace, correct base/branch, GitHub authentication, and whether any required external runtime credential or acceptance boundary is available. Record an unavailable external boundary once; do not rediscover it after implementation is complete.
+
+### Fast-lane coordination mode
+
+When Jim has approved an ordered roadmap sequence, operate two non-overlapping lanes by default:
+
+1. **Repo-heavy lane — Codex/Claude Code.** Exactly one repository-heavy package owns the active code/config/workflow mutation surface at a time. Keep that workspace warm and move directly from implementation to targeted proof, PR, review, and live acceptance. Do not re-onboard from history between adjacent packages.
+2. **Connector/config lane — ChatGPT.** While the repo-heavy lane is active, ChatGPT should proactively clear downstream connector-native prerequisites already approved on the relevant LIFE issue and not overlapping the active package: Notion properties/views/surfaces, block ids, connector access, bounded configuration inspection, Jira issue/link/status read-back, and other tiny reversible mutations supported directly by connected tools.
+3. **No overlap.** The two lanes may not mutate the same repository code/config/workflow, canonical source record, schema, or presentation region concurrently. If overlap is plausible, the connector lane waits.
+4. **Minimal bootstrap.** At package start, read only this policy, the exact current LIFE issue and linked LOS idea where relevant, the directly relevant product/scope section, `CODEMAP` when repo navigation is needed, the directly affected implementation/callers, and the Production Contract only for runtime behavior. Historical WBS evidence is read only for missing technical scope. Do not reread unrelated canon/history after the boundary is known.
+5. **Delta-only base movement.** If `main` moves, inspect only commits since the recorded base. Continue automatically when the delta does not overlap the package claim. Stop with `BASE_MOVED_STOP` only for a material overlap or authority change.
+6. **Direct review.** Jim does not need to paste a coding agent's transcript or result. Once a branch/PR exists, ChatGPT reviews the actual GitHub delta, same-head proof, and acceptance evidence directly.
+7. **Meaningful state changes only.** Jira LIFE status/blocker/dependency updates happen at verified execution boundaries (start, blocker, accepted, Done), under the approved write authority. LOS owns product-priority/stage decisions; Notion Development Projects changes only for real ownership/concurrency/handoff. Do not keep GitHub/Notion status boards or create progress-document churn.
+8. **Protect an active code base from coordination churn.** While a repo-heavy package is actively coding against `main`, avoid nonessential direct commits to that repository solely for planning/docs bookkeeping. Use `Development Projects` only for temporary ownership coordination; track delivery state in the owning LIFE issue. Let the active PR carry package-specific technical documentation; batch unrelated documentation edits after the active package lands.
+9. **One acceptance pass.** The coding agent runs targeted proof plus at most one final full suite/runtime gate. ChatGPT performs one delta-only review and one production-shaped acceptance/read-back where required. Re-run only after changed code or a specific failed boundary.
+10. **Automatic next-prerequisite pull.** While the repo-heavy lane is busy, ChatGPT should inspect only the next few approved LIFE issues in the current Jira dependency order and execute already-approved, reversible, non-overlapping connector prerequisites without a separate planning ceremony. Consequential permission gates still apply.
+
+11. **Automatic ordered handoff.** After the active package is accepted Done and Jira read-back passes, the same authorized, correctly anchored Codex/Claude session refreshes `origin/main` and applies the **Deterministic agent work selection** rule itself. It resumes/claims only an eligible next LIFE issue, or truthfully reports `QUEUE_NOT_READY` / `NO_ELIGIBLE_WORK`. Do not re-onboard from history, guess a next package, or ask ChatGPT to manually dispatch an issue.
+12. **Batch permission classes.** Jim may approve a recurring class of narrow reversible mutations once (for example: adding Jira-approved Notion properties/views, registering an approved router owner, or creating one explicitly scoped private snapshot table). That class approval applies to later approved LIFE issues only when the mutation remains within the same bounded class and no new canonical-source, destructive, privacy, scheduler, schema-family, or architecture decision is introduced. Anything outside the approved class still requires an explicit gate.
+
+**Current standing authorization — Jim, October 5, 2026:** ChatGPT may execute already-approved, reversible Notion schema/view/surface changes and related authoritative read-back verification without asking again, provided the change does not delete data, change canonical ownership, introduce a new datastore/schema family, alter scheduling, or overlap an active Codex/Claude package. This authorization does not cover destructive changes, source-of-truth changes, runtime architecture, new schema families/datastores, scheduling, or overlapping mutations.
+
+This mode changes coordination speed, not architecture or safety. It does not authorize a second scheduler, duplicate writer, destructive mutation, unapproved schema, overlapping repository work, or bypass of explicit acceptance/permission gates.
+
+### Repository workspace affinity gate
+
+Codex/Claude workspaces are **repository-scoped execution environments**. A session that can read a sibling repository is not thereby authorized or able to write it. Never route a mutation for repository B into an existing workspace/session anchored to repository A merely because the sibling path is visible.
+
+Before **any substantive repository read, mutation, branch creation, test run, or handoff execution**, the implementer must prove all of the following for the exact target repository:
+
+1. `git rev-parse --show-toplevel` resolves to the intended repository root;
+2. `git remote get-url origin` resolves to the intended GitHub repository;
+3. the repository root is writable;
+4. Git metadata/worktree state needed for branch/commit operations is writable;
+5. a reversible write probe in the intended repository can be created and removed successfully;
+6. the intended base/branch is available from that same writable repository.
+
+If any check fails, stop immediately before reading or changing product files with:
+
+`WRONG_WORKSPACE_STOP — target repository is not the writable workspace`
+
+There is no retry in a different sibling path inside the same read-only session. Do not attempt permission workarounds, cross-repo patching, manual reconstruction, archive transfer, or force operations. Cross-repository work is split by repository: one writable workspace/session per repository. A later handoff targeting another repository requires a new correctly anchored workspace/session unless that repository's writeability was independently proven in the same environment.
+
+The Tech Lead must preserve **repository affinity** when issuing handoffs. Never tell Jim to reuse “the same Codex session” for a different repository. Tiny, single-file, reversible governance/documentation changes that are safely supported by the connected GitHub write tool should be executed directly there rather than routed through a known-wrong local workspace. Jim must not be asked to perform terminal/git plumbing merely to repair an orchestration mistake.
+
+Use targeted proof during implementation and run the full suite at most once on the final deterministic candidate. Do not rerun green proof without changed code or a new factual failure. Tech Lead review is delta-only from the last accepted checkpoint and does not re-prove passed gates.
+
+**Land first, accept second.** When deterministic code/config is complete and green, publish it to the intended branch/PR before waiting on external runtime acceptance, unless the changed boundary itself cannot be proved safely without that external dependency. `LANDED` and `ACCEPTED` run on separate clocks: missing live credentials, provider evidence, or connector availability may block `ACCEPTED`, but must not strand an otherwise complete deterministic candidate locally. Downstream roadmap work that explicitly requires acceptance remains blocked until acceptance passes.
+
+Do not update Notion/GitHub roadmap status at internal checkpoints. Update canonical Jira/coordination state only on meaningful ownership, sequencing, blocker, landed, accepted, or closed boundaries. Git is the implementation history.
+
+Environment failures get one retry at the failing boundary. After the second failure, stop with the exact blocker; do not cycle clones, auth methods, transports, or alternate execution paths.
+
+### Runtime Completeness Gate
+
+For any package that changes acquisition, connector behavior, runtime composition, production entry points, workflows, persistence, or scheduled execution, the Tech Lead must define before implementation:
+
+`ENTRY POINT → REQUIRED INPUTS → CALL CHAIN → MUTATION OWNER → SUCCESS SIGNAL → FAIL-CLOSED SIGNAL → CANONICAL STATE → AUTHORITATIVE READ-BACK → PRE-MERGE PROOF → LIVE ACCEPTANCE BOUNDARY`
+
+If any required field is unresolved:
+
+`RUNTIME_PATH_INCOMPLETE_STOP`
+
+No implementation handoff may proceed until the execution path is coherent.
+
+A runtime-facing package is not a final candidate when its primary happy-path proof ends `DEGRADED`, `BLOCKED`, partially accounted, or otherwise incomplete. `DEGRADED` belongs only in explicit negative-control proof unless degradation is the user-requested outcome.
+
+Before recommending merge, the Tech Lead must inspect the exact production entry point on the exact candidate SHA and prove:
+
+1. the production entry point actually invokes the changed behavior;
+2. every acceptance-critical runtime input is actually loaded and supplied;
+3. the normal happy path reaches the promised complete state;
+4. missing/incomplete inputs fail closed;
+5. transport/process success cannot be reported when the promised product outcome is degraded;
+6. canonical persistence uses the existing mutation owner;
+7. authoritative read-back is wired;
+8. deterministic pre-merge proof exercises the same composition path that production will use.
+
+External credentials/providers may defer live `ACCEPTED` status until after promotion only when they are genuinely unavailable pre-merge. Missing runtime composition, missing input wiring, incorrect success signaling, or missing canonical persistence/read-back are implementation defects and may never be deferred to a natural production run.
+
+For runtime-facing packages, `CI: PASS` does not imply merge readiness. Merge requires both:
+
+`CI: PASS`
+
+`PRE_MERGE_RUNTIME_GATE: PASS`
+
+The Tech Lead may not recommend or perform merge until both are true.
+
+## 4. Mutation, proof, tests, and TestKit
+
+Prefer deterministic local evidence and small representative fixtures. Run the domain proof, not unrelated suites. Live Gmail, Outlook, Notion, web, or other connector reads belong in the coding run only when that boundary changed and cannot be proved locally. Verify docs/config by exact diff/read-back; deterministic code by targeted unit/fixture/static proof; shared/writer/runtime-facing code by targeted tests plus one changed real-boundary proof only when that boundary changed; consequential source writes by direct post-write verification. Green CI proves code runs; boundary evidence proves changed behavior works. Do not rerun green proof without changed code or a new factual failure.
+
+Before implementation state the changed claim, failure that could keep it false, lowest boundary exposing it, and fail-closed negative control. Use targeted proof first, affected regression once, and full suite at most once before landing; then rely on main CI.
+
+### Jobs incremental architecture stress gate
+
+For LIFE OS Jobs, every new capability, integration, source adapter, crawler increment, qualification stage, persistence path, or other architectural increment must be stress/load tested during its initial implementation before the pattern is replicated.
+
+A feature working at minimum scale proves functional correctness only. It does **not** prove architectural fitness.
+
+Each increment must be deliberately exercised beyond its immediate production requirement toward the credible future operating envelope, with proof designed to expose scaling limits while architectural change is still cheap. As applicable, this must test source/provider fan-out, concurrency, rate-limit behavior, timeout amplification, retry amplification, memory/runtime growth, persistence pressure, queue/backlog behavior, and failure isolation.
+
+For example, a crawler implemented against one job source must be tested with simulated or real multi-source load representative of the expected future source count before its architecture is accepted for replication. Passing against one source is insufficient evidence that the same design can safely support many sources.
+
+Jobs incremental acceptance therefore requires both:
+
+1. **Functional proof** — the increment produces the correct user/product behavior.
+2. **Scale proof** — the architecture remains viable under deliberately increased load and fails predictably/fail-closed when pushed beyond its supported envelope.
+
+The purpose is early architectural falsification, not benchmark theater: actively try to break the proposed architecture before multiplying it across integrations.
+
+> **Build at one. Test toward many. Scale the pattern only after it survives.**
+
+### Production-shaped regression gate
+
+When a defect is exposed by live acceptance or production evidence, the next correction must prove the promised outcome on the actual failing shape, not merely on a plausible synthetic happy path.
+
+1. If representative failing input is available, regression proof must use that input or a fixture preserving the acceptance-critical structure that caused the failure.
+2. Proof must traverse the lowest deterministic production-equivalent path that can falsify the claim. For parser/compiler/scoring defects, prove `production-shaped evidence → extractor output → compiler/scorer output → final disposition`.
+3. A change that only renames an error, improves diagnostics, preserves an intermediate representation, or otherwise changes a symptom without proving the promised user outcome is `CORRECTION REQUIRED`.
+4. Green CI is insufficient when its tests do not assert the acceptance-critical production shape. The Tech Lead must inspect the same-head regression proof and verify that the previously failing shape now reaches the promised state.
+5. For LIFE OS Jobs qualification, merge is prohibited unless representative production-shaped JD evidence proves: `employer/ATS JD + actionable Apply URL + usable requirement language → non-empty structured Requirement rows → non-null Fit through the actual adapter/qualification path → correct disposition`. Genuinely empty/unscoreable requirements must remain fail-closed.
+6. If post-merge live acceptance still fails, the next correction must be grounded in the exact new live failure evidence. Do not repeat the same hypothesis without new proof.
+
+Jim-approved lightweight Composable TestKit under `tests/` may provide reusable builders, deterministic boundary doubles, behavioral cases, and lightweight contract-harness functions when they serve at least two real test consumers. It is test-only and owns only reusable test mechanics; product/domain contracts own behavior. TestKit exists to reduce duplicated setup/context and make implementation boundaries easier to swap. It may not become a runner, custom framework, plugin, registry/config language, datastore, scheduler, orchestrator, evidence store, inheritance framework, production dependency, or parallel implementation.
+
+## 5. Review and workspace
+
+One implementer and one Tech Lead review one coherent mutation by default. Each active package has exactly one Tech Lead reviewer; other TLs are escalation-only unless Jim explicitly requests an audit, the active Tech Lead raises an architecture or safety boundary, or the work crosses domains. **Bounded Review Mode:** inspect the exact candidate diff, required canonical contract, direct consumers/callers affected by the diff, and CI/proof for the same head SHA. Expand only when a specific unresolved dependency, semantic ambiguity, or architectural conflict requires it. A conclusively failed hard acceptance gate ends the review immediately. Passed gates remain verified for that review cycle; continue only through the remaining required gates. Return one consolidated review with no archaeology or redundant proof; re-review only the correction delta and affected semantics. Default evidence budget is current base/head, changed-file list, complete candidate diff, same-head CI/proof, and only the minimal direct-consumer/file reads needed to resolve specific questions. Exceed that budget only for a named unresolved question; do not refetch verified facts unless the candidate head or relevant base changes. Additional reviewers require a distinct safety reason: destructive behavior, security sensitivity, material ambiguity, or Tech Lead self-review.
+
+When the next required action belongs in Codex, Claude Code, or equivalent, the Tech Lead response must include the exact executable handoff prompt in that same response. Do not send a status-only message that forces Jim to ask for the prompt separately unless Jim explicitly requested status only.
+
+Use a clean intended base/worktree; do not repair/reset an unrelated dirty workspace. Normal handoff is the remote Git candidate with exact base/head and proof. One failed execution path gets one approved fallback; if both fail report `ENVIRONMENT_BLOCKER — STOP`. Do not cycle clone methods, archives, base64, screenshots, patch fragments, sandbox-only transport, or manual reconstruction.
+
+## 6. Coordination, Notion safety, retry
+
+Claims exist only for real concurrent-write collisions. Read Development Projects immediately before ownership or takeover questions, or when overlapping writers are plausible; when a claim is required, claim exact mutation surfaces only. Never create a lock database, heartbeat, watcher, scheduler, or coordination service.
+
+For Notion database/data-source querying, bulk QA, reconciliation, counts, duplicate detection, or migration analysis, follow the conservative query order defined here (V1 policy is reference-only): `exact fetch → saved mode=view → repository-owned/Public API snapshot → metered rows/SQL only with Jim's explicit per-query approval`. A surrounding “go,” development approval, debugging need, or emergency never authorizes metered querying.
+
+One failure boundary gets one retry owner; retry the smallest unit once when useful. Production retry semantics live in V7's current runtime implementation and applicable approved V7 contracts. Do not add infrastructure, recovery frameworks, QA generations, or investigation programs in response to failure. Stop at the time boundary.
+
+## 7. Completion
+
+Every landed package reports only **OUTCOME**, **REMOVAL**, **PROOF**, **REMOTE SHA**, and **NEXT**. A completed package must make the live product easier to understand or leave it no more complex; if governance is needed to tolerate implementation complexity, simplify the implementation. `LANDED` means intended branch plus targeted proof; it is not production-ready, accepted, or closed. For unattended/runtime/connector changes, identify before implementation and later prove: `trigger → available transport/tool → mutation owner → canonical persisted state → authoritative read-back`. No design may depend on an unshown tool, permission, transport, payload, credential, or mutation capability. Manual/operator execution, mocks, and alternate paths do not substitute for unattended acceptance.
+
+`LANDED` = code is on the intended branch and targeted proof passed. `TARGETED PROOF FAILED` reports the exact named proof failure. `BLOCKED: <exact dependency>` reports the concrete dependency preventing safe completion. `ACCEPTED` = the changed production boundary executed successfully and authoritative resulting state was read back and verified. `CLOSED` = ACCEPTED with no known defect or recovery debt in the promised outcome. `DEGRADED` is fail-closed, never completion; an active defect remains active until it converges to PASS or Jim explicitly reprioritizes an external blocker. Do not begin an unrelated roadmap package merely because work LANDED.
+
+## 8. Budgets and mandatory metadata
+
+**Shared code-size and file budgets — ChatGPT, Codex, Claude Code:** Fresh-main is mandatory. Unless Jim explicitly approves a scoped exception, one coherent package may add or materially rewrite at most **300 production-code lines**; production-code deletions are free. The default maximum is **three production files**; obtain Jim's explicit approval before touching a fourth production file. Above 300 lines requires Jim's scoped approval and `Jim-Approved-Budget: <justification>` in the commit message. Prefer deletion/reuse for repairs; explain necessary positive net production LOC rather than fragmenting a sound vertical slice. ChatGPT/Codex default test surface is two files; Claude's end-to-end package may use the test files actually necessary to prove its approved outcome, without a mechanical test-file limit. The 300-line threshold is temporary: **after three accepted substantive Claude end-to-end deliveries**, the Career/Jobs Tech Lead and Jim review delivery speed, defects, readability and diff sizes and consider reducing the threshold. Any reduction requires Jim's explicit approval and a new edit of this same canonical policy; no automatic decrease or new governance artifact.
+
+**Usage budget — Codex and Claude:** Each has a **2% limit per active five-hour allowance window** when telemetry is available (use a 1.8% early warning). **Codex stops at 2%; Claude alone may ask Jim for a scoped, explicit usage exception *before* it plans to exceed 2%.** Permission is not implied by an approved Jira outcome or a prior exception. Continue within the budget while permission is pending; when at 2% without authorization, stop spending, preserve the candidate and report the gate. Without usage telemetry, do not claim the 2% budget is verified; avoid speculative broad exploration, and have Claude request a clearly bounded exception before a known high-usage step. No exception implies paid model spend, new credits or tool usage. Tech Leads compile exact repo/base, affected boundaries, expected proof and stop conditions for short-run metered work. ChatGPT/Codex major-feature acceptance attempts retain the 60-minute SLA: reassess at 30, remove nonessential work at 45, prepare acceptance at 55, stop at 60 as `TIMEBOX_STOP` with the blocker. Claude's sustained delivery instead follows the 60–90 minute target and milestone cadence in §3.
+
+**Claude Code end-to-end budget:** The standing exception is for **continuous delivery, not unlimited size or model usage**. Claude is exempt from the five-minute coding stop and arbitrary test-file counts but must observe the shared 300-line/three-production-file defaults and the 2% usage threshold. Claude may ask Jim for an explicit scoped exception to a limit in advance; do not presume or retroactively grant it. Record `Claude-End-to-End: LIFE-<issue>` in the PR description and `Jim-Approved-Budget: <justification>` in the commit when an above-300-line exception is approved. Preserve normal quality, concurrency, privacy, release, authorization and independently approved spending gates. If repo-local checks still enforce superseded 50-line/2-test-file rules, report the exact check and request a narrow policy-alignment correction; do not bypass CI or weaken the three-production-file or spending gates.
+
+Tests are budgeted by execution cost and protected behavior, not collected count. There is no numerical repository test-count ceiling and no `Production-Critical-Test:` commit-metadata requirement. The complete deterministic repository test suite must complete in under 60 seconds on the standard CI runner; this applies to the deterministic repository suite itself, not total CI elapsed time or targeted live/external acceptance. CI should surface a soft warning beginning at 45 seconds and must fail when deterministic suite runtime reaches 60 seconds. Tests protect accepted user-visible paths, continuing relevant regressions, canonical contract boundaries, or necessary fail-closed controls; remove obsolete tests with removed behavior, retired internals, duplicated implementation detail, superseded runners/QA phases, or behavior already protected by a stronger canonical boundary. New implementations of an existing composable boundary should reuse the owning behavioral contract wherever practical instead of creating duplicate implementation-specific suites. Test count is not a quality metric. Use the smallest targeted proof during implementation, affected regression once, and the complete deterministic suite at most once on the final deterministic candidate; then rely on CI. One implementer owns one package; do not duplicate rediscovery.
+
+A package may declare `Production-Frozen: true`; then production code, configuration, and workflows are outside its surface, any such diff is `SCOPE_EXPANSION_STOP` and must fail repository enforcement where supported, and incidental runtime changes are not allowed. Production mutation becomes a separately scoped package. Repo CI may be stricter but may not weaken these rules without Jim's explicit approval.
