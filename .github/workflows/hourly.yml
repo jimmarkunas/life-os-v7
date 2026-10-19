@@ -133,6 +133,11 @@ jobs:
       extract: ${{ steps.extract.outcome }}
     steps:
       - uses: actions/checkout@v5
+      - name: Cloud Fit backlog runs alone (LIFE-41 D219) - cloud_backlog with any other action input fails here, before any credential or stage
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' && (inputs.interview_probe || inputs.interview || inputs.interview_acceptance || inputs.discover || inputs.tick || inputs.check_store || inputs.reconcile || inputs.resolve_jobright || inputs.resolve_linkedin || inputs.enrich || inputs.web || inputs.web_scale_up || inputs.sponsors || inputs.probe || inputs.fit || inputs.fit_all || inputs.audit || inputs.publish || inputs.maintenance || inputs.finalize || inputs.quick || inputs.report != '') }}
+        run: |
+          echo "CLOUD_BACKLOG_COMBINED_INPUTS: a cloud_backlog dispatch runs alone (only live may be set with it); nothing ran"
+          exit 1
       - id: bws_prep
         name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 16; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
@@ -211,6 +216,7 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
       - name: Stage 1 - sweep
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: a Cloud Fit backlog dispatch never sweeps newsletters
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_JSON }}
@@ -272,7 +278,7 @@ jobs:
       - id: extract
         continue-on-error: true
         name: Stage - extract cards from mail
-        if: ${{ github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' || env.PIPELINE == 'true') && !(github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: nor extracts
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_prep.outputs.FIT_PROFILE_JSON || steps.bws_prep_retry.outputs.FIT_PROFILE_JSON }}
@@ -294,7 +300,7 @@ jobs:
 
   jobright:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}   # D219: not on a Cloud Fit backlog dispatch   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -378,7 +384,7 @@ jobs:
 
   linkedin:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}   # D219: not on a Cloud Fit backlog dispatch   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -473,7 +479,7 @@ jobs:
 
   lensa:
     needs: prep
-    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick }}   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
+    if: ${{ always() && needs.prep.result == 'success' && github.event_name == 'workflow_dispatch' && !inputs.tick && !inputs.quick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0') }}   # D219: not on a Cloud Fit backlog dispatch   # D208: a tick runs this lane inside lifeos.jobs.tick (one job, one store tunnel); manual runs keep the lane
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
