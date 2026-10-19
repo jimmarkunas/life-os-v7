@@ -412,9 +412,12 @@ class FailuresAreVisiblyDegraded(Base):
                  (lambda data: reply(data, receipt={**json.loads(reply(data))["receipt"], "fallback": True}), "FIT_EDGE_RECEIPT_REJECTED"),
                  (lambda data: reply(data, status="MODEL_DRIFT"), "FIT_EDGE_MODEL_DRIFT"))
         for answer, code in cases:
+            self.setUp()
+            self.job(1)
             counts = self.run_cloud(SHADOW, Endpoint(answer))
             self.assertEqual(counts["cloud_fit"], f"DEGRADED({code})")
-            self.assertIsNone(self.row(1, ("cloud_status",))[0])
+            # D219: BUSY ran no model, so the claim is released and the job asked later; anything else may have run a model, so it is recorded, never repeated
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), (None, None) if code == "FIT_EDGE_BUSY" else ("DEGRADED", code), code)
 
     def test_an_unusable_judgment_is_recorded_on_its_job_never_as_a_score_and_the_next_tick_moves_on(self):
         self.job(1)
@@ -669,7 +672,7 @@ class OracleContract10504(Base):
             self.job(1)
             counts = self.run_cloud(SHADOW, Endpoint(lambda data, receipt=receipt: reply(data, fixture="REAL", receipt=receipt)))
             self.assertEqual(counts["cloud_fit"], "DEGRADED(FIT_EDGE_RECEIPT_REJECTED)")
-            self.assertIsNone(self.row(1, ("cloud_status",))[0])
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", "FIT_EDGE_RECEIPT_REJECTED", None))     # D219: never re-asked
 
     def test_a_synthetic_receipt_without_purge_still_passes(self):
         self.assertIsNone(edge.bad_receipt_field(self.receipt()))
@@ -688,7 +691,7 @@ class OracleContract10504(Base):
             endpoint = Endpoint(answer)
             counts = self.run_cloud(SHADOW, endpoint)
             self.assertEqual((counts["cloud_fit"], len(endpoint.sent)), (f"DEGRADED({code})", 1), code)     # one attempt, no retry
-            self.assertIsNone(self.row(1, ("cloud_status",))[0])
+            self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("DEGRADED", code, None), code)   # D219: a model may have run: never re-asked
 
     def test_the_call_respects_the_ticks_actual_remaining_alarm(self):
         import signal
