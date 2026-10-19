@@ -95,6 +95,15 @@ class WorkflowTests(unittest.TestCase):
             if s.get("id") in ("web", "enrich", "fit", "audit", "publish", "holds", "finalize", "boards", "web_scale_up", "titlewatch", "sponsors"):
                 self.assertNotIn("PIPELINE", s["if"], s["id"])
 
+    def test_only_a_tick_or_a_domains_dispatch_starts_the_jira_job(self):
+        """D212: after a manual (or cancelled) hourly run the workflow_run event has no inputs, and `inputs.jira != 'none'` was true for an empty input, so every manual
+        hourly run also wrote the Jira snapshot and card. Only a completed tick or a domains dispatch that asks for Jira starts it now."""
+        from pathlib import Path
+        condition = yaml.safe_load((Path(__file__).resolve().parents[2] / ".github/workflows/domains.yml").read_text())["jobs"]["jira"]["if"]
+        self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.jira != 'none')", condition)
+        self.assertIn("github.event.workflow_run.display_title == 'tick'", condition)
+        self.assertNotIn("|| inputs.jira != 'none'", condition)
+
     def test_domain_jobs_left_hourly_and_run_after_a_tick_from_domains(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2] / ".github/workflows"
