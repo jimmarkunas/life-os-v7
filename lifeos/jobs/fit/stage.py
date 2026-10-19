@@ -183,4 +183,5 @@ def run(limit, live, environ=os.environ):
                                    " WHERE id=%s AND status='READY'", ("lane_exclude", _now(), job_id))
                     counts["gated"] += cursor.rowcount
     counts.update(fit_cloud.run(environ, live, started, profile))                    # D214: after the static write; off by default, never changes it
+    counts["failed"] = counts["cloud_degraded"]                     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
     return counts

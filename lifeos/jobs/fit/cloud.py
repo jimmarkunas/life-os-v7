@@ -5,7 +5,7 @@ one judgment a tick (MAX_PER_RUN; `V7_CLOUD_FIT_PER_RUN` can only lower it to 0)
 existing v7_job_fit row. It never changes the visible Fit, the decision, the admission, the Ledger, Gmail, the audit or Trash: the static score stays the
 authority. canary and on are refused with no call (G8 is a separate later decision).
 
-Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
+Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
 (`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
 text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (16 hex); without it nothing is sent. Every failure is a fixed code shown as
 `cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
@@ -15,7 +15,7 @@ import os
 import re
 import time
 
-from lifeos.jobs import store
+from lifeos.jobs import classify, lanes, store
 from lifeos.jobs.fit import edge, judge
 from lifeos.jobs.fit.score import evaluate
 
@@ -29,7 +29,7 @@ CALL_SECONDS = 15 + edge.WAIT           # connect timeout + the longest reply wa
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
 
-PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
+PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
         " JOIN v7_job_descriptions d ON d.job_id = j.id"
         " WHERE j.status IN ('READY', 'RESOLVED') AND j.notion_page_id IS NULL AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
         " AND f.score IS NOT NULL AND f.cloud_status IS NULL ORDER BY j.first_seen, j.dedupe_key LIMIT %s")
@@ -43,17 +43,31 @@ def mode(environ):
 
 
 def per_run(environ):
-    try:
-        return max(0, min(int(environ.get("V7_CLOUD_FIT_PER_RUN") or 1), MAX_PER_RUN))
-    except ValueError:
+    """Unset: 1. An explicit value that is not a whole number fails closed to 0 (TL review of #339)."""
+    raw = environ.get("V7_CLOUD_FIT_PER_RUN")
+    if raw is None or raw.strip() == "":
         return 1
+    try:
+        return max(0, min(int(raw.strip()), MAX_PER_RUN))
+    except ValueError:
+        return 0
+
+
+def public_posting(url, source):
+    """LIFE-41 10500 provenance: the job's canonical final Apply URL is on an employer ATS (classify.ATS), or the job was read off the employer's own board
+    by the web pass (lanes.first_party_source) at an employer host. A description-reading method (`source_kind`) proves nothing about the site, so Dice,
+    LinkedIn, every aggregator, an unknown host reached through a newsletter (it may be a recruiter's page) and a job with no URL are refused before any frame."""
+    if not url:
+        return False
+    kind = classify.apply_kind(url)
+    return kind == "ats" or (kind == "employer" and lanes.first_party_source(source))
 
 
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def run(environ=os.environ, live=False, started=None, profile=None, send=edge.exchange, clock=time.monotonic):
+def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic):
     """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded. Called by the Fit stage after its static write, with its
     profile: the static result of the same text is the base, so the hard-family and junior caps and the gate apply to the cloud score exactly as to the static one."""
     counts = {"cloud_fit": mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0}
@@ -69,7 +83,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=edge.ex
         return _degraded(counts, "PROFILE_REF_UNCONFIGURED")
     if not host:
         return _degraded(counts, "FIT_EDGE_NO_HOST")
-    cap = per_run(environ)
+    cap, send = per_run(environ), send or edge.exchange                 # looked up at call time: a test's patched transport is the one used
     if not cap:
         return _degraded(counts, "PER_RUN_ZERO")
     if profile is None:
@@ -79,7 +93,11 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=edge.ex
         rows = cursor.fetchall()
     started = clock() if started is None else started
     results = []
-    for job_id, title, company, location, text, fingerprint in rows:      # no store session is open across a network call
+    for job_id, title, company, location, text, fingerprint, url, source in rows:     # no store session is open across a network call
+        if not public_posting(url, source):
+            results.append((job_id, "SKIPPED", "NOT_PUBLIC_POSTING", None, None, fingerprint))
+            counts["cloud_skipped"] += 1
+            continue
         sent = judge.request(title, text, {"ref": ref}, location)
         if sent is None:
             results.append((job_id, "SKIPPED", "NO_SUBSTANTIVE_TEXT", None, None, fingerprint))

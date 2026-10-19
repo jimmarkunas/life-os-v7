@@ -22,6 +22,12 @@ POLICY = re.compile(r"[$£€]\s?\d|\b(?:salary|base pay|pay range|hourly rate|c
                     r"\brelocat\w+|\boffice in\b|\blocation\b|\bvisa\b|\bsponsorship\b|\bauthori[sz]ed to work\b|work authori[sz]ation|\bright to work\b|\bcommut\w+|\bresid(?:e|ency|ents?)\b|\bin[- ]person\b", re.I)
 
 
+# LIFE-41 10500: contact details are never sent. A clause with an email address, a phone number, a link or a contact instruction is dropped, and a title that carries one
+# sends nothing.
+CONTACT = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+|(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b|\+\d{1,3}(?:[\s.-]?\d{2,4}){2,4}\b|\bhttps?://|\bwww\.|"
+                     r"\b(?:contact|reach out to|e-?mail|call|text|message)\s+(?:us|me|him|her|them|our|the (?:recruiter|hiring manager|team))\b|\brecruiter\b|\blinkedin\.com\b", re.I)
+
+
 @dataclass(frozen=True)
 class Judgment:
     score: int | None
@@ -36,13 +42,14 @@ def request(title, text, profile_brief, location=None):
     at a mode, place or suffix cue and stripped of short capitalised tails; a title that cleans to nothing is ambiguous, so nothing is sent."""
     words = {w.lower() for w in re.findall(r"[A-Za-z]{4,}", location or "")} - GENERIC
     place = re.compile(r"\b(?:" + "|".join(map(re.escape, sorted(words))) + r")\b", re.I) if words else re.compile(r"(?!)")
-    kept = [(u.section, c) for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text) if not POLICY.search(c) and not place.search(c)]
+    kept = [(u.section, c) for u in extract.parse(text) if u.section in SECTIONS for c in re.split(r";|(?<=[.!?])\s+", u.text)
+            if not POLICY.search(c) and not place.search(c) and not CONTACT.search(c)]
     headed = any(extract._heading(line.strip()) in SECTIONS[1:] for line in (text or "").split("\n"))
     short = sum(len(c) for _, c in kept) < MIN_TEXT or sum(len(c) for sec, c in kept if sec in SECTIONS[1:]) < MIN_TEXT // 2
     name = re.sub(r"(,\s*)+", ", ", place.sub("", re.sub(MODE, "", re.split(r"\s[-–—|@]\s|[(\[]|,\s*" + MODE, title or "", flags=re.I)[0], flags=re.I))).strip(" ,")
     while SUFFIX.search(name):
         name = SUFFIX.sub("", name)
-    if short or not headed or not name.strip():
+    if short or not headed or not name.strip() or CONTACT.search(title or ""):
         return None
     return {"title": " ".join(name.split()), "description": "\n".join(c for _, c in kept), "profile": profile_brief}
 

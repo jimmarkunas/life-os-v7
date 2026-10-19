@@ -5,6 +5,7 @@ import json
 import unittest
 from unittest import mock
 
+from lifeos import run as lifeos_run
 from lifeos.jobs.fit import cloud, edge, stage
 from tests.jobs.fit.test_edge import Endpoint, refusal, reply
 from tests.jobs.fit.test_fit import GOOD, PROFILE
@@ -22,9 +23,10 @@ class Base(unittest.TestCase):
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
 
-    def job(self, job_id, status="READY", admission="ADMIT", page=None, exclusion=None, cloud_status=None, seen=T, text=GOOD, kind="ats_api"):
+    def job(self, job_id, status="READY", admission="ADMIT", page=None, exclusion=None, cloud_status=None, seen=T, text=GOOD, kind="ats_api",
+            url="https://boards.greenhouse.io/acme/jobs/100", source="jobright"):
         self.db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id:03d}", status=status, title="Technical Program Manager", company="Acme", first_seen=seen, last_seen=seen,
-                       updated_at=seen, lane="Newsletter", location_text="Remote - United States", notion_page_id=page)
+                       updated_at=seen, lane="Newsletter", location_text="Remote - United States", notion_page_id=page, final_apply_url=url, source=source)
         self.db.insert("v7_job_descriptions", job_id=job_id, source_kind=kind, full_text=text, fingerprint=f"fp{job_id}", fetched_at=seen)
         self.db.insert("v7_job_fit", job_id=job_id, score=80, decision="Go", line="fits", confidence="high", model_version="6", profile_hash="p", jd_fingerprint=f"fp{job_id}",
                        scored_at=seen, admission=admission, admission_reason=None, lane="US Remote", eligible="US Remote", exclusion=exclusion, cloud_status=cloud_status)
@@ -115,7 +117,7 @@ class Selection(Base):
             self.assertEqual(self.run_cloud({**SHADOW, **({"V7_CLOUD_FIT_PER_RUN": value} if value else {})}, endpoint)["cloud_calls"], 1, value)
             self.assertEqual(len(endpoint.sent), 1, value)
         self.assertEqual(cloud.MAX_PER_RUN, 1)
-        self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 1, 0))
+        self.assertEqual((cloud.per_run({}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "x"}), cloud.per_run({"V7_CLOUD_FIT_PER_RUN": "-3"})), (1, 0, 0))     # an invalid explicit value fails closed
 
 
 class ShadowNeverChangesWhatIsVisible(Base):
@@ -213,6 +215,86 @@ class CapsApplyToTheCloudScore(Base):
         with mock.patch.object(cloud.store, "connect", return_value=self.db):
             counts = cloud.run(SHADOW, True, send=endpoint)
         self.assertEqual((counts["cloud_fit"], endpoint.sent), ("DEGRADED(PROFILE_MISSING)", []))
+
+
+class EgressProvenance(Base):
+    """LIFE-41 10500 (TL review of #339): the description's reading method proves nothing about the site. The same source_kind is sent from an employer ATS or
+    the employer's own board, and refused before any frame from Dice, LinkedIn, an aggregator, an unknown host reached through a newsletter, or no URL."""
+
+    def test_the_same_reading_method_is_allowed_only_from_an_employer_or_its_ats(self):
+        allowed = (("https://boards.greenhouse.io/acme/jobs/1", "jobright"), ("https://acme.wd1.myworkdayjobs.com/en-US/careers/job/R1", "linkedin"),
+                   ("https://careers.acme.com/jobs/1", "web:acme"))
+        blocked = (("https://www.dice.com/job-detail/abc", "dice"), ("https://www.linkedin.com/jobs/view/123", "linkedin"), ("https://jobright.ai/jobs/info/x", "jobright"),
+                   ("https://www.lensa.com/job/1", "lensa"), ("https://talentfirm-recruiting.com/jobs/1", "jobright"), ("https://careers.acme.com/jobs/1", "web:openjobs"),
+                   (None, "jobright"), ("", "jobright"))
+        for kind in ("jsonld", "page_text"):
+            for url, source in allowed:
+                self.setUp()
+                self.job(1, kind=kind, url=url, source=source)
+                endpoint = Endpoint()
+                self.assertEqual(self.run_cloud(SHADOW, endpoint)["cloud_ok"], 1, (kind, url, source))
+                self.assertEqual(len(endpoint.sent), 1)
+            for url, source in blocked:
+                self.setUp()
+                self.job(1, kind=kind, url=url, source=source)
+                endpoint = Endpoint()
+                counts = self.run_cloud(SHADOW, endpoint)
+                self.assertEqual((counts["cloud_calls"], counts["cloud_skipped"], endpoint.sent), (0, 1, []), (kind, url, source))
+                self.assertEqual(self.row(1, ("cloud_status", "cloud_reason")), ("SKIPPED", "NOT_PUBLIC_POSTING"))
+
+
+class ContactDetailsNeverLeave(Base):
+    """LIFE-41 10500: a duties or requirements line with an email, phone, link or contact instruction is dropped before the frame is built."""
+    TEXT = GOOD.replace("• Strong communication skills\n", "• Strong communication skills\n• Questions? Email jane.doe@example.com or call +44 20 7946 0958\n"
+                        "• Apply via https://apply.example/xyz or reach out to the recruiter on linkedin.com/in/janedoe\n• Contact us at hiring@example.com with 8+ years of experience\n")
+
+    def test_the_sent_description_carries_no_contact_detail_and_keeps_the_role(self):
+        self.assertNotEqual(self.TEXT, GOOD)
+        self.job(1, text=self.TEXT)
+        endpoint = Endpoint()
+        self.assertEqual(self.run_cloud(SHADOW, endpoint)["cloud_ok"], 1)
+        sent = json.loads(endpoint.sent[0].split(b"\n", 1)[1])["request"]
+        body = json.dumps(sent).lower()
+        for private in ("jane.doe", "@", "7946", "+44", "https://", "linkedin", "recruiter", "hiring@", "contact us"):
+            self.assertNotIn(private, body, private)
+        self.assertIn("program roadmap", sent["description"].lower())                         # the role's own duties still go
+
+    def test_a_title_with_a_contact_detail_sends_nothing(self):
+        self.job(1)
+        self.db.raw.execute("UPDATE v7_jobs SET title=? WHERE id=1", ("Technical Program Manager - email jane@example.com",))
+        endpoint = Endpoint()
+        counts = self.run_cloud(SHADOW, endpoint)
+        self.assertEqual((counts["cloud_calls"], counts["cloud_skipped"], endpoint.sent), (0, 1, []))
+
+
+class DegradedIsAFailedFitStage(Base):
+    """TL review of #339: an enabled shadow that fails makes the Fit stage fail through the existing run.PARTIAL_FAILURE exit; off never does. Static Fit is written either way."""
+
+    def stage_run(self, environ, endpoint):
+        self.job(1)
+        self.db.raw.execute("DELETE FROM v7_job_fit")
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None), \
+                mock.patch.object(cloud.store, "connect", return_value=self.db), mock.patch.object(edge, "exchange", endpoint):
+            return stage.run(10, True, environ)
+
+    def test_off_leaves_the_fit_stage_green_and_a_shadow_refusal_fails_it(self):
+        off = self.stage_run({}, Endpoint())
+        self.assertEqual((off["cloud_fit"], off["failed"]), ("off", 0))
+        self.setUp()
+        refused = self.stage_run(SHADOW, Endpoint(lambda data: refusal(data, "DAILY_LIMIT")))
+        self.assertEqual((refused["cloud_fit"], refused["failed"]), ("DEGRADED(FIT_EDGE_REFUSED_DAILY_LIMIT)", 1))
+        self.assertEqual(self.row(1, ("decision", "cloud_status"))[1], None)                    # the static Fit is stored; no cloud answer is claimed
+        self.assertIsNotNone(self.row(1, ("score",))[0])
+        self.setUp()
+        ok = self.stage_run(SHADOW, Endpoint())
+        self.assertEqual((ok["cloud_fit"], ok["failed"]), ("OK", 0))
+        for counts, code in ((off, 0), (refused, 1), (ok, 0)):
+            with mock.patch.dict(lifeos_run.STAGES, {"fit": lambda limit, live, counts=counts: counts}):
+                import contextlib, io
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                    self.assertEqual(lifeos_run.main(["fit"]), code)
+            self.assertEqual(err.getvalue(), "FIT FAILED: FIT_CLOUD_DEGRADED\n" if code else "")
 
 
 class StaticWritePreservesCloudColumns(Base):
