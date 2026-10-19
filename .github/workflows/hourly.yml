@@ -96,7 +96,7 @@ on:
         type: boolean
         default: false
       quick:
-        description: "Quick proof run (LIFE-76, D208): runs exactly what a tick runs (lifeos.jobs.tick in the finish job) with small caps (employer boards 50, publish 10), so the tick path is proven by hand first; the lane jobs do not run; ticks never set it"
+        description: "Quick proof run (LIFE-76, D208): runs exactly what a tick runs (lifeos.jobs.tick in the finish job) with small caps (employer boards 50, publish 10, board backfill 50 when BOARDS_BACKFILL=on), so the tick path is proven by hand first; the lane jobs do not run; ticks never set it"
         type: boolean
         default: false
       publish_limit:
@@ -642,6 +642,7 @@ jobs:
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}   # a manual quick run proves exactly this path
         env:
+          BOARDS_BACKFILL: ${{ vars.BOARDS_BACKFILL || 'off' }}         # D217: the first-pass board drainer is hibernated unless the repository variable says on
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
