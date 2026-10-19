@@ -5,16 +5,25 @@ A row that has the same person and week, the SAME non-empty Source URL as the me
 under the same page (D193): only blank fields are filled (company, role, What they want, client, medium), never a human's value, and the corrected key must then resolve to
 exactly that page. A different or missing source link is a different message: nothing is merged and the original link is never overwritten.
 Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate. V7 never writes Done, never reopens a Done row and never replaces
-a non-blank What they want."""
-from datetime import datetime
+a non-blank What they want.
+
+Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two
+business days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are
+never changed."""
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
 from lifeos.platform.notion_client import NotionError, rich_text
 from .identity import key, norm
 
 SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Client": "rich_text", "Role": "rich_text", "Medium": "rich_text", "What they want": "rich_text",
-          "Last Contact": "date", "Week Ending": "date", "Done": "checkbox", "Active": "checkbox", "Needs review": "checkbox", "Source URL": "url"}
+          "Last Contact": "date", "Week Ending": "date", "Done": "checkbox", "Active": "checkbox", "Needs review": "checkbox", "Source URL": "url",
+          "Action Status": "select", "Follow-up Date": "date"}
 MAX_PAGES = 20
+NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
+REOPENABLE = ("", WAITING)
+HISTORY = ("Completed", "Dismissed")                                  # history: a later message changes nothing on these rows
+FOLLOW_UP_DAYS = 2
 FILLABLE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
 
 
@@ -49,7 +58,8 @@ def read(page):
             "role": _text(props.get("Role")), "medium": _text(props.get("Medium")), "what": _text(props.get("What they want")), "last_contact": date("Last Contact"),
             "week_ending": date("Week Ending")[:10], "done": bool((props.get("Done") or {}).get("checkbox")), "active": bool((props.get("Active") or {}).get("checkbox")),
             "needs_review": bool((props.get("Needs review") or {}).get("checkbox")), "source_url": (props.get("Source URL") or {}).get("url") or "",
-            "created_by": _actor(page.get("created_by")), "edited_by": _actor(page.get("last_edited_by"))}
+            "created_by": _actor(page.get("created_by")), "edited_by": _actor(page.get("last_edited_by")),
+            "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10]}
 
 
 def week_rows(notion, week):
@@ -122,11 +132,15 @@ def plan(rows, candidate):
     row = found[0]
     if row["done"]:
         return "done", row, None                                    # a later message never reopens, and never touches, a Done row
+    if row["action"] in HISTORY:
+        return "existing", row, None
     props = {}
     if _newer(candidate, row):
         props["Last Contact"] = {"date": {"start": candidate["last_contact"]}}
         if candidate["source_url"]:
             props["Source URL"] = {"url": candidate["source_url"]}
+        if row["action"] in REOPENABLE:                               # a new reply is something to act on again
+            props["Action Status"] = {"select": {"name": NEEDS_ACTION}}
     for name, field in FILLABLE:                                      # fill a blank from source evidence; never replace a human's value
         if _blank(row[field]) and candidate.get(field):
             props[name] = {"rich_text": rich_text(candidate[field])}
@@ -135,7 +149,8 @@ def plan(rows, candidate):
 
 def _create_props(c):
     props = {"Recruiter / Person": {"title": rich_text(c["person"])}, "Medium": {"rich_text": rich_text(c["medium"])}, "Last Contact": {"date": {"start": c["last_contact"]}},
-             "Week Ending": {"date": {"start": c["week_ending"]}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": bool(c["needs_review"])}}
+             "Week Ending": {"date": {"start": c["week_ending"]}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": bool(c["needs_review"])},
+             "Action Status": {"select": {"name": NEEDS_ACTION}}}
     for name, field in (("Recruiter Company", "company"), ("Client", "client"), ("Role", "role"), ("What they want", "what")):
         if c.get(field):
             props[name] = {"rich_text": rich_text(c[field])}
@@ -154,7 +169,8 @@ def create(notion, candidate):
     if len(found) != 1:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     row = found[0]
-    if row["done"] or not row["active"] or row["needs_review"] != bool(candidate["needs_review"]) or row["what"] != (candidate.get("what") or ""):
+    if (row["done"] or not row["active"] or row["needs_review"] != bool(candidate["needs_review"]) or row["what"] != (candidate.get("what") or "")
+            or row["action"] != NEEDS_ACTION):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
 
 
@@ -172,6 +188,8 @@ def update(notion, row, props, candidate):
     if (after["done"], after["active"], after["needs_review"], after["person"]) != (row["done"], row["active"], row["needs_review"], row["person"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     if "Last Contact" in props and not _same_instant(after["last_contact"], candidate["last_contact"]):
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+    if after["action"] != (NEEDS_ACTION if "Action Status" in props else row["action"]) or after["follow_up"] != row["follow_up"]:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     for name, field in FILLABLE:
         expected = candidate[field] if name in props else row[field]
@@ -205,4 +223,63 @@ def quarantine(notion, row, week):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     unchanged = {k: v for k, v in row.items() if k not in ("active", "edited_by")}
     if after[0]["active"] or {k: v for k, v in after[0].items() if k not in ("active", "edited_by")} != unchanged:
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+
+
+def add_business_days(day, n):
+    while n:
+        day += timedelta(days=1)
+        n -= day.weekday() < 5
+    return day
+
+
+def waiting_rows(notion):
+    """Every Waiting row, following every page; an incomplete read raises (nothing is changed on a partial view)."""
+    rows, cursor, seen = [], None, set()
+    for _ in range(MAX_PAGES):
+        body = {"page_size": 100, "filter": {"property": "Action Status", "select": {"equals": WAITING}}, **({"start_cursor": cursor} if cursor else {})}
+        try:
+            page = notion.query_data_source(None, body)
+        except NotionError:
+            raise RecruitersError("RECRUITERS_NOTION_QUERY_FAILED") from None
+        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
+            raise RecruitersError("RECRUITERS_NOTION_QUERY_INCOMPLETE")
+        rows += [read(p) for p in page["results"]]
+        if not page["has_more"]:
+            return rows
+        cursor = page.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INVALID")
+        seen.add(cursor)
+    raise RecruitersError("RECRUITERS_NOTION_PAGINATION_INCOMPLETE")
+
+
+def follow_up_plan(row, today):
+    """-> ("schedule", props) | ("due", props) | (None, None) for one Waiting row. A Done or inactive row, or a date that is not a date, is left alone."""
+    if row["done"] or not row["active"] or row["action"] != WAITING:
+        return None, None
+    if not row["follow_up"]:
+        return "schedule", {"Follow-up Date": {"date": {"start": add_business_days(today, FOLLOW_UP_DAYS).isoformat()}}}
+    try:
+        due = date.fromisoformat(row["follow_up"])
+    except ValueError:
+        return None, None
+    return ("due", {"Action Status": {"select": {"name": NEEDS_ACTION}}}) if due <= today else (None, None)
+
+
+def set_follow_up(notion, row, props):
+    """One non-retried update, then prove it on a fresh read of the row's week: same page, only the written field changed."""
+    try:
+        notion.update_page_properties(row["page_id"], props)
+    except NotionError:
+        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
+    after = [r for r in week_rows(notion, row["week_ending"]) if r["page_id"] == row["page_id"]]
+    if len(after) != 1:
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+    expected = dict(row)
+    if "Follow-up Date" in props:
+        expected["follow_up"] = props["Follow-up Date"]["date"]["start"]
+    if "Action Status" in props:
+        expected["action"] = props["Action Status"]["select"]["name"]
+    if {k: v for k, v in after[0].items() if k != "edited_by"} != {k: v for k, v in expected.items() if k != "edited_by"}:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")

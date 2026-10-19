@@ -8,6 +8,7 @@ link is passed in `quarantine_sources` (nothing passes it today: a sweep over pa
 import json
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from lifeos.platform import mail
 from lifeos.platform.gmail import Gmail, GmailError
@@ -15,6 +16,7 @@ from lifeos.platform.notion_client import Client, NotionError
 from . import classify, notion as store, qualify
 from .identity import clean_name, week_ending
 
+CHICAGO = ZoneInfo("America/Chicago")
 REASONS = ("AUTOREPLY", "BULK", "AUTOMATION_ADDRESS", "HIRING_MANAGER", "NO_RECRUITER_EVIDENCE", "RELAY_NOT_A_MESSAGE")
 
 
@@ -25,7 +27,8 @@ def _client(environ):
 def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, notion=None, now=None, quarantine_sources=()):
     now = now or datetime.now(timezone.utc)
     counts = {"messages": 0, "unreadable": 0, "sources_failed": 0, "outlook_accounts": 0, "direct_human": 0, "human_relay": 0, "excluded": 0, "unresolved": 0, "needs_review": 0,
-              "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {}, "would_quarantine": 0, "quarantined": 0, "quarantine_skipped": 0, "notion": "ok"}
+              "would_create": 0, "would_update": 0, "existing": 0, "done_kept": 0, "ambiguous": 0, "created": 0, "updated": 0, "failed": 0, "excluded_why": {}, "unresolved_why": {}, "would_quarantine": 0, "quarantined": 0, "quarantine_skipped": 0,
+              "waiting": 0, "would_schedule": 0, "scheduled": 0, "would_reopen_due": 0, "reopened_due": 0, "notion": "ok"}
     records = []
 
     def take(read):
@@ -78,6 +81,7 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, noti
     if notion is not None:
         _apply(candidates, notion, live and not degraded, counts)
         _quarantine(unverified, notion, live and not degraded, counts)
+        _follow_ups(notion, live and not degraded, counts, now.astimezone(CHICAGO).date())
     if degraded and live:
         counts["notion"] = "not_written_degraded"
     if degraded:
@@ -141,3 +145,20 @@ def _quarantine(unverified, notion, write, counts):
                     counts["quarantined"] += 1
                 except NotionError:
                     counts["failed"] += 1
+
+
+def _follow_ups(notion, write, counts, today):
+    """RECR-1.4: a Waiting row gets a follow-up date two business days out, and returns to Needs Action when that date comes (D220)."""
+    rows = store.waiting_rows(notion)
+    counts["waiting"] = len(rows)
+    for row in rows:
+        kind, props = store.follow_up_plan(row, today)
+        if kind is None:
+            continue
+        counts["would_schedule" if kind == "schedule" else "would_reopen_due"] += 1
+        if write:
+            try:
+                store.set_follow_up(notion, row, props)
+                counts["scheduled" if kind == "schedule" else "reopened_due"] += 1
+            except NotionError:
+                counts["failed"] += 1
