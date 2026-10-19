@@ -150,6 +150,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
 - `lifeos/jobs/enrich.py`: Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
 - `lifeos/jobs/explain.py`: Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.
+- `lifeos/jobs/fit/cloud.py`: LIFE-41 (10472 C, 10474, 10475): the switchable cloud-Fit shadow. `V7_CLOUD_FIT` = off (default, unset or anything unknown) | shadow | canary | on.
 - `lifeos/jobs/fit/edge.py`: LIFE-60 (Jim's approval, Jira 10361): the dormant V7 side of Oracle's synthetic-only `fit1` verb. The hourly pipeline never imports this; only the manual fit-edge-test wo
 - `lifeos/jobs/fit/exclusions.py`: Step 0: hard exclusions. Generic defaults (lexicon) plus the private profile's own rules.
 - `lifeos/jobs/fit/extract.py`: Job description -> units (a bullet or sentence tagged with its section) and the raw facts the scorer classifies.
@@ -517,3 +518,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D210: Ticks and manual runs take turns: a tick queues behind an older manual run instead of cancelling itself (2026-10-18, Jim; LIFE-76)
 - D211: Publish verifies a page it creates from Notion's create response and records the Fit it wrote (2026-10-18, Jim; LIFE-76)
 - D212: Every Ledger page is verified by reading Notion: one batched key query plus the per-page body marker; D211's create-response check is withdrawn (2026-10-18, Jim; LIFE-76)
+- D214: A switchable cloud-Fit shadow, off by default, that never changes what Jim sees; the static Fit write keeps the cloud columns (2026-10-18, Jim; LIFE-41)
