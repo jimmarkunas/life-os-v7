@@ -427,3 +427,22 @@ class FirstPartyUsEligibility(unittest.TestCase):
 
     def test_a_newsletter_row_with_no_place_keeps_its_existing_decision(self):
         self.assertEqual(self.decide("Remote", first_party=False)[:2], (ADMIT, None))
+
+
+class OpenApplication(unittest.TestCase):
+    """LIFE-41 / LIFE-59: an unsolicited or general application is not a vacancy; no lane admits it, whatever its Fit."""
+
+    def test_open_application_titles(self):
+        for title in ("Initiativbewerbung", "Initiativbewerbung (m/w/d)", "Spontanbewerbung", "Open Application", "Unsolicited application",
+                      "General Application - Engineering", "Speculative Application", "Join our Talent Pool", "Candidature spontanée"):
+            self.assertTrue(lanes.open_application(title), title)
+        for title in ("Technical Program Manager", "Application Engineer", "Program Manager, Applications", "Talent Acquisition Partner"):
+            self.assertFalse(lanes.open_application(title), title)
+
+    def test_no_lane_admits_an_open_application(self):
+        facts = us(open_application=True)
+        for policy in (US, SCALE, SW):
+            decision = qualify(policy, facts, TODAY)
+            self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not a vacancy: open application"))
+        self.assertEqual(lanes.public_reason("not a vacancy: open application"), "not_a_vacancy")
+        self.assertEqual(lanes.facts_for(80, "Initiativbewerbung", "Remote", "", None, None, TODAY).open_application, True)

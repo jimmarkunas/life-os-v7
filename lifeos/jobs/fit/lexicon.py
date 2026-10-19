@@ -57,16 +57,24 @@ SHAPE = (r"experience|proficien|knowledge|ability|understanding|familiar|backgro
 OPTIONAL = (r"preferred|nice to have|nice-to-have|a plus|bonus|ideally|desirable|desired|is a plus|would be great|"
             r"not required|helpful|advantageous|an advantage|familiarity")
 
+# LIFE-41: the heading of an employer's own section ("About Acme", "About us", "Who we are"). Inside it only a whole heading switches section and a role
+# introduction ("We are seeking a Senior TPM to ...") is kept as the role summary; the employer's copy and product names stay skipped.
+ABOUT_EMPLOYER = r"^about (?!(?:the |this |your )?(?:role|job|position|opportunity|team|work)\b|you\b)\S|^who we are\b"
+ROLE_INTRO = (r"\b(?:we(?:'re| are)\s+(?:seeking|looking for|hiring)|(?:seeking|looking for|hiring) an?\s|join (?:us|our team) as|as (?:a|an|the|our)\s)"
+              r"[^.!?]{0,80}?\b(?:manager|lead|owner|director|head|engineer|analyst|specialist|architect|consultant|coordinator)\b")
+
 # Section headings (matched on a short line).
 HEADINGS = (
     # LIFE-41: an "About <Employer>" heading is company marketing, not the role (checked first: product names can contain "Experience").
-    ("skip", r"^about (?!(?:the |this |your )?(?:role|job|position|opportunity|team|work)\b|you\b)\S"),
+    ("skip", ABOUT_EMPLOYER),
     ("preferred", r"preferred|nice to have|nice-to-have|bonus|a plus|desired|desirable|extra credit|great to have"),
     ("required", r"requirement|must[- ]have|minimum|basic qualification|qualification|what you.?ll bring|what you bring|"
                  r"what we.?re looking for|you have|you.?ll need|who you are|about you|your background|skills|"
                  r"experience|required"),
     ("summary", r"^(?:about )?the (?:role|job|position|opportunity|team)$|^about the (?:role|job|position|team)|^overview|^summary|"
                 r"^job description|^position summary|^role summary"),
+    # LIFE-41: employer culture and perks are skipped before the generic "you will" duty cue ("Why you will love working at Acme").
+    ("skip", r"why you(?:.?ll| will) love|why (?:join|work)\b|^life at\b|^working at\b|what we offer|\bperks\b"),
     ("duty", r"responsibilit|what you.?ll do|what you will do|duties|day.to.day|your impact|in this role|key tasks|"
              r"you will|your role|what you.?ll own|how you.?ll"),
     ("skip", r"benefit|perks|compensation|salary|pay range|equal opportunity|eeo|about us|about the company|our "
@@ -131,7 +139,12 @@ HARD_FAMILY = (
     "devops engineer", "site reliability", "infrastructure engineer", "cloud engineer", "database administrator",
     "sap basis", "salesforce administrator", "security engineer", "security architect", "penetration", "accountant",
     "accounting", "financial modeling", "financial analyst", "chief marketing officer", "cmo",
-    "videographer", "video producer", "video editor", "product marketing",   # LIFE-41: a different profession, not product management
+    "videographer", "video producer", "video editor",                        # LIFE-41: a different profession, not product management
+)
+# LIFE-41: Product Marketing is a profession only as a role noun; "Product Manager - Product Marketing Platform" or a PM duty that names it is not.
+HARD_FAMILY_PATTERNS = (
+    r"\bproduct marketing (?:manager|lead|director|specialist|strategist|associate|partner)\b|\bproduct marketer\b|"
+    r"\b(?:head|director|vp|vice president|chief)\W+(?:of\s+)?product marketing\b",
 )
 
 # Generic shape of each dimension (a requirement belongs to exactly one, first match wins in this order).

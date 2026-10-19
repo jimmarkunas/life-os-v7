@@ -175,11 +175,14 @@ def _title(title, profile):
     return (row["class"], row["label"]) if row else ("unsupported", "")
 
 
+_FAMILY_RX = [re.compile(p, re.I) for p in lexicon.HARD_FAMILY_PATTERNS]
+
+
 def _family(title, units, profile):
     """True when the posting's actual profession is a hard-family mismatch (not one stray requirement)."""
     terms = list(lexicon.HARD_FAMILY)
     extra = profile.hard_family
-    hit = lambda text: any(t in text.lower() for t in terms) or any(rx.search(norm(text)) for rx in extra)
+    hit = lambda text: any(t in text.lower() for t in terms) or any(rx.search(text) for rx in _FAMILY_RX) or any(rx.search(norm(text)) for rx in extra)
     if hit(title or ""):
         return True
     body = [u for u in units if u.section in ("required", "duty")]
