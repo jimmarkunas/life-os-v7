@@ -585,14 +585,21 @@ class ActionStateTests(unittest.TestCase):
         self.assertEqual(store.read(notion.pages[0])["action"], "Needs Action")
 
     def test_a_new_reply_reopens_waiting_and_blank_but_never_completed_dismissed_or_done(self):
-        for before, after in (("Waiting", "Needs Action"), (None, "Needs Action"), ("Needs Action", "Needs Action"), ("Completed", "Completed"), ("Dismissed", "Dismissed")):
+        for before in ("Waiting", None, "Needs Action"):
             with self.subTest(before=before):
                 notion = FakeRecruiters([page(**self.ROW, action=before, follow_up="2026-10-20" if before == "Waiting" else None)])
                 counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
                 row = store.read(notion.pages[0])
-                self.assertEqual((counts["updated"], counts["failed"], row["action"]), (1, 0, after))
+                self.assertEqual((counts["updated"], counts["failed"], row["action"]), (1, 0, "Needs Action"))
                 if before == "Waiting":
                     self.assertEqual(row["follow_up"], "2026-10-20")       # the human's date is kept; the row is simply back in Needs Action
+        for before in ("Completed", "Dismissed"):                          # history: zero writes and the full row unchanged
+            with self.subTest(before=before):
+                notion = FakeRecruiters([page(**self.ROW, action=before)])          # newer message; blank What they want / Client the open path would fill
+                prior = store.read(notion.pages[0])
+                counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
+                self.assertEqual((counts["updated"], counts["created"], counts["failed"], notion.writes), (0, 0, 0, []))
+                self.assertEqual(store.read(notion.pages[0]), prior)
         notion = FakeRecruiters([page(**self.ROW, done=True, active=False, action="Waiting", follow_up="2026-10-01")])
         counts = run([signed(received="2026-10-08T09:00:00+00:00")], notion, live=True)
         self.assertEqual((counts["done_kept"], notion.writes), (1, []))
@@ -616,6 +623,14 @@ class ActionStateTests(unittest.TestCase):
         counts = run([], notion, live=True)
         rows = {p["id"]: store.read(p) for p in notion.pages}
         self.assertEqual((counts["reopened_due"], rows["due"]["action"], rows["due"]["follow_up"], rows["later"]["action"]), (1, "Needs Action", "2026-10-08", "Waiting"))
+
+    def test_an_inactive_waiting_row_is_never_scheduled_or_reopened(self):
+        notion = FakeRecruiters([page(**self.ROW, active=False, action="Waiting", pid="blank"),
+                                 page(**dict(self.ROW, person="Sam Sample"), active=False, action="Waiting", follow_up="2026-10-01", pid="due")])
+        prior = [store.read(p) for p in notion.pages]
+        counts = run([], notion, live=True)
+        self.assertEqual((counts["waiting"], counts["would_schedule"], counts["would_reopen_due"], notion.writes), (2, 0, 0, []))
+        self.assertEqual([store.read(p) for p in notion.pages], prior)
 
     def test_dry_run_counts_follow_ups_and_writes_nothing(self):
         notion = FakeRecruiters([page(**self.ROW, action="Waiting"), page(**dict(self.ROW, person="Sam Sample"), action="Waiting", follow_up="2026-10-01")])

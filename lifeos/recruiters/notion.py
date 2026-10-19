@@ -8,7 +8,8 @@ Every write is read back and checked: owned fields, Done / Active / Needs review
 a non-blank What they want.
 
 Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two
-business days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, and Done rows, are history and are never changed."""
+business days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are
+never changed."""
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
@@ -20,7 +21,8 @@ SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Clie
           "Action Status": "select", "Follow-up Date": "date"}
 MAX_PAGES = 20
 NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
-REOPENABLE = ("", WAITING)                                            # Completed and Dismissed are history; a later message never reopens them
+REOPENABLE = ("", WAITING)
+HISTORY = ("Completed", "Dismissed")                                  # history: a later message changes nothing on these rows
 FOLLOW_UP_DAYS = 2
 FILLABLE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
 
@@ -130,6 +132,8 @@ def plan(rows, candidate):
     row = found[0]
     if row["done"]:
         return "done", row, None                                    # a later message never reopens, and never touches, a Done row
+    if row["action"] in HISTORY:
+        return "existing", row, None
     props = {}
     if _newer(candidate, row):
         props["Last Contact"] = {"date": {"start": candidate["last_contact"]}}
@@ -251,8 +255,8 @@ def waiting_rows(notion):
 
 
 def follow_up_plan(row, today):
-    """-> ("schedule", props) | ("due", props) | (None, None) for one Waiting row. A Done row, or a date that is not a date, is left alone."""
-    if row["done"] or row["action"] != WAITING:
+    """-> ("schedule", props) | ("due", props) | (None, None) for one Waiting row. A Done or inactive row, or a date that is not a date, is left alone."""
+    if row["done"] or not row["active"] or row["action"] != WAITING:
         return None, None
     if not row["follow_up"]:
         return "schedule", {"Follow-up Date": {"date": {"start": add_business_days(today, FOLLOW_UP_DAYS).isoformat()}}}
