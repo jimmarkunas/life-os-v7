@@ -574,3 +574,90 @@ class OffFamilyAndEmployerBoilerplate(unittest.TestCase):
 
     def test_a_posting_that_is_only_an_employer_about_block_is_unscorable(self):
         self.assertEqual(evaluate("Technical Program Manager", "Acme", self.ABOUT, PROFILE, TODAY).decision, "Unscorable")
+
+
+class ExtractionCorrections(unittest.TestCase):
+    """LIFE-41 (10446 / 10472): five extraction defects left after #334, on invented employers. Each assertion is red on main 4035dc9."""
+
+    def test_a_product_manager_title_that_names_product_marketing_is_not_capped(self):
+        for title in ("Senior Product Manager — Product Marketing Platform", "Product Owner, Product Marketing Integrations"):
+            r = evaluate(title, "Acme", GOOD, PROFILE, TODAY)
+            self.assertFalse(r.capped, title)
+        for title in ("Product Marketing Manager", "Head of Product Marketing", "Senior Product Marketer", "Director, Product Marketing"):
+            r = evaluate(title, "Acme", GOOD, PROFILE, TODAY)
+            self.assertTrue(r.capped, title)
+            self.assertLessEqual(r.score, 40, title)
+
+    def test_a_product_manager_posting_that_mentions_product_marketing_is_not_a_marketing_profession(self):
+        text = ("Responsibilities\n• Partner with product marketing on launches\n• Work with product marketing on positioning\n"
+                "• Brief product marketing on the roadmap\n• Own the program roadmap and drive delivery across multiple teams\n\n"
+                "Requirements\n• 8+ years of experience in program management delivering enterprise software\n")
+        self.assertFalse(evaluate("Senior Product Manager", "Acme", text, PROFILE, TODAY).capped)
+
+    def test_a_role_intro_inside_an_employer_about_section_is_kept(self):
+        text = ("About Northwind\nNorthwind builds commerce and ERP software for retailers.\n"
+                "We are seeking a Senior Technical Program Manager to own delivery of our platform migration across multiple teams.\n\n"
+                "Responsibilities\n• Own the program roadmap\n")
+        units = extract.parse(text)
+        intro = next(u for u in units if u.text.startswith("We are seeking"))
+        self.assertEqual(intro.section, "summary")
+        self.assertEqual(next(u for u in units if u.text.startswith("Northwind builds")).section, "skip")     # the employer copy stays out
+
+    def test_a_requirement_bullet_is_never_a_heading(self):
+        text = ("Requirements\n- Experience launching enterprise software\n- 2+ years of program management\n"
+                "- Experience working with cloud-based SOA platforms\n* Experience with NetSuite\n")
+        units = extract.parse(text)
+        self.assertEqual([u.section for u in units], ["required"] * 4)
+        for line in ("- Experience launching enterprise software", "* Experience with NetSuite", "1. Experience with NetSuite"):
+            self.assertIsNone(extract._heading(line), line)
+        self.assertEqual(extract._heading("**Requirements**"), "required")            # a bold heading is still a heading
+
+    def test_employer_culture_and_perks_are_not_duties(self):
+        for line in ("Why you will love working at Northwind", "Why You'll Love Working Here", "Life at Northwind"):
+            self.assertEqual(extract._heading(line), "skip", line)
+        text = ("Requirements\n• 8+ years of experience in program management\n\nWhy you will love working at Northwind\n"
+                "• You will get a generous learning budget and 5 years of vesting\n")
+        self.assertEqual([u.text for u in extract.requirement_units(extract.parse(text))], ["8+ years of experience in program management"])
+
+    def test_an_employer_product_name_in_about_is_not_a_heading(self):
+        text = ("About Northwind\nNorthwind Experience Manager\nNorthwind Experience Manager helps brands publish content with 5 years of history.\n\n"
+                "Requirements\n• 8+ years of experience in program management\n")
+        units = extract.parse(text)
+        self.assertEqual([u.section for u in units if "Northwind" in u.text], ["skip", "skip"])
+        self.assertEqual([u.text for u in extract.requirement_units(units)], ["8+ years of experience in program management"])
+        self.assertEqual(extract._heading("Northwind Experience Manager"), "required")   # outside an About section a short line keeps today's reading
+
+
+class OpenApplicationIsNotAVacancy(unittest.TestCase):
+    """LIFE-59 regression (German open application admitted as US Remote, Fit 80): an unsolicited / general application is not a vacancy. The shared lane
+    boundary excludes it in every lane, through the production composition (stage.score_rows -> lanes.decide_all), whatever the Fit."""
+    GERMAN = ("Initiativbewerbung\nHamburg, Remote\nVoll- oder Teilzeit\n\nDiese Aufgaben warten auf Dich:\n"
+              "- Projektmanagement: Übernimm Verantwortung für eigene Projekte und arbeite eng mit Kunden zusammen.\n"
+              "- Softwareentwicklung: Entwickle innovative Lösungen vom Design bis zur Implementierung.\n\n"
+              "Das bringst Du mit!\n- Teamgeist und Kommunikationsstärke\n- Fundierte Kenntnisse in der Softwareentwicklung\n")
+
+    def test_a_german_open_application_is_excluded_not_admitted_as_us_remote(self):
+        from lifeos.jobs.fit import stage
+        row = (1, "Initiativbewerbung", "Example Studio GmbH", self.GERMAN, "fp", "Newsletter",
+               "Remote / Professional Services / Growth Stage", None, None, date(2026, 9, 30))
+        _, _, result, decision, lane, _, eligible = stage.score_rows([row], PROFILE, TODAY)[0]
+        self.assertEqual((decision.status, eligible), ("EXCLUDE", []))
+        self.assertEqual(lanes_public(decision.reason), "not_a_vacancy")
+
+    def test_the_same_posting_with_a_real_title_is_judged_as_before(self):
+        from lifeos.jobs.fit import stage
+        row = (1, "Technical Program Manager", "Beta", GOOD, "fp", "Newsletter", "Remote - United States", "$120K/yr - $150K/yr", None, date(2026, 9, 30))
+        self.assertEqual(stage.score_rows([row], PROFILE, TODAY)[0][3].status, "ADMIT")
+
+
+def lanes_public(reason):
+    from lifeos.jobs import lanes
+    return lanes.public_reason(reason)
+
+
+class NoHistoricalRescore(unittest.TestCase):
+    def test_the_score_and_lane_policy_versions_are_unchanged(self):
+        """D213: no version bump, so stage.PICK finds no stored score stale for this change and no PUBLISHED job is re-scored by it (D94 unchanged)."""
+        from lifeos.jobs import lanes
+        from lifeos.jobs.fit import MODEL_VERSION
+        self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l14"))
