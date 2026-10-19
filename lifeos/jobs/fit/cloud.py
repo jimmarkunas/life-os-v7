@@ -5,7 +5,8 @@ one judgment a tick (MAX_PER_RUN; `V7_CLOUD_FIT_PER_RUN` can only lower it to 0)
 existing v7_job_fit row. It never changes the visible Fit, the decision, the admission, the Ledger, Gmail, the audit or Trash: the static score stays the
 authority. canary and on are refused with no call (G8 is a separate later decision).
 
-Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
+Candidates are NEW records only: READY / RESOLVED, a public employer / ATS posting (10500: proven by the final Apply URL's host, `public_posting`) that the precision
+audit would keep (`audit_problem`: its listing/root/no-job-id link and thin-description guards, judged exactly as lifeos.jobs.audit does), no Ledger page, a static admission of ADMIT or REVIEW, no private exclusion and never asked before
 (`cloud_status IS NULL`), in a stable order by first seen and Stable Job Key. Up to SCAN of them are examined a run: one that cannot be sent (not a public
 posting, a place in its title, nothing substantive) is recorded SKIPPED with its fixed reason at no network cost, and the run moves on to the next, so an
 unsendable backlog never uses up the run's one call (LIFE-41 G6 proof run 39202038517 spent its only pick on a skip). A PUBLISHED job is never asked, whatever changes on it later. V7 sends no profile
@@ -18,7 +19,7 @@ import re
 import signal
 import time
 
-from lifeos.jobs import classify, lanes, store
+from lifeos.jobs import audit, classify, lanes, store
 from lifeos.jobs.fit import edge, judge
 from lifeos.jobs.fit.score import evaluate
 
@@ -35,7 +36,7 @@ _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
 STOP_AND_RECORD = {"FIT_EDGE_PURGE_FAILED"}   # 10504 C5: a model ran, so its provenance (no score) is kept on the row, and no further request is sent
 
-PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
+PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source, j.link_proof FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
         " JOIN v7_job_descriptions d ON d.job_id = j.id"
         " WHERE j.status IN ('READY', 'RESOLVED') AND j.notion_page_id IS NULL AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
         " AND f.score IS NOT NULL AND f.cloud_status IS NULL ORDER BY j.first_seen, j.dedupe_key LIMIT %s")
@@ -67,6 +68,15 @@ def public_posting(url, source):
         return False
     kind = classify.apply_kind(url)
     return kind == "ats" or (kind == "employer" and lanes.first_party_source(source))
+
+
+def audit_problem(url, text, link_proof, source, company, title):
+    """The precision audit's own verdict (lifeos.jobs.audit.judge, with the same `proven` and `title_only` inputs the audit derives) as an upper-case fixed
+    code such as AUDIT_URL_LISTING_URL, or None. The audit runs right after the Fit stage and demotes such a row (status NEW, link cleared, description
+    deleted), so a cloud call on it would be wasted (G6 run 39219054103 spent its only call on an audit_url_listing_url row)."""
+    watched = (source or "").startswith("web:titlewatch:") or lanes.on_keep_list(company, title)
+    why = audit.judge(url, text, link_proof == "title", watched)
+    return why.upper() if why else None
 
 
 def remaining(elapsed):
@@ -112,7 +122,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         counts["cloud_skipped"] += 1
         counts["cloud_skip_reasons"][reason] = counts["cloud_skip_reasons"].get(reason, 0) + 1     # fixed codes only: why, never which job
 
-    for job_id, title, company, location, text, fingerprint, url, source in rows:     # no store session is open across a network call
+    for job_id, title, company, location, text, fingerprint, url, source, link_proof in rows:     # no store session is open across a network call
         if counts["cloud_calls"] >= cap:
             break                                                        # the one call is spent (or attempted): later candidates stay unasked, untouched
         if not public_posting(url, source):
@@ -124,6 +134,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             continue
         if sent is None:
             skip(job_id, "NO_SUBSTANTIVE_TEXT", fingerprint)
+            continue
+        audited = audit_problem(url, text, link_proof, source, company, title)
+        if audited:
+            skip(job_id, audited, fingerprint)                         # LIFE-41 G6, the last gate before egress: the same tick's audit would demote it; never spend the call on it
             continue
         if remaining(clock() - started) < CALL_SECONDS:
             _degraded(counts, "STAGE_BUDGET")
