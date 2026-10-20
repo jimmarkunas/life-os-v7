@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 import secrets
 import socket
+import time
 from types import SimpleNamespace
 
 from lifeos.jobs.fit import judge
@@ -45,10 +46,25 @@ def frame(request, nonce, **extra):
     return b"fit1 %d\n" % len(body) + body
 
 
-def exchange(host, data, port=PORT, wait=WAIT):
-    """One request, read to the server's close (no half-close: Tailscale Serve drops the connection on a FIN). b"" = closed with no output; a hung server is FIT_EDGE_TIMEOUT."""
+CONNECT_ATTEMPTS, CONNECT_PAUSE = 2, 3        # D241: a connection that cannot be opened has sent nothing, so it is tried once more after a short pause
+
+
+def exchange(host, data, port=PORT, wait=WAIT, sleep=time.sleep):
+    """One request, read to the server's close (no half-close: Tailscale Serve drops the connection on a FIN). b"" = closed with no output; a hung server is FIT_EDGE_TIMEOUT.
+    D241 (Oct 20, 1:12 PM CT: one connect timed out on the runner's tailnet path and the batch recorded a job as a model call and stopped): a connection that cannot be
+    opened is tried CONNECT_ATTEMPTS times; if none opens, FIT_EDGE_CONNECT_FAILED: nothing was sent, so the caller treats it as no call."""
+    s = None
+    for attempt in range(CONNECT_ATTEMPTS):
+        try:
+            s = socket.create_connection((host, port), timeout=15)
+            break
+        except OSError:                                                      # TimeoutError included: the request was never sent
+            if attempt + 1 < CONNECT_ATTEMPTS:
+                sleep(CONNECT_PAUSE)
+    if s is None:
+        raise EdgeError("FIT_EDGE_CONNECT_FAILED")
     try:
-        with socket.create_connection((host, port), timeout=15) as s:
+        with s:
             s.settimeout(wait)
             s.sendall(data)
             out = b""
