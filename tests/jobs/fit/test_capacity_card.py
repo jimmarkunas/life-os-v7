@@ -40,67 +40,115 @@ class Render(unittest.TestCase):
         self.assertTrue(text.endswith("· 2 more not shown"))
 
 
+ON = {"V7_AI_CAPACITY_CARD": "on", "ATTENTION_CARD_BLOCK_ID": "att"}
+
+
+def _rt(text):
+    return [{"plain_text": text, "text": {"content": text}}] if text else []
+
+
 class FakeNotion:
-    """One callout holding one 6 x 7 table, the shape the card is installed with."""
-    def __init__(self, rows=card.ROWS, cols=card.COLS, kind="callout"):
-        self.kind, self.text, self.cols = kind, "", cols
-        self.rows = {f"r{i}": [""] * cols for i in range(rows)}
-        self.patches = []
+    """The Daily Report column as the card sees it: the Attention callout, the Oracle Cloud callout (its heading first) and, once installed, the card
+    (one callout holding one 6 x 7 table whose first row is the header)."""
+    def __init__(self, installed=True, rows=card.ROWS, cols=card.COLS, oracle=True, cards=1):
+        self.cols, self.patches, self.inserted = cols, [], []
+        self.order = ["att"] + (["ora"] if oracle else []) + [f"cap{i}" for i in range(cards if installed else 0)]
+        self.text = {f"cap{i}": "" for i in range(cards)}
+        self.rows = {f"cap{i}": {f"cap{i}-r{j}": (list(card.HEADER) if j == 0 else [""] * cols) for j in range(rows)} for i in range(cards)}
 
     def call(self, method, path, body=None):
+        parts = path.split("?")[0].split("/")
+        if method == "PATCH" and path == "/blocks/col/children":
+            self.inserted.append(body)
+            assert body["after"] == "ora"
+            self.order.insert(self.order.index("ora") + 1, "cap0")
+            return {"results": [{"type": "callout", "id": "cap0"}]}
         if method == "PATCH":
             self.patches.append(path)
-            rid = path.split("/")[2]
+            bid = parts[2]
             if "table_row" in body:
-                self.rows[rid] = ["".join(x["text"]["content"] for x in cell) for cell in body["table_row"]["cells"]]
+                cap = bid.split("-")[0]
+                self.rows[cap][bid] = ["".join(x["text"]["content"] for x in cell) for cell in body["table_row"]["cells"]]
             else:
-                self.text = body["callout"]["rich_text"][0]["text"]["content"]
+                self.text[bid] = body["callout"]["rich_text"][0]["text"]["content"]
             return {}
-        if path == "/blocks/cap":
-            return {"type": self.kind, "id": "cap", "callout": {"rich_text": [{"plain_text": self.text, "text": {"content": self.text}}] if self.text else []}}
-        if path.startswith("/blocks/cap/children"):
-            return {"results": [{"type": "table", "id": "tbl", "table": {"table_width": self.cols}}], "has_more": False}
-        if path.startswith("/blocks/tbl/children"):
-            return {"results": [{"type": "table_row", "id": rid, "table_row": {"cells": [[{"plain_text": c, "text": {"content": c}}] if c else [] for c in cells]}}
-                                for rid, cells in self.rows.items()], "has_more": False}
+        bid = parts[2]
+        if len(parts) == 3:
+            if bid == "att":
+                return {"type": "callout", "id": "att", "parent": {"type": "block_id", "block_id": "col"}}
+            return {"type": "callout", "id": bid, "callout": {"rich_text": _rt(self.text.get(bid, ""))}}
+        if bid == "col":
+            return {"results": [{"type": "callout", "id": b} for b in self.order], "has_more": False}
+        if bid == "att":
+            return {"results": [{"type": "paragraph", "id": "p"}], "has_more": False}
+        if bid == "ora":
+            return {"results": [{"type": "heading_3", "id": "h", "heading_3": {"rich_text": _rt("Oracle Cloud (Updated 6:05 AM CT)")}}], "has_more": False}
+        if bid.startswith("cap") and not bid.endswith("-t"):
+            return {"results": [{"type": "table", "id": bid + "-t", "table": {"table_width": self.cols}}], "has_more": False}
+        if bid.endswith("-t"):
+            cap = bid[:-2]
+            return {"results": [{"type": "table_row", "id": rid, "table_row": {"cells": [_rt(c) for c in cells]}} for rid, cells in self.rows[cap].items()], "has_more": False}
         raise AssertionError(path)
 
 
 class Run(unittest.TestCase):
-    def test_not_configured_reads_and_writes_nothing(self):
-        out = card.run(0, True, environ={}, client=object(), read=lambda: (_ for _ in ()).throw(AssertionError("no read")))
-        self.assertEqual(out["status"], "not_configured")
+    def test_off_unless_jim_switched_it_on(self):
+        for environ in ({}, {"ATTENTION_CARD_BLOCK_ID": "att"}, {**ON, "V7_AI_CAPACITY_CARD": "off"}, {"V7_AI_CAPACITY_CARD": "on"}):
+            out = card.run(0, True, environ=environ, client=object(), read=lambda: (_ for _ in ()).throw(AssertionError("no read")))
+            self.assertEqual(out["status"], "not_configured", environ)
+
+    def test_the_first_live_run_places_the_card_right_after_the_oracle_cloud_card_and_fills_it(self):
+        notion = FakeNotion(installed=False)
+        self.assertEqual(card.run(0, False, environ=ON, client=notion, read=lambda: READING, now=NOW)["status"], "would_install")   # a dry run inserts nothing
+        self.assertEqual(notion.inserted, [])
+        out = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual((out["status"], out["installed"]), ("fresh", True))
+        self.assertEqual(notion.order, ["att", "ora", "cap0"])
+        made = notion.inserted[0]["children"][0]
+        self.assertEqual((made["type"], made["callout"]["children"][0]["table"]["table_width"], len(made["callout"]["children"][0]["table"]["children"])), ("callout", 6, 7))
+        self.assertEqual(notion.rows["cap0"]["cap0-r1"][5], "NEAR LIMIT")
+        again = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual((again["installed"], again["rows_written"], again["text_written"], len(notion.inserted)), (False, 0, False, 1))     # never placed twice
+
+    def test_without_the_oracle_cloud_card_nothing_is_placed_anywhere_else(self):
+        with self.assertRaises(card.CardError) as ctx:
+            card.run(0, True, environ=ON, client=FakeNotion(installed=False, oracle=False), read=lambda: READING, now=NOW)
+        self.assertEqual(str(ctx.exception), "CAPACITY_ORACLE_CARD_NOT_FOUND")
+
+    def test_two_cards_are_refused(self):
+        with self.assertRaises(card.CardError) as ctx:
+            card.run(0, True, environ=ON, client=FakeNotion(cards=2), read=lambda: READING, now=NOW)
+        self.assertEqual(str(ctx.exception), "CAPACITY_CARD_AMBIGUOUS")
 
     def test_a_fresh_reading_is_written_in_place_and_read_back(self):
         notion = FakeNotion()
-        out = card.run(0, True, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=lambda: READING, now=NOW)
-        self.assertEqual((out["status"], out["rows_written"], out["text_written"]), ("fresh", 5, True))      # header + 4 rows changed; 2 blank rows already blank
-        self.assertEqual(notion.rows["r1"][5], "NEAR LIMIT")
-        again = card.run(0, True, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=lambda: READING, now=NOW)
-        self.assertEqual((again["rows_written"], again["text_written"]), (0, False))                            # nothing changed: nothing written
+        out = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual((out["status"], out["installed"], out["rows_written"], out["text_written"]), ("fresh", False, 4, True))   # the header is already right
+        again = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual((again["rows_written"], again["text_written"]), (0, False))
 
     def test_a_failed_read_says_degraded_keeps_the_table_and_fails_the_stage_by_name(self):
         notion = FakeNotion()
-        card.run(0, True, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=lambda: READING, now=NOW)
-        before = dict(notion.rows)
+        card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        before = {k: dict(v) for k, v in notion.rows.items()}
 
         def broken():
             raise edge.EdgeError("FIT_EDGE_NO_REPLY")
-        out = card.run(0, True, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=broken, now=NOW)
+        out = card.run(0, True, environ=ON, client=notion, read=broken, now=NOW)
         self.assertEqual((out["status"], out["code"], out["failed"]), ("degraded", "FIT_EDGE_NO_REPLY", 1))
-        self.assertEqual(notion.text, "AI Capacity · DEGRADED · Oracle limits read failed at 12:30 AM CT (FIT_EDGE_NO_REPLY) · showing the last reading")
+        self.assertEqual(notion.text["cap0"], "AI Capacity · DEGRADED · Oracle limits read failed at 12:30 AM CT (FIT_EDGE_NO_REPLY) · showing the last reading")
         self.assertEqual(notion.rows, before)
 
-    def test_a_block_that_is_not_the_installed_shape_is_refused_and_nothing_is_written(self):
-        for notion in (FakeNotion(kind="paragraph"), FakeNotion(cols=5), FakeNotion(rows=6)):
-            with self.assertRaises(card.CardError):
-                card.run(0, True, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=lambda: READING, now=NOW)
-            self.assertEqual(notion.patches, [])
+    def test_a_card_that_lost_its_shape_is_refused_and_nothing_is_written(self):
+        notion = FakeNotion(rows=6)
+        with self.assertRaises(card.CardError):
+            card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual(notion.patches, [])
 
     def test_a_dry_run_writes_nothing(self):
         notion = FakeNotion()
-        out = card.run(0, False, environ={"AI_CAPACITY_BLOCK_ID": "cap"}, client=notion, read=lambda: READING, now=NOW)
-        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches), (0, 5, []))
+        out = card.run(0, False, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches), (0, 4, []))
 
 
 class Limits(unittest.TestCase):

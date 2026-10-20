@@ -1,6 +1,8 @@
 """AI Capacity card (LIFE-77, D228; Jim approved the design Oct 20 2026): for each account allowance Oracle can read, what is left, what is used, the window and its reset,
-on the Daily Report. Oracle's `limits` request supplies the readings (no model run); this writes only inside the one callout whose id is AI_CAPACITY_BLOCK_ID: the callout's
-own text and the cells of the one fixed-shape table it holds, in place, read back (the MegIBOW writer's method, D134). Unset -> not configured, nothing read or written.
+on the Daily Report. Oracle's `limits` request supplies the readings (no model run). The card finds itself the way the Oracle Cloud card does: the one callout beside the
+Attention callout whose table carries this header row. Its first live run, finding none, inserts it directly after the Oracle Cloud callout (Jim, Oct 20: "Near Oracle Cloud").
+After that it writes only the callout's own text and the cells of its one fixed-shape table, in place, read back (the MegIBOW writer's method, D134).
+V7_AI_CAPACITY_CARD unset or not "on" -> not configured: nothing read or written.
 A reading that cannot be had is DEGRADED: the line says so and the table keeps the last reading. Unreadable providers are shown as UNAVAILABLE, never as empty or full."""
 from datetime import datetime
 from urllib.parse import quote
@@ -9,7 +11,7 @@ import os
 import time
 
 from lifeos.jobs.fit import edge
-from lifeos.platform import report_region
+from lifeos.platform import report_region, router
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
@@ -100,6 +102,43 @@ def locate(client, block_id):
     return meta, rows
 
 
+def find(client, anchor):
+    """-> (this card's callout id or None, the Oracle Cloud callout id or None) among the Attention callout's siblings. More than one card is refused."""
+    meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
+    parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
+    if parent.get("type") != "block_id":
+        raise _fail("ANCHOR_NOT_FOUND")
+    cards, oracle = [], None
+    for block in report_region.children(client, parent["block_id"], _fail):
+        if block.get("type") != "callout":
+            continue
+        kids = report_region.children(client, block["id"], _fail)
+        first = kids[0] if kids else {}
+        if first.get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(first), router.ORACLE_REGION):
+            oracle = block["id"]
+        elif first.get("type") == "table" and (first.get("table") or {}).get("table_width") == COLS:
+            rows = report_region.children(client, first["id"], _fail)
+            if rows and _cells(rows[0]) == HEADER:
+                cards.append(block["id"])
+    if len(cards) > 1:
+        raise _fail("CARD_AMBIGUOUS")
+    return (cards[0] if cards else None), oracle, parent["block_id"]
+
+
+def install(client, parent_id, after_id):
+    """Insert the empty card (callout, header row, six blank rows) directly after the Oracle Cloud callout. -> the new callout's id."""
+    rows = [{"object": "block", "type": "table_row", "table_row": {"cells": [[{"type": "text", "text": {"content": c}, "annotations": {"bold": True}}] for c in HEADER]}}]
+    rows += [{"object": "block", "type": "table_row", "table_row": {"cells": [[] for _ in range(COLS)]}} for _ in range(ROWS - 1)]
+    callout = {"object": "block", "type": "callout", "callout": {"rich_text": [{"type": "text", "text": {"content": "AI Capacity · setting up"}}], "icon": {"type": "emoji", "emoji": "🔋"},
+                                                                    "color": "gray_background", "children": [{"object": "block", "type": "table",
+                                                                    "table": {"table_width": COLS, "has_column_header": True, "has_row_header": False, "children": rows}}]}}
+    result = client.call("PATCH", f"/blocks/{quote(parent_id, safe='')}/children", {"children": [callout], "after": after_id})
+    made = [b for b in (result or {}).get("results", []) if b.get("type") == "callout"]
+    if not made:
+        raise _fail("INSTALL_FAILED")
+    return made[0]["id"]
+
+
 def write(client, block_id, text, table, live, sleep=time.sleep):
     """In place only: each changed row and the callout's own text are PATCHed, then read back. table None leaves the table as it is (DEGRADED)."""
     meta, rows = locate(client, block_id)
@@ -132,12 +171,20 @@ def _writer(environ):
 
 
 def run(limit, live, environ=os.environ, client=None, read=None, now=None):
-    block_id = report_region.clean_id((environ.get("AI_CAPACITY_BLOCK_ID") or "").strip())
-    if not block_id:
+    anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
+    if (environ.get("V7_AI_CAPACITY_CARD") or "").strip().lower() != "on" or not anchor:
         return {"status": "not_configured", "rows_written": 0}
     now = now or datetime.now(TZ)
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
     client = client or _writer(environ)
+    block_id, oracle, parent_id = find(client, anchor)
+    installed = False
+    if block_id is None:
+        if oracle is None:
+            raise _fail("ORACLE_CARD_NOT_FOUND")                        # the place Jim chose is not there: nothing is inserted anywhere else
+        if not live:
+            return {"status": "would_install", "rows_written": 0}
+        block_id, installed = install(client, parent_id, oracle), True
     try:
         reading = (read or (lambda: edge.limits((environ.get("IMESSAGE_ALERTS_HOST") or "").strip())))()
     except edge.EdgeError as error:
@@ -146,4 +193,4 @@ def run(limit, live, environ=os.environ, client=None, read=None, now=None):
         return {**result, "status": "degraded", "code": str(error), "failed": 1}           # a failed read is a failed stage, by name
     text, table = render(reading, now)
     result = write(client, block_id, text, table, live)
-    return {**result, "status": "fresh", "pools": len(reading["pools"]), "unavailable": len(reading["unavailable"])}
+    return {**result, "status": "fresh", "installed": installed, "pools": len(reading["pools"]), "unavailable": len(reading["unavailable"])}
