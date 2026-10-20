@@ -305,3 +305,20 @@ class DecisionIndexTests(unittest.TestCase):
         index = (docs / "DECISIONS_INDEX.md").read_text()
         missing = [h for h in heads if "- " + h not in index]
         self.assertEqual(missing, [])
+
+
+class DecisionNumberTests(unittest.TestCase):
+    """LIFE-89 (PLAT-GOV-2): every decision number is used once, in the log and in the index; an amendment or advice continues an existing number.
+    The backstop for a session that skipped `python -m lifeos.decisions claim` (Oct 20 2026: D229, D231, D235 and D236 were each taken twice)."""
+
+    def test_no_decision_number_is_used_twice(self):
+        from pathlib import Path
+        from lifeos import decisions
+        docs = Path(__file__).resolve().parents[2] / "docs"
+        self.assertEqual(decisions.duplicates((docs / "DECISIONS.md").read_text()), {})
+        self.assertEqual(decisions.duplicates((docs / "DECISIONS_INDEX.md").read_text(), decisions.INDEX_ENTRY), {})
+
+    def test_the_check_itself_catches_a_planted_duplicate(self):
+        from lifeos import decisions
+        planted = "## D10 — One\n\n## D10 amendment — fine\n\n## D10 — Two\n"
+        self.assertEqual(decisions.duplicates(planted), {10: ["One", "Two"]})
