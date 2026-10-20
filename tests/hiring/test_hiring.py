@@ -264,10 +264,10 @@ class CloseLinkTests(unittest.TestCase):
         both = render.row_cells(row, NOW, link)
         self.assertEqual(both[:3], plain[:3])
         self.assertEqual(both[3], [plain[3], (" · ", None), ("Close ↗", link)])
-        self.assertEqual(R.want_view(both)[3], [("Opportunity Page ↗", plain[3][1]), (" · ", None), ("Close ↗", link)])
+        self.assertEqual(R.want_view(both)[3], [("Opportunity Page ↗", plain[3][1], None), (" · ", None, None), ("Close ↗", link, None)])
         self.assertEqual(render.row_cells(row, NOW, None), plain)
         orphan = compile_([applied("Acme", "PM")])["rows"][0]
-        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None), ("Close ↗", link)])        # a Close link needs no Notes link
+        self.assertEqual(R.want_view(render.row_cells(orphan, NOW, link))[3], [("Needs Notes · ", None, None), ("Close ↗", link, None)])        # a Close link needs no Notes link
 
     def test_render_adds_links_by_row_key_keeps_order_and_labels_and_ignores_a_bad_origin(self):
         applied_rows = [{**applied("Acme", "PM"), "id": LED}, applied("Globex", "Dir")]
@@ -283,7 +283,7 @@ class CloseLinkTests(unittest.TestCase):
         by_name = {r[0][0].split(" — ")[0]: R.want_view(r)[3] for r in shown}
         self.assertEqual([x[0] for x in by_name["Acme"]], ["Opportunity Page ↗", " · ", "Close ↗"])
         self.assertEqual(by_name["Acme"][2][1], f"{BASE}/?o={LED.replace('-', '')}")
-        self.assertEqual(by_name["Globex"], [("Needs Notes", None)])                                                       # no id, no link
+        self.assertEqual(by_name["Globex"], [("Needs Notes", None, None)])                                                       # no id, no link
 
     def test_the_writer_renders_two_links_reads_them_back_and_repairs_only_a_changed_link(self):
         link = render.close_url(BASE, PAGE.replace("-", ""))

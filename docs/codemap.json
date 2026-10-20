@@ -121,6 +121,7 @@
   "D221": "Role-specific outreach: Mark as Sent on the private Close service creates one Waiting row on the Recruiters data source linked to the exact Job Ledger job; Job Outreach is one row per job (2026-10-19, Jim; LIFE-21 / LIFE-47 / LIFE-78 M2)",
   "D222": "Job Outreach: a Claude-proposed, dormant V7 writer for the Jim-approved native two-table direction; its visuals await Jim's acceptance (2026-10-19; LIFE-47 / LIFE-78 M2)",
   "D223": "D222 withdrawn: job outreach never appears on the Daily Report; it lives in the Job Ledger until an interview (2026-10-20, Jim; LIFE-10 / LIFE-47)",
+  "D224": "The outreach table lives on each Job Ledger job page (2026-10-20, Jim; LIFE-10 \u00a72 / LIFE-47)",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
@@ -401,6 +402,7 @@
   "sources": {
    "lifeos/sources/close_app.py": "LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the",
    "lifeos/sources/hiring.py": "Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e",
+   "lifeos/sources/job_page_outreach.py": "LIFE-10 \u00a72 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).",
    "lifeos/sources/linkedin_search.py": "D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi",
    "lifeos/sources/megibow.py": "MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.",
    "lifeos/sources/network_leads.py": "NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl",
@@ -480,6 +482,7 @@
   "jira-rollover-scheduled": "lifeos.jira.rollover:run",
   "jira-rollover-watch": "lifeos.jira.watch:run",
   "jira-snapshot": "lifeos.jira.snapshot:run",
+  "job-page-outreach": "lifeos.sources.job_page_outreach:run",
   "linkedin-search": "lifeos.sources.linkedin_search:run",
   "mail-alerts": "lifeos.physmail.stage:run",
   "mail-card": "lifeos.physmail.card:run",
