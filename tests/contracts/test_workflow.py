@@ -609,7 +609,7 @@ CONSUMER_STEPS = {
             'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | HRL,
             'Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)': DB | HRL,
             'Step 6a - fit scoring (deterministic, private profile)': DB | HRL,
-            "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219, manual only, one Oracle request at a time, bounded by Jim's V7_CLOUD_FIT_BACKLOG_MAX)": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NOTION_API_TOKEN", "IMESSAGE_ALERTS_HOST"},   # D219: the store, the Ledger page read for human state, Oracle's host
+            "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual, or after each tick when V7_CLOUD_FIT_SCHEDULED is set; one Oracle request at a time)": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NOTION_API_TOKEN", "IMESSAGE_ALERTS_HOST"},   # D219: the store, the Ledger page read for human state, Oracle's host
             'Step 6b - precision audit (before publish)': DB | HRL,
             'Step 7 - publish READY jobs to Notion': DB | HRL,
             'Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)': DB | HRL,

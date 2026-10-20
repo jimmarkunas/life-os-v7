@@ -94,13 +94,18 @@ def evaluate(text, ctx):
     return value
 
 
-def plan(doc, event, **given):
-    """-> {job: (result, [executed steps])} for jobs that run. A step runs only while nothing before it failed unless its `if` calls always()/failure()/cancelled()
-    (GitHub's implicit success() &&); the combined-input guard fails its job."""
+def context(doc, event, variables=None, **given):
     inputs = {k: v.get("default", "" if v.get("type") == "string" else False) for k, v in doc[True]["workflow_dispatch"]["inputs"].items()} if event == "workflow_dispatch" else {}
     inputs.update(given)
-    ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true"}, "steps": {}}
+    ctx = {"github": {"event_name": event}, "inputs": inputs, "vars": {"V7_PIPELINE": "true", "V7_CLOUD_FIT": "off", "V7_FIT_GATE": "true", **(variables or {})}, "steps": {}}
     ctx["env"] = {"PIPELINE": evaluate(doc["env"]["PIPELINE"], ctx)}
+    return ctx
+
+
+def plan(doc, event, variables=None, **given):
+    """-> {job: (result, [executed steps])} for jobs that run. A step runs only while nothing before it failed unless its `if` calls always()/failure()/cancelled()
+    (GitHub's implicit success() &&); the combined-input guard fails its job."""
+    ctx = context(doc, event, variables, **given)
     out, results = {}, {}
     for name, job in doc["jobs"].items():
         needs = job.get("needs") or []
@@ -188,6 +193,51 @@ class CloudBacklogRunsAlone(unittest.TestCase):
         p = plan(self.doc, "workflow_dispatch", cloud_backlog="1", live=True)
         lanes = next(s for s in p["finish"][1] if s.get("id") == "lanes")
         self.assertIn("fit_cloud_backlog=${{ steps.fit_cloud_backlog.outcome }}", lanes["run"])
+
+
+@unittest.skipIf(yaml is None, "PyYAML unavailable")
+class ScheduledBatch(unittest.TestCase):
+    """LIFE-41 (Jim, Oct 19 2026): "the canary is too little - we need the jobs coming in on schedule". V7_CLOUD_FIT_SCHEDULED=N runs the same batch after every
+    tick, N calls, with N as its own ceiling; unset or 0 keeps ticks exactly as they were."""
+
+    def setUp(self):
+        self.doc = yaml.safe_load(WORKFLOW.read_text())
+        self.step = next(s for s in self.doc["jobs"]["finish"]["steps"] if s.get("id") == "fit_cloud_backlog")
+
+    def names(self, p):
+        return [s.get("id") or s.get("name") for s in p["finish"][1]]
+
+    def env(self, event, variables, **given):
+        ctx = context(self.doc, event, variables, **given)
+        return {k: evaluate(v, ctx) for k, v in self.step["env"].items() if k.startswith(("CLOUD_BACKLOG", "V7_CLOUD_FIT_BACKLOG"))}
+
+    def test_a_tick_with_the_variable_runs_the_batch_after_the_tick_with_its_own_ceiling_budget_and_no_page(self):
+        on = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_PAGE": "0" * 32, "V7_CLOUD_FIT_BACKLOG_MAX": "1"}
+        for event, given in (("schedule", {}), ("workflow_dispatch", {"tick": True, "live": True})):
+            names = self.names(plan(self.doc, event, on, **given))
+            self.assertIn("fit_cloud_backlog", names, event)
+            self.assertLess(names.index("tick"), names.index("fit_cloud_backlog"), event)                 # after the tick: this hour's new jobs are candidates
+            self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the only route to Oracle
+            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "480",
+                                                            "V7_CLOUD_FIT_BACKLOG_PAGE": ""}, event)      # a leftover pilot page never narrows a tick
+
+    def test_without_the_variable_a_tick_is_unchanged(self):
+        for variables in ({}, {"V7_CLOUD_FIT_SCHEDULED": "0"}, {"V7_CLOUD_FIT_SCHEDULED": ""}):
+            for event, given in (("schedule", {}), ("workflow_dispatch", {"tick": True, "live": True})):
+                names = self.names(plan(self.doc, event, variables, **given))
+                self.assertIn("tick", names)
+                self.assertNotIn("fit_cloud_backlog", names, (variables, event))
+                self.assertFalse(any("join the tailnet" in str(n) for n in names), (variables, event))
+
+    def test_a_parked_pipeline_never_runs_it(self):
+        p = plan(self.doc, "schedule", {"V7_PIPELINE": "false", "V7_CLOUD_FIT_SCHEDULED": "20"})
+        self.assertNotIn("finish", p)
+
+    def test_a_manual_batch_keeps_its_input_ceiling_budget_and_page(self):
+        variables = {"V7_CLOUD_FIT_SCHEDULED": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "1", "V7_CLOUD_FIT_BACKLOG_BUDGET": "240", "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32}
+        self.assertEqual(self.env("workflow_dispatch", variables, cloud_backlog="1", live=True),
+                         {"CLOUD_BACKLOG": "1", "V7_CLOUD_FIT_BACKLOG_MAX": "1", "V7_CLOUD_FIT_BACKLOG_BUDGET": "240", "V7_CLOUD_FIT_BACKLOG_PAGE": "a" * 32})
+        self.assertNotIn("tick", self.names(plan(self.doc, "workflow_dispatch", variables, cloud_backlog="1", live=True)))
 
 
 if __name__ == "__main__":
