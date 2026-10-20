@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing)"
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access"]
         default: "scale-up-holds"
       message_ref:
         description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
-    if: ${{ inputs.stage != 'newsletter-trace' }}
+    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -112,3 +112,37 @@ jobs:
           STAGE: ${{ inputs.stage }}
           ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
         run: python -m lifeos.run "$STAGE"
+  # LIFE-10: the one stage that reads Notion. Its own job, so the Jobs Notion token never reaches the database or Gmail diagnostics above, and no other value reaches this one.
+  # Read-only: three reads against the fixed synthetic sandbox ids (TL comment 10754); no write path and never live; codes and counts only.
+  sandbox:
+    if: ${{ inputs.stage == 'notion-sandbox-access' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_sandbox
+        name: Load the Jobs Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_sandbox.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_sandbox_retry
+        name: Load the same token from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_sandbox.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Notion sandbox access (read-only; codes and counts only)
+        env:
+          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
+        run: python -m lifeos.run notion-sandbox-access --limit 0

@@ -208,7 +208,7 @@ class WorkflowTests(unittest.TestCase):
         job = diag["jobs"]["diag"]
         self.assertEqual(list(diag[True]), ["workflow_dispatch"])                                           # manual only: no schedule, workflow_run, push or repository_dispatch
         self.assertNotRegex(text, r"(?m)^\s*(schedule|workflow_run|repository_dispatch|push|pull_request\w*):")
-        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job
+        self.assertEqual((stage["options"], stage["default"]), (["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access"], "scale-up-holds"))   # alerts-open arrived on main in #216 (read-only diagnostic); newsletter-trace is LIFE-64's Gmail-reading job; notion-sandbox-access is LIFE-10's Notion-reading job
         self.assertEqual(diag["permissions"], {"contents": "read"})
         self.assertEqual(diag["concurrency"], {"group": "life-os-v7-diag", "cancel-in-progress": False})
         self.assertEqual(job["timeout-minutes"], 10)
@@ -220,17 +220,30 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the Client ID is the trace job's only Gmail GitHub secret
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 4)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
-        head, trace_text = text.split("\n  # LIFE-64:")                                                     # the database-only diagnostics, then the one job that reads Gmail
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 6)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
+        head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
+        trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()] * 2))
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", trace_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, **gmail}.items()] * 2))
         self.assertEqual((len(re.findall(uuid, head)), len(re.findall(uuid, trace_text))), (14, 18))                    # each in the load and its identical retry (D209)
         self.assertNotIn("GMAIL", head)                                                                    # no Gmail value or secret in the database-only job
+        self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", sandbox_text, re.M), ["53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN"] * 2)   # LIFE-10: the Jobs Notion token alone, in the load and its retry
+        self.assertEqual(len(re.findall(uuid, sandbox_text)), 2)
+        self.assertNotIn("NOTION", head + trace_text)                                                      # no Notion value reaches the database or Gmail diagnostics
+        for word in ("LIFEOS_ACQ", "GMAIL", "--live", "inputs.message_ref", "secrets.NOTION"):
+            self.assertNotIn(word, sandbox_text)                                                           # nothing else reaches the Notion job, it never writes, and it takes no target input
         self.assertLess(text.index("bitwarden/sm-action"), text.index("python -m lifeos.run"))             # loaded before the diagnostic command
         trace = diag["jobs"]["trace"]
-        self.assertEqual((job["if"], trace["if"]), ("${{ inputs.stage != 'newsletter-trace' }}", "${{ inputs.stage == 'newsletter-trace' }}"))   # exactly one of the two jobs runs
+        sandbox = diag["jobs"]["sandbox"]
+        self.assertEqual((job["if"], trace["if"], sandbox["if"]), ("${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' }}", "${{ inputs.stage == 'newsletter-trace' }}",
+                                                                   "${{ inputs.stage == 'notion-sandbox-access' }}"))   # exactly one of the three jobs runs
+        self.assertEqual(sandbox["timeout-minutes"], 5)
+        self.assertEqual(sandbox["steps"][-1]["run"], "python -m lifeos.run notion-sandbox-access --limit 0")
+        self.assertEqual(sandbox["steps"][-1]["env"], {"NOTION_API_TOKEN": "${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}"})
+        self.assertEqual([s.get("env") for s in sandbox["steps"][:-1]], [None] * (len(sandbox["steps"]) - 1))   # only the read step receives the token
+        self.assertIs(sandbox["steps"][2]["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
         self.assertEqual(trace["timeout-minutes"], 10)
         self.assertEqual(trace["steps"][-1]["run"], 'python -m lifeos.run "$STAGE"')
         self.assertEqual(trace["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "GMAIL_OAUTH_CLIENT_ID": "${{ secrets.GMAIL_OAUTH_CLIENT_ID }}", "STAGE": "${{ inputs.stage }}", "ALERTS_MESSAGE_REF": "${{ inputs.message_ref }}"})
@@ -503,10 +516,10 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-fit-edge', 'cancel-in-progress': False},
         timeouts={'fit_edge': 5}, digest="62c235d80f490685"),
     "diag": dict(
-        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}},                   # LIFE-64: the trace job alone reads Gmail (list and read only)
+        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}},   # LIFE-64: the trace job alone reads Gmail (list and read only); LIFE-10: the sandbox job alone reads Notion (three fixed reads)
         direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-diag', 'cancel-in-progress': False},
-        timeouts={"diag": 10, "trace": 10}, digest="43c47d9281d0c138"),
+        timeouts={"diag": 10, "trace": 10, "sandbox": 5}, digest="267bfb4742ccb9fa"),
 }
 # The eight workflows cut over after the pilots: the loader is exported to nothing (set_env: false) and each CONSUMER step receives, as a masked step output, exactly the migrated values it
 # effectively received on main 659de1e (workflow-, job- and step-level env merged), except hourly `report`, which only pushes an alert and needs just the topic. Every step not listed

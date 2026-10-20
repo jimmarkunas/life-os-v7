@@ -72,7 +72,7 @@ class PartialFailureExitTests(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
 
     def test_every_other_stage_keeps_exit_0_even_when_its_counts_say_failed(self):
-        others = sorted(name for name in run.STAGES if name not in ("publish", "fit", "fit-cloud-backlog", "job-page-outreach"))
+        others = sorted(name for name in run.STAGES if name not in ("publish", "fit", "fit-cloud-backlog", "job-page-outreach", "notion-sandbox-access"))
         self.assertGreater(len(others), 40)
         for name in others:
             code, out, err = self._main(name, {"failed": 3, "lane": "x"})
@@ -80,7 +80,7 @@ class PartialFailureExitTests(unittest.TestCase):
             self.assertEqual(out, f"{name}: " + json.dumps({"failed": 3, "lane": "x"}, sort_keys=True) + "\n")
 
     def test_only_publish_and_fit_are_registered_for_the_partial_failure_exit(self):
-        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["fit", "fit-cloud-backlog", "job-page-outreach", "publish"])     # D219: a degraded backlog batch is a failed step too; LIFE-10: a job page that could not sync
+        self.assertEqual(sorted(run.PARTIAL_FAILURE), ["fit", "fit-cloud-backlog", "job-page-outreach", "notion-sandbox-access", "publish"])     # D219: a degraded backlog batch is a failed step too; LIFE-10: a job page that could not sync, and a refused sandbox read
         self.assertIn("publish", run.STAGES)
         self.assertIn("fit", run.STAGES)
 

@@ -58,6 +58,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-match` -> `lifeos.sources.network_leads:run`
 - `network-surface` -> `lifeos.sources.network_surface:run`
 - `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
+- `notion-sandbox-access` -> `lifeos.sources.notion_sandbox_access:run`
 - `oracle-card` -> `lifeos.oraclecloud.card:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
@@ -285,6 +286,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/newsletters/parsers/linkedin.py`: LinkedIn job-alert emails (jobalerts-noreply / jobs-noreply). One job = two links (image + text) to /comm/jobs/view/<id>?<tracking tokens>. The tracking query carries per
 - `lifeos/sources/newsletters/parsers/reed.py`: Reed job-alert cards. Reed course links are intentionally outside this parser.
 - `lifeos/sources/newsletters/sweep.py`: Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
+- `lifeos/sources/notion_sandbox_access.py`: LIFE-10 §2 (TL comment 10754): a one-time, read-only check of whether the existing Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger. M
 - `lifeos/sources/outreach_app.py`: LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person abou
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
@@ -306,7 +308,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `amazon.yml`: jobs amazon; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_AMAZON_DATA_SOURCE_ID
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
-- `diag.yml`: jobs diag, trace; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
+- `diag.yml`: jobs diag, trace, sandbox; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOUD_FIT_PROFILE_REF

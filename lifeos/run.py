@@ -96,6 +96,7 @@ STAGES = {
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
     "alerts-open": lazy("lifeos.jobs.alertstate"),
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
+    "notion-sandbox-access": lazy("lifeos.sources.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick
     "fit-edge-test": lazy("lifeos.jobs.fit.edge"),                       # LIFE-60: manual and synthetic-only (fit-edge-test.yml); never on a tick
     "safety-sql-smoke": lazy("lifeos.jobs.safety", "run_sql_smoke"),
     "safety-fit-capture": lazy("lifeos.jobs.safety", "run_fit_capture"),
@@ -147,7 +148,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def _step_code(counts):
