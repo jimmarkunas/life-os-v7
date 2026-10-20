@@ -8,7 +8,7 @@ identity stay the first two blocks and "Derived" stays the last top-level headin
 coaching cards and sandbox review links are demo content, not template. Unknown facts are written as unknown, never guessed.
 """
 from .identity import scheduling_pending
-from .notion import JIM_NOTES, MARKERS
+from .notion import FOLD, JIM_NOTES, MARKERS
 
 
 def _run(content, bold=False, link=None, italic=False):
@@ -45,6 +45,11 @@ def _callout(icon, title, lines):
 
 def _states(summary, rows):
     return _block("toggle", _line(summary), children=[_field(label, value) for label, value in rows])
+
+
+def fold(*lines):
+    """D236: the machine marker and identity lines inside one collapsed gray toggle, the page's first block."""
+    return {"object": "block", "type": "toggle", "toggle": {"rich_text": _line(FOLD), "color": "gray", "children": [_para(x) for x in lines]}}
 
 
 def _section(title, children=()):
@@ -160,7 +165,7 @@ def round_page(parent_query, query, parent_id, pipeline_id, identity):
         {"object": "block", "type": "column", "column": {"children": side}}]}}
     raw = _section("Raw Notes", [_block("toggle", _line("Raw notes · open to write"), children=[
         _para(("Write unprocessed notes here. Production must never overwrite human-authored content.", False, None, True))])])
-    return [_para(MARKERS["round"]), _para(identity), _block("heading_2", _line(f"{round_name} · " + ("Scheduling Pending" if pending else who))),
+    return [fold(MARKERS["round"], identity), _block("heading_2", _line(f"{round_name} · " + ("Scheduling Pending" if pending else who))),
             columns, _prepare(pending), _live_notes(), _after(pending), raw, _section("Derived")]
 
 
@@ -196,7 +201,7 @@ def opportunity_page(parent_query, query, pipeline_id, marker, adopted=False):
     are top-level toggle headings below the two columns in the same order, and the nested Action due callout is two lines of
     Role Snapshot (Notion's API takes two levels of nesting per write). The sandbox banner, demo contact cards, test timeline
     and review links are demo content, not template. "🔒 Jim's notes" is the last section: for a new page it holds one
-    "Write here." line; on adoption Jim's existing blocks follow it unchanged (`adopted=True` returns the sections only)."""
+    "Write here." line; on adoption Jim's existing blocks follow it unchanged. The marker is folded away (D236)."""
     pending = scheduling_pending(query)
     company, role = parent_query.company.strip(), parent_query.role.strip()
     request = _link("Request message ↗", query.source.strip() if query.source else None)
@@ -290,4 +295,4 @@ def opportunity_page(parent_query, query, pipeline_id, marker, adopted=False):
         _callout("✍️", "Your space · LIFE OS never writes, moves or deletes anything below this heading.", [_line(
             "When you adopt an existing hand-written page, everything you already wrote is kept here unchanged, in its original order. "
             "LIFE OS checks after every write that this section is unchanged; if it changed, it stops and reports DEGRADED.")])]
-    return sections if adopted else [_para(marker)] + sections + [italic("Write here.")]
+    return [fold(marker)] + sections + ([] if adopted else [italic("Write here.")])

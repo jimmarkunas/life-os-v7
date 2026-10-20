@@ -41,14 +41,15 @@ def parse_identity(value):
 
 
 def adopt(client, environ, parent, parent_query, query, live, context, out):
-    """LIFE-46: one adoption of Jim's own page whose exact first line is `LIFE OS: adopt` (accepted UI 3b). The UI 3b sections and
-    the Jim's notes heading go in right after that line, the line becomes the adopted marker, and nothing Jim wrote is edited,
-    moved or deleted. Rounds come on a later run. A page that already has LIFE OS sections or a second marker is never adopted."""
+    """LIFE-46: one adoption of Jim's own page whose exact first line is `LIFE OS: adopt` (accepted UI 3b). The folded adopted
+    marker (D236), the UI 3b sections and the Jim's notes heading go in right after that line, then the line itself is removed;
+    nothing Jim wrote is edited, moved or deleted. Rounds come on a later run. A page that already has LIFE OS sections or a
+    second marker is never adopted."""
     if query.confirmed_round is not True:
         return "pursuit_unconfirmed"
     blocks = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
     labels = [notion.text(b) for b in blocks]
-    if (labels.count(notion.ADOPT) != 1 or notion.JIM_NOTES in labels
+    if (labels.count(notion.ADOPT) != 1 or notion.JIM_NOTES in labels or notion.FOLD in labels
             or any("v7-interview" in label for label in labels)):
         return "adopt_conflict"
     before = notion.human_tail(client, parent.page_id, blocks)
@@ -66,7 +67,7 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
         return "write_failed"
     out["writes"] = out["readback_failed"] = 1
     try:
-        notion.set_paragraph(client, blocks[0]["id"], marker)
+        notion.delete_block(client, blocks[0]["id"])                    # the adopt line Jim typed; the fold is now first
     except NotionError:
         return "write_failed"                                           # the adopt line stays; the next run reports adopt_conflict
     if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:

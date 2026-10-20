@@ -14,6 +14,9 @@ PROTECTED = ("Live Notes", "Raw Notes")
 # opportunity marker plus ";adopted=<date>". Everything from the JIM_NOTES heading to the end of the page is his.
 ADOPT = "LIFE OS: adopt"
 JIM_NOTES = "🔒 Jim's notes"
+# D236: the marker (and a round's identity line) are folded into one collapsed toggle at the top of the page. Pages written
+# before D236 carry them as the first two plain paragraphs and are still read.
+FOLD = "⚙️ LIFE OS"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
 
@@ -44,6 +47,18 @@ def is_marker(value, kind):
     return bool(found) and valid_date(found.group(1))
 
 
+def is_fold(block):
+    return block.get("type") == "toggle" and text(block) == FOLD
+
+
+def machine_lines(client, page_id, size):
+    """(lines, fold): the first `size` machine lines, read from inside the folded toggle when the page's first block is one."""
+    blocks = client.call("GET", f"/blocks/{page_id}/children?page_size={size}")["results"]
+    if blocks and is_fold(blocks[0]):
+        return client.call("GET", f"/blocks/{blocks[0]['id']}/children?page_size={size}")["results"], blocks[0]
+    return blocks, None
+
+
 def text(block):
     parts = (block.get(block.get("type")) or {}).get("rich_text") or []
     return "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in parts)
@@ -64,8 +79,7 @@ def target_check(client, environ):
 
 def ownership(client, page_id, kind):
     try:
-        data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
-        blocks = data["results"]
+        blocks, _ = machine_lines(client, page_id, 1)
         first = text(blocks[0]) if blocks else ""
         if is_marker(first, kind):
             return Ownership.MACHINE
@@ -165,7 +179,7 @@ def explicit_child(client, page_id):
         return None
     parent = page.get("parent") or {}
     from .create import parse_identity
-    blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=2")["results"]
+    blocks, _ = machine_lines(client, page_id, 2)
     first = text(blocks[0]) if blocks else ""
     machine = first == MARKERS["round"]
     if not machine:
@@ -238,9 +252,8 @@ def append_children(client, page_id, heading_id, blocks):
     return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
 
 
-def set_paragraph(client, block_id, value):
-    from lifeos.platform.notion_client import rich_text
-    return client.call("PATCH", f"/blocks/{block_id}", {"paragraph": {"rich_text": rich_text(value)}})
+def delete_block(client, block_id):
+    return client.call("DELETE", f"/blocks/{block_id}")
 
 
 DERIVED_MAX_CALLS = 100
@@ -287,7 +300,7 @@ def readback(client, page_id, parent_id, kind, before=None):
             return "readback_page_gone"
         if not same_notion_id((page.get("parent") or {}).get("page_id"), parent_id):
             return "readback_parent_mismatch"
-        blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"]
+        blocks, _ = machine_lines(client, page_id, 1)
         if not blocks or not is_marker(text(blocks[0]), kind):
             return "readback_marker_missing"
         after = protected_snapshot(client, page_id, kind)

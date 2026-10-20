@@ -60,11 +60,13 @@ class SchedulingPending(unittest.TestCase):
         (post,) = client.posts
         self.assertEqual((post["parent"]["page_id"], post["properties"]["title"]["title"][0]["text"]["content"]), ("opp", "Interview 1"))
         blocks = post["children"]
-        self.assertEqual([notion.text(b) for b in blocks[:2]], [notion.MARKERS["round"], create.identity_text(result.round)])
-        self.assertEqual(json.loads(notion.text(blocks[1]).split(";", 1)[1]), {"interview_date": None, "interviewer": None, "ordinal": 1})
-        self.assertEqual([notion.text(b) for b in blocks[2:3] + blocks[4:]],
+        lines = blocks[0]["toggle"]["children"]                                 # D236: folded away in one collapsed toggle
+        self.assertEqual((blocks[0]["type"], notion.text(blocks[0])), ("toggle", notion.FOLD))
+        self.assertEqual([notion.text(b) for b in lines], [notion.MARKERS["round"], create.identity_text(result.round)])
+        self.assertEqual(json.loads(notion.text(lines[1]).split(";", 1)[1]), {"interview_date": None, "interviewer": None, "ordinal": 1})
+        self.assertEqual([notion.text(b) for b in blocks[1:2] + blocks[3:]],
                          ["Interview 1 · Scheduling Pending", "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-        brief, side = (col["column"]["children"] for col in blocks[3]["column_list"]["children"])
+        brief, side = (col["column"]["children"] for col in blocks[2]["column_list"]["children"])
         text = plain(brief + side)
         for shown in ("10-second brief", "ExampleCo", "Senior Technical Program Manager", "Round: 1", "Interviewer: Not known yet",
                       "🟡 Scheduling Pending", "Not scheduled · no Calendar event yet", "requisition EX-1234",
