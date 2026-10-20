@@ -764,6 +764,7 @@ jobs:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT_BACKLOG_MAX: ${{ vars.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling; 0 (unset) asks nothing
           V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}
+          V7_CLOUD_FIT_BACKLOG_PAGE: ${{ vars.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}     # LIFE-41 G6: Jim's one preapproved Ledger page; unset = the ranked backlog
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}
         run: python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       - id: audit

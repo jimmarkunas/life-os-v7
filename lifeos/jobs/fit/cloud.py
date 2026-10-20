@@ -59,7 +59,9 @@ BACKLOG_PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, 
                 " WHERE j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND d.source_kind IN %s AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL"
                 " AND f.score IS NOT NULL AND f.cloud_status IS NULL"
                 " ORDER BY (f.admission = 'ADMIT') DESC, f.score DESC, j.posted_date IS NULL, j.posted_date DESC, j.first_seen, j.dedupe_key LIMIT %s")
-BACKLOG_CALLS_MAX = 100                 # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
+# LIFE-41 G6: Jim's one preapproved job, named by its Ledger page id (V7_CLOUD_FIT_BACKLOG_PAGE): the same predicates, so a target the batch would not ask is never asked.
+BACKLOG_ONE = BACKLOG_PICK.replace(" ORDER BY", " AND REPLACE(LOWER(j.notion_page_id), '-', '') = %s ORDER BY")
+BACKLOG_CALLS_MAX = 100                # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
 BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
 BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
 NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
@@ -151,11 +153,15 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     if profile is None:
         return _degraded(counts, "PROFILE_MISSING")
     with store.connect() as connection, connection.cursor() as cursor:
-        if batch:
+        if batch and batch.get("page"):
+            cursor.execute(BACKLOG_ONE, (PUBLIC_SOURCES, batch["page"], 1))
+        elif batch:
             cursor.execute(BACKLOG_PICK, (PUBLIC_SOURCES, min(cap * BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX)))
         else:
             cursor.execute(PICK, (PUBLIC_SOURCES, SCAN))
         rows = cursor.fetchall()
+    if batch and batch.get("page") and not rows:
+        return _degraded(counts, "BACKLOG_TARGET_NOT_ELIGIBLE")          # gone, already asked, unpublishable or excluded: nothing else is asked in its place
     started = clock() if started is None else started
     token = f"claim:{uuid.uuid4().hex[:24]}"
 
