@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only). interview-ui-probe (needs confirm = QA): LIFE-88's first gate, whether the V7 Notion REST transport can build the accepted UI 3c tree (tabs, tables in callouts, 63/37 columns, in-place updates); reads the UI 3c QA preview and writes only one probe page under the QA Interview OS parent (block types, check codes and counts only)"
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe"]
         default: "scale-up-holds"
       message_ref:
         description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
         type: string
         default: ""
       confirm:
-        description: "notion-sandbox-outreach-proof only: type SYNTHETIC to confirm that only the one synthetic sandbox page is written"
+        description: "notion-sandbox-outreach-proof: type SYNTHETIC; interview-ui-probe: type QA (confirms that only the one sandbox or QA probe page is written)"
         type: string
         default: ""
 permissions:
@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
-    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' }}
+    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -158,3 +158,38 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
           PROOF_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
+  # LIFE-88: the UI 3c REST capability probe. Its own job, so the Interview Notion token (LIFE OS Interview OS) reaches nothing else and no other value reaches it.
+  # Reads the accepted UI 3c QA preview and writes only its one probe page under the QA Interview OS parent, only with confirm = QA. Codes, block types and counts only.
+  interview_ui:
+    if: ${{ inputs.stage == 'interview-ui-probe' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_interview
+        name: Load the Interview Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_interview.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_interview_retry
+        name: Load the same token from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_interview.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Interview UI 3c REST capability probe (one QA probe page; typed confirmation; codes, block types and counts only)
+        env:
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          PROBE_CONFIRM: ${{ inputs.confirm }}
+        run: python -m lifeos.run interview-ui-probe --limit 0 --live
