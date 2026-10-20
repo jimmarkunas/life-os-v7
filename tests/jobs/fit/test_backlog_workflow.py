@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
 
 class TheHourIsFilled(unittest.TestCase):
-    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 45-minute cap (D235) or the finish job's 58 minutes,
+    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 45-minute cap (D238) or the finish job's 58 minutes,
     and skips (exit 0) rather than fail when too little time is left. The step's own script runs here with a stand-in clock."""
 
     def budget(self, minute, second, job_seconds):
