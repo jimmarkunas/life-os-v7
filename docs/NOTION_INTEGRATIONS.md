@@ -13,7 +13,7 @@ page and data-source ids for production objects stay secrets; they are named her
 | **LIFE OS Recruiters** | Oct 6 | `NOTION_RECRUITERS_TOKEN` | Bitwarden `b7b921fa-3f62-478a-a4f5-b4db015efcf7` | `recruiters.yml` and `domains.yml` recruiters (mail to Recruiters; Mark as Sent rows read by `job-page-outreach`) | **Recruiters** data source; **Job Ledger** database (note 2) |
 | **LIFE OS Amazon** | Oct 3 | `NOTION_AMAZON_TOKEN` | Bitwarden `46fe195b-82e2-416e-8272-b4db015eea12` | `domains.yml` / `amazon.yml` Amazon Orders, Amazon card read, retention | **Amazon Orders** data source |
 | **LIFE OS Bills** | Oct 3 | `NOTION_BILLS_TOKEN` | Bitwarden `815268ba-fa49-4461-afb3-b4db015ef189` | `bills.yml` / `domains.yml` Bills snapshot and Paid processor | **Bill Tracker** data source |
-| **LIFE OS Interview OS** | Oct 1 | `NOTION_INTERVIEW_TOKEN` | Bitwarden `092b44ae-32cb-453b-8cc2-b4db015ef571` | `hourly.yml` interview stage, probe and acceptance; `domains.yml` hiring | **Hiring Pipeline** page (and only the Interview objects it owns) |
+| **LIFE OS Interview OS** | Oct 1 | `NOTION_INTERVIEW_TOKEN` | Bitwarden `092b44ae-32cb-453b-8cc2-b4db015ef571` | `hourly.yml` interview stage, probe and acceptance; `domains.yml` hiring | **Hiring Pipeline** page (and only the Interview objects it owns); **Job Ledger** database, read only (note 3) |
 | **LIFE OS Close (S2)** | Oct 16 | not in GitHub | root-only encrypted credential on the Oracle VM (D198) | the private Close / Mark as Sent service | **Job Ledger** database and **Hiring Pipeline** page (D198); **Recruiters** data source (D221 Mark as Sent creates its rows; proven by the Oct 20 2026 canary row) |
 | **VS Code Test** | Mar 8 | none | OAuth app, any workspace | not used by V7 | nothing for V7 |
 
@@ -24,6 +24,10 @@ three sandbox reads (run 39367878512); Jim then connected only **VS Code** to th
 relation, which points into the Job Ledger. Notion hides relation values that point into a database the connection cannot see, so without the Ledger share every
 Mark as Sent row looked unlinked and the stage reported `jobs=0` (runs 39363196870 and 39371532312, LIFE-10 comment 10802). Jim connected LIFE OS Recruiters to the
 LIFE OS Job Ledger; the next dry run saw both rows (run 39372809707, comment 10804) and the live run wrote both tables (run 39374802877, comment 10811).
+
+**Note 3 — LIFE OS Interview OS reads the Job Ledger (LIFE-42 D231, Oct 20 2026).** The manual `interview-acceptance` stage confirms a
+Scheduling Pending request's exact job by reading the Ledger rows for that company (Company, Job, Stable Job Key) with this connection.
+It never writes the Ledger. Jim connected LIFE OS Interview OS to the LIFE OS Job Ledger on Oct 20 2026.
 
 ## Rules
 

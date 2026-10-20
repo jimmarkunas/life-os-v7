@@ -1458,6 +1458,7 @@ jobs:
         env:
           INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}   # D231: the Scheduling Pending case reads the exact Ledger rows (read-only, Interview token)
         run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
       - name: Interview warning (does not fail the run)
         if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
