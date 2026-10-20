@@ -420,6 +420,7 @@
    "lifeos/sources/newsletters/parsers/linkedin.py": "LinkedIn job-alert emails (jobalerts-noreply / jobs-noreply). One job = two links (image + text) to /comm/jobs/view/<id>?<tracking tokens>. The tracking query carries per",
    "lifeos/sources/newsletters/parsers/reed.py": "Reed job-alert cards. Reed course links are intentionally outside this parser.",
    "lifeos/sources/newsletters/sweep.py": "Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.",
+   "lifeos/sources/notion_sandbox_access.py": "LIFE-10 \u00a72 (TL comment 10754): a one-time, read-only check of whether the existing Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger. M",
    "lifeos/sources/outreach_app.py": "LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person abou",
    "lifeos/sources/sponsor_register.py": "Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.",
    "lifeos/sources/web/boardcheck.py": "Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?",
@@ -494,6 +495,7 @@
   "network-match": "lifeos.sources.network_leads:run",
   "network-surface": "lifeos.sources.network_surface:run",
   "newsletter-trace": "lifeos.sources.newsletters.cardtrace:run",
+  "notion-sandbox-access": "lifeos.sources.notion_sandbox_access:run",
   "oracle-card": "lifeos.oraclecloud.card:run",
   "outlook-auth": "lifeos.run:_outlook_auth",
   "outlook-newsletters": "lifeos.sources.newsletters.outlook:run",
@@ -592,7 +594,8 @@
   "diag.yml": {
    "jobs": [
     "diag",
-    "trace"
+    "trace",
+    "sandbox"
    ],
    "manual": true,
    "secrets": [
