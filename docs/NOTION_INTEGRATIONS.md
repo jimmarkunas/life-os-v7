@@ -31,7 +31,7 @@ It never writes the Ledger. Jim connected LIFE OS Interview OS to the LIFE OS Jo
 
 **Note 4 — Adoption writes Jim's own opportunity page (LIFE-46 D235, Oct 20 2026).** Only when a Hiring Pipeline opportunity page's first line
 is exactly `LIFE OS: adopt`, LIFE OS Interview OS appends the folded marker and UI 3b sections after that line, then deletes that line
-(one PATCH and one DELETE on that page only, D236). It needs the same page access the round writer already has; no new connection.
+(one PATCH and one DELETE on that page only, D236). A LIFE OS opportunity page written before D235 is upgraded once the same way (one PATCH, D237). It needs the same page access the round writer already has; no new connection.
 
 ## Rules
 

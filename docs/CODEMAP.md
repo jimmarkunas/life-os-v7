@@ -559,3 +559,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D234: Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
 - D235: A tick's Cloud Fit batch fills the hour: the batch cap is 45 minutes and the finish job 58 (2026-10-20, Jim; LIFE-41)
 - D236: The machine marker and identity lines are folded into one collapsed "⚙️ LIFE OS" toggle at the top of the page (2026-10-20, Jim; LIFE-46)
+- D237: A LIFE OS opportunity page written before D235 is upgraded once to the UI 3b layout, its old sections kept under Jim's notes (2026-10-20, Jim; LIFE-46)
