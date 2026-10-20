@@ -65,7 +65,7 @@ def highest(remote="origin", cwd=None, branch="main"):
 
 def _claim_object(n, sha, cwd=None):
     """An annotated tag object for this one claim (its random id makes it unlike any other claim of the same number)."""
-    body = (f"object {sha}\ntype commit\ntag {PREFIX}{n}\ntagger LIFE OS decisions <decisions@lifeos.invalid> {int(time.time())} +0000\n\n"
+    body = (f"object {sha}\ntype commit\ntag {PREFIX}{n}\ntagger LIFE OS decisions <decisions@example.com> {int(time.time())} +0000\n\n"
             f"LIFE-89 decision number claim {uuid.uuid4().hex}\n")
     made = _git("hash-object", "-t", "tag", "-w", "--stdin", cwd=cwd, data=body)
     if made.returncode != 0:
