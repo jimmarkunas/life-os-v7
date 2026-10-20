@@ -90,7 +90,9 @@ class Transport(unittest.TestCase):
         thread.join()
         server.close()
         self.assertEqual(got, [data])
-        self.assertEqual(edge.exchange("127.0.0.1", data, port=1, wait=1), b"")                       # nothing listening: closed, no output
+        with self.assertRaises(edge.EdgeError) as ctx:                                                # D241: nothing listening: never opened, nothing sent
+            edge.exchange("127.0.0.1", data, port=1, wait=1, sleep=lambda s: None)
+        self.assertEqual(str(ctx.exception), "FIT_EDGE_CONNECT_FAILED")
 
     def test_the_reader_never_holds_more_than_one_byte_over_the_reply_limit(self):
         server = socket.create_server(("127.0.0.1", 0))
@@ -327,3 +329,47 @@ class Dormant(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConnectRetry(unittest.TestCase):
+    """D241 (Oct 20, 1:12 PM CT): one connect to Oracle timed out on the runner's tailnet path; the batch recorded that job as a model call and stopped. A connection that
+    cannot be opened has sent nothing: it is tried once more, and if it still cannot be opened it is FIT_EDGE_CONNECT_FAILED, which a batch treats as no call."""
+
+    def test_a_connect_that_fails_once_is_tried_again_and_the_request_goes_through(self):
+        tries, sent = [], []
+
+        class Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def settimeout(self, t):
+                pass
+
+            def sendall(self, data):
+                sent.append(data)
+
+            def recv(self, n):
+                return b"" if len(sent) > 1 else (sent.append("read") or b"REPLY")
+
+        def connect(addr, timeout=None):
+            tries.append(addr)
+            if len(tries) == 1:
+                raise TimeoutError
+            return Conn()
+        with mock.patch.object(edge.socket, "create_connection", connect):
+            self.assertEqual(edge.exchange("oracle.example", b"FRAME", sleep=lambda s: None), b"REPLY")
+        self.assertEqual((len(tries), sent[0]), (2, b"FRAME"))
+
+    def test_a_connect_that_never_opens_sends_nothing_and_is_named(self):
+        tries = []
+
+        def connect(addr, timeout=None):
+            tries.append(addr)
+            raise (TimeoutError if len(tries) == 1 else ConnectionRefusedError)
+        with mock.patch.object(edge.socket, "create_connection", connect):
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.exchange("oracle.example", b"FRAME", sleep=lambda s: None)
+        self.assertEqual((str(ctx.exception), len(tries)), ("FIT_EDGE_CONNECT_FAILED", edge.CONNECT_ATTEMPTS))

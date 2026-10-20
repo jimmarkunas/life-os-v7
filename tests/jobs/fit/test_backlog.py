@@ -676,3 +676,21 @@ class LapsedSignIn(Batch):
         counts = self.batch(3, Endpoint(lapsed_after_one))
         self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_promoted"], len(seen)), ("DEGRADED(FIT_EDGE_REFUSED_AUTH_UNAVAILABLE)", 1, 1, 2))
         self.assertEqual([self.status(i) for i in (1, 2, 3)], ["CANARY", None, None])          # the refused job was released: asked again once signed in
+
+
+class ConnectFailed(Batch):
+    """D241: a request that never reached Oracle used no model: the job goes back to the queue and the batch stops by name, never recording it as a model call."""
+
+    def test_a_connect_failure_releases_the_job_and_names_the_stop(self):
+        for i in (1, 2):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        calls = []
+
+        def endpoint(host, data, **kw):
+            calls.append(data)
+            if len(calls) == 2:
+                raise edge.EdgeError("FIT_EDGE_CONNECT_FAILED")
+            return measured(data)
+        counts = self.batch(5, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["cloud_promoted"]), ("DEGRADED(FIT_EDGE_CONNECT_FAILED)", 0, 1))
+        self.assertEqual([self.status(i) for i in (1, 2)], ["CANARY", None])

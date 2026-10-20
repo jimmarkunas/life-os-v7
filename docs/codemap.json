@@ -141,6 +141,7 @@
   "D239": "A lapsed OpenAI sign-in is a clean AUTH_UNAVAILABLE refusal, and the AI Capacity card shows each sign-in's health (2026-10-20, Jim; LIFE-41 / LIFE-77)",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D240": "A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)",
+  "D241": "A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
   "D27": "What the first live-shaped dry runs taught (run 85, 2026-10-01)",
