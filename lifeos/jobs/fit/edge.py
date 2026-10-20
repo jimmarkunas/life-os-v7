@@ -4,6 +4,7 @@ sha256 is in the committed manifest, checks the echoed request hash, nonce and r
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import socket
@@ -83,6 +84,50 @@ def quota_reading(raw):
         return {"stop": stop, "windows": out}
     except (KeyError, TypeError, AssertionError):
         return None
+
+
+LIMIT_WAIT = 45                    # LIFE-77: Oracle reads the Codex meter (~3.5 s) and OpenClaw's own usage read; no model runs
+NAME = re.compile(r"[a-z0-9_-]{1,32}\Z")
+
+
+def limits(host, send=exchange, wait=LIMIT_WAIT):
+    """LIFE-77: Oracle's `limits` request (no model run, no in-flight lock) -> {"read_at", "pools": [{"provider", "windows": [{"label", "used", "reset_at"}], "stop"?}],
+    "unavailable": [provider], "safety_cap": {"runs_today", "limit"} | None}, labels and numbers only; or an EdgeError fixed code."""
+    if not host:
+        raise EdgeError("FIT_EDGE_NO_HOST")
+    nonce = secrets.token_hex(16)
+    body = json.dumps({"limits": True, "nonce": nonce}, separators=(",", ":")).encode()
+    raw = send(host, b"fit1 %d\n" % len(body) + body, wait=wait)
+    if not raw:
+        raise EdgeError("FIT_EDGE_NO_REPLY")
+    if len(raw) > MAX_REPLY:
+        raise EdgeError("FIT_EDGE_REPLY_TOO_LARGE")
+    try:
+        reply = json.loads(raw)
+        assert isinstance(reply, dict) and reply["schema"] == "lifeos.fit.v1" and reply["status"] == "LIMITS"
+    except (ValueError, KeyError, AssertionError, TypeError):
+        raise EdgeError("FIT_EDGE_OFF_CONTRACT") from None
+    if reply.get("nonce") != nonce:
+        raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
+    try:
+        pools = []
+        for p in reply["pools"]:
+            assert isinstance(p["provider"], str) and NAME.match(p["provider"]) and isinstance(p["windows"], list) and len(p["windows"]) <= 6
+            windows = [{"label": w["label"], "used": w["used"], "reset_at": w["reset_at"]} for w in p["windows"]]
+            assert all(isinstance(w["label"], str) and 0 < len(w["label"]) <= 32 and type(w["used"]) in (int, float) and 0 <= w["used"] <= 100
+                       and (w["reset_at"] is None or (isinstance(w["reset_at"], str) and len(w["reset_at"]) <= 40)) for w in windows)
+            stop = p.get("stop")
+            assert stop is None or (type(stop) is int and 1 <= stop <= 100)
+            pools.append({"provider": p["provider"], "windows": windows, **({"stop": stop} if stop else {})})
+        unavailable = reply["unavailable"]
+        assert isinstance(unavailable, list) and all(isinstance(u, str) and NAME.match(u) for u in unavailable)
+        cap = reply.get("safety_cap")
+        assert cap is None or (isinstance(cap, dict) and type(cap.get("runs_today")) is int and type(cap.get("limit")) is int)
+        read_at = reply["read_at"]
+        assert isinstance(read_at, str) and len(read_at) <= 40
+    except (KeyError, TypeError, AssertionError):
+        raise EdgeError("FIT_EDGE_LIMITS_OFF_CONTRACT") from None
+    return {"read_at": read_at, "pools": pools, "unavailable": unavailable, "safety_cap": cap and {"runs_today": cap["runs_today"], "limit": cap["limit"]}}
 
 
 def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):

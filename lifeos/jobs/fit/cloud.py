@@ -258,6 +258,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 else:
                     _degraded(counts, USAGE_UNAVAILABLE if code == "FIT_EDGE_REFUSED_USAGE_UNAVAILABLE" else code)
                 break
+            if code == "FIT_EDGE_RECEIPT_REJECTED" and error.detail:
+                field = error.detail.upper()                                 # a fixed contract field name, as a code
+                fields = counts.setdefault("cloud_receipt_fields", {})
+                fields[field] = fields.get(field, 0) + 1     # LIFE-77: which receipt field, a fixed name
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
             counts["cloud_failed"] += 1
             _degraded(counts, code)
