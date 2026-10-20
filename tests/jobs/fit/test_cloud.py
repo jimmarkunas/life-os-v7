@@ -220,7 +220,7 @@ class AuditGuardBeforeEgress(Base):
 
 
 class CloudFitCanary(Base):
-    """D218 (Jim, LIFE-41 10555): canary. The one job a tick the model judges gets the accepted cloud score as its visible Fit, decided by the Fit stage's own lane
+    """D226 (Jim, LIFE-41 10555): canary. The one job a tick the model judges gets the accepted cloud score as its visible Fit, decided by the Fit stage's own lane
     rules and gate, provenance 'Cloud Fit ...' in Why It Fits; the static scorer never overwrites it; every failure leaves the visible Fit exactly as the static one."""
     CANARY = {**SHADOW, "V7_CLOUD_FIT": "canary", "V7_FIT_GATE": "true"}
 

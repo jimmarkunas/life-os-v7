@@ -1,9 +1,9 @@
 """LIFE-41 (10472 C, 10474, 10475): the switchable cloud-Fit shadow. `V7_CLOUD_FIT` = off (default, unset or anything unknown) | shadow | canary | on.
 
-shadow and canary are authorized (canary: Jim, LIFE-41 10555, D218); on is refused. shadow asks Oracle's existing `fit1` verb (lifeos.jobs.fit.edge, the same framing, receipt and judge.accept envelope) for at most
+shadow and canary are authorized (canary: Jim, LIFE-41 10555, D226); on is refused. shadow asks Oracle's existing `fit1` verb (lifeos.jobs.fit.edge, the same framing, receipt and judge.accept envelope) for at most
 one judgment a tick (MAX_PER_RUN; `V7_CLOUD_FIT_PER_RUN` can only lower it to 0) and stores the answer privately in nullable `cloud_*` columns of the job's
 existing v7_job_fit row. It never changes the visible Fit, the decision, the admission, the Ledger, Gmail, the audit or Trash: the static score stays the
-authority. canary (D218) asks exactly as shadow and stores the answer first as the named failure DEGRADED / CANARY_PROMOTION_FAILED; then the Fit stage's `promote` makes that
+authority. canary (D226) asks exactly as shadow and stores the answer first as the named failure DEGRADED / CANARY_PROMOTION_FAILED; then the Fit stage's `promote` makes that
 one job's accepted score its visible Fit through the stage's own lane decision, in the one statement that also marks the row CANARY. A promotion that does not
 happen leaves that failure (the static score stays visible and re-scorable, the run is DEGRADED); every other failure path stores and promotes nothing visible.
 on is refused with no call.
@@ -39,8 +39,8 @@ READ_WAIT = 150                         # LIFE-41 10504 C4: Oracle's real worst 
 CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 s, so one call fits the 240 s stage and a second never could
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
-WRITE_CONFLICT = "CANARY_WRITE_CONFLICT"     # D218: the guarded write stored nothing (the row was no longer unasked): an unpersisted answer is never a success
-PROMOTION_FAILED = "CANARY_PROMOTION_FAILED"   # D218: a canary answer is stored as this until the promotion itself marks it CANARY, so no failure can leave a stuck CANARY
+WRITE_CONFLICT = "CANARY_WRITE_CONFLICT"     # D226: the guarded write stored nothing (the row was no longer unasked): an unpersisted answer is never a success
+PROMOTION_FAILED = "CANARY_PROMOTION_FAILED"   # D226: a canary answer is stored as this until the promotion itself marks it CANARY, so no failure can leave a stuck CANARY
 STOP_AND_RECORD = {"FIT_EDGE_PURGE_FAILED"}   # 10504 C5: a model ran, so its provenance (no score) is kept on the row, and no further request is sent
 
 PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, d.fingerprint, j.final_apply_url, j.source, j.link_proof FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id"
@@ -267,14 +267,14 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         else:
             counts["cloud_usage_unavailable"] += 1
         counts["cloud_ok"] += 1
-        status, reason = ("DEGRADED", PROMOTION_FAILED) if canary else ("OK", None)     # D218: fail closed until the promotion's own write marks it CANARY
+        status, reason = ("DEGRADED", PROMOTION_FAILED) if canary else ("OK", None)     # D226: fail closed until the promotion's own write marks it CANARY
         if record(job_id, status, reason, got, edge.digest(sent)[:16], fingerprint) != 1:
             counts["cloud_ok"] -= 1
             _degraded(counts, WRITE_CONFLICT)
             continue
         if canary:
             if promote(job_id, got["judgment"], str(receipt.get("model") or "model")):
-                counts["cloud_promoted"] += 1                            # D218: only an accepted, receipt-checked, purged answer that was just stored
+                counts["cloud_promoted"] += 1                            # D226: only an accepted, receipt-checked, purged answer that was just stored
             else:
                 counts["cloud_ok"] -= 1
                 _degraded(counts, PROMOTION_FAILED)
