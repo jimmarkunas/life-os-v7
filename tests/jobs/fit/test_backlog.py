@@ -658,3 +658,20 @@ class ParallelLanes(Batch):
     def test_the_setting_is_one_unless_it_is_a_whole_number_from_1_to_3(self):
         for raw, want in ((None, 1), ("", 1), ("1", 1), ("2", 2), (" 3 ", 3), ("4", 1), ("0", 1), ("-2", 1), ("two", 1), ("2.5", 1)):
             self.assertEqual(cloud.parallel({} if raw is None else {"V7_CLOUD_FIT_PARALLEL": raw}), want, raw)
+
+
+class LapsedSignIn(Batch):
+    """D239 (Oct 20, 12:08 PM CT): an expired Luna sign-in turned every call into FIT_EDGE_ERROR, so each hourly batch lost one job for good. Oracle now refuses such a
+    call AUTH_UNAVAILABLE (no model answered): the job goes back to the queue, the batch stops, and the failure is named."""
+
+    def test_a_lapsed_sign_in_puts_the_job_back_and_stops_the_batch_by_name(self):
+        for i in (1, 2, 3):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        seen = []
+
+        def lapsed_after_one(data):
+            seen.append(data)
+            return measured(data) if len(seen) == 1 else refusal(data, "AUTH_UNAVAILABLE")
+        counts = self.batch(3, Endpoint(lapsed_after_one))
+        self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_promoted"], len(seen)), ("DEGRADED(FIT_EDGE_REFUSED_AUTH_UNAVAILABLE)", 1, 1, 2))
+        self.assertEqual([self.status(i) for i in (1, 2, 3)], ["CANARY", None, None])          # the refused job was released: asked again once signed in
