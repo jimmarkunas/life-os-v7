@@ -218,7 +218,7 @@ class ScheduledBatch(unittest.TestCase):
             self.assertIn("fit_cloud_backlog", names, event)
             self.assertLess(names.index("tick"), names.index("fit_cloud_backlog"), event)                 # after the tick: this hour's new jobs are candidates
             self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the only route to Oracle
-            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "480",
+            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "600",
                                                             "V7_CLOUD_FIT_BACKLOG_PAGE": ""}, event)      # a leftover pilot page never narrows a tick
 
     def test_without_the_variable_a_tick_is_unchanged(self):
