@@ -31,10 +31,10 @@ def rt(text):
 
 class Page:
     """One open Ledger job page: its properties and the body V7 published (v7-jd marker, sections), then whatever is appended."""
-    def __init__(self, decision=None, sections=True, lose_attachments=False):
+    def __init__(self, decision=None, sections=True, lose_attachments=False, lose_column=False):
         self.props = {"Company": {"type": "rich_text", "rich_text": rt("Acme Grid")}, "Job": {"type": "title", "title": rt("Technical Program Manager")},
                       "Hiring Decision": {"type": "select", "select": {"name": decision} if decision else None},
-                      "Location / Work Mode": {"type": "rich_text", "rich_text": rt("USA - Remote")}}
+                      "Location / Work Mode": {"type": "rich_text", "rich_text": rt("USA - Remote")}, "Resume": {"type": "files", "files": []}}
         body = [{"type": "paragraph", "paragraph": {"rich_text": rt("v7-jd:1 | key=abc")}}]
         if sections:
             body += [{"type": "heading_2", "heading_2": {"rich_text": rt("Summary")}},
@@ -42,7 +42,7 @@ class Page:
                      {"type": "heading_2", "heading_2": {"rich_text": rt("Responsibilities")}},
                      {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rt("Lead end-to-end delivery of complex enterprise programs.")}}]
         body += [{"type": "toggle", "toggle": {"rich_text": rt("Network Leads")}}, {"type": "paragraph", "paragraph": {"rich_text": rt("not part of the description")}}]
-        self.blocks, self.appended, self.lose = body, [], lose_attachments
+        self.blocks, self.appended, self.lose, self.lose_column = body, [], lose_attachments, lose_column
         self.source = LEDGER                                                        # the gate's ReadOnly facade names the client's data source
 
     def get_page(self, pid):
@@ -53,6 +53,11 @@ class Page:
         return {"results": self.blocks + ([] if self.lose else self.appended), "has_more": False}
 
     def call_once(self, method, path, body=None):
+        if path.replace("-", "") == f"/pages/{PID.replace('-', '')}":
+            assert method == "PATCH" and set(body["properties"]) == {"Resume"}, body                  # the build writes no other property
+            if not self.lose_column:
+                self.props["Resume"] = {"type": "files", "files": [{"name": f["name"], "type": "file"} for f in body["properties"]["Resume"]["files"]]}
+            return {}
         assert method == "PATCH" and path.replace("-", "") == f"/blocks/{PID.replace('-', '')}/children", (method, path)
         for child in body["children"]:
             self.appended.append({"type": "file", "file": {"type": "file", "name": child["file"]["name"], "caption": child["file"]["caption"]}})
@@ -116,7 +121,10 @@ class BuildResume(unittest.TestCase):
         self.assertTrue(job["description"].startswith("Summary\nWe build digital twins"))
         self.assertIn("- Lead end-to-end delivery", job["description"])
         self.assertNotIn("Network Leads", job["description"])                        # the description stops where the published sections end
-        self.assertEqual(r.uploads, [(TOKEN.decode(), FILENAME, DOCX, resume_app.DOCX)])
+        self.assertEqual(r.uploads, [(TOKEN.decode(), FILENAME, DOCX, resume_app.DOCX)] * 2)        # one copy for the page, one for the Resume column
+        self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], [FILENAME])
+        self.assertIn('href="https://www.notion.so/0a0b0c0d111122223333444455556666"', body)          # straight to the job's Ledger page
+        self.assertIn("Open the job in Notion", body)
         self.assertEqual(r.page.appended[0]["file"]["name"], FILENAME)
         self.assertEqual(r.page.appended[0]["file"]["caption"][0]["text"]["content"], "Tailored resume · built Oct 20, 1:40 AM CT · LIFE OS")
 
@@ -156,10 +164,19 @@ class BuildResume(unittest.TestCase):
             self.assertEqual(r.uploads, [])
 
     def test_success_is_shown_only_after_the_attachment_is_read_back(self):
-        r = Run(Page(lose_attachments=True))
-        status, body = r.build()
-        self.assertEqual(status, 500)
-        self.assertIn("not read back", body)
+        for page in (Page(lose_attachments=True), Page(lose_column=True)):
+            r = Run(page)
+            status, body = r.build()
+            self.assertEqual(status, 500)
+            self.assertIn("not read back", body)
+
+    def test_a_second_build_replaces_the_column_and_keeps_both_files_on_the_page(self):
+        r = Run()
+        r.build()
+        r.reply = {"status": "OK", "filename": "Jim_Markunas_Resume_Acme_TPM_V9b.docx", "docx": base64.b64encode(DOCX).decode()}
+        r.build()
+        self.assertEqual([f["name"] for f in r.page.props["Resume"]["files"]], ["Jim_Markunas_Resume_Acme_TPM_V9b.docx"])
+        self.assertEqual([b["file"]["name"] for b in r.page.appended], [FILENAME, "Jim_Markunas_Resume_Acme_TPM_V9b.docx"])
 
     def test_the_route_and_its_modules_are_in_the_release(self):
         for module in ("lifeos/sources/resume_app.py", "lifeos/platform/notion_files.py"):
