@@ -563,3 +563,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D238: A tick's Cloud Fit batch fills the hour: the batch cap is 45 minutes and the finish job 58 (2026-10-20, Jim; LIFE-41)
 - D239: A lapsed OpenAI sign-in is a clean AUTH_UNAVAILABLE refusal, and the AI Capacity card shows each sign-in's health (2026-10-20, Jim; LIFE-41 / LIFE-77)
 - D240: A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)
+- D241: A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)
