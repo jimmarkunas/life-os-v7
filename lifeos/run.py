@@ -117,6 +117,7 @@ STAGES = {
     "oracle-card": lazy("lifeos.oraclecloud.card"),
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
+    "capacity-card": lazy("lifeos.jobs.fit.capacity_card"),                  # LIFE-77 D228: the AI Capacity card; not configured (AI_CAPACITY_BLOCK_ID unset) until Jim activates it
     "hiring": lazy("lifeos.sources.hiring"),
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "job-page-outreach": lazy("lifeos.sources.job_page_outreach"),        # LIFE-10 §2: the outreach table on each Job Ledger job page; live writes need JOB_PAGE_OUTREACH=on
@@ -149,7 +150,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def _step_code(counts):
