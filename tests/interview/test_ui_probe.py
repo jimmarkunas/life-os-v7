@@ -9,12 +9,15 @@ LIVE = {"PROBE_CONFIRM": "QA", "NOTION_INTERVIEW_TOKEN": "synthetic"}
 
 class Fake:
     """Children per block id; PATCH /children appends (nested children become readable); DELETE removes; refuses listed block types."""
-    def __init__(self, refuse=("tab",)):
+    def __init__(self, refuse=()):
         self.kids = {P.QA_PARENT: [{"id": "other", "type": "child_page", "child_page": {"title": "Smartsheet notes"}, "has_children": True}],
                      P.UI3C: [{"id": "u1", "type": "column_list", "has_children": True}],
                      "u1": [{"id": "u2", "type": "column", "has_children": True}],
-                     "u2": [{"id": "u3", "type": "tab", "tab": {"rich_text": [{"plain_text": "Private tab title"}]}, "has_children": False},
-                            {"id": "u4", "type": "table", "has_children": False}]}
+                     "u2": [{"id": "u3", "type": "tab", "tab": {}, "has_children": True},
+                            {"id": "u4", "type": "table", "has_children": False}],
+                     "u3": [{"id": "u5", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Private tab title"}]}, "has_children": True},
+                            {"id": "u6", "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": True}],
+                     "u5": [{"id": "u7", "type": "heading_3", "has_children": False}], "u6": [{"id": "u8", "type": "paragraph", "has_children": False}]}
         self.refuse, self.calls, self.n = set(refuse), [], 0
 
     def get_page(self, page_id):
@@ -23,7 +26,7 @@ class Fake:
     def _new(self, prefix, blocks):
         out = []
         for block in blocks:
-            if block["type"] in self.refuse:
+            if block["type"] in self.refuse or (block["type"] == "tab" and not block["tab"].get("children")):
                 error = NotionError("NOTION_HTTP_400")
                 error.detail = "validation_error body.children[0].type"
                 raise error
@@ -70,16 +73,20 @@ class ProbeTests(unittest.TestCase):
             with self.subTest(live=live, env=env), self.assertRaises(NotionError):
                 P.run(0, live, environ=env, client=Fake())
 
-    def test_builds_the_ui_3c_structures_once_and_reports_the_tab_refusal(self):
+    def test_builds_the_ui_3c_structures_once_with_a_tab_mirroring_the_preview(self):
         client = Fake()
         first = P.run(0, True, environ=LIVE, client=client)
         self.assertEqual(first["page"], "created")
-        self.assertEqual((first["nonstandard_types"], first["nonstandard_shapes"]), (["tab"], {"tab": ["rich_text"]}))
-        self.assertEqual(first["checks"]["create_tab"], "NOTION_HTTP_400 validation_error body.children[0].type")
-        for name in ("read_ui3c_tree", "probe_page", "action_center_callout", "action_center_columns_67_33", "main_columns_63_37",
-                     "interviews_callout", "table_in_callout", "read_table_rows", "update_table_row", "update_callout", "link_to_page", "read_probe_tree"):
+        self.assertEqual((first["nonstandard_types"], first["nonstandard_shapes"]), (["tab"], {"tab": []}))
+        self.assertEqual(first["ui3c_tab_tree"], ["1:paragraph", "2:heading_3", "1:paragraph", "2:paragraph"])   # panes and their content, types only
+        for name in ("read_ui3c_tree", "probe_page", "action_center_callout", "action_center_columns_67_33", "main_columns_63_37", "create_tab",
+                     "read_tab_panes", "update_tab_pane", "interviews_callout", "table_in_callout", "read_table_rows", "update_table_row",
+                     "update_callout", "link_to_page", "read_probe_tree"):
             self.assertEqual(first["checks"][name], "ok", name)
-        self.assertEqual(first["failed"], 1)
+        self.assertEqual(first["failed"], 0)
+        self.assertEqual(first["column_ratios"], [0.63, 0.37])
+        tab = first["probe_tree"].index("2:tab")                            # columns → column → tab → panes → content
+        self.assertEqual(first["probe_tree"][tab + 1:tab + 5], ["3:paragraph", "4:paragraph", "3:paragraph", "4:paragraph"])
         self.assertIn("3:table", first["probe_tree"])                       # columns → column → callout → table
         second = P.run(0, True, environ=LIVE, client=client)
         self.assertEqual(second["page"], "reused")
@@ -101,6 +108,11 @@ class ProbeTests(unittest.TestCase):
         text = json.dumps(counts)
         for private in ("Private tab title", "Smartsheet", P.QA_PARENT, P.UI3C, probe, "synthetic"):
             self.assertNotIn(private, text)
+
+    def test_a_refused_tab_is_a_code_and_the_rest_still_runs(self):
+        counts = P.run(0, True, environ=LIVE, client=Fake(refuse=("tab",)))
+        self.assertEqual((counts["checks"]["create_tab"], counts["failed"]), ("NOTION_HTTP_400 validation_error body.children[0].type", 1))
+        self.assertEqual(counts["checks"]["update_callout"], "ok")
 
     def test_a_second_probe_page_stops_before_any_write(self):
         client = Fake()
