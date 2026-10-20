@@ -553,3 +553,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D228: The AI Capacity card: every readable account allowance on the Daily Report, from Oracle's no-model limits request (2026-10-20, Jim; LIFE-77)
 - D229: Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
 - D230: A verified first-interview request with no date yet is Interview 1 in Scheduling Pending, written as the accepted UI 4 interview page (2026-10-20, Jim; LIFE-42)
+- D231: The manual interview acceptance stage reads the exact Job Ledger rows for a Scheduling Pending case, with the Interview token (2026-10-20, Jim; LIFE-42)
