@@ -21,7 +21,7 @@ UI3C = """0:toggle ⚙️ LIFE OS [color=gray]
 1:heading_3 Action Center
 1:column_list
 2:column [width_ratio=0.625]
-3:callout
+3:callout [color=default_background]
 4:toggle Mark Complete · unavailable
 2:column [width_ratio=0.375]
 3:heading_4 Secondary Actions
@@ -29,7 +29,7 @@ UI3C = """0:toggle ⚙️ LIFE OS [color=gray]
 0:divider
 0:column_list
 1:column [width_ratio=0.63]
-2:callout [icon=https://www.notion.so/icons/info-alternate_gray.svg]
+2:callout [color=default_background icon=https://www.notion.so/icons/info-alternate_gray.svg]
 3:heading_3 LinkedIn Contacts
 3:table [table_width=3 has_column_header=True]
 2:tab
@@ -40,7 +40,7 @@ UI3C = """0:toggle ⚙️ LIFE OS [color=gray]
 4:heading_3 How to win this opportunity
 2:toggle Job Description · requirement highlights
 1:column [width_ratio=0.37]
-2:callout [icon=https://www.notion.so/icons/info-alternate_gray.svg]
+2:callout [color=default_background icon=https://www.notion.so/icons/info-alternate_gray.svg]
 3:heading_3 Quick Facts
 3:table [table_width=2 has_row_header=True]
 2:callout [color=gray_background icon=📅]

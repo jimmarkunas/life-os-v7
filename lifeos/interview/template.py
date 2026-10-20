@@ -14,6 +14,9 @@ from .view import UNCONNECTED, primary_action, stage
 
 GRAY, NV = "gray", "Not verified"
 ARROW, INFO = "https://www.notion.so/icons/arrow-right_gray.svg", "https://www.notion.so/icons/info-alternate_gray.svg"
+PAGE_ICONS = {kind: {"type": "external", "external": {"url": f"https://www.notion.so/icons/{name}_gray.svg"}}
+              for kind, name in (("opportunity", "briefcase"), ("round", "target"))}       # the approved pages' own icons
+PLAIN = "default_background"
 
 
 def run(content, bold=False, link=None, italic=False, color=None):
@@ -140,7 +143,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
              *([" · ", ("Request message ↗", False, link)] if link else [])),
         toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
             "Not available yet: completion needs an authenticated two-step confirmation with a canonical write and read-back, "
-            "which is not proven. Nothing here records completion.")])], None, None,
+            "which is not proven. Nothing here records completion.")])], None, PLAIN,
         (label, True), " · ", "source-backed" if label == "PRIMARY ACTION" else "source evidence incomplete")
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),
@@ -151,7 +154,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "LinkedIn Contacts"),
                  table([["Person", "Role / Relevance", "Outreach Status"], ["No separately verified contacts", "—", "Not tracked"]]),
                  note("Networking contacts for this exact opportunity only. Interviewers and recruiting coordinators remain in "
-                      "their own tables.")], INFO),
+                      "their own tables.")], INFO, PLAIN),
         tabs(("Role Snapshot", [
             h(3, "Role requirements"), field("Key systems", NV), field("Employer need", f"{NV} — the original posting is not connected yet."),
             h(3, "Your fit"), field("Relevant strengths", view.fit_summary + " (LIFE OS fit summary)" if view.fit_summary else NV),
@@ -167,7 +170,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Quick Facts"), table([["Employment Type", NV],
                                              ["Compensation", f"{view.compensation} (Job Ledger)" if view.compensation else NV],
                                              ["Work Arrangement", f"{view.work_mode} (Job Ledger)" if view.work_mode else NV]],
-                                            header_row=False, header_column=True)], INFO),
+                                            header_row=False, header_column=True)], INFO, PLAIN),
         callout([h(3, "Interviews"), table(_interviews(view)),
                  note("Names link to LinkedIn and dates to the Calendar event only once verified; Interview links open the "
                       "interview page.")], "📅", "gray_background"),

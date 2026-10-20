@@ -70,6 +70,9 @@ class WritableFake(Fake):
                 if self.find(key):
                     self.find(key)["has_children"] = True
                 return {"results": copy.deepcopy(items)}
+            if path.startswith("/pages/"):
+                self.pages.setdefault(key, page())["icon"] = body.get("icon")
+                return {"id": key}
             target = self.find(key)
             kind = next(k for k in body)
             target[kind]["rich_text"] = copy.deepcopy(body[kind]["rich_text"])

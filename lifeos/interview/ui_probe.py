@@ -179,14 +179,15 @@ def _render(client):
     counts = {"writes": 0, "readback_ok": 0, "readback_failed": 0, "writes_planned": 0}
     if page is None:
         blocks = create.rendered(before_rounds, tail=None)[0]
-        page = notion.write_tree(client, QA_PARENT, blocks, title=RENDER_TITLE)
+        page = notion.write_tree(client, QA_PARENT, blocks, title=RENDER_TITLE, icon=template.PAGE_ICONS["opportunity"])
         out["create"] = create.finalize(client, page, before_rounds, blocks)
     else:
         out["source_a"] = create.refresh(client, page, before_rounds, True, counts)
     out["replay"] = create.refresh(client, page, before_rounds, True, counts)
     round_page = _one(client, page, "Interview 1")
     if round_page is None:
-        round_page = notion.write_tree(client, page, template.round_page(before_rounds, query, page, create.identity_text(query)), title="Interview 1")
+        round_page = notion.write_tree(client, page, template.round_page(before_rounds, query, page, create.identity_text(query)), title="Interview 1",
+                                       icon=template.PAGE_ICONS["round"])
         client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": round_page},
                                        "properties": {"title": {"type": "title", "title": rich_text("Full Transcript")}}, "children": [template.para(SEED)]})
         tab, left = _round_parts(client, round_page)
@@ -209,7 +210,7 @@ def _render(client):
     if control is None:
         other = view.Opportunity("QA Control", "Wrong-job control", "qa-control-not-this-job", None, None, "not_linked", None, QA_PARENT)
         blocks = create.rendered(other, tail=None)[0]
-        control = notion.write_tree(client, QA_PARENT, blocks, title=CONTROL_TITLE)
+        control = notion.write_tree(client, QA_PARENT, blocks, title=CONTROL_TITLE, icon=template.PAGE_ICONS["opportunity"])
         create.finalize(client, control, other, blocks)
     snap = notion.tree_digest(notion.read_tree(client, control, [notion.TREE_MAX_CALLS]))
     out["wrong_job"] = create.refresh(client, control, after_rounds, True, counts)

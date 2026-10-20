@@ -11,7 +11,7 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, State
-from .template import machine_part, opportunity_page, render_line, round_page
+from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -153,6 +153,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     try:
         notion.write_tree(client, page_id, sections, after=machine[-1]["id"])
         out["writes"] = out["readback_failed"] = 1
+        client.call("PATCH", f"/pages/{page_id}", {"icon": PAGE_ICONS["opportunity"]})
         for block in machine:
             notion.delete_block(client, block["id"])
         heading = tops[len(machine)]
@@ -289,7 +290,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("readback_protected_missing")
         context.require_time()
         try:
-            page_id = notion.write_tree(client, insertion, blocks, title=title)
+            page_id = notion.write_tree(client, insertion, blocks, title=title, icon=PAGE_ICONS[kind])
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1

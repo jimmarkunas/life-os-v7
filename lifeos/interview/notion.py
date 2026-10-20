@@ -321,7 +321,7 @@ def _fill(client, block_id, plan, budget):
         delete_block(client, made[0]["id"])
 
 
-def write_tree(client, parent_id, blocks, after=None, title=None, budget=None):
+def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None):
     """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
     id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
     budget = budget if budget is not None else [TREE_MAX_CALLS]
@@ -335,7 +335,8 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None):
     if title is not None:
         from lifeos.platform.notion_client import rich_text
         target = client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
-                                                "properties": {"title": {"type": "title", "title": rich_text(title)}}, **body})["id"]
+                                                "properties": {"title": {"type": "title", "title": rich_text(title)}},
+                                                **({"icon": icon} if icon else {}), **body})["id"]
         made = children(client, target, budget)
     else:
         target = parent_id
