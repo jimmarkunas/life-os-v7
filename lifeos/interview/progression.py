@@ -5,10 +5,14 @@ already read for that company. The Ledger link is made only by an exact Stable J
 company/title match alone is reported as `unverified`, as is every request when no Ledger rows were read (rows=None).
 Two same-title rows with no requisition to tell them apart, or a Stable Job Key and requisition naming different rows,
 block (D218). Never serialize Invite or Ledger rows into public logs.
+
+A request with no interview date yet (LIFE-42, Interview OS canon "Scheduling Pending") is Interview 1 only when it carries the
+exact request message link and an exact Stable Job Key or requisition that the Ledger rows read confirm (`linked`): an unread
+Ledger, a company/title match, a missing link or a later round without a date never creates a child.
 """
 from dataclasses import dataclass
 from lifeos.platform.names import norm, same_company, same_role
-from .identity import valid_date
+from .identity import scheduling_pending, valid_date
 from .models import ParentQuery, RoundQuery
 
 
@@ -21,6 +25,7 @@ class Invite:
     ordinal: int | None = None
     requisition: str | None = None
     stable_job_key: str | None = None
+    source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +71,8 @@ def progress(invite, rows=()):
     company, role = _text(invite.company), _text(invite.role)
     if not company or not role:
         return Progression("identity_invalid")
+    if invite.interview_date is None and (invite.ordinal is None or (type(invite.ordinal) is int and invite.ordinal == 1)):
+        return _pending(invite, company, role, rows)
     if not valid_date(invite.interview_date):
         return Progression("round_date_missing")
     who = _text(invite.interviewer)
@@ -76,3 +83,18 @@ def progress(invite, rows=()):
     if ledger in ("requisition_ambiguous", "identity_conflict"):
         return Progression(ledger, ledger=ledger)
     return Progression("ready", ParentQuery(company, role), RoundQuery(True, invite.interview_date, who, ordinal), ledger, page_id)
+
+
+def _pending(invite, company, role, rows):
+    """Interview 1 in Scheduling Pending, or a fail-closed code; never a guessed job, round or time."""
+    source = _text(invite.source)
+    query = RoundQuery(True, None, _text(invite.interviewer), 1, source=source, requisition=_text(invite.requisition),
+                       stable_job_key=_text(invite.stable_job_key))
+    if not scheduling_pending(query):
+        return Progression("request_source_missing")
+    if not query.requisition and not query.stable_job_key:
+        return Progression("ledger_unverified", ledger="none")
+    ledger, page_id = ledger_link(invite, rows)
+    if ledger != "linked":
+        return Progression(ledger if ledger in ("requisition_ambiguous", "identity_conflict") else "ledger_unverified", ledger=ledger)
+    return Progression("ready", ParentQuery(company, role), query, ledger, page_id)

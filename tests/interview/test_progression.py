@@ -36,7 +36,8 @@ class Progress(unittest.TestCase):
         self.assertEqual(result.round, RoundQuery(True, "2026-09-28", None, 1))
 
     def test_round_identity_needs_date_and_interviewer_or_ordinal(self):
-        self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=1)).code, "round_date_missing")
+        self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=1)).code, "request_source_missing")   # LIFE-42: no date is Scheduling Pending, which needs the request
+        self.assertEqual(progress(Invite("Example Rides", "Program Lead", None, ordinal=2)).code, "round_date_missing")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", "2026-9-29", ordinal=1)).code, "round_date_missing")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", "2026-09-28")).code, "round_identity_incomplete")
         self.assertEqual(progress(Invite("Example Rides", "Program Lead", "2026-09-28", ordinal=0)).code, "round_identity_incomplete")

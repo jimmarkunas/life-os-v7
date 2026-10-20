@@ -17,6 +17,11 @@ def machine_round(client, ordinal=1, day=None):
     return parent_id, "created-2", query
 
 
+def payload_at(client, page_id):
+    """Index of the first block under the round's Derived heading (the UI 4 template puts Derived last)."""
+    return [notion.text(b) for b in client.blocks[page_id]].index("Derived") + 1
+
+
 class PrepFake(WritableFake):
     def call(self, method, path, body=None):
         if method == "PATCH":
@@ -214,7 +219,7 @@ class PrepTests(unittest.TestCase):
                 marker_block["type"] = kind
                 marker_block[kind] = marker_block.pop("paragraph")
                 marker_block[kind]["rich_text"][0]["text"]["content"] = text
-                client.blocks[page_id] = client.blocks[page_id][:5] + [marker_block] + prep.render(normalized)[1:]
+                client.blocks[page_id] = client.blocks[page_id][:payload_at(client, page_id)] + [marker_block] + prep.render(normalized)[1:]
                 state, _, _ = prep._read_derived(client, page_id)
                 self.assertEqual(state, expected)
 
@@ -354,10 +359,11 @@ class PrepTests(unittest.TestCase):
         merged = prep.normalize(PrepEvidence(pressure_points=("Current", "Inherited")))
         self.assertEqual(full_hash, prep.digest(merged))
         before = copy.deepcopy(client.blocks["created-3"])
-        client.blocks["created-3"][5] = block("v7-interview-derived:1;" + full_hash)
+        at = payload_at(client, "created-3")
+        client.blocks["created-3"][at] = block("v7-interview-derived:1;" + full_hash)
         result = self.apply(client, current_query, current)
         self.assertEqual((result["code"], result["writes"]), ("derived_conflict", 0))
-        self.assertEqual(client.blocks["created-3"][5], block("v7-interview-derived:1;" + full_hash))
+        self.assertEqual(client.blocks["created-3"][at], block("v7-interview-derived:1;" + full_hash))
 
     def test_replay_never_carries_or_reads_previous_round_and_ignores_later_changes(self):
         client = PrepFake()

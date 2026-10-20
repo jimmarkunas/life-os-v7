@@ -341,16 +341,23 @@
     {
       "id": "INT-01",
       "jira": [
+        "LIFE-42",
         "LIFE-25",
         "LIFE-46",
         "LIFE-47"
       ],
-      "when": "verified interview request arrives, even before scheduled",
-      "then": "promote whole exact job from Job Outreach to Active Opportunities with all linked conversations",
+      "decisions": [
+        "LIFE-78 Q008 comment 10717",
+        "LIFE-78 Q019 (legacy Q27) comment 10750",
+        "LIFE-42 comments 10824, 10829",
+        "D230"
+      ],
+      "when": "verified, source-linked interview request arrives, even before scheduled",
+      "then": "reuse or create the exact opportunity parent and exactly one Interview 1 child in Scheduling Pending (no Calendar event or invented time), written as the accepted UI 4 interview page; promote the whole exact job from Job Outreach to Active Opportunities with all linked conversations",
       "source": "direct recruiter mail/Calendar/progression",
-      "guard": "ambiguous requests go to Needs Review, no duplicate opportunity",
-      "acceptance": "same job identity moves and retains history",
-      "delivery_state": "missing"
+      "guard": "exact request link plus a Ledger-confirmed requisition or Stable Job Key; company/title-only, unread Ledger, ambiguous or conflicting identity creates nothing (REVIEW); replay writes nothing; human parent and Live/Raw Notes untouched; no duplicate opportunity or child",
+      "acceptance": "same job identity moves and retains history; one real authorized request through the production entry path with Notion read-back, replay and a negative control",
+      "delivery_state": "partial_code_d230_no_live_intake"
     },
     {
       "id": "INT-02",

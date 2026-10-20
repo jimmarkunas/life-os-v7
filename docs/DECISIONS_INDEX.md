@@ -229,3 +229,4 @@ This index is checked by a test: add a line here with every new decision.
 - D228 — The AI Capacity card: every readable account allowance on the Daily Report, from Oracle's no-model limits request (2026-10-20, Jim; LIFE-77)
 - D229 — Mark as Sent records the person's employer: typed, or the current employer the chosen lead's own line states; never guessed (2026-10-20, Jim; LIFE-10 / LIFE-21)
 - D229 — Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
+- D230 — A verified first-interview request with no date yet is Interview 1 in Scheduling Pending, written as the accepted UI 4 interview page (2026-10-20, Jim; LIFE-42)
