@@ -1,8 +1,21 @@
+import contextlib
+import io
 import unittest
 
 from lifeos.platform import db
 
 ATTEMPTS = len(db.RETRY_WAITS)
+_quiet = contextlib.redirect_stderr(io.StringIO())
+
+
+def setUpModule():
+    """The retry paths print their invented `store:` lines by design. In CI's prep job they read like real store failures in the run log, so the
+    module keeps them out of it; a test that checks a line captures stderr itself."""
+    _quiet.__enter__()
+
+
+def tearDownModule():
+    _quiet.__exit__(None, None, None)
 
 
 class ConnectionConfigTests(unittest.TestCase):
@@ -263,6 +276,23 @@ class OracleRouteTests(unittest.TestCase):
             os.environ.pop(key)
         self.run_([None])
         self.assertIsNone(self.proxy(self.cmds[0]))                                                    # without the route configured the switch does nothing
+
+    def test_a_tunnel_opened_through_oracle_is_logged_once_even_without_a_failure(self):
+        """The 48 h watch counts Oracle tunnels. A forced first attempt that succeeds has no failure to report, so before this it left no line at all
+        (live proof run 39360136918); a reused tunnel stays silent, since publish opens hundreds of sessions through one."""
+        import os
+        os.environ["LIFEOS_ACQ_SSH_VIA"] = "oracle"
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.run_([None])
+            self.run_([None])                                                                          # the same process again: the tunnel is reused
+        self.assertEqual([s for s in err.getvalue().splitlines() if s.startswith("store:")], ["store: connected on attempt 1 of 4 via oracle"])
+
+    def test_a_direct_connection_with_no_failure_stays_silent(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(self.run_([None]), "connected")
+        self.assertNotIn("store:", err.getvalue())
 
     def test_the_relay_never_holds_the_pipe_this_process_waits_on_and_its_refusal_is_still_named(self):
         """Live run 39359049454: an inherited stderr pipe made every Oracle start wait for its timeout. The relay writes to a file in the tunnel directory."""

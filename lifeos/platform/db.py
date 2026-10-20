@@ -172,11 +172,13 @@ def connect():
         extra = _jitter() if attempt or _spread[0] else 0
         _spread[0] = False
         time.sleep(wait + extra)
+        opened = False
         try:
             with _lock:
                 if not _alive():
                     _close_tunnel()
                     _open_tunnel(cfg, jump if via else None)
+                    opened = True
                 port = _tunnel["port"]
             try:
                 import pymysql
@@ -185,8 +187,8 @@ def connect():
                                              autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
             except Exception:
                 raise StoreError("STORE_DB_CONNECT_FAILED") from None
-            if last:
-                print(f"store: connected on attempt {attempt + 1} of {len(RETRY_WAITS)}{' via oracle' if via else ''} after {last}", file=sys.stderr)   # a recovery is counted, so the route can be judged
+            if last or (via and opened):                                                                # a recovery, and every tunnel opened through Oracle (forced or not), is counted so the route can be judged; a reused tunnel adds nothing
+                print(f"store: connected on attempt {attempt + 1} of {len(RETRY_WAITS)}{' via oracle' if via else ''}{f' after {last}' if last else ''}", file=sys.stderr)
             break
         except StoreError as error:
             last = str(error)
