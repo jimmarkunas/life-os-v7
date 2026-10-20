@@ -534,3 +534,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D221: Role-specific outreach: Mark as Sent on the private Close service creates one Waiting row on the Recruiters data source linked to the exact Job Ledger job; Job Outreach is one row per job (2026-10-19, Jim; LIFE-21 / LIFE-47 / LIFE-78 M2)
 - D222: Job Outreach: a Claude-proposed, dormant V7 writer for the Jim-approved native two-table direction; its visuals await Jim's acceptance (2026-10-19; LIFE-47 / LIFE-78 M2)
 - D223: D222 withdrawn: job outreach never appears on the Daily Report; it lives in the Job Ledger until an interview (2026-10-20, Jim; LIFE-10 / LIFE-47)
+- D224: A published job the cloud excludes is excluded: the Cloud Fit verdict is final and the gated audit removes its page (2026-10-20, Jim; LIFE-41)
