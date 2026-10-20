@@ -59,6 +59,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-surface` -> `lifeos.sources.network_surface:run`
 - `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
 - `notion-sandbox-access` -> `lifeos.sources.notion_sandbox_access:run`
+- `notion-sandbox-outreach-proof` -> `lifeos.sources.notion_sandbox_outreach_proof:run`
 - `oracle-card` -> `lifeos.oraclecloud.card:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
@@ -287,6 +288,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/newsletters/parsers/reed.py`: Reed job-alert cards. Reed course links are intentionally outside this parser.
 - `lifeos/sources/newsletters/sweep.py`: Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
 - `lifeos/sources/notion_sandbox_access.py`: LIFE-10 §2 (TL comment 10754): a one-time, read-only check of whether the existing Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger. M
+- `lifeos/sources/notion_sandbox_outreach_proof.py`: LIFE-10 §2 (TL comment 10754, Jim's plan approval on LIFE-10 comment 10773): a one-time, synthetic proof of the job-page outreach writer (D225) against the real Notion AP
 - `lifeos/sources/outreach_app.py`: LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person abou
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
