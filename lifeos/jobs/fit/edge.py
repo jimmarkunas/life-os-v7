@@ -90,14 +90,27 @@ LIMIT_WAIT = 45                    # LIFE-77: Oracle reads the Codex meter (~3.5
 NAME = re.compile(r"[a-z0-9_-]{1,32}\Z")
 
 
-def limits(host, send=exchange, wait=LIMIT_WAIT):
+ESTIMATE_KEYS = {"label", "basis_calls", "per_call_percent", "per_call_below", "proposed_percent", "proposed_percent_at_most", "calls_left", "calls_left_at_least"}
+
+
+def _estimate(raw):
+    """Oracle's estimate for the reported Cloud Fit backlog (front.py estimate()), numbers and window labels only; anything else is off contract."""
+    windows = [{k: v for k, v in w.items() if k in ESTIMATE_KEYS} for w in raw["windows"]]
+    assert type(raw["proposed"]) is int and raw["proposed"] >= 0 and isinstance(raw["reported_at"], str) and len(raw["reported_at"]) <= 40 and len(windows) <= 6
+    assert all(isinstance(w.get("label"), str) and len(w["label"]) <= 32 and type(w.get("basis_calls")) is int
+               and all(type(v) in (int, float) and v >= 0 for k, v in w.items() if k not in ("label",)) for w in windows)
+    return {"proposed": raw["proposed"], "reported_at": raw["reported_at"], "windows": windows}
+
+
+def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
     """LIFE-77: Oracle's `limits` request (no model run, no in-flight lock) -> {"read_at", "pools": [{"provider", "windows": [{"label", "used", "reset_at"}], "stop"?}],
-    "unavailable": [provider], "safety_cap": {"runs_today", "limit"} | None}, labels and numbers only; or an EdgeError fixed code."""
+    "unavailable": [provider], "safety_cap": {"runs_today", "limit"} | None}, labels and numbers only; or an EdgeError fixed code. backlog (the Cloud Fit
+    backlog count, from the batch) is reported to Oracle, which keeps that one number and returns its per-window estimate on the openai pool from then on."""
     if not host:
         raise EdgeError("FIT_EDGE_NO_HOST")
     nonce = secrets.token_hex(16)
-    body = json.dumps({"limits": True, "nonce": nonce}, separators=(",", ":")).encode()
-    raw = send(host, b"fit1 %d\n" % len(body) + body, wait=wait)
+    body = json.dumps({"limits": True, "nonce": nonce, **({"backlog": backlog} if backlog is not None else {})}, separators=(",", ":")).encode()
+    raw = (send or exchange)(host, b"fit1 %d\n" % len(body) + body, wait=wait)      # looked up at call time, so a patched sender is the one used
     if not raw:
         raise EdgeError("FIT_EDGE_NO_REPLY")
     if len(raw) > MAX_REPLY:
@@ -118,7 +131,7 @@ def limits(host, send=exchange, wait=LIMIT_WAIT):
                        and (w["reset_at"] is None or (isinstance(w["reset_at"], str) and len(w["reset_at"]) <= 40)) for w in windows)
             stop = p.get("stop")
             assert stop is None or (type(stop) is int and 1 <= stop <= 100)
-            pools.append({"provider": p["provider"], "windows": windows, **({"stop": stop} if stop else {})})
+            pools.append({"provider": p["provider"], "windows": windows, **({"stop": stop} if stop else {}), **({"estimate": _estimate(p["estimate"])} if p.get("estimate") else {})})
         unavailable = reply["unavailable"]
         assert isinstance(unavailable, list) and all(isinstance(u, str) and NAME.match(u) for u in unavailable)
         cap = reply.get("safety_cap")
