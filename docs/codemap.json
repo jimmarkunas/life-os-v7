@@ -135,6 +135,7 @@
   "D233": "Every manual interview acceptance run also runs a second, always-dry-run negative case from its own secret (2026-10-20, Jim; LIFE-42)",
   "D234": "Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)",
   "D235": "A new opportunity parent is the accepted UI 3b page, and Jim adopts his own page with the exact first line `LIFE OS: adopt` (2026-10-20, Jim; LIFE-46)",
+  "D236": "The machine marker and identity lines are folded into one collapsed \"\u2699\ufe0f LIFE OS\" toggle at the top of the page (2026-10-20, Jim; LIFE-46)",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
