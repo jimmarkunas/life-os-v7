@@ -28,6 +28,9 @@ class RoundQuery:
     interviewer: str | None = None
     ordinal: int | None = None
     explicit_child_page_id: str | None = None
+    source: str | None = None                  # LIFE-42: the exact request message link (private page content only)
+    requisition: str | None = None
+    stable_job_key: str | None = None
 
 
 @dataclass(frozen=True)

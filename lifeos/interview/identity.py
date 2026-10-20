@@ -12,6 +12,12 @@ def valid_date(value):
         return False
 
 
+def scheduling_pending(query):
+    """LIFE-42: a verified, source-linked first-interview request with no confirmed time yet is Interview 1 in Scheduling Pending."""
+    source = query.source.strip() if isinstance(query.source, str) else ""
+    return query.interview_date is None and query.ordinal == 1 and type(query.ordinal) is int and source.startswith("https://")
+
+
 def resolve_parent(query, scan):
     if not scan.complete:
         return Resolution(State.BLOCKED, "pipeline_incomplete")
@@ -52,7 +58,12 @@ def resolve_child(parent, query, scan, explicit=None):
     else:
         if any(c.identity_valid is False for c in candidates):
             return Resolution(State.BLOCKED, "round_identity_incomplete")
-        if query.interview_date is not None:
+        if scheduling_pending(query):
+            # Interview 1 is the same child whether or not a time exists yet; a parent with unnumbered rounds is not guessed.
+            if any(type(c.ordinal) is not int or c.ordinal <= 0 for c in candidates):
+                return Resolution(State.BLOCKED, "round_identity_incomplete")
+            candidates = [c for c in candidates if c.ordinal == 1]
+        elif query.interview_date is not None:
             if not valid_date(query.interview_date):
                 return Resolution(State.BLOCKED, "round_identity_incomplete")
             if any(not valid_date(c.interview_date) for c in candidates):
@@ -68,7 +79,7 @@ def resolve_child(parent, query, scan, explicit=None):
             candidates = [c for c in candidates if c.ordinal == query.ordinal]
         else:
             return Resolution(State.BLOCKED, "round_identity_incomplete")
-    if not query.explicit_child_page_id and len(candidates) > 1 and query.interviewer:
+    if not query.explicit_child_page_id and len(candidates) > 1 and query.interviewer and not scheduling_pending(query):
         candidates = [c for c in candidates if norm(c.interviewer) == norm(query.interviewer)]
     if not query.explicit_child_page_id and len(candidates) > 1 and query.ordinal is not None:
         candidates = [c for c in candidates if c.ordinal == query.ordinal]
@@ -90,7 +101,7 @@ def creation_eligibility(target, parent, ownership, child, scan, query):
         return child.code
     if query.confirmed_round is not True:
         return "round_unconfirmed"
-    if not valid_date(query.interview_date):
+    if not valid_date(query.interview_date) and not scheduling_pending(query):
         return "round_date_missing"
     if not (query.interviewer and query.interviewer.strip()) and not (type(query.ordinal) is int and query.ordinal > 0):
         return "round_identity_incomplete"
