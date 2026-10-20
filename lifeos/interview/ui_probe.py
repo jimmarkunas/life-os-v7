@@ -11,6 +11,7 @@ from lifeos.platform.notion_client import Client, NotionError, rich_text
 QA_PARENT = "3d43c5a0592681fdad10d75d83852fa7"        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
 UI3C = "3ff3c5a0592681aeba23e00675f097f1"             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
 TITLE = "UI 3c — REST capability probe (QA, machine-written)"
+TEXT = {"paragraph", "heading_1", "heading_2", "heading_3", "heading_4", "toggle", "callout", "quote", "bulleted_list_item", "numbered_list_item"}
 STANDARD = {"paragraph", "heading_1", "heading_2", "heading_3", "heading_4", "callout", "toggle", "column_list", "column", "table", "table_row",
             "bulleted_list_item", "numbered_list_item", "to_do", "divider", "child_page", "link_to_page", "quote", "code"}
 
@@ -68,6 +69,27 @@ def _append(client, parent, blocks):
     return client.call_once("PATCH", f"/blocks/{parent}/children", {"children": blocks})["results"]
 
 
+def _subtree(tree, kind):
+    """The relative "depth:type" outline under the first `kind` block of a _tree() result (types only)."""
+    for index, (depth, name, _) in enumerate(tree):
+        if name == kind:
+            out = []
+            for inner, inner_kind, _ in tree[index + 1:]:
+                if inner <= depth:
+                    break
+                out.append(f"{inner - depth}:{inner_kind}")
+            return out
+    return []
+
+
+def _tab(outline):
+    """A tab block whose panes mirror the first-level children of the accepted preview's tab (text types only), each with one paragraph."""
+    panes = [kind.split(":", 1)[1] for kind in outline if kind.startswith("1:")] or ["paragraph", "paragraph"]
+    children = [_text(kind if kind in TEXT else "paragraph", f"Pane {n}", children=[_text("paragraph", f"Pane {n} content")])
+                for n, kind in enumerate(panes, 1)]
+    return {"object": "block", "type": "tab", "tab": {"children": children}}
+
+
 def _probe_page(client, budget):
     pages = [b for b in _children(client, QA_PARENT, budget) if b.get("type") == "child_page" and (b.get("child_page") or {}).get("title") == TITLE]
     if len(pages) > 1:
@@ -95,12 +117,13 @@ def run(limit, live, environ=os.environ, client=None):
         raise NotionError("UI_PROBE_CONFIRM_REQUIRED")
     client = client or Client({"NOTION_API_TOKEN": environ.get("NOTION_INTERVIEW_TOKEN") or "", "UNUSED": "interview-unused"}, source_name="UNUSED")
     counts = {"interview_ui_probe": "live", "page": "", "checks": {}, "ui3c_types": [], "ui3c_page_keys": [], "nonstandard_types": [],
-              "nonstandard_shapes": {}, "probe_tree": [], "failed": 0}
+              "nonstandard_shapes": {}, "ui3c_tab_tree": [], "column_ratios": [], "probe_tree": [], "failed": 0}
     budget = [120]
     tree = _check(counts, "read_ui3c_tree", lambda: _tree(client, UI3C, budget, shapes=counts["nonstandard_shapes"]))
     if tree:
         counts["ui3c_types"] = sorted({kind for _, kind, _ in tree})
         counts["nonstandard_types"] = sorted({kind for _, kind, _ in tree} - STANDARD)
+        counts["ui3c_tab_tree"] = _subtree(tree, "tab")
     page = _check(counts, "read_ui3c_page", lambda: client.get_page(UI3C))
     if page:
         counts["ui3c_page_keys"] = sorted(page)
@@ -122,8 +145,13 @@ def run(limit, live, environ=os.environ, client=None):
     columns = _check(counts, "read_columns", lambda: _children(client, main[0]["id"], budget)) if main else None
     if columns and len(columns) == 2:
         left, right = columns[0]["id"], columns[1]["id"]
-        for kind in counts["nonstandard_types"] or ["tab"]:
-            _check(counts, f"create_{kind}", lambda kind=kind: _append(client, left, [{"object": "block", "type": kind, kind: {}}]))
+        counts["column_ratios"] = [(column.get("column") or {}).get("width_ratio") for column in columns]
+        tab = _check(counts, "create_tab", lambda: _append(client, left, [_tab(counts["ui3c_tab_tree"])]))
+        if tab:
+            panes = _check(counts, "read_tab_panes", lambda: _children(client, tab[0]["id"], budget)) or []
+            if panes and panes[0].get("type") in TEXT:
+                kind = panes[0]["type"]
+                _check(counts, "update_tab_pane", lambda: client.call_once("PATCH", f"/blocks/{panes[0]['id']}", {kind: {"rich_text": rich_text("Pane 1 (updated)")}}))
         callout = _check(counts, "interviews_callout", lambda: _append(client, right, [_text("callout", "Interviews", color="gray_background")]))
         if callout:
             table = _check(counts, "table_in_callout", lambda: _append(client, callout[0]["id"], [_table(
