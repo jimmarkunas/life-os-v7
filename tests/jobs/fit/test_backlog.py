@@ -38,6 +38,26 @@ class Batch(Base):
         return self.row(job_id, ("cloud_status",))[0]
 
 
+class BudgetIsALimitNotAFailure(Batch):
+    """LIFE-41 (first scheduled batch, run 39356515961): 19 of 20 calls fit the 480 s budget and the run was marked failed. A batch that stops at its time limit
+    after real work is normal; only a batch with no time for even one call is a shortfall."""
+
+    def test_reaching_the_budget_after_calls_is_ok_and_the_rest_wait(self):
+        for i in (1, 2, 3):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        endpoint = Endpoint(measured)
+        with mock.patch.object(cloud, "remaining", side_effect=[1000, 1000, 0]):
+            counts = self.batch(5, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_budget_reached"], counts["failed"]), ("OK", 2, 1, 0))
+        self.assertEqual(self.status(3), None)                                                            # unasked, unclaimed: the next run takes it
+
+    def test_no_time_for_even_one_call_is_still_a_shortfall(self):
+        self.titled(1, "Program Manager 1")
+        with mock.patch.object(cloud, "remaining", return_value=0):
+            counts = self.batch(5, Endpoint(measured))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["failed"]), ("DEGRADED(STAGE_BUDGET)", 0, 1))
+
+
 class BoundedBatch(Batch):
     def test_several_distinct_jobs_in_one_batch_most_useful_first_each_once_and_measured(self):
         self.titled(1, "Program Manager A", score=75)
