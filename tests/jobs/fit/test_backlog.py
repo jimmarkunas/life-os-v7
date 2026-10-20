@@ -527,3 +527,11 @@ class QuotaReading(Batch):
         five = summary["windows"]["5h"]
         self.assertEqual((five["basis_calls"], five["per_call_percent"], five["calls_left"]), (2, 3.5, 13))
         self.assertIsNone(cloud.quota_summary([None, None]))
+
+
+class ReceiptFieldIsNamed(Batch):
+    def test_a_rejected_receipt_names_its_field_so_a_stop_is_never_a_guess(self):
+        """LIFE-77 batch 1 (Oct 19): 45 good calls, then FIT_EDGE_RECEIPT_REJECTED with nothing to say which field. The fixed field name is now counted."""
+        self.titled(1, "Program Manager A")
+        counts = self.batch(5, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE, "run_finished": False}, judgment_raw=json.dumps({"score": 90, "rationale": "x", "confidence": "high"}))))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_receipt_fields"]), ("DEGRADED(FIT_EDGE_RECEIPT_REJECTED)", {"RUN_FINISHED": 1}))
