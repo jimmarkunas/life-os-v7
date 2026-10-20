@@ -235,7 +235,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 counts["cloud_skip_reasons"]["LEDGER_" + held.upper()] = counts["cloud_skip_reasons"].get("LEDGER_" + held.upper(), 0) + 1
                 continue                                                 # not recorded: the human state can change, so it is checked again next time
         if remaining(clock() - started, budget) < CALL_SECONDS:
-            _degraded(counts, "STAGE_BUDGET")
+            if batch and counts["cloud_calls"]:
+                counts["cloud_budget_reached"] = 1                       # LIFE-41: a bounded batch stopping at its time limit after real work is normal; the rest wait for the next run
+            else:
+                _degraded(counts, "STAGE_BUDGET")                        # no time for even one call (or the tick's single call): a real shortfall
             break
         if write(CLAIM, (token, _now(), job_id)) != 1:
             counts["cloud_claim_lost"] += 1                              # another worker holds (or finished) this job: never asked twice
