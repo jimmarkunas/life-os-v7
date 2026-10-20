@@ -77,7 +77,36 @@ def render(reading, now):
         text += f" · our Cloud Fit guard {cap['runs_today']}/{cap['limit']} runs today (not a provider limit)"
     if extra:
         text += f" · {extra} more not shown"
-    return text, [HEADER] + cells
+    line = proposed_line(reading)
+    return (text + "\n" + line if line else text), [HEADER] + cells
+
+
+def proposed_line(reading):
+    """The preview's proposed-usage line: what the Cloud Fit backlog V7 last reported would use of each Codex window, from Oracle's measured per-call share
+    (ESTIMATED), or an upper bound while the 1% meter has not moved (BELOW_RESOLUTION). None when no backlog has been reported or nothing is measured yet."""
+    pool = next((p for p in reading["pools"] if p["provider"] == "openai" and p.get("estimate")), None)
+    if not pool:
+        return None
+    est, stop = pool["estimate"], pool.get("stop")
+    used = {w["label"]: w["used"] for w in pool["windows"]}
+    parts, fits, basis = [], True, 0
+    for w in est["windows"]:
+        label = WINDOWS.get(w["label"], (w["label"],))[0]
+        basis = max(basis, w["basis_calls"])
+        if "proposed_percent" in w:
+            parts.append(f"about {w['proposed_percent']:g}% of the {label} window")
+            share = w["proposed_percent"]
+        elif "proposed_percent_at_most" in w:
+            parts.append(f"at most {w['proposed_percent_at_most']:g}% of the {label} window")
+            share = w["proposed_percent_at_most"]
+        else:
+            continue
+        fits = fits and (not stop or used.get(w["label"], 0) + share < stop)
+    if not parts:
+        return None
+    left = min((w.get("calls_left", w.get("calls_left_at_least")) for w in est["windows"] if "calls_left" in w or "calls_left_at_least" in w), default=None)
+    verdict = f"fits under the {stop}% stop" if fits or not stop else f"about {left:,} calls fit before the {stop}% stop; the rest wait for the reset"
+    return f"Proposed usage · Cloud Fit backlog ({est['proposed']:,} jobs): " + " and ".join(parts) + f" (ESTIMATED from {basis} metered calls) · {verdict}"
 
 
 def _cells(row):

@@ -155,7 +155,7 @@ class Limits(unittest.TestCase):
     def reply(self, **override):
         def send(host, data, wait=None):
             body = json.loads(data.split(b"\n", 1)[1])
-            self.assertEqual(set(body), {"limits", "nonce"})                                                  # never a request, never a profile
+            self.assertLessEqual(set(body), {"limits", "nonce", "backlog"})                                   # never a request, never a profile
             out = {"schema": "lifeos.fit.v1", "status": "LIMITS", "nonce": body["nonce"], "read_at": "2026-10-20T05:30:00+00:00",
                    "pools": READING["pools"], "unavailable": ["groq"], "safety_cap": {"runs_today": 20, "limit": 5000}}
             out.update(override)
@@ -178,3 +178,52 @@ class Limits(unittest.TestCase):
         with self.assertRaises(edge.EdgeError) as ctx:
             edge.limits("", send=self.reply())
         self.assertEqual(str(ctx.exception), "FIT_EDGE_NO_HOST")
+
+
+def with_estimate(proposed, five, week, used_5h=0, used_week=1):
+    pool = {"provider": "openai", "stop": 50, "windows": [{"label": "5h", "used": used_5h, "reset_at": None}, {"label": "Week", "used": used_week, "reset_at": None}],
+            "estimate": {"proposed": proposed, "reported_at": "2026-10-20T05:40:00+00:00", "windows": [{"label": "5h", **five}, {"label": "Week", **week}]}}
+    return {**READING, "pools": [pool], "unavailable": []}
+
+
+class ProposedUsage(unittest.TestCase):
+    """LIFE-77: the preview's proposed-usage line, from Oracle's estimate for the backlog V7 reported."""
+
+    def test_a_backlog_that_fits_under_the_stop(self):
+        reading = with_estimate(300, {"basis_calls": 44, "per_call_below": 0.0227, "proposed_percent_at_most": 6.82, "calls_left_at_least": 2200},
+                                {"basis_calls": 44, "per_call_percent": 0.02, "proposed_percent": 6, "calls_left": 2450})
+        text, _ = card.render(reading, NOW)
+        self.assertEqual(text.split("\n")[1], "Proposed usage · Cloud Fit backlog (300 jobs): at most 6.82% of the 5-hour window and about 6% of the weekly window"
+                                              " (ESTIMATED from 44 metered calls) · fits under the 50% stop")
+
+    def test_a_backlog_that_would_reach_the_stop_says_how_much_fits(self):
+        reading = with_estimate(2692, {"basis_calls": 44, "per_call_below": 0.0227, "proposed_percent_at_most": 61.18, "calls_left_at_least": 2200},
+                                {"basis_calls": 44, "per_call_percent": 0.02, "proposed_percent": 53.84, "calls_left": 2450})
+        line = card.render(reading, NOW)[0].split("\n")[1]
+        self.assertTrue(line.startswith("Proposed usage · Cloud Fit backlog (2,692 jobs): at most 61.18% of the 5-hour window"))
+        self.assertTrue(line.endswith("· about 2,200 calls fit before the 50% stop; the rest wait for the reset"))
+
+    def test_nothing_measured_or_nothing_reported_means_no_line(self):
+        self.assertEqual(len(card.render(with_estimate(10, {"basis_calls": 0}, {"basis_calls": 0}), NOW)[0].split("\n")), 1)
+        self.assertEqual(len(card.render(READING, NOW)[0].split("\n")), 1)
+
+    def test_oracles_estimate_keeps_numbers_only_and_anything_else_is_off_contract(self):
+        est = {"proposed": 2692, "reported_at": "2026-10-20T05:40:00+00:00", "windows": [{"label": "5h", "basis_calls": 44, "per_call_below": 0.0227, "note": "dropped"}]}
+        pools = [{**READING["pools"][0], "estimate": est}]
+        got = edge.limits("oracle.example", send=Limits.reply(Limits(), pools=pools))
+        self.assertEqual(got["pools"][0]["estimate"]["windows"], [{"label": "5h", "basis_calls": 44, "per_call_below": 0.0227}])
+        for bad in ({**est, "proposed": -1}, {**est, "windows": [{"label": "5h", "basis_calls": "44"}]}, {**est, "windows": [{"label": "5h", "basis_calls": 1, "calls_left": -3}]}):
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.limits("oracle.example", send=Limits.reply(Limits(), pools=[{**READING["pools"][0], "estimate": bad}]))
+            self.assertEqual(str(ctx.exception), "FIT_EDGE_LIMITS_OFF_CONTRACT", bad)
+
+    def test_the_backlog_count_goes_to_oracle_only_when_given(self):
+        sent = []
+
+        def send(host, data, wait=None):
+            sent.append(json.loads(data.split(b"\n", 1)[1]))
+            return Limits.reply(Limits())(host, data, wait)
+        edge.limits("oracle.example", send=send)
+        edge.limits("oracle.example", send=send, backlog=2692)
+        self.assertEqual([set(b) for b in sent], [{"limits", "nonce"}, {"limits", "nonce", "backlog"}])
+        self.assertEqual(sent[1]["backlog"], 2692)
