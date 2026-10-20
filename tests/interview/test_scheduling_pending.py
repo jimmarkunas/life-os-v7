@@ -52,7 +52,7 @@ class SchedulingPending(unittest.TestCase):
     def test_request_creates_one_interview_1_in_scheduling_pending_with_the_full_template(self):
         result = progress(REQUEST, [ROW, TWIN])
         self.assertEqual((result.code, result.ledger, result.ledger_page_id), ("ready", "linked", "L1"))
-        self.assertEqual(result.round, RoundQuery(True, None, None, 1, source=SOURCE, requisition="EX-1234"))
+        self.assertEqual(result.round, RoundQuery(True, None, None, 1, source=SOURCE, requisition="EX-1234", ledger_page_id="L1"))
         client = opportunity()
         before = notion.protected_snapshot(client, "opp")
         counts = run(client, result)

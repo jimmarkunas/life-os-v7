@@ -13,6 +13,7 @@ class Ownership(str, Enum):
     MACHINE = "MACHINE"
     HUMAN = "HUMAN"
     UNKNOWN = "UNKNOWN"
+    ADOPT = "ADOPT"                            # LIFE-46: a human page whose exact first line asks LIFE OS to adopt it
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class RoundQuery:
     source: str | None = None                  # LIFE-42: the exact request message link (private page content only)
     requisition: str | None = None
     stable_job_key: str | None = None
+    ledger_page_id: str | None = None          # LIFE-46: the exact Job Ledger row progression linked (private page content only)
 
 
 @dataclass(frozen=True)

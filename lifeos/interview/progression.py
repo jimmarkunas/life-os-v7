@@ -10,7 +10,7 @@ A request with no interview date yet (LIFE-42, Interview OS canon "Scheduling Pe
 exact request message link and an exact Stable Job Key or requisition that the Ledger rows read confirm (`linked`): an unread
 Ledger, a company/title match, a missing link or a later round without a date never creates a child.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from lifeos.platform.names import norm, same_company, same_role
 from .identity import scheduling_pending, valid_date
 from .models import ParentQuery, RoundQuery
@@ -82,7 +82,7 @@ def progress(invite, rows=()):
     ledger, page_id = ledger_link(invite, rows)
     if ledger in ("requisition_ambiguous", "identity_conflict"):
         return Progression(ledger, ledger=ledger)
-    return Progression("ready", ParentQuery(company, role), RoundQuery(True, invite.interview_date, who, ordinal), ledger, page_id)
+    return Progression("ready", ParentQuery(company, role), RoundQuery(True, invite.interview_date, who, ordinal, ledger_page_id=page_id), ledger, page_id)
 
 
 def _pending(invite, company, role, rows):
@@ -97,4 +97,4 @@ def _pending(invite, company, role, rows):
     ledger, page_id = ledger_link(invite, rows)
     if ledger != "linked":
         return Progression(ledger if ledger in ("requisition_ambiguous", "identity_conflict") else "ledger_unverified", ledger=ledger)
-    return Progression("ready", ParentQuery(company, role), query, ledger, page_id)
+    return Progression("ready", ParentQuery(company, role), replace(query, ledger_page_id=page_id), ledger, page_id)

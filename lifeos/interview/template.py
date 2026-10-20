@@ -8,7 +8,7 @@ identity stay the first two blocks and "Derived" stays the last top-level headin
 coaching cards and sandbox review links are demo content, not template. Unknown facts are written as unknown, never guessed.
 """
 from .identity import scheduling_pending
-from .notion import MARKERS
+from .notion import JIM_NOTES, MARKERS
 
 
 def _run(content, bold=False, link=None, italic=False):
@@ -162,3 +162,132 @@ def round_page(parent_query, query, parent_id, pipeline_id, identity):
         _para(("Write unprocessed notes here. Production must never overwrite human-authored content.", False, None, True))])])
     return [_para(MARKERS["round"]), _para(identity), _block("heading_2", _line(f"{round_name} · " + ("Scheduling Pending" if pending else who))),
             columns, _prepare(pending), _live_notes(), _after(pending), raw, _section("Derived")]
+
+
+def _link(label, url):
+    return (label, False, url) if url else None
+
+
+def _url(page_id):
+    return f"https://www.notion.so/{page_id.replace('-', '')}" if page_id else None
+
+
+def _bullets(title, items):
+    return _block("toggle", _line(title), children=[_block("bulleted_list_item", _line(item)) for item in items])
+
+
+OWNERSHIP = (("Opportunity parent", "JD, durable role context, contacts, submitted materials, round index"),
+             ("Interview child", "round-specific notes + assets"), ("Prior interview child", "inherited verified context"),
+             ("Calendar", "logistics"), ("Gmail/Outlook", "recruiting/process facts"), ("Interview OS", "Derived prep only"),
+             ("Jim's notes", "yours only; LIFE OS never writes there"))
+GUARDRAILS = ("One JD per opportunity", "No competing round copies", "No invented interview children", "No synthetic links shown as real",
+              "Preserve Jim-authored content", "Missing context degrades visibly")
+JD_RECORD = ("Original vacancy / posting URL", "Captured full job-description text or archived source", "Core responsibilities",
+             "Required qualifications", "Preferred qualifications", "Tech / domain requirements",
+             "Compensation, location, work arrangement when sourced", "Recruiter clarifications that materially change the role",
+             "Source/provenance and capture date")
+
+
+def opportunity_page(parent_query, query, pipeline_id, marker, adopted=False):
+    """LIFE-46: the accepted UI 3b opportunity parent (UI 3 + QA Opportunity Parent, Jim, LIFE-46 comment 10857) as Notion blocks.
+
+    Same sections, order and wording as UI 3b, filled only with this job's verified facts; everything else is written as not
+    verified. API-forced differences, as for UI 4: UI 3's tabs (Interviews, Strategy, LinkedIn & Outreach, Materials & Sources)
+    are top-level toggle headings below the two columns in the same order, and the nested Action due callout is two lines of
+    Role Snapshot (Notion's API takes two levels of nesting per write). The sandbox banner, demo contact cards, test timeline
+    and review links are demo content, not template. "🔒 Jim's notes" is the last section: for a new page it holds one
+    "Write here." line; on adoption Jim's existing blocks follow it unchanged (`adopted=True` returns the sections only)."""
+    pending = scheduling_pending(query)
+    company, role = parent_query.company.strip(), parent_query.role.strip()
+    request = _link("Request message ↗", query.source.strip() if query.source else None)
+    ledger = _link("Job Ledger row ↗", _url(query.ledger_page_id))
+    pipeline = _link("Daily Report · Hiring Pipeline ↗", _url(pipeline_id))
+    ids = " / ".join(x for x in (f"requisition {query.requisition}" if query.requisition else "",
+                                 f"Stable Job Key {query.stable_job_key}" if query.stable_job_key else "") if x)
+    stage = "🟡 Scheduling Pending · Interview 1" if pending else "Interviewing"
+    snapshot = _callout("📄", "Role Snapshot", [
+        _line((company, True)), _line((role, True)),
+        _line(("Employment: ", True), "Not verified"), _line(("Compensation: ", True), "Not verified"),
+        _line(("Work arrangement: ", True), "Not verified"), _line(("Core systems: ", True), "Not verified"),
+        _line(("Role shape: ", True), "Not verified"), _line(("Stage: ", True), (stage, True)),
+        _line(("Verified scheduling evidence: ", True), *(["No interview time yet · ", request] if pending and request else ["Not verified"])),
+        _line(("Job Ledger: ", True), *([ledger] if ledger else ["exact row not linked"]), f" · {ids}" if ids else ""),
+        _line("Close opportunity: approved confirmation design only; no live action link."),
+        _line(("Action due: ", True), "No verified deadline."),
+        _line(("Next action: ", True), "Confirm an interview time with the recruiter." if pending
+              else "Verify interview scheduling / outcome before marking any round completed.")])
+    timeline = _callout("📅", "Interview Timeline · evidence versus demo", [
+        _line(*(["Interview request: ", request, " · no interview time yet"] if pending and request else ["No verified timeline events yet."])),
+        _line(("Interview result: ", True), "Unverified.")])
+    follow = _callout("📨", "Follow-up · owner and evidence", [
+        _line(("Owner: ", True), "Jim · ", ("Contacts: ", True), "not verified."),
+        _line(("Next action: ", True), "Verify the outcome and whether a response/commitment remains before sending anything; "
+              "do not infer an unanswered message from an incomplete source check."),
+        _line(("Next due: ", True), "No verified current deadline.")])
+    strategy = _callout("➡️", "Working strategy / next action", [_line("Derived: Not run.")])
+    nav = _callout("🔗", "Quick navigation", [x for x in (
+        _line("Job Description — separate full-width section below (verbatim source still pending)"), _line(pipeline),
+        _line(ledger) if ledger else None, _line(request) if request else None,
+        _line("Interview rounds — child pages at the end of this page"),
+        _line("Jim's notes — protected section at the bottom of this page")) if x])
+    context = _callout("📄", "Role context · highlights (not full JD)", [
+        _line("Not verified."), _line("Full, verbatim JD belongs only in the separate Job Description element below.")])
+    contacts = _callout("👥", "Contacts", [
+        _line("No verified contacts yet."),
+        _line("Gmail opens an evidenced original message/thread. LinkedIn opens only a verified profile. Never create a contact, "
+              "log a sent message, or change hiring state by opening a link. Missing source destinations stay unlinked.")])
+    health = _block("callout", _rich([[_run("Source health · freshness", True)],
+        _line(("Request message: ", True), "linked" if request else "not recorded"),
+        _line(("Interview Calendar / meeting outcome: ", True), "Not verified."),
+        _line(("JD Health: ", True), ("🟠 INCOMPLETE", True), " — no clean full archived JD yet. Until fixed, Interview OS may use "
+              "verified role notes but must not pretend they are the full posting."),
+        _line(("Round Health: ", True), "🟡 Interview 1: Scheduling Pending" if pending else "🟡 Rounds: not verified"),
+        _line(("Submitted resume: ", True), "Not verified."), _line(("LinkedIn: ", True), "Not verified."),
+        _line("Missing or stale sources must remain visibly ", ("UNVERIFIED / DEGRADED", True), ", never silently current or empty.")]),
+        icon={"type": "emoji", "emoji": "⚠️"}, color="yellow_background")
+    owners = _callout("📄", "Canonical Ownership", [_line((f"{who} ", True), f"→ {what}") for who, what in OWNERSHIP])
+    rails = _callout("⚠️", "Guardrails", [_line(rule) for rule in GUARDRAILS])
+    columns = {"object": "block", "type": "column_list", "column_list": {"children": [
+        {"object": "block", "type": "column", "column": {"children": [snapshot, timeline, follow, strategy]}},
+        {"object": "block", "type": "column", "column": {"children": [nav, context, contacts, health, owners, rails]}}]}}
+    italic = lambda value: _para((value, False, None, True))
+    sections = [
+        _callout("🧭", "Canonical opportunity parent", [_line("Owns durable role context, the one canonical Job Description, recruiting "
+                                                               "contacts, submitted materials, and the interview-round chain.")]),
+        columns,
+        _section("Interviews", [
+            _block("heading_3", _line("Interview Chain · source links where verified")),
+            italic("Each round is a durable child of this opportunity and also participates in an ordered round chain. "
+                   "Later rounds inherit verified context from earlier rounds."),
+            _block("bulleted_list_item", _line("Round pages are child pages at the end of this opportunity page.")),
+            _block("bulleted_list_item", _line("Additional rounds: none verified. Do not manufacture future child pages."))]),
+        _section("Strategy", [
+            _block("heading_3", _line("Opportunity strategy · derived, not the job description")),
+            _para("Derived: Not run."),
+            italic("The complete, verbatim source JD belongs exclusively in the separate Job Description section below, never in this strategy tab.")]),
+        _section("LinkedIn & Outreach", [
+            _para("No verified LinkedIn connections linked to this job yet."),
+            _para(("Interaction boundary: ", True), "Opening a verified LinkedIn profile is read-only; only the separately authorized "
+                  "Mark as Sent workflow can create a canonical tracked Waiting conversation. Referral offered is not referral confirmed. "
+                  "Contacts/progress are associated with the exact job and must not create another CRM.")]),
+        _section("Materials & Sources", [
+            _block("heading_3", _line("Submitted materials")),
+            _block("bulleted_list_item", _line(("Canonical submitted resume: ", True), "source/version should be linked here once verified")),
+            _block("bulleted_list_item", _line(("Other candidate materials: ", True), "none verified. Any case study, presentation, "
+                                               "portfolio item, or take-home belongs here once actually sent.")),
+            _block("heading_3", _line("Source navigation")),
+            _block("bulleted_list_item", _line("Canonical Job Ledger: ", *([ledger] if ledger else ["not linked"]))),
+            _block("bulleted_list_item", _line("Email source: ", *([request] if request else ["not recorded"]))),
+            _block("bulleted_list_item", _line("Calendar source: unavailable until scheduling is confirmed"))]),
+        _block("heading_3", _line("Job Description — original source (separate from Strategy)")),
+        _callout("📄", "SOURCE JD NOT YET ATTACHED · VERBATIM CONTENT ONLY", [_line(
+            "Insert the complete, authoritative job description for this opportunity here when obtained, preserving the original wording "
+            "and a link to its source. Do not substitute AI strategy, inferred requirements or the short Role Context summary above for "
+            "the JD. Interview pages link here; they do not maintain separate copies.")]),
+        _bullets("Required JD record", JD_RECORD),
+        {"object": "block", "type": "divider", "divider": {}},
+        _block("heading_2", _line(JIM_NOTES)),
+        _callout("✍️", "Your space · LIFE OS never writes, moves or deletes anything below this heading.", [_line(
+            "When you adopt an existing hand-written page, everything you already wrote is kept here unchanged, in its original order. "
+            "LIFE OS checks after every write that this section is unchanged; if it changed, it stops and reports DEGRADED.")])]
+    return sections if adopted else [_para(marker)] + sections + [italic("Write here.")]

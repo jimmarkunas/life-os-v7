@@ -1,12 +1,12 @@
 """Insert-only B2 vertical slice; one page per evidence pass, no write retries."""
 import json
 from lifeos.platform.names import core, norm, split_title
-from lifeos.platform.notion_client import NotionError, rich_text
+from lifeos.platform.notion_client import NotionError
 from lifeos.platform.runtime import DeadlineExceeded
 from . import notion
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, State
-from .template import round_page
+from .template import opportunity_page, round_page
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -40,17 +40,49 @@ def parse_identity(value):
         return None
 
 
-def skeleton(kind, query):
-    """The opportunity parent skeleton; a round gets the full UI 4 page (template.round_page)."""
-    def block(kind, value):
-        return {"object": "block", "type": kind, kind: {"rich_text": rich_text(value)}}
-    return [block("paragraph", notion.MARKERS[kind])] + [block("heading_2", title) for title in ("Live Notes", "Raw Notes", "Interview Rounds")]
+def adopt(client, environ, parent, parent_query, query, live, context, out):
+    """LIFE-46: one adoption of Jim's own page whose exact first line is `LIFE OS: adopt` (accepted UI 3b). The UI 3b sections and
+    the Jim's notes heading go in right after that line, the line becomes the adopted marker, and nothing Jim wrote is edited,
+    moved or deleted. Rounds come on a later run. A page that already has LIFE OS sections or a second marker is never adopted."""
+    if query.confirmed_round is not True:
+        return "pursuit_unconfirmed"
+    blocks = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
+    labels = [notion.text(b) for b in blocks]
+    if (labels.count(notion.ADOPT) != 1 or notion.JIM_NOTES in labels
+            or any("v7-interview" in label for label in labels)):
+        return "adopt_conflict"
+    before = notion.human_tail(client, parent.page_id, blocks)
+    out["writes_planned"] = 1
+    if not live:
+        return "adopt_allowed"
+    context.require_time()
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    marker = notion.MARKERS["opportunity"] + ";adopted=" + datetime.now(ZoneInfo("America/Chicago")).date().isoformat()
+    sections = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), marker, adopted=True)
+    try:
+        notion.append_children(client, parent.page_id, blocks[0]["id"], sections)
+    except NotionError:
+        return "write_failed"
+    out["writes"] = out["readback_failed"] = 1
+    try:
+        notion.set_paragraph(client, blocks[0]["id"], marker)
+    except NotionError:
+        return "write_failed"                                           # the adopt line stays; the next run reports adopt_conflict
+    if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:
+        return "readback_marker_missing"
+    if notion.protected_snapshot(client, parent.page_id, "opportunity") is None:
+        return "readback_protected_missing"
+    if notion.human_tail(client, parent.page_id) != before:
+        return "readback_protected_changed"
+    out["readback_failed"], out["readback_ok"], out["parents_adopted"] = 0, 1, 1
+    return "parent_adopted"
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
     """Private evidence in, counts and fixed code out. deferred forbids parent+round in one run."""
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
-           "parents_created": 0, "rounds_created": 0, "code": "pipeline_incomplete"}
+           "parents_created": 0, "parents_adopted": 0, "rounds_created": 0, "code": "pipeline_incomplete"}
     def finish(code):
         out["code"] = code
         return out
@@ -75,10 +107,16 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             if insertion is None:
                 return finish("active_target_incomplete")
             kind, code = "opportunity", "parent_create_allowed"
+            blocks = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), notion.MARKERS["opportunity"])
         else:
             if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
                 return finish("parent_exists")
             owner = notion.ownership(client, parent.page_id, "opportunity")
+            if owner == Ownership.ADOPT:
+                code = adopt(client, environ, parent, parent_query, query, live, context, out)
+                if code == "parent_adopted":
+                    deferred.add(parent.page_id)
+                return finish(code)
             if owner != Ownership.MACHINE:
                 if owner == Ownership.HUMAN and query.explicit_child_page_id:
                     children = notion.child_scan(client, parent.page_id, context)
@@ -103,12 +141,12 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             return finish(code)
         context.require_time()
         if kind == "round":
-            before = notion.protected_snapshot(client, insertion)
+            before = notion.protected_snapshot(client, insertion, "opportunity")
             if before is None:
                 return finish("readback_protected_missing")
         context.require_time()
         try:
-            page = notion.insert_page(client, insertion, title, blocks if kind == "round" else skeleton(kind, query))
+            page = notion.insert_page(client, insertion, title, blocks)
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1
@@ -121,7 +159,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             refreshed = resolve_parent(parent_query, notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context))
         else:
             refreshed = resolve_child(parent, query, notion.child_scan(client, insertion, context))
-            if notion.protected_snapshot(client, insertion) != before:
+            if notion.protected_snapshot(client, insertion, "opportunity") != before:
                 return finish("readback_protected_changed")
         if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, page_id):
             return finish("readback_identity_mismatch")

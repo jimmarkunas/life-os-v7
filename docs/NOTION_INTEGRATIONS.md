@@ -29,6 +29,10 @@ LIFE OS Job Ledger; the next dry run saw both rows (run 39372809707, comment 108
 Scheduling Pending request's exact job by reading the Ledger rows for that company (Company, Job, Stable Job Key) with this connection.
 It never writes the Ledger. Jim connected LIFE OS Interview OS to the LIFE OS Job Ledger on Oct 20 2026.
 
+**Note 4 — Adoption writes Jim's own opportunity page (LIFE-46 D235, Oct 20 2026).** Only when a Hiring Pipeline opportunity page's first line
+is exactly `LIFE OS: adopt`, LIFE OS Interview OS appends the UI 3b sections after that line and rewrites the line (two PATCH calls on that
+page only). It needs the same page access the round writer already has; no new connection.
+
 ## Rules
 
 - Share each page or database only with the connection in its row. Never add a production page to a second connection to work around a 404.
