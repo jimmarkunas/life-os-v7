@@ -210,6 +210,12 @@ def write_region(client, page_id, text_lines, live):
     return "WRITTEN" if live else "DRY_RUN"
 
 
+def writer(environ):
+    """The Notion client the Daily Report cards use (their token; no data source: this writes one page's blocks and queries nothing)."""
+    from lifeos.platform.notion_client import Client                                      # noqa: PLC0415 - only a Notion run needs it
+    return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+
+
 def report(live, environ=os.environ, now=None, opener=urlopen, client=None):
     now = now or datetime.now(timezone.utc)
     branches, prs = read_repo(environ["GITHUB_REPOSITORY"], environ["GITHUB_TOKEN"], opener=opener)
@@ -222,9 +228,7 @@ def report(live, environ=os.environ, now=None, opener=urlopen, client=None):
     page = report_region.clean_id(environ.get("WEEKLY_REVIEW_PAGE_ID") or "")
     if not page:
         return {"rows": len(rows), "stale": sum(r["stale"] for r in rows), "notion": "NOT_CONFIGURED"}
-    if client is None:
-        from lifeos.platform.notion_client import Client                                  # noqa: PLC0415 - only a Notion run needs it
-        client = Client({**environ, "NOTION_API_TOKEN": environ.get("NOTION_JIRA_TOKEN", "")})
+    client = client or writer(environ)
     return {"rows": len(rows), "stale": sum(r["stale"] for r in rows), "notion": write_region(client, page, text, live)}
 
 

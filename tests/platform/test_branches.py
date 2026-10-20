@@ -209,3 +209,15 @@ class JimsPageIsProtected(unittest.TestCase):
             with self.assertRaises(branches.BranchError) as ctx:
                 branches.write_region(page, "review-page", ["status two"], live=True)
         self.assertEqual(str(ctx.exception), "BRANCHES_PAGE_CHANGED")
+
+
+class RealClient(unittest.TestCase):
+    """Oct 20, 2:13 PM CT: the first live report built the real Notion client wrongly (NOTION_CONFIG_MISSING); every other test used a stand-in."""
+
+    def test_the_report_builds_the_real_notion_client_from_the_cards_token_alone(self):
+        from lifeos.platform.notion_client import Client, NotionError
+        client = branches.writer({"NOTION_JIRA_TOKEN": "secret-token"})
+        self.assertIsInstance(client, Client)
+        self.assertEqual(client.token, "secret-token")
+        with self.assertRaises(NotionError):
+            branches.writer({})                                                       # no token: a named failure, never a client without one
