@@ -1460,8 +1460,19 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}   # D231: the Scheduling Pending case reads the exact Ledger rows (read-only, Interview token)
         run: python -m lifeos.run interview-acceptance --limit 1 $([ "$LIVE" = "true" ] && echo --live)
+      - id: iaccneg
+        continue-on-error: true
+        name: Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
+        env:
+          INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}   # D232: the case that must be refused; always a dry run, so it cannot write
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+        run: |
+          if [ -z "$INTERVIEW_ACCEPTANCE_JSON" ]; then echo "INTERVIEW-ACCEPTANCE NEGATIVE CASE NOT SET"; exit 0; fi
+          python -m lifeos.run interview-acceptance --limit 1
       - name: Interview warning (does not fail the run)
-        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure') }}
+        if: ${{ always() && (steps.iprobe.outcome == 'failure' || steps.irun.outcome == 'failure' || steps.iacc.outcome == 'failure' || steps.iaccneg.outcome == 'failure') }}
         run: echo "::warning title=Interview OS::the Interview step failed or was DEGRADED; the Jobs pipeline is unaffected"
 
   report:

@@ -231,3 +231,4 @@ This index is checked by a test: add a line here with every new decision.
 - D229 — Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
 - D230 — A verified first-interview request with no date yet is Interview 1 in Scheduling Pending, written as the accepted UI 4 interview page (2026-10-20, Jim; LIFE-42)
 - D231 — The manual interview acceptance stage reads the exact Job Ledger rows for a Scheduling Pending case, with the Interview token (2026-10-20, Jim; LIFE-42)
+- D232 — Every manual interview acceptance run also runs a second, always-dry-run negative case from its own secret (2026-10-20, Jim; LIFE-42)
