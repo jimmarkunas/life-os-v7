@@ -77,8 +77,22 @@ def render(reading, now):
         text += f" · our Cloud Fit guard {cap['runs_today']}/{cap['limit']} runs today (not a provider limit)"
     if extra:
         text += f" · {extra} more not shown"
-    line = proposed_line(reading)
-    return (text + "\n" + line if line else text), [HEADER] + cells
+    lines = [x for x in (proposed_line(reading), signin_line(reading)) if x]
+    return "\n".join([text, *lines]), [HEADER] + cells
+
+
+SIGNIN_NAMES = {"fit": "Cloud Fit sign-in", "meter": "Usage meter sign-in"}
+SIGNIN_WORDS = {"EXPIRED": "EXPIRED: sign in again on Oracle", "COOLDOWN": "FAILING: OpenAI refused its last refresh", "UNREADABLE": "UNREADABLE"}
+
+
+def signin_line(reading):
+    """D239 (Jim, Oct 20: "a permanent solution to the sign in"): each OpenAI sign-in Oracle uses, OK with its expiry in Central time, or what is wrong with it."""
+    signins = reading.get("signins")
+    if not signins:
+        return None
+    parts = [f"{SIGNIN_NAMES[k]}: " + (f"OK until {_reset(v['expires'])}" if v["state"] == "OK" else SIGNIN_WORDS[v["state"]])
+             for k, v in sorted(signins.items(), key=lambda kv: list(SIGNIN_NAMES).index(kv[0]))]
+    return "Sign-ins · " + " · ".join(parts)
 
 
 def proposed_line(reading):

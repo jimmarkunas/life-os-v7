@@ -227,3 +227,25 @@ class ProposedUsage(unittest.TestCase):
         edge.limits("oracle.example", send=send, backlog=2692)
         self.assertEqual([set(b) for b in sent], [{"limits", "nonce"}, {"limits", "nonce", "backlog"}])
         self.assertEqual(sent[1]["backlog"], 2692)
+
+
+class SignIns(unittest.TestCase):
+    """D239 (Jim, Oct 20: "a permanent solution to the sign in"): the card names each OpenAI sign-in Oracle uses, OK with its expiry in Central time or what is wrong,
+    from Oracle's state words only; the table keeps its fixed shape."""
+
+    def test_each_sign_in_is_a_line_under_the_card_and_the_table_is_unchanged(self):
+        ok = {**READING, "signins": {"meter": {"state": "OK", "expires": "2026-10-30T04:19:08+00:00"}, "fit": {"state": "EXPIRED", "expires": "1970-01-01T00:00:00+00:00"}}}
+        text, table = card.render(ok, NOW)
+        self.assertEqual(text.splitlines()[-1], "Sign-ins · Cloud Fit sign-in: EXPIRED: sign in again on Oracle · Usage meter sign-in: OK until Thu Oct 29, 11:19 PM CDT")
+        self.assertEqual(table, card.render(READING, NOW)[1])
+        self.assertEqual(card.signin_line({**READING, "signins": {"fit": {"state": "COOLDOWN", "expires": None}}}), "Sign-ins · Cloud Fit sign-in: FAILING: OpenAI refused its last refresh")
+        self.assertIsNone(card.signin_line(READING))                                                        # an Oracle that does not report them: no line, nothing guessed
+
+    def test_oracles_sign_in_words_are_kept_and_anything_else_is_off_contract(self):
+        got = edge.limits("oracle.example", send=Limits.reply(self, signins={"fit": {"state": "OK", "expires": "2026-10-27T10:00:00+00:00", "profile": "dropped"}}))
+        self.assertEqual(got["signins"], {"fit": {"state": "OK", "expires": "2026-10-27T10:00:00+00:00"}})
+        self.assertNotIn("signins", edge.limits("oracle.example", send=Limits.reply(self)))
+        for bad in ({"fit": {"state": "FINE"}}, {"account": {"state": "OK"}}, {"fit": "OK"}, {"fit": {"state": "OK", "expires": 5}}, ["fit"]):
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.limits("oracle.example", send=Limits.reply(self, signins=bad))
+            self.assertEqual(str(ctx.exception), "FIT_EDGE_LIMITS_OFF_CONTRACT", bad)

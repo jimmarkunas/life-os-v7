@@ -19,7 +19,9 @@ REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LI
            "LIMIT_UNCONFIGURED",                                                 # LIFE-41 G3: Oracle's fail-closed daily cap has no limit.json
            "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE", "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH", "PURGE_FAILED",   # LIFE-41 G5 real gate (10489/10491)
            "USAGE_UNAVAILABLE",                                                  # LIFE-41 usage integrity: Oracle's synthetic usage check or latch failed; no model call
-           "QUOTA_RESERVE", "QUOTA_UNCONFIGURED", "METER_UNAVAILABLE"}           # LIFE-77: the account's own allowance is at Jim's reserve, has no policy, or cannot be read; no model call
+           "QUOTA_RESERVE", "QUOTA_UNCONFIGURED", "METER_UNAVAILABLE",           # LIFE-77: the account's own allowance is at Jim's reserve, has no policy, or cannot be read; no model call
+           "AUTH_UNAVAILABLE"}                                                   # D239: the lane's OpenAI sign-in is expired or cooling down; no model answered
+SIGNIN_STATES = {"OK", "EXPIRED", "COOLDOWN", "UNREADABLE"}                       # D239: Oracle's sign-in health words for the AI Capacity card
 MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
 AGENTS = {"fit", "fit2", "fit3"}                                                 # D232: Oracle's lanes, each its own clone of the fit agent; never main or any other
 
@@ -139,9 +141,14 @@ def limits(host, send=None, wait=LIMIT_WAIT, backlog=None):
         assert cap is None or (isinstance(cap, dict) and type(cap.get("runs_today")) is int and type(cap.get("limit")) is int)
         read_at = reply["read_at"]
         assert isinstance(read_at, str) and len(read_at) <= 40
+        signins = reply.get("signins") or {}                                # D239: optional; a state word and an expiry time per sign-in, nothing else kept
+        assert isinstance(signins, dict) and set(signins) <= {"fit", "meter"}
+        signins = {k: {"state": v["state"], "expires": v.get("expires")} for k, v in signins.items()}
+        assert all(v["state"] in SIGNIN_STATES and (v["expires"] is None or (isinstance(v["expires"], str) and len(v["expires"]) <= 40)) for v in signins.values())
     except (KeyError, TypeError, AssertionError):
         raise EdgeError("FIT_EDGE_LIMITS_OFF_CONTRACT") from None
-    return {"read_at": read_at, "pools": pools, "unavailable": unavailable, "safety_cap": cap and {"runs_today": cap["runs_today"], "limit": cap["limit"]}}
+    return {"read_at": read_at, "pools": pools, "unavailable": unavailable, "safety_cap": cap and {"runs_today": cap["runs_today"], "limit": cap["limit"]},
+            **({"signins": signins} if signins else {})}
 
 
 def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
