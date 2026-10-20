@@ -53,6 +53,11 @@ def _jump_cfg():
 _route = {"jump": False}           # once this process saw its direct connection go unanswered, every later tunnel (re)open uses Oracle too
 
 
+def _forced():
+    """V7_STORE_VIA=oracle (Jim's repository variable): start on the Oracle route, for a live proof or if the direct route ever fails outright."""
+    return (os.environ.get("LIFEOS_ACQ_SSH_VIA") or "").strip().lower() == "oracle"
+
+
 def _ssh_code(error):
     if isinstance(error, subprocess.TimeoutExpired):
         return "STORE_SSH_TIMEOUT"
@@ -155,7 +160,7 @@ def connect():
     cfg, jump = _cfg(), _jump_cfg()
     connection, last = None, None
     for attempt in range(len(RETRY_WAITS)):
-        if last == "STORE_SSH_TCP_TIMEOUT" and jump:
+        if (last == "STORE_SSH_TCP_TIMEOUT" or _forced()) and jump:
             _route["jump"] = True                                       # this runner is being dropped: go through Oracle now, and for the rest of the process
         via = bool(jump) and _route["jump"]
         wait = (QUIET_WAITS if last == "STORE_SSH_TCP_TIMEOUT" and not via else RETRY_WAITS)[attempt]

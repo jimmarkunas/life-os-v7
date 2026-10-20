@@ -253,6 +253,17 @@ class OracleRouteTests(unittest.TestCase):
             self.run_([None])
         self.assertIsNotNone(self.proxy(self.cmds[-1]))
 
+    def test_jims_switch_starts_on_the_oracle_route_and_needs_the_route_configured(self):
+        import os
+        os.environ["LIFEOS_ACQ_SSH_VIA"] = "oracle"
+        self.assertEqual(self.run_([None]), "connected")
+        self.assertIsNotNone(self.proxy(self.cmds[0]))                                                 # the first attempt already goes through Oracle
+        self.reset()
+        for key in self.JUMP:
+            os.environ.pop(key)
+        self.run_([None])
+        self.assertIsNone(self.proxy(self.cmds[0]))                                                    # without the route configured the switch does nothing
+
     def test_an_unresolvable_store_name_is_refused_with_its_own_code_and_cleaned_up(self):
         from unittest import mock
         with mock.patch.object(db.socket, "getaddrinfo", side_effect=OSError):
