@@ -220,3 +220,4 @@ This index is checked by a test: add a line here with every new decision.
 - D220 — Recruiter rows carry an action state: Needs Action on a new contact or reply, a follow-up two business days after Waiting (2026-10-19, Jim; LIFE-21 / LIFE-78 M2)
 - D221 — Role-specific outreach: Mark as Sent on the private Close service creates one Waiting row on the Recruiters data source linked to the exact Job Ledger job; Job Outreach is one row per job (2026-10-19, Jim; LIFE-21 / LIFE-47 / LIFE-78 M2)
 - D222 — Job Outreach: a Claude-proposed, dormant V7 writer for the Jim-approved native two-table direction; its visuals await Jim's acceptance (2026-10-19; LIFE-47 / LIFE-78 M2)
+- D223 — D222 withdrawn: job outreach never appears on the Daily Report; it lives in the Job Ledger until an interview (2026-10-20, Jim; LIFE-10 / LIFE-47)

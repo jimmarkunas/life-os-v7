@@ -34,9 +34,8 @@ class FakeRecruiters:
         if self.fail_query:
             raise NotionError("NOTION_HTTP_500")
         if "relation" in body["filter"]:
-            rel = body["filter"]["relation"]
-            linked = lambda p: [r["id"] for r in (p["properties"].get("Job") or {}).get("relation") or []]          # noqa: E731
-            return {"results": [p for p in self.pages if (rel["contains"] in linked(p) if "contains" in rel else bool(linked(p)))], "has_more": False}
+            wanted = body["filter"]["relation"]["contains"]
+            return {"results": [p for p in self.pages if wanted in [r["id"] for r in (p["properties"].get("Job") or {}).get("relation") or []]], "has_more": False}
         if "select" in body["filter"]:
             wanted = body["filter"]["select"]["equals"]
             return {"results": [p for p in self.pages if ((p["properties"].get("Action Status") or {}).get("select") or {}).get("name") == wanted], "has_more": False}

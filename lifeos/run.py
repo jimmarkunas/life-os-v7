@@ -116,8 +116,6 @@ STAGES = {
     "attention-card": lazy("lifeos.attention.card"),
     "megibow": lazy("lifeos.sources.megibow"),
     "hiring": lazy("lifeos.sources.hiring"),
-    "job-outreach": lazy("lifeos.sources.job_outreach"),
-    "job-outreach-install": lazy("lifeos.sources.job_outreach_install"),     # LIFE-47 TEMPORARY: one manual install of the region; removed after the install          # D222: dormant until JOB_OUTREACH_CARD_BLOCK_ID / JOB_OUTREACH_TABLE_BLOCK_ID are set
     "hiring-outcomes": lazy("lifeos.hiring.outcomes"),
     "outlook-auth": _outlook_auth,
     "outlook-probe": lazy("lifeos.outlook.stage", "probe"),
