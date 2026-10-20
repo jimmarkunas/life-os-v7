@@ -98,6 +98,19 @@ def _remote_tag(tag, header):
     return line.split()[0] if line else None
 
 
+def push_refusal(stderr):
+    """Why GitHub refused the archive push, as a fixed code (git's message itself is never printed). Oct 20: the first real push needed the token's
+    Workflows permission, because the archived commits change .github/workflows files."""
+    text = (stderr or "").lower()
+    if "workflow" in text:
+        return "ARCHIVE_PUSH_NEEDS_WORKFLOWS_PERMISSION"
+    if "403" in text or "permission" in text or "denied" in text or "not allowed" in text:
+        return "ARCHIVE_PUSH_FORBIDDEN"
+    if "rejected" in text or "already exists" in text:
+        return "ARCHIVE_PUSH_REJECTED"
+    return "ARCHIVE_PUSH_FAILED"
+
+
 def push_tag(sha, tag, token):
     """Tag `sha` in life-os-automation and read it back. Idempotent for the same commit; another commit already there is never overwritten."""
     header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token}".encode()).decode()
@@ -108,8 +121,9 @@ def push_tag(sha, tag, token):
         raise _fail("ARCHIVE_TAG_TAKEN")
     if _git("fetch", "--quiet", "--no-tags", "origin", sha).returncode != 0:              # the PR head, by id (it stays reachable through refs/pull)
         raise _fail("HEAD_NOT_FETCHED")
-    if _git("push", "--quiet", ARCHIVE_REPO, f"{sha}:refs/tags/{tag}", header=header).returncode != 0:
-        raise _fail("ARCHIVE_PUSH_FAILED")
+    pushed = _git("push", "--quiet", ARCHIVE_REPO, f"{sha}:refs/tags/{tag}", header=header)
+    if pushed.returncode != 0:
+        raise _fail(push_refusal(pushed.stderr))
     if _remote_tag(tag, header) != sha:
         raise _fail("ARCHIVE_NOT_READ_BACK")
     return "ARCHIVED"

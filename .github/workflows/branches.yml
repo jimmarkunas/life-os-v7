@@ -19,7 +19,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-branches
+  group: life-os-v7-branches-${{ github.event.pull_request.number || 'report' }}     # one group per merged PR: GitHub keeps only one waiting run per group, so a shared group cancelled archives
   cancel-in-progress: false
 jobs:
   archive:
