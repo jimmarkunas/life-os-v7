@@ -113,7 +113,7 @@ def changed(before, after):
 
 def protected(client, ids, fail):
     """ids: {region heading: block id}. Every id must be configured; -> {region: digest}."""
-    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region not in router.FLOATING}     # a floating region joins the proof once its anchor is configured
+    ids = {region: clean_id(block_id) for region, block_id in (ids or {}).items() if block_id or region != router.HIRING_REGION}     # Hiring joins the proof once its anchor is configured
     if not ids or not all(ids.values()):
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     try:
@@ -472,8 +472,7 @@ def floating_region(client, block_id, title, fail, with_status=True):
 
 
 def floating_digest(client, meta, fail):
-    """Digest of a floating region as a protected neighbour: the heading, its status paragraph if it has one (Job Outreach, D222), and its table, with everything under them.
-    Lenient about shape (only the owner validates it)."""
+    """Digest of a floating region as a protected neighbour: the heading and the block after it (its table) with everything under them. Lenient about shape (only the owner validates it)."""
     parent = (meta.get("parent") or {})
     parent_id = parent.get("block_id") or parent.get("page_id")
     if not parent_id:
@@ -483,8 +482,6 @@ def floating_digest(client, meta, fail):
     if len(at) != 1:
         raise fail("PROTECTED_REGION_UNAVAILABLE")
     group = siblings[at[0]:at[0] + 2]                                               # the heading and its table
-    if group[-1].get("type") == "paragraph" and at[0] + 2 < len(siblings) and siblings[at[0] + 2].get("type") == "table":
-        group = siblings[at[0]:at[0] + 3]                                           # heading, status paragraph, table
     trees = [_stable(_tree(client, b, fail)) for b in group]
     return {"fields": {f"block{n}": _hash(tree) for n, tree in enumerate(trees)}, "children": [[t.get("type"), _hash(t)] for t in trees]}
 
@@ -560,9 +557,3 @@ def write_floating(client, region, status_text, rows, fail):
     if region["status"] is not None and plain(region["status"]) != status_text:
         client.call("PATCH", f"/blocks/{quote(region['status']['id'], safe='')}", {"paragraph": {"rich_text": [{"type": "text", "text": {"content": status_text}}]}})
     return counts
-
-
-def floating_ids(environ):
-    """{floating region heading: its configured heading block id}, only for the floating regions whose anchor is set (Hiring Pipeline, Job Outreach)."""
-    names = {router.HIRING_REGION: "HIRING_CARD_BLOCK_ID", router.JOB_OUTREACH_REGION: "JOB_OUTREACH_CARD_BLOCK_ID"}
-    return {region: (environ.get(name) or "").strip() for region, name in names.items() if (environ.get(name) or "").strip()}

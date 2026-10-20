@@ -32,8 +32,7 @@ SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "What
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
 BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
-             ("JOB_OUTREACH_CARD_BLOCK_ID", router.JOB_OUTREACH_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
                "services": {k: None for k, _ in SERVICES}, "chatgpt": None}
 

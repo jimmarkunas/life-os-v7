@@ -41,8 +41,7 @@ LABELS = {"messages": "Messages", "telegram": "Telegram", "whatsapp": "WhatsApp"
 CHANNEL_BLOCKS = ("telegram", "whatsapp")
 STATES = ("PRESENT", "NONE", "UNAVAILABLE")
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
-             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
-             ("JOB_OUTREACH_CARD_BLOCK_ID", router.JOB_OUTREACH_REGION))
+             ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
 
 class CommsError(Exception):

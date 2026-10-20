@@ -19,8 +19,7 @@ DELIVERED_DAYS = 7                      # Jim, Oct 12: delivered orders stay for
 OPEN_STALE_DAYS = 30                    # an open order with no event for this long can no longer be advanced by mail (D139 trashes order mail after 30 days): counted, not listed
 MAX_LISTED = 10
 MAX_PAGES = 10
-PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION),
-             ("JOB_OUTREACH_CARD_BLOCK_ID", router.JOB_OUTREACH_REGION))
+PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 
 
 class CardError(NotionError):
