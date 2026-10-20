@@ -477,7 +477,7 @@ class EgressProvenance(Base):
         blocked = (("https://www.dice.com/job-detail/abc", "dice"), ("https://www.linkedin.com/jobs/view/123", "linkedin"), ("https://jobright.ai/jobs/info/x", "jobright"),
                    ("https://www.lensa.com/job/1", "lensa"), ("https://talentfirm-recruiting.com/jobs/1", "jobright"), ("https://careers.acme.com/jobs/1", "web:openjobs"),
                    (None, "jobright"), ("", "jobright"))
-        for kind in ("jsonld", "page_text"):
+        for kind in ("jsonld", "page_text", "ats_list"):                     # ats_list: the employer ATS board listing text (LIFE-41 G6)
             for url, source in allowed:
                 self.setUp()
                 self.job(1, kind=kind, url=url, source=source)

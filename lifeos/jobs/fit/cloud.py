@@ -31,8 +31,9 @@ MODES = ("off", "shadow", "canary", "on")
 MAX_PER_RUN = 1                         # the hard ceiling, whatever the variable says: one cloud call a tick when activated (Jim, LIFE-41)
 SCAN = 25                               # candidates examined a run; a skip costs no network or model call, so it never consumes the one call
 # LIFE-41 10500: only a public employer / ATS posting may be judged (the description enrich read from the employer's own page); a title-only or title-watch
-# placeholder, and any other source, is never sent.
-PUBLIC_SOURCES = ("ats_api", "jsonld", "next_data", "page_text")
+# placeholder, and any other source, is never sent. ats_list (LIFE-41 G6, Jim): the posting's own text from the employer's ATS board listing that the web
+# boards lane reads (sources/web/run.py; final Apply URL on that ATS, apply_kind='ats'), the same provenance as ats_api; public_posting still checks the host.
+PUBLIC_SOURCES = ("ats_api", "ats_list", "jsonld", "next_data", "page_text")
 STAGE_BUDGET = 240                      # the tick's Fit budget (tick.PLAN): a call starts only when the stage can still finish it
 READ_WAIT = 150                         # LIFE-41 10504 C4: Oracle's real worst case is ~110 s (60 s deadline + 20 s orphan wait + purge lock waits + audit)
 CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 s, so one call fits the 240 s stage and a second never could
