@@ -21,6 +21,9 @@ FIELDS = ("SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER",
 DB_REMOTE = "127.0.0.1:3306"
 TRANSIENT = ("STORE_SSH_NETWORK", "STORE_SSH_TIMEOUT", "STORE_SSH_FAILED", "STORE_SSH_REFUSED", "STORE_SSH_BANNER", "STORE_SSH_TCP_TIMEOUT", "STORE_DB_CONNECT_FAILED")
 RETRY_WAITS = (0, 4, 12, 30)     # seconds before attempts 1-4: a Hostinger network blip (D92; on 2026-10-17 a 36 s window was too short and lost a whole lane) must not fail a stage; auth and host-key errors are never retried
+# LIFE-41 (Oct 19 2026, 43 runs): an unanswered connection (STORE_SSH_TCP_TIMEOUT) is the host silently dropping ONE runner for minutes while concurrent runners
+# connect; none of 9 such series recovered on the short schedule, and every quick retry is another dropped packet. After one, the next wait is long and quiet.
+QUIET_WAITS = (0, 30, 60, 90)
 JITTER_SECONDS = 5                 # LIFE-76: up to this much extra before a process's FIRST connect and before every retry, so lanes that start in the same second do not open their tunnels together (D206); later connects in the same stage add nothing (publish opens hundreds)
 
 
@@ -119,8 +122,9 @@ def _open_tunnel(cfg):
 @contextmanager
 def connect():
     cfg = _cfg()
-    connection = None
-    for attempt, wait in enumerate(RETRY_WAITS):
+    connection, last = None, None
+    for attempt in range(len(RETRY_WAITS)):
+        wait = (QUIET_WAITS if last == "STORE_SSH_TCP_TIMEOUT" else RETRY_WAITS)[attempt]
         extra = _jitter() if attempt or _spread[0] else 0
         _spread[0] = False
         time.sleep(wait + extra)
@@ -137,8 +141,11 @@ def connect():
                                              autocommit=True, connect_timeout=10, read_timeout=20, write_timeout=20)
             except Exception:
                 raise StoreError("STORE_DB_CONNECT_FAILED") from None
+            if last:
+                print(f"store: connected on attempt {attempt + 1} of {len(RETRY_WAITS)} after {last}", file=sys.stderr)   # a recovery is counted, so the schedule can be judged
             break
         except StoreError as error:
+            last = str(error)
             print(f"store: attempt {attempt + 1} of {len(RETRY_WAITS)} {error}", file=sys.stderr)          # the fixed code of every failed attempt, so a lane that gives up shows whether all three failed alike
             with _lock:
                 _close_tunnel()                                                                         # a half-open tunnel must not block the next attempt
