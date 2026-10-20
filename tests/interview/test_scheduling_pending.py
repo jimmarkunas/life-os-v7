@@ -23,7 +23,7 @@ def opportunity(rounds=()):
     client.pages["opp"] = page(f"{COMPANY} — {ROLE}")
     client.pages["opp"]["parent"] = {"type": "block_id", "block_id": "left"}
     client.blocks["opp"] = [block(notion.MARKERS["opportunity"], id="m"), block("Live Notes", "heading_2", "live"), block("Jim's live notes", id="ln"),
-                            block("Raw Notes", "heading_2", "raw"), block("Jim's raw notes", id="rn"), block("Interview Rounds", "heading_2", "ir")]
+                            block("Raw Notes", "heading_2", "raw"), block("Jim's raw notes", id="rn"), block("Interview Rounds", "heading_2", "ir"), block(notion.JIM_NOTES, "heading_2", "jn")]
     for n, (title, identity) in enumerate(rounds):
         rid = f"r{n}"
         client.blocks["opp"].append({"id": rid, "type": "child_page", "child_page": {"title": title}})

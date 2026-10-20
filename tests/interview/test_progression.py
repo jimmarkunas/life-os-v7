@@ -20,7 +20,7 @@ def real_shape_client():
     client.pages["opp"] = page("Example Rides — Technical Project Manager")
     client.pages["opp"]["parent"] = {"type": "block_id", "block_id": "left"}
     client.blocks["opp"] = [block(notion.MARKERS["opportunity"], id="m"), block("Live Notes", "heading_2", "live"), block("human live notes", id="ln"),
-                             block("Raw Notes", "heading_2", "raw"), block("human raw notes", id="rn"), block("Interview Rounds", "heading_2", "ir"),
+                             block("Raw Notes", "heading_2", "raw"), block("human raw notes", id="rn"), block("Interview Rounds", "heading_2", "ir"), block(notion.JIM_NOTES, "heading_2", "jn"),
                              {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}}]
     client.pages["r1"] = page("Interview 1", "opp")
     client.blocks["r1"] = [block(notion.MARKERS["round"], id="rm"), block(create.identity_text(RoundQuery(True, "2026-09-28", None, 1)), id="ri"),
