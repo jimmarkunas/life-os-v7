@@ -24,6 +24,12 @@ RETRY_WAITS = (0, 4, 12, 30)     # seconds before attempts 1-4: a Hostinger netw
 # LIFE-41 (Oct 19 2026, 43 runs): an unanswered connection (STORE_SSH_TCP_TIMEOUT) is the host silently dropping ONE runner for minutes while concurrent runners
 # connect; none of 9 such series recovered on the short schedule, and every quick retry is another dropped packet. After one, the next wait is long and quiet.
 QUIET_WAITS = (0, 30, 60, 90)
+# LIFE-85: the quiet waits did not recover either (run 39352200579: 3.7 minutes). When the optional Oracle route is configured, the attempt after an unanswered
+# connection goes through Oracle's fixed address instead: ssh -W to the store's one IP and port as the forward-only user, whose key can do nothing else
+# (restrict,port-forwarding,permitopen). The store key, known_hosts and DB password stay here; Oracle relays the end-to-end SSH bytes and holds no store secret.
+JUMP_FIELDS = ("SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")
+JUMP_USER = "v7-store-fwd"
+NEVER_RETRIED = ("STORE_SSH_JUMP_AUTH", "STORE_SSH_JUMP_HOSTKEY", "STORE_SSH_JUMP_KEY_INVALID", "STORE_SSH_JUMP_DNS")
 JITTER_SECONDS = 5                 # LIFE-76: up to this much extra before a process's FIRST connect and before every retry, so lanes that start in the same second do not open their tunnels together (D206); later connects in the same stage add nothing (publish opens hundreds)
 
 
@@ -36,6 +42,15 @@ def _cfg():
     if missing:
         raise StoreError("STORE_CONFIG_MISSING:" + ",".join(missing))  # names of settings only, no values
     return {f: os.environ["LIFEOS_ACQ_" + f] for f in FIELDS}
+
+
+def _jump_cfg():
+    """The optional Oracle route, or None (any of the three settings missing): without it every connection is direct, as before."""
+    values = {f: (os.environ.get("LIFEOS_ACQ_" + f) or "").strip() for f in JUMP_FIELDS}
+    return values if all(values.values()) else None
+
+
+_route = {"jump": False}           # once this process saw its direct connection go unanswered, every later tunnel (re)open uses Oracle too
 
 
 def _ssh_code(error):
@@ -94,7 +109,21 @@ def _alive():
         return False
 
 
-def _open_tunnel(cfg):
+def _proxy(jump, directory, host, port):
+    """-> the ProxyCommand option for the Oracle route: the store's own IPv4 (the forward-only key may open exactly that address and port) through Oracle."""
+    try:
+        ip = next(a[4][0] for a in socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_STREAM))
+    except (OSError, StopIteration, ValueError):
+        raise StoreError("STORE_SSH_JUMP_DNS") from None
+    key, hosts = Path(directory, "jump_key"), Path(directory, "jump_known_hosts")
+    for path, content in ((key, jump["SSH_JUMP_KEY"]), (hosts, jump["SSH_JUMP_KNOWN_HOSTS"])):
+        path.touch(mode=0o600)
+        path.write_text(content.rstrip() + "\n")
+    return ["-o", f"ProxyCommand=ssh -F /dev/null -i {key} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile={hosts}"
+                  f" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=10 -W {ip}:{int(port)} {JUMP_USER}@{jump['SSH_JUMP_HOST']}"]
+
+
+def _open_tunnel(cfg, jump=None):
     directory = tempfile.mkdtemp(prefix="v7-store-")
     key, hosts = Path(directory, "key"), Path(directory, "known_hosts")
     for path, content in ((key, cfg["SSH_PRIVATE_KEY"]), (hosts, cfg["SSH_KNOWN_HOSTS"])):
@@ -110,21 +139,26 @@ def _open_tunnel(cfg):
     _tunnel.update(directory=directory, port=local_port,
                    exit=["ssh", "-F", "/dev/null", "-S", control, "-O", "exit", "--", cfg["SSH_HOST"]],
                    check=["ssh", "-F", "/dev/null", "-S", control, "-O", "check", "--", cfg["SSH_HOST"]])
+    via = _proxy(jump, directory, cfg["SSH_HOST"], cfg["SSH_PORT"]) if jump else []     # after the tunnel owns the directory, so a refusal here still cleans it up
     try:
-        subprocess.run(["ssh", *opts, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
+        subprocess.run(["ssh", *opts, *via, "-M", "-S", control, "-fNT", "-o", "ExitOnForwardFailure=yes",
                         "-o", "ServerAliveInterval=15", "-i", str(key), "-p", cfg["SSH_PORT"],
                         "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
-                       check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                       check=True, timeout=30 if jump else 20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     except Exception as error:
-        raise StoreError(_ssh_code(error)) from None
+        code = _ssh_code(error)
+        raise StoreError(code.replace("STORE_SSH_", "STORE_SSH_JUMP_", 1) if jump else code) from None
 
 
 @contextmanager
 def connect():
-    cfg = _cfg()
+    cfg, jump = _cfg(), _jump_cfg()
     connection, last = None, None
     for attempt in range(len(RETRY_WAITS)):
-        wait = (QUIET_WAITS if last == "STORE_SSH_TCP_TIMEOUT" else RETRY_WAITS)[attempt]
+        if last == "STORE_SSH_TCP_TIMEOUT" and jump:
+            _route["jump"] = True                                       # this runner is being dropped: go through Oracle now, and for the rest of the process
+        via = bool(jump) and _route["jump"]
+        wait = (QUIET_WAITS if last == "STORE_SSH_TCP_TIMEOUT" and not via else RETRY_WAITS)[attempt]
         extra = _jitter() if attempt or _spread[0] else 0
         _spread[0] = False
         time.sleep(wait + extra)
@@ -132,7 +166,7 @@ def connect():
             with _lock:
                 if not _alive():
                     _close_tunnel()
-                    _open_tunnel(cfg)
+                    _open_tunnel(cfg, jump if via else None)
                 port = _tunnel["port"]
             try:
                 import pymysql
@@ -142,14 +176,15 @@ def connect():
             except Exception:
                 raise StoreError("STORE_DB_CONNECT_FAILED") from None
             if last:
-                print(f"store: connected on attempt {attempt + 1} of {len(RETRY_WAITS)} after {last}", file=sys.stderr)   # a recovery is counted, so the schedule can be judged
+                print(f"store: connected on attempt {attempt + 1} of {len(RETRY_WAITS)}{' via oracle' if via else ''} after {last}", file=sys.stderr)   # a recovery is counted, so the route can be judged
             break
         except StoreError as error:
             last = str(error)
             print(f"store: attempt {attempt + 1} of {len(RETRY_WAITS)} {error}", file=sys.stderr)          # the fixed code of every failed attempt, so a lane that gives up shows whether all three failed alike
             with _lock:
                 _close_tunnel()                                                                         # a half-open tunnel must not block the next attempt
-            if str(error) not in TRANSIENT or attempt == len(RETRY_WAITS) - 1:
+            transient = str(error) in TRANSIENT or (str(error).startswith("STORE_SSH_JUMP_") and str(error) not in NEVER_RETRIED)
+            if not transient or attempt == len(RETRY_WAITS) - 1:
                 raise
     try:
         yield connection
