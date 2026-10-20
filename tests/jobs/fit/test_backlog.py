@@ -79,6 +79,54 @@ class BoundedBatch(Batch):
         self.assertEqual((counts["cloud_fit"], counts["remaining_before"]["unpublished_admit"], endpoint.sent), ("dry_run", 1, []))
 
 
+class TargetedPilot(Batch):
+    """LIFE-41 G6: Jim names one preapproved Ledger page; the batch asks that job or nothing, never the next one in rank."""
+    PAGE = "3ed3c5a0-5926-8125-8c1d-f0628db65bc1".replace("3ed3c5a0", "0a0b0c0d")                 # an invented id in the Ledger's dashed form
+
+    def env(self, page):
+        return {**ENV, "V7_CLOUD_FIT_BACKLOG_PAGE": page}
+
+    def test_the_named_page_is_asked_even_when_others_rank_higher_and_only_once(self):
+        self.titled(1, "Program Manager A", score=99, status="PUBLISHED", page="page-1")
+        self.titled(2, "Program Manager B", score=75, status="PUBLISHED", page=self.PAGE)
+        self.db.raw.execute("UPDATE v7_jobs SET fit_synced_at=? WHERE id IN (1, 2)", (T,))
+        endpoint = Endpoint(measured)
+        counts = self.batch(5, endpoint, environ=self.env(self.PAGE.replace("-", "").upper()))
+        self.assertEqual(self.asked(endpoint), ["Program Manager B"])
+        self.assertEqual((counts["backlog_calls_allowed"], counts["backlog_targeted"], counts["cloud_calls"], counts["cloud_promoted"]), (1, 1, 1, 1))
+        self.assertEqual((self.status(1), self.status(2)), (None, "CANARY"))
+        self.assertNotIn(self.PAGE.replace("-", ""), json.dumps(counts))                          # the id never reaches the log
+
+    def test_a_target_the_batch_would_not_ask_is_refused_with_no_call_and_nothing_else_is_asked(self):
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        self.titled(2, "Program Manager B", status="PUBLISHED", page=self.PAGE)
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='HELD' WHERE job_id=2")         # already asked
+        for page in (self.PAGE, "f" * 32):                                                       # asked before; not in the store at all
+            endpoint = Endpoint(measured)
+            counts = self.batch(5, endpoint, environ=self.env(page))
+            self.assertEqual((counts["cloud_fit"], endpoint.sent, self.status(1)), ("DEGRADED(BACKLOG_TARGET_NOT_ELIGIBLE)", [], None))
+
+    def test_a_malformed_target_is_refused_before_any_store_pick(self):
+        self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
+        for page in ("not-a-page", "g" * 32, "1" * 31):
+            endpoint = Endpoint(measured)
+            counts = self.batch(5, endpoint, environ=self.env(page))
+            self.assertEqual((counts["cloud_fit"], counts["failed"], endpoint.sent), ("DEGRADED(BACKLOG_TARGET_INVALID)", 1, []))
+
+    def test_an_applied_target_page_uses_no_call(self):
+        self.titled(1, "Program Manager A", status="PUBLISHED", page=self.PAGE)
+        endpoint = Endpoint(measured)
+        counts = self.batch(5, endpoint, environ=self.env(self.PAGE), ledger=lambda client, page_id, company, title, opportunities=(): backlog.guard.APPLIED)
+        self.assertEqual((endpoint.sent, counts["cloud_calls"], self.status(1)), ([], 0, None))
+
+    def test_without_a_target_the_ranked_backlog_is_unchanged(self):
+        self.titled(1, "Program Manager A", score=75)
+        self.titled(2, "Program Manager B", score=95)
+        endpoint = Endpoint(measured)
+        self.batch(1, endpoint, environ={**ENV, "V7_CLOUD_FIT_BACKLOG_PAGE": ""})
+        self.assertEqual(self.asked(endpoint), ["Program Manager B"])
+
+
 class Concurrency(Batch):
     def test_a_second_worker_never_asks_a_claimed_job_and_oracles_busy_releases_its_own_claim(self):
         self.titled(1, "Program Manager A", score=90)

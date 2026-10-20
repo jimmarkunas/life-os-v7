@@ -9,8 +9,11 @@ first. A published job's Ledger page is read first (lifeos.jobs.guard): applied,
 the visible Fit through the Fit stage's own promotion, and fit_sync later writes only the page's machine-owned Fit fields (never Applied, Applied On or Saturn
 Decision); a published job the cloud would exclude is HELD privately, its page untouched. The batch runs that unchanged fit_sync itself at its end (the publish step
 does not run on a backlog-only dispatch) and checks every promoted page was synced: one that was not is DEGRADED(LEDGER_SYNC_INCOMPLETE), never a silent success. Each job is claimed before its call and written right after it, so a
-batch can stop anywhere and the next one resumes with the jobs still unasked. Counts only in the log: no title, employer, text, profile or answer."""
+batch can stop anywhere and the next one resumes with the jobs still unasked. Counts only in the log: no title, employer, text, profile or answer.
+V7_CLOUD_FIT_BACKLOG_PAGE (LIFE-41 G6, optional): one Ledger page id. The batch then asks at most that one job, under the same predicates, or nothing
+(BACKLOG_TARGET_NOT_ELIGIBLE / BACKLOG_TARGET_INVALID); the id never reaches the log."""
 import os
+import re
 
 from lifeos.jobs import fit_sync, guard, ledger, sponsors, store
 from lifeos.jobs.fit import cloud as fit_cloud, profile as fit_profile, stage
@@ -47,6 +50,13 @@ def run(limit, live, environ=os.environ, client=None):
     if calls == 0:
         counts.update(cloud_fit="DEGRADED(BACKLOG_NOT_AUTHORIZED)", cloud_degraded=1, failed=1)      # no approved ceiling or no request: nothing is asked
         return counts
+    page = (environ.get("V7_CLOUD_FIT_BACKLOG_PAGE") or "").strip().replace("-", "").lower()
+    if page and not re.fullmatch(r"[0-9a-f]{32}", page):
+        counts.update(cloud_fit="DEGRADED(BACKLOG_TARGET_INVALID)", cloud_degraded=1, failed=1)      # a malformed target never widens to the ranked backlog
+        return counts
+    if page:
+        calls = counts["backlog_calls_allowed"] = 1
+        counts["backlog_targeted"] = 1
     try:
         profile = fit_profile.load(environ)
     except fit_profile.ProfileError:
@@ -72,7 +82,7 @@ def run(limit, live, environ=os.environ, client=None):
         if outcome is True:
             promoted.append(job_id)
         return outcome
-    counts.update(fit_cloud.run(environ, live, None, profile, promote=promote, batch={"calls": calls, "budget": budget}, ledger_check=ledger_check or (lambda *a: None)))
+    counts.update(fit_cloud.run(environ, live, None, profile, promote=promote, batch={"calls": calls, "budget": budget, "page": page or None}, ledger_check=ledger_check or (lambda *a: None)))
     with store.connect() as connection, connection.cursor() as cursor:
         counts["remaining_after"] = remaining(cursor)
         pages = []
