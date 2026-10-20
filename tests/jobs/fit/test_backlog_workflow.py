@@ -218,8 +218,8 @@ class ScheduledBatch(unittest.TestCase):
             self.assertIn("fit_cloud_backlog", names, event)
             self.assertLess(names.index("tick"), names.index("fit_cloud_backlog"), event)                 # after the tick: this hour's new jobs are candidates
             self.assertTrue(any("join the tailnet" in str(n) for n in names), event)                     # the only route to Oracle
-            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "600",
-                                                            "V7_CLOUD_FIT_BACKLOG_PAGE": ""}, event)      # a leftover pilot page never narrows a tick
+            self.assertEqual(self.env(event, on, **given), {"CLOUD_BACKLOG": "20", "V7_CLOUD_FIT_BACKLOG_MAX": "20", "V7_CLOUD_FIT_BACKLOG_BUDGET": "",
+                                                            "V7_CLOUD_FIT_BACKLOG_PAGE": ""}, event)      # a leftover pilot page never narrows a tick; the budget is sized when it runs
 
     def test_without_the_variable_a_tick_is_unchanged(self):
         for variables in ({}, {"V7_CLOUD_FIT_SCHEDULED": "0"}, {"V7_CLOUD_FIT_SCHEDULED": ""}):
@@ -242,3 +242,41 @@ class ScheduledBatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheHourIsFilled(unittest.TestCase):
+    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 30-minute cap or the finish job's 50 minutes,
+    and skips (exit 0) rather than fail when too little time is left. The step's own script runs here with a stand-in clock."""
+
+    def budget(self, minute, second, job_seconds):
+        import os
+        import subprocess
+        import tempfile
+        import yaml
+        doc = yaml.safe_load(open(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".github", "workflows", "hourly.yml")))
+        script = next(s["run"] for s in doc["jobs"]["finish"]["steps"] if s.get("id") == "fit_cloud_backlog")
+        now = 1792500000 - (1792500000 % 3600) + minute * 60 + second
+        with tempfile.TemporaryDirectory() as d:
+            for name, body in (("date", f'case "$1" in +%s) echo {now};; +%M) printf %02d {minute};; +%S) printf %02d {second};; esac'),
+                               ("stat", f"echo {now - job_seconds}"), ("python", 'echo "BUDGET=${V7_CLOUD_FIT_BACKLOG_BUDGET:-unset}"')):
+                with open(os.path.join(d, name), "w") as f:
+                    f.write("#!/bin/bash\n" + body + "\n")
+                os.chmod(os.path.join(d, name), 0o755)
+            out = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                 env={"PATH": d + ":/usr/bin:/bin", "PIPELINE": "true", "GITHUB_WORKSPACE": d, "CLOUD_BACKLOG": "100", "LIVE": "true"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout.strip()
+
+    def test_a_quick_tick_gets_the_full_thirty_minutes(self):
+        self.assertEqual(self.budget(10, 0, 9 * 60), "BUDGET=1800")
+
+    def test_a_later_tick_runs_until_five_to_the_hour(self):
+        self.assertEqual(self.budget(35, 0, 9 * 60), "BUDGET=1200")
+
+    def test_the_job_limit_wins_when_the_tick_was_slow(self):
+        self.assertEqual(self.budget(30, 0, 40 * 60), "BUDGET=300")                  # 50 min - 40 min run - 5 min kept
+
+    def test_too_little_time_skips_without_failing(self):
+        self.assertIn("skipped this hour", self.budget(53, 0, 9 * 60))
+        self.assertIn("skipped this hour", self.budget(58, 0, 9 * 60))
+
