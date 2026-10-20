@@ -47,6 +47,24 @@ class UsageRule(unittest.TestCase):
             self.assertFalse(cloud.usage_ok(bad), bad)
 
 
+class CachedTokensConvention(unittest.TestCase):
+    """D245 (Oct 20, 5:15 PM CT): the Codex route reported a cache hit as input 186 + cached 1408 + output 60 = total 1654. Oracle latched and the batch stopped
+    USAGE_UNAVAILABLE. Both conventions add up exactly; anything that fits neither is still inconsistent, and nothing is estimated."""
+
+    def test_the_cache_outside_input_convention_is_consistent(self):
+        real = {"cache_write_tokens": 0, "cached_input_tokens": 1408, "input_tokens": 186, "output_tokens": 60, "reasoning_tokens": "unavailable", "total_tokens": 1654}
+        self.assertTrue(cloud.usage_ok(real))
+        self.assertTrue(cloud.usage_ok({**real, "cache_write_tokens": "unavailable"}))
+        self.assertTrue(cloud.usage_ok({"input_tokens": 100, "cached_input_tokens": 50, "cache_write_tokens": 20, "output_tokens": 10, "total_tokens": 180}))
+        self.assertTrue(cloud.usage_ok({"input_tokens": 1594, "cached_input_tokens": 1408, "output_tokens": 60, "total_tokens": 1654}))   # inside, unchanged
+
+    def test_anything_that_fits_neither_convention_is_still_inconsistent(self):
+        real = {"cache_write_tokens": 0, "cached_input_tokens": 1408, "input_tokens": 186, "output_tokens": 60, "total_tokens": 1654}
+        for bad in ({**real, "total_tokens": 1655}, {**real, "cached_input_tokens": "unavailable"}, {k: v for k, v in real.items() if k != "cached_input_tokens"},
+                    {**real, "cache_write_tokens": "corrupt"}, {**real, "cache_write_tokens": -1}, {**real, "reasoning_tokens": 61}, {**real, "cached_input_tokens": True}):
+            self.assertFalse(cloud.usage_ok(bad), bad)
+
+
 class CanaryStopsWithoutUsage(Base):
     CANARY, stage_run, visible = test_cloud.CloudFitCanary.CANARY, test_cloud.CloudFitCanary.stage_run, test_cloud.CloudFitCanary.visible     # its helpers, not its tests
 

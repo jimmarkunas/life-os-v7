@@ -144,6 +144,7 @@
   "D241": "A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)",
   "D242": "Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)",
   "D244": "Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)",
+  "D245": "Usage integrity accepts the cache-outside-input convention, exactly (2026-10-20, Jim; LIFE-41)",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
   "D27": "What the first live-shaped dry runs taught (run 85, 2026-10-01)",
