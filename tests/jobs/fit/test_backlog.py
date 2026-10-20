@@ -113,6 +113,7 @@ class BoundedBatch(Batch):
         self.assertEqual(self.batch(0, Endpoint(measured))["cloud_fit"], "DEGRADED(BACKLOG_NOT_AUTHORIZED)")
         capped = self.batch(10 ** 6, Endpoint(measured), environ={**ENV, "V7_CLOUD_FIT_BACKLOG_MAX": "999"}, live=False)
         self.assertEqual(capped["backlog_calls_allowed"], cloud.BACKLOG_CALLS_MAX)               # the code's hard ceiling holds whatever is asked or configured
+        self.assertEqual((cloud.BACKLOG_CALLS_MAX, cloud.BACKLOG_SCAN_MAX), (600, 3000))           # D240: Jim's ceiling, and enough candidates to fill it
 
     def test_a_dry_run_counts_the_backlog_and_asks_nothing(self):
         self.titled(1, "Program Manager A")
