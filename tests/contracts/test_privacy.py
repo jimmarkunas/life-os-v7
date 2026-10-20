@@ -9,7 +9,8 @@ EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
 # Vendor/synthetic domains that may appear in sender-matching rules and fixtures.
 ALLOWED_EMAIL_DOMAINS = {"example.com", "lensa.com", "jobright.ai", "linkedin.com", "user.dice.com",
                          "lensa.com.evil.example", "gmail.com",
-                         "connect.dice.com", "recruiter.dice.com", "jobs.reed.co.uk"}
+                         "connect.dice.com", "recruiter.dice.com", "jobs.reed.co.uk",
+                         "lifeos.invalid", "example.invalid"}               # D242 decision tags and their test: reserved .invalid addresses (RFC 2606), never mailboxes
 SECRET_SHAPES = {
     "google client secret": re.compile(r"GOCSPX-[A-Za-z0-9_-]{10,}"),
     "google refresh token": re.compile(r"\b1//[A-Za-z0-9_-]{30,}"),

@@ -282,7 +282,8 @@
    "lifeos/interview/prep.py": "Deterministic, append-once Interview Derived content.",
    "lifeos/interview/progression.py": "LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.",
    "lifeos/interview/stage.py": "Counts-only Interview probe and bounded B2 evidence execution.",
-   "lifeos/interview/template.py": "LIFE-42: the accepted LIFE-47 UI 4 interview page (Jim, LIFE-42 comment 10829) as Notion blocks, for a new machine-owned round."
+   "lifeos/interview/template.py": "LIFE-42: the accepted LIFE-47 UI 4 interview page (Jim, LIFE-42 comment 10829) as Notion blocks, for a new machine-owned round.",
+   "lifeos/interview/ui_probe.py": "LIFE-88 first gate: can the V7 Notion REST transport build and maintain the accepted UI 3c block tree? Manual only (diag.yml, stage interview-ui-probe, typed confirmation"
   },
   "jira": {
    "lifeos/jira/boards.py": "Which Jira boards V7 manages: JIRA_BOARDS=\"KEY:board_id[:flag...],...\" (a secret; keys and ids stay out of the public repo). Flags: all = triage every non-Epic item; read",
@@ -502,6 +503,7 @@
   "interview": "lifeos.interview.stage:run",
   "interview-acceptance": "lifeos.interview.acceptance:run",
   "interview-probe": "lifeos.interview.stage:probe",
+  "interview-ui-probe": "lifeos.interview.ui_probe:run",
   "jira-card": "lifeos.jira.card:run",
   "jira-probe": "lifeos.jira.snapshot:probe",
   "jira-rollover": "lifeos.jira.rollover:run",
@@ -620,7 +622,8 @@
    "jobs": [
     "diag",
     "trace",
-    "sandbox"
+    "sandbox",
+    "interview_ui"
    ],
    "manual": true,
    "secrets": [

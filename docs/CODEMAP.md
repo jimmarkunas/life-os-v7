@@ -42,6 +42,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `interview` -> `lifeos.interview.stage:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
+- `interview-ui-probe` -> `lifeos.interview.ui_probe:run`
 - `jira-card` -> `lifeos.jira.card:run`
 - `jira-probe` -> `lifeos.jira.snapshot:probe`
 - `jira-rollover` -> `lifeos.jira.rollover:run`
@@ -143,6 +144,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/interview/progression.py`: LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.
 - `lifeos/interview/stage.py`: Counts-only Interview probe and bounded B2 evidence execution.
 - `lifeos/interview/template.py`: LIFE-42: the accepted LIFE-47 UI 4 interview page (Jim, LIFE-42 comment 10829) as Notion blocks, for a new machine-owned round.
+- `lifeos/interview/ui_probe.py`: LIFE-88 first gate: can the V7 Notion REST transport build and maintain the accepted UI 3c block tree? Manual only (diag.yml, stage interview-ui-probe, typed confirmation
 ### lifeos/jira/
 - `lifeos/jira/boards.py`: Which Jira boards V7 manages: JIRA_BOARDS="KEY:board_id[:flag...],..." (a secret; keys and ids stay out of the public repo). Flags: all = triage every non-Epic item; read
 - `lifeos/jira/card.py`: The Jira card in the Daily Report (Phase B). V7 owns exactly one Notion block - the "JIRA Execution" callout named by JIRA_CARD_BLOCK_ID - and nothing else on the page. C
@@ -315,7 +317,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `amazon.yml`: jobs amazon; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_AMAZON_DATA_SOURCE_ID
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
-- `diag.yml`: jobs diag, trace, sandbox; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
+- `diag.yml`: jobs diag, trace, sandbox, interview_ui; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOUD_FIT_PROFILE_REF
