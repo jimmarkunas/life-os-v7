@@ -1378,6 +1378,21 @@ jobs:
       - name: Oracle Cloud card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}
         run: echo "::warning title=Oracle Cloud card::the Oracle Cloud card was not updated; it keeps its previous update time"
+      - id: capacity
+        continue-on-error: true
+        if: ${{ always() }}
+        # LIFE-77 D228 (Jim, Oct 20 2026: design approved, placed near Oracle Cloud): every readable AI account allowance, from Oracle's no-model `limits` request.
+        # Off unless the repository variable V7_AI_CAPACITY_CARD is "on"; its first live run inserts the card right after the Oracle Cloud callout.
+        name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)
+        env:
+          IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
+          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
+          V7_AI_CAPACITY_CARD: ${{ vars.V7_AI_CAPACITY_CARD || 'off' }}
+        run: python -m lifeos.run capacity-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
+      - name: AI Capacity card warning (does not fail the run)
+        if: ${{ always() && steps.capacity.outcome == 'failure' }}
+        run: echo "::warning title=AI Capacity card::the AI Capacity card was not updated; it keeps its previous reading"
 
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
