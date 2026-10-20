@@ -232,11 +232,11 @@ def _protected(client, environ):
     ids = {router.JIRA_REGION: (environ.get("JIRA_CARD_BLOCK_ID") or "").strip(), router.CALENDAR_REGION: (environ.get("CALENDAR_CARD_BLOCK_ID") or "").strip()}
     if not all(ids.values()):
         raise CardError("BILLS_PROTECTED_REGION_UNAVAILABLE")
-    hiring_id = (environ.get("HIRING_CARD_BLOCK_ID") or "").strip()                   # the floating Hiring region joins the proof once its anchor is configured
+    floating = report_region.floating_ids(environ)                                  # the floating Hiring and Job Outreach regions join the proof once their anchors are configured
     try:
         digests = {region: _region_digest(client, block_id) for region, block_id in ids.items()}
-        if hiring_id:
-            digests[router.HIRING_REGION] = report_region.region_digest(client, hiring_id, lambda code: CardError("BILLS_" + code))
+        for region, block_id in floating.items():
+            digests[region] = report_region.region_digest(client, block_id, lambda code: CardError("BILLS_" + code))
         return digests
     except CardError:
         raise

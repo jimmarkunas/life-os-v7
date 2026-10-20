@@ -650,7 +650,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         self.assertEqual(router.HIRING_REGION, M.TITLE)
         self.assertEqual(len(set(router.OWNERS.values())), len(router.OWNERS))
         self.assertFalse(router.is_callout(router.HIRING_REGION))
-        self.assertTrue(all(router.is_callout(h) for h in router.OWNERS if h != router.HIRING_REGION))
+        self.assertEqual(router.FLOATING, (router.HIRING_REGION, router.JOB_OUTREACH_REGION))         # D222 adds the Job Outreach table, also not a callout
+        self.assertTrue(all(router.is_callout(h) for h in router.OWNERS if h not in router.FLOATING))
         router.check_write("v7-hiring", [router.HIRING_REGION])
         with self.assertRaises(router.RouterError):
             router.check_write("v7-mail-alerts", [router.HIRING_REGION])
@@ -686,7 +687,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         for module in (amazon, attention, mail):
             self.assertIn(("HIRING_CARD_BLOCK_ID", router.HIRING_REGION), module.PROTECTED, module.__name__)
         for module in ("lifeos/bills/card.py", "lifeos/agenda/card.py"):
-            self.assertIn("HIRING_CARD_BLOCK_ID", (ROOT / module).read_text())
+            self.assertIn("report_region.floating_ids(environ)", (ROOT / module).read_text())          # D222: Hiring and Job Outreach, by their configured anchors
+        self.assertEqual(R.floating_ids({"HIRING_CARD_BLOCK_ID": "a", "JOB_OUTREACH_CARD_BLOCK_ID": "b"}), {router.HIRING_REGION: "a", router.JOB_OUTREACH_REGION: "b"})
 
 
 class FakeStore:
