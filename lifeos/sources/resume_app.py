@@ -21,6 +21,7 @@ MAX_REPLY, MAX_DESCRIPTION, MIN_DESCRIPTION = 4 * 1024 * 1024, 24000, 200
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 FILENAME = re.compile(r"Jim_Markunas_(Resume|CV)_[A-Za-z0-9_]{1,80}\.docx\Z")
 MARKER = "v7-jd:1"                                              # publish's first body line (lifeos.jobs.publish.body_blocks)
+RESUME_COLUMN = "Resume"                                        # the Ledger's Files column: the latest resume built for this job
 TEXT = ("heading_2", "paragraph", "bulleted_list_item")
 REASONS = {"QUOTA_RESERVE": "Luna's allowance is at your 50% reserve; it resets on its own (see the AI Capacity card).",
            "METER_UNAVAILABLE": "Luna's usage meter could not be read, so nothing was run.",
@@ -91,12 +92,33 @@ def ask_worker(payload, path=WORKER, wait=WORKER_WAIT):
 
 
 def attach(client, token, pid, filename, docx, now, upload=None):
-    """Upload the .docx, append it to the job's page as a file block, and read it back. -> True only when the page now holds a file block with this name."""
-    upload_id = (upload or notion_files.upload)(token, filename, docx, DOCX)              # looked up at call time
+    """Upload the .docx twice (Notion does not promise one upload can be attached in two places): append one copy to the job's page as a file block (every
+    build stays there, newest last) and set the Ledger's Resume column to the other (the latest build, visible in the table). Then read both back.
+    -> True only when the page holds a file block with this name AND its Resume column is exactly this file."""
+    send = upload or notion_files.upload                                                       # looked up at call time
     caption = f"Tailored resume · built {now.strftime('%b %-d, %-I:%M %p')} CT · LIFE OS"
+    block_upload = send(token, filename, docx, DOCX)
     client.call_once("PATCH", f"/blocks/{pid}/children", {"children": [{"object": "block", "type": "file", "file": {
-        "type": "file_upload", "file_upload": {"id": upload_id}, "name": filename, "caption": [{"type": "text", "text": {"content": caption}}]}}]})
-    return any(b.get("type") == "file" and ((b.get("file") or {}).get("name") == filename) for b in _children(client, pid))
+        "type": "file_upload", "file_upload": {"id": block_upload}, "name": filename, "caption": [{"type": "text", "text": {"content": caption}}]}}]})
+    column_upload = send(token, filename, docx, DOCX)
+    client.call_once("PATCH", f"/pages/{pid}", {"properties": {RESUME_COLUMN: {"files": [{"type": "file_upload", "file_upload": {"id": column_upload}, "name": filename}]}}})
+    on_page = any(b.get("type") == "file" and ((b.get("file") or {}).get("name") == filename) for b in _children(client, pid))
+    column = [f.get("name") for f in ((client.get_page(pid).get("properties") or {}).get(RESUME_COLUMN) or {}).get("files") or []]
+    return on_page and column == [filename]
+
+
+def page_url(pid):
+    return "https://www.notion.so/" + pid.replace("-", "")
+
+
+def _attached(current, filename, pid):
+    """The success screen: what was attached, and a link straight to the job's Ledger page (its Resume column and the file at the bottom of the page)."""
+    return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
+        '<section class="section"><div class="eyebrow">Attached</div><h3 class="step-title">Resume attached</h3>'
+        f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
+        f'<div class="notice ok">{e(filename)} · in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
+        f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
+        PATH, "Build resume"), ()
 
 
 def _get(req, who, secrets):
@@ -151,8 +173,7 @@ def _post(req, who, secrets):
         return _stop(500, "Unavailable", "Could not attach the resume", "Do not assume it is on the job's page.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
     if not verified:
         return _stop(500, "Unavailable", "Could not verify the attachment", "Do not assume it is on the job's page.", "Status: DEGRADED · not read back", "danger")
-    return _stop(200, "Attached", "Resume attached", "It is on the job's Ledger page and was read back.",
-                 f"{current['company']} · {current['role']} · {filename}", "ok")
+    return _attached(current, filename, pid)
 
 
 def handle(req, who, secrets):
