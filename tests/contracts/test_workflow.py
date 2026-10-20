@@ -474,6 +474,11 @@ TAILSCALE_WITH = {"oauth-client-id": "TAILSCALE_OAUTH_CLIENT_ID", "oauth-secret"
 # Every V7 workflow that consumes a migrated value reads it through a pinned Bitwarden loader step (EDGE-1.3). Per workflow: the loader's names per job, the remaining direct GitHub secret
 # refs, and the unchanged trigger/permission/concurrency/timeout facts plus a fingerprint of every run command (so a credential-source change cannot alter behaviour).
 CONSUMERS = {
+    "branches": dict(                                                    # D244 (LIFE-81): archive on merge (narrow archive token only); weekly report after safety (Notion token only)
+        jobs={"report": {"NOTION_JIRA_TOKEN"}},
+        direct=['LIFEOS_BWS_RUNTIME_TOKEN', 'V7_ARCHIVE_TOKEN', 'WEEKLY_REVIEW_PAGE_ID'],
+        on=['pull_request', 'workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-branches', 'cancel-in-progress': False},
+        timeouts={'archive': 10, 'report': 10}, digest="63d922348f6d79c3"),
     "agenda": dict(
         jobs={"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
         direct=['CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'JIRA_CARD_BLOCK_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
@@ -544,6 +549,11 @@ CONSUMERS = {
 # effectively received on main 659de1e (workflow-, job- and step-level env merged), except hourly `report`, which only pushes an alert and needs just the topic. Every step not listed
 # here (checkout, setup, installs, tests, warnings, the loader itself) receives none, so exposure is the same as or narrower than before for every step.
 CONSUMER_STEPS = {
+    "branches": {
+        "report": {
+            'Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)': {"NOTION_JIRA_TOKEN"},
+        },
+    },
     "agenda": {
         "agenda": {
             'Agenda snapshot (read-only Google Calendar)': DB | {"GCAL_SERVICE_ACCOUNT_JSON"},
@@ -695,7 +705,7 @@ CONSUMER_STEPS = {
         },
     },
 }
-CUT_OVER = ("agenda", "bills", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "recruiters")
+CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
@@ -753,7 +763,13 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertFalse([k for k, v in (doc.get("env") or {}).items() if k in UUIDS], name)                  # nothing at workflow level
             for job, body in doc["jobs"].items():
                 self.assertFalse([k for k, v in (body.get("env") or {}).items() if k in UUIDS and v != ""], (name, job))   # nothing at job level (the Interview job's blanks stay)
-                (at, loader), (_, retry) = self.loaders(name, job)
+                found = self.loaders(name, job)
+                if not found:                                                           # D244: a job with no loader may receive no migrated value at all
+                    self.assertNotIn(job, CONSUMERS[name]["jobs"], (name, job))
+                    self.assertFalse([k for step in body["steps"] for k in (step.get("env") or {}) if k in UUIDS], (name, job))
+                    self.assertFalse([v for step in body["steps"] for v in (step.get("with") or {}).values() if "steps.bws_" in str(v)], (name, job))
+                    continue
+                (at, loader), (_, retry) = found
                 expected_all = CONSUMER_STEPS.get(name, {}).get(job, {})
                 seen = set()
                 for i, step in enumerate(body["steps"]):

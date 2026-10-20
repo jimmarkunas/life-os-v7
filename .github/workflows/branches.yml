@@ -1,0 +1,80 @@
+name: branches
+# D244 (LIFE-81, Jim Oct 20 2026): repository hygiene. Two jobs, never both in one run.
+#   archive: a merged pull request from this repository. Tags its head commit in life-os-automation as v7-archive/<branch>-pr<N> (read back),
+#            then deletes the branch only when safe (unchanged since the merge, no other open PR, not on the keep-list). Runs main's code, not the PR's.
+#   report:  after the weekly safety check (Mondays, D142; no schedule of its own: the guardrail allows no new scheduler), or on demand. Read-only on GitHub: stale branches on the run summary, and (live) V7's one owned callout
+#            on the Weekly LIFE OS Review page, rewritten in place and read back. Nothing is closed or deleted.
+on:
+  pull_request:
+    types: [closed]
+  workflow_run:
+    workflows: [safety]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "report: also write the Repository hygiene callout on the Weekly LIFE OS Review page (unticked = run summary only)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-branches
+  cancel-in-progress: false
+jobs:
+  archive:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write                       # deleting the merged branch in this repository only; the archive push uses its own narrow token
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main                         # main's code decides, never the pull request's
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/python
+      - name: Archive the merged branch (tag in life-os-automation, read back) and delete it only when safe
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          V7_ARCHIVE_TOKEN: ${{ secrets.V7_ARCHIVE_TOKEN }}
+        run: python -m lifeos.platform.branches archive
+  report:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_report
+        name: Load the Notion report token from Bitwarden (D244, exactly this 1; masked step outputs only; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_report.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_report_retry
+        name: Load the same token from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_report.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
+      - name: Repository hygiene report (stale branches; run summary, and the Weekly Review callout when live)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WEEKLY_REVIEW_PAGE_ID: ${{ secrets.WEEKLY_REVIEW_PAGE_ID }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_report.outputs.NOTION_JIRA_TOKEN || steps.bws_report_retry.outputs.NOTION_JIRA_TOKEN }}
+          LIVE: ${{ github.event_name == 'workflow_run' || inputs.live }}
+        run: python -m lifeos.platform.branches report $([ "$LIVE" = "true" ] && echo --live)

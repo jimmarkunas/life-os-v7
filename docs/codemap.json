@@ -143,6 +143,7 @@
   "D240": "A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)",
   "D241": "A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)",
   "D242": "Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)",
+  "D244": "Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
   "D27": "What the first live-shaped dry runs taught (run 85, 2026-10-01)",
@@ -387,6 +388,7 @@
   },
   "platform": {
    "lifeos/platform/alerts.py": "Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.",
+   "lifeos/platform/branches.py": "LIFE-81 (Jim, Oct 20 2026; D244): branch archiving on merge, and the weekly stale-branch report.",
    "lifeos/platform/db.py": "Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on ",
    "lifeos/platform/dcc_write.py": "The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a",
    "lifeos/platform/egress.py": "Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used",
@@ -604,6 +606,18 @@
     "LIFEOS_ACQ_SSH_PORT",
     "LIFEOS_BWS_RUNTIME_TOKEN",
     "NOTION_BILLS_DATA_SOURCE_ID"
+   ]
+  },
+  "branches.yml": {
+   "jobs": [
+    "archive",
+    "report"
+   ],
+   "manual": true,
+   "secrets": [
+    "LIFEOS_BWS_RUNTIME_TOKEN",
+    "V7_ARCHIVE_TOKEN",
+    "WEEKLY_REVIEW_PAGE_ID"
    ]
   },
   "calendar.yml": {

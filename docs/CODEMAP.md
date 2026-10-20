@@ -240,6 +240,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
+- `lifeos/platform/branches.py`: LIFE-81 (Jim, Oct 20 2026; D244): branch archiving on merge, and the weekly stale-branch report.
 - `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on 
 - `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a
 - `lifeos/platform/egress.py`: Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used
@@ -316,6 +317,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `agenda.yml`: jobs agenda; manual yes; secrets CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, JIRA_CARD_BLOCK_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `amazon.yml`: jobs amazon; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_AMAZON_DATA_SOURCE_ID
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
+- `branches.yml`: jobs archive, report; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN, V7_ARCHIVE_TOKEN, WEEKLY_REVIEW_PAGE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag, trace, sandbox, interview_ui; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
@@ -567,3 +569,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D240: A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)
 - D241: A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)
 - D242: Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)
+- D244: Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)

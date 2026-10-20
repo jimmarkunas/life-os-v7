@@ -30,7 +30,7 @@ class Remote(unittest.TestCase):
         os.makedirs(os.path.join(seed, "docs"))
         Path(seed, "docs", "DECISIONS.md").write_text(LOG)
         git("add", "docs/DECISIONS.md", cwd=seed)
-        git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "log", cwd=seed)
+        git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "log", cwd=seed)
         git("push", "-q", "origin", "HEAD:main", cwd=seed)
 
     def clone(self, name):
