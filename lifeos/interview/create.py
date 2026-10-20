@@ -6,6 +6,7 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, State
+from .template import round_page
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -21,8 +22,10 @@ def parse_identity(value):
         if not value.startswith(IDENTITY_PREFIX):
             return None
         data = json.loads(value[len(IDENTITY_PREFIX):])
-        if list(data) != ["interview_date", "interviewer", "ordinal"] or not valid_date(data["interview_date"]):
+        if list(data) != ["interview_date", "interviewer", "ordinal"]:
             return None
+        if not valid_date(data["interview_date"]) and not (data["interview_date"] is None and data["ordinal"] == 1 and type(data["ordinal"]) is int):
+            return None                                                     # no date only for Interview 1 in Scheduling Pending
         who, ordinal = data["interviewer"], data["ordinal"]
         if who is not None and (not isinstance(who, str) or not who.strip()):
             return None
@@ -38,12 +41,10 @@ def parse_identity(value):
 
 
 def skeleton(kind, query):
+    """The opportunity parent skeleton; a round gets the full UI 4 page (template.round_page)."""
     def block(kind, value):
         return {"object": "block", "type": kind, kind: {"rich_text": rich_text(value)}}
-    blocks = [block("paragraph", notion.MARKERS[kind])]
-    if kind == "round":
-        blocks.append(block("paragraph", identity_text(query)))
-    return blocks + [block("heading_2", title) for title in ("Live Notes", "Raw Notes", "Interview Rounds" if kind == "opportunity" else "Derived")]
+    return [block("paragraph", notion.MARKERS[kind])] + [block("heading_2", title) for title in ("Live Notes", "Raw Notes", "Interview Rounds")]
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
@@ -96,6 +97,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("round_identity_incomplete")
             kind, insertion = "round", parent.page_id
             title = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
+            blocks = round_page(parent_query, query, insertion, environ["HIRING_PIPELINE_PAGE_ID"].strip(), identity_text(query))
         out["writes_planned"] = 1
         if not live:
             return finish(code)
@@ -106,7 +108,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("readback_protected_missing")
         context.require_time()
         try:
-            page = notion.insert_page(client, insertion, title, skeleton(kind, query))
+            page = notion.insert_page(client, insertion, title, blocks if kind == "round" else skeleton(kind, query))
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1
