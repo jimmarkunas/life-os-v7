@@ -44,6 +44,16 @@ def _all_text(blocks):
         yield from _all_text(body.get("children", []))
 
 
+def all_blocks(client, block_id):
+    for b in client.blocks.get(block_id, []):
+        yield b
+        yield from all_blocks(client, b["id"])
+
+
+def tree_text(client, block_id):
+    return [notion.text(b) for b in all_blocks(client, block_id)]
+
+
 def plain(blocks):
     return "\n".join(notion.text(b) for b in blocks)
 
@@ -59,43 +69,40 @@ class SchedulingPending(unittest.TestCase):
         self.assertEqual((counts["writes"], counts["rounds_created"], counts["readback_ok"], counts["why"]), (1, 1, 1, {"round_created": 1}))
         (post,) = client.posts
         self.assertEqual((post["parent"]["page_id"], post["properties"]["title"]["title"][0]["text"]["content"]), ("opp", "Interview 1"))
-        blocks = post["children"]
-        lines = blocks[0]["toggle"]["children"]                                 # D236: folded away in one collapsed toggle
-        self.assertEqual((blocks[0]["type"], notion.text(blocks[0])), ("toggle", notion.FOLD))
-        self.assertEqual([notion.text(b) for b in lines], [notion.MARKERS["round"], create.identity_text(result.round)])
+        blocks = client.blocks["created-1"]                                    # UI 4 (LIFE-46 10875), written in stages
+        self.assertEqual([b["type"] for b in blocks], ["toggle", "callout", "column_list"])
+        self.assertEqual(notion.text(blocks[0]), notion.ROUND_FOLD)
+        lines = client.blocks[blocks[0]["id"]]
+        self.assertEqual([notion.text(b) for b in lines[:2]], [notion.MARKERS["round"], create.identity_text(result.round)])
         self.assertEqual(json.loads(notion.text(lines[1]).split(";", 1)[1]), {"interview_date": None, "interviewer": None, "ordinal": 1})
-        self.assertEqual([notion.text(b) for b in blocks[1:2] + blocks[3:]],
-                         ["Interview 1 · Scheduling Pending", "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-        brief, side = (col["column"]["children"] for col in blocks[2]["column_list"]["children"])
-        text = plain(brief + side)
-        for shown in ("10-second brief", "ExampleCo", "Senior Technical Program Manager", "Round: 1", "Interviewer: Not known yet",
-                      "🟡 Scheduling Pending", "Not scheduled · no Calendar event yet", "requisition EX-1234",
-                      "Logistics", "Calendar event: none yet", "Transcript & Recording", "Navigation", "Evidence guardrails"):
+        shape = notion.outline(notion.read_tree(client, "created-1", [500]))
+        for part in ("0:column_list", "1:column [width_ratio=0.7]", "1:column [width_ratio=0.3]", "2:tab", "3:paragraph Prepare",
+                     "3:paragraph Live Notes", "3:paragraph After Interview", "2:heading_3 Protected Raw Notes", "2:toggle Raw notes · open to write"):
+            self.assertIn(part, shape)
+        text = "\n".join(tree_text(client, "created-1"))
+        for shown in ("Interview snapshot", "Interviewer: Not verified", "Status: Scheduling Pending", "No verified Calendar event or meeting time",
+                      "Request message: linked", "Logistics", "Calendar event: Unavailable", "Transcript & Recording", "Navigation",
+                      "Previous round: None — this is Interview 1", "Source Health — ExampleCo · Interview 1"):
             self.assertIn(shown, text)
-        links = [r["text"]["link"]["url"] for b in brief + side for r in b[b["type"]]["rich_text"] if r["text"].get("link")]
-        self.assertIn(SOURCE, links)
-        self.assertIn("https://www.notion.so/opp", links)
+        mentions = [r["mention"]["page"]["id"] for b in all_blocks(client, "created-1") for r in b[b["type"]].get("rich_text", []) if r.get("type") == "mention"]
+        self.assertEqual(mentions, ["opp", "root"])                            # Navigation: the opportunity and the Hiring Pipeline
         self.assertNotIn("2026", text)                                               # no time is invented
         self.assertEqual(notion.protected_snapshot(client, "opp"), before)              # Jim's parent notes untouched
 
     def test_the_page_carries_every_ui_4_section_and_label(self):
-        """UI 4 (LIFE-47, accepted again for LIFE-42 in comment 10829): every section, field and state toggle is present."""
+        """UI 4 (LIFE-46 10874/10875): every section, tab, field and state toggle of the approved page is present."""
         client = opportunity()
         run(client, progress(REQUEST, [ROW]))
-        text = "\n".join(_all_text(client.posts[0]["children"]))
-        for label in ("10-second brief", "Company:", "Role:", "Round:", "Interviewer:", "Stage:", "Interview outcome:", "When/where:",
-                      "Next action:", "Objective (derived):", "Evidence freshness:",
-                      "Pre-interview analysis · Game Theory + Jordan Belfort / Straight Line", "Input contract:", "Game Theory lens (derived):",
-                      "Jordan Belfort / Straight Line lens (derived):", "Output:", "Refresh:", "Pre-analysis states · normal / empty / degraded",
-                      "Editable live notes", "Questions Asked", "What Landed", "What Needs Work", "Signals / Concerns", "Commitments I Made",
-                      "Follow-Up Owed", "Next Step / Timing",
-                      "Post-interview analysis · Game Theory + Jordan Belfort / Straight Line", "Required evidence gate:", "First extract facts:",
-                      "Game Theory review (derived):", "Jordan Belfort / Straight Line review (derived):", "Outputs:", "Failure state:",
-                      "Transcript-backed facts", "Game Theory · post-interview", "Jordan Belfort / Straight Line · post-interview",
-                      "Post-analysis states · ready / empty / degraded", "Human content safety:",
-                      "Raw notes · open to write", "Logistics", "Calendar event:", "Meeting link:", "Transcript & Recording",
-                      "Granola acquisition:", "Full verbatim transcript:", "Post-analysis gate:", "Audio file:", "Video/recording:", "Processing:",
-                      "Navigation", "Hiring Pipeline ↗", "Prior round: none (this is Interview 1)", "Evidence guardrails"):
+        text = "\n".join(tree_text(client, "created-1"))
+        for label in ("⚙️ LIFE OS · Source Health", "Guardrails:", "Interview snapshot", "Interviewer:", "Status:", "When:", "Next action:",
+                      "Objective (derived):", "Prepare", "Interview objective", "What they may evaluate", "Strongest stories & evidence",
+                      "Risks & objections", "Questions to ask", "Prior-round lessons", "Coaching methods & source requirements",
+                      "Live Notes", "Questions Asked", "What Landed", "What Needs Work", "Signals / Concerns", "Commitments I Made",
+                      "Follow-Up Owed", "Next Step / Timing", "After Interview", "Outcome & decisions", "Commitments & follow-up",
+                      "Transcript-backed facts", "Coaching & next-round improvements", "Processing requirements & degraded states",
+                      "Protected Raw Notes", "Raw notes · open to write", "Logistics", "Date / time:", "Calendar event:",
+                      "Meeting link / location:", "Name:", "Role:", "LinkedIn:", "Transcript & Recording", "Granola:", "Full Transcript page:",
+                      "Audio / video recording:", "Navigation", "Previous round:"):
             self.assertIn(label, text)
 
     def test_replay_reuses_the_same_child_and_writes_nothing(self):

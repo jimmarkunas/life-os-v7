@@ -13,10 +13,13 @@ PROTECTED = ("Live Notes", "Raw Notes")
 # LIFE-46 (accepted UI 3b): Jim types ADOPT as the exact first line of his own opportunity page; adoption swaps it for the
 # opportunity marker plus ";adopted=<date>". Everything from the JIM_NOTES heading to the end of the page is his.
 ADOPT = "LIFE OS: adopt"
-JIM_NOTES = "🔒 Jim's notes"
+JIM_NOTES = "Jim’s Notes"                               # LIFE-88: the approved UI 3c heading (typographic apostrophe)
+LEGACY_NOTES = "🔒 Jim's notes"                         # UI 3b pages (D235-D237) keep theirs until migrated
+NOTES = (JIM_NOTES, LEGACY_NOTES)
 # D236: the marker (and a round's identity line) are folded into one collapsed toggle at the top of the page. Pages written
-# before D236 carry them as the first two plain paragraphs and are still read.
+# before D236 carry them as the first two plain paragraphs and are still read. UI 4 (LIFE-46 10875) titles it with Source Health.
 FOLD = "⚙️ LIFE OS"
+ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
 
@@ -48,7 +51,7 @@ def is_marker(value, kind):
 
 
 def is_fold(block):
-    return block.get("type") == "toggle" and text(block) == FOLD
+    return block.get("type") == "toggle" and text(block) in (FOLD, ROUND_FOLD)
 
 
 def machine_lines(client, page_id, size):
@@ -85,7 +88,7 @@ def ownership(client, page_id, kind):
             return Ownership.MACHINE
         if kind == "opportunity" and first == ADOPT and blocks[0].get("type") == "paragraph":
             return Ownership.ADOPT
-        return Ownership.UNKNOWN if "interview:" in first else Ownership.HUMAN
+        return Ownership.UNKNOWN if "v7-interview" in first else Ownership.HUMAN
     except (NotionError, KeyError, TypeError, ValueError):
         return Ownership.UNKNOWN
 
@@ -205,16 +208,17 @@ def _digest(value):
 
 def protected_snapshot(client, page_id, kind="round"):
     """Call only around an authorized mutation. Hash ordered anchors and all descendant evidence privately.
-    An opportunity parent may instead carry "🔒 Jim's notes" (LIFE-46): that region runs to the end of the page, through any
-    headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of its parent;
-    their contents are never read here."""
+    An opportunity parent may instead carry Jim's notes (NOTES; LIFE-46/LIFE-88): that region runs to the end of the page,
+    through any headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of
+    its parent; their contents are never read here. A UI 4 round (LIFE-46 10875) keeps them in its left column instead."""
     budget, regions = [MAX_CALLS], {}
-    labels = PROTECTED + ((JIM_NOTES,) if kind == "opportunity" else ())
+    labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
     order = []
-    for block in children(client, page_id, budget):
+    tops = children(client, page_id, budget)
+    for block in tops:
         label = text(block)
-        if current == JIM_NOTES:
+        if current in NOTES:
             if block.get("type") != "child_page":
                 regions[current].append(_subtree(client, block, budget))
             continue
@@ -228,9 +232,29 @@ def protected_snapshot(client, page_id, kind="round"):
             current = None
         if current:
             regions[current].append(_subtree(client, block, budget))
-    if not (all(label in regions for label in PROTECTED) or JIM_NOTES in regions):
+    if kind == "round" and not regions:
+        return _round_regions(client, tops, budget)
+    if not (all(label in regions for label in PROTECTED) or any(label in regions for label in NOTES)):
         return None
     return _digest([order, regions])
+
+
+RAW_HEADING, RAW_TOGGLE, LIVE_PANE = "Protected Raw Notes", "Raw notes · open to write", "Live Notes"
+
+
+def _round_regions(client, tops, budget):
+    """UI 4: the Live Notes tab pane and the toggle under "Protected Raw Notes", both in the left of the one column list."""
+    lists = [b for b in tops if b.get("type") == "column_list"]
+    columns = children(client, lists[0]["id"], budget) if len(lists) == 1 else []
+    left = children(client, columns[0]["id"], budget) if columns else []
+    tabs = [b for b in left if b.get("type") == "tab"]
+    heads = [i for i, b in enumerate(left) if b.get("type") == "heading_3" and text(b) == RAW_HEADING]
+    if len(tabs) != 1 or len(heads) != 1 or len(left) <= heads[0] + 1 or left[heads[0] + 1].get("type") != "toggle":
+        return None
+    live = [b for b in children(client, tabs[0]["id"], budget) if text(b) == LIVE_PANE]
+    if len(live) != 1:
+        return None
+    return _digest([_subtree(client, live[0], budget), _subtree(client, left[heads[0] + 1], budget)])
 
 
 def human_tail(client, page_id, blocks=None):
@@ -239,13 +263,161 @@ def human_tail(client, page_id, blocks=None):
     budget = [MAX_CALLS]
     if blocks is None:
         blocks = children(client, page_id, budget)
-        heads = [i for i, b in enumerate(blocks) if text(b) == JIM_NOTES and b.get("type", "").startswith("heading")]
+        heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]
         if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
             raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
         blocks = blocks[heads[0] + 2:]
     else:
         blocks = blocks[1:]
     return _digest([_subtree(client, b, budget) for b in blocks if b.get("type") != "child_page"])
+
+
+# LIFE-88: the approved UI 3c / UI 4 trees nest deeper than the two levels one Notion request may carry, and a column list,
+# column, table or tab must be created with its children. write_tree sends each block with the leading children that fit and
+# appends the rest to the created blocks in order; a column whose first child cannot fit starts with an empty placeholder
+# paragraph that is deleted once its children are written.
+MUST, TREE_MAX_CALLS = ("column_list", "column", "table", "tab"), 200
+PLACEHOLDER = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": []}}
+
+
+def kids(block):
+    return (block.get(block.get("type")) or {}).get("children") or []
+
+
+def _shell(block, depth):
+    kind, inner, kept = block["type"], kids(block), []
+    if depth < 2:
+        for child in inner:
+            plan = _shell(child, depth + 1)
+            if plan is None:
+                break
+            kept.append((child, plan))
+    payload = {**block, kind: {k: v for k, v in block[kind].items() if k != "children"}}
+    placeholder = False
+    if kept:
+        payload[kind]["children"] = [plan[0] for _, plan in kept]
+    elif inner and kind in MUST:
+        if kind != "column" or depth >= 2:
+            return None
+        payload[kind]["children"], placeholder = [PLACEHOLDER], True
+    return payload, kept, inner[len(kept):], placeholder
+
+
+def _deferred(plan):
+    _, kept, rest, placeholder = plan
+    return bool(rest) or placeholder or any(_deferred(p) for _, p in kept)
+
+
+def _fill(client, block_id, plan, budget):
+    _, kept, rest, placeholder = plan
+    made = children(client, block_id, budget) if placeholder or any(_deferred(p) for _, p in kept) else []
+    for (_, inner), item in zip(kept, made):
+        if _deferred(inner):
+            _fill(client, item["id"], inner, budget)
+    if rest:
+        write_tree(client, block_id, rest, budget=budget)
+    if placeholder:
+        budget[0] -= 1
+        delete_block(client, made[0]["id"])
+
+
+def write_tree(client, parent_id, blocks, after=None, title=None, budget=None):
+    """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
+    id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
+    budget = budget if budget is not None else [TREE_MAX_CALLS]
+    plans = [_shell(block, 0) for block in blocks]
+    if any(plan is None for plan in plans):
+        raise NotionError("INTERVIEW_TREE_UNWRITABLE")
+    budget[0] -= 1
+    if budget[0] < 0:
+        raise NotionError("INTERVIEW_TREE_BUDGET")
+    body = {"children": [plan[0] for plan in plans]}
+    if title is not None:
+        from lifeos.platform.notion_client import rich_text
+        target = client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
+                                                "properties": {"title": {"type": "title", "title": rich_text(title)}}, **body})["id"]
+        made = children(client, target, budget)
+    else:
+        target = parent_id
+        made = client.call("PATCH", f"/blocks/{parent_id}/children", {**body, **({"after": after} if after else {})})["results"]
+    if len(made) < len(plans):
+        raise NotionError("INTERVIEW_TREE_INCOMPLETE")
+    for plan, item in zip(plans, made):
+        if _deferred(plan):
+            _fill(client, item["id"], plan, budget)
+    return target
+
+
+def _plain(runs):
+    """Text of rich-text runs; a mention counts by its target, never its title, so renaming a linked page changes nothing."""
+    return "".join(f"@{((r.get('mention') or {}).get('page') or {}).get('id', '').replace('-', '')}" if r.get("type") == "mention"
+                   else r.get("plain_text", (r.get("text") or {}).get("content", "")) for r in runs or [])
+
+
+def _node(kind, body, value):
+    node = {"type": kind, "text": value if kind == "child_page" else _plain(body.get("rich_text"))}
+    for key in ("color", "width_ratio", "table_width", "has_column_header", "has_row_header", "is_toggleable"):
+        if body.get(key) not in (None, False, "default"):
+            node[key] = round(body[key], 4) if key == "width_ratio" else body[key]
+    icon = body.get("icon") or {}
+    if icon:
+        node["icon"] = icon.get("emoji") or (icon.get("external") or {}).get("url") or icon.get("type")
+    if kind == "table_row":
+        node["cells"] = [_plain(cell) for cell in body.get("cells", [])]
+    return node
+
+
+def as_nodes(blocks):
+    """Normalized nodes of a block payload as written (compare with read_tree)."""
+    return [{**_node(b["type"], b[b["type"]], text(b)), **({"children": as_nodes(kids(b))} if kids(b) else {})} for b in blocks]
+
+
+def region_nodes(client, blocks, budget, skip=(), depth=0):
+    """Normalized nodes of `blocks` and everything under them (child pages by title only), in order; ids in `skip` left out."""
+    out = []
+    for block in blocks:
+        if block.get("id") in skip:
+            continue
+        kind = block.get("type", "")
+        body = block.get(kind) or {}
+        node = _node(kind, body, body.get("title", "") if kind == "child_page" else text(block))
+        if block.get("has_children") and kind != "child_page":
+            if depth >= 8:
+                raise NotionError("INTERVIEW_TREE_INCOMPLETE")
+            node["children"] = region_nodes(client, children(client, block["id"], budget), budget, skip, depth + 1)
+        out.append(node)
+    return out
+
+
+def read_tree(client, block_id, budget, skip=()):
+    return region_nodes(client, children(client, block_id, budget), budget, skip)
+
+
+CONTENT = ("paragraph", "bulleted_list_item", "numbered_list_item", "to_do", "quote", "table_row", "link_to_page")
+
+
+def outline(nodes, depth=0, parent="", icons=True):
+    """The structural outline compared with the approved pages: block types, nesting, order, column ratios, callout colours
+    and icons, table shapes, heading / toggle / tab labels. Text content and table rows are data, not structure."""
+    out = []
+    for node in nodes:
+        kind = node["type"]
+        if kind in CONTENT and parent != "tab":
+            continue
+        label = node["text"] if kind.startswith("heading") or kind == "toggle" or parent == "tab" else ""
+        extra = [f"{k}={node[k]}" for k in ("width_ratio", "color", "icon", "table_width", "has_column_header", "has_row_header")
+                 if k in node and (icons or k != "icon")]
+        out.append(f"{depth}:{kind}" + (f" {label}" if label else "") + (f" [{' '.join(extra)}]" if extra else ""))
+        out += outline(node.get("children", []), depth + 1, kind, icons)
+    return out
+
+
+def tree_digest(nodes):
+    return _digest(nodes)[:16]
+
+
+def set_text(client, block_id, kind, rich):
+    return client.call("PATCH", f"/blocks/{block_id}", {kind: {"rich_text": rich}})
 
 
 def append_children(client, page_id, heading_id, blocks):
@@ -330,12 +502,6 @@ def active_target(client, root, context):
         return targets[0] if valid and title == "Active Opportunities" and not page.get("archived") and not page.get("in_trash") else None
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return None
-
-
-def insert_page(client, parent_id, title, blocks):
-    from lifeos.platform.notion_client import rich_text
-    return client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
-                      "properties": {"title": {"type": "title", "title": rich_text(title)}}, "children": blocks})
 
 
 def active_shape(client, root, context):

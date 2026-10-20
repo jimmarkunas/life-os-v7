@@ -1,12 +1,17 @@
-"""Insert-only B2 vertical slice; one page per evidence pass, no write retries."""
+"""B2 vertical slice; one page per evidence pass, no write retries. LIFE-88: pages are the approved UI 3c / UI 4 trees, and a
+UI 3c opportunity page's machine region is reconciled from its view when the sources change."""
+import hashlib
 import json
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from lifeos.platform.names import core, norm, split_title
-from lifeos.platform.notion_client import NotionError
+from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
-from . import notion
+from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, State
-from .template import opportunity_page, round_page
+from .template import machine_part, opportunity_page, render_line, round_page
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -57,12 +62,10 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     if not live:
         return "adopt_allowed"
     context.require_time()
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    marker = notion.MARKERS["opportunity"] + ";adopted=" + datetime.now(ZoneInfo("America/Chicago")).date().isoformat()
-    sections = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), marker, adopted=True)
+    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), today=today())
+    sections = rendered(current, adopted=today(), tail=2)[0]
     try:
-        notion.append_children(client, parent.page_id, blocks[0]["id"], sections)
+        notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
     except NotionError:
         return "write_failed"
     out["writes"] = out["readback_failed"] = 1
@@ -70,12 +73,105 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
         notion.delete_block(client, blocks[0]["id"])                    # the adopt line Jim typed; the fold is now first
     except NotionError:
         return "write_failed"                                           # the adopt line stays; the next run reports adopt_conflict
-    return _sections_readback(client, parent.page_id, before, out, "parent_adopted")
+    return _sections_readback(client, parent.page_id, before, out, "parent_adopted", current, sections)
 
 
-def _sections_readback(client, page_id, before, out, done):
+def today():
+    return datetime.now(ZoneInfo("America/Chicago")).date().isoformat()
+
+
+def rendered(current, adopted=None, tail=0):
+    """(blocks, source): the UI 3c machine region followed by the first `tail` blocks of the Jim's Notes region (None: all of
+    it), and the digest of what the machine region says."""
+    draft = opportunity_page(current, today(), adopted=adopted)
+    source = hashlib.sha256(json.dumps(machine_part(draft), sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+    blocks = opportunity_page(current, today(), source, adopted=adopted)
+    machine = machine_part(blocks)
+    return (blocks if tail is None else machine + blocks[len(machine):][:tail]), source
+
+
+RENDER = re.compile(r"v7-render:1;job=(.+);source=([0-9a-f]{16});page=([0-9a-f]{16}|pending)")
+
+
+def machine_region(client, page_id, context=None):
+    """(machine blocks, fold lines, top blocks): everything before the one Jim's Notes heading, which starts with the fold."""
+    tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
+    if len(heads) != 1 or not notion.is_fold(tops[0]):
+        return None, [], tops
+    return tops[:heads[0]], notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
+
+
+def _pages(tops):
+    return [b["id"] for b in tops if b.get("type") == "child_page"]
+
+
+def finalize(client, page_id, current, sections, before=None):
+    """Read the written machine region back: the approved structure, then its digest into the fold's render line, then Jim's
+    region and the child pages unchanged."""
+    machine, lines, tops = machine_region(client, page_id)
+    renders = [b for b in lines if RENDER.fullmatch(notion.text(b))]
+    if machine is None or len(renders) != 1 or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity"):
+        return "readback_marker_missing"
+    budget = [notion.TREE_MAX_CALLS]
+    nodes = notion.region_nodes(client, machine, budget, skip={renders[0]["id"]})
+    if notion.outline(nodes, icons=False) != notion.outline(notion.as_nodes(machine_part(sections)), icons=False):
+        return "readback_layout_mismatch"
+    job, source, _ = RENDER.fullmatch(notion.text(renders[0])).groups()
+    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(nodes))))
+    if before is not None and (notion.human_tail(client, page_id) != before[0] or _pages(tops) != before[1]):
+        return "readback_protected_changed"
+    return "readback_ok"
+
+
+def refresh(client, page_id, current, live, out, context=None, migrate=False):
+    """LIFE-88: bring a UI 3c page's machine region up to date with its view. Only a region this writer wrote (the fold's render
+    line names this job and still matches a fresh read of the region) is replaced; a human edit there, another job's page or an
+    unrecognized layout stops with a code and writes nothing. Jim's Notes and the child pages are digest-checked."""
+    machine, lines, tops = machine_region(client, page_id, context)
+    if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
+        return "parent_unrecognized"
+    sections, source = rendered(current)
+    found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
+    if found:
+        job, previous, page = found[0].groups()
+        if len(found) != 1 or job != (current.stable_job_key or "none"):
+            return "identity_mismatch"
+        skip = {b["id"] for b in lines if RENDER.fullmatch(notion.text(b))}
+        if page != notion.tree_digest(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)):
+            return "machine_region_edited"
+        if previous == source:
+            return "parent_unchanged"
+    elif not (migrate and len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")):
+        return "parent_legacy_layout"                                   # UI 3b (D235-D237): migrated only when authorized
+    before = (notion.human_tail(client, page_id), _pages(tops))
+    out["writes_planned"] = 1
+    if not live:
+        return "refresh_allowed"
+    if context:
+        context.require_time()
+    try:
+        notion.write_tree(client, page_id, sections, after=machine[-1]["id"])
+        out["writes"] = out["readback_failed"] = 1
+        for block in machine:
+            notion.delete_block(client, block["id"])
+        heading = tops[len(machine)]
+        if notion.text(heading) != notion.JIM_NOTES:                    # a migrated UI 3b page takes the approved label
+            notion.set_text(client, heading["id"], heading["type"], rich_text(notion.JIM_NOTES))
+    except NotionError:
+        return "write_failed"
+    check = finalize(client, page_id, current, sections, before)
+    if check != "readback_ok":
+        return check
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    return "parent_refreshed"
+
+
+def _sections_readback(client, page_id, before, out, done, current=None, sections=None):
     if notion.ownership(client, page_id, "opportunity") != Ownership.MACHINE:
         return "readback_marker_missing"
+    if current is not None and finalize(client, page_id, current, sections) != "readback_ok":
+        return "readback_layout_mismatch"
     if notion.protected_snapshot(client, page_id, "opportunity") is None:
         return "readback_protected_missing"
     if notion.human_tail(client, page_id) != before:
@@ -86,7 +182,8 @@ def _sections_readback(client, page_id, before, out, done):
 
 def upgrade(client, environ, parent, parent_query, query, live, context, out, blocks):
     """LIFE-46 (Jim, Oct 20, option B): a LIFE OS opportunity page written before D235 (marker + Live Notes / Raw Notes /
-    Interview Rounds) gets the accepted UI 3b sections and the Jim's notes heading once, inserted right after its marker.
+    Interview Rounds) gets the approved UI 3c sections (LIFE-88; UI 3b before it) and the Jim's Notes heading once, inserted
+    right after its marker.
     The old headings, anything written under them and the round pages stay where they are, now inside Jim's notes; nothing
     is edited, moved or deleted. Rounds come on a later run."""
     if query.confirmed_round is not True:
@@ -101,9 +198,10 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     if not live:
         return "upgrade_allowed"
     context.require_time()
-    sections = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), "", adopted=True)[1:]
+    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), today=today())
+    sections = rendered(current, tail=2)[0][1:]                        # the page keeps its own marker; no second fold
     try:
-        notion.append_children(client, parent.page_id, blocks[0]["id"], sections)
+        notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
     except NotionError:
         return "write_failed"
     out["writes"] = out["readback_failed"] = 1
@@ -126,7 +224,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         parent = resolve_parent(parent_query, scan)
         if parent.state == State.BLOCKED:
             return finish(parent.code)
-        before = None
+        before, pipeline = None, environ["HIRING_PIPELINE_PAGE_ID"].strip()
         if parent.state == State.NOT_FOUND:
             company, role = parent_query.company.strip(), parent_query.role.strip()
             title = f"{company} — {role}"
@@ -138,7 +236,8 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             if insertion is None:
                 return finish("active_target_incomplete")
             kind, code = "opportunity", "parent_create_allowed"
-            blocks = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), notion.MARKERS["opportunity"])
+            current = views.opportunity(client, parent_query, query, pipeline, today=today())
+            blocks = rendered(current, tail=None)[0]
         else:
             if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
                 return finish("parent_exists")
@@ -157,7 +256,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                         out["matched"] = 1
                 return finish("human_page" if owner == Ownership.HUMAN else "ownership_unknown")
             tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
-            if not any(notion.text(b) == notion.JIM_NOTES and b.get("type", "").startswith("heading") for b in tops):
+            if not any(notion.text(b) in notion.NOTES and b.get("type", "").startswith("heading") for b in tops):
                 code = upgrade(client, environ, parent, parent_query, query, live, context, out, tops)
                 if code == "parent_upgraded":
                     deferred.add(parent.page_id)
@@ -166,13 +265,20 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
+            current = views.opportunity(client, parent_query, query, pipeline, children, today())
+            if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
+                done = refresh(client, parent.page_id, current, live, out, context)
+                if done in ("parent_refreshed", "refresh_allowed"):
+                    deferred.add(parent.page_id)
+                return finish(code if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done)
             if code != "create_allowed":
                 return finish(code)
+            deferred.add(parent.page_id)                                # one write per opportunity per run
             if parse_identity(identity_text(query)) is None:
                 return finish("round_identity_incomplete")
             kind, insertion = "round", parent.page_id
             title = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
-            blocks = round_page(parent_query, query, insertion, environ["HIRING_PIPELINE_PAGE_ID"].strip(), identity_text(query))
+            blocks = round_page(current, query, insertion, identity_text(query))
         out["writes_planned"] = 1
         if not live:
             return finish(code)
@@ -183,13 +289,14 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("readback_protected_missing")
         context.require_time()
         try:
-            page = notion.insert_page(client, insertion, title, blocks)
+            page_id = notion.write_tree(client, insertion, blocks, title=title)
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1
         out["readback_failed"] = 1
-        page_id = page["id"]
         check = notion.readback(client, page_id, insertion, kind)
+        if check == "readback_ok" and kind == "opportunity":
+            check = finalize(client, page_id, current, blocks)
         if check != "readback_ok":
             return finish(check)
         if kind == "opportunity":

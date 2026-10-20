@@ -1,10 +1,21 @@
 """LIFE-88 first gate: the UI 3c REST capability probe writes only its one QA probe page and reports codes, block types and counts."""
 import json
 import unittest
+import unittest.mock
 from lifeos.interview import ui_probe as P
 from lifeos.platform.notion_client import NotionError
 
 LIVE = {"PROBE_CONFIRM": "QA", "NOTION_INTERVIEW_TOKEN": "synthetic"}
+
+
+def setUpModule():                                  # the QA render proof has its own tests (test_ui3c); these cover the capability probe
+    global RENDER
+    RENDER = unittest.mock.patch("lifeos.interview.ui_probe._render", return_value={"qa": "stubbed"})
+    RENDER.start()
+
+
+def tearDownModule():
+    RENDER.stop()
 NOSLEEP = lambda seconds: None
 
 

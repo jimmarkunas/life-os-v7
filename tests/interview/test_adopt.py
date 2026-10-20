@@ -25,27 +25,19 @@ class AdoptFake(WritableFake):
         self.append_error = self.marker_error = self.touch_human = False
 
     def call(self, method, path, body=None):
-        if method not in ("PATCH", "DELETE"):
-            return super().call(method, path, body)
-        self.calls.append((method, path))
-        self.patches.append((path, copy.deepcopy(body)))
-        key = path.split("/")[2]
-        if method == "PATCH":
-            if self.append_error:
+        if method in ("PATCH", "DELETE"):
+            self.patches.append((path, copy.deepcopy(body)))
+            if method == "PATCH" and self.append_error:
                 raise NotionError("private error body")
-            assert path.endswith("/children") and set(body) == {"children", "after"}
-            items = self.register(f"{key}-new-{len(self.patches)}", body["children"])
-            at = [b["id"] for b in self.blocks[key]].index(body["after"]) + 1
-            self.blocks[key][at:at] = items
-            if self.touch_human:
-                self.blocks[key][-1] = block("edited", id="h3")
-            return {"results": items}
-        if self.marker_error:
-            raise NotionError("private error body")
-        assert body is None
-        for blocks in self.blocks.values():
-            blocks[:] = [item for item in blocks if item["id"] != key]
-        return {"id": key, "in_trash": True}
+            if method == "DELETE" and self.marker_error:
+                raise NotionError("private error body")
+            result = super().call(method, path, body)
+            if self.touch_human and path.endswith("/children"):
+                key = path.split("/")[2]
+                if key in ("human", "created-1"):
+                    self.blocks[key][-1] = block("edited", id=self.blocks[key][-1]["id"])
+            return result
+        return super().call(method, path, body)
 
 
 def run(client, live=True, parent=LEGACY, query=PENDING):
@@ -61,35 +53,6 @@ def depth(items, level=0):
 
 
 class OpportunityTemplateTests(unittest.TestCase):
-    def test_new_parent_is_the_accepted_ui_3b_template(self):
-        blocks = opportunity_page(PARENT, PENDING, "root-page", notion.MARKERS["opportunity"])
-        self.assertEqual((blocks[0]["type"], notion.text(blocks[0]), blocks[0]["toggle"]["color"]), ("toggle", notion.FOLD, "gray"))
-        self.assertEqual([notion.text(b) for b in blocks[0]["toggle"]["children"]], [notion.MARKERS["opportunity"]])
-        self.assertTrue(notion.text(blocks[1]).startswith("Canonical opportunity parent"))
-        self.assertEqual(blocks[2]["type"], "column_list")
-        left, right = (c["column"]["children"] for c in blocks[2]["column_list"]["children"])
-        self.assertEqual([notion.text(b).split("\n")[0] for b in left],
-                         ["Role Snapshot", "Interview Timeline · evidence versus demo", "Follow-up · owner and evidence", "Working strategy / next action"])
-        self.assertEqual([notion.text(b).split("\n")[0] for b in right],
-                         ["Quick navigation", "Role context · highlights (not full JD)", "Contacts", "Source health · freshness", "Canonical Ownership", "Guardrails"])
-        heads = [(b["type"], notion.text(b)) for b in blocks if b["type"].startswith("heading")]
-        self.assertEqual(heads, [("heading_2", "Interviews"), ("heading_2", "Strategy"), ("heading_2", "LinkedIn & Outreach"),
-                                 ("heading_2", "Materials & Sources"), ("heading_3", "Job Description — original source (separate from Strategy)"),
-                                 ("heading_2", notion.JIM_NOTES)])
-        self.assertTrue(all(b["heading_2"]["is_toggleable"] for b in blocks[3:7]))
-        self.assertEqual([b["type"] for b in blocks[-3:]], ["heading_2", "callout", "paragraph"])
-        self.assertLessEqual(depth(blocks), 2)                                 # Notion's per-request nesting limit
-        page = json.dumps(blocks, ensure_ascii=False)
-        for fact in ("Scheduling Pending", "legacy-key", "ledgerrow", "https://mail.google.com/mail/u/0/#all/synthetic", "Not verified"):
-            self.assertIn(fact, page.replace("ledger-row", "ledgerrow"))
-        for demo in ("ExampleCo", "Smartsheet", "KellyMitchell", "Demo Contact", "Oct 20", "Rituraj", "SANDBOX"):
-            self.assertNotIn(demo, page)
-        adopted = opportunity_page(PARENT, PENDING, "root-page", "m", adopted=True)
-        self.assertEqual((notion.text(adopted[0]["toggle"]["children"][0]), adopted[1:]), ("m", blocks[1:-1]))
-        unlinked = json.dumps(opportunity_page(PARENT, ROUND, "root-page", "m"), ensure_ascii=False)
-        self.assertIn("exact row not linked", unlinked)
-        self.assertNotIn("Request message ↗", unlinked)
-
     def test_jim_notes_region_runs_to_the_end_and_rounds_never_touch_it(self):
         client = WritableFake()
         parent_id = machine_parent(client)
@@ -138,8 +101,10 @@ class AdoptTests(unittest.TestCase):
         self.assertEqual((result["writes"], result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 1, 0))
         self.assertEqual(result["why"], {"parent_adopted": 1})
         self.assertEqual(client.posts, [])                                     # no round in the adoption run
-        self.assertEqual([c for c in client.calls if c[0] != "GET"], [("PATCH", "/blocks/human/children"), ("DELETE", "/blocks/h0")])
-        self.assertEqual(client.patches[0][1]["after"], "h0")
+        writes = [c for c in client.calls if c[0] != "GET"]
+        self.assertEqual((writes[0], client.patches[0][1]["after"]), (("PATCH", "/blocks/human/children"), "h0"))
+        self.assertIn(("DELETE", "/blocks/h0"), writes)
+        self.assertFalse([w for w in writes if w[1].split("/")[2] in ("h1", "h2", "h2a", "h3")])   # Jim's blocks never written
         page = client.blocks["human"]
         self.assertNotIn("h0", [b["id"] for b in page])                       # the adopt line is gone; the fold is first
         self.assertEqual(notion.text(page[0]), notion.FOLD)
@@ -151,8 +116,12 @@ class AdoptTests(unittest.TestCase):
         self.assertNotEqual(notion.text(page[-1]), "Write here.")
         replay = run(client)
         self.assertEqual((replay["rounds_created"], replay["readback_ok"]), (1, 1))
-        self.assertEqual(len(client.patches), 2)
         self.assertEqual(client.blocks["human"][notes + 2:-1], original)
+        again = run(client)                                                  # LIFE-88: the page's Interviews table lists the round
+        self.assertEqual((again["writes"], again["why"]), (1, {"parent_refreshed": 1}))
+        notes = [notion.text(b) for b in client.blocks["human"]].index(notion.JIM_NOTES)
+        self.assertEqual(client.blocks["human"][notes + 2:-1], original)
+        self.assertFalse([p for p, _ in client.patches if p.split("/")[2] in ("h1", "h2", "h2a", "h3")])
         again = run(client)
         self.assertEqual((again["writes"], again["why"]), (0, {"child_match": 1}))
 
@@ -249,19 +218,22 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual((result["why"], result["writes_planned"], result["writes"], client.patches), ({"upgrade_allowed": 1}, 1, 0, []))
         result = run(client)
         self.assertEqual((result["why"], result["writes"], result["parents_upgraded"], result["readback_ok"]), ({"parent_upgraded": 1}, 1, 1, 1))
-        self.assertEqual([c for c in client.calls if c[0] != "GET"], [("PATCH", "/blocks/human/children")])
-        self.assertEqual(client.patches[0][1]["after"], "f")
+        writes = [c for c in client.calls if c[0] != "GET"]
+        self.assertEqual((writes[0], client.patches[0][1]["after"]), (("PATCH", "/blocks/human/children"), "f"))
+        self.assertFalse([w for w in writes if w[0] == "DELETE" or w[1] == "/blocks/f"])
+        written = len(client.patches)
         page_blocks = client.blocks["human"]
         self.assertEqual(page_blocks[0]["id"], "f")
         self.assertEqual([notion.text(b) for b in page_blocks].count(notion.FOLD), 1)
         notes = [notion.text(b) for b in page_blocks].index(notion.JIM_NOTES)
         self.assertEqual(page_blocks[notes + 1]["type"], "callout")
         self.assertEqual(page_blocks[notes + 2:], original)                   # old headings, notes and Interview 1: untouched
-        self.assertTrue(notion.text(page_blocks[1]).startswith("Canonical opportunity parent"))
+        self.assertTrue(notion.text(page_blocks[1]).startswith("Stage: "))
+        self.assertEqual(page_blocks[2]["type"], "callout")                  # the Action Center
         self.assertIsNotNone(notion.protected_snapshot(client, "human", "opportunity"))
         replay = run(client)
         self.assertEqual((replay["why"], replay["writes"]), ({"child_match": 1}, 0))
-        self.assertEqual((len(client.patches), client.posts), (1, []))
+        self.assertEqual((len(client.patches), client.posts), (written, []))
 
     def test_unrecognized_or_unconfirmed_pages_are_never_upgraded(self):
         for mode in ("raw", "second", "unconfirmed"):

@@ -2,12 +2,28 @@ import copy
 import json
 import unittest
 from unittest.mock import patch
-from lifeos.interview import create, notion, prep, stage
+from lifeos.interview import create, notion, prep, stage, template
 from lifeos.interview.models import Child, ParentQuery, PrepEvidence, RoundQuery, Scan
 from lifeos.platform.notion_client import NotionError
 from lifeos.platform.runtime import RunContext
 from tests.interview.test_create import WritableFake, machine_parent, PARENT, ROUND
 from tests.interview.test_notion import ENV, block
+
+
+def legacy_round_page(view, query, parent_id, identity, prep=None):
+    """The D230 round layout written before LIFE-88 (top-level sections, "Derived" last); such pages keep the Derived path."""
+    head = lambda label: {"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"type": "text", "text": {"content": label}}]}}
+    return [template.fold(notion.MARKERS["round"], identity)] + [head(x) for x in ("Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived")]
+
+
+def setUpModule():
+    global LEGACY
+    LEGACY = patch("lifeos.interview.create.round_page", legacy_round_page)
+    LEGACY.start()
+
+
+def tearDownModule():
+    LEGACY.stop()
 
 
 def machine_round(client, ordinal=1, day=None):
@@ -23,17 +39,7 @@ def payload_at(client, page_id):
 
 
 class PrepFake(WritableFake):
-    def call(self, method, path, body=None):
-        if method == "PATCH":
-            self.calls.append((method, path))
-            page_id = path.split("/")[2]
-            index = next((i for i, block_value in enumerate(self.blocks[page_id]) if block_value.get("id") == body.get("after")), len(self.blocks[page_id]) - 1)
-            inserted = copy.deepcopy(body["children"])
-            for i, value in enumerate(inserted):
-                value["id"] = f"derived-{i}"
-            self.blocks[page_id][index + 1:index + 1] = inserted
-            return {}
-        return super().call(method, path, body)
+    """The shared Notion-shaped writer (staged appends, deletes and in-place text updates)."""
 
 
 class InputTests(unittest.TestCase):
@@ -58,6 +64,7 @@ class PrepTests(unittest.TestCase):
     def test_dry_live_exact_replay_and_conflict_are_append_only(self):
         client = PrepFake()
         _, round_id, query = machine_round(client)
+        start = len(client.calls)
         evidence = PrepEvidence(focus=("Focus A",), pressure_points=("Risk A",), questions=("Ask A",))
         before = notion.protected_snapshot(client, round_id)
         dry = self.apply(client, query, evidence, False)
@@ -65,13 +72,13 @@ class PrepTests(unittest.TestCase):
         self.assertEqual(self.apply(client, query, evidence)["code"], "derived_created")
         replay = self.apply(client, query, evidence)
         self.assertEqual((replay["code"], replay["writes"]), ("derived_match", 0))
-        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 1)
+        self.assertEqual(len([c for c in client.calls[start:] if c[0] == "PATCH"]), 1)
         blocks = client.blocks[round_id]
         heading = next(i for i, b in enumerate(blocks) if notion.text(b) == "Derived")
         self.assertTrue(notion.text(blocks[heading + 1]).startswith(prep.DERIVED_PREFIX))
         self.assertEqual(notion.protected_snapshot(client, round_id), before)
         self.assertEqual(self.apply(client, query, PrepEvidence(focus=("Different",)))["code"], "derived_conflict")
-        self.assertEqual(len([c for c in client.calls if c[0] == "PATCH"]), 1)
+        self.assertEqual(len([c for c in client.calls[start:] if c[0] == "PATCH"]), 1)
         heading, payload = notion.derived_blocks(client, round_id)
         current_hash, full_hash = notion.text(payload[0]).removeprefix(prep.DERIVED_PREFIX).split(";")
         self.assertRegex(current_hash, r"^[0-9a-f]{64}$")
@@ -82,10 +89,11 @@ class PrepTests(unittest.TestCase):
     def test_protected_snapshot_failure_and_append_failure_do_not_retry(self):
         client = PrepFake()
         _, round_id, query = machine_round(client)
+        start = len(client.calls)
         with patch("lifeos.interview.notion.protected_snapshot", return_value=None):
             result = self.apply(client, query, PrepEvidence(focus=("A",)))
         self.assertEqual(result["code"], "readback_protected_missing")
-        self.assertFalse(any(c[0] == "PATCH" for c in client.calls))
+        self.assertFalse(any(c[0] == "PATCH" for c in client.calls[start:]))
         original = notion.append_children
         with patch("lifeos.interview.notion.append_children", side_effect=NotionError("private")) as append:
             result = self.apply(client, query, PrepEvidence(focus=("A",)))
@@ -397,9 +405,9 @@ class PrepTests(unittest.TestCase):
         for error in (ValueError("x"), TypeError("x"), KeyError("x"), AttributeError("x")):
             client = PrepFake()
             _, _, query = machine_round(client)
-            real = notion.explicit_child
-            def fail_after_append(c, page_id, _client=client, _error=error):
-                if any(method == "PATCH" for method, _ in _client.calls):
+            real, start = notion.explicit_child, len(client.calls)
+            def fail_after_append(c, page_id, _client=client, _error=error, _start=start):
+                if any(method == "PATCH" for method, _ in _client.calls[_start:]):
                     raise _error
                 return real(c, page_id)
             with patch("lifeos.interview.notion.explicit_child", side_effect=fail_after_append):

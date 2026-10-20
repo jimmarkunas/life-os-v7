@@ -32,18 +32,48 @@ class WritableFake(Fake):
         self.change_notes = False
         self.hide_created = False
 
-    def register(self, prefix, items):
-        """Like Notion: every block gets an id, and nested children become readable child lists."""
+    MUST = ("column_list", "column", "table", "tab")
+
+    def register(self, prefix, items, depth=0):
+        """Like Notion: every block gets an id, nested children become readable child lists, a request carries at most two
+        nesting levels, and a column list, column, table or tab must arrive with its children."""
         items = copy.deepcopy(items)
         for index, item in enumerate(items):
             item["id"] = f"{prefix}-block-{index}"
             inner = (item.get(item["type"]) or {}).pop("children", None)
+            if item["type"] in self.MUST and not inner:
+                raise NotionError("NOTION_HTTP_400")
+            if inner and depth >= 2:
+                raise NotionError("NOTION_HTTP_400")
             if inner:
                 item["has_children"] = True
-                self.blocks[item["id"]] = self.register(item["id"], inner)
+                self.blocks[item["id"]] = self.register(item["id"], inner, depth + 1)
         return items
 
+    def find(self, key):
+        return next((b for blocks in self.blocks.values() for b in blocks if b.get("id") == key), None)
+
     def call(self, method, path, body=None):
+        if method in ("PATCH", "DELETE"):
+            self.calls.append((method, path))
+            key = path.split("/")[2]
+            if method == "DELETE":
+                for blocks in self.blocks.values():
+                    blocks[:] = [item for item in blocks if item["id"] != key]
+                return {"id": key, "in_trash": True}
+            if path.endswith("/children"):
+                self.appends = getattr(self, "appends", 0) + 1
+                items = self.register(f"{key}-add{self.appends}", body["children"])
+                siblings = self.blocks.setdefault(key, [])
+                at = [b["id"] for b in siblings].index(body["after"]) + 1 if body.get("after") else len(siblings)
+                siblings[at:at] = items
+                if self.find(key):
+                    self.find(key)["has_children"] = True
+                return {"results": copy.deepcopy(items)}
+            target = self.find(key)
+            kind = next(k for k in body)
+            target[kind]["rich_text"] = copy.deepcopy(body[kind]["rich_text"])
+            return copy.deepcopy(target)
         if method != "POST":
             return super().call(method, path, body)
         assert path == "/pages"
@@ -105,23 +135,27 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(client.pages[parent_id]["properties"]["title"]["title"][0]["plain_text"], "New Example — Program Manager")
                 parent_blocks = client.blocks[parent_id]
                 self.assertEqual(notion.text(parent_blocks[0]), notion.FOLD)
-                self.assertEqual([notion.text(b) for b in client.blocks[parent_id + "-block-0"]], [notion.MARKERS["opportunity"]])
+                lines = [notion.text(b) for b in client.blocks[parent_id + "-block-0"]]
+                self.assertEqual((lines[0], lines[2]), (notion.MARKERS["opportunity"], "Source Health — New Example"))
+                self.assertRegex(lines[1], r"^v7-render:1;job=none;source=[0-9a-f]{16};page=[0-9a-f]{16}$")
                 self.assertEqual([notion.text(b) for b in parent_blocks if b.get("type", "").startswith("heading")],
-                                 ["Interviews", "Strategy", "LinkedIn & Outreach", "Materials & Sources",
-                                  "Job Description — original source (separate from Strategy)", notion.JIM_NOTES])
-                self.assertEqual(parent_blocks[2]["type"], "column_list")
-                before = notion.protected_snapshot(client, parent_id)
+                                 ["Job Description — Original Posting", notion.JIM_NOTES])
+                self.assertEqual([b["type"] for b in parent_blocks[:5]], ["toggle", "paragraph", "callout", "divider", "column_list"])
+                before = notion.protected_snapshot(client, parent_id, "opportunity")
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(client.posts[-1]["parent"]["page_id"], parent_id)
                 round_blocks = client.blocks["created-2"]
                 lines = client.blocks["created-2-block-0"]
-                self.assertEqual([notion.text(b) for b in round_blocks][:1] + [notion.text(b) for b in round_blocks][3:],
-                                 [notion.FOLD, "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-                self.assertEqual([notion.text(b) for b in lines], [notion.MARKERS["round"], create.identity_text(query)])
-                self.assertEqual(round_blocks[2]["type"], "column_list")
+                self.assertEqual([b["type"] for b in round_blocks], ["toggle", "callout", "column_list"])
+                self.assertEqual(notion.text(round_blocks[0]), notion.ROUND_FOLD)
+                self.assertEqual([notion.text(b) for b in lines][:2], [notion.MARKERS["round"], create.identity_text(query)])
                 self.assertEqual(json.loads(notion.text(lines[1]).split(";", 1)[1]), {"interview_date": query.interview_date, "interviewer": query.interviewer, "ordinal": query.ordinal})
-                self.assertEqual(notion.protected_snapshot(client, parent_id), before)
+                self.assertIsNotNone(notion.protected_snapshot(client, "created-2"))
+                self.assertEqual(notion.protected_snapshot(client, parent_id, "opportunity"), before)
+                result = self.run_evidence(client, query=query)               # the page's Interviews table picks up the round
+                self.assertEqual((result["writes"], result["why"].get("parent_refreshed")), (1, 1))
+                self.assertEqual(notion.protected_snapshot(client, parent_id, "opportunity"), before)
                 result = self.run_evidence(client, query=query)
                 self.assertEqual(result["writes"], 0)
                 self.assertEqual(result["why"]["child_match"], 1)
@@ -303,6 +337,7 @@ class ActiveShapeTests(unittest.TestCase):
         self.assertEqual((result["writes_planned"], result["writes"]), (1, 0))
         machine_parent(client)
         stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])          # the page lists the round
         result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
         self.assertEqual(result["writes"], 0)
         self.assertEqual(len(client.posts), 2)
