@@ -96,9 +96,10 @@ def mark_sent(notion, job, person, now, ledger_source):
 
 
 def project(rows, jobs, today):
-    """The native Job Outreach table: one row per exact job (never per person), from Recruiters rows linked to a job. `jobs` maps a Ledger page id to
-    {"company", "role", "url"}; a row whose job is not in `jobs` (closed, unreadable) is not shown. Sorted by the most urgent next follow-up.
-    -> [{"job", "outreach", "next", "link", "sort"}]"""
+    """The Job Outreach rows: one per exact open job (never per person), from Recruiters rows linked to a job. `jobs` maps a Ledger page id to
+    {"company", "role", "url"}; a row whose job is not in `jobs` (closed, unreadable) is not shown. Only what D221 records is counted: contacted conversations and their
+    action / follow-up state. Replies and referrals are not tracked, so they are said to be untracked, never shown as 0 (D222). Most urgent first.
+    -> [{"job", "outreach", "next", "link", "sort", "contacted"}]"""
     grouped = {}
     for r in rows:
         if r["done"] or not r["active"] or r["action"] in store.HISTORY:
@@ -112,10 +113,11 @@ def project(rows, jobs, today):
         act = [r for r in items if r["action"] == store.NEEDS_ACTION]
         dates = sorted(r["follow_up"] for r in items if r["action"] == store.WAITING and r["follow_up"])
         if act:
-            nxt, sort = f"{len(act)} need{'s' if len(act) == 1 else ''} action · Today", "0000-00-00"
+            nxt, sort = "Needs action · Today", "0000-00-00"
         elif dates:
-            nxt, sort = ("Follow up · Today" if dates[0] <= today.isoformat() else f"Follow up · {datetime.fromisoformat(dates[0]):%b} {int(dates[0][8:])}"), dates[0]
+            nxt, sort = ("Today" if dates[0] <= today.isoformat() else f"{datetime.fromisoformat(dates[0]):%b} {int(dates[0][8:])}"), dates[0]
         else:
             nxt, sort = "—", "9999-99-99"
-        out.append({"job": f"{job['company']} — {job['role']}", "outreach": f"{len(items)} contacted · {len(act)} need action", "next": nxt, "link": job["url"], "sort": sort})
+        out.append({"job": f"{job['company']} — {job['role']}", "outreach": f"{len(items)} contacted · replies not tracked · referrals not tracked", "next": nxt,
+                    "link": job["url"], "sort": sort, "contacted": len(items)})
     return sorted(out, key=lambda r: (r["sort"], r["job"]))
