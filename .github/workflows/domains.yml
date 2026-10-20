@@ -61,11 +61,6 @@ on:
         description: "Bills: process Paid=true rows (advance Due Date, set Last Paid, clear Paid); also runs on every tick and under Run every domain job. Dry run (counts) unless Actually write is ticked"
         type: boolean
         default: false
-      job_outreach_install:
-        description: "LIFE-47 TEMPORARY, manual only: validate = read-only preflight; install WILL WRITE one insertion (the Job Outreach region right after the Hiring Pipeline table, read back with whole-page proof) even though 'Actually write' MUST stay UNTICKED. 'Actually write' or 'Run every domain job' ticked = refused. Skips the normal Hiring and Job Outreach steps"
-        type: choice
-        options: ["none", "validate", "install"]
-        default: "none"
       jira:
         description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
         type: choice
@@ -461,7 +456,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_bills.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_bills_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -568,7 +562,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_agenda.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_agenda_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
@@ -647,7 +640,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN || steps.bws_amazon_retry.outputs.NOTION_JIRA_TOKEN }}
@@ -767,7 +759,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           MAIL_SYNC_OUTCOME: ${{ steps.mail.outcome }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -792,14 +783,14 @@ jobs:
     # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
     # imessage writes the Communications and Oracle Cloud callouts (LIFE-34, Oct 15 2026), so it is one of those writers; `always()` keeps Hiring running when it is skipped or fails.
     needs: [jira, agenda, bills, amazon, attention, mail, imessage]
-    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring || (github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install'))) }}   # LIFE-47 TEMPORARY: the manual installer
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: bws_hiring
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 15; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
@@ -820,7 +811,6 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
-            b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
       - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
         if: ${{ steps.bws_hiring.outcome == 'failure' }}
         run: sleep $((30 + RANDOM % 45))
@@ -846,7 +836,6 @@ jobs:
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
-            b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
@@ -855,32 +844,13 @@ jobs:
           oauth-secret: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_hiring_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
-      - id: job_outreach_install
-        name: Job Outreach install (LIFE-47 TEMPORARY; manual dispatch only; validate reads only, install makes ONE insert after the Hiring Pipeline table with read-back and whole-page proof; removed after the install)
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install') }}
-        env:
-          JOB_OUTREACH_INSTALL: ${{ inputs.job_outreach_install }}
-          INPUT_LIVE: ${{ inputs.live }}
-          INPUT_ALL: ${{ inputs.all }}
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
-          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}          # the page-identity anchor (read-only id, not a credential)
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}
-          JOB_OUTREACH_TABLE_BLOCK_ID: ${{ secrets.JOB_OUTREACH_TABLE_BLOCK_ID }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN || steps.bws_hiring_retry.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run job-outreach-install --limit 0           # NOT continue-on-error: a refused or unverified install fails the job (never retried)
-      - name: Job Outreach install failed (LIFE-47 TEMPORARY; nothing is retried; read the step above before any new attempt)
-        if: ${{ always() && steps.job_outreach_install.outcome == 'failure' }}
-        run: echo "::error title=Job Outreach install::the one-shot install stopped; read its fixed code above and the page before any new attempt"
       - id: hiring
         continue-on-error: true
-        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}   # LIFE-47 TEMPORARY: an installer dispatch makes its one insertion and nothing else
         name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
         env:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           HIRING_STATUS_BLOCK_ID: ${{ secrets.HIRING_STATUS_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
@@ -906,23 +876,6 @@ jobs:
       - name: Hiring Pipeline warning (does not fail the Jobs run)
         if: ${{ always() && steps.hiring.outcome == 'failure' }}
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
-      - id: job_outreach
-        continue-on-error: true
-        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}   # LIFE-47 TEMPORARY: as above
-        name: Job Outreach (D222; dormant until JOB_OUTREACH_CARD_BLOCK_ID and JOB_OUTREACH_TABLE_BLOCK_ID are set; runs right after the Hiring Pipeline so no two writers change the page at once)
-        env:
-          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
-          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}
-          JOB_OUTREACH_TABLE_BLOCK_ID: ${{ secrets.JOB_OUTREACH_TABLE_BLOCK_ID }}
-          NOTION_API_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_API_TOKEN || steps.bws_hiring_retry.outputs.NOTION_API_TOKEN }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN || steps.bws_hiring_retry.outputs.NOTION_JIRA_TOKEN }}
-          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_hiring_retry.outputs.NOTION_RECRUITERS_TOKEN }}
-        run: python -m lifeos.run job-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
-      - name: Job Outreach warning (does not fail the Jobs run)
-        if: ${{ always() && steps.job_outreach.outcome == 'failure' }}
-        run: echo "::warning title=Job Outreach::the Job Outreach stage failed or was DEGRADED; the region keeps its last accepted rows and the Jobs pipeline is unaffected"
 
   attention:
     # D127: Attention is its own job. It reads only the Gmail label and the Outlook category Jim controls and writes only the Attention data source (never the Daily Report
@@ -1022,7 +975,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           ATTENTION_SYNC_OUTCOME: ${{ steps.attention.outcome }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN || steps.bws_attention_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
@@ -1173,7 +1125,6 @@ jobs:
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
           NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN || steps.bws_dcc_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run dcc-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Daily Command Center warning (does not fail the Jobs run)
@@ -1391,7 +1342,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
         run: python -m lifeos.run imessage-comms --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Communications card warning (does not fail the run)
         if: ${{ always() && steps.comms.outcome == 'failure' }}
@@ -1412,7 +1362,6 @@ jobs:
           CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}       # D222: prove the Job Outreach region once its anchor is set
         run: python -m lifeos.run oracle-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Oracle Cloud card warning (does not fail the run)
         if: ${{ always() && steps.oracle.outcome == 'failure' }}

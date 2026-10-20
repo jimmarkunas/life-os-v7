@@ -325,8 +325,8 @@ class Lifecycle(unittest.TestCase):
     def test_projection_is_one_row_per_exact_job_with_the_follow_up(self):
         mark(Service(self.ledger, self.rec), JOB_A, "Blake Synthetic")
         out = O.project(self.rows(), self.jobs, NOW.date())
-        self.assertEqual(out, [{"job": "Northwind Labs — Senior Technical Program Manager", "outreach": "2 contacted · replies not tracked · referrals not tracked",
-                                "next": "Oct 19", "link": self.jobs[JOB_A]["url"], "sort": "2026-10-19", "contacted": 2}])
+        self.assertEqual(out, [{"job": "Northwind Labs — Senior Technical Program Manager", "outreach": "2 contacted · 0 need action", "next": "Follow up · Oct 19",
+                                "link": self.jobs[JOB_A]["url"], "sort": "2026-10-19"}])
         self.assertEqual(O.project(self.rows(), {}, NOW.date()), [])                       # a job that is no longer open is not shown
 
     def test_the_follow_up_is_kept_then_returns_to_needs_action_when_due(self):
@@ -336,7 +336,7 @@ class Lifecycle(unittest.TestCase):
         [row] = self.rows()
         self.assertEqual((due["reopened_due"], row["action"], row["follow_up"], row["jobs"]), (1, "Needs Action", "2026-10-19", [JOB_A]))
         out = O.project(self.rows(), self.jobs, datetime(2026, 10, 19).date())
-        self.assertEqual((out[0]["outreach"], out[0]["next"]), ("1 contacted · replies not tracked · referrals not tracked", "Needs action · Today"))
+        self.assertEqual((out[0]["outreach"], out[0]["next"]), ("1 contacted · 1 need action", "1 needs action · Today"))
 
     def test_inbound_recruiter_mail_never_merges_into_an_outreach_row(self):
         body = "Hi,\n\nI'm reaching out about a Senior Technical Program Manager role.\n\nBest,\nAvery Synthetic\nSenior Recruiter at Northwind Labs\n"
