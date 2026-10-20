@@ -48,6 +48,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-rollover-watch` -> `lifeos.jira.watch:run`
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
 - `job-outreach` -> `lifeos.sources.job_outreach:run`
+- `job-outreach-install` -> `lifeos.sources.job_outreach_install:run`
 - `linkedin-search` -> `lifeos.sources.linkedin_search:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
@@ -269,6 +270,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/job_outreach.py`: LIFE-47 (D222, Claude-proposed implementation of the Jim-approved native two-table direction, LIFE-47 10177; visuals not yet Jim-accepted): the job-first Job Outreach tab
+- `lifeos/sources/job_outreach_install.py`: LIFE-47 / D222 TEMPORARY one-shot installer (Jim-approved, remove after the install): creates the Job Outreach region once on the Daily Report, right after the Hiring Pip
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
@@ -307,7 +309,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag, trace; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, JOB_OUTREACH_CARD_BLOCK_ID, JOB_OUTREACH_TABLE_BLOCK_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOUD_FIT_PROFILE_REF
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
