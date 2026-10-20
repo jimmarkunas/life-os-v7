@@ -4,13 +4,19 @@ interview-ui-probe, typed confirmation QA); never on a tick.
 Uses the Interview token (LIFE OS Interview OS) and the shared paced client. Reads the accepted UI 3c QA preview (block types and page keys
 only) and writes only inside ONE probe page under the existing QA Interview OS / Opportunity Parent, found by its exact title or created
 once. Each run empties that probe page (it holds nothing else), rebuilds the UI 3c structures in staged writes, updates two blocks in
-place and reads everything back. Prints fixed check codes, block-type names and counts only; never a title, id, token or content."""
+place and reads everything back. Full-width gate: when Jim's blank full-width shell page exists under the same parent, it also
+creates one template probe page from it there, once. Prints fixed check codes, block-type names and
+counts only; never a title, id, token or content."""
 import os
+import time
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 QA_PARENT = "3d43c5a0592681fdad10d75d83852fa7"        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
 UI3C = "3ff3c5a0592681aeba23e00675f097f1"             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
 TITLE = "UI 3c — REST capability probe (QA, machine-written)"
+SHELL_TITLE = "UI 3c — page shell (full width)"                    # Jim creates it under QA_PARENT, empty, with Full width on
+TEMPLATE_TITLE = "UI 3c — template probe (QA, machine-written)"
+TEMPLATE_WAIT = 8                                                    # seconds; the template is applied asynchronously
 TEXT = {"paragraph", "heading_1", "heading_2", "heading_3", "heading_4", "toggle", "callout", "quote", "bulleted_list_item", "numbered_list_item"}
 STANDARD = {"paragraph", "heading_1", "heading_2", "heading_3", "heading_4", "callout", "toggle", "column_list", "column", "table", "table_row",
             "bulleted_list_item", "numbered_list_item", "to_do", "divider", "child_page", "link_to_page", "quote", "code"}
@@ -101,6 +107,28 @@ def _probe_page(client, budget):
     return page["id"], "created"
 
 
+def _template_page(client, budget, sleep):
+    """Full-width gate: create TEMPLATE_TITLE from Jim's blank full-width SHELL_TITLE page (the create-page `template` parameter),
+    wait for Notion to apply it, then append one paragraph and read it back. Created once: a template applies only when a page is
+    created, and this probe never trashes a page, so an existing template probe page stops the step. The API cannot read full
+    width; Jim checks it by eye."""
+    pages = [b for b in _children(client, QA_PARENT, budget) if b.get("type") == "child_page"]
+    shells = [b["id"] for b in pages if (b.get("child_page") or {}).get("title") == SHELL_TITLE]
+    olds = [b["id"] for b in pages if (b.get("child_page") or {}).get("title") == TEMPLATE_TITLE]
+    if len(shells) != 1:
+        raise NotionError("UI_PROBE_SHELL_MISSING" if not shells else "UI_PROBE_SHELL_DUPLICATE")
+    if olds:
+        raise NotionError("UI_PROBE_TEMPLATE_PAGE_EXISTS")
+    page = client.call_once("POST", "/pages", {"parent": {"type": "page_id", "page_id": QA_PARENT},
+                                               "properties": {"title": {"type": "title", "title": rich_text(TEMPLATE_TITLE)}},
+                                               "template": {"type": "template_id", "template_id": shells[0]}})
+    sleep(TEMPLATE_WAIT)                                                    # Notion applies a template after the create returns
+    applied = len(_children(client, page["id"], budget))
+    _append(client, page["id"], [_text("paragraph", "Machine paragraph after the template")])
+    sleep(TEMPLATE_WAIT)
+    return {"template_blocks_before_append": applied, "template_blocks_after_append": len(_children(client, page["id"], budget))}
+
+
 def _check(counts, name, action):
     try:
         result = action()
@@ -112,7 +140,7 @@ def _check(counts, name, action):
         return None
 
 
-def run(limit, live, environ=os.environ, client=None):
+def run(limit, live, environ=os.environ, client=None, sleep=time.sleep):
     if not live or (environ.get("PROBE_CONFIRM") or "").strip() != "QA":
         raise NotionError("UI_PROBE_CONFIRM_REQUIRED")
     client = client or Client({"NOTION_API_TOKEN": environ.get("NOTION_INTERVIEW_TOKEN") or "", "UNUSED": "interview-unused"}, source_name="UNUSED")
@@ -166,4 +194,5 @@ def run(limit, live, environ=os.environ, client=None):
     after = _check(counts, "read_probe_tree", lambda: _tree(client, probe, budget))
     if after:
         counts["probe_tree"] = [f"{depth}:{kind}" for depth, kind, _ in after]
+    counts.update(_check(counts, "template_page", lambda: _template_page(client, budget, sleep)) or {})
     return counts

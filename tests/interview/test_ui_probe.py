@@ -5,12 +5,15 @@ from lifeos.interview import ui_probe as P
 from lifeos.platform.notion_client import NotionError
 
 LIVE = {"PROBE_CONFIRM": "QA", "NOTION_INTERVIEW_TOKEN": "synthetic"}
+NOSLEEP = lambda seconds: None
 
 
 class Fake:
     """Children per block id; PATCH /children appends (nested children become readable); DELETE removes; refuses listed block types."""
-    def __init__(self, refuse=()):
-        self.kids = {P.QA_PARENT: [{"id": "other", "type": "child_page", "child_page": {"title": "Smartsheet notes"}, "has_children": True}],
+    def __init__(self, refuse=(), shell=True):
+        self.kids = {P.QA_PARENT: [{"id": "other", "type": "child_page", "child_page": {"title": "Smartsheet notes"}, "has_children": True}]
+                     + ([{"id": "shell", "type": "child_page", "child_page": {"title": P.SHELL_TITLE}, "has_children": False}] if shell else []),
+                     "shell": [],
                      P.UI3C: [{"id": "u1", "type": "column_list", "has_children": True}],
                      "u1": [{"id": "u2", "type": "column", "has_children": True}],
                      "u2": [{"id": "u3", "type": "tab", "tab": {}, "has_children": True},
@@ -18,7 +21,7 @@ class Fake:
                      "u3": [{"id": "u5", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Private tab title"}]}, "has_children": True},
                             {"id": "u6", "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": True}],
                      "u5": [{"id": "u7", "type": "heading_3", "has_children": False}], "u6": [{"id": "u8", "type": "paragraph", "has_children": False}]}
-        self.refuse, self.calls, self.n = set(refuse), [], 0
+        self.refuse, self.calls, self.n, self.templates = set(refuse), [], 0, []
 
     def get_page(self, page_id):
         return {"object": "page", "id": page_id, "properties": {}, "icon": None}
@@ -47,6 +50,12 @@ class Fake:
         if method == "GET":
             return {"results": self.kids.get(key, []), "has_more": False}
         if method == "POST":
+            if "template" in body and "template" in self.refuse:
+                error = NotionError("NOTION_HTTP_400")
+                error.detail = "validation_error body.template"
+                raise error
+            if "template" in body:
+                self.templates.append(body["template"])
             self.n += 1
             page = {"id": f"probe{self.n}", "type": "child_page", "child_page": {"title": body["properties"]["title"]["title"][0]["text"]["content"]}}
             self.kids[body["parent"]["page_id"]].append(page)
@@ -71,11 +80,11 @@ class ProbeTests(unittest.TestCase):
     def test_refuses_without_live_and_typed_qa(self):
         for live, env in ((False, LIVE), (True, {**LIVE, "PROBE_CONFIRM": ""}), (True, {**LIVE, "PROBE_CONFIRM": "SYNTHETIC"})):
             with self.subTest(live=live, env=env), self.assertRaises(NotionError):
-                P.run(0, live, environ=env, client=Fake())
+                P.run(0, live, environ=env, client=Fake(), sleep=NOSLEEP)
 
     def test_builds_the_ui_3c_structures_once_with_a_tab_mirroring_the_preview(self):
         client = Fake()
-        first = P.run(0, True, environ=LIVE, client=client)
+        first = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
         self.assertEqual(first["page"], "created")
         self.assertEqual((first["nonstandard_types"], first["nonstandard_shapes"]), (["tab"], {"tab": []}))
         self.assertEqual(first["ui3c_tab_tree"], ["1:paragraph", "2:heading_3", "1:paragraph", "2:paragraph"])   # panes and their content, types only
@@ -88,38 +97,64 @@ class ProbeTests(unittest.TestCase):
         tab = first["probe_tree"].index("2:tab")                            # columns → column → tab → panes → content
         self.assertEqual(first["probe_tree"][tab + 1:tab + 5], ["3:paragraph", "4:paragraph", "3:paragraph", "4:paragraph"])
         self.assertIn("3:table", first["probe_tree"])                       # columns → column → callout → table
-        second = P.run(0, True, environ=LIVE, client=client)
+        second = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
         self.assertEqual(second["page"], "reused")
         probes = [b for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TITLE]
         self.assertEqual(len(probes), 1)                                     # no duplicate probe page
         self.assertEqual(second["probe_tree"], first["probe_tree"])           # rebuilt identically after the clear
         self.assertEqual(client.kids[P.QA_PARENT][0]["id"], "other")          # nothing else under the QA parent touched
-        self.assertNotIn(("POST", "/pages"), client.calls[len(client.calls) // 2:])
+        self.assertEqual(len(client.templates), 1)                          # the template probe page is created once
+        self.assertEqual(second["checks"]["template_page"], "UI_PROBE_TEMPLATE_PAGE_EXISTS")
 
     def test_writes_only_inside_the_probe_page_and_prints_no_content(self):
         client = Fake(refuse=())
-        counts = P.run(0, True, environ=LIVE, client=client)
+        counts = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
         self.assertEqual(counts["failed"], 0)
         probe = next(b["id"] for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TITLE)
-        inside = {probe} | {b["id"] for blocks in client.kids.values() for b in blocks if b["id"].startswith("b")}
+        made = {b["id"] for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TEMPLATE_TITLE}
+        inside = {probe} | made | {b["id"] for blocks in client.kids.values() for b in blocks if b["id"].startswith("b")}
         for method, path in client.calls:
             if method in ("PATCH", "DELETE"):
                 self.assertIn(path.split("/")[2], inside)
         text = json.dumps(counts)
-        for private in ("Private tab title", "Smartsheet", P.QA_PARENT, P.UI3C, probe, "synthetic"):
+        for private in ("Private tab title", "Smartsheet", P.QA_PARENT, P.UI3C, probe, "shell", *made, "synthetic"):
             self.assertNotIn(private, text)
 
     def test_a_refused_tab_is_a_code_and_the_rest_still_runs(self):
-        counts = P.run(0, True, environ=LIVE, client=Fake(refuse=("tab",)))
+        counts = P.run(0, True, environ=LIVE, client=Fake(refuse=("tab",)), sleep=NOSLEEP)
         self.assertEqual((counts["checks"]["create_tab"], counts["failed"]), ("NOTION_HTTP_400 validation_error body.children[0].type", 1))
         self.assertEqual(counts["checks"]["update_callout"], "ok")
 
     def test_a_second_probe_page_stops_before_any_write(self):
         client = Fake()
         client.kids[P.QA_PARENT] += [{"id": f"dup{i}", "type": "child_page", "child_page": {"title": P.TITLE}} for i in range(2)]
-        counts = P.run(0, True, environ=LIVE, client=client)
+        counts = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
         self.assertEqual(counts["checks"]["probe_page"], "UI_PROBE_DUPLICATE_PAGE")
         self.assertFalse([c for c in client.calls if c[0] != "GET"])
+
+    def test_the_template_page_is_made_from_the_shell_once_and_never_trashed(self):
+        client = Fake()
+        first = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
+        self.assertEqual(first["checks"]["template_page"], "ok")
+        self.assertEqual(client.templates[-1], {"type": "template_id", "template_id": "shell"})
+        self.assertEqual((first["template_blocks_before_append"], first["template_blocks_after_append"]), (0, 1))
+        second = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
+        self.assertEqual(second["checks"]["template_page"], "UI_PROBE_TEMPLATE_PAGE_EXISTS")
+        self.assertNotIn("template_blocks_before_append", second)
+        titles = [b["child_page"]["title"] for b in client.kids[P.QA_PARENT] if b["type"] == "child_page"]
+        self.assertEqual(titles.count(P.TEMPLATE_TITLE), 1)
+        self.assertFalse([c for c in client.calls if c[0] == "PATCH" and c[1].startswith("/pages/")])   # no page trashed or edited
+        self.assertIn(P.SHELL_TITLE, titles)
+        self.assertIn("Smartsheet notes", titles)
+
+    def test_a_missing_shell_or_refused_template_is_a_code_and_writes_no_template_page(self):
+        for fake, code in ((Fake(shell=False), "UI_PROBE_SHELL_MISSING"),
+                           (Fake(refuse=("template",)), "NOTION_HTTP_400 validation_error body.template")):
+            with self.subTest(code=code):
+                counts = P.run(0, True, environ=LIVE, client=fake, sleep=NOSLEEP)
+                self.assertEqual((counts["checks"]["template_page"], counts["failed"]), (code, 1))
+                self.assertEqual(counts["checks"]["create_tab"], "ok")
+                self.assertFalse([b for b in fake.kids[P.QA_PARENT] if b.get("child_page", {}).get("title") == P.TEMPLATE_TITLE])
 
 
 if __name__ == "__main__":
