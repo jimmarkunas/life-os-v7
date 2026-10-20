@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
 
 class TheHourIsFilled(unittest.TestCase):
-    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 30-minute cap or the finish job's 50 minutes,
+    """LIFE-41 (Jim, Oct 20 2026: "fill every hour"): a tick's batch runs until about :55, never past the code's 45-minute cap (D235) or the finish job's 58 minutes,
     and skips (exit 0) rather than fail when too little time is left. The step's own script runs here with a stand-in clock."""
 
     def budget(self, minute, second, job_seconds):
@@ -267,14 +267,18 @@ class TheHourIsFilled(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip()
 
-    def test_a_quick_tick_gets_the_full_thirty_minutes(self):
-        self.assertEqual(self.budget(10, 0, 9 * 60), "BUDGET=1800")
+    def test_a_quick_tick_runs_until_the_job_limit_most_of_the_hour(self):
+        self.assertEqual(self.budget(10, 0, 9 * 60), "BUDGET=2640")                 # 58 min - 9 min run - 5 min kept, before :55
+        self.assertEqual(self.budget(6, 0, 2 * 60), "BUDGET=2700")                  # never past the code's 45-minute cap
+
+    def test_the_batch_still_ends_by_five_to_the_hour(self):
+        self.assertEqual(self.budget(20, 0, 9 * 60), "BUDGET=2100")                 # :20 to :55
 
     def test_a_later_tick_runs_until_five_to_the_hour(self):
         self.assertEqual(self.budget(35, 0, 9 * 60), "BUDGET=1200")
 
     def test_the_job_limit_wins_when_the_tick_was_slow(self):
-        self.assertEqual(self.budget(30, 0, 40 * 60), "BUDGET=300")                  # 50 min - 40 min run - 5 min kept
+        self.assertEqual(self.budget(30, 0, 48 * 60), "BUDGET=300")                  # 58 min - 48 min run - 5 min kept
 
     def test_too_little_time_skips_without_failing(self):
         self.assertIn("skipped this hour", self.budget(53, 0, 9 * 60))
