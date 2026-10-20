@@ -1465,7 +1465,7 @@ jobs:
         name: Interview private acceptance - negative case (always a dry run; skipped when its secret is empty)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.interview_acceptance == true && inputs.tick != true }}
         env:
-          INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}   # D232: the case that must be refused; always a dry run, so it cannot write
+          INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}   # D233: the case that must be refused; always a dry run, so it cannot write
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
         run: |

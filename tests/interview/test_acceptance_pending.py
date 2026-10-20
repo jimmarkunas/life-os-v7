@@ -123,7 +123,7 @@ class WorkflowStep(unittest.TestCase):
             self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", step)
             self.assertNotIn("NOTION_API_TOKEN", step)
         self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
-        self.assertNotIn("--live", negative)                                                    # D232: the negative case can never write
+        self.assertNotIn("--live", negative)                                                    # D233: the negative case can never write
         self.assertNotIn("$LIVE", negative)
 
 
