@@ -2,6 +2,8 @@
 
 Read [AGENTS.md](AGENTS.md) and the [canonical LIFE OS Development Policy](docs/life-os-development-policy.md), especially **Deterministic agent work selection** and **Jira-first development lifecycle**, before starting development.
 
+**Route first:** classify the task by the policy's **Adaptive Execution** lane (FAST, STANDARD, ENGINEERING, PROTECTED) before any Jira or GitHub read; Fast Start below is the ENGINEERING bootstrap.
+
 **Fast Start:** Use the 60-second routine bootstrap target in [AGENTS.md](AGENTS.md). Start with `START_EPOCH=$(date -u +%s)`, retain verified task context on warm resumes, fetch minimal Jira fields and V7 GitHub SHA/changed diff, and parallelize independent reads. After the essential reads, report elapsed seconds and number of remote reads in the existing status; do not rerun full Jira/GitHub history or change acceptance/permission gates.
 
 

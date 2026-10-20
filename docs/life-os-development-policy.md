@@ -2,7 +2,7 @@
 
 **Status:** Canonical active LIFE OS V7 development methodology, owned by `jimmarkunas/life-os-v7`; V1 and V2 are historical references only. **Owner:** Jim Markunas; material changes require Jim's explicit approval. For V7 runtime, Jim's current instructions and the live V7 implementation/workflow are authoritative; the V1 `life-os-automation` production contract is historical reference only; Notion `Development Projects` is coordination-only (ownership, concurrency, takeover, handoff). Repo supplements may add mechanics but may not override this policy.
 
-**Machine bootstrap routing index:** V7 `AGENTS.md` and `docs/CODEMAP.md`. They are pointer-only and adds no product, runtime, roadmap, or architectural authority. Use it to select the smallest canonical source set before reading further.
+**Machine bootstrap routing index:** V7 `AGENTS.md` and `docs/CODEMAP.md`. They are pointer-only and adds no product, runtime, roadmap, or architectural authority. Use it to select the smallest canonical source set before reading further. Classify the task into its execution lane first, using §3 **Adaptive Execution**, the single owner of that routing rule.
 
 ## 1. Mission and authority
 
@@ -98,6 +98,17 @@ Before creating a new scheduler/workflow, new datastore/source of truth, second 
 ## 3. Bootstrap and outcome-bounded execution
 
 **ChatGPT and Codex only:** Coding runs are hard-bounded to five minutes, including bootstrap, inspection, mutation, and targeted proof; at five minutes stop as `LANDED`, `TARGETED PROOF FAILED`, or `BLOCKED: <exact dependency>`. This five-minute rule does **not** apply to Claude Code. For ChatGPT/Codex, split only on meaningful independently provable boundaries, never meaningless micro-tasks. External runtime/connector/CI acceptance may continue separately.
+
+### Adaptive Execution — task-first routing — Jim-approved October 20, 2026 (LIFE-79)
+
+This is the **single owner** of execution-lane routing for ChatGPT LIFE OS chats and authorized coding agents. It is a routing rule inside the existing entrypoints, not a new OS, scheduler, orchestration service, permission tier, recurring gate, tracking system or development package. Classify the request from its own words **before** any Jira, GitHub, Notion, policy or `CODEMAP` read, then read only what the lane needs. The user never has to say "FAST".
+
+- **FAST** — a general question, a status question with one known owner, or routine documentation in an already-owning canonical source. Minimal source access: answer directly or do one targeted lookup → make the scoped write when authorized → read back only when the write is consequential → stop.
+- **STANDARD** — a bounded operational or cross-system change. Inspect the exact owning sources, make the approved narrow change, verify, stop.
+- **ENGINEERING** — approved code or feature work. Use the existing Jira-first lifecycle, **Fast Start** in `AGENTS.md`, and the applicable domain and production contracts. A session that starts or resumes with no concrete task is ENGINEERING and follows **Deterministic agent work selection** unchanged; an explicit FAST, STANDARD or PROTECTED request is handled without claiming or pulling a LIFE issue.
+- **PROTECTED** — production or scheduling, privacy, permissions, secrets, an irreversible or destructive action, or any materially consequential change. The governing contracts and approvals apply in full however simple the request sounds. PROTECTED combines with any other lane and always wins.
+
+Fail closed: an ambiguous target or permission, missing source evidence or a failed read stops the task and names the gap; an error is never "no result". Upgrade a lane only on a real dependency or safety trigger found while working (an unknown owner, a schedule, secret or private data, a write that needs code); never downgrade to skip a gate, and never turn routine documentation into a development package. Lane names grant no permission: every existing gate (one writer, privacy, scoped approvals, Jira write authority, read-back, decision-number claims, Jim's approvals) is unchanged. Honor Jim-approved project-level behavior and live canonical authority; do not copy this rule into other files, which carry only a pointer.
 
 ### Claude Code end-to-end delivery mode — Jim-directed October 17, 2026
 
