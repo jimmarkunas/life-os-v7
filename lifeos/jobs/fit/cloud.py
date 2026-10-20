@@ -346,15 +346,27 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
 
 
 def usage_ok(u):
-    """LIFE-41 usage integrity: the receipt's own counts are usable only when input, output and total are non-negative integers with total = input + output.
+    """LIFE-41 usage integrity: the receipt's own counts are usable only when input, output and total are non-negative integers that add up EXACTLY under one of
+    the two conventions providers use (D245, Oct 20: the Codex route reports cached prompt tokens outside input):
+      cache inside input:  total = input + output, with cached (when present) <= input;
+      cache outside input: total = input + cached + cache writes + output, with cached a counted integer (writes an integer, or omitted / "unavailable" = 0).
     Cached and reasoning counts may be omitted or the literal "unavailable" (Oracle's form when the Gateway did not report one); any other present value must be
-    an integer inside input / output, so a malformed one (a string, bool, container, None, float) is never treated as clean. Never estimated, never zero-filled."""
+    an integer, so a malformed one (a string, bool, container, None, float) is never treated as clean. Reasoning fits inside output. Never estimated, never zero-filled
+    beyond that one rule for cache writes."""
     if not isinstance(u, dict) or not all(type(u.get(k)) is int and u[k] >= 0 for k in ("input_tokens", "output_tokens", "total_tokens")):
         return False
     def optional(key, cap):
         value = u.get(key, "unavailable")
         return (isinstance(value, str) and value == "unavailable") or (type(value) is int and 0 <= value <= cap)
-    return u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and optional("cached_input_tokens", u["input_tokens"]) and optional("reasoning_tokens", u["output_tokens"])
+    def counted(key):
+        value = u.get(key, "unavailable")
+        return value if type(value) is int and value >= 0 else 0 if (isinstance(value, str) and value == "unavailable") else None
+    if not optional("reasoning_tokens", u["output_tokens"]) or not optional("cached_input_tokens", 1 << 62) or not optional("cache_write_tokens", 1 << 62):
+        return False                                                         # a malformed optional count is never clean
+    inside = u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and optional("cached_input_tokens", u["input_tokens"])
+    cached, writes = u.get("cached_input_tokens"), counted("cache_write_tokens")
+    outside = type(cached) is int and writes is not None and u["total_tokens"] == u["input_tokens"] + cached + writes + u["output_tokens"]
+    return inside or outside
 
 
 def quota_summary(readings):

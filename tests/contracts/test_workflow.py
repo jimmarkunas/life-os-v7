@@ -477,7 +477,7 @@ CONSUMERS = {
     "branches": dict(                                                    # D244 (LIFE-81): archive on merge (narrow archive token only); weekly report after safety (Notion token only)
         jobs={"report": {"NOTION_JIRA_TOKEN"}},
         direct=['LIFEOS_BWS_RUNTIME_TOKEN', 'V7_ARCHIVE_TOKEN', 'WEEKLY_REVIEW_PAGE_ID'],
-        on=['pull_request', 'workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-branches', 'cancel-in-progress': False},
+        on=['pull_request', 'workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': "life-os-v7-branches-${{ github.event.pull_request.number || 'report' }}", 'cancel-in-progress': False},
         timeouts={'archive': 10, 'report': 10}, digest="63d922348f6d79c3"),
     "agenda": dict(
         jobs={"agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}},
