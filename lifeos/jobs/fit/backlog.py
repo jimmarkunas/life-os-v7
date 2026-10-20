@@ -1,7 +1,8 @@
 """D219 (LIFE-41, Jim): the Cloud Fit backlog batch. One manual, bounded run of the ONE Oracle fit1 path over the jobs the tick's single canary call never reaches.
 
-`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, one at a time (Oracle runs one
-request at a time and answers a second with BUSY: concurrency is 1, never bypassed), within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. V7_CLOUD_FIT_BACKLOG_MAX is Jim's
+`python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, V7_CLOUD_FIT_PARALLEL at a time (D232:
+1-3, unset 1; Oracle runs one request per open lane and answers BUSY when none frees up, which releases that job and lowers the batch's calls in flight by one),
+within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. V7_CLOUD_FIT_BACKLOG_MAX is Jim's
 approved ceiling (a repository variable); unset or invalid is 0, so nothing is asked. It does not read V7_CLOUD_FIT. A tick runs it only when Jim sets
 V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2: N calls after the tick, N its own ceiling, 600 s, never a pilot page).
 
