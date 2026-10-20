@@ -570,3 +570,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D241: A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)
 - D242: Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)
 - D244: Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)
+- D245: Usage integrity accepts the cache-outside-input convention, exactly (2026-10-20, Jim; LIFE-41)
