@@ -37,6 +37,13 @@ def run(client, result, copies=1, live=True):
     return stage.run(10, live, environ=ENV, client=client, evidence=[(result.parent, result.round)] * copies)
 
 
+def _all_text(blocks):
+    for b in blocks:
+        body = b[b["type"]]
+        yield "".join(r["text"]["content"] for r in body.get("rich_text", []))
+        yield from _all_text(body.get("children", []))
+
+
 def plain(blocks):
     return "\n".join(notion.text(b) for b in blocks)
 
@@ -55,8 +62,9 @@ class SchedulingPending(unittest.TestCase):
         blocks = post["children"]
         self.assertEqual([notion.text(b) for b in blocks[:2]], [notion.MARKERS["round"], create.identity_text(result.round)])
         self.assertEqual(json.loads(notion.text(blocks[1]).split(";", 1)[1]), {"interview_date": None, "interviewer": None, "ordinal": 1})
-        self.assertEqual([notion.text(b) for b in blocks[3:]], ["Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-        brief, side = (col["column"]["children"] for col in blocks[2]["column_list"]["children"])
+        self.assertEqual([notion.text(b) for b in blocks[2:3] + blocks[4:]],
+                         ["Interview 1 · Scheduling Pending", "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
+        brief, side = (col["column"]["children"] for col in blocks[3]["column_list"]["children"])
         text = plain(brief + side)
         for shown in ("10-second brief", "ExampleCo", "Senior Technical Program Manager", "Round: 1", "Interviewer: Not known yet",
                       "🟡 Scheduling Pending", "Not scheduled · no Calendar event yet", "requisition EX-1234",
@@ -67,6 +75,26 @@ class SchedulingPending(unittest.TestCase):
         self.assertIn("https://www.notion.so/opp", links)
         self.assertNotIn("2026", text)                                               # no time is invented
         self.assertEqual(notion.protected_snapshot(client, "opp"), before)              # Jim's parent notes untouched
+
+    def test_the_page_carries_every_ui_4_section_and_label(self):
+        """UI 4 (LIFE-47, accepted again for LIFE-42 in comment 10829): every section, field and state toggle is present."""
+        client = opportunity()
+        run(client, progress(REQUEST, [ROW]))
+        text = "\n".join(_all_text(client.posts[0]["children"]))
+        for label in ("10-second brief", "Company:", "Role:", "Round:", "Interviewer:", "Stage:", "Interview outcome:", "When/where:",
+                      "Next action:", "Objective (derived):", "Evidence freshness:",
+                      "Pre-interview analysis · Game Theory + Jordan Belfort / Straight Line", "Input contract:", "Game Theory lens (derived):",
+                      "Jordan Belfort / Straight Line lens (derived):", "Output:", "Refresh:", "Pre-analysis states · normal / empty / degraded",
+                      "Editable live notes", "Questions Asked", "What Landed", "What Needs Work", "Signals / Concerns", "Commitments I Made",
+                      "Follow-Up Owed", "Next Step / Timing",
+                      "Post-interview analysis · Game Theory + Jordan Belfort / Straight Line", "Required evidence gate:", "First extract facts:",
+                      "Game Theory review (derived):", "Jordan Belfort / Straight Line review (derived):", "Outputs:", "Failure state:",
+                      "Transcript-backed facts", "Game Theory · post-interview", "Jordan Belfort / Straight Line · post-interview",
+                      "Post-analysis states · ready / empty / degraded", "Human content safety:",
+                      "Raw notes · open to write", "Logistics", "Calendar event:", "Meeting link:", "Transcript & Recording",
+                      "Granola acquisition:", "Full verbatim transcript:", "Post-analysis gate:", "Audio file:", "Video/recording:", "Processing:",
+                      "Navigation", "Hiring Pipeline ↗", "Prior round: none (this is Interview 1)", "Evidence guardrails"):
+            self.assertIn(label, text)
 
     def test_replay_reuses_the_same_child_and_writes_nothing(self):
         client = opportunity()

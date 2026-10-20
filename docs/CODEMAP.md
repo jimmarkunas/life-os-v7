@@ -142,7 +142,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/interview/prep.py`: Deterministic, append-once Interview Derived content.
 - `lifeos/interview/progression.py`: LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.
 - `lifeos/interview/stage.py`: Counts-only Interview probe and bounded B2 evidence execution.
-- `lifeos/interview/template.py`: LIFE-42: the accepted LIFE-47 UI 4 interview page as Notion blocks, for a new machine-owned round.
+- `lifeos/interview/template.py`: LIFE-42: the accepted LIFE-47 UI 4 interview page (Jim, LIFE-42 comment 10829) as Notion blocks, for a new machine-owned round.
 ### lifeos/jira/
 - `lifeos/jira/boards.py`: Which Jira boards V7 manages: JIRA_BOARDS="KEY:board_id[:flag...],..." (a secret; keys and ids stay out of the public repo). Flags: all = triage every non-Epic item; read
 - `lifeos/jira/card.py`: The Jira card in the Daily Report (Phase B). V7 owns exactly one Notion block - the "JIRA Execution" callout named by JIRA_CARD_BLOCK_ID - and nothing else on the page. C

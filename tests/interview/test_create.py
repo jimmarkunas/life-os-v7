@@ -100,9 +100,9 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(client.posts[-1]["parent"]["page_id"], parent_id)
                 round_blocks = client.blocks["created-2"]
-                self.assertEqual([notion.text(b) for b in round_blocks], [notion.MARKERS["round"], create.identity_text(query), "",
-                                                                          "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-                self.assertEqual(round_blocks[2]["type"], "column_list")
+                self.assertEqual([notion.text(b) for b in round_blocks][:2] + [notion.text(b) for b in round_blocks][4:],
+                                 [notion.MARKERS["round"], create.identity_text(query), "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
+                self.assertEqual(round_blocks[3]["type"], "column_list")
                 self.assertEqual(json.loads(notion.text(round_blocks[1]).split(";", 1)[1]), {"interview_date": query.interview_date, "interviewer": query.interviewer, "ordinal": query.ordinal})
                 self.assertEqual(notion.protected_snapshot(client, parent_id), before)
                 result = self.run_evidence(client, query=query)
