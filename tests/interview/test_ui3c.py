@@ -262,6 +262,99 @@ class Reconcile(unittest.TestCase):
         self.assertEqual(notion.text([b for b in client.blocks["old"] if b["id"] == "jh"][0]), notion.JIM_NOTES)
 
 
+class ReadbackValues(unittest.TestCase):
+    """finalize() accepts a page only when every machine-written value reads back, not just its shape."""
+    def page(self):
+        client = Sim()
+        current = opportunity((view.Round("round-1", 1, None, None),), compensation="$90/hr")
+        blocks = create.rendered(current, tail=None)[0]
+        return client, notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager"), current, blocks
+
+    def find(self, client, page_id, test):
+        stack = list(client.blocks[page_id])
+        while stack:
+            b = stack.pop()
+            if test(b):
+                return b
+            stack += client.blocks.get(b["id"], [])
+
+    def test_a_changed_paragraph_or_table_cell_fails_although_the_structure_matches(self):
+        for target in ("paragraph", "cell"):
+            with self.subTest(target=target):
+                client, page_id, current, blocks = self.page()
+                if target == "paragraph":
+                    b = self.find(client, page_id, lambda b: notion.text(b).startswith("Due: "))
+                    b["paragraph"]["rich_text"] = [{"type": "text", "text": {"content": "Due: Friday"}}]
+                else:
+                    b = self.find(client, page_id, lambda b: b["type"] == "table_row" and "Compensation" in str(b))
+                    b["table_row"]["cells"][1] = [{"type": "text", "text": {"content": "$200/hr (Job Ledger)"}}]
+                self.assertEqual(create.finalize(client, page_id, current, blocks), "readback_content_mismatch")
+
+    def test_notion_mention_titles_and_icons_are_normalized_not_failures(self):
+        client, page_id, current, blocks = self.page()
+        for blocks_ in client.blocks.values():
+            for b in blocks_:
+                for r in (b.get(b["type"]) or {}).get("rich_text", []) + [r for c in (b.get("table_row") or {}).get("cells", []) for r in c]:
+                    if r.get("type") == "mention":
+                        r["plain_text"] = "Interview 1"                # Notion shows a mention by the page's title
+                if b["type"] == "callout" and (b["callout"].get("icon") or {}).get("type") == "external":
+                    b["callout"]["icon"] = {"type": "icon", "icon": {"name": "arrow-right"}}
+        self.assertEqual(create.finalize(client, page_id, current, blocks), "readback_ok")
+
+    def test_the_opportunity_outcome_is_never_asserted_and_the_action_says_what_it_rests_on(self):
+        shown = lambda current: "\n".join(texts(*written(current)))
+        self.assertIn("Current opportunity status: Not verified (outcome sources not connected)", shown(opportunity()))
+        self.assertNotIn("Interviewing", shown(opportunity()))
+        pending = (view.Round("r1", 1, None, None),)
+        self.assertIn("PRIMARY ACTION · derived from the linked interview request", shown(opportunity(pending)))
+        unlinked = view.Opportunity("ExampleCo", "Program Manager", "exampleco-pm-1", None, None, "not_linked", None, "root", rounds=pending)
+        self.assertIn("DEGRADED · derived from the interview page; the request message is not connected", shown(unlinked))
+        self.assertNotIn("source-backed", shown(unlinked))
+
+
+class TranscriptPage(unittest.TestCase):
+    def round(self, transcript=None):
+        client = Sim()
+        client.blocks["opp"] = []
+        query = RoundQuery(True, None, None, 1)
+        round_id = notion.write_tree(client, "opp", template.round_page(opportunity(), query, "opp", "id"), title="Interview 1")
+        if transcript is not None:
+            client.blocks[round_id].append({"id": "ft", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+            client.blocks["ft"] = [block(transcript, id="ft-1")]
+        return client, round_id
+
+    def lines(self, client, round_id):
+        return [t for t in texts(client, round_id) if t.startswith(("Transcript:", "Full Transcript page:"))]
+
+    def test_absent_placeholder_and_accepted_transcript_pages(self):
+        client, round_id = self.round()
+        self.assertEqual(create.transcript_state(client, round_id), ("absent", None))
+        self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_unchanged")
+        client, round_id = self.round("Transcript placeholder — paste the Granola export here")
+        self.assertEqual(create.transcript_state(client, round_id), ("unverified", "ft"))
+        before = notion.protected_snapshot(client, round_id)
+        out = {"writes": 0}
+        self.assertEqual(create.link_transcript(client, round_id, True, out), "transcript_linked")
+        self.assertEqual(self.lines(client, round_id), ["Transcript: Full Transcript page exists but is not an accepted transcript",
+                                                        "Full Transcript page: Exists — not an accepted transcript · "])
+        runs = [r for bs in client.blocks.values() for b in bs for r in (b.get(b["type"]) or {}).get("rich_text", [])]
+        self.assertIn({"type": "mention", "mention": {"type": "page", "page": {"id": "ft"}}}, runs)      # the line links the page
+        self.assertEqual(notion.protected_snapshot(client, round_id), before)
+        self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_unchanged")
+        self.assertEqual(client.blocks["ft"], [block("Transcript placeholder — paste the Granola export here", id="ft-1")])   # never edited
+        client, round_id = self.round(create.ACCEPTED + "synthetic-import-1")
+        self.assertEqual(create.transcript_state(client, round_id), ("accepted", "ft"))
+        create.link_transcript(client, round_id, True, {})
+        self.assertEqual(self.lines(client, round_id)[1], "Full Transcript page: Accepted transcript · ")
+
+    def test_two_full_transcript_pages_are_ambiguous_and_write_nothing(self):
+        client, round_id = self.round("placeholder")
+        client.blocks[round_id].append({"id": "ft2", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+        before = copy.deepcopy(client.blocks)
+        self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_ambiguous")
+        self.assertEqual(client.blocks, before)
+
+
 class PreparationTab(unittest.TestCase):
     def setUp(self):
         self.client = Sim()
@@ -328,6 +421,8 @@ class QaAcceptanceRun(unittest.TestCase):
         first = ui_probe._render(client)
         self.assertEqual((first["create"], first["replay"], first["source_b"], first["protected_after_b"]),
                          ("readback_ok", "parent_unchanged", "parent_refreshed", "unchanged"))
+        self.assertEqual((first["transcript_state"], first["transcript_link"], first["transcript_replay"]),
+                         ("unverified", "transcript_linked", "transcript_unchanged"))
         self.assertEqual((first["wrong_job"], first["wrong_job_page"], first["rounds_seen"], first["ledger"]),
                          ("identity_mismatch", "unchanged", 1, "linked"))
         self.assertEqual(first["compare_ui3c"][-1:], ["+ 0:child_page"])        # the approved preview has no interview child yet

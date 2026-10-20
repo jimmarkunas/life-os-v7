@@ -11,7 +11,7 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, State
-from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page
+from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -106,6 +106,12 @@ def _pages(tops):
     return [b["id"] for b in tops if b.get("type") == "child_page"]
 
 
+def _fields(nodes):
+    """What a read-back must reproduce: everything written except icons (Notion converts icon URLs to its own) and the render line."""
+    return [{**{k: v for k, v in n.items() if k not in ("icon", "children")}, "children": _fields(n.get("children", []))}
+            for n in nodes if not n.get("text", "").startswith("v7-render:")]
+
+
 def finalize(client, page_id, current, sections, before=None):
     """Read the written machine region back: the approved structure, then its digest into the fold's render line, then Jim's
     region and the child pages unchanged."""
@@ -115,8 +121,11 @@ def finalize(client, page_id, current, sections, before=None):
         return "readback_marker_missing"
     budget = [notion.TREE_MAX_CALLS]
     nodes = notion.region_nodes(client, machine, budget, skip={renders[0]["id"]})
-    if notion.outline(nodes, icons=False) != notion.outline(notion.as_nodes(machine_part(sections)), icons=False):
+    want = notion.as_nodes(machine_part(sections))
+    if notion.outline(nodes, icons=False) != notion.outline(want, icons=False):
         return "readback_layout_mismatch"
+    if _fields(nodes) != _fields(want):                                  # every written value too: text, links by target, table cells
+        return "readback_content_mismatch"
     job, source, _ = RENDER.fullmatch(notion.text(renders[0])).groups()
     notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(nodes))))
     if before is not None and (notion.human_tail(client, page_id) != before[0] or _pages(tops) != before[1]):
@@ -166,6 +175,52 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         return check
     out["readback_failed"], out["readback_ok"] = 0, 1
     return "parent_refreshed"
+
+
+TRANSCRIPT, ACCEPTED = "Full Transcript", "v7-transcript:1;accepted="
+
+
+def transcript_state(client, round_id):
+    """(state, page id) of the round's one exact "Full Transcript" child page: absent, unverified, or accepted only when its first block is the
+    accepted-import marker that a verified Granola import writes (not built yet: until then every existing page is unverified); two are ambiguous."""
+    pages = [b["id"] for b in notion.children(client, round_id, [notion.MAX_CALLS])
+             if b.get("type") == "child_page" and (b.get("child_page") or {}).get("title") == TRANSCRIPT]
+    if len(pages) != 1:
+        return ("absent" if not pages else "ambiguous"), None
+    first = notion.children(client, pages[0], [notion.MAX_CALLS])[:1]
+    return ("accepted" if first and notion.text(first[0]).startswith(ACCEPTED) else "unverified"), pages[0]
+
+
+def link_transcript(client, round_id, live, out):
+    """UI 4: bring the Source Health "Transcript" line and the Transcript & Recording "Full Transcript page" line up to date in place, then read back."""
+    state, page = transcript_state(client, round_id)
+    if state == "ambiguous":
+        return "transcript_ambiguous"
+    tops = notion.children(client, round_id, [notion.MAX_CALLS])
+    lists = [b["id"] for b in tops if b.get("type") == "column_list"]
+    if not tops or notion.text(tops[0]) != notion.ROUND_FOLD or len(lists) != 1:
+        return "transcript_unrecognized"
+    boxes = [b for b in notion.children(client, tops[0]["id"], [notion.MAX_CALLS]) if b.get("type") == "callout"]
+    for column in notion.children(client, lists[0], [notion.MAX_CALLS])[1:]:
+        boxes += [b for b in notion.children(client, column["id"], [notion.MAX_CALLS]) if b.get("type") == "callout"]
+    want = {notion.text(line).split(":")[0]: line["paragraph"]["rich_text"] for line in transcript_lines(state, page)}
+    found = [(b, want[notion.text(b).split(":")[0]]) for box in boxes for b in notion.children(client, box["id"], [notion.MAX_CALLS])
+             if b.get("type") == "paragraph" and notion.text(b).split(":")[0] in want]
+    if len(found) != 2:
+        return "transcript_unrecognized"
+    stale = [(b, rich) for b, rich in found if notion._plain(b["paragraph"].get("rich_text")) != notion._plain(rich)]
+    if not stale:
+        return "transcript_unchanged"
+    out["writes_planned"] = 1
+    if not live:
+        return "transcript_link_allowed"
+    for block, rich in stale:
+        notion.set_text(client, block["id"], "paragraph", rich)
+    out["writes"] = 1
+    if link_transcript(client, round_id, False, {}) != "transcript_unchanged":
+        return "readback_content_mismatch"
+    out["readback_ok"] = 1
+    return "transcript_linked"
 
 
 def _sections_readback(client, page_id, before, out, done, current=None, sections=None):
@@ -269,7 +324,10 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             current = views.opportunity(client, parent_query, query, pipeline, children, today())
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
                 done = refresh(client, parent.page_id, current, live, out, context)
-                if done in ("parent_refreshed", "refresh_allowed"):
+                if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
+                    done = link_transcript(client, child.page_id, live, out)           # the round page links its Full Transcript page
+                    done = done if done in ("transcript_linked", "transcript_link_allowed", "readback_content_mismatch") else "parent_unchanged"
+                if done in ("parent_refreshed", "refresh_allowed", "transcript_linked", "transcript_link_allowed"):
                     deferred.add(parent.page_id)
                 return finish(code if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized") else done)
             if code != "create_allowed":

@@ -196,6 +196,9 @@ def _render(client):
         notion.write_tree(client, raw[0], [template.para(SEED)])
     heads = [b["id"] for b in notion.children(client, page, [notion.MAX_CALLS]) if notion.text(b) == notion.JIM_NOTES]
     _seed(client, page, "Live Notes · protected space")
+    out["transcript_state"] = create.transcript_state(client, round_page)[0]
+    out["transcript_link"] = create.link_transcript(client, round_page, True, {})
+    out["transcript_replay"] = create.link_transcript(client, round_page, True, {})
     kept = (notion.human_tail(client, page), notion.protected_snapshot(client, round_page),
             [b["id"] for b in notion.children(client, round_page, [notion.MAX_CALLS]) if b.get("type") == "child_page"])
     out["jim_notes_heading"] = len(heads)

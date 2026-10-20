@@ -134,7 +134,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
     """The full UI 3c page: machine region first, then the protected Jim's Notes region (blocks after JIM_NOTES)."""
     marker = MARKERS["opportunity"] + (f";adopted={adopted}" if adopted else "")
     current, next_date = stage(view, today)
-    label, action, due, link = primary_action(view, today)
+    label, action, due, link, basis = primary_action(view, today)
     ledger = [("Job Ledger row ↗", False, _url(view.ledger_page_id))] if view.ledger_page_id else []
     posting = [("Original posting ↗", False, view.apply_url)] if view.apply_url else []
     primary = callout([
@@ -144,7 +144,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
             "Not available yet: completion needs an authenticated two-step confirmation with a canonical write and read-back, "
             "which is not proven. Nothing here records completion.")])], None, PLAIN,
-        (label, True), " · ", "source-backed" if label == "PRIMARY ACTION" else "source evidence incomplete")
+        (label, True), " · ", basis)
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),
                  toggle("Empty / unknown states", [field("All caught up", "Only after complete source checks."),
@@ -184,7 +184,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
     machine = [
         fold(marker, render_line(view.stable_job_key, source), extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
         para(("Stage: ", True), current, " · ", ("Next confirmed interview: ", True), next_date, " · ",
-             ("Current opportunity status: ", True), "Interviewing", *([" · "] + ledger if ledger else [])),
+             ("Current opportunity status: ", True), "Not verified (outcome sources not connected)", *([" · "] + ledger if ledger else [])),
         callout([h(3, "Action Center"), columns((0.625, [primary]), (0.375, secondary))], ARROW, "blue_background"),
         divider(), columns((0.63, left), (0.37, right)), divider(),
         h(2, "Job Description — Original Posting"),
@@ -239,7 +239,19 @@ def prepare_pane(prep, ordinal):
     return out
 
 
-def round_page(view, query, parent_id, identity, prep=None):
+def transcript_lines(state="absent", page_id=None):
+    """The UI 4 Full Transcript facts: (Source Health line, Transcript & Recording line). A page that exists is linked; it reads as an accepted
+    transcript only in state "accepted" (create.transcript_state), never because the page exists."""
+    if not page_id:
+        return (field("Transcript", "no Full Transcript page yet; Granola import not connected"),
+                field("Full Transcript page", "Not created yet — added when a verified transcript is imported"))
+    if state == "accepted":
+        return field("Transcript", "accepted Full Transcript page"), field("Full Transcript page", "Accepted transcript · ", mention(page_id))
+    return (field("Transcript", "Full Transcript page exists but is not an accepted transcript"),
+            field("Full Transcript page", "Exists — not an accepted transcript · ", mention(page_id)))
+
+
+def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):
     pending = not query.interview_date
     who = (query.interviewer or "").strip() or None
     name = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
@@ -248,7 +260,7 @@ def round_page(view, query, parent_id, identity, prep=None):
                       field("Calendar / meeting", "No confirmed event, join URL or original invite verified."),
                       field("Request message", "linked" if view.request_url else "not recorded"),
                       field("Preparation", "accepted source-grounded preparation" if prep else "not run"),
-                      field("Transcript", "no Full Transcript page yet; Granola import not connected"),
+                      transcript_lines(*transcript)[0],
                       field("Source quality", "PARTIAL — unknown facts stay unknown")],
                      "⚠️", "yellow_background", (f"Source Health — {view.company} · {name}", True))
     rails = para(("Guardrails: ", True), "Never invent interview dates, contacts, outcome or URLs. The opportunity page owns the "
@@ -285,7 +297,7 @@ def round_page(view, query, parent_id, identity, prep=None):
                       note("Only the exact confirmed invitation and joining information for this round is linked.")], "📅", "gray_background"),
              callout([h(3, "Interviewer"), field("Name", who or NV), field("Role", NV), field("LinkedIn", NV)], "👤", "gray_background"),
              callout([h(3, "Transcript & Recording"), field("Granola", "Not imported / not verified"),
-                      field("Full Transcript page", "Not created yet — added when a verified transcript is imported"),
+                      transcript_lines(*transcript)[1],
                       field("Audio / video recording", "No verified media linked")], "📼", "gray_background"),
              callout([h(3, "Navigation"), para(mention(parent_id)), para(mention(view.pipeline_id)),
                       field("Previous round", "None — this is Interview 1" if query.ordinal == 1 else NV)], "🔗", "gray_background")]

@@ -91,17 +91,21 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
 
 
 def primary_action(view, today):
-    """D02-D06: one source-backed primary action, never invented. (label, action, due, source_url)."""
+    """D02-D06: one primary action derived from verified evidence, never invented. (label, action, due, source_url, basis): `basis` says what it
+    rests on, and an action whose request or Calendar evidence is not connected is labelled derived, never source-backed."""
     for r in view.rounds:
         if not valid_date(r.date):
             name = f"Interview {r.ordinal}" if r.ordinal else "the next interview"
-            return "PRIMARY ACTION", f"Confirm a time for {name} with the recruiter.", "No verified deadline", view.request_url
+            basis = ("derived from the linked interview request" if view.request_url
+                     else "DEGRADED · derived from the interview page; the request message is not connected")
+            return "PRIMARY ACTION", f"Confirm a time for {name} with the recruiter.", "No verified deadline", view.request_url, basis
     upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today]
     if upcoming:
         r = upcoming[0]
-        return "PRIMARY ACTION", f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "), r.date, None
+        return ("PRIMARY ACTION", f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "), r.date, None,
+                "derived from the interview page's date; Calendar not verified")
     return ("DEGRADED · NO VERIFIED ACTION", "Verify the latest interview outcome and any recruiter follow-up; those sources are "
-            "not connected yet, so no next action is shown as current.", "Unverified", None)
+            "not connected yet, so no next action is shown as current.", "Unverified", None, "source evidence incomplete")
 
 
 def stage(view, today):
