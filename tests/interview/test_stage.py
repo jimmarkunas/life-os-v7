@@ -1,7 +1,7 @@
 import json
 import unittest
 from unittest.mock import patch
-from lifeos.interview import stage
+from lifeos.interview import notion, stage
 from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.run import STAGES
 from tests.interview.test_notion import Fake, ENV, block
@@ -22,9 +22,13 @@ class StageTests(unittest.TestCase):
         self.assertTrue(all(type(v) in (int, bool) for k, v in result.items() if k != "why"))
 
     def test_dry_run_creation_is_only_eligibility(self):
+        evidence = [(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))]
+        client = Fake()                                                         # a pre-D235 parent is upgraded first (LIFE-46)
+        result = stage.run(10, False, environ=ENV, client=client, evidence=evidence)
+        self.assertEqual((result["why"], result["writes_planned"], result["blocked"]), ({"upgrade_allowed": 1}, 1, 0))
         client = Fake()
-        result = stage.run(10, False, environ=ENV, client=client,
-                           evidence=[(ParentQuery("Example", "Program Manager"), RoundQuery(True, "2026-10-01", ordinal=1))])
+        client.blocks["p"].append(block(notion.JIM_NOTES, "heading_2", "jn"))
+        result = stage.run(10, False, environ=ENV, client=client, evidence=evidence)
         self.assertEqual(result["why"]["create_allowed"], 1)
         self.assertEqual(result["not_found"], 1)
         self.assertEqual(result["writes_planned"], 1)

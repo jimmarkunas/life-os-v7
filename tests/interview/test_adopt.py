@@ -2,12 +2,12 @@
 import copy
 import json
 import unittest
-from lifeos.interview import notion, stage
+from lifeos.interview import create, notion, stage
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.template import opportunity_page
 from lifeos.platform.notion_client import NotionError
 from tests.interview.test_create import PARENT, ROUND, WritableFake, machine_parent
-from tests.interview.test_notion import ENV, block
+from tests.interview.test_notion import ENV, block, page
 
 LEGACY = ParentQuery("Legacy", "Manager")
 PENDING = RoundQuery(True, None, None, 1, source="https://mail.google.com/mail/u/0/#all/synthetic", stable_job_key="legacy-key",
@@ -225,6 +225,65 @@ class AdoptTests(unittest.TestCase):
         result = run(client)
         for private in ("Legacy", "Manager", "h0", "Waiting on recruiter", "legacy-key", "ledger-row", "mail.google"):
             self.assertNotIn(private, json.dumps(result))
+
+
+
+def legacy(client):
+    """A LIFE OS opportunity page written before D235, folded (D236) like the real Walmart page, with Interview 1 under it."""
+    fold = lambda bid, *lines: {"id": bid, "type": "toggle", "toggle": {"rich_text": [{"plain_text": notion.FOLD}]}, "has_children": True}
+    client.blocks["human"] = [fold("f"), block("Live Notes", "heading_2", "lv"), block("my live note", id="n1"),
+                              block("Raw Notes", "heading_2", "rw"), block("Interview Rounds", "heading_2", "ir"),
+                              {"id": "r1", "type": "child_page", "child_page": {"title": "Interview 1"}}]
+    client.blocks["f"] = [block(notion.MARKERS["opportunity"], id="fm")]
+    client.pages["r1"] = page("Interview 1", "human")
+    client.blocks["r1"] = [fold("rf"), block("Live Notes", "heading_2", "rl"), block("Raw Notes", "heading_2", "rr")]
+    client.blocks["rf"] = [block(notion.MARKERS["round"], id="rm"), block(create.identity_text(PENDING), id="ri")]
+    return copy.deepcopy(client.blocks["human"][1:])
+
+
+class UpgradeTests(unittest.TestCase):
+    def test_dry_run_then_one_upgrade_then_the_existing_round_matches(self):
+        client = AdoptFake()
+        original = legacy(client)
+        result = run(client, live=False)
+        self.assertEqual((result["why"], result["writes_planned"], result["writes"], client.patches), ({"upgrade_allowed": 1}, 1, 0, []))
+        result = run(client)
+        self.assertEqual((result["why"], result["writes"], result["parents_upgraded"], result["readback_ok"]), ({"parent_upgraded": 1}, 1, 1, 1))
+        self.assertEqual([c for c in client.calls if c[0] != "GET"], [("PATCH", "/blocks/human/children")])
+        self.assertEqual(client.patches[0][1]["after"], "f")
+        page_blocks = client.blocks["human"]
+        self.assertEqual(page_blocks[0]["id"], "f")
+        self.assertEqual([notion.text(b) for b in page_blocks].count(notion.FOLD), 1)
+        notes = [notion.text(b) for b in page_blocks].index(notion.JIM_NOTES)
+        self.assertEqual(page_blocks[notes + 1]["type"], "callout")
+        self.assertEqual(page_blocks[notes + 2:], original)                   # old headings, notes and Interview 1: untouched
+        self.assertTrue(notion.text(page_blocks[1]).startswith("Canonical opportunity parent"))
+        self.assertIsNotNone(notion.protected_snapshot(client, "human", "opportunity"))
+        replay = run(client)
+        self.assertEqual((replay["why"], replay["writes"]), ({"child_match": 1}, 0))
+        self.assertEqual((len(client.patches), client.posts), (1, []))
+
+    def test_unrecognized_or_unconfirmed_pages_are_never_upgraded(self):
+        for mode in ("raw", "second", "unconfirmed"):
+            with self.subTest(mode=mode):
+                client = AdoptFake()
+                legacy(client)
+                if mode == "raw": client.blocks["human"].pop(3)
+                if mode == "second": client.blocks["human"].insert(2, block(notion.MARKERS["opportunity"], id="x"))
+                result = run(client, query=RoundQuery(False) if mode == "unconfirmed" else PENDING)
+                self.assertEqual(result["why"], {"pursuit_unconfirmed" if mode == "unconfirmed" else "upgrade_unrecognized": 1})
+                self.assertEqual((client.patches, result["writes"]), ([], 0))
+
+    def test_write_and_readback_failures_fail_closed(self):
+        client = AdoptFake()
+        legacy(client)
+        client.append_error = True
+        self.assertEqual(run(client)["why"], {"write_failed": 1})
+        client = AdoptFake()
+        legacy(client)
+        client.touch_human = True
+        result = run(client)
+        self.assertEqual((result["why"], result["readback_failed"]), ({"readback_protected_changed": 1}, 1))
 
 
 if __name__ == "__main__":

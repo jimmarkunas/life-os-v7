@@ -70,20 +70,50 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
         notion.delete_block(client, blocks[0]["id"])                    # the adopt line Jim typed; the fold is now first
     except NotionError:
         return "write_failed"                                           # the adopt line stays; the next run reports adopt_conflict
-    if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:
+    return _sections_readback(client, parent.page_id, before, out, "parent_adopted")
+
+
+def _sections_readback(client, page_id, before, out, done):
+    if notion.ownership(client, page_id, "opportunity") != Ownership.MACHINE:
         return "readback_marker_missing"
-    if notion.protected_snapshot(client, parent.page_id, "opportunity") is None:
+    if notion.protected_snapshot(client, page_id, "opportunity") is None:
         return "readback_protected_missing"
-    if notion.human_tail(client, parent.page_id) != before:
+    if notion.human_tail(client, page_id) != before:
         return "readback_protected_changed"
-    out["readback_failed"], out["readback_ok"], out["parents_adopted"] = 0, 1, 1
-    return "parent_adopted"
+    out["readback_failed"], out["readback_ok"], out["parents_adopted" if done == "parent_adopted" else "parents_upgraded"] = 0, 1, 1
+    return done
+
+
+def upgrade(client, environ, parent, parent_query, query, live, context, out, blocks):
+    """LIFE-46 (Jim, Oct 20, option B): a LIFE OS opportunity page written before D235 (marker + Live Notes / Raw Notes /
+    Interview Rounds) gets the accepted UI 3b sections and the Jim's notes heading once, inserted right after its marker.
+    The old headings, anything written under them and the round pages stay where they are, now inside Jim's notes; nothing
+    is edited, moved or deleted. Rounds come on a later run."""
+    if query.confirmed_round is not True:
+        return "pursuit_unconfirmed"
+    labels = [notion.text(b) for b in blocks]
+    heads = [notion.text(b) for b in blocks if b.get("type", "").startswith("heading")]
+    if (labels.count(notion.FOLD) > 1 or notion.ADOPT in labels or any(label in notion.MARKERS.values() for label in labels[1:])
+            or not all(label in heads for label in notion.PROTECTED)):
+        return "upgrade_unrecognized"
+    before = notion.human_tail(client, parent.page_id, blocks)
+    out["writes_planned"] = 1
+    if not live:
+        return "upgrade_allowed"
+    context.require_time()
+    sections = opportunity_page(parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), "", adopted=True)[1:]
+    try:
+        notion.append_children(client, parent.page_id, blocks[0]["id"], sections)
+    except NotionError:
+        return "write_failed"
+    out["writes"] = out["readback_failed"] = 1
+    return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
     """Private evidence in, counts and fixed code out. deferred forbids parent+round in one run."""
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
-           "parents_created": 0, "parents_adopted": 0, "rounds_created": 0, "code": "pipeline_incomplete"}
+           "parents_created": 0, "parents_adopted": 0, "parents_upgraded": 0, "rounds_created": 0, "code": "pipeline_incomplete"}
     def finish(code):
         out["code"] = code
         return out
@@ -126,6 +156,12 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                     if reference.state == State.MATCH:
                         out["matched"] = 1
                 return finish("human_page" if owner == Ownership.HUMAN else "ownership_unknown")
+            tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
+            if not any(notion.text(b) == notion.JIM_NOTES and b.get("type", "").startswith("heading") for b in tops):
+                code = upgrade(client, environ, parent, parent_query, query, live, context, out, tops)
+                if code == "parent_upgraded":
+                    deferred.add(parent.page_id)
+                return finish(code)
             children = notion.child_scan(client, parent.page_id, context)
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)

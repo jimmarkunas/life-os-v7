@@ -91,7 +91,8 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
                 counts["matched"] += 1
             elif result["code"] in ("create_allowed", "parent_create_allowed"):
                 counts["not_found"] += 1
-            elif result["code"] not in ("parent_created", "round_created", "parent_exists", "parent_adopted", "adopt_allowed"):
+            elif result["code"] not in ("parent_created", "round_created", "parent_exists", "parent_adopted", "adopt_allowed",
+                                           "parent_upgraded", "upgrade_allowed"):
                 counts["blocked"] += 1
             if result["readback_failed"] or result["code"] == "write_failed":
                 break
