@@ -89,9 +89,9 @@ def target_reason(rows):
     if source is None:
         return "NO_DESCRIPTION"
     return "UNKNOWN" if source in PUBLIC_SOURCES else "SOURCE_" + _code(source)
-BACKLOG_CALLS_MAX = 100                # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
+BACKLOG_CALLS_MAX = 600                # D219, D240 (Jim, Oct 20: 100 -> 600 once a call took ~6 s): the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
 BACKLOG_BUDGET_MAX = 2700               # seconds a batch may run (D238: 45 min, so a tick's batch fills the hour to :55); each call starts only with CALL_SECONDS left
-BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
+BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 3000   # D240: enough candidates for a 600-call batch (about 40% are skipped without a call)
 MAX_PARALLEL = 3                        # D232: Oracle's lanes (fit, fit2, fit3); a batch never keeps more calls in flight
 NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
 QUOTA_STOP = "FIT_EDGE_REFUSED_QUOTA_RESERVE"   # LIFE-77 (Jim: stop at 50 % used): the account's allowance reached Jim's reserve; a normal stop, not a failure
