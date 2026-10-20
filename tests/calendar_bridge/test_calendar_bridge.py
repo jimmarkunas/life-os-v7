@@ -312,7 +312,7 @@ class HourlyJobTests(unittest.TestCase):
     def test_runs_after_an_hourly_tick_only_and_never_fails_the_jobs_run(self):
         job = self.job()
         self.assertIn("github.event_name == 'workflow_run'", job.split("runs-on")[0])
-        self.assertEqual(job.count("continue-on-error: true"), 3)            # + the first Bitwarden load, whose one retry fails the job (D209)
+        self.assertEqual(job.count("continue-on-error: true"), 4)            # + the first Bitwarden load, whose one retry fails the job (D209), + the LIFE-85 tailnet join (no fallback, not a failure)
         self.assertNotIn("\n    continue-on-error:", job)
         self.assertIn("::warning", job)
 
@@ -324,8 +324,8 @@ class HourlyJobTests(unittest.TestCase):
             self.assertNotIn(name, job, name)                                  # no Jobs secret is even named in this workflow
         direct = set(re.findall(r"secrets\.(\w+)", steps)) - {"LIFEOS_BWS_RUNTIME_TOKEN"}
         self.assertEqual(sorted(direct | set(re.findall(r"steps\.\w+\.outputs\.(\w+)", steps))),                  # EDGE-1.3: migrated values arrive as masked Bitwarden loader outputs
-                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID", "NTFY_TOPIC"] + [f"LIFEOS_ACQ_{n}" for n in (
-                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER")]))
+                         sorted(["OUTLOOK_CLIENT_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GCAL_CALENDAR_ID", "NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"] + [f"LIFEOS_ACQ_{n}" for n in (
+                             "SSH_PRIVATE_KEY", "DB_PASSWORD", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KNOWN_HOSTS", "DB_NAME", "DB_USER", "SSH_JUMP_KEY")]))   # LIFE-85: the Oracle relay key, and the Tailscale pair for the join only
 
 
 if __name__ == "__main__":
