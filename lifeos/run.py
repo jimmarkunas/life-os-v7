@@ -98,6 +98,7 @@ STAGES = {
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
     "notion-sandbox-access": lazy("lifeos.sources.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick
     "notion-sandbox-outreach-proof": lazy("lifeos.sources.notion_sandbox_outreach_proof"),   # LIFE-10 §2: one-time synthetic writer proof on one sandbox page (diag.yml job `sandbox`, typed SYNTHETIC); never on a tick
+    "interview-ui-probe": lazy("lifeos.interview.ui_probe"),   # LIFE-88 first gate: can the V7 REST transport build UI 3c (diag.yml job `interview_ui`, typed QA); one QA probe page only; never on a tick
     "fit-edge-test": lazy("lifeos.jobs.fit.edge"),                       # LIFE-60: manual and synthetic-only (fit-edge-test.yml); never on a tick
     "safety-sql-smoke": lazy("lifeos.jobs.safety", "run_sql_smoke"),
     "safety-fit-capture": lazy("lifeos.jobs.safety", "run_fit_capture"),
