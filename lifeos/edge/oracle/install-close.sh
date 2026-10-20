@@ -57,7 +57,9 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallFilter=@system-service
 SystemCallArchitectures=native
-RuntimeMaxSec=30
+RuntimeMaxSec=150
+# D229 (Jim, Oct 20 2026: one click, ~90 s): Build resume waits for the Oracle resume worker; only this unit's group may reach its socket
+SupplementaryGroups=lifeos-resume
 MemoryMax=128M
 TasksMax=16
 CPUQuota=50%

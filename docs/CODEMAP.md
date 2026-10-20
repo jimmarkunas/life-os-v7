@@ -250,6 +250,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/mail.py`: One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.
 - `lifeos/platform/names.py`: Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).
 - `lifeos/platform/notion_client.py`: Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge.
+- `lifeos/platform/notion_files.py`: Notion file upload (platform, no job knowledge; LIFE-87 D229). One small file in one part: create the upload, send the bytes as multipart/form-data, and require Notion to
 - `lifeos/platform/outlook.py`: Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code sign-in once, then silent refresh), im
 - `lifeos/platform/outlook_tokens.py`: Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the token. The database is private; this repo and its logs are 
 - `lifeos/platform/redact.py`: Public-safe redaction (ported, trimmed, from V2 core/security.py), with meeting credentials added.
@@ -292,6 +293,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/notion_sandbox_access.py`: LIFE-10 §2 (TL comment 10754): a one-time, read-only check of whether the existing Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger. M
 - `lifeos/sources/notion_sandbox_outreach_proof.py`: LIFE-10 §2 (TL comment 10754, Jim's plan approval on LIFE-10 comment 10773): a one-time, synthetic proof of the job-page outreach writer (D225) against the real Notion AP
 - `lifeos/sources/outreach_app.py`: LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person abou
+- `lifeos/sources/resume_app.py`: LIFE-87 (D229): Build resume on the private Close service (same Edge gate, signing key and fresh-read rule as Mark as Sent, D221). Jim opens one exact open Job Ledger job
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
 - `lifeos/sources/web/boards.py`: D202: the employer-board pass. About 10,700 Greenhouse, Ashby and Lever boards (the Open Jobs board list, CC0, plus the extras in boards.json) read through the same web r
@@ -548,4 +550,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D226: Cloud Fit canary: an accepted cloud answer becomes the job's visible Fit through the Fit stage's own lane decision, fail-closed (2026-10-19, Jim; LIFE-41 10555)
 - D227: Cloud Fit is limited by the account's own allowance: Oracle reads the Codex 5-hour and weekly used percent and stops at Jim's 50 % reserve (2026-10-19, Jim; LIFE-77 / LIFE-41)
 - D228: The AI Capacity card: every readable account allowance on the Daily Report, from Oracle's no-model limits request (2026-10-20, Jim; LIFE-77)
-- D229: Mark as Sent records the person's employer: typed, or the current employer the chosen lead's own line states; never guessed (2026-10-20, Jim; LIFE-10 / LIFE-21)
+- D229: Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
