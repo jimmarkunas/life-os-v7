@@ -658,7 +658,7 @@ jobs:
     needs: [prep]                         # does not wait for the resolvers: what they resolve is enriched by the next hourly run
     if: ${{ always() && needs.prep.result == 'success' && ((github.event_name == 'workflow_dispatch' && !inputs.tick) || vars.V7_PIPELINE == 'true') }}   # D208: a parked tick (V7_PIPELINE=false) starts no Jobs job and loads no credentials here
     runs-on: ubuntu-24.04
-    timeout-minutes: 50                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps
+    timeout-minutes: 58                   # D208: the tick's 35-minute budget, setup (Chromium) and the maintenance steps; D235: the backlog batch fills the hour to :55
     env:
       FASTEMBED_CACHE: ${{ github.workspace }}/.cache/fastembed
     steps:
@@ -884,10 +884,10 @@ jobs:
         run: |
           if [ "$PIPELINE" = "true" ]; then
             # LIFE-41 (Jim, Oct 20 2026: "fill every hour"): the scheduled batch runs until about :55, so the next tick never waits, never past the
-            # code's 30-minute batch cap, and never past this job's 50 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
+            # code's 45-minute batch cap (D235), and never past this job's 58 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
             now=$(date +%s); m=$((10#$(date +%M))); s=$((10#$(date +%S))); started=$(stat -c %Y "$GITHUB_WORKSPACE/.git")     # the checkout: this job's first seconds
-            to_55=$(( m < 55 ? (55 - m) * 60 - s : 0 )); job_left=$(( 50 * 60 - (now - started) - 300 ))
-            budget=$(( to_55 < job_left ? to_55 : job_left )); budget=$(( budget > 1800 ? 1800 : budget ))
+            to_55=$(( m < 55 ? (55 - m) * 60 - s : 0 )); job_left=$(( 58 * 60 - (now - started) - 300 ))
+            budget=$(( to_55 < job_left ? to_55 : job_left )); budget=$(( budget > 2700 ? 2700 : budget ))
             if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
             export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
           fi

@@ -134,7 +134,7 @@
   "D232": "Parallel Luna: Oracle runs up to three Cloud Fit calls at once, one per lane, and a backlog batch keeps V7_CLOUD_FIT_PARALLEL calls in flight (2026-10-20, Jim; LIFE-41)",
   "D233": "Every manual interview acceptance run also runs a second, always-dry-run negative case from its own secret (2026-10-20, Jim; LIFE-42)",
   "D234": "Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)",
-  "D235": "A new opportunity parent is the accepted UI 3b page, and Jim adopts his own page with the exact first line `LIFE OS: adopt` (2026-10-20, Jim; LIFE-46)",
+  "D235": "A tick's Cloud Fit batch fills the hour: the batch cap is 45 minutes and the finish job 58 (2026-10-20, Jim; LIFE-41)",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
