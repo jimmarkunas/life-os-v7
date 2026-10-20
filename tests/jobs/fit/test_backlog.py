@@ -101,10 +101,22 @@ class TargetedPilot(Batch):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
         self.titled(2, "Program Manager B", status="PUBLISHED", page=self.PAGE)
         self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='HELD' WHERE job_id=2")         # already asked
-        for page in (self.PAGE, "f" * 32):                                                       # asked before; not in the store at all
+        for page, why in ((self.PAGE, "ASKED_HELD"), ("f" * 32, "NOT_IN_STORE")):               # asked before; not in the store at all
             endpoint = Endpoint(measured)
             counts = self.batch(5, endpoint, environ=self.env(page))
-            self.assertEqual((counts["cloud_fit"], endpoint.sent, self.status(1)), ("DEGRADED(BACKLOG_TARGET_NOT_ELIGIBLE)", [], None))
+            self.assertEqual((counts["cloud_fit"], counts["backlog_target_reason"], endpoint.sent, self.status(1)), ("DEGRADED(BACKLOG_TARGET_NOT_ELIGIBLE)", why, [], None))
+
+    def test_the_refusal_names_the_first_predicate_the_target_fails(self):
+        self.titled(1, "Program Manager A", status="PUBLISHED", page=self.PAGE)
+        for change, why in (("UPDATE v7_job_descriptions SET source_kind='title_only' WHERE job_id=1", "SOURCE_TITLE_ONLY"),
+                            ("UPDATE v7_job_fit SET exclusion='private' WHERE job_id=1", "EXCLUDED"),
+                            ("UPDATE v7_job_fit SET admission='EXCLUDE' WHERE job_id=1", "ADMISSION_EXCLUDE"),
+                            ("UPDATE v7_jobs SET status='CLOSED' WHERE id=1", "STATUS_CLOSED")):
+            self.db.raw.execute(change)
+            counts = self.batch(5, Endpoint(measured), environ=self.env(self.PAGE))
+            self.assertEqual((counts["cloud_calls"], counts["backlog_target_reason"]), (0, why), change)
+        self.assertEqual(cloud.target_reason([("PUBLISHED", "ADMIT", 1, 0, None, "ats_api")] * 2), "AMBIGUOUS")
+        self.assertEqual(cloud.target_reason([("PUBLISHED", None, 1, 1, None, None)]), "NOT_SCORED")
 
     def test_a_malformed_target_is_refused_before_any_store_pick(self):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")

@@ -61,6 +61,32 @@ BACKLOG_PICK = ("SELECT j.id, j.title, j.company, j.location_text, d.full_text, 
                 " ORDER BY (f.admission = 'ADMIT') DESC, f.score DESC, j.posted_date IS NULL, j.posted_date DESC, j.first_seen, j.dedupe_key LIMIT %s")
 # LIFE-41 G6: Jim's one preapproved job, named by its Ledger page id (V7_CLOUD_FIT_BACKLOG_PAGE): the same predicates, so a target the batch would not ask is never asked.
 BACKLOG_ONE = BACKLOG_PICK.replace(" ORDER BY", " AND REPLACE(LOWER(j.notion_page_id), '-', '') = %s ORDER BY")
+TARGET_STATE = ("SELECT j.status, f.admission, f.exclusion IS NULL, f.score IS NULL, f.cloud_status, d.source_kind FROM v7_jobs j"
+                " LEFT JOIN v7_job_fit f ON f.job_id = j.id LEFT JOIN v7_job_descriptions d ON d.job_id = j.id WHERE REPLACE(LOWER(j.notion_page_id), '-', '') = %s")
+
+
+def _code(value):
+    return re.sub(r"[^A-Z0-9]+", "_", str(value or "NONE").upper()).strip("_")[:20] or "NONE"
+
+
+def target_reason(rows):
+    """Why BACKLOG_ONE found no row for Jim's target: the first BACKLOG_PICK predicate it fails, as one fixed code from the store's own enums. Read only."""
+    if not rows:
+        return "NOT_IN_STORE"
+    if len(rows) > 1:
+        return "AMBIGUOUS"
+    status, admission, unexcluded, unscored, cloud_status, source = rows[0]
+    if status not in ("READY", "RESOLVED", "PUBLISHED"):
+        return "STATUS_" + _code(status)
+    if admission not in ("ADMIT", "REVIEW") or unscored:
+        return "NOT_SCORED" if admission is None or unscored else "ADMISSION_" + _code(admission)
+    if not unexcluded:
+        return "EXCLUDED"
+    if cloud_status is not None:
+        return "ASKED_" + _code(cloud_status)
+    if source is None:
+        return "NO_DESCRIPTION"
+    return "UNKNOWN" if source in PUBLIC_SOURCES else "SOURCE_" + _code(source)
 BACKLOG_CALLS_MAX = 100                # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
 BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
 BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
@@ -160,6 +186,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         else:
             cursor.execute(PICK, (PUBLIC_SOURCES, SCAN))
         rows = cursor.fetchall()
+        if batch and batch.get("page") and not rows:
+            cursor.execute(TARGET_STATE, (batch["page"],))
+            counts["backlog_target_reason"] = target_reason(cursor.fetchall())    # a fixed code, never an id or a value from the job's text
     if batch and batch.get("page") and not rows:
         return _degraded(counts, "BACKLOG_TARGET_NOT_ELIGIBLE")          # gone, already asked, unpublishable or excluded: nothing else is asked in its place
     started = clock() if started is None else started
