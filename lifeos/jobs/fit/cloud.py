@@ -16,6 +16,7 @@ unsendable backlog never uses up the run's one call (LIFE-41 G6 proof run 392020
 text: the profile is the Oracle-held brief named by `V7_CLOUD_FIT_PROFILE_REF` (16 hex); without it nothing is sent. Every failure is a fixed code shown as
 `cloud_fit=DEGRADED(<code>)`; a failure that is not about the one job (no host, refusal, timeout, a receipt that does not match) stops the run's cloud calls and
 writes nothing, so the job is asked again on a later tick and no static score is ever presented as a cloud answer. Counts only in the log."""
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_for
 from datetime import datetime, timezone
 import os
 import re
@@ -91,6 +92,7 @@ def target_reason(rows):
 BACKLOG_CALLS_MAX = 100                # D219: the hard ceiling of one batch, whatever is asked (Oracle's own daily cap still applies under it)
 BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
 BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
+MAX_PARALLEL = 3                        # D232: Oracle's lanes (fit, fit2, fit3); a batch never keeps more calls in flight
 NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
 QUOTA_STOP = "FIT_EDGE_REFUSED_QUOTA_RESERVE"   # LIFE-77 (Jim: stop at 50 % used): the account's allowance reached Jim's reserve; a normal stop, not a failure
 USAGE_UNAVAILABLE = "USAGE_UNAVAILABLE"   # LIFE-41: the fixed code for missing, invalid or inconsistent usage, from Oracle's refusal or the receipt itself
@@ -112,6 +114,13 @@ def per_run(environ):
         return max(0, min(int(raw.strip()), MAX_PER_RUN))
     except ValueError:
         return 0
+
+
+def parallel(environ):
+    """D232 (parallel Luna, Jim Oct 20): V7_CLOUD_FIT_PARALLEL, the calls a backlog batch keeps in flight at once, at most MAX_PARALLEL (Oracle's lanes). Unset,
+    not a whole number or out of range: 1, one call at a time as before."""
+    raw = (environ.get("V7_CLOUD_FIT_PARALLEL") or "").strip()
+    return int(raw) if raw.isdigit() and 1 <= int(raw) <= MAX_PARALLEL else 1
 
 
 def public_posting(url, source):
@@ -153,7 +162,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
 
     Every asked job is first CLAIMED (one conditional write with this run's token), so two workers never ask the same job, and its result is written right after its
     call, so an interrupted run keeps every finished answer. A refusal made before any model call (BUSY, REFUSED_*) releases the claim and stops the run; any other
-    failure is recorded on the row, so a model call that may have run is never repeated."""
+    failure is recorded on the row, so a model call that may have run is never repeated. A backlog batch may keep up to V7_CLOUD_FIT_PARALLEL calls in flight (D232,
+    one per Oracle lane): only the calls themselves run at once; claims, writes, promotions and counts stay on this thread, and a stop lets the calls already sent
+    finish and be recorded."""
     counts = {"cloud_fit": "backlog" if batch else mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {},
               "cloud_promoted": 0, "cloud_failed": 0, "cloud_claim_lost": 0, **{k: 0 for k in USAGE_SUMS}, "cloud_usage_unavailable": 0}
     if counts["cloud_fit"] == "off":
@@ -213,43 +224,20 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                              str(receipt.get("model") or "")[:40] or None, str((receipt.get("run_ids") or [""])[0])[:64] or None, fingerprint, _now(), job_id, token))
 
     readings = []                                                        # LIFE-77: the meter reading each call was admitted (or refused) on
-    for job_id, title, company, location, text, fingerprint, url, source, link_proof, page_id in (r if len(r) == 10 else (*r, None) for r in rows):
-        if counts["cloud_calls"] >= cap:
-            break                                                        # the run's calls are spent (or attempted): later candidates stay unasked, untouched
-        if not public_posting(url, source):
-            skip(job_id, "NOT_PUBLIC_POSTING", fingerprint)
-            continue
-        sent = judge.request(title, text, {"ref": ref}, location)
-        if sent is None and judge.title_place(judge.request_title(title, location)):
-            skip(job_id, "TITLE_LOCATION", fingerprint)                  # fail closed: a place left in the title is never sent
-            continue
-        if sent is None:
-            skip(job_id, "NO_SUBSTANTIVE_TEXT", fingerprint)
-            continue
-        audited = audit_problem(url, text, link_proof, source, company, title)
-        if audited:
-            skip(job_id, audited, fingerprint)                         # LIFE-41 G6, the last gate before egress: the same tick's audit would demote it; never spend the call on it
-            continue
-        if page_id:
-            held = ledger_check(page_id, company, title)                 # D219: applied (or unreadable) Ledger pages never use a call; the page itself is never changed here
-            if held:
-                counts["cloud_skipped"] += 1
-                counts["cloud_skip_reasons"]["LEDGER_" + held.upper()] = counts["cloud_skip_reasons"].get("LEDGER_" + held.upper(), 0) + 1
-                continue                                                 # not recorded: the human state can change, so it is checked again next time
-        if remaining(clock() - started, budget) < CALL_SECONDS:
-            if batch and counts["cloud_calls"]:
-                counts["cloud_budget_reached"] = 1                       # LIFE-41: a bounded batch stopping at its time limit after real work is normal; the rest wait for the next run
-            else:
-                _degraded(counts, "STAGE_BUDGET")                        # no time for even one call (or the tick's single call): a real shortfall
-            break
-        if write(CLAIM, (token, _now(), job_id)) != 1:
-            counts["cloud_claim_lost"] += 1                              # another worker holds (or finished) this job: never asked twice
-            continue
-        counts["cloud_calls"] += 1
+    state = {"lanes": parallel(environ) if batch else 1, "stop": False}   # parallel Luna (D232): a backlog batch only; the tick's one call is always alone
+
+    def settle(job_id, sent, fingerprint, call):
+        """One sent call's outcome (`call` returns the answer or raises its EdgeError): recorded, counted and promoted here, on the run's own thread.
+        Sets state["stop"] when no further call may be sent; calls already in flight still finish and are settled."""
         try:
-            got = edge.invoke(host, sent, evaluate(title, company, text, profile, _now().date()), title, send=send, wait=READ_WAIT)
+            got = call()
         except edge.EdgeError as error:
             code = str(error)
+            if code == "FIT_EDGE_BUSY" and state["lanes"] > 1:
+                write(RELEASE, (job_id, token))                          # D232: Oracle had fewer free lanes than this batch's calls: no model ran; the job waits for the
+                state["lanes"] -= 1                                      # next batch, and this one keeps going with one call fewer in flight
+                counts["cloud_busy"] = counts.get("cloud_busy", 0) + 1
+                return
             if code in NO_CALL:                                          # refused before any model call: the job goes back to the queue, the run stops
                 write(RELEASE, (job_id, token))                          # cloud_calls still counts the request sent
                 readings.append(error.quota)
@@ -257,7 +245,8 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                     counts["cloud_quota_reserve"] = 1                    # LIFE-77: Jim's reserve of the account's allowance is reached: a normal stop; the rest wait for the reset
                 else:
                     _degraded(counts, USAGE_UNAVAILABLE if code == "FIT_EDGE_REFUSED_USAGE_UNAVAILABLE" else code)
-                break
+                state["stop"] = True
+                return
             if code == "FIT_EDGE_RECEIPT_REJECTED" and error.detail:
                 field = error.detail.upper()                                 # a fixed contract field name, as a code
                 fields = counts.setdefault("cloud_receipt_fields", {})
@@ -265,9 +254,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
             counts["cloud_failed"] += 1
             _degraded(counts, code)
-            if code in JOB_OUTCOMES:
-                continue                                                 # about this job only: recorded, never re-asked; the next job may be asked
-            break                                                        # anything else (a model may have run): recorded so it is never repeated, and the run stops
+            if code not in JOB_OUTCOMES:
+                state["stop"] = True                                     # anything not about this job (a model may have run): recorded so it is never repeated, and the run stops
+            return                                                       # about this job only: recorded, never re-asked; the next job may be asked
         receipt = got.get("receipt") or {}
         u = receipt.get("usage")
         measured = usage_ok(u)
@@ -282,7 +271,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         if record(job_id, status, reason, got, edge.digest(sent)[:16], fingerprint) != 1:
             counts["cloud_ok"] -= 1
             _degraded(counts, WRITE_CONFLICT)
-            continue
+            return
         if canary:
             if promote(job_id, got["judgment"], str(receipt.get("model") or "model")):
                 counts["cloud_promoted"] += 1                            # D226: only an accepted, receipt-checked, purged answer that was just stored
@@ -291,7 +280,63 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 _degraded(counts, PROMOTION_FAILED)
         if not measured:
             _degraded(counts, USAGE_UNAVAILABLE)                         # LIFE-41 usage integrity, every mode: the answer is kept; no further call this run
-            break
+            state["stop"] = True
+
+    pool = ThreadPoolExecutor(max_workers=state["lanes"]) if state["lanes"] > 1 else None
+    inflight = {}                                                        # D232: future -> (job_id, sent, fingerprint); only the network call runs off this thread
+
+    def settle_next():
+        done, _ = wait_for(inflight, return_when=FIRST_COMPLETED)
+        for future in done:
+            settle(*inflight.pop(future), future.result)
+
+    try:
+        for job_id, title, company, location, text, fingerprint, url, source, link_proof, page_id in (r if len(r) == 10 else (*r, None) for r in rows):
+            if state["stop"] or counts["cloud_calls"] >= cap:
+                break                                                    # stopped, or the run's calls are spent (or attempted): later candidates stay unasked, untouched
+            if not public_posting(url, source):
+                skip(job_id, "NOT_PUBLIC_POSTING", fingerprint)
+                continue
+            sent = judge.request(title, text, {"ref": ref}, location)
+            if sent is None and judge.title_place(judge.request_title(title, location)):
+                skip(job_id, "TITLE_LOCATION", fingerprint)              # fail closed: a place left in the title is never sent
+                continue
+            if sent is None:
+                skip(job_id, "NO_SUBSTANTIVE_TEXT", fingerprint)
+                continue
+            audited = audit_problem(url, text, link_proof, source, company, title)
+            if audited:
+                skip(job_id, audited, fingerprint)                     # LIFE-41 G6, the last gate before egress: the same tick's audit would demote it; never spend the call on it
+                continue
+            if page_id:
+                held = ledger_check(page_id, company, title)             # D219: applied (or unreadable) Ledger pages never use a call; the page itself is never changed here
+                if held:
+                    counts["cloud_skipped"] += 1
+                    counts["cloud_skip_reasons"]["LEDGER_" + held.upper()] = counts["cloud_skip_reasons"].get("LEDGER_" + held.upper(), 0) + 1
+                    continue                                             # not recorded: the human state can change, so it is checked again next time
+            if remaining(clock() - started, budget) < CALL_SECONDS:
+                if batch and counts["cloud_calls"]:
+                    counts["cloud_budget_reached"] = 1                   # LIFE-41: a bounded batch stopping at its time limit after real work is normal; the rest wait for the next run
+                else:
+                    _degraded(counts, "STAGE_BUDGET")                    # no time for even one call (or the tick's single call): a real shortfall
+                break
+            if write(CLAIM, (token, _now(), job_id)) != 1:
+                counts["cloud_claim_lost"] += 1                          # another worker holds (or finished) this job: never asked twice
+                continue
+            counts["cloud_calls"] += 1
+            base = evaluate(title, company, text, profile, _now().date())
+            ask = lambda sent=sent, base=base, title=title: edge.invoke(host, sent, base, title, send=send, wait=READ_WAIT)     # noqa: E731
+            if pool is None:
+                settle(job_id, sent, fingerprint, ask)                   # one call at a time, exactly as before
+                continue
+            inflight[pool.submit(ask)] = (job_id, sent, fingerprint)
+            while inflight and len(inflight) >= state["lanes"]:
+                settle_next()                                            # a lane frees before the next call is sent
+        while inflight:
+            settle_next()                                                # every call already sent is settled, whatever stopped the run
+    finally:
+        if pool:
+            pool.shutdown(wait=True)                                     # an interrupted run leaves its in-flight jobs CLAIMED: held, never re-asked
     quota = quota_summary(readings)
     if quota:
         counts["cloud_quota"] = quota                                    # LIFE-77: readings and estimates only, never the account

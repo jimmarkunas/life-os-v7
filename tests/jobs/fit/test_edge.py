@@ -181,6 +181,15 @@ class Invoke(unittest.TestCase):
                     edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], nonce="n", send=Endpoint(lambda s, raw=raw: raw))
             self.assertEqual(str(ctx.exception), "FIT_EDGE_REPLY_TOO_LARGE")
 
+    def test_a_receipt_from_any_of_oracles_lanes_is_accepted_and_no_other_agent_is(self):
+        for agent in ("fit", "fit2", "fit3"):                                                  # D232: each lane is its own clone of the fit agent
+            got = edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})))
+            self.assertEqual(got["receipt"]["agent"], agent)
+        for agent in ("main", "fit4", "FIT2", "", None):
+            with self.assertRaises(edge.EdgeError) as ctx:
+                edge.invoke(HOST, REQUEST, BASE, REQUEST["title"], send=Endpoint(lambda s, agent=agent: reply(s, receipt={**RECEIPT, "agent": agent})))
+            self.assertEqual((str(ctx.exception), ctx.exception.detail), ("FIT_EDGE_RECEIPT_REJECTED", "agent"), agent)
+
     def test_a_receipt_must_be_the_complete_oracle_run_record_before_any_judgment_is_accepted(self):
         bad = {"receipt": "x", "provider": {"provider": "anthropic"}, "model": {"model": ["gpt-6-luna"]}, "transport": {"transport": "http"}, "agent": {"agent": "main"},
                "fallback": {"fallback": "false"}, "run_ids": {"run_ids": []}, "run_finished": {"run_finished": False}, "started": {"started": ""}, "ended": {"ended": 5}}
