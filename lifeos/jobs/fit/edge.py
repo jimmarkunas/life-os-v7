@@ -21,6 +21,7 @@ REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LI
            "USAGE_UNAVAILABLE",                                                  # LIFE-41 usage integrity: Oracle's synthetic usage check or latch failed; no model call
            "QUOTA_RESERVE", "QUOTA_UNCONFIGURED", "METER_UNAVAILABLE"}           # LIFE-77: the account's own allowance is at Jim's reserve, has no policy, or cannot be read; no model call
 MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
+AGENTS = {"fit", "fit2", "fit3"}                                                 # D232: Oracle's lanes, each its own clone of the fit agent; never main or any other
 
 
 class EdgeError(RuntimeError):
@@ -67,7 +68,7 @@ def bad_receipt_field(receipt):
         return "receipt"
     ids, text = receipt.get("run_ids"), lambda key: isinstance(receipt.get(key), str) and 0 < len(receipt[key]) <= 64
     rules = {"provider": receipt.get("provider") == "openai", "model": isinstance(receipt.get("model"), str) and receipt["model"] in MODELS, "transport": receipt.get("transport") == "gateway",
-             "agent": receipt.get("agent") == "fit", "fallback": receipt.get("fallback") is False, "run_ids": isinstance(ids, list) and 0 < len(ids) <= 8 and all(isinstance(i, str) and 0 < len(i) <= 64 for i in ids),
+             "agent": receipt.get("agent") in AGENTS, "fallback": receipt.get("fallback") is False, "run_ids": isinstance(ids, list) and 0 < len(ids) <= 8 and all(isinstance(i, str) and 0 < len(i) <= 64 for i in ids),
              "run_finished": receipt.get("run_finished") is True, "started": text("started"), "ended": text("ended"),
              "purge": receipt.get("purge", "absent") in ("absent", "ok", "failed")}                 # LIFE-41 10504: real replies only; absent on synthetic ones
     return next((name for name, ok in rules.items() if not ok), None)

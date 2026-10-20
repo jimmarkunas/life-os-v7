@@ -1,6 +1,8 @@
 """D219 (LIFE-41, Jim): the Cloud Fit backlog batch. Production SQL over the sqlite kit, the real Fit-stage promotion and the production request builder; only the Oracle
 endpoint (and the Ledger page read) are fakes. Nothing here calls a model, Notion or the network."""
 import json
+import threading
+import time
 from unittest import mock
 
 from lifeos.jobs import fit_sync, publish
@@ -567,3 +569,92 @@ class BacklogIsReportedToOracle(Batch):
         counts = self.batch(1, Endpoint(measured))
         self.assertEqual((counts["cloud_fit"], counts["failed"], counts["backlog_report"]), ("OK", 0, "FIT_EDGE_NO_REPLY"))
 
+
+
+class ParallelLanes(Batch):
+    """D232 (parallel Luna, Jim Oct 20): a batch keeps up to V7_CLOUD_FIT_PARALLEL calls in flight, one per Oracle lane. Only the calls run at once: every claim,
+    write, promotion and count stays on the batch's own thread, each job is asked once, and a stop lets the calls already sent finish and be recorded."""
+    TWO = {**ENV, "V7_CLOUD_FIT_PARALLEL": "2"}
+
+    def test_two_calls_are_in_flight_at_once_and_every_job_is_asked_once_and_promoted(self):
+        for i in range(1, 6):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        both = threading.Barrier(2, timeout=5)                                                  # the first two calls must be on Oracle together, or this times out
+        arrivals, lock = [], threading.Lock()
+
+        def answer(data):
+            with lock:
+                arrivals.append(data)
+                n = len(arrivals)
+            if n <= 2:
+                both.wait()
+            return reply(data, receipt={**RECEIPT, "usage": USAGE, "agent": "fit2" if n % 2 == 0 else "fit"},     # each lane names its own agent
+                         judgment_raw=json.dumps({"score": 90, "rationale": "Aligned on delivery ownership.", "confidence": "high"}))
+        endpoint = Endpoint(answer)
+        counts = self.batch(10, endpoint, environ=self.TWO)
+        self.assertEqual(sorted(self.asked(endpoint)), [f"Program Manager {i}" for i in range(1, 6)])
+        self.assertEqual((counts["cloud_fit"], counts["cloud_calls"], counts["cloud_ok"], counts["cloud_promoted"], counts["failed"]), ("OK", 5, 5, 5, 0))
+        self.assertEqual([self.status(i) for i in range(1, 6)], ["CANARY"] * 5)
+        self.assertEqual(counts["cloud_tokens_total"], 5 * USAGE["total_tokens"])
+
+    def test_busy_from_a_lane_oracle_does_not_have_releases_that_job_and_the_batch_continues_with_fewer_calls(self):
+        for i in range(1, 6):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        active, lock = [0], threading.Lock()
+
+        def one_lane(data):
+            with lock:
+                if active[0]:
+                    return refusal(data, status="BUSY")                                         # Oracle has one lane open: no model runs for a second call
+                active[0] += 1
+            time.sleep(0.5)
+            with lock:
+                active[0] -= 1
+            return measured(data)
+        counts = self.batch(10, Endpoint(one_lane), environ={**ENV, "V7_CLOUD_FIT_PARALLEL": "3"})
+        statuses = [self.status(i) for i in range(1, 6)]
+        self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_busy"], counts["cloud_promoted"]), ("OK", 0, 2, 3))
+        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (3, 2))                # the two refused jobs were released: asked by the next batch
+
+    def test_a_stop_while_another_call_is_in_flight_records_that_answer_and_sends_nothing_more(self):
+        for i in range(1, 5):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        refused, arrivals, lock = threading.Event(), [], threading.Lock()
+
+        def answer(data):
+            with lock:
+                arrivals.append(data)
+                n = len(arrivals)
+            if n == 1:
+                refused.wait(5)
+                time.sleep(0.3)                                                                 # still running on Oracle after the other call was refused
+                return measured(data)
+            refused.set()
+            return reply(data, status="REFUSED", reason="QUOTA_RESERVE", judgment_raw=None, receipt=None, quota=metered(50))
+        endpoint = Endpoint(answer)
+        counts = self.batch(10, endpoint, environ=self.TWO)
+        self.assertEqual((len(endpoint.sent), counts["cloud_calls"], counts["cloud_quota_reserve"], counts["cloud_promoted"], counts["cloud_fit"]), (2, 2, 1, 1, "OK"))
+        statuses = [self.status(i) for i in range(1, 5)]
+        self.assertEqual((statuses.count("CANARY"), statuses.count(None)), (1, 3))                # the in-flight answer kept; the refused job and the rest wait
+
+    def test_a_job_failure_in_one_lane_is_recorded_while_the_other_lanes_answer_is_kept(self):
+        for i in range(1, 4):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        arrivals, lock = [], threading.Lock()
+
+        def answer(data):
+            with lock:
+                arrivals.append(data)
+                n = len(arrivals)
+            if n == 1:
+                return reply(data, status="TIMEOUT", judgment_raw=None)                         # a model may have run: recorded, never re-asked, and the batch stops
+            time.sleep(0.3)
+            return measured(data)
+        counts = self.batch(10, Endpoint(answer), environ=self.TWO)
+        statuses = [self.status(i) for i in range(1, 4)]
+        self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["cloud_promoted"]), ("DEGRADED(FIT_EDGE_TIMEOUT)", 1, 1))
+        self.assertEqual(sorted(s or "-" for s in statuses), ["-", "CANARY", "DEGRADED"])
+
+    def test_the_setting_is_one_unless_it_is_a_whole_number_from_1_to_3(self):
+        for raw, want in ((None, 1), ("", 1), ("1", 1), ("2", 2), (" 3 ", 3), ("4", 1), ("0", 1), ("-2", 1), ("two", 1), ("2.5", 1)):
+            self.assertEqual(cloud.parallel({} if raw is None else {"V7_CLOUD_FIT_PARALLEL": raw}), want, raw)
