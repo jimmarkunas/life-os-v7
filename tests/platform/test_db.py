@@ -264,6 +264,68 @@ class OracleRouteTests(unittest.TestCase):
         self.run_([None])
         self.assertIsNone(self.proxy(self.cmds[0]))                                                    # without the route configured the switch does nothing
 
+    def test_the_relay_never_holds_the_pipe_this_process_waits_on_and_its_refusal_is_still_named(self):
+        """Live run 39359049454: an inherited stderr pipe made every Oracle start wait for its timeout. The relay writes to a file in the tunnel directory."""
+        import os
+        import subprocess
+        import sys
+        from unittest import mock
+        self.run_([self.TIMEOUT, None])
+        self.assertRegex(self.proxy(self.cmds[1]), r" 2>>\S+/jump\.err$")
+        self.reset()
+
+        def fake_run(cmd, **kw):                                                                            # the outer ssh reports nothing useful; the relay wrote why
+            if "-O" in cmd:
+                return None
+            self.cmds.append(cmd)
+            if len(self.cmds) == 1:
+                raise subprocess.CalledProcessError(255, cmd, stderr=self.TIMEOUT)
+            with open(os.path.join(db._tunnel["directory"], "jump.err"), "w") as f:
+                f.write(db.JUMP_USER + "@" + "100.64.0.7: Permission denied (publickey).\n")                # built at runtime: the privacy guard reads user@host as an address
+            raise subprocess.CalledProcessError(255, cmd, stderr="kex_exchange_identification: Connection closed by remote host")
+        with mock.patch.object(db.subprocess, "run", side_effect=fake_run), mock.patch.dict(sys.modules, {"pymysql": mock.MagicMock()}):
+            with self.assertRaises(db.StoreError) as ctx:
+                with db.connect():
+                    pass
+        self.assertEqual(str(ctx.exception), "STORE_SSH_JUMP_AUTH")                                           # the relay's refusal wins over the outer symptom
+
+    def test_a_real_relay_process_does_not_stall_the_tunnel_start(self):
+        """The fakes above cannot see an inherited pipe. A stand-in `ssh` on PATH behaves like the real one: the main call starts its ProxyCommand (stderr
+        inherited, as OpenSSH does) and then backgrounds (-f); the relay stays alive like a live tunnel. The start must return at once, not at its timeout."""
+        import os
+        import shutil
+        import stat
+        import sys
+        import tempfile
+        import time
+        from unittest import mock
+        bindir = tempfile.mkdtemp()
+        fake = os.path.join(bindir, "ssh")
+        with open(fake, "w") as f:
+            f.write(f"""#!{sys.executable}
+import subprocess, sys, time
+args = sys.argv[1:]
+if "-O" in args:
+    sys.exit(0)
+if "-W" in args:
+    time.sleep(4)          # the relay: alive as long as the tunnel
+    sys.exit(0)
+proxy = next((a.split("=", 1)[1] for a in args if a.startswith("ProxyCommand=")), None)
+if proxy:
+    subprocess.Popen(["/bin/sh", "-c", "exec " + proxy], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)   # stderr inherited, like OpenSSH
+sys.exit(0)                # -f: the master goes to the background
+""")
+        os.chmod(fake, stat.S_IRWXU)
+        os.environ["LIFEOS_ACQ_SSH_VIA"] = "oracle"
+        with mock.patch.dict(os.environ, {"PATH": bindir + os.pathsep + os.environ["PATH"]}), mock.patch.dict(sys.modules, {"pymysql": mock.MagicMock()}):
+            started = time.monotonic()
+            with db.connect():
+                pass
+            elapsed = time.monotonic() - started
+            db._close_tunnel()
+        shutil.rmtree(bindir)
+        self.assertLess(elapsed, 3, "the relay held the pipe the tunnel start waits on")
+
     def test_an_unresolvable_store_name_is_refused_with_its_own_code_and_cleaned_up(self):
         from unittest import mock
         with mock.patch.object(db.socket, "getaddrinfo", side_effect=OSError):

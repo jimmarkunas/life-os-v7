@@ -124,8 +124,10 @@ def _proxy(jump, directory, host, port):
     for path, content in ((key, jump["SSH_JUMP_KEY"]), (hosts, jump["SSH_JUMP_KNOWN_HOSTS"])):
         path.touch(mode=0o600)
         path.write_text(content.rstrip() + "\n")
+    # The relay lives as long as the tunnel: its stderr goes to a private file, never the pipe this process reads (an inherited pipe never closes, so the
+    # start would wait until its timeout; live run 39359049454). A failure reads the file back to name the refusal.
     return ["-o", f"ProxyCommand=ssh -F /dev/null -i {key} -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile={hosts}"
-                  f" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=10 -W {ip}:{int(port)} {JUMP_USER}@{jump['SSH_JUMP_HOST']}"]
+                  f" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=10 -W {ip}:{int(port)} {JUMP_USER}@{jump['SSH_JUMP_HOST']} 2>>{Path(directory, 'jump.err')}"]
 
 
 def _open_tunnel(cfg, jump=None):
@@ -151,6 +153,9 @@ def _open_tunnel(cfg, jump=None):
                         "-L", f"127.0.0.1:{local_port}:{DB_REMOTE}", "-l", cfg["SSH_USER"], "--", cfg["SSH_HOST"]],
                        check=True, timeout=30 if jump else 20, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     except Exception as error:
+        if jump and isinstance(error, subprocess.CalledProcessError):
+            with suppress(OSError):
+                error.stderr = (error.stderr or "") + "\n" + Path(directory, "jump.err").read_text(errors="replace")    # the relay's own refusal, if it had one
         code = _ssh_code(error)
         raise StoreError(code.replace("STORE_SSH_", "STORE_SSH_JUMP_", 1) if jump else code) from None
 
