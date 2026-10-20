@@ -877,10 +877,20 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN || steps.bws_finish_retry.outputs.NOTION_API_TOKEN }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
           V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.PIPELINE == 'true' && vars.V7_CLOUD_FIT_SCHEDULED || vars.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling (a tick: the scheduled count itself); 0 (unset) asks nothing
-          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ env.PIPELINE == 'true' && '600' || vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}     # a tick: 20 calls (~18 s each with their Ledger reads and skips, a call starts only with 165 s left) inside the finish job's 50 minutes
+          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ env.PIPELINE != 'true' && vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}     # a manual batch: Jim's variable; a tick: sized below to the time left in the hour
           V7_CLOUD_FIT_BACKLOG_PAGE: ${{ env.PIPELINE != 'true' && vars.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}     # LIFE-41 G6: Jim's one preapproved Ledger page, manual runs only; a tick never narrows to it
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}
-        run: python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
+        run: |
+          if [ "$PIPELINE" = "true" ]; then
+            # LIFE-41 (Jim, Oct 20 2026: "fill every hour"): the scheduled batch runs until about :55, so the next tick never waits, never past the
+            # code's 30-minute batch cap, and never past this job's 50 minutes (5 minutes kept for the steps after it). Too little time: skipped, not failed.
+            now=$(date +%s); m=$((10#$(date +%M))); s=$((10#$(date +%S))); started=$(stat -c %Y "$GITHUB_WORKSPACE/.git")     # the checkout: this job's first seconds
+            to_55=$(( m < 55 ? (55 - m) * 60 - s : 0 )); job_left=$(( 50 * 60 - (now - started) - 300 ))
+            budget=$(( to_55 < job_left ? to_55 : job_left )); budget=$(( budget > 1800 ? 1800 : budget ))
+            if [ "$budget" -lt 300 ]; then echo "fit-cloud-backlog: skipped this hour (${budget}s left before :55 or the job limit)"; exit 0; fi
+            export V7_CLOUD_FIT_BACKLOG_BUDGET=$budget
+          fi
+          python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
         continue-on-error: true
         name: Step 6b - precision audit (before publish)
