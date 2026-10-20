@@ -18,7 +18,7 @@ from lifeos.jobs.fit.score import evaluate
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
         " j.posted_date, j.first_seen, j.route_evidence, j.source FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
-        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D218: a cloud-Fit canary score is never overwritten by the static scorer
+        " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D226: a cloud-Fit canary score is never overwritten by the static scorer
         " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
         " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
@@ -59,7 +59,7 @@ def _now():
 def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
     """[(job_id, fingerprint, Result, Decision, lane, work_mode, eligible)] for rows of (id, title, company, full_text, fingerprint,
     [lane, location, salary_text, posted_date, first_seen, route_evidence]). `register`: the sponsor register (Skilled Worker route evidence).
-    `fit` (D218 cloud-Fit canary): {job_id: score} replaces the static score in the lane decision; every other rule is the same code. Pure."""
+    `fit` (D226 cloud-Fit canary): {job_id: score} replaces the static score in the lane decision; every other rule is the same code. Pure."""
     out = []
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
@@ -94,7 +94,7 @@ PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confid
 
 
 def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts, register=None):
-    """D218 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
+    """D226 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
     visible Fit: the same score_rows lane decision decides admission with it, and the same gate moves the job. The provenance is in the line ('Cloud Fit ...'),
     which publish writes to Why It Fits. Only the row the shadow has just stored as CANARY_PROMOTION_FAILED is touched, and the one UPDATE that writes the
     visible Fit is the one that marks it CANARY, so the marker and the visible score exist together or not at all. A published job the cloud excludes is promoted
@@ -116,7 +116,7 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
 
 
 def regate_canary(cursor):
-    """D218: every tick re-applies the lane gate to each CANARY row from its stored admission (the same two idempotent moves as _gate), because the static pass never
+    """D226: every tick re-applies the lane gate to each CANARY row from its stored admission (the same two idempotent moves as _gate), because the static pass never
     re-picks a canary row. A promotion whose gate write failed (the tick then fails loudly) is therefore moved on the next tick; an already-gated job is untouched. -> jobs moved."""
     cursor.execute("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='EXCLUDED_FIT', j.unresolved_reason='lane_exclude', j.updated_at=%s"
                    " WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='READY'", (_now(),))
@@ -268,7 +268,7 @@ def run(limit, live, environ=os.environ):
                      json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
                      decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
                 _gate(cursor, job_id, decision, gate, counts)
-    promote = cloud_promoter(profile, gate, counts, register)          # D218: canary only
+    promote = cloud_promoter(profile, gate, counts, register)          # D226: canary only
     counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))   # D214: after the static write; off by default, shadow never changes it
     counts["failed"] = counts["cloud_degraded"] + counts.get("cloud_held_failed", 0)     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
     return counts
