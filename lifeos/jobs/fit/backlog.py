@@ -19,6 +19,7 @@ import re
 
 from lifeos.jobs import fit_sync, guard, ledger, sponsors, store
 from lifeos.jobs.fit import cloud as fit_cloud, profile as fit_profile, stage
+from lifeos.jobs.fit import edge                                          # LIFE-77: only the no-model `limits` request, to report the backlog count
 
 LEDGER_SKIP = {guard.APPLIED, guard.APPLIED_ON, guard.UNREADABLE}
 REMAINING = ("SELECT j.status = 'PUBLISHED', f.admission, COUNT(*) FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id JOIN v7_job_descriptions d ON d.job_id = j.id"
@@ -91,6 +92,12 @@ def run(limit, live, environ=os.environ, client=None):
         if promoted:
             cursor.execute("SELECT id FROM v7_jobs WHERE id IN %s AND status = 'PUBLISHED' AND notion_page_id IS NOT NULL", (tuple(promoted),))
             pages = [r[0] for r in cursor.fetchall()]
+    if live:                                                            # LIFE-77: Oracle keeps the backlog count so the AI Capacity card can show what it would use; a failed report never fails the batch
+        try:
+            edge.limits((environ.get("IMESSAGE_ALERTS_HOST") or "").strip(), backlog=sum(counts["remaining_after"].values()))
+            counts["backlog_reported"] = sum(counts["remaining_after"].values())
+        except edge.EdgeError as error:
+            counts["backlog_report"] = str(error)
     counts["ledger_pages_promoted"] = len(pages)
     if live and pages:
         if target != ledger.OK:

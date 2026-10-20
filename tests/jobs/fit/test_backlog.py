@@ -22,9 +22,19 @@ class Batch(Base):
         with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), \
                 mock.patch.object(stage.sponsors, "load", return_value=None), mock.patch.object(edge, "exchange", endpoint), \
                 mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), \
+                mock.patch.object(backlog.edge, "limits", side_effect=self.report), \
                 mock.patch.object(backlog.guard, "protection", side_effect=ledger or (lambda client, page_id, company, title, opportunities=(): None)):
             self.client = mock.Mock()                                                           # the Notion client: records every call, answers nothing
             return backlog.run(limit, live, environ, client=self.client)
+
+    reported = None
+
+    def report(self, host, backlog=None, **kw):
+        """LIFE-77: the batch's backlog report to Oracle, recorded instead of sent; set `report_fails` to make it fail."""
+        if getattr(self, "report_fails", None):
+            raise edge.EdgeError(self.report_fails)
+        self.reported = (host, backlog)
+        return {}
 
     def asked(self, endpoint):
         return [json.loads(f.split(b"\n", 1)[1])["request"]["title"] for f in endpoint.sent]
@@ -419,6 +429,7 @@ class FailureReachesTheRun(Batch):
         with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), \
                 mock.patch.object(stage.sponsors, "load", return_value=None), mock.patch.object(edge, "exchange", Endpoint(measured)), \
                 mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), mock.patch.object(backlog.guard, "protection", return_value=None), \
+                mock.patch.object(backlog.edge, "limits", side_effect=self.report), \
                 mock.patch.object(backlog.fit_sync, "run", return_value={"due": 1, "synced": 0, "failed": 1}), mock.patch.dict(os.environ, ENV), \
                 mock.patch.object(backlog, "run", side_effect=lambda limit, live: real(limit, live, os.environ, client=mock.Mock())), \
                 contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
@@ -535,3 +546,24 @@ class ReceiptFieldIsNamed(Batch):
         self.titled(1, "Program Manager A")
         counts = self.batch(5, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE, "run_finished": False}, judgment_raw=json.dumps({"score": 90, "rationale": "x", "confidence": "high"}))))
         self.assertEqual((counts["cloud_fit"], counts["cloud_receipt_fields"]), ("DEGRADED(FIT_EDGE_RECEIPT_REJECTED)", {"RUN_FINISHED": 1}))
+
+
+class BacklogIsReportedToOracle(Batch):
+    """LIFE-77: the AI Capacity card's proposed-usage line needs the backlog count, which only V7's store knows; the batch reports it to Oracle at its end."""
+
+    def test_a_live_batch_reports_what_is_left_and_a_dry_run_reports_nothing(self):
+        for i in (1, 2, 3):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        counts = self.batch(1, Endpoint(measured))
+        self.assertEqual(self.reported, ("oracle.example", sum(counts["remaining_after"].values())))
+        self.assertEqual(counts["backlog_reported"], 2)
+        self.reported = None
+        self.batch(1, Endpoint(measured), live=False)
+        self.assertIsNone(self.reported)
+
+    def test_a_failed_report_never_fails_the_batch(self):
+        self.titled(1, "Program Manager 1")
+        self.report_fails = "FIT_EDGE_NO_REPLY"
+        counts = self.batch(1, Endpoint(measured))
+        self.assertEqual((counts["cloud_fit"], counts["failed"], counts["backlog_report"]), ("OK", 0, "FIT_EDGE_NO_REPLY"))
+
