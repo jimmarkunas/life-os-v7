@@ -558,3 +558,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D233: Every manual interview acceptance run also runs a second, always-dry-run negative case from its own secret (2026-10-20, Jim; LIFE-42)
 - D234: Build resume: a tailored .docx for one exact Ledger job, written by Luna on Oracle under Jim's resume rules, claims-guarded, attached to the job page (2026-10-20, Jim; LIFE-87)
 - D235: A tick's Cloud Fit batch fills the hour: the batch cap is 45 minutes and the finish job 58 (2026-10-20, Jim; LIFE-41)
+- D236: The machine marker and identity lines are folded into one collapsed "⚙️ LIFE OS" toggle at the top of the page (2026-10-20, Jim; LIFE-46)

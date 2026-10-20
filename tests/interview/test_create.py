@@ -32,6 +32,17 @@ class WritableFake(Fake):
         self.change_notes = False
         self.hide_created = False
 
+    def register(self, prefix, items):
+        """Like Notion: every block gets an id, and nested children become readable child lists."""
+        items = copy.deepcopy(items)
+        for index, item in enumerate(items):
+            item["id"] = f"{prefix}-block-{index}"
+            inner = (item.get(item["type"]) or {}).pop("children", None)
+            if inner:
+                item["has_children"] = True
+                self.blocks[item["id"]] = self.register(item["id"], inner)
+        return items
+
     def call(self, method, path, body=None):
         if method != "POST":
             return super().call(method, path, body)
@@ -45,9 +56,7 @@ class WritableFake(Fake):
         title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
         page_id = f"created-{len(self.posts)}"
         self.pages[page_id] = page(title, parent_id)
-        self.blocks[page_id] = copy.deepcopy(body["children"])
-        for index, item in enumerate(self.blocks[page_id]):
-            item["id"] = f"{page_id}-block-{index}"
+        self.blocks[page_id] = self.register(page_id, body["children"])
         if not self.hide_created:
             self.blocks[parent_id].append({"id": page_id, "type": "child_page", "child_page": {"title": title}})
         if self.bad_readback:
@@ -95,7 +104,8 @@ class CreationTests(unittest.TestCase):
                 parent_id = "created-1"
                 self.assertEqual(client.pages[parent_id]["properties"]["title"]["title"][0]["plain_text"], "New Example — Program Manager")
                 parent_blocks = client.blocks[parent_id]
-                self.assertEqual(notion.text(parent_blocks[0]), notion.MARKERS["opportunity"])
+                self.assertEqual(notion.text(parent_blocks[0]), notion.FOLD)
+                self.assertEqual([notion.text(b) for b in client.blocks[parent_id + "-block-0"]], [notion.MARKERS["opportunity"]])
                 self.assertEqual([notion.text(b) for b in parent_blocks if b.get("type", "").startswith("heading")],
                                  ["Interviews", "Strategy", "LinkedIn & Outreach", "Materials & Sources",
                                   "Job Description — original source (separate from Strategy)", notion.JIM_NOTES])
@@ -105,10 +115,12 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(client.posts[-1]["parent"]["page_id"], parent_id)
                 round_blocks = client.blocks["created-2"]
-                self.assertEqual([notion.text(b) for b in round_blocks][:2] + [notion.text(b) for b in round_blocks][4:],
-                                 [notion.MARKERS["round"], create.identity_text(query), "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
-                self.assertEqual(round_blocks[3]["type"], "column_list")
-                self.assertEqual(json.loads(notion.text(round_blocks[1]).split(";", 1)[1]), {"interview_date": query.interview_date, "interviewer": query.interviewer, "ordinal": query.ordinal})
+                lines = client.blocks["created-2-block-0"]
+                self.assertEqual([notion.text(b) for b in round_blocks][:1] + [notion.text(b) for b in round_blocks][3:],
+                                 [notion.FOLD, "Prepare", "Live Notes", "After Interview", "Raw Notes", "Derived"])
+                self.assertEqual([notion.text(b) for b in lines], [notion.MARKERS["round"], create.identity_text(query)])
+                self.assertEqual(round_blocks[2]["type"], "column_list")
+                self.assertEqual(json.loads(notion.text(lines[1]).split(";", 1)[1]), {"interview_date": query.interview_date, "interviewer": query.interviewer, "ordinal": query.ordinal})
                 self.assertEqual(notion.protected_snapshot(client, parent_id), before)
                 result = self.run_evidence(client, query=query)
                 self.assertEqual(result["writes"], 0)
@@ -203,12 +215,12 @@ class CreationTests(unittest.TestCase):
         client = WritableFake()
         machine_parent(client)
         self.run_evidence(client)
-        marker = client.blocks["created-2"][0]
+        marker = client.blocks["created-2-block-0"][0]
         valid = create.identity_text(ROUND)
         bad = [None, "not JSON", valid.replace(":1;", ":2;"), valid.replace("2026-10-01", "2026-99-99"), valid.replace('"ordinal":1', '"ordinal":0'), valid.replace('"ordinal":1', '"ordinal":null'), valid.replace('"ordinal":1', '"ordinal":true')]
         for value in bad:
             with self.subTest(value=value):
-                client.blocks["created-2"] = [marker] + ([block(value)] if value else [])
+                client.blocks["created-2-block-0"] = [marker] + ([block(value)] if value else [])
                 child = notion.explicit_child(client, "created-2")
                 for query in (ROUND, RoundQuery(True, explicit_child_page_id="created-2")):
                     result = resolve_child(Resolution(State.MATCH, "parent_match", "created-1"), query, Scan((child,), True), child)
