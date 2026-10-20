@@ -65,7 +65,7 @@ class RetryTests(unittest.TestCase):
             self._run([])                                                 # a later connect reuses the tunnel at once (publish opens hundreds)
             db._tunnel.update(directory=None, port=None, exit=None, check=None)
             self._run(["ssh: connect to host h port 22: Connection timed out", None])     # a new tunnel's retry is spread out again
-        self.assertEqual(self.sleeps, [3, 0, 0, 7])
+        self.assertEqual(self.sleeps, [3, 0, 0, 33])                                  # after an unanswered connection the retry waits quietly (QUIET_WAITS)
 
     def test_one_tunnel_serves_every_connect_of_the_process(self):
         self.assertEqual(self._run([None]), ("connected", 1))
@@ -79,9 +79,27 @@ class RetryTests(unittest.TestCase):
             self.assertEqual(self._run([None]), ("connected", 1))          # a fresh tunnel, not a failed stage
 
     def test_a_network_blip_is_retried_and_then_connects(self):
-        result, starts = self._run(["ssh: connect to host h port 22: Connection timed out", None])
+        result, starts = self._run(["Network is unreachable", None])
         self.assertEqual((result, starts), ("connected", 2))
         self.assertEqual(self.sleeps, [0, 4])
+
+    def test_an_unanswered_connection_waits_long_and_quietly_and_a_recovery_is_logged(self):
+        """LIFE-41: the host drops one runner for minutes; quick retries never recovered (9 of 9 series), so after a TCP timeout the next wait is QUIET_WAITS."""
+        import contextlib
+        import io
+        timeout = "ssh: connect to host h port 22: Connection timed out"
+        self.assertEqual(self._run([timeout] * ATTEMPTS), ("STORE_SSH_TCP_TIMEOUT", ATTEMPTS))
+        self.assertEqual(self.sleeps, [0, 30, 60, 90])
+        self.sleeps.clear()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(self._run([timeout, timeout, None]), ("connected", 3))
+        self.assertEqual(self.sleeps, [0, 30, 60])
+        self.assertEqual(err.getvalue().splitlines()[-1], "store: connected on attempt 3 of 4 after STORE_SSH_TCP_TIMEOUT")
+
+    def test_the_wait_follows_the_last_failure_not_the_first(self):
+        self._run(["ssh: connect to host h port 22: Connection timed out", "Connection timed out during banner exchange", "Network is unreachable", None])
+        self.assertEqual(self.sleeps, [0, 30, 12, 30])                 # quiet only right after an unanswered connection; a dropped or unreachable one keeps the short schedule
 
     def test_it_gives_up_after_the_last_attempt_with_the_fixed_code(self):
         result, starts = self._run(["Network is unreachable"] * ATTEMPTS)
