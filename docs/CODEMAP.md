@@ -47,6 +47,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-rollover-scheduled` -> `lifeos.jira.rollover:run`
 - `jira-rollover-watch` -> `lifeos.jira.watch:run`
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
+- `job-page-outreach` -> `lifeos.sources.job_page_outreach:run`
 - `linkedin-search` -> `lifeos.sources.linkedin_search:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
@@ -267,6 +268,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/sources/
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
+- `lifeos/sources/job_page_outreach.py`: LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
@@ -535,3 +537,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D222: Job Outreach: a Claude-proposed, dormant V7 writer for the Jim-approved native two-table direction; its visuals await Jim's acceptance (2026-10-19; LIFE-47 / LIFE-78 M2)
 - D223: D222 withdrawn: job outreach never appears on the Daily Report; it lives in the Job Ledger until an interview (2026-10-20, Jim; LIFE-10 / LIFE-47)
 - D224: A published job the cloud excludes is excluded: the Cloud Fit verdict is final and the gated audit removes its page (2026-10-20, Jim; LIFE-41)
+- D225: The outreach table lives on each Job Ledger job page (2026-10-20, Jim; LIFE-10 §2 / LIFE-47)

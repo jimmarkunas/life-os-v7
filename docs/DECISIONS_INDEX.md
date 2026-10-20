@@ -222,3 +222,4 @@ This index is checked by a test: add a line here with every new decision.
 - D222 — Job Outreach: a Claude-proposed, dormant V7 writer for the Jim-approved native two-table direction; its visuals await Jim's acceptance (2026-10-19; LIFE-47 / LIFE-78 M2)
 - D223 — D222 withdrawn: job outreach never appears on the Daily Report; it lives in the Job Ledger until an interview (2026-10-20, Jim; LIFE-10 / LIFE-47)
 - D224 — A published job the cloud excludes is excluded: the Cloud Fit verdict is final and the gated audit removes its page (2026-10-20, Jim; LIFE-41)
+- D225 — The outreach table lives on each Job Ledger job page (2026-10-20, Jim; LIFE-10 §2 / LIFE-47)

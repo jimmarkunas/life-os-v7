@@ -13,12 +13,13 @@ def rich(text, link=None):
 class Tree:
     def __init__(self):
         self.blocks, self.kids, self.log, self.n = {}, {}, [], 0
+        self.pages = {"page-1"}                       # ids that are pages, not blocks (a Job Ledger page in the job-page tests)
         self.trip = None                              # (method fragment, callback) fired after a matching write
         self.fail_write = None                        # method fragment that raises
 
     def add(self, block_id, kind, parent, content=None, text=None, index=None, **extra):
         body = content if content is not None else ({"rich_text": rich(text)} if text is not None else {})
-        block = {"id": block_id, "type": kind, "has_children": False, "parent": {"type": "page_id", "page_id": parent} if parent == "page-1" else {"type": "block_id", "block_id": parent}, kind: body, **extra}
+        block = {"id": block_id, "type": kind, "has_children": False, "parent": {"type": "page_id", "page_id": parent} if parent in self.pages else {"type": "block_id", "block_id": parent}, kind: body, **extra}
         self.blocks[block_id] = block
         siblings = self.kids.setdefault(parent, [])
         siblings.insert(len(siblings) if index is None else index, block_id)
@@ -44,7 +45,7 @@ class Tree:
             raise RuntimeError("boom")
         route = path.split("?")[0]
         parts = route.strip("/").split("/")
-        if len(parts) > 1 and parts[1] not in self.blocks and parts[1] != "page-1":
+        if len(parts) > 1 and parts[1] not in self.blocks and parts[1] not in self.pages:
             raise NotionError("NOTION_HTTP_404")
         if method == "GET" and parts[0] == "blocks" and len(parts) == 2:
             return deepcopy(self.blocks[parts[1]])
@@ -56,7 +57,8 @@ class Tree:
             if kind not in body:
                 raise AssertionError("a block keeps its type")
             if kind == "table_row":
-                block[kind] = {"cells": [[{"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}} for r in cell] for cell in body[kind]["cells"]]}
+                block[kind] = {"cells": [[{"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}, **({"annotations": r["annotations"]} if "annotations" in r else {})}
+                                          for r in cell] for cell in body[kind]["cells"]]}
             else:
                 block[kind] = {**block[kind], "rich_text": [{"plain_text": r["text"]["content"], "text": r["text"]} for r in body[kind]["rich_text"]]}
             self._tripped(method, path)
@@ -75,15 +77,29 @@ class Tree:
         parts = path.strip("/").split("/")
         if method == "PATCH" and parts[2] == "children":
             made = []
-            for child in body["children"]:
-                self.n += 1
-                row_id = f"new-{self.n}"
-                block = self.add(row_id, "table_row", parts[1], content={"cells": []})
-                block["table_row"]["cells"] = [[{"plain_text": part["text"]["content"], "text": {"link": None, **part["text"]}} for part in cell] for cell in child["table_row"]["cells"]]
-                made.append(deepcopy(block))
+            at = self.kids[parts[1]].index(body["after"]) + 1 if body.get("after") else None
+            for n, child in enumerate(body["children"]):
+                made.append(deepcopy(self._make(parts[1], child, None if at is None else at + n)))
             self._tripped(method, path)
             return {"results": made}
         raise AssertionError((method, path))
+
+    def _make(self, parent, child, index=None):
+        """One appended block as Notion stores it (a table_row, or any block with rich text and nested children), placed at `index` (insert-after) or last."""
+        self.n += 1
+        kind = child["type"]
+        part = lambda r: {"plain_text": r["text"]["content"], "text": {"link": None, **r["text"]}, **({"annotations": r["annotations"]} if "annotations" in r else {})}
+        if kind == "table_row":
+            block = self.add(f"new-{self.n}", kind, parent, content={"cells": []}, index=index)
+            block[kind]["cells"] = [[part(r) for r in cell] for cell in child[kind]["cells"]]
+            return block
+        body = {k: v for k, v in child[kind].items() if k != "children"}
+        if "rich_text" in body:
+            body["rich_text"] = [part(r) for r in body["rich_text"]]
+        block = self.add(f"{self.n:032x}", kind, parent, content=body, index=index)
+        for grandchild in child[kind].get("children") or []:
+            self._make(block["id"], grandchild)
+        return block
 
     def _tripped(self, method, path):
         if self.trip and self.trip[0] in path:
