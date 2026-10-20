@@ -32,7 +32,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 - `lifeos/sources/` producers (newsletters, web, openjobs, sponsor register); may import any OS.
 - `lifeos/run.py` stage registry: one `lazy("module", "function")` line per stage. `.github/workflows/hourly.yml` runs stages; `workflow_dispatch` is at the 25-input limit: add no input.
 - `tests/` mirrors `lifeos/`. Shared fakes live in `tests/kit` (add new fakes there). `tests/contracts/` enforce the rules below.
-- Docs: `docs/DECISIONS_INDEX.md` (find a decision), `docs/DECISIONS.md` (grep, never read whole), `docs/SETUP.md` (secrets and manual steps), `docs/MASTER_ROADMAP.md` (dated technical WBS and acceptance evidence, not a live plan: priorities are in Jira `LOS`, delivery status/dependencies/sprints in Jira `LIFE`). `docs/ROADMAP.md` is legacy prompt history, not current sequencing authority.
+- Docs: `docs/DECISIONS_INDEX.md` (find a decision), `docs/DECISIONS.md` (grep, never read whole; a new decision's number comes only from `python -m lifeos.decisions claim`, LIFE-89), `docs/SETUP.md` (secrets and manual steps), `docs/MASTER_ROADMAP.md` (dated technical WBS and acceptance evidence, not a live plan: priorities are in Jira `LOS`, delivery status/dependencies/sprints in Jira `LIFE`). `docs/ROADMAP.md` is legacy prompt history, not current sequencing authority.
 
 ## Commands
 - All tests: `python -m unittest discover -s tests -t .` (about 2 s). A run is good only if it prints a line starting `OK`.
