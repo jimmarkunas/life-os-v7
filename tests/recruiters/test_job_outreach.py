@@ -16,7 +16,8 @@ HEAD, STATUS, TABLE = "0000000000000000000000000000c001", "000000000000000000000
 ENV = {**HIRING_ENV, "JOB_OUTREACH_CARD_BLOCK_ID": HEAD, "JOB_OUTREACH_TABLE_BLOCK_ID": TABLE}
 NOW = datetime(2026, 10, 15, 14, 0, tzinfo=ZoneInfo("America/Chicago"))
 ROW = {"job": "Northwind Labs — Senior TPM", "outreach": "2 contacted · replies not tracked · referrals not tracked", "next": "Oct 19",
-       "link": "https://www.notion.so/" + JOB_A, "sort": "2026-10-19", "contacted": 2}
+       "link": "https://www.notion.so/" + JOB_A, "sort": "2026-10-19", "contacted": 2, "company": "Northwind Labs", "role": "Senior TPM", "needs": 0, "due": "2026-10-19"}
+LEDGER = "https://www.notion.so/" + JOB_A
 
 
 def report(headers=J.HEADERS, rows=0, heading=J.TITLE, status="0 jobs"):
@@ -39,6 +40,11 @@ def status(t):
     return R.plain(t.blocks[STATUS])
 
 
+def styled(t):
+    """The table's data rows as Notion would read them back: [(text, link, style)] runs per cell."""
+    return [R.live_view(t.blocks[row]) for row in t.kids[TABLE][1:]]
+
+
 class Region(unittest.TestCase):
     def test_dry_run_validates_and_writes_nothing(self):
         t = report()
@@ -48,15 +54,15 @@ class Region(unittest.TestCase):
     def test_live_writes_status_and_rows_reads_back_and_leaves_the_hiring_table_alone(self):
         t = report(rows=2)
         hiring_before = table_state(t)
-        done = J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW]), True, J.status_line([ROW]))
+        done = J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], NOW.date()), True, J.status_line([ROW]))
         self.assertEqual((done["verified"], done["rows_changed"], done["rows_removed"]), (True, 1, 1))
-        self.assertEqual(table_state(t, TABLE), [[("Northwind Labs — Senior TPM", None), ("2 contacted · replies not tracked · referrals not tracked", None),
-                                                  ("Oct 19", None), ("Job Ledger ↗", "https://www.notion.so/" + JOB_A)]])
+        self.assertEqual(table_state(t, TABLE), [[("Northwind Labs\nSenior TPM", None), ("2 contacted\nReplies and referrals not tracked yet", None),
+                                                  ("Follow up Oct 19\nWaiting after Mark as Sent", None), ("Job Ledger ↗", LEDGER)]])
         self.assertEqual(status(t), "1 job · 2 contacted · replies and referrals not tracked yet")
         self.assertEqual(R.plain(t.blocks[HEAD]), "🤝 Job Outreach (Updated 2:00 PM CT)")
         self.assertEqual(table_state(t), hiring_before)
         again = len(writes(t))
-        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW]), True, J.status_line([ROW]))       # replay: nothing to change
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], NOW.date()), True, J.status_line([ROW]))       # replay: nothing to change
         self.assertEqual(len(writes(t)), again)
 
     def test_empty_state_is_the_status_line_and_no_pseudo_job(self):
@@ -117,7 +123,7 @@ class Neighbours(unittest.TestCase):
         R.write_floating = tamper
         try:
             with self.assertRaises(J.JobOutreachError) as caught:
-                J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW]), True, J.status_line([ROW]))
+                J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], NOW.date()), True, J.status_line([ROW]))
         finally:
             R.write_floating = real
         self.assertIn("PROTECTED_REGION_CHANGED", str(caught.exception))
@@ -172,8 +178,9 @@ class Stage(unittest.TestCase):
         t = report()
         done = self.stage(t)
         self.assertEqual((done["jobs"], done["conversations"], done["verified"]), (2, 3, True))
-        self.assertEqual([r[0][0] for r in table_state(t, TABLE)], ["Northwind Labs — Senior Technical Program Manager", "Northwind Labs — Technical Program Manager"])
-        self.assertEqual(table_state(t, TABLE)[0][1:3], [("2 contacted · replies not tracked · referrals not tracked", None), ("Oct 19", None)])
+        self.assertEqual([r[0][0] for r in table_state(t, TABLE)], ["Northwind Labs\nSenior Technical Program Manager", "Northwind Labs\nTechnical Program Manager"])
+        self.assertEqual(table_state(t, TABLE)[0][1:3], [("2 contacted\nReplies and referrals not tracked yet", None), ("Follow up Oct 19\nWaiting after Mark as Sent", None)])
+        self.assertEqual(styled(t)[0][0], [("Northwind Labs", None, "bold"), ("\n", None, None), ("Senior Technical Program Manager", None, "gray")])
         self.assertEqual(status(t), "2 jobs · 3 contacted · replies and referrals not tracked yet")
 
     def test_a_job_closed_after_outreach_drops_out(self):
@@ -214,6 +221,63 @@ class Stage(unittest.TestCase):
         self.assertEqual(R.plain(t.blocks[HEAD]), "🤝 Job Outreach (DEGRADED)")
         self.assertIn("showing last accepted state (Updated 1:00 PM CT)", status(t))
         self.assertEqual(table_state(t, TABLE), before)
+
+
+class Style(unittest.TestCase):
+    """The Recruiter Outreach table's native look (bold primary line, gray detail line, a clickable Job Ledger link), from verified D221 facts only."""
+    TODAY = NOW.date()
+
+    def test_normal_row_is_bold_primary_over_gray_detail_with_a_bold_ledger_link(self):
+        bold, gray, br = (lambda x, link=None: (x, link, "bold")), (lambda x: (x, None, "gray")), ("\n", None, None)
+        self.assertEqual([R.want_view(r) for r in J.cells([ROW], self.TODAY)], [[
+            [bold("Northwind Labs"), br, gray("Senior TPM")], [bold("2 contacted"), br, gray("Replies and referrals not tracked yet")],
+            [bold("Follow up Oct 19"), br, gray("Waiting after Mark as Sent")], [bold("Job Ledger ↗", LEDGER)]]])
+
+    def test_follow_up_states_come_only_from_the_recorded_action_and_date(self):
+        nxt = lambda **kw: R.plain({"type": "x", "x": {"rich_text": R.cell_blocks(J.cells([{**ROW, **kw}], self.TODAY)[0])[2]}})
+        self.assertEqual(nxt(needs=1), "Needs action\n1 follow-up due")
+        self.assertEqual(nxt(needs=2), "Needs action\n2 follow-ups due")
+        self.assertEqual(nxt(due="2026-10-15"), "Follow up today\nWaiting after Mark as Sent")
+        self.assertEqual(nxt(due="2026-10-14"), "Follow up today\nWaiting after Mark as Sent")      # overdue Waiting is due now, never a past date shown as future
+        self.assertEqual(nxt(due=None), "No follow-up scheduled")
+
+    def test_annotations_are_written_natively_and_survive_read_back(self):
+        t = report()
+        done = J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], self.TODAY), True, J.status_line([ROW]))
+        self.assertTrue(done["verified"])
+        first = t.blocks[t.kids[TABLE][1]]["table_row"]["cells"]
+        self.assertEqual(first[0][0]["annotations"], {"bold": True})
+        self.assertEqual(first[0][2]["annotations"], {"color": "gray"})
+        self.assertNotIn("annotations", first[0][1])
+        self.assertEqual(first[3][0]["text"]["link"], {"url": LEDGER})
+        self.assertEqual(styled(t), [R.want_view(r) for r in J.cells([ROW], self.TODAY)])
+
+    def test_a_lost_style_alone_is_repaired_and_a_replay_writes_nothing(self):
+        t = report()
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], self.TODAY), True, J.status_line([ROW]))
+        t.blocks[t.kids[TABLE][1]]["table_row"]["cells"][0][0].pop("annotations")      # same text, bold lost by hand
+        before = len(writes(t))
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], self.TODAY), True, J.status_line([ROW]))
+        self.assertGreater(len(writes(t)), before)
+        self.assertEqual(styled(t)[0][0][0], ("Northwind Labs", None, "bold"))
+        again = len(writes(t))
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], self.TODAY), True, J.status_line([ROW]))
+        self.assertEqual(len(writes(t)), again)
+
+    def test_the_hiring_pipeline_cells_carry_no_annotations(self):
+        for row in WANT:
+            for cell in R.cell_blocks(row):
+                self.assertTrue(all("annotations" not in part for part in cell))
+
+    def test_empty_and_degraded_states_keep_the_styled_contract(self):
+        t = report(rows=1)
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([], self.TODAY), True, J.status_line([]))
+        self.assertEqual((styled(t), status(t)), ([], J.EMPTY))
+        J.present(t, ENV, "Updated 2:00 PM CT", J.cells([ROW], self.TODAY), True, J.status_line([ROW]))
+        accepted = styled(t)
+        J.present(t, ENV, "DEGRADED", None, True)
+        self.assertEqual(styled(t), accepted)                                       # the last accepted styled rows stay, untouched
+        self.assertIn("showing last accepted state (Updated 2:00 PM CT)", status(t))
 
 
 if __name__ == "__main__":

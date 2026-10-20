@@ -78,9 +78,26 @@ def validate(client, environ):
     return region, digest
 
 
-def cells(rows):
-    """project() rows -> table cells. No rows -> no data rows: the empty state is said in the status line, never as a pseudo-job."""
-    return [[(r["job"], None), (r["outreach"], None), (r["next"], None), ("Job Ledger ↗", r["link"])] for r in rows]
+def _two(primary, detail, link=None):
+    """The Recruiter Outreach table's cell hierarchy (D222): a bold primary line, then gray supporting detail on its own line."""
+    return [(primary, link, "bold")] + ([("\n", None, None), (detail, None, "gray")] if detail else [])
+
+
+def _next(r, today):
+    if r["needs"]:
+        return _two("Needs action", f"{r['needs']} follow-up{'s' if r['needs'] != 1 else ''} due")
+    if r["due"]:
+        when = "today" if r["due"] <= today.isoformat() else f"{datetime.fromisoformat(r['due']):%b} {int(r['due'][8:])}"
+        return _two(f"Follow up {when}", "Waiting after Mark as Sent")
+    return _two("No follow-up scheduled", "")
+
+
+def cells(rows, today=None):
+    """project() rows -> rich table cells, the Recruiter Outreach style: bold primary text, gray detail, a bold Job Ledger link. Only D221-recorded facts; replies and
+    referrals are said to be untracked. No rows -> no data rows: the empty state is said in the status line, never as a pseudo-job."""
+    today = today or datetime.now(CT).date()
+    return [[_two(r["company"], r["role"]), _two(f"{r['contacted']} contacted", "Replies and referrals not tracked yet"), _next(r, today),
+             _two("Job Ledger ↗", "", r["link"])] for r in rows]
 
 
 def status_line(rows):
@@ -186,5 +203,5 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
     except NotionError as error:
         present(writer, environ, "DEGRADED", None, live)
         raise fail(f"SOURCE_UNREADABLE:{str(error)[:40]}") from None
-    done = present(writer, environ, stamp, cells(shown), live, status_line(shown))
+    done = present(writer, environ, stamp, cells(shown, now.date()), live, status_line(shown))
     return {"job_outreach": "written" if live else "dry_run", "jobs": len(shown), "conversations": sum(len(r["jobs"]) for r in found), **done}

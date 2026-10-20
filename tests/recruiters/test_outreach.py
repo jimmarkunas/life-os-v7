@@ -326,7 +326,8 @@ class Lifecycle(unittest.TestCase):
         mark(Service(self.ledger, self.rec), JOB_A, "Blake Synthetic")
         out = O.project(self.rows(), self.jobs, NOW.date())
         self.assertEqual(out, [{"job": "Northwind Labs — Senior Technical Program Manager", "outreach": "2 contacted · replies not tracked · referrals not tracked",
-                                "next": "Oct 19", "link": self.jobs[JOB_A]["url"], "sort": "2026-10-19", "contacted": 2}])
+                                "next": "Oct 19", "link": self.jobs[JOB_A]["url"], "sort": "2026-10-19", "contacted": 2,
+                                "company": "Northwind Labs", "role": "Senior Technical Program Manager", "needs": 0, "due": "2026-10-19"}])
         self.assertEqual(O.project(self.rows(), {}, NOW.date()), [])                       # a job that is no longer open is not shown
 
     def test_the_follow_up_is_kept_then_returns_to_needs_action_when_due(self):

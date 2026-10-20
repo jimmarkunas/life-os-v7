@@ -99,7 +99,7 @@ def project(rows, jobs, today):
     """The Job Outreach rows: one per exact open job (never per person), from Recruiters rows linked to a job. `jobs` maps a Ledger page id to
     {"company", "role", "url"}; a row whose job is not in `jobs` (closed, unreadable) is not shown. Only what D221 records is counted: contacted conversations and their
     action / follow-up state. Replies and referrals are not tracked, so they are said to be untracked, never shown as 0 (D222). Most urgent first.
-    -> [{"job", "outreach", "next", "link", "sort", "contacted"}]"""
+    -> [{"job", "outreach", "next", "link", "sort", "contacted", "company", "role", "needs", "due"}]; `due` is the earliest Waiting follow-up date (ISO) or None."""
     grouped = {}
     for r in rows:
         if r["done"] or not r["active"] or r["action"] in store.HISTORY:
@@ -119,5 +119,6 @@ def project(rows, jobs, today):
         else:
             nxt, sort = "—", "9999-99-99"
         out.append({"job": f"{job['company']} — {job['role']}", "outreach": f"{len(items)} contacted · replies not tracked · referrals not tracked", "next": nxt,
-                    "link": job["url"], "sort": sort, "contacted": len(items)})
+                    "link": job["url"], "sort": sort, "contacted": len(items), "company": job["company"], "role": job["role"], "needs": len(act),
+                    "due": dates[0] if dates else None})
     return sorted(out, key=lambda r: (r["sort"], r["job"]))
