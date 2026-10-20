@@ -641,7 +641,7 @@ jobs:
             e54f0a84-84c3-47d8-8b5b-b4e30052d6e9 > TAILSCALE_OAUTH_CLIENT_SECRET
             6590208b-506d-4238-ab10-b4e30051b25f > IMESSAGE_ALERTS_HOST
       - name: Cloud-Fit shadow only (D214, G6) - join the tailnet as the existing ephemeral tag:v7-runner node (the tailnet policy admits it only to Oracle TCP 47341)
-        if: ${{ ((vars.V7_CLOUD_FIT == 'shadow' || vars.V7_CLOUD_FIT == 'canary') && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick))) || (github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') }}   # D219: also a manual backlog batch
+        if: ${{ ((vars.V7_CLOUD_FIT == 'shadow' || vars.V7_CLOUD_FIT == 'canary') && (env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick))) || (github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') || (env.PIPELINE == 'true' && vars.V7_CLOUD_FIT_SCHEDULED && vars.V7_CLOUD_FIT_SCHEDULED != '0') }}   # D219: also a manual backlog batch; LIFE-41: and a tick's scheduled batch
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
         with:
           oauth-client-id: ${{ steps.bws_finish.outputs.TAILSCALE_OAUTH_CLIENT_ID || steps.bws_finish_retry.outputs.TAILSCALE_OAUTH_CLIENT_ID }}
@@ -747,10 +747,10 @@ jobs:
         run: python -m lifeos.run fit $([ "$LIVE" = "true" ] && echo --live)
       - id: fit_cloud_backlog
         continue-on-error: true
-        name: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219, manual only, one Oracle request at a time, bounded by Jim's V7_CLOUD_FIT_BACKLOG_MAX)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0' }}
+        name: Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual, or after each tick when V7_CLOUD_FIT_SCHEDULED is set; one Oracle request at a time)
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.cloud_backlog != '' && inputs.cloud_backlog != '0') || (env.PIPELINE == 'true' && vars.V7_CLOUD_FIT_SCHEDULED && vars.V7_CLOUD_FIT_SCHEDULED != '0') }}   # LIFE-41 (Jim, Oct 19 2026): one call a tick is too few; after the tick, the strongest never-asked jobs, new ones included
         env:
-          CLOUD_BACKLOG: ${{ inputs.cloud_backlog }}
+          CLOUD_BACKLOG: ${{ env.PIPELINE == 'true' && vars.V7_CLOUD_FIT_SCHEDULED || inputs.cloud_backlog }}
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_finish_retry.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -762,9 +762,9 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_finish.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_finish_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN || steps.bws_finish_retry.outputs.NOTION_API_TOKEN }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_finish.outputs.IMESSAGE_ALERTS_HOST || steps.bws_finish_retry.outputs.IMESSAGE_ALERTS_HOST }}
-          V7_CLOUD_FIT_BACKLOG_MAX: ${{ vars.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling; 0 (unset) asks nothing
-          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}
-          V7_CLOUD_FIT_BACKLOG_PAGE: ${{ vars.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}     # LIFE-41 G6: Jim's one preapproved Ledger page; unset = the ranked backlog
+          V7_CLOUD_FIT_BACKLOG_MAX: ${{ env.PIPELINE == 'true' && vars.V7_CLOUD_FIT_SCHEDULED || vars.V7_CLOUD_FIT_BACKLOG_MAX || '0' }}     # Jim's approved ceiling (a tick: the scheduled count itself); 0 (unset) asks nothing
+          V7_CLOUD_FIT_BACKLOG_BUDGET: ${{ env.PIPELINE == 'true' && '480' || vars.V7_CLOUD_FIT_BACKLOG_BUDGET || '' }}     # a tick: 20 calls (~13 s each, a call starts only with 165 s left) inside the finish job's 50 minutes
+          V7_CLOUD_FIT_BACKLOG_PAGE: ${{ env.PIPELINE != 'true' && vars.V7_CLOUD_FIT_BACKLOG_PAGE || '' }}     # LIFE-41 G6: Jim's one preapproved Ledger page, manual runs only; a tick never narrows to it
           V7_CLOUD_FIT_PROFILE_REF: ${{ secrets.V7_CLOUD_FIT_PROFILE_REF }}
         run: python -m lifeos.run fit-cloud-backlog --limit "$CLOUD_BACKLOG" $([ "$LIVE" = "true" ] && echo --live)
       - id: audit
