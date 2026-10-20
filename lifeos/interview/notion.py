@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from urllib.parse import quote
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import DeadlineExceeded
@@ -9,6 +10,11 @@ from .models import Child, Ownership, Parent, Scan
 
 MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
 PROTECTED = ("Live Notes", "Raw Notes")
+# LIFE-46 (accepted UI 3b): Jim types ADOPT as the exact first line of his own opportunity page; adoption swaps it for the
+# opportunity marker plus ";adopted=<date>". Everything from the JIM_NOTES heading to the end of the page is his.
+ADOPT = "LIFE OS: adopt"
+JIM_NOTES = "🔒 Jim's notes"
+ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
 
 
@@ -27,6 +33,15 @@ def environment(environ):
 
 def make_client(environ=os.environ):
     return Client(environment(environ))
+
+
+def is_marker(value, kind):
+    """The exact machine marker, or for an opportunity the adopted form (LIFE-46). Deleting the line hands the page back."""
+    if value == MARKERS.get(kind):
+        return True
+    from .identity import valid_date
+    found = ADOPTED.fullmatch(value) if kind == "opportunity" else None
+    return bool(found) and valid_date(found.group(1))
 
 
 def text(block):
@@ -52,8 +67,10 @@ def ownership(client, page_id, kind):
         data = client.call("GET", f"/blocks/{page_id}/children?page_size=1")
         blocks = data["results"]
         first = text(blocks[0]) if blocks else ""
-        if first == MARKERS.get(kind):
+        if is_marker(first, kind):
             return Ownership.MACHINE
+        if kind == "opportunity" and first == ADOPT and blocks[0].get("type") == "paragraph":
+            return Ownership.ADOPT
         return Ownership.UNKNOWN if "interview:" in first else Ownership.HUMAN
     except (NotionError, KeyError, TypeError, ValueError):
         return Ownership.UNKNOWN
@@ -159,23 +176,35 @@ def explicit_child(client, page_id):
     return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
-def protected_snapshot(client, page_id):
-    """Call only around an authorized mutation. Hash ordered anchors and all descendant evidence privately."""
+def _subtree(client, block, budget, depth=0):
+    if depth > MAX_DEPTH:
+        raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+    value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
+    if block.get("has_children"):
+        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in children(client, block["id"], budget)]
+    return value
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def protected_snapshot(client, page_id, kind="round"):
+    """Call only around an authorized mutation. Hash ordered anchors and all descendant evidence privately.
+    An opportunity parent may instead carry "🔒 Jim's notes" (LIFE-46): that region runs to the end of the page, through any
+    headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of its parent;
+    their contents are never read here."""
     budget, regions = [MAX_CALLS], {}
-
-    def subtree(block, depth):
-        if depth > MAX_DEPTH:
-            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
-        value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
-        if block.get("has_children"):
-            value["protected_children"] = [subtree(b, depth + 1) for b in children(client, block["id"], budget)]
-        return value
-
+    labels = PROTECTED + ((JIM_NOTES,) if kind == "opportunity" else ())
     current = None
     order = []
     for block in children(client, page_id, budget):
         label = text(block)
-        if label in PROTECTED and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
+        if current == JIM_NOTES:
+            if block.get("type") != "child_page":
+                regions[current].append(_subtree(client, block, budget))
+            continue
+        if label in labels and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
             if label in regions:
                 raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
             current = label
@@ -184,14 +213,34 @@ def protected_snapshot(client, page_id):
         elif block.get("type", "").startswith("heading"):
             current = None
         if current:
-            regions[current].append(subtree(block, 0))
-    if any(label not in regions for label in PROTECTED):
+            regions[current].append(_subtree(client, block, budget))
+    if not (all(label in regions for label in PROTECTED) or JIM_NOTES in regions):
         return None
-    return hashlib.sha256(json.dumps([order, regions], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _digest([order, regions])
+
+
+def human_tail(client, page_id, blocks=None):
+    """Private digest of Jim's own content on an adoption page: every top-level block after the first line before adoption
+    (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
+    budget = [MAX_CALLS]
+    if blocks is None:
+        blocks = children(client, page_id, budget)
+        heads = [i for i, b in enumerate(blocks) if text(b) == JIM_NOTES and b.get("type", "").startswith("heading")]
+        if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
+            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+        blocks = blocks[heads[0] + 2:]
+    else:
+        blocks = blocks[1:]
+    return _digest([_subtree(client, b, budget) for b in blocks if b.get("type") != "child_page"])
 
 
 def append_children(client, page_id, heading_id, blocks):
     return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
+
+
+def set_paragraph(client, block_id, value):
+    from lifeos.platform.notion_client import rich_text
+    return client.call("PATCH", f"/blocks/{block_id}", {"paragraph": {"rich_text": rich_text(value)}})
 
 
 DERIVED_MAX_CALLS = 100
@@ -239,9 +288,9 @@ def readback(client, page_id, parent_id, kind, before=None):
         if not same_notion_id((page.get("parent") or {}).get("page_id"), parent_id):
             return "readback_parent_mismatch"
         blocks = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"]
-        if not blocks or text(blocks[0]) != MARKERS.get(kind):
+        if not blocks or not is_marker(text(blocks[0]), kind):
             return "readback_marker_missing"
-        after = protected_snapshot(client, page_id)
+        after = protected_snapshot(client, page_id, kind)
         if after is None:
             return "readback_protected_missing"
         return "readback_protected_changed" if before is not None and before != after else "readback_ok"

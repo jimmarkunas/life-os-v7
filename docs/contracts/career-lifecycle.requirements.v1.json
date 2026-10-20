@@ -166,7 +166,7 @@
       "source": "Notion opportunity/child, Job Ledger, Calendar",
       "guard": "never invent source links or clone interview data",
       "acceptance": "real Notion navigation and preserved authored content",
-      "delivery_state": "missing"
+      "delivery_state": "partial_code_d235_parent_template_and_adopt_live_unproven"
     },
     {
       "id": "UI-05",

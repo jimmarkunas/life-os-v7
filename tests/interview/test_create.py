@@ -53,7 +53,7 @@ class WritableFake(Fake):
         if self.bad_readback:
             self.blocks[page_id][0] = block("missing marker")
         if self.change_notes:
-            self.blocks[parent_id].insert(2, block("changed human content"))
+            self.blocks[parent_id].insert(-1, block("changed human content"))
         return {"id": page_id}
 
 
@@ -94,7 +94,12 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(len(client.posts), 1)
                 parent_id = "created-1"
                 self.assertEqual(client.pages[parent_id]["properties"]["title"]["title"][0]["plain_text"], "New Example — Program Manager")
-                self.assertEqual([notion.text(b) for b in client.blocks[parent_id]], [notion.MARKERS["opportunity"], "Live Notes", "Raw Notes", "Interview Rounds"])
+                parent_blocks = client.blocks[parent_id]
+                self.assertEqual(notion.text(parent_blocks[0]), notion.MARKERS["opportunity"])
+                self.assertEqual([notion.text(b) for b in parent_blocks if b.get("type", "").startswith("heading")],
+                                 ["Interviews", "Strategy", "LinkedIn & Outreach", "Materials & Sources",
+                                  "Job Description — original source (separate from Strategy)", notion.JIM_NOTES])
+                self.assertEqual(parent_blocks[2]["type"], "column_list")
                 before = notion.protected_snapshot(client, parent_id)
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["rounds_created"], result["readback_ok"]), (1, 1, 1))
