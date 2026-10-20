@@ -471,3 +471,59 @@ class HeldAnswersAreApplied(Batch):
             counts = stage.run(10, True, env)
         self.assertEqual((counts["cloud_held_released"], counts["cloud_held_failed"], counts["failed"]), (1, 0, 0))
         self.assertEqual(self.row(1, ("cloud_status", "admission")), ("CANARY", "EXCLUDE"))
+
+
+def metered(used_5h, used_week=1, stop=50):
+    return {"stop": stop, "windows": [{"label": "5h", "used": used_5h, "reset_at": "2026-10-20T07:12:19+00:00"},
+                                      {"label": "Week", "used": used_week, "reset_at": "2026-10-24T21:26:54+00:00"}]}
+
+
+class AccountAllowance(Batch):
+    """LIFE-77 (Jim, Oct 19): Oracle reads the account's own allowance before each call and refuses QUOTA_RESERVE at Jim's 50 % stop. That is a normal stop for the
+    batch; a missing policy or an unreadable meter is a named failure. Each call's reading becomes an estimate of what the allowance has left."""
+
+    def test_the_reserve_is_a_clean_stop_the_refused_job_waits_and_the_estimate_is_logged(self):
+        for i in (1, 2, 3, 4):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        used = iter((47, 48, 49))
+
+        def answer(data):
+            u = next(used, None)
+            return measured(data, quota=metered(u)) if u is not None else reply(data, status="REFUSED", reason="QUOTA_RESERVE", judgment_raw=None, receipt=None, quota=metered(50))
+        counts = self.batch(10, Endpoint(answer))
+        self.assertEqual((counts["cloud_fit"], counts["failed"], counts["cloud_quota_reserve"], counts["cloud_promoted"]), ("OK", 0, 1, 3))
+        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], ["CANARY", "CANARY", "CANARY", None])     # released, asked after the reset
+        five = counts["cloud_quota"]["windows"]["5h"]
+        self.assertEqual((five["used_first"], five["used_last"], five["estimate"], five["per_call_percent"], five["calls_left"]), (47, 50, "ESTIMATED", 1.0, 0))
+        self.assertEqual(five["resets"], "Oct 20 02:12 AM CDT")                                             # Central time, the way Jim reads it
+        week = counts["cloud_quota"]["windows"]["Week"]
+        self.assertEqual((week["estimate"], week["per_call_below"], week["calls_left_at_least"]), ("BELOW_RESOLUTION", 0.3333, 147))
+
+    def test_no_policy_or_an_unreadable_meter_is_a_named_failure_and_nothing_is_lost(self):
+        for reason in ("QUOTA_UNCONFIGURED", "METER_UNAVAILABLE"):
+            self.setUp()
+            self.titled(1, "Program Manager 1")
+            counts = self.batch(5, Endpoint(lambda data: refusal(data, reason)))
+            self.assertEqual((counts["cloud_fit"], counts["failed"], self.status(1)), (f"DEGRADED(FIT_EDGE_REFUSED_{reason})", 1, None))
+            self.assertNotIn("cloud_quota", counts)
+
+    def test_a_run_without_meter_readings_reports_no_estimate(self):
+        self.titled(1, "Program Manager 1")
+        self.assertNotIn("cloud_quota", self.batch(5, Endpoint(measured)))                                   # an Oracle without the meter: nothing invented
+
+
+class QuotaReading(Batch):
+    def test_only_labels_and_numbers_are_kept_and_anything_off_contract_is_none(self):
+        raw = {**metered(12), "account": "someone", "plan": "plus"}
+        raw["windows"][0]["profile"] = "openai:meter"
+        self.assertEqual(edge.quota_reading(raw), metered(12))
+        for bad in (None, {}, {"stop": 0, "windows": metered(1)["windows"]}, {"stop": 50, "windows": []}, {"stop": "50", "windows": metered(1)["windows"]},
+                    {"stop": 50, "windows": [{"label": "5h", "used": 101, "reset_at": "x"}]}, {"stop": 50, "windows": [{"label": "5h", "used": "1", "reset_at": "x"}]},
+                    {"stop": 50, "windows": [{"label": "", "used": 1, "reset_at": "x"}]}):
+            self.assertIsNone(edge.quota_reading(bad), bad)
+
+    def test_a_reset_between_readings_starts_a_new_segment(self):
+        summary = cloud.quota_summary([metered(40), metered(45), metered(1), metered(3)])
+        five = summary["windows"]["5h"]
+        self.assertEqual((five["basis_calls"], five["per_call_percent"], five["calls_left"]), (2, 3.5, 13))
+        self.assertIsNone(cloud.quota_summary([None, None]))
