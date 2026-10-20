@@ -390,6 +390,13 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertNotIn("inputs.all", step["if"])
         self.assertNotIn("LIVE", step["run"])
         self.assertEqual(step["env"]["JOB_OUTREACH_INSTALL"], "${{ inputs.job_outreach_install }}")
+        self.assertEqual((step["env"]["INPUT_LIVE"], step["env"]["INPUT_ALL"]), ("${{ inputs.live }}", "${{ inputs.all }}"))   # the stage refuses unless both are "false"
+        self.assertIn("WILL WRITE", choice["description"])
+        self.assertIn("MUST stay UNTICKED", choice["description"])
+        isolated = "${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}"
+        for normal in ("hiring", "job_outreach"):                                           # an installer dispatch makes its one insertion and nothing else
+            (other,) = [s for s in job["steps"] if s.get("id") == normal]
+            self.assertEqual(other.get("if"), isolated, normal)
         self.assertIn("(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install'))", job["if"])
         ids = [s.get("id") for s in job["steps"]]
         self.assertLess(ids.index("job_outreach_install"), ids.index("hiring"))

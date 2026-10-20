@@ -8,7 +8,7 @@ from lifeos.sources import job_outreach as J, job_outreach_install as I
 from tests.hiring.test_hiring import ENV as HIRING_ENV, page as hiring_page, writes
 
 HIRING_TABLE = "0000000000000000000000000000a003"
-ENV = {**HIRING_ENV, "HIRING_TABLE_BLOCK_ID": HIRING_TABLE, "GITHUB_EVENT_NAME": "workflow_dispatch"}
+ENV = {**HIRING_ENV, "HIRING_TABLE_BLOCK_ID": HIRING_TABLE, "GITHUB_EVENT_NAME": "workflow_dispatch", "INPUT_LIVE": "false", "INPUT_ALL": "false"}
 
 
 class InsertTree:
@@ -82,6 +82,45 @@ class Installer(unittest.TestCase):
                 self.run_it(report(), env={**ENV, "GITHUB_EVENT_NAME": event})
             self.assertIn("MANUAL_ONLY", str(caught.exception))
 
+    def test_a_missing_event_is_refused_before_any_read(self):
+        t = report()
+        with self.assertRaises(I.InstallError) as caught:
+            self.run_it(t, env={k: v for k, v in ENV.items() if k != "GITHUB_EVENT_NAME"})
+        self.assertIn("MANUAL_ONLY", str(caught.exception))
+        self.assertEqual(t.log, [])
+
+    def test_actually_write_or_run_all_ticked_or_unknown_is_refused_before_any_read(self):
+        for change in ({"INPUT_LIVE": "true"}, {"INPUT_ALL": "true"}, {"INPUT_LIVE": ""}, {"INPUT_ALL": "TRUE"}):
+            for mode in ("validate", "install"):
+                t = report()
+                with self.assertRaises(I.InstallError) as caught:
+                    self.run_it(t, mode, env={**ENV, **change})
+                self.assertIn("CONFLICTING_INPUTS", str(caught.exception))
+                self.assertEqual(t.log, [])
+        for name in ("INPUT_LIVE", "INPUT_ALL"):
+            with self.assertRaises(I.InstallError):
+                self.run_it(report(), env={k: v for k, v in ENV.items() if k != name})
+
+    def test_a_copied_or_wrong_page_is_refused_before_any_write(self):
+        t = report()
+        t.add("0000000000000000000000000000b004", "callout", "right")
+        t.blocks["0000000000000000000000000000b004"]["parent"] = {"type": "page_id", "page_id": "page-2"}       # the JIRA anchor lives on another page
+        for mode in ("validate", "install"):
+            with self.assertRaises(I.InstallError) as caught:
+                self.run_it(t, mode, env={**ENV, "JIRA_CARD_BLOCK_ID": "0000000000000000000000000000b004"})
+            self.assertIn("WRONG_PAGE", str(caught.exception))
+        with self.assertRaises(I.InstallError) as caught:
+            self.run_it(t, env={k: v for k, v in ENV.items() if k != "JIRA_CARD_BLOCK_ID"})
+        self.assertIn("NOT_CONFIGURED:JIRA_CARD_BLOCK_ID", str(caught.exception))
+        self.assertEqual(writes(t), [])
+
+    def test_a_command_center_change_during_the_write_fails_the_proof(self):
+        t = report()
+        t.trip = ("/children", lambda tree: tree.blocks["dcc-p"]["paragraph"]["rich_text"][0].update(plain_text="chatgpt edited"))
+        with self.assertRaises(I.InstallError) as caught:
+            self.run_it(t)
+        self.assertIn("PROTECTED_REGION_CHANGED", str(caught.exception))
+
     def test_validate_reads_only_and_reports_the_preflight(self):
         t = report()
         before = t.snapshot()
@@ -129,7 +168,7 @@ class Installer(unittest.TestCase):
             self.assertEqual(writes(tree), [])
         with self.assertRaises(I.InstallError) as caught:
             self.run_it(report(), env={**ENV, "HIRING_TABLE_BLOCK_ID": "0000000000000000000000000000a009"})
-        self.assertIn("HIRING_TABLE_MISMATCH", str(caught.exception))
+        self.assertIn("PINNED_BLOCK_MISMATCH", str(caught.exception))
         with self.assertRaises(I.InstallError) as caught:
             self.run_it(report(), env={k: v for k, v in ENV.items() if k != "HIRING_TABLE_BLOCK_ID"})
         self.assertIn("NOT_CONFIGURED", str(caught.exception))

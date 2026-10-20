@@ -62,7 +62,7 @@ on:
         type: boolean
         default: false
       job_outreach_install:
-        description: "LIFE-47 TEMPORARY, manual only: create the Job Outreach region once on the Daily Report. validate = read-only preflight; install = ONE insert right after the Hiring Pipeline table, read back and whole-page proof. Never part of a tick or 'Run every domain job'. Leave 'Actually write' unticked"
+        description: "LIFE-47 TEMPORARY, manual only: validate = read-only preflight; install WILL WRITE one insertion (the Job Outreach region right after the Hiring Pipeline table, read back with whole-page proof) even though 'Actually write' MUST stay UNTICKED. 'Actually write' or 'Run every domain job' ticked = refused. Skips the normal Hiring and Job Outreach steps"
         type: choice
         options: ["none", "validate", "install"]
         default: "none"
@@ -729,6 +729,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install') }}
         env:
           JOB_OUTREACH_INSTALL: ${{ inputs.job_outreach_install }}
+          INPUT_LIVE: ${{ inputs.live }}
+          INPUT_ALL: ${{ inputs.all }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
           JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}
@@ -740,6 +742,7 @@ jobs:
         run: echo "::error title=Job Outreach install::the one-shot install stopped; read its fixed code above and the page before any new attempt"
       - id: hiring
         continue-on-error: true
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}   # LIFE-47 TEMPORARY: an installer dispatch makes its one insertion and nothing else
         name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)
         env:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
@@ -769,6 +772,7 @@ jobs:
         run: echo "::warning title=Hiring Pipeline::the Hiring Pipeline stage failed; the region keeps its last accepted content and the Jobs pipeline is unaffected"
       - id: job_outreach
         continue-on-error: true
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}   # LIFE-47 TEMPORARY: as above
         name: Job Outreach (D222; dormant until JOB_OUTREACH_CARD_BLOCK_ID and JOB_OUTREACH_TABLE_BLOCK_ID are set; runs right after the Hiring Pipeline so no two writers change the page at once)
         env:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
