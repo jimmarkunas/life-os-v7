@@ -1,4 +1,4 @@
-"""LIFE-87 (D229): Build resume on the private Close service, driven the way the Edge gate calls it. One synthetic Ledger job page, a stand-in resume worker and a
+"""LIFE-87 (D234): Build resume on the private Close service, driven the way the Edge gate calls it. One synthetic Ledger job page, a stand-in resume worker and a
 stand-in Notion upload; nothing is live and every name is invented."""
 import base64
 import html

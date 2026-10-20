@@ -138,7 +138,7 @@ def handle(req, who, secrets):
         if req["path"] == "/sent" and req["method"] in ("GET", "POST"):                       # D221: Mark as Sent, same gate and signing key
             from . import outreach_app
             return outreach_app.handle(req, who, secrets)
-        if req["path"] == "/resume" and req["method"] in ("GET", "POST"):                     # D229: Build resume, same gate, signing key and fresh read
+        if req["path"] == "/resume" and req["method"] in ("GET", "POST"):                     # D234: Build resume, same gate, signing key and fresh read
             from . import resume_app
             return resume_app.handle(req, who, secrets)
         if req["path"] != "/" or req["method"] not in ("GET", "POST"):
