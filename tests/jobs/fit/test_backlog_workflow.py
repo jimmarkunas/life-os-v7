@@ -227,7 +227,7 @@ class ScheduledBatch(unittest.TestCase):
                 names = self.names(plan(self.doc, event, variables, **given))
                 self.assertIn("tick", names)
                 self.assertNotIn("fit_cloud_backlog", names, (variables, event))
-                self.assertFalse(any("join the tailnet" in str(n) for n in names), (variables, event))
+                self.assertTrue(any("join the tailnet" in str(n) for n in names), (variables, event))      # LIFE-85: the finish job always joins (the store's Oracle fallback)
 
     def test_a_parked_pipeline_never_runs_it(self):
         p = plan(self.doc, "schedule", {"V7_PIPELINE": "false", "V7_CLOUD_FIT_SCHEDULED": "20"})

@@ -312,7 +312,7 @@ class IsolatedJobTests(unittest.TestCase):
 
 
 DB = {"LIFEOS_ACQ_DB_NAME", "LIFEOS_ACQ_DB_PASSWORD", "LIFEOS_ACQ_DB_USER", "LIFEOS_ACQ_SSH_HOST", "LIFEOS_ACQ_SSH_KNOWN_HOSTS",
-      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER"}
+      "LIFEOS_ACQ_SSH_PORT", "LIFEOS_ACQ_SSH_PRIVATE_KEY", "LIFEOS_ACQ_SSH_USER", "LIFEOS_ACQ_SSH_JUMP_KEY"}     # LIFE-85: the forward-only Oracle relay key, beside the store's own
 DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding one here is a conscious decision
     "report": {"NTFY_TOPIC"},   # the failure-push job: the phone topic and nothing else
     "imessage": DB | {"LIFEOS_ACQ_SSH_PORT", "NTFY_TOPIC", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID",
@@ -430,6 +430,8 @@ class DomainsWorkflowTests(unittest.TestCase):
 
 
 DB = {f"LIFEOS_ACQ_{n}" for n in ("DB_NAME", "DB_PASSWORD", "DB_USER", "SSH_HOST", "SSH_KNOWN_HOSTS", "SSH_PRIVATE_KEY", "SSH_USER")}
+JUMP = {"LIFEOS_ACQ_SSH_JUMP_KEY"}                    # LIFE-85: every hourly / domains / network store step also gets the Oracle relay key
+TS = {"TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET"}   # loaded by those store jobs for their tailnet join; only the pinned join action receives them (TAILSCALE_WITH)
 HRL = {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "JOBRIGHT_EMAIL", "JOBRIGHT_PASSWORD", "NOTION_API_TOKEN", "OPEN_JOBS_CONTACT", "TINYFISH_API_KEY"}
 # The 25 values verified value-for-value in Bitwarden by migration run 37532718917 (name -> secret id). Ids are not credentials.
 UUIDS = {
@@ -462,6 +464,7 @@ UUIDS = {
     "TAILSCALE_OAUTH_CLIENT_ID": "454e12df-637f-4f65-9ec1-b4e30052942f",        # COMM-1.4b (LIFE-31 comments 10138, 10139): record ids only, never values
     "TAILSCALE_OAUTH_CLIENT_SECRET": "e54f0a84-84c3-47d8-8b5b-b4e30052d6e9",
     "IMESSAGE_ALERTS_HOST": "6590208b-506d-4238-ab10-b4e30051b25f",
+    "LIFEOS_ACQ_SSH_JUMP_KEY": "192db2d1-be66-4fca-b9b5-b4e900240507",        # LIFE-85 (Jim, Oct 19 2026): the v7-store-fwd relay key; id only, never the value
 }
 # The one action that may receive loader outputs through `with:` (LIFE-31): the pinned Tailscale join, and only its two OAuth inputs.
 TAILSCALE_ACTION = "tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd"
@@ -485,17 +488,17 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-calendar', 'cancel-in-progress': False},
         timeouts={'calendar': 15}, digest="58ec7d506d5fd3d5"),
     "domains": dict(
-        jobs={"jira": DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "outlook": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "attention": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "dcc": {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"}, "report": {"NTFY_TOPIC"}, "imessage": DB | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},
+        jobs={"jira": DB | JUMP | TS | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "outlook": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | JUMP | TS | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "attention": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "dcc": {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"}, "report": {"NTFY_TOPIC"}, "imessage": DB | JUMP | TS | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},
         direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'JOB_OUTREACH_CARD_BLOCK_ID', 'JOB_OUTREACH_TABLE_BLOCK_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID', 'V7_CLOSE_BASE_URL'],
         on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
         timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 20, 'imessage': 10, 'report': 5}, digest="4ab1d7e0ed128c50"),   # LIFE-47 TEMPORARY: the manual job-outreach-install command and its error line (removed after the install); D222 added the job-outreach stage command and its warning; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning
     "hourly": dict(
-        jobs={"prep": DB | HRL, "jobright": DB | HRL, "linkedin": DB | HRL, "lensa": DB | HRL, "finish": DB | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
+        jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
         timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 50, 'interview': 15, 'report': 5}, digest="85819d331ae063fe"),   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry
     "network": dict(
-        jobs={"network": DB | {"NOTION_API_TOKEN"}},
+        jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-network', 'cancel-in-progress': False},
         timeouts={'network': 30}, digest="5863cc2d727cbdd8"),
@@ -557,30 +560,30 @@ CONSUMER_STEPS = {
     },
     "domains": {
         "imessage": {
-            'iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)': DB | {"NTFY_TOPIC", "IMESSAGE_ALERTS_HOST"},
+            'iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)': DB | JUMP | {"NTFY_TOPIC", "IMESSAGE_ALERTS_HOST"},
             'Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
             'Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
         },
         "jira": {
             'Jira sprint rollover (scheduled; waits for the sprint to end and Monday 6 AM; live only when V7_LIVE)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-            'Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)': DB | {"NTFY_TOPIC"},
-            'Jira snapshot (counts only; saved to the private database only when live)': DB | {"JIRA_API_TOKEN", "JIRA_EMAIL"},
-            'Jira card (Daily Report; counts only; the page is written only when live)': DB | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"},
+            'Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)': DB | JUMP | {"NTFY_TOPIC"},
+            'Jira snapshot (counts only; saved to the private database only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL"},
+            'Jira card (Daily Report; counts only; the page is written only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"},
             'Jira layout probe (read-only; counts only)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
             'Jira sprint rollover (dry run unless live; never before the sprint ends)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
         },
         "outlook": {
-            'Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)': DB,
-            'Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)': DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"},
+            'Outlook newsletters (job alerts to Jobs OS; counts only; writes only when live)': DB | JUMP,
+            'Calendar sync (Outlook invites to Google; counts only; writes only when live; pages the phone when it has not worked for 3 hours)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"},
         },
         "bills": {
-            'Bills Paid processor (before the snapshot; writes Notion only when live; counts only)': DB | {"NOTION_BILLS_TOKEN"},
-            'Bills snapshot (read-only; private snapshot saved only when live)': DB | {"NOTION_BILLS_TOKEN"},
-            'Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)': DB | {"NOTION_JIRA_TOKEN"},
+            'Bills Paid processor (before the snapshot; writes Notion only when live; counts only)': DB | JUMP | {"NOTION_BILLS_TOKEN"},
+            'Bills snapshot (read-only; private snapshot saved only when live)': DB | JUMP | {"NOTION_BILLS_TOKEN"},
+            'Bills card (saved snapshot only; writes only when live; a stale snapshot is shown as STALE, never as current)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
         },
         "agenda": {
-            'Agenda snapshot (read-only Google Calendar; private save only when live)': DB | {"GCAL_SERVICE_ACCOUNT_JSON"},
-            'Agenda card (saved snapshot only; writes only when live)': DB | {"NOTION_JIRA_TOKEN"},
+            'Agenda snapshot (read-only Google Calendar; private save only when live)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON"},
+            'Agenda card (saved snapshot only; writes only when live)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
         },
         "amazon": {
             'Amazon Orders (Gmail to Notion; archive only after read-back)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
@@ -588,27 +591,27 @@ CONSUMER_STEPS = {
             'Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
         },
         "mail": {
-            'Physical Mail (Gmail read-only to the private state; saved with read-back)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NTFY_TOPIC"},
-            'Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)': DB | {"NOTION_JIRA_TOKEN"},
+            'Physical Mail (Gmail read-only to the private state; saved with read-back)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NTFY_TOPIC"},
+            'Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)': DB | JUMP | {"NOTION_JIRA_TOKEN"},
         },
         "hiring": {
-            'Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)': DB | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"},
+            'Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"},
             'Job Outreach install (LIFE-47 TEMPORARY; manual dispatch only; validate reads only, install makes ONE insert after the Hiring Pipeline table with read-back and whole-page proof; removed after the install)': {"NOTION_JIRA_TOKEN"},
             'Job Outreach (D222; dormant until JOB_OUTREACH_CARD_BLOCK_ID and JOB_OUTREACH_TABLE_BLOCK_ID are set; runs right after the Hiring Pipeline so no two writers change the page at once)': {"NOTION_API_TOKEN", "NOTION_JIRA_TOKEN", "NOTION_RECRUITERS_TOKEN"},
         },
         "attention": {
-            'Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
+            'Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
             'Attention card (one text line above the interactive view; writes only when live; a failed sync is shown as DEGRADED)': {"NOTION_JIRA_TOKEN"},
         },
         "megibow": {
-            'MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)': DB | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
+            'MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)': DB | JUMP | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
         },
         "dcc": {
             'Daily Command Center (rules over the cards\' first lines; writes only its own callout when live; every other region proven unchanged)': {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
         },
         "recruiters": {
-            'Recruiters (read-only mail to the Recruiters data source; counts only)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"},
-            'Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"},
+            'Recruiters (read-only mail to the Recruiters data source; counts only)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"},
+            'Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)': DB | JUMP | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"},
         },
         "report": {
             'Domain jobs report here (the run is already red; this pushes the phone)': {"NTFY_TOPIC"},
@@ -616,46 +619,46 @@ CONSUMER_STEPS = {
     },
     "hourly": {
         "prep": {
-            'Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)': DB | HRL,
-            'Stage 1 - sweep': DB | HRL,
-            'Step 3b - reconcile (repair, manual only)': DB | HRL,
-            'Step 2 - store check': DB | HRL,
-            'Stage - extract cards from mail': DB | HRL,
+            'Gate - skip a scheduled or tick run when another tick started in the last 50 minutes (manual runs do not count)': DB | JUMP | HRL,
+            'Stage 1 - sweep': DB | JUMP | HRL,
+            'Step 3b - reconcile (repair, manual only)': DB | JUMP | HRL,
+            'Step 2 - store check': DB | JUMP | HRL,
+            'Stage - extract cards from mail': DB | JUMP | HRL,
         },
         "jobright": {
-            'Step 5 - resolve Jobright jobs (free Chromium, saves when live)': DB | HRL,
+            'Step 5 - resolve Jobright jobs (free Chromium, saves when live)': DB | JUMP | HRL,
         },
         "linkedin": {
-            'Step 5 - resolve LinkedIn jobs (no login, no browser)': DB | HRL,
-            'Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)': DB,
+            'Step 5 - resolve LinkedIn jobs (no login, no browser)': DB | JUMP | HRL,
+            'Step 5a - LinkedIn job search (guest, after the resolver; the same rows as the job alerts, D203)': DB | JUMP,
         },
         "lensa": {
-            'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | HRL,
+            'Step 5f - Scale-Up sponsors with no job board - find their jobs by web search (the job keeps its id `lensa`; Lensa itself is retired, D201)': DB | JUMP | HRL,
         },
         "finish": {
-            'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)': DB | HRL | {"IMESSAGE_ALERTS_HOST"},   # D214: the shadow's Oracle host (unused while V7_CLOUD_FIT is off)
-            'Step 5b - US Remote web acquisition (due ATS boards)': DB | HRL,
-            'Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)': DB,
-            'Employer boards acceptance preview (dispatch only, read-only, counts only, D202)': DB | {'FIT_PROFILE_EXTRA_JSON', 'FIT_PROFILE_JSON'},
-            'Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)': DB | HRL,
-            "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)": DB | HRL,
-            'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | HRL,
-            'Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)': DB | HRL,
-            'Step 6a - fit scoring (deterministic, private profile)': DB | HRL,
-            "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual, or after each tick when V7_CLOUD_FIT_SCHEDULED is set; one Oracle request at a time)": DB | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NOTION_API_TOKEN", "IMESSAGE_ALERTS_HOST"},   # D219: the store, the Ledger page read for human state, Oracle's host
-            'Step 6b - precision audit (before publish)': DB | HRL,
-            'Step 7 - publish READY jobs to Notion': DB | HRL,
-            'Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)': DB | HRL,
-            'Step 7b - close out newsletter mail whose jobs all have an outcome': DB | HRL,
-            'Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure never fails the Jobs run but always warns)': DB | HRL,
-            'Fit review (dispatch only; a private Notion page, counts only in the log)': DB | HRL,
-            'Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)': DB | HRL,
-            'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)': DB | HRL,
-            'Funnel report (dispatch only, read-only, counts only)': DB | HRL,
-            'Probe - source shapes (dispatch only, counts only)': DB | HRL,
-            'Step 8 - Last Seen sync (daily)': DB | HRL,
-            'Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)': DB | HRL | {"NTFY_TOPIC"},
-            'Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)': DB | HRL | {"NTFY_TOPIC"},
+            'Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)': DB | JUMP | HRL | {"IMESSAGE_ALERTS_HOST"},   # D214: the shadow's Oracle host (unused while V7_CLOUD_FIT is off)
+            'Step 5b - US Remote web acquisition (due ATS boards)': DB | JUMP | HRL,
+            'Step 5b2 - Employer boards (the Open Jobs board list plus extras; due boards, D202)': DB | JUMP,
+            'Employer boards acceptance preview (dispatch only, read-only, counts only, D202)': DB | JUMP | {'FIT_PROFILE_EXTRA_JSON', 'FIT_PROFILE_JSON'},
+            'Step 5c - UK Scale-Up web acquisition (scheduled; due sponsor boards)': DB | JUMP | HRL,
+            "Step 5d - Scale-Up title watch (roles a company's own site lists but its board listing does not carry; free search, found roles arrive as Review)": DB | JUMP | HRL,
+            'Step 5e - UK sponsor register (weekly refresh; forced when dispatched)': DB | JUMP | HRL,
+            'Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)': DB | JUMP | HRL,
+            'Step 6a - fit scoring (deterministic, private profile)': DB | JUMP | HRL,
+            "Step 6a2 - Cloud Fit backlog batch (LIFE-41 D219; manual, or after each tick when V7_CLOUD_FIT_SCHEDULED is set; one Oracle request at a time)": DB | JUMP | {"FIT_PROFILE_EXTRA_JSON", "FIT_PROFILE_JSON", "NOTION_API_TOKEN", "IMESSAGE_ALERTS_HOST"},   # D219: the store, the Ledger page read for human state, Oracle's host
+            'Step 6b - precision audit (before publish)': DB | JUMP | HRL,
+            'Step 7 - publish READY jobs to Notion': DB | JUMP | HRL,
+            'Step 7a - exclude jobs that have sat on HOLD for 7 days (so their newsletter mail can close)': DB | JUMP | HRL,
+            'Step 7b - close out newsletter mail whose jobs all have an outcome': DB | JUMP | HRL,
+            'Step 7c - Network Leads blocks on Ledger pages (NET-2.3; 41 pages a run, rotating; a failure never fails the Jobs run but always warns)': DB | JUMP | HRL,
+            'Fit review (dispatch only; a private Notion page, counts only in the log)': DB | JUMP | HRL,
+            'Explain (dispatch only; report = company names; counts and short hashes only in the log, nothing written)': DB | JUMP | HRL,
+            'Board check (dispatch only; report = board:<companies>; one private Notion page, counts only in the log)': DB | JUMP | HRL,
+            'Funnel report (dispatch only, read-only, counts only)': DB | JUMP | HRL,
+            'Probe - source shapes (dispatch only, counts only)': DB | JUMP | HRL,
+            'Step 8 - Last Seen sync (daily)': DB | JUMP | HRL,
+            'Step 8b - retention purge (about weekly and catching up (the stage decides when it is due); pushes its own result to the phone, counts and fixed codes only)': DB | JUMP | HRL | {"NTFY_TOPIC"},
+            'Alerts - detect, dedupe and push to the phone (counts only; a failure here never fails the run)': DB | JUMP | HRL | {"NTFY_TOPIC"},
         },
         "interview": {
             'Interview shape probe (counts only, writes nothing)': {"NOTION_INTERVIEW_TOKEN"},
@@ -673,7 +676,7 @@ CONSUMER_STEPS = {
     },
     "network": {
         "network": {
-            'Network (reads the attached CSV through Notion; prints counts only)': DB | {"NOTION_API_TOKEN"},
+            'Network (reads the attached CSV through Notion; prints counts only)': DB | JUMP | {"NOTION_API_TOKEN"},
         },
     },
     "outlook": {
