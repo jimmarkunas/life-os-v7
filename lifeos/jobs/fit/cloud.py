@@ -92,6 +92,7 @@ BACKLOG_CALLS_MAX = 100                # D219: the hard ceiling of one batch, wh
 BACKLOG_BUDGET_MAX = 1800               # seconds a batch may run; each call starts only with CALL_SECONDS left
 BACKLOG_SCAN_PER_CALL, BACKLOG_SCAN_MAX = 5, 500
 NO_CALL = {"FIT_EDGE_BUSY", "FIT_EDGE_NO_HOST", "FIT_EDGE_NOT_CONFIGURED", "FIT_EDGE_PROBE_FAILED"} | {f"FIT_EDGE_REFUSED_{r}" for r in edge.REASONS} | {"FIT_EDGE_REFUSED"}
+QUOTA_STOP = "FIT_EDGE_REFUSED_QUOTA_RESERVE"   # LIFE-77 (Jim: stop at 50 % used): the account's allowance reached Jim's reserve; a normal stop, not a failure
 USAGE_UNAVAILABLE = "USAGE_UNAVAILABLE"   # LIFE-41: the fixed code for missing, invalid or inconsistent usage, from Oracle's refusal or the receipt itself
 USAGE_SUMS = {"cloud_tokens_input": "input_tokens", "cloud_tokens_cached": "cached_input_tokens", "cloud_tokens_output": "output_tokens",
               "cloud_tokens_reasoning": "reasoning_tokens", "cloud_tokens_total": "total_tokens"}     # the receipts' own counts, summed; never estimated
@@ -211,6 +212,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         return write(WRITE, (status, reason, j.score if j else None, j.confidence if j else None, j.rationale[:300] if j else None, request_hash,
                              str(receipt.get("model") or "")[:40] or None, str((receipt.get("run_ids") or [""])[0])[:64] or None, fingerprint, _now(), job_id, token))
 
+    readings = []                                                        # LIFE-77: the meter reading each call was admitted (or refused) on
     for job_id, title, company, location, text, fingerprint, url, source, link_proof, page_id in (r if len(r) == 10 else (*r, None) for r in rows):
         if counts["cloud_calls"] >= cap:
             break                                                        # the run's calls are spent (or attempted): later candidates stay unasked, untouched
@@ -250,7 +252,11 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             code = str(error)
             if code in NO_CALL:                                          # refused before any model call: the job goes back to the queue, the run stops
                 write(RELEASE, (job_id, token))                          # cloud_calls still counts the request sent
-                _degraded(counts, USAGE_UNAVAILABLE if code == "FIT_EDGE_REFUSED_USAGE_UNAVAILABLE" else code)
+                readings.append(error.quota)
+                if code == QUOTA_STOP:
+                    counts["cloud_quota_reserve"] = 1                    # LIFE-77: Jim's reserve of the account's allowance is reached: a normal stop; the rest wait for the reset
+                else:
+                    _degraded(counts, USAGE_UNAVAILABLE if code == "FIT_EDGE_REFUSED_USAGE_UNAVAILABLE" else code)
                 break
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
             counts["cloud_failed"] += 1
@@ -267,6 +273,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         else:
             counts["cloud_usage_unavailable"] += 1
         counts["cloud_ok"] += 1
+        readings.append(got.get("quota"))
         status, reason = ("DEGRADED", PROMOTION_FAILED) if canary else ("OK", None)     # D226: fail closed until the promotion's own write marks it CANARY
         if record(job_id, status, reason, got, edge.digest(sent)[:16], fingerprint) != 1:
             counts["cloud_ok"] -= 1
@@ -281,6 +288,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
         if not measured:
             _degraded(counts, USAGE_UNAVAILABLE)                         # LIFE-41 usage integrity, every mode: the answer is kept; no further call this run
             break
+    quota = quota_summary(readings)
+    if quota:
+        counts["cloud_quota"] = quota                                    # LIFE-77: readings and estimates only, never the account
     if counts["cloud_fit"] in ("shadow", "canary", "backlog"):
         counts["cloud_fit"] = "OK"
     return counts
@@ -296,6 +306,35 @@ def usage_ok(u):
         value = u.get(key, "unavailable")
         return (isinstance(value, str) and value == "unavailable") or (type(value) is int and 0 <= value <= cap)
     return u["total_tokens"] == u["input_tokens"] + u["output_tokens"] and optional("cached_input_tokens", u["input_tokens"]) and optional("reasoning_tokens", u["output_tokens"])
+
+
+def quota_summary(readings):
+    """LIFE-77: the meter readings this run's calls were admitted on (oldest first; the last may be a refusal's) -> per window the first and last used percent, its reset
+    in Central time, and an ESTIMATE from the rises between consecutive readings: the percent per call and the calls left before the stop. A window that did not move
+    over k calls is below the meter's 1 % resolution: an upper bound per call and a lower bound on calls left, never "0 %". A fall is a reset and starts a new segment."""
+    readings = [r for r in readings if r]
+    if not readings:
+        return None
+    from zoneinfo import ZoneInfo                                       # noqa: PLC0415
+    stop, out = readings[-1]["stop"], {}
+    for w in readings[-1]["windows"]:
+        series = [next((x["used"] for x in r["windows"] if x["label"] == w["label"]), None) for r in readings]
+        rise = calls = 0
+        for a, b in zip(series, series[1:]):
+            if a is not None and b is not None and b >= a:
+                rise, calls = rise + b - a, calls + 1
+        try:
+            reset = datetime.fromisoformat(w["reset_at"]).astimezone(ZoneInfo("America/Chicago")).strftime("%b %d %I:%M %p %Z")
+        except ValueError:
+            reset = None
+        row = {"used_first": series[0], "used_last": w["used"], "resets": reset, "basis_calls": calls}
+        room = max(stop - w["used"], 0)
+        if calls and rise:
+            row.update(estimate="ESTIMATED", per_call_percent=round(rise / calls, 4), calls_left=int(room * calls / rise))
+        elif calls:
+            row.update(estimate="BELOW_RESOLUTION", per_call_below=round(1 / calls, 4), calls_left_at_least=int(room * calls))
+        out[w["label"]] = row
+    return {"stop_used_percent": stop, "windows": out}
 
 
 def _degraded(counts, code):
