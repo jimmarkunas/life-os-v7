@@ -392,22 +392,33 @@ def cells_of(row):
     return [plain({"type": "x", "x": {"rich_text": cell}}) for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
+STYLES = {"bold": {"bold": True}, "gray": {"color": "gray"}, "bold+gray": {"bold": True, "color": "gray"}}
+
+
 def _segs(cell):
-    return [cell] if isinstance(cell, tuple) else cell                  # a cell is (text, link) or a list of them
+    """A cell is one span or a list of spans; a span is (text, link) or (text, link, style) with style None, "bold", "gray" or "bold+gray" (D222)."""
+    return [(s + (None,))[:3] for s in ([cell] if isinstance(cell, tuple) else cell)]
 
 
 def _owned(spans):
-    """[(text, link or None)] -> adjacent spans with the same link merged: the view ignores how Notion splits or joins rich text but still says which span owns each link."""
-    return [("".join(t for t, _ in group), link) for link, group in groupby(spans, key=lambda span: span[1])]
+    """[(text, link, style)] -> adjacent spans with the same link and style merged: the view ignores how Notion splits or joins rich text but still says which span owns
+    each link and style."""
+    return [("".join(t for t, _, _ in group), link, style) for (link, style), group in groupby(spans, key=lambda span: (span[1], span[2]))]
 
 
 def want_view(row):
-    """A rendered row as [[(text, link)] runs] per cell: comparable with `live_view`."""
+    """A rendered row as [[(text, link, style)] runs] per cell: comparable with `live_view`."""
     return [_owned(_segs(c)) for c in row]
 
 
+def _style(part):
+    notes = part.get("annotations") or {}
+    style = "+".join(n for n, on in (("bold", notes.get("bold")), ("gray", notes.get("color") == "gray")) if on)
+    return style or None
+
+
 def live_view(row):
-    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url")) for part in cell if isinstance(part, dict)])      # Notion sends "link": null for plain text
+    return [_owned([(plain({"type": "x", "x": {"rich_text": [part]}}), ((part.get("text") or {}).get("link") or {}).get("url"), _style(part)) for part in cell if isinstance(part, dict)])      # Notion sends "link": null for plain text
             for cell in (row.get("table_row") or {}).get("cells") or []]
 
 
@@ -531,8 +542,9 @@ def page_changed(before, after):
 
 
 def cell_blocks(cells):
-    """cells: one row, each cell a (text, link or None) or a list of them -> the table_row `cells` field."""
-    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}} for text, link in _segs(cell)] for cell in cells]
+    """cells: one row, each cell a span or a list of spans (see _segs) -> the table_row `cells` field."""
+    return [[{"type": "text", "text": {"content": text, **({"link": {"url": link}} if link else {})}, **({"annotations": STYLES[style]} if style else {})}
+             for text, link, style in _segs(cell)] for cell in cells]
 
 
 def write_floating(client, region, status_text, rows, fail):
