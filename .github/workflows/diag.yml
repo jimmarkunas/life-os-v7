@@ -1,15 +1,19 @@
 name: diag
-# Manual only, read-only, counts only. Runs in its own concurrency group, so it never blocks or replaces an hourly tick (the hourly gate counts only hourly.yml runs).
+# Manual only, counts only; read-only except the one synthetic sandbox proof (notion-sandbox-outreach-proof), which writes only one sandbox page. Runs in its own concurrency group, so it never blocks or replaces an hourly tick (the hourly gate counts only hourly.yml runs).
 on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only)"
         type: choice
-        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access"]
+        options: ["scale-up-holds", "scale-up-links", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof"]
         default: "scale-up-holds"
       message_ref:
         description: "alerts-open (optional) and newsletter-trace (required): the SHA-256 (64 hex) of one Gmail message id, never the id itself. Returns only that message's per-vacancy trace (allowlisted status, source and reason codes, Ledger page and verification recorded, terminal and blocker totals); read-only, counts only."
+        type: string
+        default: ""
+      confirm:
+        description: "notion-sandbox-outreach-proof only: type SYNTHETIC to confirm that only the one synthetic sandbox page is written"
         type: string
         default: ""
 permissions:
@@ -19,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
-    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' }}
+    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -112,10 +116,11 @@ jobs:
           STAGE: ${{ inputs.stage }}
           ALERTS_MESSAGE_REF: ${{ inputs.message_ref }}
         run: python -m lifeos.run "$STAGE"
-  # LIFE-10: the one stage that reads Notion. Its own job, so the Jobs Notion token never reaches the database or Gmail diagnostics above, and no other value reaches this one.
-  # Read-only: three reads against the fixed synthetic sandbox ids (TL comment 10754); no write path and never live; codes and counts only.
+  # LIFE-10: the two stages that reach Notion. Their own job, so the Jobs Notion token (the VS Code connection) never reaches the database or Gmail diagnostics above, and
+  # no other value reaches this one. Both are pinned to the fixed synthetic sandbox ids: notion-sandbox-access only reads (TL comment 10754); notion-sandbox-outreach-proof
+  # writes only its one synthetic sandbox page, and only with confirm = SYNTHETIC (Jim's plan approval, LIFE-10 comment 10773). Codes and counts only.
   sandbox:
-    if: ${{ inputs.stage == 'notion-sandbox-access' }}
+    if: ${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -143,6 +148,13 @@ jobs:
           secrets: |
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
       - name: Notion sandbox access (read-only; codes and counts only)
+        if: ${{ inputs.stage == 'notion-sandbox-access' }}
         env:
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
         run: python -m lifeos.run notion-sandbox-access --limit 0
+      - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
+        if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
+        env:
+          NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
+          PROOF_CONFIRM: ${{ inputs.confirm }}
+        run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
