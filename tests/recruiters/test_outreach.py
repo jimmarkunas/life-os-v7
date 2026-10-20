@@ -265,6 +265,46 @@ class ChooseThePerson(unittest.TestCase):
         status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
         self.assertEqual((status, [store.read(p)["person"] for p in rec.pages]), (200, ["Fallon Typed"]))
 
+    def test_a_chosen_lead_records_the_current_employer_its_own_line_states(self):
+        """Jim, Oct 20: the outreach table showed only the name; the employer comes from the lead's verified line, shown on Review, never guessed."""
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        review = svc("POST", "/sent", form={**form, "who": "lead:0", "step": "review"})
+        self.assertIn(b"<dt>Their employer</dt><dd>Northwind Labs</dd>", review[2])
+        status, _, body, _ = svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        self.assertIn(b"Casey Example (Northwind Labs)", body)
+        [row] = [store.read(p) for p in rec.pages]
+        self.assertEqual((row["person"], row["company"], row["client"]), ("Casey Example", "Northwind Labs", "Northwind Labs"))
+
+    def test_a_typed_employer_wins_and_other_without_one_records_none(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        review = svc("POST", "/sent", form={**form, "who": "lead:0", "employer": "Contoso Talent", "step": "review"})
+        self.assertIn(b"<dt>Their employer</dt><dd>Contoso Talent</dd>", review[2])
+        svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        review = svc("POST", "/sent", form={**form, "who": "other", "person": "Fallon Typed", "step": "review"})
+        self.assertIn(b"<dt>Their employer</dt><dd>Not recorded</dd>", review[2])
+        svc("POST", "/sent", form={**fields(review[2]), "step": "confirm"})
+        self.assertEqual(sorted((store.read(p)["person"], store.read(p)["company"]) for p in rec.pages), [("Casey Example", "Contoso Talent"), ("Fallon Typed", "")])
+
+    def test_the_confirmation_signs_the_employer(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        _, form = self.open(svc)
+        review = svc("POST", "/sent", form={**form, "who": "lead:0", "step": "review"})
+        self.assertEqual(svc("POST", "/sent", form={**fields(review[2]), "employer": "Someone Else Inc", "step": "confirm"})[0], 403)
+        self.assertEqual(rec.writes, [])
+
+    def test_only_a_current_listing_names_an_employer(self):
+        self.assertEqual(O.employer_from("Listed at Northwind Labs as Account Executive, as of Oct 3 (12 days)"), "Northwind Labs")
+        self.assertEqual(O.employer_from("Listed at Northwind Labs, as of Oct 3 (12 days) · verify first"), "Northwind Labs")
+        for line in ("Previously listed at Northwind Labs, as of Oct 3 (12 days)", "Name differs: listed at Northwind Labs, as of Oct 3 (12 days). Same company?",
+                     "Listed at this company, as of Oct 3 (12 days)", "", None):
+            self.assertEqual(O.employer_from(line), "", line)
+
     def test_a_tampered_or_unknown_choice_writes_nothing(self):
         ledger, rec = self.world()
         svc = Service(ledger, rec)

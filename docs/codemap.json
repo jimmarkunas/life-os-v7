@@ -127,6 +127,7 @@
   "D226": "Cloud Fit canary: an accepted cloud answer becomes the job's visible Fit through the Fit stage's own lane decision, fail-closed (2026-10-19, Jim; LIFE-41 10555)",
   "D227": "Cloud Fit is limited by the account's own allowance: Oracle reads the Codex 5-hour and weekly used percent and stops at Jim's 50 % reserve (2026-10-19, Jim; LIFE-77 / LIFE-41)",
   "D228": "The AI Capacity card: every readable account allowance on the Daily Report, from Oracle's no-model limits request (2026-10-20, Jim; LIFE-77)",
+  "D229": "Mark as Sent records the person's employer: typed, or the current employer the chosen lead's own line states; never guessed (2026-10-20, Jim; LIFE-10 / LIFE-21)",
   "D23": "Open Jobs as a tail consumer; Teamtailor via RSS; Dice",
   "D24": "Skilled Worker enabled (Phase 2); INT-7.1A bounded handoff",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
