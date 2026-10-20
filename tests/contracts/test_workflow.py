@@ -391,6 +391,13 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertNotIn("LIVE", step["run"])
         self.assertEqual(step["env"]["JOB_OUTREACH_INSTALL"], "${{ inputs.job_outreach_install }}")
         self.assertEqual((step["env"]["INPUT_LIVE"], step["env"]["INPUT_ALL"]), ("${{ inputs.live }}", "${{ inputs.all }}"))   # the stage refuses unless both are "false"
+        self.assertEqual(step["env"]["JIRA_CARD_BLOCK_ID"], "${{ secrets.JIRA_CARD_BLOCK_ID }}")                   # the page-identity anchor the stage requires
+        self.assertEqual(sorted(step["env"]), sorted(["JOB_OUTREACH_INSTALL", "INPUT_LIVE", "INPUT_ALL", "HIRING_CARD_BLOCK_ID", "HIRING_TABLE_BLOCK_ID", "JIRA_CARD_BLOCK_ID",
+                                                      "JOB_OUTREACH_CARD_BLOCK_ID", "JOB_OUTREACH_TABLE_BLOCK_ID", "NOTION_JIRA_TOKEN"]))
+        self.assertNotIn("continue-on-error", step)                                                              # a refused or unverified install fails the job; nothing retries it
+        self.assertNotIn("||", step["run"])
+        others = [s for s in job["steps"] if s.get("id") in ("hiring", "job_outreach")]
+        self.assertTrue(all(s.get("continue-on-error") for s in others))                                            # the normal writers keep their warning-only behaviour
         self.assertIn("WILL WRITE", choice["description"])
         self.assertIn("MUST stay UNTICKED", choice["description"])
         isolated = "${{ !(github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install')) }}"
@@ -406,7 +413,8 @@ class DomainsWorkflowTests(unittest.TestCase):
         for name, job in self.doc["jobs"].items():
             if name == "report":                                                                                   # the failure-push job (see the next test) is the alarm, not a domain stage
                 continue
-            work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).startswith("bitwarden/")]   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
+            work = [s for s in job["steps"] if s.get("id") and not str(s.get("uses", "")).startswith("bitwarden/")   # the Bitwarden loader is deliberately fail-closed: a failed load fails the job before its command
+                    and s.get("id") != "job_outreach_install"]                                                       # LIFE-47 TEMPORARY installer: fail-closed by design (pinned below)
             self.assertTrue(work and all(s.get("continue-on-error") for s in work), name)
 
     def test_the_report_job_pushes_the_phone_only_for_a_failed_tick_triggered_run_and_writes_nothing(self):

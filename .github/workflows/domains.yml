@@ -724,7 +724,6 @@ jobs:
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             b7b921fa-3f62-478a-a4f5-b4db015efcf7 > NOTION_RECRUITERS_TOKEN
       - id: job_outreach_install
-        continue-on-error: true
         name: Job Outreach install (LIFE-47 TEMPORARY; manual dispatch only; validate reads only, install makes ONE insert after the Hiring Pipeline table with read-back and whole-page proof; removed after the install)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.job_outreach_install == 'validate' || inputs.job_outreach_install == 'install') }}
         env:
@@ -733,10 +732,11 @@ jobs:
           INPUT_ALL: ${{ inputs.all }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}          # the page-identity anchor (read-only id, not a credential)
           JOB_OUTREACH_CARD_BLOCK_ID: ${{ secrets.JOB_OUTREACH_CARD_BLOCK_ID }}
           JOB_OUTREACH_TABLE_BLOCK_ID: ${{ secrets.JOB_OUTREACH_TABLE_BLOCK_ID }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_JIRA_TOKEN || steps.bws_hiring_retry.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run job-outreach-install --limit 0
+        run: python -m lifeos.run job-outreach-install --limit 0           # NOT continue-on-error: a refused or unverified install fails the job (never retried)
       - name: Job Outreach install failed (LIFE-47 TEMPORARY; nothing is retried; read the step above before any new attempt)
         if: ${{ always() && steps.job_outreach_install.outcome == 'failure' }}
         run: echo "::error title=Job Outreach install::the one-shot install stopped; read its fixed code above and the page before any new attempt"
