@@ -8,7 +8,8 @@ V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2: N calls after the tick, N its own
 Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review, never asked) plus published jobs, most useful
 first. A published job's Ledger page is read first (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. An accepted answer becomes
 the visible Fit through the Fit stage's own promotion, and fit_sync later writes only the page's machine-owned Fit fields (never Applied, Applied On or Saturn
-Decision); a published job the cloud would exclude is HELD privately, its page untouched. The batch runs that unchanged fit_sync itself at its end (the publish step
+Decision); a published job the cloud excludes is promoted the same way and the next tick's gated audit removes its page under lifeos.jobs.guard (D224,
+replacing the D219 hold). The batch runs that unchanged fit_sync itself at its end (the publish step
 does not run on a backlog-only dispatch) and checks every promoted page was synced: one that was not is DEGRADED(LEDGER_SYNC_INCOMPLETE), never a silent success. Each job is claimed before its call and written right after it, so a
 batch can stop anywhere and the next one resumes with the jobs still unasked. Counts only in the log: no title, employer, text, profile or answer.
 V7_CLOUD_FIT_BACKLOG_PAGE (LIFE-41 G6, optional): one Ledger page id. The batch then asks at most that one job, under the same predicates, or nothing

@@ -37,6 +37,16 @@ class Batch(Base):
     def status(self, job_id):
         return self.row(job_id, ("cloud_status",))[0]
 
+    def audit(self, protection=None):
+        """The production gated precision audit over the same store: only Notion (the page trash) and the guard's page read are fakes."""
+        from lifeos.jobs import audit
+        client = mock.Mock()
+        with mock.patch.object(audit.store, "connect", return_value=self.db), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=client), mock.patch.object(audit.ledger, "verify", return_value=audit.ledger.OK), \
+                mock.patch.object(audit.guard, "protection", side_effect=protection or (lambda client, page_id, company, title, opportunities=(): None)):
+            counts = audit.run(100, True, environ={"V7_FIT_GATE": "true"})
+        return counts, [c.args[1] for c in client.call.call_args_list if c.args[:1] == ("PATCH",) and c.args[2] == {"in_trash": True}]
+
 
 class BudgetIsALimitNotAFailure(Batch):
     """LIFE-41 (first scheduled batch, run 39356515961): 19 of 20 calls fit the 480 s budget and the run was marked failed. A batch that stops at its time limit
@@ -300,20 +310,29 @@ class PublishedJobs(Batch):
         self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # kept: the next sync (any tick) retries the page
         self.assertTrue(NotionError)
 
-    def test_a_held_published_job_is_never_synced(self):
+    def test_a_published_job_the_cloud_excludes_is_promoted_and_the_gated_audit_removes_its_page(self):
+        """Jim (LIFE-41, Oct 20: "Apply the exclusion", replacing the D219 hold): the cloud verdict is final. The answer becomes the visible Fit, the page shows
+        Excluded, and the next tick's audit trashes it and parks the job EXCLUDED_FIT, never published again."""
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
         counts = self.batch(5, Endpoint(lambda d: measured(d, score=41)))
-        self.assertEqual((counts["cloud_held"], counts["ledger_pages_promoted"]), (1, 0))
-        self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] == "PATCH"])
+        self.assertEqual(counts["cloud_promoted"], 1)
+        self.assertNotIn("cloud_held", counts)
+        score, line, admission, status = self.row(1, ("score", "line", "admission", "cloud_status"))
+        self.assertEqual((score, admission, status), (41, "EXCLUDE", "CANARY"))
+        self.assertTrue(line.startswith("Cloud Fit 41% (gpt-6-luna): "))
+        synced = [c.args[2]["properties"] for c in self.client.call.call_args_list if c.args[:2] == ("PATCH", "/pages/page-1")]
+        self.assertEqual([p["Admission Status"]["select"]["name"] for p in synced], ["Excluded"])           # the page tells the truth until the audit removes it
+        audited, trashed = self.audit()
+        self.assertEqual((trashed, audited["excluded_cleared"]), (["/pages/page-1"], 1))
+        self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id, unresolved_reason FROM v7_jobs WHERE id=1").fetchone(), ("EXCLUDED_FIT", None, "excluded_fit"))
 
-    def test_a_published_job_the_cloud_would_exclude_is_held_privately_and_its_page_is_untouched(self):
+    def test_a_page_a_human_may_be_pursuing_keeps_its_page_after_a_cloud_exclusion(self):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
-        before = self.row(1, ("score", "decision", "line", "admission", "scored_at"))
-        counts = self.batch(5, Endpoint(lambda d: measured(d, score=41)))
-        self.assertEqual((counts["cloud_held"], counts["cloud_promoted"]), (1, 0))
-        self.assertEqual(self.row(1, ("score", "decision", "line", "admission", "scored_at")), before)
-        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "cloud_score")), ("HELD", "PUBLISHED_WOULD_EXCLUDE", 41))
-        self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), ("PUBLISHED", "page-1"))   # the audit has nothing to trash
+        self.batch(5, Endpoint(lambda d: measured(d, score=41)))
+        audited, trashed = self.audit(lambda client, page_id, company, title, opportunities=(): "saturn_decision")
+        self.assertEqual((trashed, audited["protected"]), ([], {"saturn_decision": 1}))
+        self.assertEqual(self.db.raw.execute("SELECT status, notion_page_id FROM v7_jobs WHERE id=1").fetchone(), ("PUBLISHED", "page-1"))
+
 
     def test_applied_or_unreadable_ledger_pages_use_no_call_and_stay_askable(self):
         self.titled(1, "Program Manager A", status="PUBLISHED", page="page-1")
@@ -407,3 +426,48 @@ class FailureReachesTheRun(Batch):
         self.assertEqual((code, err.getvalue().strip()), (1, "FIT-CLOUD-BACKLOG FAILED: FIT_CLOUD_DEGRADED"))    # the batch's own failure -> exit 1 -> a failed step
         self.assertIn('"cloud_fit": "DEGRADED(LEDGER_SYNC_INCOMPLETE)"', out.getvalue())
         self.assertEqual(self.row(1, ("score", "cloud_status")), (90, "CANARY"))                # the score is kept; only the signal is a failure
+
+
+class HeldAnswersAreApplied(Batch):
+    """The jobs the D219 hold kept private (cloud_status HELD) get Jim's decision from their stored answer: no second model call, the same promotion."""
+
+    def held(self, job_id, score=41, page="page-1"):
+        self.titled(job_id, f"Program Manager {job_id}", status="PUBLISHED", page=page)
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_status='HELD', cloud_reason='PUBLISHED_WOULD_EXCLUDE', cloud_score=?, cloud_confidence='high',"
+                            " cloud_rationale='Thin delivery ownership.', cloud_model='gpt-6-luna' WHERE job_id=?", (score, job_id))
+
+    def release(self):
+        counts = {"gated": 0, "revived": 0}
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.release_held(cursor, PROFILE, T.date(), True, counts, None)
+
+    def test_each_held_answer_is_promoted_once_and_the_audit_then_removes_the_page(self):
+        self.held(1)
+        self.held(2, page="page-2")
+        self.assertEqual(self.release(), (2, 0))
+        for job_id in (1, 2):
+            score, line, admission, status, reason = self.row(job_id, ("score", "line", "admission", "cloud_status", "cloud_reason"))
+            self.assertEqual((score, admission, status, reason), (41, "EXCLUDE", "CANARY", None))
+            self.assertEqual(line, "Cloud Fit 41% (gpt-6-luna): Thin delivery ownership.")
+        self.assertEqual(self.release(), (0, 0))                                                                # nothing HELD is left: a no-op every later tick
+        self.assertEqual(sorted(self.audit()[1]), ["/pages/page-1", "/pages/page-2"])
+
+    def test_a_held_answer_that_cannot_be_promoted_stays_a_named_failure_and_is_never_held_or_asked_again(self):
+        self.held(1)
+        self.db.raw.execute("DELETE FROM v7_job_descriptions WHERE job_id=1")
+        self.assertEqual(self.release(), (0, 1))
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason", "admission")), ("DEGRADED", cloud.PROMOTION_FAILED, "ADMIT"))
+        self.assertEqual(self.release(), (0, 0))
+
+    def test_the_fit_stage_applies_the_holds_only_when_live_and_gated(self):
+        self.held(1)
+        env = {**ENV, "V7_CLOUD_FIT": "off"}
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+            self.assertNotIn("cloud_held_released", stage.run(10, False, env))
+            self.assertNotIn("cloud_held_released", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
+            self.assertEqual(self.row(1, ("cloud_status",)), ("HELD",))
+            counts = stage.run(10, True, env)
+        self.assertEqual((counts["cloud_held_released"], counts["cloud_held_failed"], counts["failed"]), (1, 0, 0))
+        self.assertEqual(self.row(1, ("cloud_status", "admission")), ("CANARY", "EXCLUDE"))
