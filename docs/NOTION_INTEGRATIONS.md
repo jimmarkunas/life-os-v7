@@ -8,7 +8,7 @@ page and data-source ids for production objects stay secrets; they are named her
 
 | Notion connection (as listed) | Created | V7 credential | Where the token lives | Used by | Must be shared with |
 |---|---|---|---|---|---|
-| **VS Code** (see note 1) | Mar 8 | `NOTION_API_TOKEN` | Bitwarden `53dc3d04-dbb2-45fe-8185-b4db015eedcb` | `hourly.yml` Jobs pipeline (publish, enrich, fit, audit, Network Leads blocks, Last Seen, retention, dispatch-only reports); `domains.yml` hiring (Ledger reads) and recruiters `job-page-outreach` (Ledger page tables); `network.yml` (connections CSV); `diag.yml` sandbox check | **Job Ledger** database; **LI Connection Database & Integration** page; the private report pages its dispatch-only reports write; for LIFE-10 §2 sandbox proof, **🧪 TEST — Job Ledger Apply UI · ExampleCo (SYNTHETIC)** (not yet shared, run 39367878512 = 404) |
+| **VS Code** (verified, note 1) | Mar 8 | `NOTION_API_TOKEN` | Bitwarden `53dc3d04-dbb2-45fe-8185-b4db015eedcb` | `hourly.yml` Jobs pipeline (publish, enrich, fit, audit, Network Leads blocks, Last Seen, retention, dispatch-only reports); `domains.yml` hiring (Ledger reads) and recruiters `job-page-outreach` (Ledger page tables); `network.yml` (connections CSV); `diag.yml` sandbox check | **Job Ledger** database; **LI Connection Database & Integration** page; the private report pages its dispatch-only reports write; for LIFE-10 §2 sandbox proof, **🧪 TEST — Job Ledger Apply UI · ExampleCo (SYNTHETIC)** (shared Oct 20 2026) |
 | **LIFE OS Jira Card** | Oct 2 | `NOTION_JIRA_TOKEN` | Bitwarden `53f47cb9-f6bb-4cde-87f4-b4db015ef928` | every Daily Report card writer (Jira, Agenda/Calendar, Bills card, Amazon card, Mail Alerts, Hiring card, Attention card, Daily Command Center, Communications, Oracle Cloud); Attention; MegIBOW | **Daily LIFE OS Report** page; **Attention** data source; **MegIBOW** dashboard page and **MegIBOW Review** database |
 | **LIFE OS Recruiters** | Oct 6 | `NOTION_RECRUITERS_TOKEN` | Bitwarden `b7b921fa-3f62-478a-a4f5-b4db015efcf7` | `recruiters.yml` and `domains.yml` recruiters (mail to Recruiters; Mark as Sent rows read by `job-page-outreach`) | **Recruiters** data source |
 | **LIFE OS Amazon** | Oct 3 | `NOTION_AMAZON_TOKEN` | Bitwarden `46fe195b-82e2-416e-8272-b4db015eea12` | `domains.yml` / `amazon.yml` Amazon Orders, Amazon card read, retention | **Amazon Orders** data source |
@@ -17,10 +17,8 @@ page and data-source ids for production objects stay secrets; they are named her
 | **LIFE OS Close (S2)** | Oct 16 | not in GitHub | root-only encrypted credential on the Oracle VM (D198) | the private Close / Mark as Sent service | **Job Ledger** database and **Hiring Pipeline** page (D198) |
 | **VS Code Test** | Mar 8 | none | OAuth app, any workspace | not used by V7 | nothing for V7 |
 
-**Note 1 — VS Code is `NOTION_API_TOKEN` by elimination, not by a recorded label.** Each `LIFE OS …` connection matches one dedicated V7 token by name and
-date, `VS Code Test` is OAuth (no static token), and `VS Code` is the only remaining internal API-token connection; the Job Ledger and the V1 runtime predate
-October. Confirm once in Notion: Settings → Connections → **VS Code** → Access should list the Job Ledger and LI Connection Database & Integration. If it does
-not, stop and correct this table before sharing anything.
+**Note 1 — VS Code is `NOTION_API_TOKEN`, verified.** On Oct 20 2026 the read-only `diag` check `notion-sandbox-access` with `NOTION_API_TOKEN` got 404 on all
+three sandbox reads (run 39367878512); Jim then connected only **VS Code** to the sandbox page and the same check got 200 on all three (run 39368717318).
 
 ## Rules
 
