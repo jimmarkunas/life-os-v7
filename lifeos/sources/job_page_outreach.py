@@ -153,8 +153,11 @@ def _verify(client, page_id, heading_id, want, before):
     region = _region(client, page_id, heading_id)
     if not R.titled(R.plain(region["heading"]), TITLE) or R.cells_of(region["rows"][0]) != list(HEADERS) or [R.live_view(r) for r in region["rows"][1:]] != [R.want_view(w) for w in want]:
         raise fail("READBACK_MISMATCH")
-    after = R.page_digest(client, page_id, [region["heading"]["id"], region["table"]["id"]], fail)
-    unowned = lambda d: ({k: v for k, v in d["nodes"].items() if v != "owned"}, {k: v for k, v in d["layout"].items() if k != page_id})
+    mine = {region["heading"]["id"], region["table"]["id"]}
+    after = R.page_digest(client, page_id, list(mine), fail)
+    unowned = lambda d: ({k: v for k, v in d["nodes"].items() if v != "owned"},                       # every other block's content,
+                         {k: v for k, v in d["layout"].items() if k != page_id},                      # every nested child order,
+                         [i for i in d["layout"].get(page_id, []) if i not in mine])                  # and the page's own top-level order, minus only the region
     if unowned(after) != unowned(before):
         raise fail("PROTECTED_CONTENT_CHANGED")
     return region

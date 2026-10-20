@@ -120,6 +120,26 @@ class JobPageOutreach(unittest.TestCase):
         done = self.run_it(t)
         self.assertEqual((done["failed"], done["codes"]), (1, {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1}))
 
+    def test_top_level_blocks_reordered_during_a_write_fail_the_proof(self):
+        mark(self.svc, JOB_A, "Avery Synthetic")
+        t = job_page()
+        def swap(tree):                                                        # Jim's notes moved above the description while the region is being created
+            kids = tree.kids[JOB_A]
+            kids.remove("notes")
+            kids.insert(1, "notes")
+        t.trip = ("/children", swap)
+        self.assertEqual(self.run_it(t)["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
+        t = job_page()
+        self.run_it(t)                                                         # and the same during an update of an existing region
+        mark(self.svc, JOB_A, "Blake Synthetic")
+        heading, table, _ = region(t)
+        def move(tree):
+            kids = tree.kids[JOB_A]
+            kids.remove("net")
+            kids.append("net")
+        t.trip = (f"/blocks/{table}/children", move)                              # fires on the row append inside the update
+        self.assertEqual(self.run_it(t, now=NOW + timedelta(hours=1))["codes"], {"JOB_PAGE_OUTREACH_PROTECTED_CONTENT_CHANGED": 1})
+
     def test_a_job_with_no_conversation_gets_nothing(self):
         t = job_page()
         done = self.run_it(t)

@@ -11,7 +11,8 @@ import os
 import time
 
 from lifeos.jobs import lanes, sponsors, store
-from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, cloud as fit_cloud, profile as fit_profile, semantic as fit_semantic
+from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, semantic as fit_semantic
+from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
 
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
@@ -88,7 +89,6 @@ def _gate(cursor, job_id, decision, gate, counts):
 
 CANARY_ROW = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text, j.posted_date, j.first_seen, j.route_evidence, j.source"
               " FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.id = %s")
-HOLD = "UPDATE v7_job_fit SET cloud_status='HELD', cloud_reason='PUBLISHED_WOULD_EXCLUDE' WHERE job_id=%s AND cloud_status='DEGRADED' AND cloud_reason=%s"
 PROMOTE = ("UPDATE v7_job_fit SET score=%s, decision=%s, line=%s, why=%s, confidence=%s, admission=%s, admission_reason=%s, work_mode=%s, lane=%s, eligible=%s,"
            " scored_at=%s, cloud_status='CANARY', cloud_reason=NULL WHERE job_id=%s AND cloud_status='DEGRADED' AND cloud_reason=%s")
 
@@ -97,19 +97,15 @@ def promote_cloud(cursor, job_id, judgment, model, profile, today, gate, counts,
     """D218 (Jim, LIFE-41 10555): the cloud-Fit canary. The model's accepted score (judge.accept: the family and junior caps already applied) becomes this job's
     visible Fit: the same score_rows lane decision decides admission with it, and the same gate moves the job. The provenance is in the line ('Cloud Fit ...'),
     which publish writes to Why It Fits. Only the row the shadow has just stored as CANARY_PROMOTION_FAILED is touched, and the one UPDATE that writes the
-    visible Fit is the one that marks it CANARY, so the marker and the visible score exist together or not at all. -> True when promoted, "HELD" when a
-    published job would be excluded (D219: kept private, its page untouched), else False."""
+    visible Fit is the one that marks it CANARY, so the marker and the visible score exist together or not at all. A published job the cloud excludes is promoted
+    the same way (D224, replacing the D219 hold): its stored admission becomes EXCLUDE and the gated precision audit, which runs right after Fit
+    in the tick, trashes its page under lifeos.jobs.guard (Applied, Applied On, a Saturn Decision or an active pipeline opportunity keeps it) and the job becomes
+    EXCLUDED_FIT, never published again. -> True when promoted, else False."""
     cursor.execute(CANARY_ROW, (job_id,))
     row = cursor.fetchone()
     if row is None or judgment.score is None:
         return False
     (_, _, _, decision, lane_name, work_mode, eligible), = score_rows([row], profile, today, None, register, fit={job_id: judgment.score})
-    cursor.execute("SELECT status FROM v7_jobs WHERE id=%s", (job_id,))
-    if decision.status == lanes.EXCLUDE and (cursor.fetchone() or [None])[0] == "PUBLISHED":
-        # D219: a published job the cloud would exclude keeps its visible Fit and its page (the audit would trash an unprotected EXCLUDE page): the answer stays
-        # private, marked HELD, and is counted for Jim's decision. Never a mass change to published pages without that decision.
-        cursor.execute(HOLD, (job_id, fit_cloud.PROMOTION_FAILED))
-        return "HELD" if cursor.rowcount == 1 else False
     line = f"Cloud Fit {judgment.score}% ({model}): {judgment.rationale}"
     cursor.execute(PROMOTE, (judgment.score, judgment.decision, line[:600], judgment.rationale[:300], judgment.confidence, decision.status,
                              (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible), _now(), job_id, fit_cloud.PROMOTION_FAILED))
@@ -129,6 +125,30 @@ def regate_canary(cursor):
                    " WHERE f.cloud_status='CANARY' AND f.admission IN ('ADMIT', 'REVIEW') AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='lane_exclude'"
                    " AND j.notion_page_id IS NULL", (_now(),))
     return moved + int(cursor.rowcount or 0)
+
+
+HELD_ROWS = ("SELECT job_id, cloud_score, cloud_confidence, cloud_rationale, cloud_model, exclusion FROM v7_job_fit"
+             " WHERE cloud_status='HELD' AND cloud_reason='PUBLISHED_WOULD_EXCLUDE' AND cloud_score IS NOT NULL ORDER BY job_id LIMIT 200")
+UNHOLD = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='HELD' AND cloud_reason='PUBLISHED_WOULD_EXCLUDE'"
+
+
+def release_held(cursor, profile, today, gate, counts, register=None):
+    """Jim's decision on the D219 holds (LIFE-41, Oct 20: "Apply the exclusion"): each published job the cloud had already judged and HELD is promoted from its
+    stored private answer, through promote_cloud exactly as a new answer (no model call). The row first returns to the named canary failure, so a promotion that
+    cannot complete stays visible as CANARY_PROMOTION_FAILED, never HELD again and never re-asked. Idempotent: once no row is HELD this does nothing.
+    -> (released, failed)."""
+    cursor.execute(HELD_ROWS)
+    released = failed = 0
+    for job_id, score, confidence, rationale, model, exclusion in cursor.fetchall():
+        cursor.execute(UNHOLD, (fit_cloud.PROMOTION_FAILED, job_id))
+        if cursor.rowcount != 1:
+            continue
+        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")     # judge.accept's own rule
+        if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
+            released += 1
+        else:
+            failed += 1
+    return released, failed
 
 
 def cloud_promoter(profile, gate, counts, register):
@@ -222,6 +242,9 @@ def run(limit, live, environ=os.environ):
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
     register = sponsors.load()
+    if live and gate:
+        with store.connect() as connection, connection.cursor() as cursor:
+            counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
     scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
@@ -247,5 +270,5 @@ def run(limit, live, environ=os.environ):
                 _gate(cursor, job_id, decision, gate, counts)
     promote = cloud_promoter(profile, gate, counts, register)          # D218: canary only
     counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))   # D214: after the static write; off by default, shadow never changes it
-    counts["failed"] = counts["cloud_degraded"]                     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
+    counts["failed"] = counts["cloud_degraded"] + counts.get("cloud_held_failed", 0)     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
     return counts

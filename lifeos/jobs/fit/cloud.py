@@ -145,7 +145,7 @@ def _now():
 
 
 def run(environ=os.environ, live=False, started=None, profile=None, send=None, clock=time.monotonic, promote=None, batch=None, ledger_check=None):
-    """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded, cloud_promoted, cloud_held and the receipts' own token
+    """-> counts: cloud_fit (off | OK | DEGRADED(<code>)), cloud_calls, cloud_ok, cloud_skipped, cloud_degraded, cloud_promoted and the receipts' own token
     sums. Called by the Fit stage after its static write (shadow / canary: V7_CLOUD_FIT, at most one call), or by the backlog stage with `batch` (D219, Jim's
     separately approved bounded batch: {"calls": n, "budget": seconds}; it never reads V7_CLOUD_FIT). The static result of the same text is the base, so the hard-family
     and junior caps and the gate apply to the cloud score exactly as to the static one.
@@ -154,7 +154,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     call, so an interrupted run keeps every finished answer. A refusal made before any model call (BUSY, REFUSED_*) releases the claim and stops the run; any other
     failure is recorded on the row, so a model call that may have run is never repeated."""
     counts = {"cloud_fit": "backlog" if batch else mode(environ), "cloud_calls": 0, "cloud_ok": 0, "cloud_skipped": 0, "cloud_degraded": 0, "cloud_skip_reasons": {},
-              "cloud_promoted": 0, "cloud_held": 0, "cloud_failed": 0, "cloud_claim_lost": 0, **{k: 0 for k in USAGE_SUMS}, "cloud_usage_unavailable": 0}
+              "cloud_promoted": 0, "cloud_failed": 0, "cloud_claim_lost": 0, **{k: 0 for k in USAGE_SUMS}, "cloud_usage_unavailable": 0}
     if counts["cloud_fit"] == "off":
         return counts                                                    # no store read, no network, no model
     canary = counts["cloud_fit"] in ("canary", "backlog")                # both make an accepted answer visible through the stage's promotion
@@ -273,10 +273,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
             _degraded(counts, WRITE_CONFLICT)
             continue
         if canary:
-            outcome = promote(job_id, got["judgment"], str(receipt.get("model") or "model"))
-            if outcome == "HELD":
-                counts["cloud_held"] += 1                                # D219: a published job the cloud would exclude: kept private for Jim's decision, page untouched
-            elif outcome:
+            if promote(job_id, got["judgment"], str(receipt.get("model") or "model")):
                 counts["cloud_promoted"] += 1                            # D218: only an accepted, receipt-checked, purged answer that was just stored
             else:
                 counts["cloud_ok"] -= 1
