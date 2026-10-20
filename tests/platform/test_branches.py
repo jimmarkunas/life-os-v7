@@ -221,3 +221,16 @@ class RealClient(unittest.TestCase):
         self.assertEqual(client.token, "secret-token")
         with self.assertRaises(NotionError):
             branches.writer({})                                                       # no token: a named failure, never a client without one
+
+
+class PushRefusal(unittest.TestCase):
+    """Oct 20, 4:45 PM CT: the first real archive push was refused and the run only said ARCHIVE_PUSH_FAILED. Each refusal now has its own code."""
+
+    def test_each_refusal_is_named_and_git_says_nothing_else(self):
+        cases = {"remote: refusing to allow a Personal Access Token to create or update workflow `.github/workflows/x.yml` without `workflow` scope":
+                 "ARCHIVE_PUSH_NEEDS_WORKFLOWS_PERMISSION",
+                 "remote: Permission to jimmarkunas/life-os-automation.git denied to jimmarkunas.\nfatal: unable to access: The requested URL returned error: 403": "ARCHIVE_PUSH_FORBIDDEN",
+                 " ! [rejected]        x -> x (already exists)": "ARCHIVE_PUSH_REJECTED",
+                 "fatal: something else": "ARCHIVE_PUSH_FAILED", "": "ARCHIVE_PUSH_FAILED"}
+        for stderr, code in cases.items():
+            self.assertEqual(branches.push_refusal(stderr), code, stderr)
