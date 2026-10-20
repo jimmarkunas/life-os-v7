@@ -225,3 +225,4 @@ This index is checked by a test: add a line here with every new decision.
 - D224 — A published job the cloud excludes is excluded: the Cloud Fit verdict is final and the gated audit removes its page (2026-10-20, Jim; LIFE-41)
 - D225 — The outreach table lives on each Job Ledger job page (2026-10-20, Jim; LIFE-10 §2 / LIFE-47)
 - D226 — Cloud Fit canary: an accepted cloud answer becomes the job's visible Fit through the Fit stage's own lane decision, fail-closed (2026-10-19, Jim; LIFE-41 10555)
+- D227 — Cloud Fit is limited by the account's own allowance: Oracle reads the Codex 5-hour and weekly used percent and stops at Jim's 50 % reserve (2026-10-19, Jim; LIFE-77 / LIFE-41)

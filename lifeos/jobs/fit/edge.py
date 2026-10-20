@@ -17,7 +17,8 @@ STATUSES = {"REFUSED", "BUSY", "TIMEOUT", "TIMEOUT_ORPHAN", "ERROR", "MODEL_DRIF
 REASONS = {"NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT",
            "LIMIT_UNCONFIGURED",                                                 # LIFE-41 G3: Oracle's fail-closed daily cap has no limit.json
            "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE", "BRIEF_HASH_MISMATCH", "BRIEF_INVALID", "PROFILE_MISMATCH", "PURGE_FAILED",   # LIFE-41 G5 real gate (10489/10491)
-           "USAGE_UNAVAILABLE"}                                                  # LIFE-41 usage integrity: Oracle's synthetic usage check or latch failed; no model call
+           "USAGE_UNAVAILABLE",                                                  # LIFE-41 usage integrity: Oracle's synthetic usage check or latch failed; no model call
+           "QUOTA_RESERVE", "QUOTA_UNCONFIGURED", "METER_UNAVAILABLE"}           # LIFE-77: the account's own allowance is at Jim's reserve, has no policy, or cannot be read; no model call
 MODELS = {"gpt-6-luna", "openai/gpt-6-luna"}
 
 
@@ -26,6 +27,7 @@ class EdgeError(RuntimeError):
     the validated Oracle receipt, kept privately as provenance."""
     detail = ""
     receipt = None
+    quota = None                     # LIFE-77: Oracle's meter reading on a QUOTA_RESERVE refusal (quota_reading's shape), so the run can say which window and when it resets
 
 
 def digest(request):
@@ -70,6 +72,19 @@ def bad_receipt_field(receipt):
     return next((name for name, ok in rules.items() if not ok), None)
 
 
+def quota_reading(raw):
+    """LIFE-77: Oracle's meter reading -> {"stop": int, "windows": [{"label", "used", "reset_at"}]} with labels and numbers only, or None when absent or not as contracted."""
+    try:
+        stop, windows = raw["stop"], raw["windows"]
+        assert type(stop) is int and 1 <= stop <= 100 and isinstance(windows, list) and 0 < len(windows) <= 4
+        out = [{"label": w["label"], "used": w["used"], "reset_at": w["reset_at"]} for w in windows]
+        assert all(isinstance(w["label"], str) and 0 < len(w["label"]) <= 16 and type(w["used"]) in (int, float) and 0 <= w["used"] <= 100
+                   and isinstance(w["reset_at"], str) and len(w["reset_at"]) <= 40 for w in out)
+        return {"stop": stop, "windows": out}
+    except (KeyError, TypeError, AssertionError):
+        return None
+
+
 def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
     """One model invocation, never retried: -> {judgment, receipt, request_hash}, or an EdgeError code at the first thing that does not match."""
     if not host:
@@ -93,7 +108,9 @@ def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
     if reply.get("nonce") != nonce:
         raise EdgeError("FIT_EDGE_NONCE_MISMATCH")
     if status != "OK":                                                    # a refused, busy, timed-out or drifted request is a named code, never a Fit
-        raise EdgeError("FIT_EDGE_" + (status if status in STATUSES else "OFF_CONTRACT") + ("_" + reply["reason"] if status == "REFUSED" and isinstance(reply.get("reason"), str) and reply["reason"] in REASONS else ""))
+        error = EdgeError("FIT_EDGE_" + (status if status in STATUSES else "OFF_CONTRACT") + ("_" + reply["reason"] if status == "REFUSED" and isinstance(reply.get("reason"), str) and reply["reason"] in REASONS else ""))
+        error.quota = quota_reading(reply.get("quota"))
+        raise error
     field = bad_receipt_field(receipt) or (None if isinstance(reply.get("judgment_raw"), str) else "judgment_raw")
     if field:
         error = EdgeError("FIT_EDGE_RECEIPT_REJECTED")
@@ -110,7 +127,8 @@ def invoke(host, request, base, title, nonce=None, send=exchange, wait=WAIT):
     judgment = judge.accept(reply["judgment_raw"], base, title, request)
     if judgment is None:
         raise EdgeError("FIT_EDGE_JUDGMENT_REJECTED")
-    return {"judgment": judgment, "receipt": receipt, "request_hash": want, "runs_today": reply.get("runs_today"), "limit": reply.get("limit"), "fixture": reply.get("fixture")}
+    return {"judgment": judgment, "receipt": receipt, "request_hash": want, "runs_today": reply.get("runs_today"), "limit": reply.get("limit"), "fixture": reply.get("fixture"),
+            "quota": quota_reading(reply.get("quota"))}
 
 
 def probes(fixture=None):
