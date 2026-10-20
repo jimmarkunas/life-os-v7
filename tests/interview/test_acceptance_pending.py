@@ -112,14 +112,19 @@ class LedgerRead(unittest.TestCase):
 
 
 class WorkflowStep(unittest.TestCase):
-    def test_only_the_acceptance_step_gets_the_ledger_id(self):
+    def test_only_the_two_acceptance_steps_get_the_ledger_id_and_the_negative_case_never_runs_live(self):
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
         job = text[text.index("\n  interview:\n"):text.index("\n  report:\n")]
         self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)                       # blank for the whole job
-        self.assertEqual(job.count("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}"), 1)
-        step = job[job.index("id: iacc"):job.index("Interview warning")]
-        self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", step)
-        self.assertNotIn("NOTION_API_TOKEN", step)
+        self.assertEqual(job.count("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}"), 2)
+        main = job[job.index("id: iacc\n"):job.index("id: iaccneg")]
+        negative = job[job.index("id: iaccneg"):job.index("Interview warning")]
+        for step in (main, negative):
+            self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", step)
+            self.assertNotIn("NOTION_API_TOKEN", step)
+        self.assertIn("INTERVIEW_ACCEPTANCE_JSON: ${{ secrets.INTERVIEW_ACCEPTANCE_NEGATIVE_JSON }}", negative)
+        self.assertNotIn("--live", negative)                                                    # D233: the negative case can never write
+        self.assertNotIn("$LIVE", negative)
 
 
 if __name__ == "__main__":
