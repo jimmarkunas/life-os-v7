@@ -60,19 +60,29 @@ def valid_person(person):
     return person if 0 < len(person) <= PERSON_MAX and person.isprintable() else ""
 
 
-def _props(job, person, now):
-    return {"Recruiter / Person": {"title": rich_text(person)}, "Client": {"rich_text": rich_text(job["company"])}, "Role": {"rich_text": rich_text(job["role"])},
+def employer_from(reason):
+    """The person's CURRENT employer from a Network Leads line ("Listed at <company> as <title>, as of ..."), else "". A previous employer, an unverified name
+    match or the placeholder "this company" is never recorded as current."""
+    if not str(reason or "").startswith("Listed at "):
+        return ""
+    where = str(reason)[len("Listed at "):].rpartition(", as of ")[0].partition(" as ")[0]
+    return "" if where == "this company" else valid_person(where)
+
+
+def _props(job, person, now, employer=""):
+    return {"Recruiter / Person": {"title": rich_text(person)}, **({"Recruiter Company": {"rich_text": rich_text(employer)}} if employer else {}),
+            "Client": {"rich_text": rich_text(job["company"])}, "Role": {"rich_text": rich_text(job["role"])},
             "Medium": {"rich_text": rich_text(MEDIUM)}, "Last Contact": {"date": {"start": now.replace(second=0, microsecond=0).isoformat()}},
             "Week Ending": {"date": {"start": week_ending(now)}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": False},
             "Action Status": {"select": {"name": store.WAITING}}, "Follow-up Date": {"date": {"start": store.add_business_days(now.date(), store.FOLLOW_UP_DAYS).isoformat()}},
             JOB: {"relation": [{"id": job["id"]}]}}
 
 
-def mark_sent(notion, job, person, now, ledger_source):
-    """Jim's confirmed Mark as Sent for one exact job and one person. -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
+def mark_sent(notion, job, person, now, ledger_source, employer=""):
+    """Jim's confirmed Mark as Sent for one exact job and one person, with the person's employer when known (stored as Recruiter Company; never guessed). -> {"status": "recorded" | "already_recorded", "verified": True, "state": "open" | "closed",
     "action", "follow_up"}; an existing row for (job, person) is returned as it is (never rewritten, never relabelled Waiting).
     One non-retried create after absence is proven for (job, person), then a fresh read must show exactly that one row, Waiting, linked to the job."""
-    person = valid_person(person)
+    person, employer = valid_person(person), valid_person(employer)
     if not person or not job.get("id") or not job.get("company") or not job.get("role"):
         raise store.RecruitersError("OUTREACH_REQUEST_INVALID")
     check_schema(notion, ledger_source)
@@ -83,14 +93,14 @@ def mark_sent(notion, job, person, now, ledger_source):
         row = mine[0]
         state = "closed" if row["done"] or not row["active"] or row["action"] in store.HISTORY else "open"
         return {"status": "already_recorded", "verified": True, "state": state, "action": row["action"], "follow_up": row["follow_up"]}
-    props = _props(job, person, now)
+    props = _props(job, person, now, employer)
     try:
         notion.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": notion.source}, "properties": props})
     except NotionError:
         raise store.RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
     after = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
     want = props["Follow-up Date"]["date"]["start"]
-    if len(after) != 1 or after[0]["action"] != store.WAITING or after[0]["follow_up"] != want or after[0]["done"] or not after[0]["active"]:
+    if len(after) != 1 or after[0]["action"] != store.WAITING or after[0]["follow_up"] != want or after[0]["company"] != employer or after[0]["done"] or not after[0]["active"]:
         raise store.RecruitersError("OUTREACH_READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "state": "open", "action": store.WAITING, "follow_up": want}
 
