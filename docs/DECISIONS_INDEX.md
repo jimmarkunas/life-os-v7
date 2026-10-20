@@ -240,3 +240,4 @@ This index is checked by a test: add a line here with every new decision.
 - D239 — A lapsed OpenAI sign-in is a clean AUTH_UNAVAILABLE refusal, and the AI Capacity card shows each sign-in's health (2026-10-20, Jim; LIFE-41 / LIFE-77)
 - D240 — A Cloud Fit batch may ask up to 600 jobs (was 100), and looks at up to 3,000 candidates (2026-10-20, Jim; LIFE-41)
 - D241 — A connection to Oracle that cannot be opened is tried once more, and if it never opens it is FIT_EDGE_CONNECT_FAILED: no call (2026-10-20, Jim; LIFE-41)
+- D242 — Decision numbers are claimed on GitHub before use, and a reused number fails the PR (2026-10-20, Jim; LIFE-89)

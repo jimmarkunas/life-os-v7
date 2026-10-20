@@ -295,6 +295,10 @@ This is a **repeatable safeguard using existing LIFE Jira and PR review**, not a
 
 **D. Enforcement must be measurable and cheap.** Reuse `tests/contracts/`, CODEMAP freshness and established CI for objective invariants. Existing baseline technical debt is initially logged, not cause for indiscriminate failing builds. Don't add a fuzzy duplicate-code classifier, another agent scheduler, a numerical LOC-reduction quota, or a new global approval step. Metrics are user-visible regressions, duplicate live implementations, agent bootstrap/change-time, representative files touched, CI duration, stage failure rate, and outcome latency. One-time remediation starts with LIFE-23/LIFE-24 **after** LIFE-78 M2; LOS-40 retains the standing product requirement. Any code/config/CI or production activation changes still need their normal independent approval.
 
+### Decision numbers are claimed, never picked — Jim-approved October 20, 2026 (LIFE-89)
+
+Before writing a new decision in `docs/DECISIONS.md`, run `python -m lifeos.decisions claim` and use only the number it prints. It claims the number on GitHub as the tag `decision-claim/D###`; GitHub creates a tag atomically, so two parallel sessions can never get the same number. Never take "the next number" from a local copy of the log: that is how D229, D231, D235 and D236 were each taken twice on October 20. A claim that ends up unused leaves a harmless gap. An amendment or advice to an existing decision keeps that decision's number (`## D12 amendment …`). The contract test `DecisionNumberTests` fails any PR that reuses a number.
+
 ### Jobs incremental architecture stress gate
 
 For LIFE OS Jobs, every new capability, integration, source adapter, crawler increment, qualification stage, persistence path, or other architectural increment must be stress/load tested during its initial implementation before the pattern is replicated.
