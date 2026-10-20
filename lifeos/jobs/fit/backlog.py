@@ -3,7 +3,7 @@
 `python -m lifeos.run fit-cloud-backlog --limit N --live` asks at most min(N, V7_CLOUD_FIT_BACKLOG_MAX, BACKLOG_CALLS_MAX) jobs, one at a time (Oracle runs one
 request at a time and answers a second with BUSY: concurrency is 1, never bypassed), within V7_CLOUD_FIT_BACKLOG_BUDGET seconds. V7_CLOUD_FIT_BACKLOG_MAX is Jim's
 approved ceiling (a repository variable); unset or invalid is 0, so nothing is asked. It does not read V7_CLOUD_FIT. A tick runs it only when Jim sets
-V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2: N calls after the tick, N its own ceiling, 480 s, never a pilot page).
+V7_CLOUD_FIT_SCHEDULED=N (hourly.yml Step 6a2: N calls after the tick, N its own ceiling, 600 s, never a pilot page).
 
 Candidates are the canary's own (a public employer / ATS posting the audit would keep, a static Admit or Review, never asked) plus published jobs, most useful
 first. A published job's Ledger page is read first (lifeos.jobs.guard): applied, an Applied On date or an unreadable page uses no call. An accepted answer becomes
