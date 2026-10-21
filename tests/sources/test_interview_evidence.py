@@ -363,6 +363,73 @@ class Exceptions(unittest.TestCase):
         self.assertEqual(ev.headline_company({"body": body.replace("Senior Recruiter at Example Corp | Hiring", "Recruiter")}), "")      # the footer describes Jim, never the sender
 
 
+POSTING = "https://boards.greenhouse.io/exampleco/jobs/1234567"
+
+
+class Cursor:
+    def __init__(self, new=True):
+        self.sql, self.rowcount = [], 1 if new else 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, args=()):
+        self.sql.append((sql.split()[0], args))
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+
+class LinkLeads(unittest.TestCase):
+    """E01b: a recruiter's public posting link is a real job. It goes through Jobs OS (Enrich, Fit, Luna on the public posting, Publish); the email text never does."""
+    def message(self, *links):
+        return outreach(extra=" ".join(links))
+
+    def test_exactly_one_public_ats_posting_is_the_job_and_its_key_is_the_one_jobs_os_gives_that_link(self):
+        from lifeos.jobs import identity
+        self.assertEqual(ev.posting_link(self.message(POSTING)), POSTING)
+        self.assertEqual(ev.lead_of(self.message(POSTING))[3], identity.url_hash(POSTING))
+        for label, links in (("two postings", (POSTING, "https://boards.greenhouse.io/exampleco/jobs/7654321")), ("not an ATS", ("https://www.example.com/jobs/1",)),
+                             ("a listing, not one vacancy", ("https://boards.greenhouse.io/exampleco",)), ("no link", ())):
+            self.assertIsNone(ev.posting_link(self.message(*links)), label)
+        self.assertEqual(ev.lead_of(self.message())[3], "recruiter-exampleco-program-manager")
+
+    def test_a_new_lead_job_is_inserted_resolved_in_the_recruiter_lane_at_its_own_link(self):
+        cursor = Cursor()
+        self.assertTrue(ev.lead_job("ExampleCo", "Program Manager", POSTING, outreach(), ev.datetime(2026, 10, 21, 12, tzinfo=ev.TZ), connect=lambda: cursor))
+        insert = next(args for kind, args in cursor.sql if kind == "INSERT")
+        update = cursor.sql[-1]
+        self.assertIn("RESOLVED", insert)
+        self.assertTrue({"Recruiter", "recruiter", "Recruiter outreach"} <= set(insert))
+        self.assertEqual((update[0], update[1][0]), ("UPDATE", POSTING))
+        again = Cursor(new=False)
+        self.assertFalse(ev.lead_job("ExampleCo", "Program Manager", POSTING, outreach(), ev.datetime(2026, 10, 21, tzinfo=ev.TZ), connect=lambda: again))
+        self.assertEqual([kind for kind, _ in again.sql if kind == "UPDATE"], ["UPDATE"])      # only the seen-count bump of a link Jobs OS already holds; no new row, no link rewrite
+
+    def test_a_live_run_sends_a_link_lead_to_jobs_os_and_a_linkless_one_to_a_direct_row(self):
+        writer = Writer()
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            counts, got = Run(parents=(), kids={}, roster=[], records=[outreach(extra=POSTING)], environ=LIVE, writer=writer)()
+        self.assertEqual((job.call_count, writer.created, counts["lead_jobs"], counts["lead_rows"], len(got["evidence"])), (1, [], 1, 0, 1))
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            counts, _ = Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE, writer=writer)()
+        self.assertEqual((job.call_count, len(writer.created), counts["lead_rows"]), (0, 1, 1))
+
+    def test_a_job_store_failure_is_degraded_and_creates_no_page(self):
+        with patch.object(ev, "lead_job", side_effect=RuntimeError("db")):
+            counts, got = Run(parents=(), kids={}, roster=[], records=[outreach(extra=POSTING)], environ=LIVE, writer=Writer())()
+        self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed")), ([], 1))
+
+
 class Window(unittest.TestCase):
     def test_a_longer_mail_window_is_for_a_dry_run_only_and_never_beyond_90_days(self):
         for asked, live, want in (("", False, 14), ("60", False, 60), ("60", True, 14), ("5", False, 14), ("500", False, 90), ("abc", False, 14), ("-3", False, 14)):

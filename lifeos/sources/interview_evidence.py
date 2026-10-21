@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as hiring, outcomes
-from lifeos.jobs import lanes, ledger as jobs_ledger, publish
+from lifeos.jobs import classify as job_site, identity, intake, lanes, ledger as jobs_ledger, publish, quality, store
 from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
@@ -36,6 +36,7 @@ HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[
 LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
+URL = re.compile(r"https?://[^\s<>\"')\]]+")
 REQ = re.compile(r"\b(?:req(?:uisition)?|job|ref(?:erence)?)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*([A-Z]{0,4}[-_]?\d{4,10})\b", re.I)
 
 
@@ -97,6 +98,13 @@ def headline_company(message):
     return ""
 
 
+def posting_link(message):
+    """The one public job-posting link (an employer ATS page for a single vacancy) a recruiter's message carries, else None; two different ones are not guessed between."""
+    found = {u.rstrip(".,;:") for u in URL.findall(str(message.get("body") or "")[:20000])}
+    found = {u for u in found if job_site.apply_kind(u) == "ats" and not quality.link_problem(u)}
+    return found.pop() if len(found) == 1 else None
+
+
 def lead_of(message):
     """E01b, pure: a recruiter outreach that names a role -> (company, role, requisition, minted Stable Job Key, message link), else None. Email and LinkedIn messages in the
     inbox alike (the recruiters classifier decides who is a recruiter). The company is the client when the message names one, else the recruiter's company; a LinkedIn message that
@@ -108,7 +116,9 @@ def lead_of(message):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
     slug = lambda text: "-".join(tokens(text))[:40]
-    return company, found["role"], req.group(1) if req else None, "recruiter-" + slug(company) + "-" + (squash(req.group(1)) if req else slug(found["role"])), message["url"]
+    link = posting_link(message)                                         # a public posting is a real job: its Stable Job Key is the one Jobs OS gives that link, so the Ledger row will match
+    key = identity.url_hash(link) if link else "recruiter-" + slug(company) + "-" + (squash(req.group(1)) if req else slug(found["role"]))
+    return company, found["role"], req.group(1) if req else None, key, message["url"]
 
 
 def exceptions(environ):
@@ -130,6 +140,21 @@ def recent_or_named(records, environ, now, live):
     named = exceptions(environ)
     cutoff = now - timedelta(days=mail.WINDOW_DAYS)
     return list(records) if asked else [m for m in records if datetime.fromisoformat(str(m["received"]).replace("Z", "+00:00")).astimezone(TZ) >= cutoff or any(outcomes.mentions(m, c) for c in named)]
+
+
+def lead_job(company, role, link, message, now, connect=store.connect):
+    """E01b: a recruiter's public posting link enters Jobs OS like any job (RESOLVED at its own ATS link, lane Recruiter, source `recruiter`), so Enrich reads the posting, the
+    static Fit and the Cloud Fit (Luna, public postings only) score it, and Publish writes its Ledger row. The recruiter's own email text never leaves this job.
+    -> True when the job is new, False when Jobs OS already holds that link."""
+    job = {"url": link, "status": "RESOLVED", "title": role, "company": company, "location": "", "salary": "", "source": "recruiter", "provider": "Recruiter outreach",
+           "lane": lanes.RECRUITER, "age_days": None, "provider_score": None,
+           "received": datetime.fromisoformat(str(message["received"]).replace("Z", "+00:00")).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)}
+    stamp = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    with connect() as connection, connection.cursor() as cursor:
+        key, new = intake.add_job(cursor, job, stamp)
+        if new:
+            cursor.execute("UPDATE v7_jobs SET final_apply_url=%s, apply_kind='ats', updated_at=%s WHERE dedupe_key=%s", (link, stamp, key))
+    return new
 
 
 def lead_row(writer, company, role, key, url, today):
@@ -261,11 +286,15 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         found = lead_of(message)
         if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
             fresh[found[3]] = (found, message["received"])
-    rows = 0
+    rows = jobs = 0
     for (company, role, req, key, url), _ in sorted(fresh.values(), key=lambda v: v[1], reverse=True)[:LEADS_PER_RUN]:
-        if live:                                                             # the Ledger row first: no page for a lead the Ledger does not hold
+        if live:                                                             # the job or Ledger row first: no page for a lead Jobs OS does not hold
             try:
-                rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
+                link = posting_link(message)
+                if link:
+                    jobs += bool(lead_job(company, role, link, message, now))
+                else:
+                    rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("lead_row_failed")
                 continue
@@ -277,7 +306,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif held:
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
-    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"] = {**counts["why"], **why}, counts_requests, len(fresh), rows
+    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), rows, jobs
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     for row, *_ in leads:
         label = sha1(row["title"].encode()).hexdigest()[:6]
