@@ -70,7 +70,8 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
         facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
                                 kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source),
                                 title_only=lanes.title_watch_source(source))
-        decision, lane_name, eligible = lanes.decide_all(lane, facts, today, result.exclusion)
+        exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion       # a keep-list role Jim chose over a title rule
+        decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
     return out
 

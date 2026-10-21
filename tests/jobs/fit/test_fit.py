@@ -184,6 +184,16 @@ class Stage(unittest.TestCase):
         gated = stage.score_rows([(2, "Program Manager", "AcmeCorp Inc", GOOD, "fp", "Newsletter", "Remote", None, None, date(2026, 9, 30))], PROFILE, TODAY)[0]
         self.assertEqual((gated[3].status, gated[2].decision), ("EXCLUDE", "No-Go"))
 
+    def test_a_keep_list_credit_manager_product_role_is_not_excluded_by_the_financial_risk_title_rule(self):
+        from lifeos.jobs.fit import stage
+        london = ("Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", "web:su-revolut-ltd")
+        kept = stage.score_rows([(1, "Credit Manager (Product)", "Revolut Ltd", GOOD, "fp") + london], PROFILE, TODAY)[0]
+        self.assertNotEqual(kept[3].status, "EXCLUDE")
+        self.assertEqual(kept[2].exclusion, "finance_risk_domain")          # the rule still fires on the Fit result; only the lane decision ignores it for this role
+        for title, company in (("Credit Manager (Risk)", "Revolut Ltd"), ("Credit Manager (Product)", "Acme Ltd")):
+            other = stage.score_rows([(2, title, company, GOOD, "fp") + london], PROFILE, TODAY)[0]
+            self.assertEqual(other[3].status, "EXCLUDE", (title, company))
+
     def test_score_rows_is_pure_and_missing_profile_is_a_noop(self):
         from lifeos.jobs.fit import stage
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)

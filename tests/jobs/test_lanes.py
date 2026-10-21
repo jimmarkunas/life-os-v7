@@ -311,6 +311,19 @@ class KeepListTests(unittest.TestCase):
         self.assertFalse(lanes.on_keep_list("Revolut Ltd", "Product Designer (Mobile)"))
         self.assertFalse(lanes.on_keep_list("Acme", "Product Designer (Platform)"))
 
+    def test_the_four_revolut_roles_jim_named_are_on_the_list(self):
+        for title in ("Credit Manager (Product)", "Product Owner (UX)", "Product Owner (Technical)", "Operations Manager (Revenue)",
+                      "Product Owner - UX", "Product Owner, Technical", "Product Owner (User Experience)"):
+            self.assertTrue(lanes.on_keep_list("Revolut Ltd", title), title)
+        for title in ("Product Owner (Crypto)", "Product Owner", "Credit Manager (Risk)", "Credit Manager", "Credit Risk Manager"):
+            self.assertFalse(lanes.on_keep_list("Revolut Ltd", title), title)
+        self.assertFalse(lanes.on_keep_list("Acme", "Credit Manager (Product)"))
+
+    def test_only_credit_manager_product_overrides_a_private_title_rule(self):
+        self.assertTrue(lanes.keep_overrides_exclusion("Revolut Ltd", "Credit Manager (Product)"))
+        for company, title in (("Revolut Ltd", "Credit Manager (Risk)"), ("Revolut Ltd", "Product Owner (UX)"), ("Acme", "Credit Manager (Product)")):
+            self.assertFalse(lanes.keep_overrides_exclusion(company, title), (company, title))
+
     def test_a_hard_exclusion_still_wins(self):
         decision = lanes.decide("Scale-Up", self.facts(80, True), date(2026, 10, 4), exclusion="clinical")[0]
         self.assertEqual(decision.status, lanes.EXCLUDE)

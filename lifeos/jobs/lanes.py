@@ -55,6 +55,16 @@ KEEP_LIST = (
     ("revolut", r"^product designer \(platform\)$"),
     ("revolut", r"^partnerships manager \(lifestyle\)$"),
     ("revolut", r"^operations manager \(revenue\)$"),
+    # Jim, Oct 20: four Revolut roles that must reach the board. Operations Manager (Revenue) is listed above; the title patterns tolerate the usual punctuation variants.
+    ("revolut", r"^product owner\s*[(\-\u2013,:]*\s*technical\b"),
+    ("revolut", r"^product owner\s*[(\-\u2013,:]*\s*(?:ux|user experience)\b"),
+    ("revolut", r"^credit manager\b.*\bproduct\b"),
+)
+
+# A keep-list role that a private TITLE rule would exclude (Credit Manager matches the financial-risk rule on "credit manager", but this one is a product role).
+# Jim chose it by name, so the rule does not exclude it; its Fit is scored as usual and it reaches the board as Review. Every other keep-list role still obeys the rules.
+KEEP_OVERRIDES_EXCLUSION = (
+    ("revolut", r"^credit manager\b.*\bproduct\b"),
 )
 
 
@@ -68,6 +78,10 @@ def title_watch_source(source):
 
 def on_keep_list(company, title):
     return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_LIST)
+
+
+def keep_overrides_exclusion(company, title):
+    return any(c in (company or "").lower() and re.search(t, (title or "").strip(), re.I) for c, t in KEEP_OVERRIDES_EXCLUSION)
 
 
 @dataclass
