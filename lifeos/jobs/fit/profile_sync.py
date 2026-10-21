@@ -92,7 +92,12 @@ class Store:
 
     def read(self):
         with store.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT content_hash, block FROM v7_fit_profile_sync WHERE id = %s", (ROW_ID,))
+            try:
+                cursor.execute("SELECT content_hash, block FROM v7_fit_profile_sync WHERE id = %s", (ROW_ID,))
+            except Exception as error:
+                if error.args and error.args[0] == 1146:                  # the table does not exist yet (the schema step has not run since this release): nothing was ever synced
+                    return (None, None)
+                raise
             row = cursor.fetchone()
         return (row[0], json.loads(row[1])) if row else (None, None)
 

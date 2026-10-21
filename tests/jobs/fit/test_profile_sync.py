@@ -122,6 +122,53 @@ class RefusalTests(unittest.TestCase):
         self.assertNotIn("invented", json.dumps(out))
 
 
+class StoreReadTests(unittest.TestCase):
+    """The real Store.read against a fake connection: a missing table is 'nothing synced', any other database error is not."""
+
+    def store_with(self, error=None, row=None):
+        from unittest import mock
+
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, *args):
+                if error:
+                    raise error
+
+            def fetchone(self):
+                return row
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def cursor(self):
+                return Cursor()
+
+        return mock.patch.object(ps.store, "connect", lambda: Connection())
+
+    def test_a_missing_table_means_nothing_was_synced(self):
+        with self.store_with(error=Exception(1146, "table does not exist")):
+            self.assertEqual(ps.Store().read(), (None, None))
+
+    def test_any_other_database_error_makes_the_profile_unavailable(self):
+        with self.store_with(error=Exception(2013, "lost connection")):
+            with self.assertRaises(ProfileError):
+                ps.stored_block({"LIFEOS_ACQ_DB_NAME": "x"})
+
+    def test_a_stored_row_is_read_back_as_hash_and_block(self):
+        block = ps.parse(json.dumps(BLOCK))
+        with self.store_with(row=(ps.content_hash(block), json.dumps(block))):
+            self.assertEqual(ps.Store().read(), (ps.content_hash(block), block))
+
+
 class LoaderTests(unittest.TestCase):
     """The pipeline side: what profile.load does with the stored block."""
 
