@@ -16,6 +16,7 @@ MODES = ("inventory", "all")
 DEFAULT_CAP = 2
 SWEEP_SECONDS = 300                                                      # the recruiters job has 30 minutes: mail read, evidence and the write stage come first
 CONVERTIBLE = ("human", "adopt_line", "skeleton", "prefold", "ui3b")
+NEUTRAL = ("parent_unchanged",)                                             # a current page whose region already says what its interviews say
 DONE = ("parent_adopted", "parent_upgraded", "parent_refreshed", "adopt_allowed", "upgrade_allowed", "refresh_allowed", "adopt_line_allowed")
 
 
@@ -66,6 +67,13 @@ def classify(client, page_id, context=None):
     return "human"
 
 
+def render_job(client, page_id, context=None):
+    """The Stable Job Key a current page's own render line names (None when it names none)."""
+    _, lines, _ = create.machine_region(client, page_id, context)
+    found = [m for m in (create.RENDER.fullmatch(notion.text(b)) for b in lines) if m]
+    return None if len(found) != 1 or found[0].group(1) == "none" else found[0].group(1)
+
+
 def _convert(client, environ, live, context, parent, company, role, kind, key, pipeline, today):
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0}
     pq, query = ParentQuery(company, role), RoundQuery(True, None, None, None, stable_job_key=key)
@@ -113,20 +121,24 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
                 counts["rounds"]["unread"] += 1
             for child in kids.items:
                 counts["rounds"]["machine" if child.identity_valid is True else "human_titled" if child.legacy else "human_other"] += 1
-            if kind not in CONVERTIBLE:
+            if kind == "current" and how == "all" and kids.complete and any(c.legacy for c in kids.items):
+                kind = "refresh"                                         # a converted page whose Interviews table must now show Jim's hand-made rounds (by title only)
+            if kind not in CONVERTIBLE and kind != "refresh":
                 continue
             if only and not notion.same_notion_id(parent.page_id, only):
                 continue                                                 # a targeted run touches that one page only
             if how != "all" or stopped or counts["converted"] >= limit:
                 counts["waiting"] += 1
                 continue
-            key = (legacy_key(client, parent.page_id, context) if kind == "ui3b" else None) or mint(company, role)
+            key = render_job(client, parent.page_id, context) if kind == "refresh" else (legacy_key(client, parent.page_id, context) if kind == "ui3b" else None) or mint(company, role)
             code, out = _convert(client, environ, live, context, Parent(parent.page_id, parent.title, parent.active), company, role, kind, key, pipeline, create.today())
             note(code)
             for field in ("writes_planned", "writes", "readback_ok"):
                 counts[field] += out[field]
             if code in DONE:
                 counts["converted"] += 1
+            elif code in NEUTRAL:
+                pass
             else:
                 counts["failed"] += 1
                 stopped = True                                           # the first failure ends the sweep: the rest wait for the next run

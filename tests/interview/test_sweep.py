@@ -154,6 +154,24 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(out, {})
 
 
+class CurrentPageTests(unittest.TestCase):
+    def test_a_converted_page_shows_jims_hand_made_rounds_once_and_is_then_left_alone(self):
+        from tests.interview.test_ui3c import texts, written
+        client, page_id = written()
+        client.blocks[page_id].append({"id": "lr", "type": "child_page", "child_page": {"title": "Interview 1: Jane Doe (9/10/26)"}})
+        client.pages["lr"], client.blocks["lr"] = page("Interview 1: Jane Doe (9/10/26)", page_id), [block("mine")]
+        client.pages["round-1"], client.blocks["round-1"] = page("Interview 1", page_id), [block("an untitled-by-rule round")]
+        tail = notion.human_tail(client, page_id)
+        self.assertNotIn("Jane Doe", " ".join(texts(client, page_id)))
+        first = sweep_run(client)
+        self.assertEqual((first["why"].get("parent_refreshed"), first["failed"]), (1, 0))
+        self.assertIn("Jane Doe", " ".join(texts(client, page_id)))
+        self.assertEqual(notion.human_tail(client, page_id), tail)                                   # Jim's notes and the round page untouched
+        again = sweep_run(client)
+        self.assertEqual((again["why"].get("parent_unchanged"), again["why"].get("parent_refreshed"), again["writes"]), (1, None, 0))
+        self.assertEqual(sweep_run(client, {**ENV, "INTERVIEW_CONVERT": "inventory"})["writes"], 0)
+
+
 class MigrationTests(unittest.TestCase):
     def test_a_page_with_the_plain_marker_line_is_migrated_once_with_jims_notes_and_rounds_untouched(self):
         client = SweepFake()
