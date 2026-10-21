@@ -8,7 +8,7 @@
     "E01": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound recruiter leads (role named, from mail) get a first-outreach page and three clear actions (E01b Phase 1); each lead also gets a Job Ledger row in the Recruiter lane (written and read back before its page, live only); no real-source run yet",
+      "missing": "applied-job requests and inbound recruiter leads (role named, from mail) are built and unit-proven, each lead carrying its own source message and ATS link; lead writes need the separate INTERVIEW_LEADS switch (off until the live proof); no real-source run has been read back yet",
       "tests": [
         "tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
         "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed",
@@ -16,7 +16,11 @@
         "tests.sources.test_interview_evidence.SchedulingRequests.test_rejections_offers_other_companies_and_other_mail_are_not_requests",
         "tests.sources.test_interview_evidence.SchedulingRequests.test_two_applied_rows_the_text_cannot_tell_apart_are_ambiguous_and_nothing_is_written",
         "tests.sources.test_interview_evidence.SchedulingRequests.test_a_requisition_the_apply_url_does_not_carry_blocks_the_link",
-        "tests.sources.test_interview_evidence.SchedulingRequests.test_unread_mail_is_degraded_and_never_a_quiet_zero"
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_unread_mail_is_degraded_and_never_a_quiet_zero",
+        "tests.sources.test_interview_evidence.LeadCorrelation.test_distinct_leads_with_different_ats_links_each_get_exactly_their_own",
+        "tests.sources.test_interview_evidence.LeadCorrelation.test_the_newest_message_in_the_mailbox_does_not_lend_its_link_to_an_older_lead",
+        "tests.sources.test_interview_evidence.LeadCorrelation.test_the_result_is_counts_only_with_a_ready_page_a_lead_a_conversion_and_a_request_in_one_run",
+        "tests.sources.test_interview_evidence.LeadCorrelation.test_leads_stay_off_until_the_second_switch_is_on_even_when_the_writer_is_live"
       ]
     },
     "E02": {
@@ -33,7 +37,7 @@
     "E03": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "a first parent is created from an applied-job scheduling request through the normal entry (E01a, unit-proven); an inbound lead's first parent is built (E01b Phase 1, unit-proven); no real-source run yet",
+      "missing": "first parents from an applied-job request, an inbound lead and a named pursuit's adopt/upgrade are unit-proven; no real-source run has been read back yet",
       "tests": [
         "tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
         "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",
@@ -146,7 +150,7 @@
     "E15": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "V1 old-writer retirement is not merged and INTERVIEW_OS_WRITER is off",
+      "missing": "V1 old-writer retirement is merged (life-os-automation PR #57, 83a9a5a; main's contract says INTERVIEW_CANON_WRITE_AUTHORIZED: false and the old runtime acts only on true). INTERVIEW_OS_WRITER is a repository variable CI cannot read, and no live V7 write has been read back yet",
       "tests": [
         "tests.sources.test_interview_evidence.Refresh.test_nothing_is_written_without_jims_switch",
         "tests.sources.test_interview_evidence.Registered.test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched",
