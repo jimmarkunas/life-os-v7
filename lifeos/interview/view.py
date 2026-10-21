@@ -63,9 +63,9 @@ def ledger_facts(client, page_id, stable_job_key):
 
 
 def rounds_of(children):
-    """Machine interview pages with a verified identity line, in D15 order (dated before undated is decided in sort_rounds)."""
+    """Machine interview pages with a verified identity line (and, for a pursuit Jim named, hand-made ones whose title states the number and date), in D15 order (dated before undated is decided in sort_rounds)."""
     return tuple(Round(c.page_id, c.ordinal, c.interview_date, c.interviewer) for c in getattr(children, "items", ())
-                 if c.identity_valid is True)
+                 if c.identity_valid is True or c.legacy)
 
 
 def sort_rounds(rounds, today):

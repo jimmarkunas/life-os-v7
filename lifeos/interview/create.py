@@ -62,7 +62,10 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     if not live:
         return "adopt_allowed"
     context.require_time()
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), today=today())
+    kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
+    if not kids.complete:
+        return "child_scan_incomplete"
+    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, adopted=today(), tail=2)[0]
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -254,7 +257,10 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     if not live:
         return "upgrade_allowed"
     context.require_time()
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), today=today())
+    kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
+    if not kids.complete:
+        return "child_scan_incomplete"
+    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, tail=2)[0][1:]                        # the page keeps its own marker; no second fold
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -317,7 +323,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 if code == "parent_upgraded":
                     deferred.add(parent.page_id)
                 return finish(code)
-            children = notion.child_scan(client, parent.page_id, context)
+            children = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)

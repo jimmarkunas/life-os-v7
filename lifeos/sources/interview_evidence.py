@@ -105,6 +105,12 @@ def posting_link(message):
     return found.pop() if len(found) == 1 else None
 
 
+def mint(company, role, requisition=None):
+    """The Stable Job Key of a recruiter lead or a converted pursuit that has no public posting: recruiter-<company>-<requisition or role>."""
+    slug = lambda text: "-".join(re.findall(r"[a-z0-9]+", " ".join(tokens(text)).lower()))[:40]
+    return "recruiter-" + slug(company) + "-" + (squash(requisition) if requisition else slug(role))
+
+
 def lead_of(message):
     """E01b, pure: a recruiter outreach that names a role -> (company, role, requisition, minted Stable Job Key, message link), else None. Email and LinkedIn messages in the
     inbox alike (the recruiters classifier decides who is a recruiter). The company is the client when the message names one, else the recruiter's company; a LinkedIn message that
@@ -115,9 +121,8 @@ def lead_of(message):
     if not (company and found["role"] and str(message.get("url", "")).startswith("https://")):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
-    slug = lambda text: "-".join(tokens(text))[:40]
     link = posting_link(message)                                         # a public posting is a real job: its Stable Job Key is the one Jobs OS gives that link, so the Ledger row will match
-    key = identity.url_hash(link) if link else "recruiter-" + slug(company) + "-" + (squash(req.group(1)) if req else slug(found["role"]))
+    key = identity.url_hash(link) if link else mint(company, found["role"], req.group(1) if req else None)
     return company, found["role"], req.group(1) if req else None, key, message["url"]
 
 
@@ -206,11 +211,27 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
 
     scan = notion.parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
+    convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}
+
+    def conversion(company, role, how):                                      # a pursuit Jim named: its existing page becomes the UI 3c page through the page's own adopt / upgrade path
+        convert[how] += 1
+        evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, None, stable_job_key=mint(company, role))))
+
     for parent, company, role in titles:
-        if not (company.strip() and role.strip()) or notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:
+        if not (company.strip() and role.strip()):
+            continue
+        owner = notion.ownership(client, parent.page_id, "opportunity")
+        named = notion.is_legacy_company(environ, company)
+        if owner == Ownership.ADOPT and named:
+            conversion(company, role, "adopt")
+        elif owner == Ownership.HUMAN and named:
+            convert["awaiting_adopt_line"] += 1                              # Jim's page without his `LIFE OS: adopt` first line: nothing is written to it
+        if owner != Ownership.MACHINE:
             continue
         page = facts(client, parent.page_id, context)
-        if page is None:
+        if page is None and named:
+            conversion(company, role, "upgrade")
+        elif page is None:
             flag("parent_legacy_layout")
         elif page[0] is None:
             flag("job_key_missing")
@@ -307,6 +328,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), rows, jobs
+    counts["convert"] = convert
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     for row, *_ in leads:
         label = sha1(row["title"].encode()).hexdigest()[:6]

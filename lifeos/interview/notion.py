@@ -4,7 +4,9 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 from urllib.parse import quote
+from lifeos.platform.names import tokens
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import DeadlineExceeded
 from .models import Child, Ownership, Parent, Scan
@@ -156,7 +158,34 @@ def parent_scan(client, root, context=None):
         return Scan(tuple(found), False)
 
 
-def child_scan(client, parent_id, context=None):
+LEGACY_TITLE = re.compile(r"^Interview (\d{1,2}):\s*(.+?)\s*\((\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\)\s*$")
+
+
+def legacy_companies(environ):
+    """Company words of the pursuits Jim named (INTERVIEW_TEST_COMPANIES) for which a hand-made round page's title is explicit evidence of its number and date."""
+    return [c.strip() for c in ((environ or {}).get("INTERVIEW_TEST_COMPANIES") or "").split(",") if c.strip()]
+
+
+def is_legacy_company(environ, company):
+    words = set(tokens(company))
+    return any(tokens(c) and set(tokens(c)) <= words for c in legacy_companies(environ))
+
+
+def legacy_round(block, child):
+    """`Interview 1: Name (9/10/26)` -> the same Child with its number, interviewer and date, marked legacy; any other title leaves the child as it was."""
+    found = LEGACY_TITLE.match(str((block.get("child_page") or {}).get("title") or ""))
+    if not found:
+        return child
+    number, who, month, day, year = found.groups()
+    year = int(year) + (2000 if len(year) == 2 else 0)
+    try:
+        date = datetime(year, int(month), int(day)).date().isoformat()
+    except ValueError:
+        return child
+    return Child(child.page_id, child.parent_id, date, who, int(number), child.identity_valid, True)
+
+
+def child_scan(client, parent_id, context=None, legacy=False):
     try:
         blocks = children(client, parent_id, [MAX_CALLS], context)
         # B1 reads verified identity properties only; never guesses identities from legacy titles.
@@ -171,7 +200,7 @@ def child_scan(client, parent_id, context=None):
             child = explicit_child(client, block["id"])
             if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
-            found.append(child)
+            found.append(legacy_round(block, child) if legacy and child.identity_valid is None else child)
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return Scan((), False)

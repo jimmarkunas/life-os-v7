@@ -86,6 +86,34 @@ class OpportunityTemplateTests(unittest.TestCase):
         self.assertIsNotNone(notion.protected_snapshot(client, "p", "opportunity"))
 
 
+class LegacyRoundTests(unittest.TestCase):
+    """Jim (Oct 21): for the pursuits he named, a hand-made round page's title ("Interview 1: Name (9/10/26)") is explicit evidence of its number and date."""
+    def client(self):
+        client = AdoptFake()
+        client.pages["kid1"] = page("Interview 1: Pat Example (9/10/26)", parent="human")
+        client.blocks["kid1"] = [block("Jim's interview notes", id="k1")]
+        client.blocks["human"].append({"id": "kid1", "type": "child_page", "child_page": {"title": "Interview 1: Pat Example (9/10/26)"}})
+        return client
+
+    def texts(self, client):
+        return [notion.text(b) for blocks in client.blocks.values() for b in blocks]
+
+    def test_a_named_pursuit_is_adopted_with_its_real_rounds_and_the_round_page_is_not_touched(self):
+        client = self.client()
+        result = stage.run(10, True, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Legacy"}, client=client, evidence=[(LEGACY, PENDING)])
+        self.assertEqual((result["parents_adopted"], result["readback_ok"], result["blocked"]), (1, 1, 0))
+        self.assertTrue([t for t in self.texts(client) if "Interview 1 date passed" in t])
+        self.assertEqual(client.blocks["kid1"], [block("Jim's interview notes", id="k1")])
+        self.assertFalse([p for p, _ in client.patches if "kid1" in p or "k1" in p])
+        self.assertEqual(client.posts, [])                                      # no round page is created for an interview that already has one
+
+    def test_an_unnamed_pursuit_never_reads_titles(self):
+        client = self.client()
+        result = stage.run(10, True, environ=ENV, client=client, evidence=[(LEGACY, PENDING)])
+        self.assertEqual(result["parents_adopted"], 1)
+        self.assertFalse([t for t in self.texts(client) if "Interview 1 date passed" in t])
+
+
 class AdoptTests(unittest.TestCase):
     def test_dry_run_reports_and_never_writes(self):
         client = AdoptFake()

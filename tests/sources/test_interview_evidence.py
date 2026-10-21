@@ -81,8 +81,8 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None):
-        self.writer = writer
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE):
+        self.writer, self.owner = writer, owner
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -97,7 +97,7 @@ class Run:
             return {"blocked": 0, "why": {}}
 
         with patch.object(notion, "parent_scan", return_value=Scan(tuple(self.parents), True)), \
-             patch.object(notion, "ownership", return_value=Ownership.MACHINE), \
+             patch.object(notion, "ownership", return_value=self.owner), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
@@ -428,6 +428,59 @@ class LinkLeads(unittest.TestCase):
         with patch.object(ev, "lead_job", side_effect=RuntimeError("db")):
             counts, got = Run(parents=(), kids={}, roster=[], records=[outreach(extra=POSTING)], environ=LIVE, writer=Writer())()
         self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed")), ([], 1))
+
+
+NAMED = {**ENV, "INTERVIEW_TEST_COMPANIES": "Alpha, SH/FT"}
+
+
+class Conversion(unittest.TestCase):
+    """The pursuits Jim named are converted through the page's own adopt / upgrade path; a page of his without his adopt line is never written."""
+    def go(self, owner, title="SH/FT — Technical Program Manager", facts=None, environ=NAMED):
+        return Run(parents=(("p1", title),), facts=facts or {}, kids={"p1": ()}, rows=(), roster=[], records=[], environ=environ, owner=owner)()
+
+    def test_an_adopt_line_on_a_named_pursuit_queues_its_conversion_with_a_minted_key(self):
+        counts, got = self.go(Ownership.ADOPT)
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, parent.role, query.stable_job_key, query.confirmed_round, query.ordinal, query.interview_date),
+                         ("SH/FT", "Technical Program Manager", "recruiter-sh-ft-technical-program-manager", True, None, None))
+        self.assertEqual(counts["convert"], {"adopt": 1, "upgrade": 0, "awaiting_adopt_line": 0})
+        self.assertEqual(counts["failed"], 0)
+
+    def test_a_named_page_without_the_adopt_line_is_counted_and_not_written(self):
+        counts, got = self.go(Ownership.HUMAN)
+        self.assertEqual((got["evidence"], counts["convert"]["awaiting_adopt_line"], counts["failed"]), ([], 1, 0))
+
+    def test_a_pursuit_nobody_named_is_never_converted(self):
+        for owner in (Ownership.ADOPT, Ownership.HUMAN):
+            counts, got = self.go(owner, title="Gamma — Program Manager")
+            self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}), owner)
+        counts, got = self.go(Ownership.MACHINE, title="Gamma — Program Manager")
+        self.assertEqual((got["evidence"], counts["why"].get("parent_legacy_layout")), ([], 1))           # unnamed: still the visible gap it always was
+
+    def test_a_named_machine_page_in_the_old_layout_is_upgraded_not_reported_as_a_gap(self):
+        counts, got = self.go(Ownership.MACHINE, title="Alpha — Senior Manager")
+        self.assertEqual((len(got["evidence"]), counts["convert"]["upgrade"], counts["why"].get("parent_legacy_layout")), (1, 1, None))
+
+
+class LegacyRounds(unittest.TestCase):
+    def test_a_hand_made_round_title_states_its_number_interviewer_and_date(self):
+        child = Child("c1", "p1")
+        got = notion.legacy_round({"child_page": {"title": "Interview 1: Pat Example (9/10/26)"}}, child)
+        self.assertEqual((got.ordinal, got.interviewer, got.interview_date, got.legacy, got.identity_valid), (1, "Pat Example", "2026-09-10", True, None))
+        two = notion.legacy_round({"child_page": {"title": "Interview 2: Ann Example + Bo Example (09/14/2026)"}}, child)
+        self.assertEqual((two.ordinal, two.interview_date), (2, "2026-09-14"))
+        for title in ("Notes", "Interview: Pat (9/10/26)", "Interview 1: Pat (13/40/26)", "Interview 1 Pat 9/10/26"):
+            self.assertEqual(notion.legacy_round({"child_page": {"title": title}}, child), child, title)
+
+    def test_only_a_named_pursuit_reads_titles_and_the_page_is_shown_not_written(self):
+        from lifeos.interview import view
+        legacy = Child("c1", "p1", "2026-09-10", "Pat Example", 1, None, True)
+        self.assertEqual([(r.ordinal, r.date) for r in view.rounds_of(Scan((legacy,), True))], [(1, "2026-09-10")])
+        self.assertEqual(view.rounds_of(Scan((Child("c2", "p1", "2026-09-10", "Pat Example", 1),), True)), ())       # the same child without the flag is not a round
+        self.assertTrue(notion.is_legacy_company(NAMED, "SH/FT") and notion.is_legacy_company(NAMED, "Alpha Group"))
+        self.assertFalse(notion.is_legacy_company(NAMED, "Gamma") or notion.is_legacy_company({}, "SH/FT"))
+        self.assertEqual(view.stage(view.Opportunity("SH/FT", "TPM", "k", None, None, "none", None, "root", rounds=view.rounds_of(Scan((legacy,), True))), "2026-10-21")[0],
+                         "Interview 1 date passed · outcome not verified")
 
 
 class Window(unittest.TestCase):
