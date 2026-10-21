@@ -316,6 +316,31 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(publish.order(rows, 60)[45:], list(range(1, 16)))
         self.assertEqual(publish.order(rows, 0, hour=0), [])                       # a zero-place run publishes nothing, whatever the hour
 
+    def test_a_keep_list_role_whose_page_the_audit_trashed_is_published_again_and_nothing_else_is(self):
+        """The audit keeps the URL hash of a page it trashes so the role is never published again; a role Jim has since put on the keep list is released and not held back by it."""
+        from lifeos.jobs import publish
+        from lifeos.jobs.identity import url_key
+        self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)
+        for job_id, company, title, page in ((1, "Revolut Ltd", "Product Owner (UX)", None), (2, "Revolut Ltd", "Product Owner (Crypto)", None),
+                                              (3, "Acme", "Product Owner (UX)", None), (4, "Revolut Ltd", "Product Owner (Technical)", "page-4")):
+            self.ready(job_id, 70)
+            self.db.raw.execute("UPDATE v7_jobs SET company=?, title=?, status='DUPLICATE', unresolved_reason='in_ledger', notion_page_id=? WHERE id=?", (company, title, page, job_id))
+            self.db.insert("v7_ledger_urls", url_hash=url_key(f"https://boards.example.com/a/{job_id}"), source="v7", seen_at=self.NOW)
+        self.assertEqual(publish.release_kept_in_ledger(self.db), 1)
+        states = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
+        self.assertEqual(states, {1: "READY", 2: "DUPLICATE", 3: "DUPLICATE", 4: "DUPLICATE"})
+        rows, known = publish._pick(self.db, 10, True, 1)
+        self.assertEqual(([r[0] for r in rows], known), ([1], set()))                          # picked, and its remembered URL no longer sets it aside
+
+    def test_a_role_that_is_not_on_the_keep_list_is_still_set_aside_by_its_remembered_url(self):
+        from lifeos.jobs import publish
+        from lifeos.jobs.identity import url_key
+        self.db.insert("v7_ledger_urls", url_hash=publish.SEED_MARKER, source="seed", seen_at=self.NOW)
+        self.ready(1, 70)
+        self.db.insert("v7_ledger_urls", url_hash=url_key("https://boards.example.com/a/1"), source="v7", seen_at=self.NOW)
+        rows, known = publish._pick(self.db, 10, True, 1)
+        self.assertEqual(([r[0] for r in rows], known), ([1], {1}))
+
     def test_the_gate_off_keeps_every_ready_job_in_the_line(self):
         self.ready(1, 80, admission="EXCLUDE")                                 # shadow mode records the decision but does not gate; nothing is dropped here
         self.ready(2, 70)

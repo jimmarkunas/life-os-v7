@@ -154,7 +154,11 @@ def release_held(cursor, profile, today, gate, counts, register=None):
 
 KEPT_CANARY_ROWS = ("SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
                     " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
-                    " AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+                    " AND j.unresolved_reason IN ('lane_exclude', 'excluded_fit') AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+# A published job the precision audit excluded had its page trashed and its row left as EXCLUDED_FIT / 'excluded_fit' (audit.py), a reason _gate's own revive does not cover:
+# a keep-list role that the current policy now admits or reviews is put back for publishing here, and only here.
+REVIVE_AUDITED = ("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
+                  " WHERE j.id=%s AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='excluded_fit' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW')")
 RETURN_TO_PROMOTION = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='CANARY' AND admission='EXCLUDE'"
 
 
@@ -174,9 +178,32 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
         judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
         if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
             redecided += 1
+            if gate:
+                cursor.execute(REVIVE_AUDITED, (_now(), job_id))
         else:
             failed += 1
     return redecided, failed
+
+
+# The Oracle-held brief (what the cloud model is told about Jim) was replaced with Jim's confirmed evidence at this moment (UTC). A keep-list role the cloud scored before it was
+# judged on the old brief; clearing its answer lets the existing backlog batch ask again with the new one. Cleared once: a new answer is stamped after this time.
+BRIEF_CHANGED_AT = datetime(2026, 10, 21, 5, 28, 14)
+KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
+                     " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL ORDER BY f.job_id LIMIT 500")
+CLEAR_FOR_REASK = ("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, cloud_run_id=NULL, cloud_request_hash=NULL"
+                   " WHERE job_id=%s AND cloud_status='CANARY' AND cloud_at < %s")
+
+
+def reask_kept(cursor):
+    """Keep-list roles (lanes.on_keep_list, nothing else) whose cloud answer predates the new Oracle brief go back to 'never asked' so the cloud backlog batch (D219, its own
+    quota and 50 % allowance stop) asks again. The stored score and decision stay until the new answer replaces them; no model call is made here. -> roles cleared."""
+    cursor.execute(KEPT_ASKED_BEFORE, (BRIEF_CHANGED_AT,))
+    cleared = 0
+    for job_id, title, company in cursor.fetchall():
+        if lanes.on_keep_list(company, title):
+            cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
+            cleared += int(cursor.rowcount or 0)
+    return cleared
 
 
 def cloud_promoter(profile, gate, counts, register):
@@ -274,6 +301,7 @@ def run(limit, live, environ=os.environ):
         with store.connect() as connection, connection.cursor() as cursor:
             counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
             counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(cursor, profile, _now().date(), gate, counts, register)
+            counts["kept_reasked"] = reask_kept(cursor)
     scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1

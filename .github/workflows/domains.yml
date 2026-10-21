@@ -79,7 +79,11 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-domains
+  # A run that will do nothing (a workflow_run after a manual hourly run, or after one the gate cancelled: every job below is skipped by its `if`) still joins its concurrency
+  # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
+  # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
+  # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
+  group: ${{ github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
   cancel-in-progress: false
 jobs:
   jira:
@@ -1145,6 +1149,9 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.recruiters }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    concurrency:
+      group: life-os-v7-interview-writer     # the Interview OS step is the one writer of the opportunity pages: an after-tick and a manual run take turns, never write the same page together
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
@@ -1425,7 +1432,7 @@ jobs:
         continue-on-error: true
         if: ${{ always() }}
         # LIFE-77 D228 (Jim, Oct 20 2026: design approved, placed near Oracle Cloud): every readable AI account allowance, from Oracle's no-model `limits` request.
-        # Off unless the repository variable V7_AI_CAPACITY_CARD is "on"; its first live run inserts the card right after the Oracle Cloud callout.
+        # Off unless the repository variable V7_AI_CAPACITY_CARD is "on". Jim (Oct 21) moved it out of the half-width column: it sits at the top level of the report, full width, under the last divider; a card still in the old column is replaced by it and then removed.
         name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)
         env:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
