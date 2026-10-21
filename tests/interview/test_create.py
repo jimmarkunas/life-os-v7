@@ -522,3 +522,22 @@ class ProtectedReadCauseTests(unittest.TestCase):
         with self.assertRaises(NotionError) as caught:                         # no Jim's notes heading and callout on a page that is read whole
             notion.human_tail(client_for(blocks), "page")
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_SHAPE")
+
+
+class HostedFileTests(unittest.TestCase):
+    """Run 39637099250: Smith's page converted, then the read-back said readback_protected_changed although every block of Jim's was intact. Her page holds a Notion-hosted PDF (the submitted resume), whose signed URL and expiry are new on every read."""
+
+    @staticmethod
+    def file_block(url, expiry, name="resume.pdf"):
+        return {"id": "f1", "type": "file", "has_children": False,
+                "file": {"type": "file", "file": {"url": url, "expiry_time": expiry}, "caption": [], "name": name}}
+
+    def test_a_hosted_files_signed_url_does_not_change_the_protected_digest_but_its_name_does(self):
+        class Client:
+            def call(self, *args, **kwargs):
+                raise AssertionError("no children to read")
+        first = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=1", "2026-10-21T18:00:00Z")])
+        again = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=2", "2026-10-21T19:00:00Z")])
+        renamed = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=2", "2026-10-21T19:00:00Z", "other.pdf")])
+        self.assertEqual(first, again)
+        self.assertNotEqual(first, renamed)

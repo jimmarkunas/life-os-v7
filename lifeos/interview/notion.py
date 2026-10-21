@@ -238,6 +238,9 @@ def _subtree(client, block, budget, depth=0):
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
     if block.get("type") in ("child_page", "child_database"):
         return {"id": value.get("id"), "type": value.get("type")}                # a page or database nested in Jim's columns (his Interview Notes list) is its own page: never read as part of this one, like a top-level child page
+    body = value.get(value.get("type"))
+    if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
+        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL and expiry change on every read; the name, caption and the block itself stay in the digest
     if block.get("has_children"):
         value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
