@@ -580,4 +580,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D244: Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)
 - D245: Usage integrity accepts the cache-outside-input convention, exactly (2026-10-20, Jim; LIFE-41)
 - D246: The precision audit trashes at most 40 Ledger pages a run, and reports how many rejected pages are still waiting (2026-10-20, Jim; LIFE-41)
-- D247: Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE issue to be assigned)
+- D247: Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE-93)

@@ -8,7 +8,7 @@ from lifeos.jobs import lanes, meta, store
 from lifeos.platform.notion_client import NotionError, rich_text
 
 PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admission_reason, f.work_mode, f.lane, f.eligible,"
-        " j.lane, j.location_text, j.salary_text, j.route_evidence, d.full_text FROM v7_jobs j"
+        " j.lane, j.location_text, j.salary_text, j.route_evidence, d.full_text, j.title FROM v7_jobs j"
         " JOIN v7_job_fit f ON f.job_id=j.id LEFT JOIN v7_job_descriptions d ON d.job_id=j.id"
         " WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.score IS NOT NULL"
         " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at LIMIT %s")
@@ -19,9 +19,11 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta=None):
+def properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta=None, title=None):
     props = {"LIFE OS Fit": {"number": score}, "Why It Fits": {"rich_text": rich_text(line or "")},
              "Fit Authority": {"select": {"name": "Authoritative"}}}
+    if title:
+        props["Role"] = {"rich_text": rich_text(title)}                     # the Ledger's Role column: the job's own title (it was never filled before META_VERSION 2)
     if gated and admission in lanes.ADMISSION_LABEL:
         props["Admission Status"] = {"select": {"name": lanes.ADMISSION_LABEL[admission]}}
         props["Review Reason"] = {"rich_text": rich_text(reason if admission == lanes.REVIEW and reason else "")}
@@ -45,10 +47,10 @@ def run(client, live, gated=False, limit=150):
     counts["due"] = len(rows)
     if not live:
         return counts
-    for job_id, page_id, score, line, admission, reason, work_mode, lane, eligible, job_lane, location, salary, route, text in rows:
+    for job_id, page_id, score, line, admission, reason, work_mode, lane, eligible, job_lane, location, salary, route, text, title in rows:
         row_meta = {"lane": job_lane, "location": location, "salary": salary, "route": route, "text": text}
         try:
-            client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta)})
+            client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title)})
         except NotionError:
             counts["failed"] += 1
             if counts["failed"] >= 3:

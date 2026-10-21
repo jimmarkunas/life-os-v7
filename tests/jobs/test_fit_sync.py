@@ -18,7 +18,7 @@ class Client:
 
 
 ROW = (1, "page1", 81, "[81%] Go | Strengths: a", "REVIEW", "work mode unresolved", "unknown", "Scale-Up", "Scale-Up,Skilled Worker",
-       "Scale-Up", "London, UK", None, "Scale-up:POSITIVE", "Salary range $90,000 - $120,000 per year.")
+       "Scale-Up", "London, UK", None, "Scale-up:POSITIVE", "Salary range $90,000 - $120,000 per year.", "Product Owner (UX)")
 
 
 def conn(rows):
@@ -46,6 +46,7 @@ class FitSync(unittest.TestCase):
             counts = fit_sync.run(client, True, gated=True)
         self.assertEqual((counts["due"], counts["synced"], counts["failed"]), (1, 1, 0))
         self.assertEqual((client.patches[0][0], client.patches[0][1]), ("PATCH", "/pages/page1"))
+        self.assertEqual(client.patches[0][2]["properties"]["Role"], {"rich_text": [{"type": "text", "text": {"content": "Product Owner (UX)"}}]})      # the Role column is the job title
 
     def test_dry_run_counts_and_writes_nothing(self):
         client = Client()

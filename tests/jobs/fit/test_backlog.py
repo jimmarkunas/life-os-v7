@@ -802,3 +802,65 @@ class ConnectFailed(Batch):
         counts = self.batch(5, endpoint)
         self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["cloud_promoted"]), ("DEGRADED(FIT_EDGE_CONNECT_FAILED)", 0, 1))
         self.assertEqual([self.status(i) for i in (1, 2)], ["CANARY", None])
+
+
+class ScaleUpCallsFromJim(Batch):
+    """Oct 21: the cloud-excluded Scale-Up roles are judged again under the new brief, and the roles stuck behind a failing link on two boards are retired."""
+
+    def excluded_cloud(self, job_id, source="web:su-example-ltd", at="2026-10-20 12:00:00", status="EXCLUDED_FIT", page=None):
+        self.titled(job_id, f"Program Manager {job_id}", status=status, admission="EXCLUDE", cloud_status="CANARY")
+        self.db.raw.execute("UPDATE v7_jobs SET source=?, notion_page_id=?, unresolved_reason='lane_exclude' WHERE id=?", (source, page, job_id))
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_at=?, cloud_score=40, cloud_run_id='old' WHERE job_id=?", (at, job_id))
+
+    def reopen(self, limit=300):
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.reopen_scale_up(cursor, limit)
+
+    def test_only_scale_up_roles_the_cloud_excluded_before_the_new_brief_are_reopened_and_each_only_once(self):
+        self.excluded_cloud(1)                                                    # a Scale-Up board role, answered under the old brief
+        self.excluded_cloud(2, source="web:greenhouse-acme")                      # another lane
+        self.excluded_cloud(3, at="2026-10-21 06:00:00")                          # already answered with the new brief
+        self.excluded_cloud(4, page="page-4")                                     # it has a page: never touched here
+        self.assertEqual(self.reopen(), 1)
+        self.assertEqual([self.status(i) for i in (1, 2, 3, 4)], [None, "CANARY", "CANARY", "CANARY"])
+        self.assertEqual(self.reopen(), 0)
+
+    def test_a_run_clears_at_most_the_batch_limit(self):
+        for i in range(1, 6):
+            self.excluded_cloud(i)
+        self.assertEqual(self.reopen(limit=2), 2)
+        self.assertEqual(self.reopen(limit=2), 2)
+        self.assertEqual(self.reopen(limit=2), 1)
+
+    def retire(self):
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.retire_stuck(cursor)
+
+    def stuck(self, job_id, source, status="NEW", reason="audit_url_root", page=None):
+        self.titled(job_id, f"Role {job_id}", status=status)
+        self.db.raw.execute("UPDATE v7_jobs SET source=?, unresolved_reason=?, notion_page_id=? WHERE id=?", (source, reason, page, job_id))
+
+    def test_roles_stuck_at_new_on_the_two_boards_are_retired_and_nothing_else(self):
+        self.stuck(1, "web:su-prepaid-financial-services-lim")
+        self.stuck(2, "web:su-futuristic-technologies-ltd", reason="audit_url_listing_url")
+        self.stuck(3, "web:su-other-ltd")                                          # another board
+        self.stuck(4, "web:su-prepaid-financial-services-lim", reason="jd_thin")  # not a link failure
+        self.stuck(5, "web:su-prepaid-financial-services-lim", status="PUBLISHED", page="page-5")
+        self.assertEqual(self.retire(), 2)
+        states = dict(self.db.raw.execute("SELECT id, status || '/' || unresolved_reason FROM v7_jobs").fetchall())
+        self.assertEqual((states[1], states[2]), ("EXCLUDED_FIT/retired_by_jim", "EXCLUDED_FIT/retired_by_jim"))
+        self.assertEqual([states[3], states[4]], ["NEW/audit_url_root", "NEW/jd_thin"])
+        self.assertEqual(self.retire(), 0)
+
+    def test_the_fit_stage_does_both_only_when_live_and_gated(self):
+        self.excluded_cloud(1)
+        self.stuck(2, "web:su-prepaid-financial-services-lim")
+        env = {**ENV, "V7_CLOUD_FIT": "off"}
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+            self.assertNotIn("jim_retired", stage.run(10, False, env))
+            self.assertNotIn("jim_retired", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
+            counts = stage.run(10, True, env)
+        self.assertEqual((counts["scale_up_reopened"], counts["jim_retired"]), (1, 1))

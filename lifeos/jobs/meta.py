@@ -5,7 +5,7 @@ import re
 from lifeos.jobs import lanes
 from lifeos.platform.notion_client import rich_text
 
-META_VERSION = 1            # bump to re-sync these fields onto already published pages (fit_sync picks pages with an older version)
+META_VERSION = 2            # 2: the Role column (the job title) is filled on every published page. bump to re-sync these fields onto already published pages (fit_sync picks pages with an older version)
 
 _AMOUNT = r"[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?"
 _RANGE = re.compile(rf"{_AMOUNT}\s*(?:-|–|—|to)\s*(?:[$£€]\s?)?\d[\d,]*(?:\.\d+)?\s?(?:[kK]|[mM]\b)?(?:\s*(?:/|per|a|an)\s*(?:yr|year|annum|hr|hour)\b|\s*(?:USD|GBP|EUR)\b)?", re.I)
