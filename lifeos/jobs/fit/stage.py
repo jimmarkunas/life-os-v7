@@ -209,7 +209,7 @@ def reask_kept(cursor):
 
 REOPEN_ROWS = ("SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
                " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s")
-REOPEN_BATCH = 300                       # per run: the excluded Scale-Up backlog is cleared over a few ticks
+REOPEN_BATCH = 2000                      # per run: clearing a marker is one cheap UPDATE, and the whole excluded Scale-Up backlog (about 800) is re-scored by one manual run after it
 
 
 def reopen_scale_up(cursor, limit=REOPEN_BATCH):
