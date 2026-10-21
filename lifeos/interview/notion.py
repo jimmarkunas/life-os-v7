@@ -224,12 +224,22 @@ def explicit_child(client, page_id):
     return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
+def _protected_children(client, page_id, budget):
+    """children() for a protected read, with its failures told apart by fixed code: the read budget ran out, or the API answer was malformed."""
+    try:
+        return children(client, page_id, budget)
+    except NotionError:
+        raise NotionError("INTERVIEW_PROTECTED_BUDGET" if budget[0] <= 0 else "INTERVIEW_PROTECTED_READ")
+
+
 def _subtree(client, block, budget, depth=0):
     if depth > MAX_DEPTH:
-        raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+        raise NotionError("INTERVIEW_PROTECTED_DEPTH")
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
+    if block.get("type") in ("child_page", "child_database"):
+        return {"id": value.get("id"), "type": value.get("type")}                # a page or database nested in Jim's columns (his Interview Notes list) is its own page: never read as part of this one, like a top-level child page
     if block.get("has_children"):
-        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in children(client, block["id"], budget)]
+        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
 
 
@@ -246,7 +256,7 @@ def protected_snapshot(client, page_id, kind="round"):
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
     order = []
-    tops = children(client, page_id, budget)
+    tops = _protected_children(client, page_id, budget)
     for block in tops:
         label = text(block)
         if current in NOTES:
@@ -255,7 +265,7 @@ def protected_snapshot(client, page_id, kind="round"):
             continue
         if label in labels and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
             if label in regions:
-                raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+                raise NotionError("INTERVIEW_PROTECTED_SHAPE")
             current = label
             order.append((label, block.get("id")))
             regions[label] = []
@@ -293,10 +303,10 @@ def human_tail(client, page_id, blocks=None):
     (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
     budget = [PROTECTED_MAX_CALLS]
     if blocks is None:
-        blocks = children(client, page_id, budget)
+        blocks = _protected_children(client, page_id, budget)
         heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]
         if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
-            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+            raise NotionError("INTERVIEW_PROTECTED_SHAPE")
         blocks = blocks[heads[0] + 2:]
     else:
         blocks = blocks[1:]

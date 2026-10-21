@@ -763,6 +763,12 @@ def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-1
 
 
 class RuntimePathTests(unittest.TestCase):
+    def setUp(self):
+        fresh = (NOW - timedelta(hours=1)).astimezone(timezone.utc).isoformat()     # the outcome-mail scan saved an hour ago: these tests are about the other sources
+        patcher = mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, fresh))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_entry_point_is_a_registered_stage_and_the_region_job_follows_every_other_writer(self):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.hiring", "run"))
@@ -886,6 +892,7 @@ class OutcomeConsumerTests(unittest.TestCase):
     """D190 end of the chain: what the outcome-mail stage stored reaches the Hiring Pipeline region as a tentative line, with every other block, the Applied state and the Ledger untouched."""
     KEY = "acme|manager|program|senior"
     FOUND = {KEY: {"kind": "REJECTED", "received": (NOW - timedelta(days=1)).astimezone(timezone.utc).isoformat(), "match": "role"}}
+    SCANNED = (NOW - timedelta(hours=2)).astimezone(timezone.utc).isoformat()
 
     def go(self, loader, parents=PARENTS):
         t, store = page(extra_rows=0), FakeStore()
@@ -894,7 +901,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         return t, store, counts
 
     def test_stored_outcome_mail_is_shown_as_a_line_to_confirm_and_only_the_pinned_region_blocks_are_written(self):
-        t, store, counts = self.go(lambda conn: (self.FOUND, "2026-10-06T00:00:00+00:00"))
+        t, store, counts = self.go(lambda conn: (self.FOUND, self.SCANNED))
         self.assertEqual((counts["mail_outcomes"], counts["status"]), (1, "fresh"))
         action = table_state(t)[0][2][0]
         self.assertEqual(action, "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
@@ -903,7 +910,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         self.assertEqual(R.plain(t.blocks["cal-p"]), "9:00 AM standup")                           # the neighbouring card is untouched
 
     def test_a_role_without_a_notes_page_keeps_applied_as_history(self):
-        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, None), parents=[])
+        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, self.SCANNED), parents=[])
         action = table_state(t)[0][2][0]
         self.assertEqual(action, "Possible rejection email received Oct 5 · confirm (Applied stays as history)")
 
@@ -912,18 +919,43 @@ class OutcomeConsumerTests(unittest.TestCase):
             def __getattr__(self, name):
                 raise AssertionError(f"ledger write attempted: {name}")
         t, store = page(extra_rows=0), FakeStore()
-        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, None)), mock.patch.object(snapshot, "STORE", store), \
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, self.SCANNED)), mock.patch.object(snapshot, "STORE", store), \
                 mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (list(PARENTS), "ok")):
             stage.run(0, True, RUN_ENV, ledger_client=ReadOnlyLedger([("Acme", "Senior Program Manager", "2026-10-02")]), pipeline_client=object(), calendar=FakeCalendar([]),
                       connection=object(), client=t, now=NOW)
         self.assertEqual([e for e in t.log if "Applied" in json.dumps(e)], [])
 
-    def test_unavailable_outcome_mail_never_stops_the_pipeline_or_invents_an_outcome(self):
+    def seeded(self, loader):
+        """a first fresh run saves the accepted state; the second run is the one under test (a prior snapshot exists, so there is a roster to scan for)."""
+        t, store = page(extra_rows=0), FakeStore()
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, self.SCANNED)):
+            run(t, store)
+        with mock.patch.object(stage.outcome_mail, "load", loader):
+            counts = run(t, store)
+        return t, store, counts
+
+    def test_unavailable_outcome_mail_degrades_hiring_keeps_the_last_accepted_rows_and_invents_no_outcome(self):
         def broken(conn):
             raise RuntimeError("store down")
-        t, store, counts = self.go(broken)
-        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "fresh"))
+        t, store, counts = self.seeded(broken)
+        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "degraded"))
+        self.assertIn("OUTCOME_MAIL_UNREADABLE", counts["reasons"])
+        self.assertEqual(len(table_state(t)), 1)                                                   # the accepted row stays; the pipeline is not stopped
         self.assertNotIn("email", table_state(t)[0][2][0].lower())
+
+    def test_outcome_mail_not_saved_for_eighteen_hours_or_never_saved_is_degraded_and_a_fresh_save_clears_it(self):
+        stale = (NOW - timedelta(hours=19)).astimezone(timezone.utc).isoformat()
+        for scanned in (stale, None):
+            with self.subTest(scanned=scanned):
+                t, store, counts = self.seeded(lambda conn, scanned=scanned: (self.FOUND, scanned))
+                self.assertEqual((counts["status"], counts["reasons"]), ("degraded", ["OUTCOME_MAIL_STALE"]))
+                self.assertEqual(counts["mail_outcomes"], 1)                                       # the last accepted outcome is still shown, never dropped
+        t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))
+        self.assertEqual((counts["status"], counts["reasons"]), ("fresh", []))
+
+    def test_a_pipeline_with_no_accepted_state_yet_is_not_degraded_by_a_scan_that_has_nothing_to_look_for(self):
+        t, store, counts = self.go(lambda conn: ({}, None))
+        self.assertEqual(counts["status"], "fresh")
 
 
 class GuardrailTests(unittest.TestCase):

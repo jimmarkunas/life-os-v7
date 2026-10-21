@@ -22,6 +22,17 @@ OP = "op-0123456789"
 NOW = T.NOW
 
 
+_OUTCOME_SCAN = mock.patch.object(T.stage.outcome_mail, "load", lambda conn: ({}, (NOW - T.timedelta(hours=1)).isoformat()))     # the outcome-mail scan saved an hour ago: these tests are about the decision, not that stage
+
+
+def setUpModule():
+    _OUTCOME_SCAN.start()
+
+
+def tearDownModule():
+    _OUTCOME_SCAN.stop()
+
+
 def request(**changes):
     return {"action": "CONFIRM_REJECTED", "confirmed": True, "id": TARGET, "company": COMPANY, "role": ROLE, "reason": "Employer rejection email confirmed", "op": OP, **changes}
 
