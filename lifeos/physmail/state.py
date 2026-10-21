@@ -17,6 +17,7 @@ ANCHOR_DATE = "2026-10-04"
 ANCHOR_AT = datetime(2026, 10, 4, 5, 0, tzinfo=timezone.utc)            # midnight Oct 4, 2026 in Chicago (CDT)
 GRACE_DAYS = 14
 AGED_DAYS = 30
+KEEP_DAYS = 30                                      # a disposed or delivered piece is counted on the card this long, then it is not mentioned (the stored history stays)
 MAX_REVIEW = 100
 
 
@@ -89,11 +90,13 @@ def pieces(state):
     return sorted(out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"]))
 
 
-def disposed(state):
-    """{"recycled": n, "shredded": n} for the pieces whose chain is DONE (the verbs of one DONE chain are never both, the fold sends that to REVIEW)."""
+def disposed(state, since=None):
+    """{"recycled": n, "shredded": n} for the pieces whose chain is DONE (the verbs of one DONE chain are never both, the fold sends that to REVIEW). With `since`, only pieces whose last notice is that recent."""
     out = {"recycled": 0, "shredded": 0}
     for chain in state["chains"].values():
         if _status_of(chain) == chains.DONE:
+            if since is not None and _at(max(v[0] for v in chain["events"].values())) < since:
+                continue
             verbs = {v[1] for v in chain["events"].values()}
             out["recycled" if "RECYCLE" in verbs else "shredded"] += 1
     return out

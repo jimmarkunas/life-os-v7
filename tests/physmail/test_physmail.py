@@ -501,8 +501,8 @@ def piece_state(extracted, anchor=ANCHOR, accepted=True):
 
 
 class ItemLevelTests(unittest.TestCase):
-    def lines(self, st, now=NOW, sync_failed=False):
-        blocks, counts = card.render(st, now, sync_failed)
+    def lines(self, st, now=NOW, sync_failed=False, environ=None):
+        blocks, counts = card.render(st, now, sync_failed, environ)
         return [report_region.plain(b) for b in blocks], blocks, counts
 
     def full(self):
@@ -524,7 +524,7 @@ class ItemLevelTests(unittest.TestCase):
         self.assertEqual(items[1], f"#{SCANNED[-1]}  ·  scanned Oct 19")
         self.assertEqual(counts["listed"], 10)
         self.assertEqual([t for t in text if t[:1] in "🚚📥"], ["🚚 Forwarded — not delivered until tracking says so (1)", "📥 Scanned — decide: forward, shred or recycle (9)"])      # the shared next action is said once per group
-        self.assertEqual(text[-1], "11 disposed (10 recycled, 1 shredded) · 21 mail numbers identified from the vendor's notices")        # history sits last, muted
+        self.assertEqual(text[-1], "Last 30 days: 10 recycled, 1 shredded")        # history sits last, muted
 
     def test_each_mail_number_is_one_line_and_disposed_pieces_are_never_listed(self):
         text, _, _ = self.lines(self.full())
@@ -543,7 +543,7 @@ class ItemLevelTests(unittest.TestCase):
         self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  last notice") for t in self.lines(st)[0]))
         other = piece_state([e("d", f"Mail #{SCANNED[1]}: Scan completed", "2026-10-05T10:00:00+00:00"), e("e", f"Mail #{SCANNED[1]}: Recycle completed", "2026-10-06T10:00:00+00:00")])
         self.assertFalse(any(t.startswith("#") for t in self.lines(other)[0]))
-        self.assertIn("1 disposed (1 recycled, 0 shredded)", " ".join(self.lines(other)[0]))
+        self.assertIn("Last 30 days: 1 recycled", " ".join(self.lines(other)[0]))
 
     def test_tracking_is_flagged_when_absent_and_shown_with_its_own_evidence_when_present(self):
         st = self.full()
@@ -560,6 +560,31 @@ class ItemLevelTests(unittest.TestCase):
         self.assertEqual([p["text"]["link"]["url"] for p in block["bulleted_list_item"]["rich_text"] if p["text"].get("link")], ["https://example.invalid/t/TRK0001"])
         st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "x", "number": "  "}                          # a blank number is no tracking
         self.assertIn("Tracking unavailable", next(t for t in self.lines(st)[0] if t.startswith(f"#{FORWARDED}")))
+
+    def test_a_hand_entered_shipment_is_shown_as_written_and_a_delivery_leaves_the_list(self):
+        st = self.full()
+        entry = {"bundle": "Bundle A", "carrier": "ExampleCarrier", "service": "Example Overnight", "number": "TRK0002", "url": "https://example.invalid/t/TRK0002"}
+        env = {"PHYSICAL_MAIL_TRACKING": json.dumps({str(FORWARDED): entry}), "MAIL_PORTAL_URL": "https://portal.example.invalid/"}
+        text, blocks, _ = self.lines(st, environ=env)
+        self.assertEqual(next(t for t in text if t.startswith(f"#{FORWARDED}")), f"#{FORWARDED}  ·  forwarded Oct 20  ·  Bundle A Example Overnight TRK0002  ·  no delivery status yet")
+        portal = next(b for b in blocks if report_region.plain(b) == "Open the mailbox portal")
+        self.assertEqual(portal["paragraph"]["rich_text"][0]["text"]["link"]["url"], "https://portal.example.invalid/")
+        env["PHYSICAL_MAIL_TRACKING"] = json.dumps({str(FORWARDED): {**entry, "delivered": "2026-10-22"}})
+        text, _, counts = self.lines(st, now=datetime(2026, 10, 23, 15, 0, tzinfo=timezone.utc), environ=env)
+        self.assertFalse(any(t.startswith(f"#{FORWARDED}") for t in text))
+        self.assertTrue(text[0].endswith("9 waiting · 0 need review"))
+        self.assertEqual(counts["waiting"], 9)
+        self.assertEqual(text[-1], "Last 30 days: 10 recycled, 1 shredded, 1 delivered")
+        for bad in ("not json", "[]", json.dumps({str(FORWARDED): {"number": "  "}})):                     # a malformed entry is ignored, never guessed
+            text, _, _ = self.lines(st, environ={"PHYSICAL_MAIL_TRACKING": bad})
+            self.assertIn("Tracking unavailable", next(t for t in text if t.startswith(f"#{FORWARDED}")))
+
+    def test_disposed_and_delivered_pieces_stop_being_mentioned_after_thirty_days_but_stay_in_the_history(self):
+        st = self.full()
+        later = datetime(2026, 11, 25, 15, 0, tzinfo=timezone.utc)
+        text = self.lines(st, now=later)[0]
+        self.assertFalse(any(t.startswith("Last 30 days") for t in text))
+        self.assertEqual(state.disposed(st), {"recycled": 10, "shredded": 1})
 
     def test_an_unreadable_source_keeps_the_last_accepted_pieces_under_a_degraded_line(self):
         text, _, counts = self.lines(self.full(), sync_failed=True)

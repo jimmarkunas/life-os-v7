@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
-from . import chains, state as state_mod
+from . import chains, manual, state as state_mod
 from .stage import KEY, STORE
 
 TZ = ZoneInfo("America/Chicago")
@@ -88,7 +88,7 @@ def _line(piece, portal, now):
         return _item([head, (f"  ·  scanned {when}", False, None)])
     tracking = piece.get("tracking") if isinstance(piece.get("tracking"), dict) else None
     if tracking and isinstance(tracking.get("number"), str) and tracking["number"].strip():
-        carrier = tracking.get("carrier") if isinstance(tracking.get("carrier"), str) and tracking["carrier"].strip() else "Carrier not stated"
+        carrier = " ".join(t.strip() for t in (tracking.get("bundle"), tracking.get("service") or tracking.get("carrier")) if isinstance(t, str) and t.strip()) or "Carrier not stated"
         state_text = tracking.get("state") if isinstance(tracking.get("state"), str) and tracking["state"].strip() else "no delivery status yet"
         return _item([head, (f"  ·  forwarded {when}  ·  {carrier} ", False, None), (tracking["number"].strip(), False, _https(tracking.get("url"))), (f"  ·  {state_text}", False, None)])
     aged = _local(datetime.fromisoformat(piece["at"])) < now - timedelta(days=state_mod.AGED_DAYS)
@@ -101,7 +101,7 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
           (chains.OPEN, "📥 Scanned — decide: forward, shred or recycle"))
 
 
-def render(stored, now, sync_failed=False):
+def render(stored, now, sync_failed=False, environ=None):
     """-> (blocks, counts). Pure. The first line keeps its shape (the Command Center and Attention read it); then one native line per active piece."""
     now = _local(now)
     if stored is None:
@@ -116,13 +116,22 @@ def render(stored, now, sync_failed=False):
         head = f"DEGRADED · Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} at {now.strftime('%-I:%M %p')} CT · showing last accepted state ({when} CT)"
     else:
         head = f"Updated {now.strftime('%-I:%M %p')} CT"
-    waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"]
+    environ = environ if environ is not None else {}
+    portal = manual.portal(environ) or _https(stored.get("portal"))
+    entered = manual.tracking(environ)
+    items = state_mod.pieces(stored)
+    for piece in items:
+        if not piece["tracking"] and piece["status"] == chains.WAITING:
+            piece["tracking"] = entered.get(piece["number"])                                    # entered by hand: shown as written, never inferred
+    delivered = [p for p in items if isinstance(p["tracking"], dict) and p["tracking"].get("delivered")]
+    items = [p for p in items if p not in delivered]
+    waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"] - len(delivered)
     blocks = [_paragraph(f"{head} · {waiting} waiting · {facts['review']} need review")]
-    gone = state_mod.disposed(stored)
+    cutoff = now - timedelta(days=state_mod.KEEP_DAYS)
+    gone = state_mod.disposed(stored, cutoff)
+    arrived = sum(1 for p in delivered if _local(datetime.fromisoformat(p["tracking"]["delivered"] + "T00:00:00")) >= cutoff.replace(hour=0, minute=0, second=0, microsecond=0))
     if facts["unidentified"]:
         blocks.append(_paragraph(f"{facts['unidentified']} new item(s) not yet identified by a mail number"))
-    portal = _https(stored.get("portal"))
-    items = state_mod.pieces(stored)
     shown = items[:MAX_ITEMS]
     for status, label in GROUPS:
         group = [piece for piece in shown if piece["status"] == status]
@@ -137,8 +146,9 @@ def render(stored, now, sync_failed=False):
         blocks.append(_paragraph("No physical mail waiting"))
     if portal and (waiting or facts["review"]):
         blocks.append(_paragraph("Open the mailbox portal", portal))
-    if facts["done"]:
-        blocks.append(_muted(f"{facts['done']} disposed ({gone['recycled']} recycled, {gone['shredded']} shredded) · {facts['identified']} mail numbers identified from the vendor's notices"))
+    recent = [f"{gone['recycled']} recycled" if gone["recycled"] else "", f"{gone['shredded']} shredded" if gone["shredded"] else "", f"{arrived} delivered" if arrived else ""]
+    if any(recent):
+        blocks.append(_muted(f"Last {state_mod.KEEP_DAYS} days: " + ", ".join(r for r in recent if r)))
     return blocks, {"status": "degraded" if reason else "fresh", "reason": reason or "", "waiting": waiting, "review": facts["review"], "listed": len(items[:MAX_ITEMS]), "blocks_written": 0}
 
 
@@ -158,7 +168,7 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None)
     else:
         stored = STORE.load(connection, KEY)
     failed = (environ.get("MAIL_SYNC_OUTCOME") or "").strip().lower() in ("failure", "cancelled")
-    blocks, counts = render(stored, now, failed)
+    blocks, counts = render(stored, now, failed, environ)
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "mailalerts", live)

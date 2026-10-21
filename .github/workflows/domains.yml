@@ -762,6 +762,8 @@ jobs:
         if: ${{ always() }}
         env:
           MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
+          MAIL_PORTAL_URL: ${{ vars.MAIL_PORTAL_URL }}
+          PHYSICAL_MAIL_TRACKING: ${{ vars.PHYSICAL_MAIL_TRACKING }}
           AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
