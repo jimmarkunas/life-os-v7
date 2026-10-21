@@ -1424,7 +1424,7 @@ jobs:
         continue-on-error: true
         if: ${{ always() }}
         # LIFE-77 D228 (Jim, Oct 20 2026: design approved, placed near Oracle Cloud): every readable AI account allowance, from Oracle's no-model `limits` request.
-        # Off unless the repository variable V7_AI_CAPACITY_CARD is "on"; its first live run inserts the card right after the Oracle Cloud callout.
+        # Off unless the repository variable V7_AI_CAPACITY_CARD is "on". Jim (Oct 21) moved it out of the half-width column: it sits at the top level of the report, full width, under the last divider; a card still in the old column is replaced by it and then removed.
         name: AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)
         env:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}

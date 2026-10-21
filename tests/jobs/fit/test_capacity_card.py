@@ -58,24 +58,31 @@ def _rt(text):
 
 
 class FakeNotion:
-    """The Daily Report column as the card sees it: the Attention callout, the Oracle Cloud callout (its heading first) and, once installed, the card
-    (one callout holding one 6 x 7 table whose first row is the header)."""
-    def __init__(self, installed=True, rows=card.ROWS, cols=card.COLS, oracle=True, cards=1):
-        self.cols, self.patches, self.inserted = cols, [], []
-        self.order = ["att"] + (["ora"] if oracle else []) + [f"cap{i}" for i in range(cards if installed else 0)]
-        self.text = {f"cap{i}": "" for i in range(cards)}
-        self.rows = {f"cap{i}": {f"cap{i}-r{j}": (list(card.HEADER) if j == 0 else [""] * cols) for j in range(rows)} for i in range(cards)}
+    """The Daily Report as the card sees it: the page's top level (the half-width columns, a divider, a trailing paragraph and, once installed, the card), and inside the left
+    column the Attention callout and, until Jim's move is done, the card's old copy (one callout holding one 6 x 7 table whose first row is the header)."""
+    def __init__(self, new=0, old=0, rows=card.ROWS, cols=card.COLS, divider=True):
+        self.cols, self.patches, self.inserted, self.trashed = cols, [], [], []
+        self.top = ["cl"] + (["div"] if divider else []) + ["par"] + [f"capN{i}" for i in range(new)]
+        self.column = ["att"] + [f"capO{i}" for i in range(old)]
+        ids = [f"capN{i}" for i in range(new)] + [f"capO{i}" for i in range(old)]
+        self.text = {i: "" for i in ids}
+        self.rows = {i: {f"{i}-r{j}": (list(card.HEADER) if j == 0 else [""] * cols) for j in range(rows)} for i in ids}
 
     def call(self, method, path, body=None):
         parts = path.split("?")[0].split("/")
-        if method == "PATCH" and path == "/blocks/col/children":
+        if method == "PATCH" and path == "/blocks/page/children":
             self.inserted.append(body)
-            assert body["after"] == "ora"
-            self.order.insert(self.order.index("ora") + 1, "cap0")
-            return {"results": [{"type": "callout", "id": "cap0"}]}
+            assert body["after"] == "div"                                  # directly under the last top-level divider, nowhere else
+            self.top.insert(self.top.index("div") + 1, "capN0")
+            self.text["capN0"] = ""
+            self.rows["capN0"] = {f"capN0-r{j}": ([""] * card.COLS) for j in range(card.ROWS)}
+            return {"results": [{"type": "callout", "id": "capN0"}]}
         if method == "PATCH":
-            self.patches.append(path)
             bid = parts[2]
+            if body == {"in_trash": True}:
+                self.trashed.append(bid)
+                return {}
+            self.patches.append(path)
             if "table_row" in body:
                 cap = bid.split("-")[0]
                 self.rows[cap][bid] = ["".join(x["text"]["content"] for x in cell) for cell in body["table_row"]["cells"]]
@@ -86,13 +93,20 @@ class FakeNotion:
         if len(parts) == 3:
             if bid == "att":
                 return {"type": "callout", "id": "att", "parent": {"type": "block_id", "block_id": "col"}}
-            return {"type": "callout", "id": bid, "callout": {"rich_text": _rt(self.text.get(bid, ""))}}
+            if bid == "col":
+                return {"type": "column", "id": "col", "parent": {"type": "block_id", "block_id": "cl"}}
+            if bid == "cl":
+                return {"type": "column_list", "id": "cl", "parent": {"type": "page_id", "page_id": "page"}}
+            return {"type": "callout", "id": bid, "callout": {"rich_text": _rt(self.text.get(bid, ""))}, "in_trash": bid in self.trashed}
+        kinds = {"cl": "column_list", "div": "divider", "par": "paragraph"}
+        if bid == "page":
+            return {"results": [{"type": kinds.get(b, "callout"), "id": b} for b in self.top if b not in self.trashed], "has_more": False}
         if bid == "col":
-            return {"results": [{"type": "callout", "id": b} for b in self.order], "has_more": False}
+            return {"results": [{"type": "callout", "id": b} for b in self.column if b not in self.trashed], "has_more": False}
         if bid == "att":
             return {"results": [{"type": "paragraph", "id": "p"}], "has_more": False}
-        if bid == "ora":
-            return {"results": [{"type": "heading_3", "id": "h", "heading_3": {"rich_text": _rt("Oracle Cloud (Updated 6:05 AM CT)")}}], "has_more": False}
+        if bid in ("par", "div", "cl"):
+            return {"results": [], "has_more": False}                      # not a capacity card: no children to own it by
         if bid.startswith("cap") and not bid.endswith("-t"):
             return {"results": [{"type": "table", "id": bid + "-t", "table": {"table_width": self.cols}}], "has_more": False}
         if bid.endswith("-t"):
@@ -102,63 +116,102 @@ class FakeNotion:
 
 
 class Run(unittest.TestCase):
+    def go(self, notion, live=True, read=lambda: READING):
+        return card.run(0, live, environ=ON, client=notion, read=read, now=NOW)
+
     def test_off_unless_jim_switched_it_on(self):
         for environ in ({}, {"ATTENTION_CARD_BLOCK_ID": "att"}, {**ON, "V7_AI_CAPACITY_CARD": "off"}, {"V7_AI_CAPACITY_CARD": "on"}):
             out = card.run(0, True, environ=environ, client=object(), read=lambda: (_ for _ in ()).throw(AssertionError("no read")))
             self.assertEqual(out["status"], "not_configured", environ)
 
-    def test_the_first_live_run_places_the_card_right_after_the_oracle_cloud_card_and_fills_it(self):
-        notion = FakeNotion(installed=False)
-        self.assertEqual(card.run(0, False, environ=ON, client=notion, read=lambda: READING, now=NOW)["status"], "would_install")   # a dry run inserts nothing
+    def test_a_first_live_run_places_the_card_full_width_under_the_last_divider_and_fills_it(self):
+        notion = FakeNotion()
+        self.assertEqual(self.go(notion, live=False)["status"], "would_install")                    # a dry run inserts nothing
         self.assertEqual(notion.inserted, [])
-        out = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
-        self.assertEqual((out["status"], out["installed"]), ("fresh", True))
-        self.assertEqual(notion.order, ["att", "ora", "cap0"])
+        out = self.go(notion)
+        self.assertEqual((out["status"], out["installed"], out["old_card"]), ("fresh", True, 0))
+        self.assertEqual(notion.top, ["cl", "div", "capN0", "par"])                                 # at the page's top level, right under the divider
         made = notion.inserted[0]["children"][0]
         self.assertEqual((made["type"], made["callout"]["children"][0]["table"]["table_width"], len(made["callout"]["children"][0]["table"]["children"])), ("callout", 6, 7))
-        self.assertEqual(notion.rows["cap0"]["cap0-r1"][5], "NEAR LIMIT")
-        again = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        self.assertEqual(notion.rows["capN0"]["capN0-r1"][5], "NEAR LIMIT")
+        again = self.go(notion)
         self.assertEqual((again["installed"], again["rows_written"], again["text_written"], len(notion.inserted)), (False, 0, False, 1))     # never placed twice
 
-    def test_without_the_oracle_cloud_card_nothing_is_placed_anywhere_else(self):
-        with self.assertRaises(card.CardError) as ctx:
-            card.run(0, True, environ=ON, client=FakeNotion(installed=False, oracle=False), read=lambda: READING, now=NOW)
-        self.assertEqual(str(ctx.exception), "CAPACITY_ORACLE_CARD_NOT_FOUND")
+    def test_a_card_still_in_the_old_column_is_moved_the_new_one_first_and_the_old_one_only_after_it_is_read_back(self):
+        notion = FakeNotion(old=1)
+        out = self.go(notion)
+        self.assertEqual((out["status"], out["installed"], out["old_card"], out["old_card_removed"]), ("fresh", True, 1, 1))
+        self.assertEqual((notion.trashed, notion.top[2]), (["capO0"], "capN0"))
+        self.assertEqual(notion.rows["capN0"]["capN0-r1"][5], "NEAR LIMIT")                         # the new card carries the reading
+        again = self.go(notion)
+        self.assertEqual((again["installed"], again["old_card"], again["old_card_removed"], len(notion.inserted), notion.trashed), (False, 0, 0, 1, ["capO0"]))   # nothing moved twice
 
-    def test_two_cards_are_refused(self):
+    def test_the_old_card_stays_when_the_new_one_has_no_fresh_reading_a_dry_run_or_a_failed_removal(self):
+        notion = FakeNotion(new=1, old=1)
+
+        def broken():
+            raise edge.EdgeError("FIT_EDGE_NO_REPLY")
+        self.assertEqual(self.go(notion, read=broken)["status"], "degraded")
+        self.assertEqual(notion.trashed, [])                                                        # degraded: the old card is the last good reading
+        patched = len(notion.patches)
+        dry = self.go(notion, live=False)
+        self.assertEqual((dry["old_card"], dry["rows_written"], notion.trashed, len(notion.patches)), (1, 0, [], patched))     # a dry run neither writes nor removes
+        stuck = FakeNotion(new=1, old=1)
+        stuck.call = (lambda orig: lambda method, path, body=None: ({} if body == {"in_trash": True} else orig(method, path, body)))(stuck.call)     # Notion accepts the trash but the block is not trashed
         with self.assertRaises(card.CardError) as ctx:
-            card.run(0, True, environ=ON, client=FakeNotion(cards=2), read=lambda: READING, now=NOW)
-        self.assertEqual(str(ctx.exception), "CAPACITY_CARD_AMBIGUOUS")
+            self.go(stuck)
+        self.assertEqual(str(ctx.exception), "CAPACITY_RETIRE_FAILED")
+
+    def test_only_this_cards_own_copy_is_ever_trashed(self):
+        notion = FakeNotion(new=1, old=1)
+        with self.assertRaises(card.CardError) as ctx:
+            card.retire(notion, "att")                                                              # a callout that is not this card (the Attention callout)
+        self.assertEqual((str(ctx.exception), notion.trashed), ("CAPACITY_RETIRE_NOT_OWNED", []))
+        with self.assertRaises(card.CardError):
+            card.retire(notion, "par")                                                              # not even a callout
+        self.assertEqual(notion.trashed, [])
+
+    def test_without_a_top_level_divider_nothing_is_placed_anywhere_else(self):
+        notion = FakeNotion(divider=False)
+        with self.assertRaises(card.CardError) as ctx:
+            self.go(notion)
+        self.assertEqual((str(ctx.exception), notion.inserted), ("CAPACITY_PLACE_NOT_FOUND", []))
+
+    def test_two_cards_in_either_place_are_refused(self):
+        for notion in (FakeNotion(new=2), FakeNotion(old=2)):
+            with self.assertRaises(card.CardError) as ctx:
+                self.go(notion)
+            self.assertEqual(str(ctx.exception), "CAPACITY_CARD_AMBIGUOUS")
 
     def test_a_fresh_reading_is_written_in_place_and_read_back(self):
-        notion = FakeNotion()
-        out = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        notion = FakeNotion(new=1)
+        out = self.go(notion)
         self.assertEqual((out["status"], out["installed"], out["rows_written"], out["text_written"]), ("fresh", False, 4, True))   # the header is already right
-        again = card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        again = self.go(notion)
         self.assertEqual((again["rows_written"], again["text_written"]), (0, False))
 
     def test_a_failed_read_says_degraded_keeps_the_table_and_fails_the_stage_by_name(self):
-        notion = FakeNotion()
-        card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+        notion = FakeNotion(new=1)
+        self.go(notion)
         before = {k: dict(v) for k, v in notion.rows.items()}
 
         def broken():
             raise edge.EdgeError("FIT_EDGE_NO_REPLY")
-        out = card.run(0, True, environ=ON, client=notion, read=broken, now=NOW)
+        out = self.go(notion, read=broken)
         self.assertEqual((out["status"], out["code"], out["failed"]), ("degraded", "FIT_EDGE_NO_REPLY", 1))
-        self.assertEqual(notion.text["cap0"], "AI Capacity · DEGRADED · Oracle limits read failed at 12:30 AM CT (FIT_EDGE_NO_REPLY) · showing the last reading")
+        self.assertEqual(notion.text["capN0"], "AI Capacity · DEGRADED · Oracle limits read failed at 12:30 AM CT (FIT_EDGE_NO_REPLY) · showing the last reading")
         self.assertEqual(notion.rows, before)
 
     def test_a_card_that_lost_its_shape_is_refused_and_nothing_is_written(self):
-        notion = FakeNotion(rows=6)
+        notion = FakeNotion(new=1, rows=6)
         with self.assertRaises(card.CardError):
-            card.run(0, True, environ=ON, client=notion, read=lambda: READING, now=NOW)
+            self.go(notion)
         self.assertEqual(notion.patches, [])
 
     def test_a_dry_run_writes_nothing(self):
-        notion = FakeNotion()
-        out = card.run(0, False, environ=ON, client=notion, read=lambda: READING, now=NOW)
-        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches), (0, 4, []))
+        notion = FakeNotion(new=1)
+        out = self.go(notion, live=False)
+        self.assertEqual((out["rows_written"], out["rows_changed"], notion.patches, notion.trashed), (0, 4, [], []))
 
 
 class Limits(unittest.TestCase):
