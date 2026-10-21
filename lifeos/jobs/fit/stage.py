@@ -154,7 +154,11 @@ def release_held(cursor, profile, today, gate, counts, register=None):
 
 KEPT_CANARY_ROWS = ("SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
                     " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
-                    " AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+                    " AND j.unresolved_reason IN ('lane_exclude', 'excluded_fit') AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+# A published job the precision audit excluded had its page trashed and its row left as EXCLUDED_FIT / 'excluded_fit' (audit.py), a reason _gate's own revive does not cover:
+# a keep-list role that the current policy now admits or reviews is put back for publishing here, and only here.
+REVIVE_AUDITED = ("UPDATE v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id SET j.status='READY', j.unresolved_reason='requeued_fit', j.updated_at=%s"
+                  " WHERE j.id=%s AND j.status='EXCLUDED_FIT' AND j.unresolved_reason='excluded_fit' AND j.notion_page_id IS NULL AND f.admission IN ('ADMIT', 'REVIEW')")
 RETURN_TO_PROMOTION = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='CANARY' AND admission='EXCLUDE'"
 
 
@@ -174,6 +178,8 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
         judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
         if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
             redecided += 1
+            if gate:
+                cursor.execute(REVIVE_AUDITED, (_now(), job_id))
         else:
             failed += 1
     return redecided, failed

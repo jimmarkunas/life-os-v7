@@ -512,6 +512,21 @@ class KeepListRolesAreRedecided(Batch):
         self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")
         self.assertEqual(self.redecide(), (0, 0))                                                          # decided once: nothing is left to re-decide
 
+    def test_a_role_the_audit_excluded_after_it_was_published_is_put_back_for_publishing(self):
+        """audit.py leaves a trashed-page job as EXCLUDED_FIT / 'excluded_fit' with no page id; _gate's own revive does not cover that reason."""
+        self.excluded(1, "Product Owner (UX)")
+        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', notion_page_id=NULL WHERE id=1")
+        self.assertEqual(self.redecide(), (1, 0))
+        self.assertEqual(self.row(1, ("admission",)), ("REVIEW",))
+        self.assertEqual(self.db.raw.execute("SELECT status, unresolved_reason FROM v7_jobs WHERE id=1").fetchone(), ("READY", "requeued_fit"))
+
+    def test_an_audit_excluded_role_that_the_policy_still_excludes_stays_excluded(self):
+        self.excluded(1, "Product Owner (UX)")
+        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', location_text='Lagos, Nigeria' WHERE id=1")        # a place that is not London: the lane still excludes it
+        self.redecide()
+        self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
+
     def test_roles_not_on_the_keep_list_are_never_touched(self):
         self.excluded(1, "Product Owner (Crypto)")
         self.excluded(2, "Product Owner (UX)", company="Acme Ltd")
