@@ -79,7 +79,10 @@ env:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-domains
+  # A run that will do nothing (a workflow_run after a manual hourly run, or after one the gate cancelled: every job below is skipped by its `if`) still joins its concurrency
+  # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
+  # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs.
+  group: ${{ (github.event_name == 'workflow_run' && (github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick')) && 'life-os-v7-domains-idle' || 'life-os-v7-domains' }}
   cancel-in-progress: false
 jobs:
   jira:
