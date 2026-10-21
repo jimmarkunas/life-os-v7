@@ -14,9 +14,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as hiring, outcomes
-from lifeos.jobs import lanes, ledger as jobs_ledger, publish, quality
-from lifeos.jobs.fit import profile as fit_profile
-from lifeos.jobs.fit.score import evaluate
+from lifeos.jobs import lanes, ledger as jobs_ledger, publish
 from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
@@ -134,20 +132,7 @@ def recent_or_named(records, environ, now, live):
     return list(records) if asked else [m for m in records if datetime.fromisoformat(str(m["received"]).replace("Z", "+00:00")).astimezone(TZ) >= cutoff or any(outcomes.mentions(m, c) for c in named)]
 
 
-def fit_of(message, company, role, environ, today):
-    """E01b: a recruiter who sent a real job description gets the same deterministic Professional Fit as any job (no model; it does not gate admission). -> (score, line) or None:
-    no description in the message, an unscorable one, or no profile in this job's environment is simply no score, never an error."""
-    text = str(message.get("body") or "")[:20000]
-    if quality.jd_problem(text):
-        return None
-    try:
-        result = evaluate(role, company, text, fit_profile.load(environ), today)
-    except Exception:                                                        # noqa: BLE001 - no profile / unreadable profile: no score
-        return None
-    return None if result.score is None else (result.score, result.line)
-
-
-def lead_row(writer, company, role, key, url, today, fit=None):
+def lead_row(writer, company, role, key, url, today):
     """E01b: the lead's Job Ledger row, once per Stable Job Key (Visible Lane Recruiter, Admitted, not Applied; no fit gate: a recruiter wrote to Jim, whatever the role), read back.
     -> 'created' | 'present'; a wrong target, an ambiguous key or a read-back that differs raises NotionError."""
     if jobs_ledger.verify(writer) != jobs_ledger.OK:
@@ -155,8 +140,7 @@ def lead_row(writer, company, role, key, url, today, fit=None):
     if publish.existing_page(writer, key):
         return "present"
     page = writer.create(publish.properties({"title": role, "company": company, "url": url, "provider": "Recruiter outreach", "lane": LEAD_LANE, "key": key, "first_seen": today,
-                                             "eligible": [LEAD_LANE], "admission": lanes.ADMIT,
-                                             "fit": fit[0] if fit else None, "fit_line": fit[1] if fit else ""}), [])
+                                             "eligible": [LEAD_LANE], "admission": lanes.ADMIT}), [])
     props = writer.call("GET", f"/pages/{page}").get("properties") or {}
     if view._plain(props.get("Stable Job Key")) != key or ((props.get("Visible Lane") or {}).get("select") or {}).get("name") != LEAD_LANE:
         raise NotionError("lead_row_readback")
@@ -276,12 +260,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
         found = lead_of(message)
         if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
-            fresh[found[3]] = (found, message["received"], message)
+            fresh[found[3]] = (found, message["received"])
     rows = 0
-    for (company, role, req, key, url), _, message in sorted(fresh.values(), key=lambda v: v[1], reverse=True)[:LEADS_PER_RUN]:
+    for (company, role, req, key, url), _ in sorted(fresh.values(), key=lambda v: v[1], reverse=True)[:LEADS_PER_RUN]:
         if live:                                                             # the Ledger row first: no page for a lead the Ledger does not hold
             try:
-                rows += lead_row(writer or Client(environ), company, role, key, url, now.date(), fit_of(message, company, role, environ, now.date())) == "created"
+                rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("lead_row_failed")
                 continue

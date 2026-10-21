@@ -363,29 +363,6 @@ class Exceptions(unittest.TestCase):
         self.assertEqual(ev.headline_company({"body": body.replace("Senior Recruiter at Example Corp | Hiring", "Recruiter")}), "")      # the footer describes Jim, never the sender
 
 
-class LeadFit(unittest.TestCase):
-    """A recruiter who sends a real job description gets the deterministic Professional Fit on the Ledger row; a thin message or no profile gets none, and never an error."""
-    def test_a_job_description_is_scored_and_a_thin_message_or_missing_profile_is_not(self):
-        from unittest.mock import patch as p
-        from tests.jobs.fit import test_fit
-        from datetime import date
-        message = {**outreach(), "body": test_fit.GOOD}
-        with p.object(ev.fit_profile, "load", return_value=test_fit.PROFILE):
-            got = ev.fit_of(message, "ExampleCo", "Technical Program Manager", {}, date(2026, 10, 1))
-            self.assertIsInstance(got[0], int)
-            self.assertIsNone(ev.fit_of(outreach(), "ExampleCo", "Program Manager", {}, date(2026, 10, 1)))          # a few lines is not a description
-        self.assertIsNone(ev.fit_of(message, "ExampleCo", "Technical Program Manager", {}, date(2026, 10, 1)))      # no profile in this job's environment
-
-    def test_the_score_is_written_on_the_row_and_never_blocks_admission(self):
-        writer = Writer()
-        ev.lead_row(writer, "ExampleCo", "Program Manager", "recruiter-exampleco-program-manager", "https://example.test/thread/5", ev.datetime(2026, 10, 21).date(), (81, "[81] fit line"))
-        row, = writer.created
-        self.assertEqual((row["LIFE OS Fit"]["number"], row["Admission Status"]["select"]["name"]), (81, "Admitted"))
-        writer = Writer()
-        ev.lead_row(writer, "ExampleCo", "Program Manager", "recruiter-exampleco-program-manager", "https://example.test/thread/5", ev.datetime(2026, 10, 21).date())
-        self.assertNotIn("LIFE OS Fit", writer.created[0])
-
-
 class Window(unittest.TestCase):
     def test_a_longer_mail_window_is_for_a_dry_run_only_and_never_beyond_90_days(self):
         for asked, live, want in (("", False, 14), ("60", False, 60), ("60", True, 14), ("5", False, 14), ("500", False, 90), ("abc", False, 14), ("-3", False, 14)):
