@@ -348,7 +348,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("readback_protected_missing")
         context.require_time()
         try:
-            page_id = notion.write_tree(client, insertion, blocks, title=title, icon=PAGE_ICONS[kind])
+            page_id = notion.write_tree(client, insertion, blocks, title=title, icon=PAGE_ICONS[kind], template=notion.FULL_WIDTH)
         except NotionError:
             return finish("write_failed")
         out["writes"] = 1

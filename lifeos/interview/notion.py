@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from urllib.parse import quote
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import DeadlineExceeded
@@ -277,6 +278,9 @@ def human_tail(client, page_id, blocks=None):
 # appends the rest to the created blocks in order; a column whose first child cannot fit starts with an empty placeholder
 # paragraph that is deleted once its children are written.
 MUST, TREE_MAX_CALLS = ("column_list", "column", "table", "tab"), 200
+# D16.1 (Jim verified Oct 21): a page created from Jim's blank "Full Width Page" (create-page `template`) is Full width. Notion applies
+# the template after the create returns, so the page's blocks are written once it has had time to.
+FULL_WIDTH, TEMPLATE_WAIT = "4003c5a059268094bab5f904e1dd9c42", 8
 PLACEHOLDER = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": []}}
 
 
@@ -321,7 +325,7 @@ def _fill(client, block_id, plan, budget):
         delete_block(client, made[0]["id"])
 
 
-def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None):
+def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None):
     """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
     id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
     budget = budget if budget is not None else [TREE_MAX_CALLS]
@@ -334,9 +338,13 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
     body = {"children": [plan[0] for plan in plans]}
     if title is not None:
         from lifeos.platform.notion_client import rich_text
-        target = client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent_id},
-                                                "properties": {"title": {"type": "title", "title": rich_text(title)}},
-                                                **({"icon": icon} if icon else {}), **body})["id"]
+        page = {"parent": {"type": "page_id", "page_id": parent_id}, "properties": {"title": {"type": "title", "title": rich_text(title)}},
+                **({"icon": icon} if icon else {})}
+        if template:                                                    # a template page takes no children in the same request
+            target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
+            time.sleep(TEMPLATE_WAIT)
+            return write_tree(client, target, blocks, budget=budget)
+        target = client.call("POST", "/pages", {**page, **body})["id"]
         made = children(client, target, budget)
     else:
         target = parent_id

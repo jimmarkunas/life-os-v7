@@ -125,10 +125,7 @@ def pane(client, round_id, title):
 
 
 class Sim(WritableFake):
-    def call(self, method, path, body=None):
-        if method == "POST" and "children" not in body:
-            body = dict(body, children=[])
-        return super().call(method, path, body)
+    """The production-shaped writable fake."""
 
 
 def written(current=None):
@@ -158,6 +155,15 @@ class Layout(unittest.TestCase):
         self.assertEqual(notion.outline(notion.read_tree(client, round_id, [500])), UI4)
         self.assertEqual([b["type"] for b in client.blocks[round_id]], ["toggle", "callout", "column_list"])   # no empty placeholder left
         self.assertIsNotNone(notion.protected_snapshot(client, round_id))
+
+    def test_new_pages_are_created_from_the_full_width_template_then_filled(self):
+        client = Sim()
+        blocks = create.rendered(opportunity(), tail=None)[0]
+        page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH)
+        self.assertEqual(client.posts[-1]["template"], {"type": "template_id", "template_id": notion.FULL_WIDTH})
+        self.assertNotIn("children", client.posts[-1])                       # Notion takes no children with a template
+        self.assertEqual(notion.outline(notion.read_tree(client, page_id, [500])), UI3C)
+        self.assertEqual(create.finalize(client, page_id, opportunity(), blocks), "readback_ok")
 
     def test_values_come_from_the_view_and_missing_sources_say_so(self):
         current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),

@@ -9,6 +9,7 @@ from lifeos.interview.models import ParentQuery, Resolution, RoundQuery, Scan, S
 from lifeos.platform.notion_client import NotionError
 from tests.interview.test_notion import Fake, ENV, block, page
 
+notion.TEMPLATE_WAIT = 0                                   # Notion applies a page template after create; the fakes apply it at once
 PARENT = ParentQuery(" New Example ", " Program Manager ")
 ROUND = RoundQuery(True, "2026-10-01", ordinal=1)
 
@@ -63,12 +64,15 @@ class WritableFake(Fake):
                 return {"id": key, "in_trash": True}
             if path.endswith("/children"):
                 self.appends = getattr(self, "appends", 0) + 1
-                items = self.register(f"{key}-add{self.appends}", body["children"])
                 siblings = self.blocks.setdefault(key, [])
+                first = key in self.pages and not siblings                    # a page created from a template, filled now
+                items = self.register(key if first else f"{key}-add{self.appends}", body["children"])
                 at = [b["id"] for b in siblings].index(body["after"]) + 1 if body.get("after") else len(siblings)
                 siblings[at:at] = items
                 if self.find(key):
                     self.find(key)["has_children"] = True
+                if first and self.bad_readback:
+                    siblings[0] = block("missing marker")
                 return {"results": copy.deepcopy(items)}
             if path.startswith("/pages/"):
                 self.pages.setdefault(key, page())["icon"] = body.get("icon")
@@ -89,10 +93,10 @@ class WritableFake(Fake):
         title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
         page_id = f"created-{len(self.posts)}"
         self.pages[page_id] = page(title, parent_id)
-        self.blocks[page_id] = self.register(page_id, body["children"])
+        self.blocks[page_id] = self.register(page_id, body.get("children", []))
         if not self.hide_created:
             self.blocks[parent_id].append({"id": page_id, "type": "child_page", "child_page": {"title": title}})
-        if self.bad_readback:
+        if self.bad_readback and self.blocks[page_id]:
             self.blocks[page_id][0] = block("missing marker")
         if self.change_notes:
             self.blocks[parent_id].insert(-1, block("changed human content"))
@@ -134,6 +138,7 @@ class CreationTests(unittest.TestCase):
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["parents_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(len(client.posts), 1)
+                self.assertEqual(client.posts[0]["template"]["template_id"], notion.FULL_WIDTH)      # D16.1: created Full width
                 parent_id = "created-1"
                 self.assertEqual(client.pages[parent_id]["properties"]["title"]["title"][0]["plain_text"], "New Example — Program Manager")
                 parent_blocks = client.blocks[parent_id]
