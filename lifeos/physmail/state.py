@@ -8,6 +8,7 @@ Binding is by count, not identity (order-independent): the starting pile (Jim's 
 consumes one unit. Pending-unidentified = units - bound. A first-seen mail number with no unit left is tolerated only up to GRACE_DAYS after the anchor and is otherwise DEGRADED."""
 import copy
 import re
+from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta, timezone
 
 from . import chains
@@ -66,6 +67,11 @@ def apply(state, extracted, now):
                 if key not in chain["events"]:
                     chain["events"][key] = [event["at"], verb]
                     counts["actions_new"] += 1
+        elif kind == "SHIPMENT":
+            ships = st.setdefault("shipments", {})
+            known = ships.get(event["number"]) or {}
+            if not known.get("delivered") and (event["delivered"] or not known or _at(event["at"]) >= _at(known["at"])):      # delivered is final: a stale copy of an earlier update never reopens a piece
+                ships[event["number"]] = {"at": event["at"], "state": event["state"], "delivered": bool(event["delivered"])}
         elif kind == "REVIEW" and event.get("id") and event["id"] not in seen_review:
             st["review"] = (st["review"] + [{"id": event["id"], "at": event.get("at"), "reason": event["reason"]}])[-MAX_REVIEW:]
             seen_review.add(event["id"])
@@ -78,6 +84,19 @@ def _status_of(chain):
     return chains.fold([tuple(v) for v in chain["events"].values()])
 
 
+def _shipment_view(state, tracking):
+    """The piece's tracking with what FedEx last said about that tracking number (matched by number only): its state, and the delivery day (Central Time) once FedEx says Delivered."""
+    if not isinstance(tracking, dict) or not isinstance(tracking.get("number"), str):
+        return tracking
+    ship = (state.get("shipments") or {}).get(re.sub(r"\s+", "", tracking["number"]))
+    if not ship:
+        return tracking
+    view = {**tracking, "state": ship["state"]}
+    if ship.get("delivered"):
+        view["delivered"] = _at(ship["at"]).astimezone(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
+    return view
+
+
 def pieces(state):
     """The active pieces, one per vendor mail number (DONE pieces are history, not listed): [{number, status, verb, at, tracking}], needs-a-look first, then forwarded, then scanned (newest number first)."""
     out = []
@@ -86,7 +105,7 @@ def pieces(state):
         if status == chains.DONE:
             continue
         at, verb = max(chain["events"].values())
-        out.append({"number": number, "status": status, "verb": verb, "at": at, "tracking": chain.get("tracking")})
+        out.append({"number": number, "status": status, "verb": verb, "at": at, "tracking": _shipment_view(state, chain.get("tracking"))})
     rank = {chains.REVIEW: 0, chains.WAITING: 1, chains.OPEN: 2}
     return sorted(out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"]))
 
