@@ -104,6 +104,19 @@ class FreshnessAuthority(unittest.TestCase):
         old = enrich.finish("Program Manager", self.desc(), "Program Manager", enrich._now().date() - timedelta(days=45), "ats_api", None, "Scale-Up")
         self.assertEqual(old["outcome"], "stale")                                  # 30 days for Scale-Up
 
+    def test_a_thin_page_on_a_scale_up_sponsors_own_board_is_ready_for_review_and_nothing_else_is_let_through(self):
+        """Jim, Oct 21: Review it as long as there is a link. Every other lane and every aggregator still holds a thin page (jd_thin)."""
+        from lifeos.jobs import enrich, jd
+        thin = jd.describe("<p>" + "We are hiring a project lead to join our team. " * 6 + "</p>", is_html=True)               # about 280 characters: past the empty floor, under the thin floor
+        self.assertGreaterEqual(len(thin["full_text"]), 200)
+        ready = enrich.finish("Program Manager", thin, "Program Manager", None, "ats_api", None, "Scale-Up", False, True)
+        self.assertEqual(ready["outcome"], "ready")
+        for lane, first_party in (("Scale-Up", False), ("Newsletter", True), ("US Remote", True)):
+            held = enrich.finish("Program Manager", thin, "Program Manager", None, "ats_api", None, lane, False, first_party)
+            self.assertEqual((held["outcome"], held["reason"]), ("blocked", "jd_thin"), (lane, first_party))
+        empty = jd.describe("<p>Short.</p>", is_html=True)
+        self.assertEqual(enrich.finish("Program Manager", empty, "Program Manager", None, "ats_api", None, "Scale-Up", False, True)["reason"], "description_empty")     # an empty page is still not a role
+
     def test_no_module_outside_lanes_defines_its_own_freshness_number(self):
         import re
         from pathlib import Path

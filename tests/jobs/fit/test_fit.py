@@ -194,6 +194,18 @@ class Stage(unittest.TestCase):
             other = stage.score_rows([(2, title, company, GOOD, "fp") + london], PROFILE, TODAY)[0]
             self.assertEqual(other[3].status, "EXCLUDE", (title, company))
 
+    def test_a_thin_page_on_a_scale_up_boards_own_source_is_review_and_never_excluded_for_fit(self):
+        """Jim, Oct 21: Review from the apply link. The same page from any other source is judged as before."""
+        from lifeos.jobs.fit import stage
+        thin = "We are hiring a delivery lead to join our team in London. " * 4
+        row = lambda source: (7, "Delivery Lead", "Example Ltd", thin, "fp", "Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", source)
+        for score, want in ((40, "REVIEW"), (90, "REVIEW")):                       # a poor and a good score from thin text: neither excludes, neither admits
+            kept = stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: score})[0]
+            self.assertEqual(kept[3].status, want, score)
+        self.assertEqual(kept[3].reason, "description too short to judge; Review from its apply link")
+        other = stage.score_rows([row("web:greenhouse-example")], PROFILE, TODAY, fit={7: 40})[0]
+        self.assertEqual(other[3].status, "EXCLUDE")                                 # the same poor score from any other source is excluded as before
+
     def test_score_rows_is_pure_and_missing_profile_is_a_noop(self):
         from lifeos.jobs.fit import stage
         out = stage.score_rows([(1, "Technical Program Manager", "Beta", GOOD, "fp")], PROFILE, TODAY)

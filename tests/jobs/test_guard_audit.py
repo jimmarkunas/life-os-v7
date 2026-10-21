@@ -47,6 +47,10 @@ class ProvenLinkTests(unittest.TestCase):
         url = "https://careers-acme.icims.com/jobs/intro"
         self.assertEqual(audit.judge(url, text), "audit_url_no_job_id")
         self.assertIsNone(audit.judge(url, text, proven=True))
+        thin = "A short description of a role. " * 5
+        self.assertEqual(audit.judge("https://careers.example.com/jobs/12345", thin), "audit_jd_thin")
+        self.assertIsNone(audit.judge("https://careers.example.com/jobs/12345", thin, thin_ok=True))               # Jim, Oct 21: a Scale-Up sponsor's thin page is Review
+        self.assertEqual(audit.judge("https://careers.example.com/jobs/12345", "{{x}} {{y}} {{z}} " * 5, thin_ok=True), "audit_jd_template")     # only THIN is let through
         self.assertEqual(audit.judge("https://careers-acme.icims.com/", text, proven=True), "audit_url_root")      # a root is never excused
 
 

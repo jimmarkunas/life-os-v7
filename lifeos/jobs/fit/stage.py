@@ -10,7 +10,7 @@ import json
 import os
 import time
 
-from lifeos.jobs import lanes, sponsors, store
+from lifeos.jobs import lanes, quality, sponsors, store
 from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, profile_sync, semantic as fit_semantic
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
@@ -64,12 +64,13 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
         result = evaluate(title, company, text, profile, today, semantic)
+        thin = lanes.thin_review_source(source) and quality.jd_problem(text) == "thin"        # Jim, Oct 21: Review from the apply link, never held, never excluded for Fit alone
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         score = (fit or {}).get(job_id, result.score)
         facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
-                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source),
-                                title_only=lanes.title_watch_source(source))
+                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin,
+                                title_only=lanes.title_watch_source(source), thin=thin)
         exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion       # a keep-list role Jim chose over a title rule
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
@@ -208,7 +209,7 @@ def reask_kept(cursor):
 
 REOPEN_ROWS = ("SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
                " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s")
-REOPEN_BATCH = 300                       # per run: the excluded Scale-Up backlog is cleared over a few ticks
+REOPEN_BATCH = 2000                      # per run: clearing a marker is one cheap UPDATE, and the whole excluded Scale-Up backlog (about 800) is re-scored by one manual run after it
 
 
 def reopen_scale_up(cursor, limit=REOPEN_BATCH):
