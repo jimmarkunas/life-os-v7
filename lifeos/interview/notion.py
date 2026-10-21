@@ -25,6 +25,7 @@ FOLD = "⚙️ LIFE OS"
 ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
+PROTECTED_MAX_DEPTH = 12                    # Jim's blocks may nest far deeper than the 4 levels of page scans (columns, callouts, lists inside lists); past this the read still fails closed
 PROTECTED_MAX_CALLS = 400                  # Jim's own content on an adopted page can nest far deeper than a scan: every container is one read, and the whole of it is digested before and after a write
 
 
@@ -225,7 +226,7 @@ def explicit_child(client, page_id):
 
 
 def _subtree(client, block, budget, depth=0):
-    if depth > MAX_DEPTH:
+    if depth > PROTECTED_MAX_DEPTH:
         raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
     if block.get("has_children"):
