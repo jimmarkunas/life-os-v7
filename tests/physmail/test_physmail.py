@@ -489,7 +489,9 @@ class HtmlNoticeTests(unittest.TestCase):
         self.assertIsNone(flat["portal"])                                                                  # every other consumer keeps the flat text, with no link targets
         done = html_only(f"<html><body><p>Mail #5000001: Forward Completed</p><p><a href=\"{link}\">Log In</a></p></body></html>")
         got = self.extract(done, True)
-        self.assertEqual((got["kind"], got["actions"]), ("ACTIONS", [("5000001", "FORWARD")]))
+        self.assertEqual((got["kind"], got["actions"], got["portal"]), ("ACTIONS", [("5000001", "FORWARD")], link))       # a completed-action notice carries the login link too
+        st, _ = state.apply(state.new_state(0, NOW), [{**got, "at": "2026-10-20T15:00:00+00:00"}], NOW)
+        self.assertEqual(st["portal"], link)                                                                  # so the link is known even when no "New Mail" notice is in the read window
 
     def test_every_other_consumer_keeps_the_flat_body_and_plain_text_is_the_same_either_way(self):
         flat = self.extract(census()[0][2], False)
