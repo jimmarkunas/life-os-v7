@@ -8,7 +8,7 @@
     "E01": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound recruiter leads (role named, from mail) get a first-outreach page and three clear actions (E01b Phase 1); a Ledger/Recruiter-lane row for a lead is not built (needs a Notion schema decision); no real-source run yet",
+      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound recruiter leads (role named, from mail) get a first-outreach page and three clear actions (E01b Phase 1); each lead also gets a Job Ledger row in the Recruiter lane (written and read back before its page, live only); no real-source run yet",
       "tests": [
         "tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
         "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed",

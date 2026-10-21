@@ -3,6 +3,8 @@ import unittest
 from unittest.mock import patch
 
 from lifeos.interview import create, notion
+from lifeos.jobs import ledger as jobs_ledger
+from lifeos.platform.notion_client import NotionError
 from lifeos.interview.models import Child, Ownership, Parent, Scan
 from lifeos.run import STAGES
 from lifeos.sources import interview_evidence as ev
@@ -53,10 +55,34 @@ def outreach(role="Program Manager", client="ExampleCo", person="Pat Example", u
             "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role" + (f" for our client {client}" if client else "") + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n"}
 
 
+class Writer:
+    """The Jobs token's Ledger client: the target check, the key lookup, one create and its read-back."""
+    source = "ledger-source"
+
+    def __init__(self, held=0, lane=ev.LEAD_LANE, target=True, fail=False):
+        self.held, self.lane, self.target, self.fail, self.created = held, lane, target, fail, []
+
+    def call(self, method, path, body=None):
+        if path == f"/data_sources/{self.source}":
+            return {"properties": {n: {"type": k if self.target else "number"} for n, k in jobs_ledger.REQUIRED.items()}}
+        if path.endswith("/query"):
+            return {"results": [{"id": f"held-{n}"} for n in range(self.held)]}
+        props = self.created[-1]
+        return {"properties": {"Stable Job Key": props["Stable Job Key"] and {"type": "rich_text", "rich_text": [{"plain_text": props["Stable Job Key"]["rich_text"][0]["text"]["content"]}]},
+                               "Visible Lane": {"select": {"name": self.lane}}}}
+
+    def create(self, props, blocks):
+        if self.fail:
+            raise NotionError("NOTION_NETWORK")
+        self.created.append(props)
+        return "new-page"
+
+
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=()):
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None):
+        self.writer = writer
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -77,7 +103,7 @@ class Run:
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows),
-                            ledger=self.ledger, records=self.records)
+                            ledger=self.ledger, records=self.records, writer=self.writer)
         return counts, captured
 
 
@@ -277,6 +303,64 @@ class Leads(unittest.TestCase):
         with patch.object(notion, "parent_scan", return_value=Scan((), False)), patch.object(ev.stage, "run", return_value={"blocked": 0, "why": {}}):
             counts = ev.run(20, True, environ=ENV, client=object(), calendar=Calendar(), ledger=Ledger(), records=run.records, ledger_rows=lambda c: [])
         self.assertEqual(counts["leads"], 0)
+
+
+LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}
+
+
+class LeadRows(unittest.TestCase):
+    """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
+    def go(self, writer, live=True):
+        return Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE if live else ENV, writer=writer)()
+
+    def test_a_live_run_writes_the_ledger_row_then_queues_the_page(self):
+        writer = Writer()
+        counts, got = self.go(writer)
+        row, = writer.created
+        self.assertEqual((row["Visible Lane"]["select"]["name"], row["Admission Status"]["select"]["name"], row["Stable Job Key"]["rich_text"][0]["text"]["content"]),
+                         ("Recruiter", "Admitted", "recruiter-exampleco-program-manager"))
+        self.assertNotIn("Applied", row)
+        self.assertEqual((counts["lead_rows"], len(got["evidence"]), counts["failed"]), (1, 1, 0))
+
+    def test_a_dry_run_writes_no_row(self):
+        writer = Writer()
+        counts, _ = self.go(writer, live=False)
+        self.assertEqual((writer.created, counts["lead_rows"], counts["leads"]), ([], 0, 1))
+
+    def test_a_row_that_exists_is_not_created_again_but_its_page_is_still_queued(self):
+        writer = Writer(held=1)
+        counts, got = self.go(writer)
+        self.assertEqual((writer.created, counts["lead_rows"], len(got["evidence"])), ([], 0, 1))
+
+    def test_a_failed_wrong_target_or_unreadable_row_creates_no_page_and_is_degraded(self):
+        for label, writer in (("create failed", Writer(fail=True)), ("not the Ledger", Writer(target=False)), ("read-back differs", Writer(lane="Scale-up"))):
+            counts, got = self.go(writer)
+            self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed"), counts["failed"] > 0), ([], 1, True), label)
+
+    def test_two_rows_for_one_key_are_refused(self):
+        counts, got = self.go(Writer(held=2))
+        self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed")), ([], 1))
+
+
+class Exceptions(unittest.TestCase):
+    """A named test pursuit may be older than 14 days; nothing else is."""
+    NOW = ev.datetime(2026, 10, 21, 12, tzinfo=ev.TZ)
+
+    def test_the_window_widens_only_when_test_pursuits_are_named(self):
+        self.assertEqual((ev.window({}, True), ev.window({"INTERVIEW_TEST_COMPANIES": "Alpha, Beta"}, True), ev.window({"INTERVIEW_TEST_COMPANIES": " , "}, True)), (14, 60, 14))
+
+    def test_an_old_message_is_kept_only_when_it_names_a_test_pursuit(self):
+        old, new = "2026-09-10T10:00:00Z", "2026-10-20T10:00:00Z"
+        named, other = {**mail(), "received": old, "subject": "Alpha interview"}, {**mail(), "received": old, "subject": "Gamma interview"}
+        recent = {**mail(), "received": new, "subject": "Gamma interview"}
+        env = {"INTERVIEW_TEST_COMPANIES": "Alpha"}
+        self.assertEqual(ev.recent_or_named([named, other, recent], env, self.NOW, True), [named, recent])
+        self.assertEqual(ev.recent_or_named([named, other, recent], {**env, "INTERVIEW_MAIL_DAYS": "60"}, self.NOW, False), [named, other, recent])      # an explicit dry-run look keeps all
+
+    def test_a_linkedin_sender_headline_names_the_employer(self):
+        body = "You have a new message\n\nPat Example (Senior Recruiter at Example Corp | Hiring)\n(https://example.test/in/pat)\n\nThis email was intended for Jim (Engineer at Elsewhere)\n"
+        self.assertEqual(ev.headline_company({"body": body}), "Example Corp")
+        self.assertEqual(ev.headline_company({"body": body.replace("Senior Recruiter at Example Corp | Hiring", "Recruiter")}), "")      # the footer describes Jim, never the sender
 
 
 class Window(unittest.TestCase):
