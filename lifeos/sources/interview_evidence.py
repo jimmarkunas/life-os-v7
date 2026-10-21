@@ -32,7 +32,7 @@ ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|
 REQUEST = "Request message ↗"
 LEAD_LANE = "Recruiter"                # the Job Ledger's Visible Lane for a recruiter lead (Notion adds the option on first write)
 HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
-STAGE_SECONDS = 300                    # the budget of the Notion write stage, started after the mail has been read
+STAGE_SECONDS = 720                    # the budget of the Notion write stage, started after the mail has been read: run 39556923423 spent 300 s on page scans and wrote nothing; the recruiters job limit is 30 minutes
 LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
