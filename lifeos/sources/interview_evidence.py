@@ -302,32 +302,42 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                   None, None, None, req)
     counts_requests = len(asked)
     every = [split_title(p.title) for p in scan.items] + [(a["company"], a["role"]) for a in roster]
-    fresh = {}
+    fresh = {}                                                               # one lead per job: Stable Job Key -> (lead, its own message); the newest message wins
     for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
         found = lead_of(message)
         if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
-            fresh[found[3]] = (found, message["received"])
-    rows = jobs = 0
-    for (company, role, req, key, url), _ in sorted(fresh.values(), key=lambda v: v[1], reverse=True)[:LEADS_PER_RUN]:
-        if live:                                                             # the job or Ledger row first: no page for a lead Jobs OS does not hold
+            fresh[found[3]] = (found, message)
+    leads_live = live and environ.get("INTERVIEW_LEADS") == "on"              # Jim's second switch: lead rows, jobs and pages stay off until it is "on"
+    made_rows = made_jobs = 0
+    chosen, titles_taken = [], set()
+    for lead, source in sorted(fresh.values(), key=lambda v: v[1]["received"], reverse=True):
+        title = (tuple(tokens(lead[0])), tuple(tokens(lead[1])))
+        if title not in titles_taken and len(chosen) < LEADS_PER_RUN:        # two links for one company and role are one pursuit, never two pages
+            titles_taken.add(title)
+            chosen.append((lead, source))
+    for (company, role, req, key, url), source in chosen:
+        if live and not leads_live:
+            continue                                                         # live, but Jim has not turned leads on: nothing is written or queued for a lead
+        if leads_live:                                                       # the job or Ledger row first: no page for a lead Jobs OS does not hold
             try:
-                link = posting_link(message)
+                link = posting_link(source)                                  # this lead's own message, never another one's
                 if link:
-                    jobs += bool(lead_job(company, role, link, message, now))
+                    made_jobs += bool(lead_job(company, role, link, source, now))
                 else:
-                    rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
+                    made_rows += lead_row(writer or Client(environ), company, role, key, url, now.date()) == "created"
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("lead_row_failed")
                 continue
         evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, 1, source=url, requisition=req, stable_job_key=key)))
-    for company, role, job, url, kids, rows in ready.values():
+    for company, role, job, url, kids, ledger_rows_of in ready.values():
         held = [c for c in kids.items if c.identity_valid is True]
         if not kids.complete:
             flag("child_scan_incomplete")
         elif held:
-            queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
+            queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
-    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), rows, jobs
+    counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
+    counts["leads_this_run"] = len(chosen)
     counts["convert"] = convert
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     for row, *_ in leads:

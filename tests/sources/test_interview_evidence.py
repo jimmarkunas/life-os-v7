@@ -1,4 +1,6 @@
 """LIFE-88: Interview OS's normal path composes only verified evidence, fails each gap visibly and alone, and writes only on Jim's switch."""
+import json
+import re
 import unittest
 from unittest.mock import patch
 
@@ -305,7 +307,7 @@ class Leads(unittest.TestCase):
         self.assertEqual(counts["leads"], 0)
 
 
-LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7"}
+LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on"}
 
 
 class LeadRows(unittest.TestCase):
@@ -481,6 +483,83 @@ class LegacyRounds(unittest.TestCase):
         self.assertFalse(notion.is_legacy_company(NAMED, "Gamma") or notion.is_legacy_company({}, "SH/FT"))
         self.assertEqual(view.stage(view.Opportunity("SH/FT", "TPM", "k", None, None, "none", None, "root", rounds=view.rounds_of(Scan((legacy,), True))), "2026-10-21")[0],
                          "Interview 1 date passed · outcome not verified")
+
+
+def counts_only(value, path="counts"):
+    """Every leaf of a result is a number or a bool; the only strings are the fixed codes and the six-hex hashes used as keys."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            assert isinstance(key, str) and re.fullmatch(r"[a-z0-9_]{1,40}", key), f"{path}: key {key!r}"
+            counts_only(inner, f"{path}.{key}")
+    elif not isinstance(value, (int, float, bool, type(None))):
+        raise AssertionError(f"{path}: {type(value).__name__} is not a count")
+
+
+class LeadCorrelation(unittest.TestCase):
+    """Each lead carries its own message and ATS link through the live loop; a different message in the mailbox never lends it a link or a date."""
+    A = "https://boards.greenhouse.io/alphaco/jobs/1111111"
+    B = "https://jobs.lever.co/betaco/22222222-2222-2222-2222-222222222222"
+    C = "https://boards.greenhouse.io/gammaco/jobs/3333333"
+
+    def messages(self):
+        return [outreach(role="Alpha Role", client="AlphaCo", url="https://example.test/m/a", received="2026-10-18T10:00:00Z", extra=f"Apply: {self.A}"),
+                outreach(role="Beta Role", client="BetaCo", url="https://example.test/m/b", received="2026-10-19T10:00:00Z", extra=f"Apply: {self.B}"),
+                outreach(role="Gamma Role", client="GammaCo", url="https://example.test/m/c", received="2026-10-20T10:00:00Z", extra=f"Apply: {self.C}")]
+
+    def go(self, records, **extra):
+        calls = []
+        with patch.object(ev, "lead_job", side_effect=lambda company, role, link, message, now: calls.append((company, role, link, message["url"])) or True):
+            counts, got = Run(parents=(), kids={}, roster=[], records=records, environ=LIVE, writer=Writer(), **extra)()
+        return calls, counts, got
+
+    def test_distinct_leads_with_different_ats_links_each_get_exactly_their_own(self):
+        calls, counts, got = self.go(self.messages())
+        self.assertEqual(sorted(calls), sorted([("AlphaCo", "Alpha Role", self.A, "https://example.test/m/a"), ("BetaCo", "Beta Role", self.B, "https://example.test/m/b"),
+                                                ("GammaCo", "Gamma Role", self.C, "https://example.test/m/c")]))
+        self.assertEqual((counts["lead_jobs"], len(got["evidence"])), (3, 3))
+        self.assertEqual(sorted(q.source for _, q in got["evidence"]), ["https://example.test/m/a", "https://example.test/m/b", "https://example.test/m/c"])
+
+    def test_the_newest_message_in_the_mailbox_does_not_lend_its_link_to_an_older_lead(self):
+        newest = outreach(role="Delta Role", client="DeltaCo", url="https://example.test/m/d", received="2026-10-21T10:00:00Z", extra="https://boards.greenhouse.io/deltaco/jobs/4444444")
+        older = self.messages()[0]
+        calls, _, _ = self.go([older, newest])
+        self.assertIn(("AlphaCo", "Alpha Role", self.A, "https://example.test/m/a"), calls)
+        self.assertNotIn(("AlphaCo", "Alpha Role", "https://boards.greenhouse.io/deltaco/jobs/4444444", "https://example.test/m/d"), calls)
+        self.assertEqual(len([c for c in calls if c[0] == "AlphaCo"]), 1)
+
+    def test_a_linkless_lead_never_borrows_a_link_from_another_message(self):
+        linkless = outreach(role="Epsilon Role", client="EpsilonCo", url="https://example.test/m/e", received="2026-10-17T10:00:00Z")
+        writer = Writer()
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            counts, got = Run(parents=(), kids={}, roster=[], records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
+        self.assertEqual(job.call_count, 1)                                    # only the lead that has its own link
+        self.assertEqual((len(writer.created), counts["lead_rows"], counts["lead_jobs"]), (1, 1, 1))
+        self.assertEqual(writer.created[0]["Apply URL"]["url"], "https://example.test/m/e")
+
+    def test_two_different_links_for_one_company_and_role_are_one_pursuit_and_one_page(self):
+        first = outreach(role="Alpha Role", client="AlphaCo", url="https://example.test/m/a1", received="2026-10-18T10:00:00Z", extra=self.A)
+        second = outreach(role="Alpha Role", client="AlphaCo", url="https://example.test/m/a2", received="2026-10-19T10:00:00Z", extra=self.B)
+        calls, counts, got = self.go([first, second])
+        self.assertEqual((len(calls), len(got["evidence"]), counts["failed"]), (1, 1, 0))
+        self.assertEqual(calls[0][2:], (self.B, "https://example.test/m/a2"))          # the newest message's own link
+
+    def test_leads_stay_off_until_the_second_switch_is_on_even_when_the_writer_is_live(self):
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            counts, got = Run(parents=(), kids={}, roster=[], records=self.messages(), environ={**ENV, "INTERVIEW_OS_WRITER": "v7"}, writer=Writer())()
+        self.assertEqual((job.call_count, got["evidence"], counts["lead_jobs"], counts["lead_rows"]), (0, [], 0, 0))
+        self.assertEqual(counts["leads"], 3)                                             # still counted, so the dry numbers show what turning it on would do
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            counts, got = Run(parents=(), kids={}, roster=[], records=self.messages(), environ=ENV, live=False, writer=Writer())()
+        self.assertEqual((job.call_count, len(got["evidence"])), (0, 3))               # a dry run plans them and writes none
+
+    def test_the_result_is_counts_only_with_a_ready_page_a_lead_a_conversion_and_a_request_in_one_run(self):
+        records = [*self.messages(), mail()]
+        counts, _ = Run(records=records, roster=[APPLIED], environ=LIVE, writer=Writer())()
+        counts_only(counts)
+        text = json.dumps(counts)
+        for private in ("ExampleCo", "AlphaCo", "Program Manager", "Alpha Role", "greenhouse", "example.test", "Pat Example"):
+            self.assertNotIn(private, text)
+        self.assertIsInstance(counts["lead_rows"], int)                                  # the old collision made this the Ledger's own rows
 
 
 class Window(unittest.TestCase):
