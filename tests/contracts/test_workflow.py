@@ -709,6 +709,7 @@ CONSUMER_STEPS = {
 }
 CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
+ISOLATED_SYNC = ("profile-sync",)         # the Fit profile sync: the only writer of a Bitwarden secret; its own test below pins exactly what it may hold
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
 
@@ -811,5 +812,42 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], want["digest"], name)   # live/dry-run switches and stage commands included
 
     def test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table(self):
-        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE)))
+        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE) + list(ISOLATED_SYNC)))
         self.assertEqual(sorted(CUT_OVER + PILOTS), sorted(CONSUMERS))
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class ProfileSyncWorkflowTests(unittest.TestCase):
+    """The Fit profile sync holds a Bitwarden write token, so it is pinned tightly: two secrets, no schedule, one command, a checksummed CLI."""
+
+    def setUp(self):
+        self.root = pathlib.Path(".github/workflows")
+        self.text = (self.root / "profile-sync.yml").read_text()
+        self.doc = yaml.safe_load(self.text)
+
+    def test_it_holds_exactly_the_write_token_and_the_notion_read_token(self):
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", self.text))), ["LIFEOS_BWS_PROFILE_SYNC_TOKEN", "NOTION_FIT_SYNC_TOKEN"])
+
+    def test_no_other_workflow_can_see_the_write_token(self):
+        for path in self.root.glob("*.yml"):
+            if path.stem != "profile-sync":
+                self.assertNotIn("LIFEOS_BWS_PROFILE_SYNC_TOKEN", path.read_text(), path.stem)
+                self.assertNotIn("NOTION_FIT_SYNC_TOKEN", path.read_text(), path.stem)
+
+    def test_it_has_no_schedule_no_top_level_secret_and_runs_one_stage(self):
+        on = self.doc.get("on") or self.doc.get(True)
+        self.assertEqual(sorted(on), ["workflow_dispatch", "workflow_run"])
+        self.assertNotIn("schedule", self.text.replace("No schedule of its own", ""))
+        self.assertNotIn("env", self.doc)
+        self.assertEqual(self.text.count("python -m lifeos.run"), 1)
+        self.assertIn("python -m lifeos.run fit-profile-sync", self.text)
+
+    def test_it_is_a_dry_run_unless_ticked_or_following_a_tick_with_the_variable_on(self):
+        self.assertFalse(self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"] if "on" in self.doc else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"])
+        self.assertIn("vars.FIT_PROFILE_SYNC == 'on'", self.text)
+
+    def test_the_bitwarden_cli_is_pinned_by_version_and_checksum(self):
+        self.assertIn("bws-v2.1.0", self.text)
+        self.assertIn("ba8233c3a4aee5d43e3c73bbd04d99e9bc5aba13bbbfd06d89b073abe732b860", self.text)
+        self.assertIn("sha256sum -c", self.text)
+

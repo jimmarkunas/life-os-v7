@@ -1,0 +1,42 @@
+name: profile-sync
+# Fit profile sync: Jim's Notion page is the authority; the approved evidence block is copied into the one Bitwarden secret the Fit engine already merges (FIT_PROFILE_EXTRA_JSON).
+# The main pipeline still reads only Bitwarden. This job holds the only write token and a read token for the one Notion page, and nothing else; it prints one fixed code.
+# Manual dispatch (dry run unless "live"), and after every hourly tick when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Write the Bitwarden secret (unticked = dry run: reads the page and the secret, writes nothing)"
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["hourly"]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-profile-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: ${{ github.event_name == 'workflow_dispatch' || (vars.FIT_PROFILE_SYNC == 'on' && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - name: Install the pinned Bitwarden Secrets Manager CLI (bws 2.1.0, SHA-256 checked before use)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/bws.zip https://github.com/bitwarden/sdk-sm/releases/download/bws-v2.1.0/bws-x86_64-unknown-linux-gnu-2.1.0.zip
+          echo "ba8233c3a4aee5d43e3c73bbd04d99e9bc5aba13bbbfd06d89b073abe732b860  /tmp/bws.zip" | sha256sum -c -
+          unzip -o /tmp/bws.zip -d /tmp/bws-bin
+          sudo install -m 0755 /tmp/bws-bin/bws /usr/local/bin/bws
+      - name: Sync the approved Fit evidence block (counts and one fixed code only)
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.LIFEOS_BWS_PROFILE_SYNC_TOKEN }}
+          NOTION_FIT_SYNC_TOKEN: ${{ secrets.NOTION_FIT_SYNC_TOKEN }}
+          NOTION_FIT_SYNC_PAGE_ID: ${{ vars.NOTION_FIT_SYNC_PAGE_ID }}
+          FIT_PROFILE_EXTRA_SECRET_ID: ${{ vars.FIT_PROFILE_EXTRA_SECRET_ID }}
+          LIVE: ${{ github.event_name == 'workflow_run' || inputs.live }}
+        run: python -m lifeos.run fit-profile-sync $([ "$LIVE" = "true" ] && echo --live)
