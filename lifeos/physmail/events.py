@@ -91,6 +91,8 @@ def extract(message):
     if COMPLETED.match(subject):
         actions, bad = [], None
         for line in body.splitlines():
+            if line.strip().lower().startswith("https://"):
+                continue                                                       # a link target the HTML reader appended, never an action line
             verbs = {VERBS[w] for w in re.findall(r"[a-z]+", line.lower()) if w in VERBS}
             numbers = {m for m in MAIL_NO.findall(line)}
             if not numbers and not (verbs and BULLET.match(line)):

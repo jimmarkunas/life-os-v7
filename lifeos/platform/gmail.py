@@ -273,9 +273,13 @@ def _find_html(part):
 class _TextFromHtml(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.pieces, self.hidden = [], 0
+        self.pieces, self.hidden, self.links = [], 0, []
 
     def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            href = dict(attrs).get("href") or ""
+            if href.startswith("https://") and href not in self.links:
+                self.links.append(href.strip())
         if tag.lower() in ("script", "style"):
             self.hidden += 1
         elif tag.lower() in ("br", "p", "div", "li", "tr") and self.hidden == 0:
@@ -293,7 +297,7 @@ class _TextFromHtml(HTMLParser):
 
 
 def _find_text(part, keep_lines=False):
-    """Prefer a text/plain alternative and fall back to readable HTML text. keep_lines keeps the HTML fallback's line breaks (one normalised line per block element)."""
+    """Prefer a text/plain alternative and fall back to readable HTML text. keep_lines keeps the HTML fallback's line breaks (one normalised line per block element) and appends the https link targets, one per line."""
     plain, html = [], []
 
     def visit(node):
@@ -323,5 +327,5 @@ def _find_text(part, keep_lines=False):
         raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
     if keep_lines:
         lines = (" ".join(line.split()) for line in " ".join(parser.pieces).split("\n"))
-        return "\n".join(line for line in lines if line)
+        return "\n".join([line for line in lines if line] + parser.links)           # link targets close the text, one per line (Physical Mail finds the mailbox page in one)
     return " ".join(" ".join(parser.pieces).split())
