@@ -128,6 +128,8 @@ def proposed_line(reading):
     if not pool:
         return None
     est, stop = pool["estimate"], pool.get("stop")
+    if est.get("proposed") == 0:
+        return None                                                      # an empty backlog proposes nothing: no line, rather than "0 jobs: about 0%"
     used = {w["label"]: w["used"] for w in pool["windows"]}
     parts, fits, basis = [], True, 0
     for w in est["windows"]:
