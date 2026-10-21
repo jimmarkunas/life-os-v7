@@ -1,62 +1,164 @@
 {
   "source": "LIFE-88 comment 10895 (E01-E16); a missing or skipped test, or a PASS without evidence, fails tests/interview/test_e2e_gate.py",
-  "states": {"machine": "assertions in the existing unit-tests run", "live": "real source, normal V7 runner, Notion read-back and Jim's review; CI cannot set it"},
+  "states": {
+    "machine": "assertions in the existing unit-tests run",
+    "live": "real source, normal V7 runner, Notion read-back and Jim's review; CI cannot set it"
+  },
   "outcomes": {
-    "E01": {"machine": "PENDING", "live": "PENDING", "missing": "no recruiter-request mail feed into lifeos.run interview; a page's own Request message link is read only once the page exists",
-            "tests": ["tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
-                      "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed"]},
-    "E02": {"machine": "PASS", "live": "PENDING", "missing": "",
-            "tests": ["tests.interview.test_ui3c.Layout.test_ledger_facts_only_from_the_exact_row",
-                      "tests.sources.test_interview_evidence.Refresh.test_wrong_or_missing_evidence_fails_that_page_visibly_and_writes_nothing",
-                      "tests.interview.test_create.CreationTests.test_parent_fail_closed_gates",
-                      "tests.hiring.test_hiring.CompilerTests.test_two_ledger_rows_for_one_company_and_role_are_one_opportunity"]},
-    "E03": {"machine": "PARTIAL", "live": "PENDING", "missing": "the normal entry refreshes an existing UI 3c page; creating a first parent from a new request needs the E01 feed",
-            "tests": ["tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
-                      "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",
-                      "tests.interview.test_create.CreationTests.test_parent_round_replay_vertical_slice_and_skeletons"]},
-    "E04": {"machine": "PASS", "live": "PENDING", "missing": "",
-            "tests": ["tests.interview.test_ui3c.Layout.test_both_pages_are_the_approved_trees",
-                      "tests.interview.test_ui3c.Layout.test_new_pages_are_created_from_the_full_width_template_then_filled",
-                      "tests.interview.test_ui3c.ReadbackValues.test_a_changed_paragraph_or_table_cell_fails_although_the_structure_matches"]},
-    "E05": {"machine": "PARTIAL", "live": "PENDING", "missing": "Mark Complete is shown unavailable (NOT DELIVERED); actions are labelled derived or DEGRADED, never source-backed",
-            "tests": ["tests.interview.test_ui3c.Layout.test_d15_order_and_no_invented_primary_action",
-                      "tests.interview.test_ui3c.ReadbackValues.test_the_opportunity_outcome_is_never_asserted_and_the_action_says_what_it_rests_on"]},
-    "E06": {"machine": "PASS", "live": "PENDING", "missing": "",
-            "tests": ["tests.sources.test_interview_evidence.Ordinal.test_only_an_explicit_single_round_number_counts",
-                      "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_that_states_its_round_adds_that_round_before_the_refresh",
-                      "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages",
-                      "tests.sources.test_interview_evidence.CalendarRounds.test_events_that_are_not_interviews_or_not_this_job_or_not_accepted_are_ignored",
-                      "tests.interview.test_create.CreationTests.test_same_run_duplicate_evidence_defers_round"]},
-    "E07": {"machine": "PENDING", "live": "PENDING", "missing": "a confirmed Calendar time for a Scheduling Pending round returns round_conflict; promotion, reschedule and cancel of the same child are not built",
-            "tests": ["tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing"]},
-    "E08": {"machine": "PASS", "live": "PENDING", "missing": "",
-            "tests": ["tests.interview.test_ui3c.Layout.test_both_pages_are_the_approved_trees",
-                      "tests.interview.test_ui3c.Layout.test_staged_writes_respect_notion_nesting_and_read_back_identical",
-                      "tests.interview.test_ui3c.PreparationTab.test_prepare_tab_written_once_then_matched_and_notes_untouched"]},
-    "E09": {"machine": "PASS", "live": "PENDING", "missing": "",
-            "tests": ["tests.interview.test_ui3c.Reconcile.test_a_human_edit_another_job_or_an_unknown_layout_stops_without_writing",
-                      "tests.interview.test_ui3c.Reconcile.test_a_ui_3b_page_migrates_only_when_authorized_and_keeps_jims_notes",
-                      "tests.interview.test_ui3c.PreparationTab.test_a_human_edit_in_the_prepare_tab_is_a_conflict",
-                      "tests.interview.test_ui3c.QaAcceptanceRun.test_first_and_second_runs"]},
-    "E10": {"machine": "PENDING", "live": "PENDING", "missing": "Calendar invitation detail, recruiter threads, LinkedIn contacts and the submitted résumé/materials are not connected; the pages say so",
-            "tests": ["tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so"]},
-    "E11": {"machine": "PARTIAL", "live": "PENDING", "missing": "absent/placeholder/accepted are recognized and linked; no transcript import or post-interview analysis",
-            "tests": ["tests.interview.test_ui3c.TranscriptPage.test_absent_placeholder_and_accepted_transcript_pages",
-                      "tests.interview.test_ui3c.TranscriptPage.test_two_full_transcript_pages_are_ambiguous_and_write_nothing"]},
-    "E12": {"machine": "PENDING", "live": "PENDING", "missing": "no After Interview outcome, commitments or coaching source", "tests": []},
-    "E13": {"machine": "PARTIAL", "live": "PENDING", "missing": "LIFE-19: a failed or stale hiring outcome-mail save is not yet proven to make the Hiring Pipeline DEGRADED",
-            "tests": ["tests.hiring.test_hiring.CompilerTests.test_prior_state_carries_only_as_degraded_and_never_rolls_a_stage_back",
-                      "tests.hiring.test_hiring.CompilerTests.test_an_unreadable_ledger_or_pages_carries_the_whole_prior_state_or_is_unavailable",
-                      "tests.hiring.test_hiring.CompilerTests.test_nothing_computed_with_incomplete_evidence_is_never_a_trustworthy_empty_table"]},
-    "E14": {"machine": "PARTIAL", "live": "PENDING", "missing": "the Close screen has authenticated confirmation and read-back; Manage, outreach and material actions are not reachable",
-            "tests": ["tests.hiring.test_close_app.Post.test_a_missing_expired_forged_or_foreign_confirmation_is_refused_with_no_write",
-                      "tests.hiring.test_close_app.Post.test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success",
-                      "tests.hiring.test_close_app.Post.test_reopen_and_manage_are_not_reachable"]},
-    "E15": {"machine": "PARTIAL", "live": "PENDING", "missing": "V1 old-writer retirement is not merged and INTERVIEW_OS_WRITER is off",
-            "tests": ["tests.sources.test_interview_evidence.Refresh.test_nothing_is_written_without_jims_switch",
-                      "tests.sources.test_interview_evidence.Registered.test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched",
-                      "tests.contracts.test_workflow.DomainsWorkflowTests.test_a_failing_domain_step_is_a_warning_never_a_failed_run",
-                      "tests.contracts.test_workflow.BitwardenConsumerTests.test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table"]},
-    "E16": {"machine": "PENDING", "live": "PENDING", "missing": "needs E01, E07, E10-E15; no full real interview has run end to end", "tests": []}
+    "E01": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound leads with no application (E01b: Recruiter lane row, first-outreach page, clear action) are not built; no real-source run yet",
+      "tests": [
+        "tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
+        "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed",
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_an_automated_request_for_an_applied_job_creates_the_pending_interview_1",
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_rejections_offers_other_companies_and_other_mail_are_not_requests",
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_two_applied_rows_the_text_cannot_tell_apart_are_ambiguous_and_nothing_is_written",
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_a_requisition_the_apply_url_does_not_carry_blocks_the_link",
+        "tests.sources.test_interview_evidence.SchedulingRequests.test_unread_mail_is_degraded_and_never_a_quiet_zero"
+      ]
+    },
+    "E02": {
+      "machine": "PASS",
+      "live": "PENDING",
+      "missing": "",
+      "tests": [
+        "tests.interview.test_ui3c.Layout.test_ledger_facts_only_from_the_exact_row",
+        "tests.sources.test_interview_evidence.Refresh.test_wrong_or_missing_evidence_fails_that_page_visibly_and_writes_nothing",
+        "tests.interview.test_create.CreationTests.test_parent_fail_closed_gates",
+        "tests.hiring.test_hiring.CompilerTests.test_two_ledger_rows_for_one_company_and_role_are_one_opportunity"
+      ]
+    },
+    "E03": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "a first parent is created from an applied-job scheduling request through the normal entry (E01a, unit-proven); an inbound lead's first parent needs E01b; no real-source run yet",
+      "tests": [
+        "tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
+        "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",
+        "tests.interview.test_create.CreationTests.test_parent_round_replay_vertical_slice_and_skeletons"
+      ]
+    },
+    "E04": {
+      "machine": "PASS",
+      "live": "PENDING",
+      "missing": "",
+      "tests": [
+        "tests.interview.test_ui3c.Layout.test_both_pages_are_the_approved_trees",
+        "tests.interview.test_ui3c.Layout.test_new_pages_are_created_from_the_full_width_template_then_filled",
+        "tests.interview.test_ui3c.ReadbackValues.test_a_changed_paragraph_or_table_cell_fails_although_the_structure_matches"
+      ]
+    },
+    "E05": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "Mark Complete is shown unavailable (NOT DELIVERED); actions are labelled derived or DEGRADED, never source-backed",
+      "tests": [
+        "tests.interview.test_ui3c.Layout.test_d15_order_and_no_invented_primary_action",
+        "tests.interview.test_ui3c.ReadbackValues.test_the_opportunity_outcome_is_never_asserted_and_the_action_says_what_it_rests_on"
+      ]
+    },
+    "E06": {
+      "machine": "PASS",
+      "live": "PENDING",
+      "missing": "",
+      "tests": [
+        "tests.sources.test_interview_evidence.Ordinal.test_only_an_explicit_single_round_number_counts",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_that_states_its_round_adds_that_round_before_the_refresh",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_events_that_are_not_interviews_or_not_this_job_or_not_accepted_are_ignored",
+        "tests.interview.test_create.CreationTests.test_same_run_duplicate_evidence_defers_round"
+      ]
+    },
+    "E07": {
+      "machine": "PENDING",
+      "live": "PENDING",
+      "missing": "a confirmed Calendar time for a Scheduling Pending round returns round_conflict; promotion, reschedule and cancel of the same child are not built",
+      "tests": [
+        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing"
+      ]
+    },
+    "E08": {
+      "machine": "PASS",
+      "live": "PENDING",
+      "missing": "",
+      "tests": [
+        "tests.interview.test_ui3c.Layout.test_both_pages_are_the_approved_trees",
+        "tests.interview.test_ui3c.Layout.test_staged_writes_respect_notion_nesting_and_read_back_identical",
+        "tests.interview.test_ui3c.PreparationTab.test_prepare_tab_written_once_then_matched_and_notes_untouched"
+      ]
+    },
+    "E09": {
+      "machine": "PASS",
+      "live": "PENDING",
+      "missing": "",
+      "tests": [
+        "tests.interview.test_ui3c.Reconcile.test_a_human_edit_another_job_or_an_unknown_layout_stops_without_writing",
+        "tests.interview.test_ui3c.Reconcile.test_a_ui_3b_page_migrates_only_when_authorized_and_keeps_jims_notes",
+        "tests.interview.test_ui3c.PreparationTab.test_a_human_edit_in_the_prepare_tab_is_a_conflict",
+        "tests.interview.test_ui3c.QaAcceptanceRun.test_first_and_second_runs"
+      ]
+    },
+    "E10": {
+      "machine": "PENDING",
+      "live": "PENDING",
+      "missing": "Calendar invitation detail, recruiter threads, LinkedIn contacts and the submitted résumé/materials are not connected; the pages say so",
+      "tests": [
+        "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so"
+      ]
+    },
+    "E11": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "absent/placeholder/accepted are recognized and linked; no transcript import or post-interview analysis",
+      "tests": [
+        "tests.interview.test_ui3c.TranscriptPage.test_absent_placeholder_and_accepted_transcript_pages",
+        "tests.interview.test_ui3c.TranscriptPage.test_two_full_transcript_pages_are_ambiguous_and_write_nothing"
+      ]
+    },
+    "E12": {
+      "machine": "PENDING",
+      "live": "PENDING",
+      "missing": "no After Interview outcome, commitments or coaching source",
+      "tests": []
+    },
+    "E13": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "LIFE-19: a failed or stale hiring outcome-mail save is not yet proven to make the Hiring Pipeline DEGRADED",
+      "tests": [
+        "tests.hiring.test_hiring.CompilerTests.test_prior_state_carries_only_as_degraded_and_never_rolls_a_stage_back",
+        "tests.hiring.test_hiring.CompilerTests.test_an_unreadable_ledger_or_pages_carries_the_whole_prior_state_or_is_unavailable",
+        "tests.hiring.test_hiring.CompilerTests.test_nothing_computed_with_incomplete_evidence_is_never_a_trustworthy_empty_table"
+      ]
+    },
+    "E14": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "the Close screen has authenticated confirmation and read-back; Manage, outreach and material actions are not reachable",
+      "tests": [
+        "tests.hiring.test_close_app.Post.test_a_missing_expired_forged_or_foreign_confirmation_is_refused_with_no_write",
+        "tests.hiring.test_close_app.Post.test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success",
+        "tests.hiring.test_close_app.Post.test_reopen_and_manage_are_not_reachable"
+      ]
+    },
+    "E15": {
+      "machine": "PARTIAL",
+      "live": "PENDING",
+      "missing": "V1 old-writer retirement is not merged and INTERVIEW_OS_WRITER is off",
+      "tests": [
+        "tests.sources.test_interview_evidence.Refresh.test_nothing_is_written_without_jims_switch",
+        "tests.sources.test_interview_evidence.Registered.test_the_interview_stage_is_this_path_and_the_manual_ones_are_untouched",
+        "tests.contracts.test_workflow.DomainsWorkflowTests.test_a_failing_domain_step_is_a_warning_never_a_failed_run",
+        "tests.contracts.test_workflow.BitwardenConsumerTests.test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table"
+      ]
+    },
+    "E16": {
+      "machine": "PENDING",
+      "live": "PENDING",
+      "missing": "needs E01, E07, E10-E15; no full real interview has run end to end",
+      "tests": []
+    }
   }
 }

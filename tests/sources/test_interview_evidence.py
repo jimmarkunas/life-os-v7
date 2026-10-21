@@ -29,10 +29,28 @@ def child(id="c1", date=None, who=None, ordinal=1):
     return Child(id, "p1", date, who, ordinal, True)
 
 
+class Ledger:
+    """The Interview token's Ledger client: a page read returns the Stable Job Key and Apply URL of the row asked for."""
+    def __init__(self, key="exampleco-r-1", url="https://example.test/jobs/12345"):
+        self.props = {"Stable Job Key": {"type": "rich_text", "rich_text": [{"plain_text": key}] if key else []}, "Apply URL": {"type": "url", "url": url}}
+
+    def call(self, method, path):
+        return {"properties": self.props}
+
+
+APPLIED = {"id": "ledger-1", "company": "ExampleCo", "role": "Program Manager", "applied_on": "2026-10-01", "decision": None}
+
+
+def mail(subject="Schedule your interview - ExampleCo Program Manager", body="Please select a time for a call. Requisition 12345.", **extra):
+    return {"provider": "gmail", "id": subject, "received": "2026-10-20T15:00:00Z", "sender_name": "ExampleCo Talent", "sender_address": "no-reply.example",
+            "subject": subject, "body": body, "folder": "INBOX", "markers": {"bulk": False, "auto": True, "noreply": True}, "url": "https://example.test/thread/9", **extra}
+
+
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True):
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None):
+        self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
         self.kids = kids if kids is not None else {"p1": (child(),)}
@@ -49,8 +67,10 @@ class Run:
              patch.object(notion, "ownership", return_value=Ownership.MACHINE), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
+             patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
-            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows))
+            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows),
+                            ledger=self.ledger, records=self.records)
         return counts, captured
 
 
@@ -135,6 +155,76 @@ class CalendarRounds(unittest.TestCase):
                 raise RuntimeError("down")
         counts, got = Run(calendar=Broken())()
         self.assertEqual((len(got["evidence"]), counts["why"], counts["failed"]), (1, {"calendar_unavailable": 1}, 1))
+
+
+class SchedulingRequests(unittest.TestCase):
+    """E01a: a scheduling request in mail (a person's or an automated one) for a job Jim applied to becomes Interview 1, Scheduling Pending."""
+    def run_with(self, *records, parents=(), **kw):
+        return Run(parents=parents, facts={} if not parents else None, kids={}, roster=[APPLIED], records=records, **kw)()
+
+    def test_an_automated_request_for_an_applied_job_creates_the_pending_interview_1(self):
+        counts, got = self.run_with(mail())
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, parent.role), ("ExampleCo", "Program Manager"))
+        self.assertEqual((query.interview_date, query.ordinal, query.source, query.stable_job_key, query.ledger_page_id, query.requisition),
+                         (None, 1, "https://example.test/thread/9", "exampleco-r-1", "ledger-1", "12345"))
+        self.assertEqual((counts["failed"], counts["requests"]), (0, 1))
+
+    def test_a_person_writing_counts_the_same_and_the_newest_request_wins(self):
+        newer = mail(url="https://example.test/thread/10", sender_name="Pat Example", sender_address="pat-example", markers={"bulk": False, "auto": False, "noreply": False})
+        newer["received"] = "2026-10-21T15:00:00Z"
+        _, got = self.run_with(newer, mail())
+        self.assertEqual([q.source for _, q in got["evidence"]], ["https://example.test/thread/10"])
+
+    def test_rejections_offers_other_companies_and_other_mail_are_not_requests(self):
+        for label, message in (("rejection", mail(body="We will not be moving forward. Unfortunately we cannot schedule an interview.")),
+                               ("offer", mail(body="We are pleased to offer you the role. Schedule a call to discuss.")),
+                               ("other company", mail(subject="Schedule your interview - OtherCorp Analyst", body="Select a time.", sender_name="OtherCorp")),
+                               ("newsletter", mail(subject="ExampleCo Program Manager jobs this week", body="Ten new roles."))):
+            counts, got = self.run_with(message)
+            self.assertEqual((got["evidence"], counts["failed"]), ([], 0), label)
+
+    def test_a_request_with_no_applied_job_is_left_for_the_lead_path(self):
+        counts, got = Run(parents=(), kids={}, roster=[], records=[mail()])()
+        self.assertEqual((got["evidence"], counts["failed"]), ([], 0))
+
+    def test_two_applied_rows_the_text_cannot_tell_apart_are_ambiguous_and_nothing_is_written(self):
+        twin = {**APPLIED, "id": "ledger-2"}
+        counts, got = Run(parents=(), kids={}, roster=[APPLIED, twin], records=[mail()])()
+        self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"request_ambiguous": 1}, 1))
+
+    def test_a_requisition_the_apply_url_does_not_carry_blocks_the_link(self):
+        counts, got = self.run_with(mail(body="Select a time. Requisition 99999."))
+        self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"requisition_conflict": 1}, 1))
+
+    def test_a_ledger_row_without_a_stable_job_key_is_not_guessed(self):
+        counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()], ledger=Ledger(key=""))()
+        self.assertEqual((got["evidence"], counts["why"]), ([], {"job_key_missing": 1}))
+
+    def test_a_job_that_already_has_a_round_is_not_given_interview_1_again(self):
+        same = mail(url=URL)
+        counts, got = Run(roster=[APPLIED], records=[same])()                 # the page's own request message: nothing new, the refresh runs
+        self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))
+        counts, got = Run(roster=[APPLIED], records=[mail()])()               # another message: its round number is unknown, so it is reported, not numbered
+        self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
+        self.assertEqual([q.source for _, q in got["evidence"]], [URL])
+
+    def test_a_machine_parent_with_no_round_gets_interview_1(self):
+        _, got = Run(kids={"p1": ()}, roster=[APPLIED], records=[mail()])()
+        self.assertEqual([q.source for _, q in got["evidence"]], ["https://example.test/thread/9"])
+
+    def test_a_page_for_another_job_key_is_a_conflict(self):
+        counts, got = Run(facts={"p1": ("exampleco-r-2", URL)}, roster=[APPLIED], records=[mail()])()
+        self.assertEqual(counts["why"].get("identity_conflict"), 1)
+
+    def test_unread_mail_is_degraded_and_never_a_quiet_zero(self):
+        with patch.object(ev, "read_mail", return_value=([], 1)):
+            counts, _ = Run(parents=(), kids={}, roster=[APPLIED], records=None)()
+        self.assertEqual((counts["why"], counts["failed"]), ({"mail_unavailable": 1}, 1))
+
+    def test_an_unreadable_ledger_is_degraded(self):
+        counts, got = Run(parents=(), kids={}, roster=RuntimeError("down"), records=[mail()])()
+        self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"ledger_unreadable": 1}, 1))
 
 
 class Facts(unittest.TestCase):

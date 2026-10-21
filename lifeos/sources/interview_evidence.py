@@ -12,18 +12,24 @@ from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import compile as hiring
-from lifeos.interview import acceptance, create, notion, stage
+from lifeos.hiring import compile as hiring, outcomes
+from lifeos.interview import acceptance, create, notion, stage, view
 from lifeos.interview.models import Ownership
 from lifeos.interview.progression import Invite, progress
+from lifeos.platform import mail
 from lifeos.platform.gcal import GoogleCalendar
-from lifeos.platform.names import split_title
+from lifeos.platform.gmail import Gmail, GmailError
+from lifeos.platform.names import same_company, same_role, split_title, tokens
+from lifeos.platform.notion_client import Client
 from lifeos.platform.runtime import RunContext
 from lifeos.sources import hiring as pipeline
 
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
 REQUEST = "Request message ↗"
+ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
+                  r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
+REQ = re.compile(r"\b(?:req(?:uisition)?|job|ref(?:erence)?)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*([A-Z]{0,4}[-_]?\d{4,10})\b", re.I)
 
 
 def ordinal(title):
@@ -52,7 +58,43 @@ def facts(client, page_id, context):
     return (None if renders[0].group(1) == "none" else renders[0].group(1)), (urls.pop() if len(urls) == 1 else None)
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None):
+def squash(text):
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def matches(records, roster):
+    """E01a, pure: ({Applied row id: (row, message, requisition)}, codes). A message that asks to schedule a call or interview, names exactly one Applied row
+    (the company's words in order, the role's words) and is not a rejection or an offer. Automated mail counts; the newest request per row wins."""
+    found, codes = {}, []
+    for message in sorted(records, key=lambda m: m["received"]):
+        text = f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}"
+        named = [r for r in roster if outcomes.mentions(message, r["company"])] if ASKS.search(text) and not outcomes.kind_of(text) else []
+        by_role = [r for r in named if outcomes.role_in(message, r["role"])]
+        if len({tuple(tokens(r["company"])) for r in named}) > 1 or len(by_role) > 1:
+            codes.append("request_ambiguous")                               # two companies, or two roles the text cannot tell apart: never guessed
+        elif by_role:
+            req = REQ.search(text)
+            found[by_role[0]["id"]] = (by_role[0], message, req.group(1) if req else None)
+    return found, codes
+
+
+def read_mail(environ, now, roster, gmail=None, outlook_accounts=None):
+    """-> (records, sources that could not be read in full). Read only; Gmail is narrowed to the Applied companies, Outlook is read whole (as the outcome scan does)."""
+    records, down = [], 0
+    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, terms=outcomes._terms(roster))]
+    for label, account in outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ):
+        reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now) if a else ([], 1))
+    for read in reads:
+        try:
+            got, bad = read()
+            records.extend(got)
+            down += bad
+        except (mail.MailError, GmailError):
+            down += 1
+    return records, down
+
+
+def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None):
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
@@ -61,8 +103,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     def flag(code):
         why[code] = why.get(code, 0) + 1
 
-    def queue(company, role, job, url, rows, date, who, number):
-        made = progress(Invite(company, role, date, who, number, None, job, url), rows)
+    def queue(company, role, job, url, rows, date, who, number, requisition=None):
+        made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
             evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url)))
         else:
@@ -104,6 +146,41 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
         else:
             queue(company, role, job, url, rows, day, None, number)
+    roster = []
+    try:
+        ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
+        roster = pipeline.read_applied(ledger)
+    except Exception:                                                        # noqa: BLE001
+        flag("ledger_unreadable")
+    if records is None and roster:
+        records, down = read_mail(environ, now, roster, gmail, outlook_accounts)
+        if down:
+            flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
+    asked, codes = matches(records or [], roster)
+    for code in codes:
+        flag(code)
+    for row, message, req in asked.values():                                 # E01a: a scheduling request for a job Jim applied to -> Interview 1, Scheduling Pending
+        try:
+            props = ledger.call("GET", f"/pages/{row['id']}").get("properties") or {}
+            key, apply_url = view._plain(props.get("Stable Job Key")), view._plain(props.get("Apply URL"))
+        except Exception:                                                    # noqa: BLE001
+            flag("ledger_unreadable")
+            continue
+        page = next((v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None)
+        _, _, page_job, page_url, page_kids, _ = page or (None,) * 6
+        if not key:
+            flag("job_key_missing")
+        elif req and squash(req) not in squash(apply_url):
+            flag("requisition_conflict")                                     # the message names a requisition the Applied row's Apply URL does not carry
+        elif page and page_job != key:
+            flag("identity_conflict")
+        elif page and any(c.identity_valid is True for c in page_kids.items):
+            if page_url != message["url"]:
+                flag("round_identity_incomplete")                            # another request for a job that already has a round: its round number is unknown
+        elif not page or page_kids.complete:
+            queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
+                  None, None, None, req)
+    counts_requests = len(asked)
     for company, role, job, url, kids, rows in ready.values():
         held = [c for c in kids.items if c.identity_valid is True]
         if not kids.complete:
@@ -111,6 +188,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif held:
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
-    counts["why"] = {**counts["why"], **why}
+    counts["why"], counts["requests"] = {**counts["why"], **why}, counts_requests
     counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts
