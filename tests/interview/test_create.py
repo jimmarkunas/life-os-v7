@@ -169,6 +169,16 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(result["why"]["child_match"], 1)
                 self.assertEqual(len(client.posts), 2)
 
+    def test_a_swallowed_failure_names_its_kind_in_the_counts(self):
+        client = WritableFake()
+        with patch("lifeos.interview.notion.target_check", side_effect=NotionError("INTERVIEW_SCAN_INCOMPLETE")):
+            result = create.apply(client, ENV, PARENT, ROUND, True, stage.RunContext.start(60), set())
+        self.assertEqual((result["code"], result["error_NotionError_INTERVIEW_SCAN_INCOMPLETE"]), ("pipeline_incomplete", 1))
+        with patch("lifeos.interview.notion.target_check", side_effect=KeyError("page text that must not appear")):
+            result = create.apply(client, ENV, PARENT, ROUND, True, stage.RunContext.start(60), set())
+        self.assertEqual(result["error_KeyError"], 1)
+        self.assertNotIn("page text", json.dumps(result))
+
     def test_dry_run_and_no_evidence_never_mutate(self):
         client = WritableFake()
         result = self.run_evidence(client, False)

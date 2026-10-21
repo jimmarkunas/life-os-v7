@@ -270,6 +270,12 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
 
 
+def _error_kind(error):
+    """A fixed name for a swallowed failure: the exception class, plus a NotionError's own fixed code (never a message that could hold page text)."""
+    code = str(error) if isinstance(error, NotionError) else ""
+    return type(error).__name__ + ("_" + code if re.fullmatch(r"[A-Z_]{1,40}", code) else "")
+
+
 def apply(client, environ, parent_query, query, live, context, deferred):
     """Private evidence in, counts and fixed code out. deferred forbids parent+round in one run."""
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
@@ -377,5 +383,6 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         out["readback_failed"], out["readback_ok"] = 0, 1
         out["parents_created" if kind == "opportunity" else "rounds_created"] = 1
         return finish("parent_created" if kind == "opportunity" else "round_created")
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError) as error:
+        out["error_" + _error_kind(error)] = 1                          # counts and fixed codes only: which kind of failure hid behind the code below
         return finish("readback_unreadable" if out["writes"] else "pipeline_incomplete")
