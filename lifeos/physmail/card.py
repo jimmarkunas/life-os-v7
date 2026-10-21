@@ -9,7 +9,9 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
-from . import chains, manual, state as state_mod
+from urllib.parse import urlsplit
+
+from . import chains, state as state_mod
 from .stage import KEY, STORE
 
 TZ = ZoneInfo("America/Chicago")
@@ -78,6 +80,12 @@ def _muted(text, link=None):
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}
 
 
+def _origin(value):
+    """The mailbox page itself (the notice's own login link, stripped to the host): where Jim goes to act on a piece."""
+    link = _https(value)
+    return f"https://{urlsplit(link).netloc}/" if link else None
+
+
 def _line(piece, portal, now):
     """-> one active piece as a short bullet: bold mail number, then only what differs from its group (the group label carries the shared next action). Forward completed is never shown as delivered."""
     number, status, when = piece["number"], piece["status"], _day(piece["at"])
@@ -101,7 +109,7 @@ GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
           (chains.OPEN, "📥 Scanned — decide: forward, shred or recycle"))
 
 
-def render(stored, now, sync_failed=False, environ=None):
+def render(stored, now, sync_failed=False):
     """-> (blocks, counts). Pure. The first line keeps its shape (the Command Center and Attention read it); then one native line per active piece."""
     now = _local(now)
     if stored is None:
@@ -116,13 +124,8 @@ def render(stored, now, sync_failed=False, environ=None):
         head = f"DEGRADED · Physical Mail {'sync failed' if sync_failed else 'evidence stale' if stale else 'needs a look'} at {now.strftime('%-I:%M %p')} CT · showing last accepted state ({when} CT)"
     else:
         head = f"Updated {now.strftime('%-I:%M %p')} CT"
-    environ = environ if environ is not None else {}
-    portal = manual.portal(environ) or _https(stored.get("portal"))
-    entered = manual.tracking(environ)
+    portal = _origin(stored.get("portal"))
     items = state_mod.pieces(stored)
-    for piece in items:
-        if not piece["tracking"] and piece["status"] == chains.WAITING:
-            piece["tracking"] = entered.get(piece["number"])                                    # entered by hand: shown as written, never inferred
     delivered = [p for p in items if isinstance(p["tracking"], dict) and p["tracking"].get("delivered")]
     items = [p for p in items if p not in delivered]
     waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"] - len(delivered)
@@ -168,7 +171,7 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None)
     else:
         stored = STORE.load(connection, KEY)
     failed = (environ.get("MAIL_SYNC_OUTCOME") or "").strip().lower() in ("failure", "cancelled")
-    blocks, counts = render(stored, now, failed, environ)
+    blocks, counts = render(stored, now, failed)
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "mailalerts", live)

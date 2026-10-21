@@ -243,7 +243,7 @@ class CardRenderTests(unittest.TestCase):
         self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 14 waiting · 0 need review"), text[0])
         self.assertIn("13 new item(s) not yet identified by a mail number", text)
         self.assertIn("#4801  ·  forwarded Oct 5  ·  ⚠ Tracking unavailable — obtain from provider", text)
-        self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/in")
+        self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/")
         self.assertEqual((counts["status"], counts["waiting"]), ("fresh", 14))
 
     def test_missing_stale_failed_or_unbound_evidence_is_degraded_and_never_none(self):
@@ -501,8 +501,8 @@ def piece_state(extracted, anchor=ANCHOR, accepted=True):
 
 
 class ItemLevelTests(unittest.TestCase):
-    def lines(self, st, now=NOW, sync_failed=False, environ=None):
-        blocks, counts = card.render(st, now, sync_failed, environ)
+    def lines(self, st, now=NOW, sync_failed=False):
+        blocks, counts = card.render(st, now, sync_failed)
         return [report_region.plain(b) for b in blocks], blocks, counts
 
     def full(self):
@@ -524,7 +524,7 @@ class ItemLevelTests(unittest.TestCase):
         self.assertEqual(items[1], f"#{SCANNED[-1]}  ·  scanned Oct 19")
         self.assertEqual(counts["listed"], 10)
         self.assertEqual([t for t in text if t[:1] in "🚚📥"], ["🚚 Forwarded — not delivered until tracking says so (1)", "📥 Scanned — decide: forward, shred or recycle (9)"])      # the shared next action is said once per group
-        self.assertEqual(text[-1], "Last 30 days: 10 recycled, 1 shredded")        # history sits last, muted
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded")        # history sits last, muted
 
     def test_each_mail_number_is_one_line_and_disposed_pieces_are_never_listed(self):
         text, _, _ = self.lines(self.full())
@@ -543,7 +543,7 @@ class ItemLevelTests(unittest.TestCase):
         self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  last notice") for t in self.lines(st)[0]))
         other = piece_state([e("d", f"Mail #{SCANNED[1]}: Scan completed", "2026-10-05T10:00:00+00:00"), e("e", f"Mail #{SCANNED[1]}: Recycle completed", "2026-10-06T10:00:00+00:00")])
         self.assertFalse(any(t.startswith("#") for t in self.lines(other)[0]))
-        self.assertIn("Last 30 days: 1 recycled", " ".join(self.lines(other)[0]))
+        self.assertIn("Last 7 days: 1 recycled", " ".join(self.lines(other)[0]))
 
     def test_tracking_is_flagged_when_absent_and_shown_with_its_own_evidence_when_present(self):
         st = self.full()
@@ -561,29 +561,41 @@ class ItemLevelTests(unittest.TestCase):
         st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "x", "number": "  "}                          # a blank number is no tracking
         self.assertIn("Tracking unavailable", next(t for t in self.lines(st)[0] if t.startswith(f"#{FORWARDED}")))
 
-    def test_a_hand_entered_shipment_is_shown_as_written_and_a_delivery_leaves_the_list(self):
+    def test_tracking_is_recorded_with_its_piece_shown_as_written_and_a_delivery_leaves_the_list(self):
         st = self.full()
-        entry = {"bundle": "Bundle A", "carrier": "ExampleCarrier", "service": "Example Overnight", "number": "TRK0002", "url": "https://example.invalid/t/TRK0002"}
-        env = {"PHYSICAL_MAIL_TRACKING": json.dumps({str(FORWARDED): entry}), "MAIL_PORTAL_URL": "https://portal.example.invalid/"}
-        text, blocks, _ = self.lines(st, environ=env)
-        self.assertEqual(next(t for t in text if t.startswith(f"#{FORWARDED}")), f"#{FORWARDED}  ·  forwarded Oct 20  ·  Bundle A Example Overnight TRK0002  ·  no delivery status yet")
-        portal = next(b for b in blocks if report_region.plain(b) == "Open the mailbox portal")
-        self.assertEqual(portal["paragraph"]["rich_text"][0]["text"]["link"]["url"], "https://portal.example.invalid/")
-        env["PHYSICAL_MAIL_TRACKING"] = json.dumps({str(FORWARDED): {**entry, "delivered": "2026-10-22"}})
-        text, _, counts = self.lines(st, now=datetime(2026, 10, 23, 15, 0, tzinfo=timezone.utc), environ=env)
+        entry = {"bundle": "Bundle A", "carrier": "ExampleCarrier", "service": "Example Overnight", "number": "TRK000002", "url": "https://example.invalid/t/TRK000002"}
+        for bad in ({"number": "  "}, {"number": "x"}, {"number": "TRK000002", "url": "http://insecure.invalid"}):          # nothing is stored that is not a plain tracking number
+            self.assertFalse(state.record_tracking(st, FORWARDED, bad, "operator", NOW)[1])
+        self.assertFalse(state.record_tracking(st, SCANNED[0], entry, "operator", NOW)[1])                         # only a forwarded piece takes tracking
+        self.assertFalse(state.record_tracking(st, "999", entry, "operator", NOW)[1])
+        st, recorded = state.record_tracking(st, FORWARDED, entry, "operator", NOW)
+        self.assertTrue(recorded)
+        self.assertFalse(state.record_tracking(st, FORWARDED, entry, "operator", NOW)[1])                         # idempotent
+        text, blocks, _ = self.lines(st)
+        self.assertEqual(next(t for t in text if t.startswith(f"#{FORWARDED}")), f"#{FORWARDED}  ·  forwarded Oct 20  ·  Bundle A Example Overnight TRK000002  ·  no delivery status yet")
+        st["chains"][str(FORWARDED)]["tracking"]["delivered"] = "2026-10-22"
+        text, _, counts = self.lines(st, now=datetime(2026, 10, 23, 15, 0, tzinfo=timezone.utc))
         self.assertFalse(any(t.startswith(f"#{FORWARDED}") for t in text))
         self.assertTrue(text[0].endswith("9 waiting · 0 need review"))
         self.assertEqual(counts["waiting"], 9)
-        self.assertEqual(text[-1], "Last 30 days: 10 recycled, 1 shredded, 1 delivered")
-        for bad in ("not json", "[]", json.dumps({str(FORWARDED): {"number": "  "}})):                     # a malformed entry is ignored, never guessed
-            text, _, _ = self.lines(st, environ={"PHYSICAL_MAIL_TRACKING": bad})
-            self.assertIn("Tracking unavailable", next(t for t in text if t.startswith(f"#{FORWARDED}")))
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded, 1 delivered")
 
-    def test_disposed_and_delivered_pieces_stop_being_mentioned_after_thirty_days_but_stay_in_the_history(self):
+    def test_the_portal_link_is_the_notices_own_host_and_the_operator_entry_reaches_the_stage_and_survives_a_rebuild(self):
+        st = self.full()
+        st["portal"] = "https://box.example.invalid/login?url=%2Fapp%2Fmail%2Fcompleted"
+        blocks, _ = card.render(st, NOW)
+        link = next(b for b in blocks if report_region.plain(b) == "Open the mailbox portal")
+        self.assertEqual(link["paragraph"]["rich_text"][0]["text"]["link"]["url"], "https://box.example.invalid/")
+        self.assertEqual(stage._entered_tracking({"PHYSICAL_MAIL_TRACKING_ENTRY": f"{FORWARDED} | FedEx | Overnight | 123456789012 | Bundle 1"}),
+                         (str(FORWARDED), {"carrier": "FedEx", "service": "Overnight", "number": "123456789012", "bundle": "Bundle 1", "url": "https://www.fedex.com/fedextrack/?trknbr=123456789012"}))
+        for bad in ("", "x | a | b | c", f"{FORWARDED} | only | three"):
+            self.assertIsNone(stage._entered_tracking({"PHYSICAL_MAIL_TRACKING_ENTRY": bad}))
+
+    def test_disposed_and_delivered_pieces_stop_being_mentioned_after_seven_days_but_stay_in_the_history(self):
         st = self.full()
         later = datetime(2026, 11, 25, 15, 0, tzinfo=timezone.utc)
         text = self.lines(st, now=later)[0]
-        self.assertFalse(any(t.startswith("Last 30 days") for t in text))
+        self.assertFalse(any(t.startswith("Last 7 days") for t in text))
         self.assertEqual(state.disposed(st), {"recycled": 10, "shredded": 1})
 
     def test_an_unreadable_source_keeps_the_last_accepted_pieces_under_a_degraded_line(self):
@@ -709,6 +721,15 @@ class RebuildTests(unittest.TestCase):
         self.assertEqual((counts["rebuild"], counts["state_identified"], counts["saved"]), (0, 21, 1))
         self.assertEqual(self.store.row["replay"], state.REPLAY)
         self.assertNotIn("prior", self.store.row)
+
+    def test_tracking_recorded_on_a_piece_survives_the_rebuild_and_a_one_off_entry_is_saved_with_it(self):
+        self.store.row = self.old_row()
+        self.store.row["chains"][str(FORWARDED)] = {"events": {"c3:FORWARD": ["2026-10-20T15:00:00+00:00", "FORWARD"]}, "tracking": {"number": "TRK000003", "carrier": "ExampleCarrier"}}
+        self.go()
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["number"], "TRK000003")
+        self.go(env={"PHYSICAL_MAIL_TRACKING_ENTRY": f"{FORWARDED} | ExampleCarrier | Overnight | TRK000004 | Bundle 2"})
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["number"], "TRK000004")
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["source"], "operator")
 
     def test_the_rebuild_is_read_only_toward_gmail(self):
         self.assertNotIn("modify", inspect.getsource(stage))

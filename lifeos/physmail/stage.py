@@ -78,6 +78,15 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
         merged, delta = state_mod.apply(stored, extracted, now)
         for key in ("arrivals_new", "actions_new", "review_new", "review_resolved", "ignored", "before_anchor"):
             counts[key] = delta[key]
+        if rebuild:
+            for number, chain in previous["chains"].items():                    # tracking belongs to its piece: a rebuild from the anchor carries it over, never drops it
+                if chain.get("tracking") and number in merged["chains"]:
+                    merged["chains"][number]["tracking"] = chain["tracking"]
+        counts["tracking_recorded"] = 0
+        entered = _entered_tracking(environ)
+        if entered:
+            merged, recorded = state_mod.record_tracking(merged, entered[0], entered[1], "operator", now)
+            counts["tracking_recorded"] = int(recorded)
         merged["through"], merged["accepted_at"], merged["taken_at"] = now.isoformat(), now.isoformat(), now.isoformat()
         counts.update({f"state_{k}": v for k, v in state_mod.summary(merged, now).items() if k != "degraded_reason"})
         if rebuild:
@@ -96,6 +105,18 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
     finally:
         if owns and manager is not None:
             manager.__exit__(None, None, None)
+
+
+def _entered_tracking(environ):
+    """PHYSICAL_MAIL_TRACKING_ENTRY, a one-off workflow input for the ONE piece the vendor's notices never describe: `mail number | carrier | service | tracking number | bundle`. -> (number, entry) or None.
+    The temporary stand-in for an authoritative tracking reader; stored with the piece, never a standing configuration."""
+    parts = [part.strip() for part in (environ.get("PHYSICAL_MAIL_TRACKING_ENTRY") or "").split("|")]
+    if len(parts) < 4 or not parts[0].isdigit():
+        return None
+    entry = {"carrier": parts[1], "service": parts[2], "number": parts[3], "bundle": parts[4] if len(parts) > 4 else ""}
+    if entry["carrier"].lower() == "fedex" and entry["number"].isdigit():
+        entry["url"] = "https://www.fedex.com/fedextrack/?trknbr=" + entry["number"]
+    return parts[0], entry
 
 
 def _expected(environ):

@@ -7,6 +7,7 @@ the overlap re-read changes nothing because every event is keyed by message id.
 Binding is by count, not identity (order-independent): the starting pile (Jim's October 4 anchor) and each arrival notice are units; each first-seen mail number
 consumes one unit. Pending-unidentified = units - bound. A first-seen mail number with no unit left is tolerated only up to GRACE_DAYS after the anchor and is otherwise DEGRADED."""
 import copy
+import re
 from datetime import datetime, timedelta, timezone
 
 from . import chains
@@ -16,8 +17,8 @@ REPLAY = 2                                                               # the n
 ANCHOR_DATE = "2026-10-04"
 ANCHOR_AT = datetime(2026, 10, 4, 5, 0, tzinfo=timezone.utc)            # midnight Oct 4, 2026 in Chicago (CDT)
 GRACE_DAYS = 14
-AGED_DAYS = 30
-KEEP_DAYS = 30                                      # a disposed or delivered piece is counted on the card this long, then it is not mentioned (the stored history stays)
+AGED_DAYS = 7
+KEEP_DAYS = 7                                       # a disposed or delivered piece is counted on the card this long, then it is not mentioned (the stored history stays)
 MAX_REVIEW = 100
 
 
@@ -88,6 +89,25 @@ def pieces(state):
         out.append({"number": number, "status": status, "verb": verb, "at": at, "tracking": chain.get("tracking")})
     rank = {chains.REVIEW: 0, chains.WAITING: 1, chains.OPEN: 2}
     return sorted(out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"]))
+
+
+TRACKING_FIELDS = ("bundle", "carrier", "service", "number", "url", "state", "delivered")
+
+
+def record_tracking(state, number, entry, source, now):
+    """-> (new state, recorded). Attaches shipment tracking to ONE forwarded piece (stored with that piece, so it leaves with it): only fixed text fields, only for a piece that is currently waiting for tracking,
+    never a guess. Re-recording identical facts changes nothing. `source` names where the facts came from (an authoritative reader, or the operator)."""
+    st = copy.deepcopy(state)
+    chain = st["chains"].get(str(number))
+    if chain is None or _status_of(chain) != chains.WAITING:
+        return st, False
+    clean = {k: entry[k].strip()[:120] for k in TRACKING_FIELDS if isinstance(entry.get(k), str) and entry[k].strip()}
+    if not clean.get("number") or not re.fullmatch(r"[A-Za-z0-9 -]{6,40}", clean["number"]) or (clean.get("url") and not clean["url"].startswith("https://")):
+        return st, False
+    if {k: v for k, v in (chain.get("tracking") or {}).items() if k in TRACKING_FIELDS} == clean:
+        return st, False
+    chain["tracking"] = {**clean, "source": source, "recorded_at": now.isoformat()}
+    return st, True
 
 
 def disposed(state, since=None):

@@ -388,7 +388,6 @@
    "lifeos/physmail/card.py": "Render the Physical Mail state into V7's one \"Mail Alerts\" callout on the Daily Report (MAIL-1.2). V7 owns this region exclusively (router.OWNERS).",
    "lifeos/physmail/chains.py": "Per-mail-number lifecycle fold (MAIL-1.2). Pure and order-independent: the events of one mail number are sorted by time, then folded.",
    "lifeos/physmail/events.py": "Pure extraction of the two accepted Physical Mail notice shapes (MAIL-1.2). Read-only evidence: nothing here touches Gmail.",
-   "lifeos/physmail/manual.py": "Facts about Jim's physical mail that no approved source supplies yet, entered by hand as repository variables (LIFE-95). Never in the repository text: they name a real ma",
    "lifeos/physmail/stage.py": "Gmail Physical Mail evidence -> deterministic parse -> private derivative state (MAIL-1.2). Counts only; fixed error codes.",
    "lifeos/physmail/state.py": "The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run."
   },
