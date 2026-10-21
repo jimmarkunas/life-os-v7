@@ -487,6 +487,58 @@ class HeldAnswersAreApplied(Batch):
         self.assertEqual(self.row(1, ("cloud_status", "admission")), ("CANARY", "EXCLUDE"))
 
 
+class KeepListRolesAreRedecided(Batch):
+    """A role put on Jim's keep list AFTER the cloud had scored and excluded it is re-decided from its stored cloud score by the current lane policy; no other role is."""
+
+    def excluded(self, job_id, title, company="Revolut Ltd", score=58):
+        self.titled(job_id, title, status="EXCLUDED_FIT", admission="EXCLUDE", cloud_status="CANARY")
+        self.db.raw.execute("UPDATE v7_jobs SET company=?, lane='Scale-Up', location_text='London · office · United Kingdom', route_evidence='Scale-up:POSITIVE',"
+                            " source='web:su-example-ltd', unresolved_reason='lane_exclude' WHERE id=?", (company, job_id))
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_score=?, cloud_confidence='high', cloud_rationale='Aligned on delivery ownership.', cloud_model='gpt-6-luna',"
+                            " admission_reason=? WHERE job_id=?", (score, f"Fit {score} below 60", job_id))
+
+    def redecide(self):
+        counts = {"gated": 0, "revived": 0}
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.repromote_kept(cursor, PROFILE, T.date(), True, counts, None)
+
+    def test_a_keep_list_role_excluded_under_the_old_policy_goes_back_to_review_with_its_score_untouched(self):
+        self.excluded(1, "Product Owner (UX)")
+        self.assertEqual(self.redecide(), (1, 0))
+        score, admission, reason, cloud_status = self.row(1, ("score", "admission", "admission_reason", "cloud_status"))
+        self.assertEqual((score, admission, cloud_status), (58, "REVIEW", "CANARY"))
+        self.assertIn("keep list", reason)
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")
+        self.assertEqual(self.redecide(), (0, 0))                                                          # decided once: nothing is left to re-decide
+
+    def test_roles_not_on_the_keep_list_are_never_touched(self):
+        self.excluded(1, "Product Owner (Crypto)")
+        self.excluded(2, "Product Owner (UX)", company="Acme Ltd")
+        self.assertEqual(self.redecide(), (0, 0))
+        for job_id in (1, 2):
+            self.assertEqual(self.row(job_id, ("admission", "cloud_status")), ("EXCLUDE", "CANARY"))
+            self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=?", (job_id,)).fetchone()[0], "EXCLUDED_FIT")
+
+    def test_a_published_or_applied_page_is_never_revived(self):
+        self.excluded(1, "Product Owner (UX)")
+        self.db.raw.execute("UPDATE v7_jobs SET notion_page_id='page-1' WHERE id=1")
+        self.assertEqual(self.redecide(), (0, 0))
+        self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
+
+    def test_the_fit_stage_does_it_only_when_live_and_gated(self):
+        self.excluded(1, "Product Owner (UX)")
+        env = {**ENV, "V7_CLOUD_FIT": "off"}
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+            self.assertNotIn("kept_redecided", stage.run(10, False, env))
+            self.assertNotIn("kept_redecided", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
+            self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
+            counts = stage.run(10, True, env)
+        self.assertEqual((counts["kept_redecided"], counts["kept_redecide_failed"], counts["failed"]), (1, 0, 0))
+        self.assertEqual(self.row(1, ("admission",)), ("REVIEW",))
+
+
 def metered(used_5h, used_week=1, stop=50):
     return {"stop": stop, "windows": [{"label": "5h", "used": used_5h, "reset_at": "2026-10-20T07:12:19+00:00"},
                                       {"label": "Week", "used": used_week, "reset_at": "2026-10-24T21:26:54+00:00"}]}
