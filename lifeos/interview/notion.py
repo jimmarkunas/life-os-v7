@@ -186,9 +186,26 @@ def legacy_round(block, child):
     return Child(child.page_id, child.parent_id, date, who, int(number), child.identity_valid, True)
 
 
+NEST_KINDS = ("column_list", "column", "toggle")
+
+
+def _nested_pages(client, blocks, budget, context, depth=1):
+    """(page block, container id) for every child page inside the column / toggle blocks of a page, to MAX_DEPTH levels: where Jim keeps his own Interview Notes list."""
+    out = []
+    for block in blocks:
+        if block.get("type") in NEST_KINDS and block.get("has_children"):
+            if depth > MAX_DEPTH:
+                raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+            kids = children(client, block["id"], budget, context)
+            out.extend((kid, block["id"]) for kid in kids if kid.get("type") == "child_page")
+            out.extend(_nested_pages(client, kids, budget, context, depth + 1))
+    return out
+
+
 def child_scan(client, parent_id, context=None, legacy=False):
     try:
-        blocks = children(client, parent_id, [MAX_CALLS], context)
+        budget = [MAX_CALLS]
+        blocks = children(client, parent_id, budget, context)
         # B1 reads verified identity properties only; never guesses identities from legacy titles.
         found = []
         for block in blocks:
@@ -202,16 +219,28 @@ def child_scan(client, parent_id, context=None, legacy=False):
             if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(legacy_round(block, child) if legacy and child.identity_valid is None else child)
+        if legacy:                                                              # a pursuit Jim named: his hand-made `Interview N: Name (m/d/yy)` pages inside his own columns count too, by title only, never read or changed
+            for block, container in _nested_pages(client, blocks, budget, context):
+                if len(found) >= MAX_CALLS:
+                    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                child = explicit_child(client, block["id"], home=parent_id, via=container)
+                if child is not None and child.identity_valid is None and same_notion_id(child.parent_id, parent_id):
+                    nested = legacy_round(block, child)
+                    if nested.legacy:
+                        found.append(nested)
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return Scan((), False)
 
 
-def explicit_child(client, page_id):
+def explicit_child(client, page_id, home=None, via=None):
+    """The page's identity. `home` and `via` are for a page nested in a column or toggle of its parent page: its API parent is that block (`via`), and it counts as the page's child only then."""
     page = client.call("GET", f"/pages/{page_id}")
     if page.get("archived") or page.get("in_trash"):
         return None
     parent = page.get("parent") or {}
+    if home and via and same_notion_id(parent.get("block_id"), via):
+        parent = {"page_id": home}
     from .create import parse_identity
     blocks, _ = machine_lines(client, page_id, 2)
     first = text(blocks[0]) if blocks else ""
