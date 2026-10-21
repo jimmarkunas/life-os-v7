@@ -17,7 +17,7 @@ from .models import ParentQuery, RoundQuery
 QA_PARENT = "3d43c5a0592681fdad10d75d83852fa7"        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
 UI3C = "3ff3c5a0592681aeba23e00675f097f1"             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
 TITLE = "UI 3c — REST capability probe (QA, machine-written)"
-SHELL_TITLE = "UI 3c — page shell (full width)"                    # Jim creates it under QA_PARENT, empty, with Full width on
+SHELL_TITLE = "Full Width Page"                                    # Jim creates it under QA_PARENT, empty, with Full width on
 TEMPLATE_TITLE = "UI 3c — template probe (QA, machine-written)"
 TEMPLATE_WAIT = 8                                                    # seconds; the template is applied asynchronously
 # LIFE-88 QA acceptance: real canonical evidence, read only, rendered only into QA pages under QA_PARENT.
