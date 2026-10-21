@@ -92,6 +92,7 @@ STAGES = {
     "jira-card": lazy("lifeos.jira.card"),
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
     "agenda-card": lazy("lifeos.agenda.card"),
+    "fit-profile-sync": lazy("lifeos.jobs.fit.profile_sync"),     # Fit profile: the approved Notion block into the one Bitwarden extra secret (isolated job, profile-sync.yml)
     "scale-up-holds": lazy("lifeos.jobs.holds"),
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
     "alerts-open": lazy("lifeos.jobs.alertstate"),

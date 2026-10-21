@@ -110,7 +110,8 @@ def _rows(connection, ids):
 def _decisions(rows, environ, today):
     from lifeos.jobs.fit import profile as fit_profile                               # noqa: PLC0415
     from lifeos.jobs.fit.stage import score_rows                                      # noqa: PLC0415
-    profile = fit_profile.load(environ)
+    from lifeos.jobs.fit import profile_sync                                         # noqa: PLC0415
+    profile = fit_profile.load(environ, profile_sync.stored_block(environ))
     return {str(job_id): [result.decision, decision.status]
             for job_id, _, result, decision, _, _, _ in score_rows(rows, profile, today)}
 

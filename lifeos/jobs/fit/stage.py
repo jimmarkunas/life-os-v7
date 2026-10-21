@@ -11,7 +11,7 @@ import os
 import time
 
 from lifeos.jobs import lanes, sponsors, store
-from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, semantic as fit_semantic
+from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, profile_sync, semantic as fit_semantic
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
 
@@ -221,7 +221,7 @@ def run(limit, live, environ=os.environ):
               "semantic": "off", "lane_admit": 0, "lane_review": 0, "lane_exclude": 0, "shadow_jobs_changed": 0, "shadow_flips": 0, "shadow_reclassified": 0,
               "sim_72_77": 0, "sim_77_82": 0, "sim_82_up": 0, "fcap_moved": 0, "fcap_go_lost": 0, "revived": 0, "promoted": 0}
     try:
-        profile = fit_profile.load(environ)
+        profile = fit_profile.load(environ, profile_sync.stored_block(environ))
     except fit_profile.ProfileError:
         counts["profile"] = "missing"
         return counts
