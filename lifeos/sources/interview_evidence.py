@@ -10,7 +10,7 @@ import os
 import re
 from hashlib import sha1
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as hiring, outcomes
@@ -31,7 +31,6 @@ TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
 REQUEST = "Request message ↗"
 LEAD_LANE = "Recruiter"                # the Job Ledger's Visible Lane for a recruiter lead (Notion adds the option on first write)
-EXCEPTION_DAYS = 60                    # a named test pursuit may be older than the usual 14-day mail window (INTERVIEW_TEST_COMPANIES, a repository variable: no names in code)
 HEADLINE_AT = re.compile(r"(?:\bat\b|@)\s+(?P<c>[A-Z][A-Za-z0-9&'’.\-]*(?:\s+[A-Za-z0-9&'’.\-]+){0,3}?)\s*(?:[|,·(\n]|$)")
 LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
@@ -126,25 +125,11 @@ def lead_of(message):
     return company, found["role"], req.group(1) if req else None, key, message["url"]
 
 
-def exceptions(environ):
-    """The company words of the named test pursuits (INTERVIEW_TEST_COMPANIES, comma separated): their mail may be older than the usual 14 days."""
-    return [c.strip() for c in (environ.get("INTERVIEW_TEST_COMPANIES") or "").split(",") if c.strip()]
-
-
 def window(environ, live):
-    """Mail days to read: 14; a longer look (INTERVIEW_MAIL_DAYS, up to 90) on a dry run only; or 60 when test pursuits are named (run() then keeps an older message only if it names one)."""
+    """Mail days to read: the usual 14 on every live tick (the job has a 20 minute limit and this step reads mail again after the Recruiters step), or a longer look
+    (INTERVIEW_MAIL_DAYS, up to 90) on a manual dry run only."""
     asked = (environ.get("INTERVIEW_MAIL_DAYS") or "").strip()
-    if asked.isdigit() and not live:
-        return min(90, max(mail.WINDOW_DAYS, int(asked)))
-    return EXCEPTION_DAYS if exceptions(environ) else mail.WINDOW_DAYS
-
-
-def recent_or_named(records, environ, now, live):
-    """Beyond the usual 14 days only a message that names a test pursuit is kept; an explicit dry-run look (INTERVIEW_MAIL_DAYS) keeps everything it read."""
-    asked = (environ.get("INTERVIEW_MAIL_DAYS") or "").strip().isdigit() and not live
-    named = exceptions(environ)
-    cutoff = now - timedelta(days=mail.WINDOW_DAYS)
-    return list(records) if asked else [m for m in records if datetime.fromisoformat(str(m["received"]).replace("Z", "+00:00")).astimezone(TZ) >= cutoff or any(outcomes.mentions(m, c) for c in named)]
+    return min(90, max(mail.WINDOW_DAYS, int(asked))) if asked.isdigit() and not live else mail.WINDOW_DAYS
 
 
 def lead_job(company, role, link, message, now, connect=store.connect):
@@ -279,7 +264,6 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live))
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
-        records = recent_or_named(records, environ, now, live)
     asked, codes = matches(records or [], roster + pursuits)
     for code in codes:
         flag(code)
