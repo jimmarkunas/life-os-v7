@@ -93,6 +93,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
 def primary_action(view, today):
     """D02-D06: one primary action derived from verified evidence, never invented. (label, action, due, source_url, basis): `basis` says what it
     rests on, and an action whose request or Calendar evidence is not connected is labelled derived, never source-backed."""
+    if not view.rounds and view.request_url and (view.stable_job_key or "").startswith("recruiter-"):          # E01b: recruiter outreach (a minted recruiter key) with no round yet
+        return "PRIMARY ACTION", "Reply to the recruiter's message, or close this lead.", "No verified deadline", view.request_url, "derived from the linked recruiter message"
     for r in view.rounds:
         if not valid_date(r.date):
             name = f"Interview {r.ordinal}" if r.ordinal else "the next interview"

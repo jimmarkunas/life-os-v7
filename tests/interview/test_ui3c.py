@@ -1,3 +1,4 @@
+import dataclasses
 """LIFE-88 / LIFE-46: the approved UI 3c and UI 4 trees, written in stages, reconciled from source changes, never touching
 Jim's notes, child pages or another job's page. Everything here is synthetic."""
 import copy
@@ -178,6 +179,14 @@ class Layout(unittest.TestCase):
         for invented in ("ExampleCo Inc", "Rituraj", "Smartsheet", "$58", "QA preview", "sandbox"):
             self.assertNotIn(invented, "\n".join(shown))
         self.assertNotIn("to_do", str(client.blocks))                         # no fake completion control
+
+    def test_a_recruiter_lead_page_says_to_reply_or_close_and_any_other_job_keeps_the_degraded_action(self):
+        lead = dataclasses.replace(opportunity(), stable_job_key="recruiter-acme-program-manager", ledger="not_linked")
+        label, action, due, link, basis = view.primary_action(lead, TODAY)
+        self.assertEqual((label, due, basis), ("PRIMARY ACTION", "No verified deadline", "derived from the linked recruiter message"))
+        self.assertIn("Reply to the recruiter", action)
+        self.assertEqual(link, lead.request_url)
+        self.assertEqual(view.primary_action(opportunity(), TODAY)[0], "DEGRADED · NO VERIFIED ACTION")
 
     def test_d15_order_and_no_invented_primary_action(self):
         rounds = (view.Round("past", 1, "2026-10-01", None), view.Round("pending", 3, None, None), view.Round("next", 2, "2026-10-25", None),

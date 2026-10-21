@@ -51,6 +51,28 @@ class Pipeline(unittest.TestCase):
         self.assertEqual({o.rounds for o in without}, {0})
         self.assertEqual(full.calls - lean.calls, len(with_rounds))                               # the S2 closure skips exactly the interview-count reads
 
+    def test_a_round_less_page_is_a_lead_only_when_its_render_line_names_a_recruiter_key(self):
+        def fold(line):
+            return {"id": "t", "type": "toggle", "toggle": {"rich_text": [{"plain_text": "LIFE OS"}]}, "has_children": True}, {"id": "l", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": line}]}}
+        for line, want in (("v7-render:1;job=recruiter-acme-program-manager;source=0123456789abcdef;page=pending", True),
+                           ("v7-render:1;job=acme-r-1;source=0123456789abcdef;page=pending", False)):
+            toggle, text = fold(line)
+            tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)], "o1": [toggle], "t": [text]}
+            (found,) = hp.read(Fake(tree), "root")
+            self.assertEqual((found.rounds, found.lead), (0, want), line)
+        tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)], "o1": [page("r1", "Interview 1")]}
+        self.assertFalse(hp.read(Fake(tree), "root")[0].lead)                          # a page with a round is never a lead
+
+    def test_an_unreadable_fold_is_simply_not_a_lead(self):
+        tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)],
+                "o1": [{"id": "t", "type": "toggle", "toggle": {"rich_text": []}, "has_children": True}]}
+        class Down(Fake):
+            def call(self, method, path, body=None):
+                if "/blocks/t/" in path:
+                    raise NotionError("NOTION_HTTP_404")
+                return super().call(method, path, body)
+        self.assertFalse(hp.read(Down(tree), "root")[0].lead)
+
     def test_company_and_role_must_both_match(self):
         h = hp.handoff_for("Smartsheet Inc.", "Technical Programme Manager", self.opps)       # legal suffix and British spelling
         self.assertEqual((h.protected, h.progression_state, h.interview_progression), (True, hp.INTERVIEW_ACTIVE, True))

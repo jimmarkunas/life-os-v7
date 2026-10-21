@@ -15,12 +15,13 @@ from zoneinfo import ZoneInfo
 
 from lifeos.hiring import compile as hiring, outcomes
 from lifeos.interview import acceptance, create, notion, stage, view
-from lifeos.interview.models import Ownership
+from lifeos.interview.models import Ownership, ParentQuery, RoundQuery
 from lifeos.interview.progression import Invite, progress
 from lifeos.platform import mail
 from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
+from lifeos.recruiters import classify, qualify
 from lifeos.platform.notion_client import Client
 from lifeos.platform.runtime import RunContext
 from lifeos.sources import hiring as pipeline
@@ -28,6 +29,7 @@ from lifeos.sources import hiring as pipeline
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
 REQUEST = "Request message ↗"
+LEADS_PER_RUN = 5                      # new lead pages per tick, newest first: the first live run drains a 14-day backlog over a few ticks instead of in one burst
 ASKS = re.compile(r"\b(?:schedul\w*|set up|arrange|book)\b[^.?!\n]{0,60}\b(?:interview|call|conversation|chat|meeting|time)\b|\binterview (?:invitation|request|availability)\b|"
                   r"\binvit\w+ you to (?:an? )?(?:interview|call|chat)\b|\bselect (?:a|your) (?:time|slot)\b|\b(?:share|send|provide|confirm) your availability\b", re.I)
 REQ = re.compile(r"\b(?:req(?:uisition)?|job|ref(?:erence)?)\s*(?:id|no\.?|number|#)?\s*[:#]?\s*([A-Z]{0,4}[-_]?\d{4,10})\b", re.I)
@@ -79,16 +81,30 @@ def matches(records, roster):
     return found, codes
 
 
+def lead_of(message):
+    """E01b, pure: a recruiter outreach that names a role -> (company, role, requisition, minted Stable Job Key, message link), else None. Email and LinkedIn messages in the
+    inbox alike (the recruiters classifier decides who is a recruiter). The company is the client when the message names one, else the recruiter's company; a LinkedIn message that
+    names neither is filed under the sender's name, never invented; a message with no company at all is not a lead."""
+    shape, reason, evidence = classify.classify(message)
+    verdict, found = qualify.qualify(message, shape, reason, evidence)
+    company = (found["client"] or found["company"] or (f"LinkedIn · {found['person']}" if shape == classify.HUMAN_NAMED_RELAY else "")) if verdict == "CANDIDATE" else ""
+    if not (company and found["role"] and str(message.get("url", "")).startswith("https://")):
+        return None
+    req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
+    slug = lambda text: "-".join(tokens(text))[:40]
+    return company, found["role"], req.group(1) if req else None, "recruiter-" + slug(company) + "-" + (squash(req.group(1)) if req else slug(found["role"])), message["url"]
+
+
 def window(environ, live):
     """Mail days to read: 14, or a longer look (INTERVIEW_MAIL_DAYS, up to 90) on a dry run only, so a production tick never reads more than the usual 14."""
     asked = (environ.get("INTERVIEW_MAIL_DAYS") or "").strip()
     return min(90, max(mail.WINDOW_DAYS, int(asked))) if asked.isdigit() and not live else mail.WINDOW_DAYS
 
 
-def read_mail(environ, now, roster, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS):
-    """-> (records, sources that could not be read in full). Read only; Gmail is narrowed to the companies in the roster, Outlook is read whole (as the outcome scan does)."""
+def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS):
+    """-> (records, sources that could not be read in full). Read only; Gmail and Outlook are read whole, as the recruiters stage does, because a lead has no company on any roster."""
     records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
-    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, terms=outcomes._terms(roster))]
+    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days)]
     for label, account in outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ):
         reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1))
     for read in reads:
@@ -161,8 +177,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         flag("ledger_unreadable")
     pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
                 if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
-    if records is None and (roster or pursuits):
-        records, down = read_mail(environ, now, roster + pursuits, gmail, outlook_accounts, window(environ, live))
+    if records is None:
+        records, down = read_mail(environ, now, gmail, outlook_accounts, window(environ, live))
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
     asked, codes = matches(records or [], roster + pursuits)
@@ -192,6 +208,14 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
     counts_requests = len(asked)
+    every = [split_title(p.title) for p in scan.items] + [(a["company"], a["role"]) for a in roster]
+    fresh = {}
+    for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
+        found = lead_of(message)
+        if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
+            fresh[found[3]] = (found, message["received"])
+    for (company, role, req, key, url), _ in sorted(fresh.values(), key=lambda v: v[1], reverse=True)[:LEADS_PER_RUN]:
+        evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, 1, source=url, requisition=req, stable_job_key=key)))
     for company, role, job, url, kids, rows in ready.values():
         held = [c for c in kids.items if c.identity_valid is True]
         if not kids.complete:
@@ -199,7 +223,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif held:
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
-    counts["why"], counts["requests"] = {**counts["why"], **why}, counts_requests
+    counts["why"], counts["requests"], counts["leads"] = {**counts["why"], **why}, counts_requests, len(fresh)
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     for row, *_ in leads:
         label = sha1(row["title"].encode()).hexdigest()[:6]

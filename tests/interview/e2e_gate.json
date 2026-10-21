@@ -8,7 +8,7 @@
     "E01": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound leads with no application (E01b: Recruiter lane row, first-outreach page, clear action) are not built; no real-source run yet",
+      "missing": "applied-job scheduling requests (human or automated) are read from Gmail and Outlook and become Interview 1; inbound recruiter leads (role named, from mail) get a first-outreach page and three clear actions (E01b Phase 1); a Ledger/Recruiter-lane row for a lead is not built (needs a Notion schema decision); no real-source run yet",
       "tests": [
         "tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
         "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed",
@@ -33,7 +33,7 @@
     "E03": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "a first parent is created from an applied-job scheduling request through the normal entry (E01a, unit-proven); an inbound lead's first parent needs E01b; no real-source run yet",
+      "missing": "a first parent is created from an applied-job scheduling request through the normal entry (E01a, unit-proven); an inbound lead's first parent is built (E01b Phase 1, unit-proven); no real-source run yet",
       "tests": [
         "tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
         "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",

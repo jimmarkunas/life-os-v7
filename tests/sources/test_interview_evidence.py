@@ -46,12 +46,19 @@ def mail(subject="Schedule your interview - ExampleCo Program Manager", body="Pl
             "subject": subject, "body": body, "folder": "INBOX", "markers": {"bulk": False, "auto": True, "noreply": True}, "url": "https://example.test/thread/9", **extra}
 
 
+def outreach(role="Program Manager", client="ExampleCo", person="Pat Example", url="https://example.test/thread/5", received="2026-10-20T15:00:00Z", extra=""):
+    """A recruiter's first message: a person who says they are a recruiter, a role and (when given) the client."""
+    return {"provider": "gmail", "id": url, "received": received, "sender_name": person, "sender_address": "pat-example", "subject": f"{role} opportunity", "folder": "INBOX",
+            "markers": {"bulk": False, "auto": False, "noreply": False}, "url": url,
+            "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role" + (f" for our client {client}" if client else "") + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n"}
+
+
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None):
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=()):
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
-        self.parents = [Parent(i, t) for i, t in parents]
+        self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
         self.kids = kids if kids is not None else {"p1": (child(),)}
         self.rows, self.calendar, self.environ, self.live = rows, calendar if calendar is not None else Calendar(), environ, live
@@ -225,6 +232,51 @@ class SchedulingRequests(unittest.TestCase):
     def test_an_unreadable_ledger_is_degraded(self):
         counts, got = Run(parents=(), kids={}, roster=RuntimeError("down"), records=[mail()])()
         self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"ledger_unreadable": 1}, 1))
+
+
+class Leads(unittest.TestCase):
+    """E01b: every recruiter outreach that names a role is a lead with a minted Stable Job Key, and its page is created on the first message, with no reply needed."""
+    def test_a_recruiters_first_message_names_a_client_a_role_and_a_minted_key(self):
+        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, "recruiter-exampleco-program-manager", "https://example.test/thread/5"))
+        company, role, req, key, _ = ev.lead_of(outreach(extra="Requisition 123456."))
+        self.assertEqual((req, key), ("123456", "recruiter-exampleco-123456"))
+        self.assertEqual(ev.lead_of(outreach(client=""))[0], "Staffing Example Inc")             # no client named: the recruiter's company, as stated
+
+    def test_no_role_an_automated_sender_or_no_company_is_not_a_lead(self):
+        noreply = {**outreach(), "markers": {"bulk": False, "auto": True, "noreply": True}, "sender_address": "no-reply.example"}
+        bulk = {**outreach(), "markers": {"bulk": True, "auto": False, "noreply": False}}
+        norole = {**outreach(), "subject": "Hello", "body": "Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. Are you open to a call?\n\nPat Example\nSenior Recruiter\nStaffing Example Inc\n"}
+        for label, message in (("automated", noreply), ("bulk", bulk), ("no role", norole)):
+            self.assertIsNone(ev.lead_of(message), label)
+
+    def test_the_first_message_queues_a_parent_with_no_round_and_the_minted_key(self):
+        counts, got = Run(parents=(), kids={}, roster=[], records=[outreach()])()
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, parent.role), ("ExampleCo", "Program Manager"))
+        self.assertEqual((query.stable_job_key, query.source, query.ledger_page_id, query.interview_date), ("recruiter-exampleco-program-manager", "https://example.test/thread/5", None, None))
+        self.assertEqual((counts["leads"], counts["failed"]), (1, 0))
+
+    def test_an_existing_active_or_retired_page_or_an_applied_job_is_never_a_second_lead(self):
+        for label, run in (("active page", Run(roster=[], records=[outreach()])), ("retired page", Run(parents=(), retired=["ExampleCo — Program Manager"], kids={}, roster=[], records=[outreach()])),
+                           ("applied job", Run(parents=(), kids={}, roster=[APPLIED], records=[outreach()]))):
+            counts, got = run()
+            self.assertEqual(counts["leads"], 0, label)
+            self.assertNotIn("recruiter-exampleco-program-manager", [q.stable_job_key for _, q in got["evidence"]], label)
+
+    def test_one_job_from_two_messages_is_one_lead_and_a_burst_is_capped_newest_first(self):
+        twice = [outreach(url="https://example.test/thread/1", received="2026-10-19T10:00:00Z"), outreach(url="https://example.test/thread/2", received="2026-10-20T10:00:00Z")]
+        _, got = Run(parents=(), kids={}, roster=[], records=twice)()
+        self.assertEqual([q.source for _, q in got["evidence"]], ["https://example.test/thread/2"])
+        many = [outreach(role=f"Role Number {n}", client=f"Client{chr(65 + n)} Corp", url=f"https://example.test/m/{n}", received=f"2026-10-{10 + n}T10:00:00Z") for n in range(8)]
+        counts, got = Run(parents=(), kids={}, roster=[], records=many)()
+        self.assertEqual((counts["leads"], len(got["evidence"])), (8, ev.LEADS_PER_RUN))
+        self.assertEqual([q.source for _, q in got["evidence"]][:2], ["https://example.test/m/7", "https://example.test/m/6"])
+
+    def test_an_incomplete_pipeline_scan_creates_no_lead(self):
+        run = Run(parents=(), kids={}, roster=[], records=[outreach()])
+        with patch.object(notion, "parent_scan", return_value=Scan((), False)), patch.object(ev.stage, "run", return_value={"blocked": 0, "why": {}}):
+            counts = ev.run(20, True, environ=ENV, client=object(), calendar=Calendar(), ledger=Ledger(), records=run.records, ledger_rows=lambda c: [])
+        self.assertEqual(counts["leads"], 0)
 
 
 class Window(unittest.TestCase):

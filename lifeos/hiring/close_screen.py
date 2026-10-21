@@ -83,7 +83,7 @@ def _job(opp):
 
 
 def form(opp, fields, picked="", note="", notice=""):
-    reasons = "".join(f'<label class="reason"><input type="radio" name="outcome" value="{e(r)}" required{" checked" if r == picked else ""}>{e(r)}</label>' for r in M.OUTCOMES)
+    reasons = "".join(f'<label class="reason"><input type="radio" name="outcome" value="{e(r)}" required{" checked" if r == picked else ""}>{e(r)}</label>' for r in (tuple(M.LEAD_REASONS) if opp["kind"] == "notes" else ()) + M.OUTCOMES)
     warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
     return page("Close opportunity", "Review the exact opportunity before making a decision.", _job(opp) + (
         f'<form method="post" action="/">{_hidden(fields)}<section class="section"><div class="eyebrow">Action · Close</div><p class="lead">Choose why you\'re closing this opportunity. Nothing is changed simply by opening this page.</p>'
