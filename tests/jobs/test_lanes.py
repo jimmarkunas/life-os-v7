@@ -459,3 +459,18 @@ class OpenApplication(unittest.TestCase):
             self.assertEqual((decision.status, decision.reason), (EXCLUDE, "not a vacancy: open application"))
         self.assertEqual(lanes.public_reason("not a vacancy: open application"), "not_a_vacancy")
         self.assertEqual(lanes.facts_for(80, "Initiativbewerbung", "Remote", "", None, None, TODAY).open_application, True)
+
+
+class RecruiterLane(unittest.TestCase):
+    """LIFE-88 E01b: a recruiter's outreach is shown whatever its Fit, in its own lane, and it changes no other job's decision."""
+    def test_it_is_admitted_in_its_own_lane_whatever_the_fit_but_a_private_rule_still_excludes(self):
+        low = Facts(fit=30, market="UK", work_mode="onsite", posted=date(2026, 1, 1))
+        decision, lane, eligible = lanes.decide_all("Recruiter", low, date(2026, 10, 21))
+        self.assertEqual((decision.status, lane, eligible), (ADMIT, "Recruiter", ["Recruiter"]))
+        self.assertEqual(lanes.decide_all("Recruiter", None, date(2026, 10, 21), exclusion="private-rule")[0].status, EXCLUDE)
+
+    def test_it_never_becomes_the_visible_lane_of_another_job_and_every_lane_still_judges_the_same(self):
+        facts = Facts(fit=80, market="US", work_mode="remote", posted=date(2026, 10, 20))
+        decision, lane, eligible = lanes.decide_all("US Remote", facts, date(2026, 10, 21))
+        self.assertEqual((decision.status, lane, "Recruiter" in eligible), (ADMIT, "US Remote", False))
+        self.assertNotIn("Recruiter", lanes.PRECEDENCE)
