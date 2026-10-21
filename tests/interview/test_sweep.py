@@ -83,6 +83,14 @@ class SweepTests(unittest.TestCase):
         self.assertEqual((sweep.mode({"INTERVIEW_CONVERT": " All "}), sweep.cap({}), sweep.cap({"INTERVIEW_CONVERT_CAP": "5"}), sweep.cap({"INTERVIEW_CONVERT_CAP": "99"})), ("all", 2, 5, 2))
         self.assertEqual((sweep.mode({"INTERVIEW_CONVERT": "all:1"}), sweep.cap({"INTERVIEW_CONVERT": "all:1", "INTERVIEW_CONVERT_CAP": "5"}), sweep.mode({"INTERVIEW_CONVERT": "inventory:3"})), ("all", 1, ""))
 
+    def test_a_targeted_run_converts_exactly_the_named_page(self):
+        client = SweepFake()
+        counts = sweep_run(client, {**CONVERT, "INTERVIEW_CONVERT": "all:1@" + "a" * 32})
+        self.assertEqual((sweep.target({"INTERVIEW_CONVERT": "all:1@" + "a" * 32}), counts["converted"], counts["waiting"]), ("a" * 32, 0, 0))
+        self.assertEqual((sweep.classify(client, "opportunity"), sweep.classify(client, "retired")), ("human", "human"))
+        for bad in ("inventory:2", "inventory@" + "a" * 32, "all:1@xyz", "all@", "all:100"):
+            self.assertEqual(sweep.mode({"INTERVIEW_CONVERT": bad}), "")
+
     def test_a_hand_made_page_is_adopted_with_every_one_of_jims_blocks_in_place_and_the_retired_one_too(self):
         client = SweepFake()
         kept = {key: [(b["id"], notion.text(b)) for b in client.blocks[key]] for key in ("opportunity", "retired")}

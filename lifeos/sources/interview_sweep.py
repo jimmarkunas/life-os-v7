@@ -4,6 +4,8 @@ A page-by-page sweep, separate from the request-driven path: it classifies each 
 already exist (a hand-made page is adopted, V7's old skeleton is upgraded, a UI 3b or fold-less page is migrated). Every write is proven by the existing before/after digest of Jim's own content and child
 pages, and the sweep stops at the first failure. `INTERVIEW_CONVERT` is `inventory` (classify and count, write nothing) or `all` (convert, up to `INTERVIEW_CONVERT_CAP` pages per run, default 2); any
 other value is off. Writes also need INTERVIEW_OS_WRITER=v7. Counts and fixed codes only."""
+import re
+
 from lifeos.interview import create, notion, view as views
 from lifeos.interview.models import Parent, ParentQuery, RoundQuery
 from lifeos.platform.names import split_title
@@ -17,14 +19,21 @@ CONVERTIBLE = ("human", "adopt_line", "skeleton", "prefold", "ui3b")
 DONE = ("parent_adopted", "parent_upgraded", "parent_refreshed", "adopt_allowed", "upgrade_allowed", "refresh_allowed", "adopt_line_allowed")
 
 
+SETTING = re.compile(r"(inventory|all)(?::(\d{1,2}))?(?:@([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?")
+
+
 def _setting(environ):
-    mode_, _, number = (environ.get("INTERVIEW_CONVERT") or "").strip().lower().partition(":")
-    return mode_, number
+    """(mode, cap text, page id) of `inventory`, `all`, `all:N` or `all:N@<page id>` (a first live test of exactly one page); anything else is off."""
+    found = SETTING.fullmatch((environ.get("INTERVIEW_CONVERT") or "").strip().lower())
+    return tuple(g or "" for g in found.groups()) if found and (found.group(1) == "all" or not (found.group(2) or found.group(3))) else ("", "", "")
 
 
 def mode(environ):
-    value, number = _setting(environ)
-    return value if value in MODES and (not number or value == "all") else ""
+    return _setting(environ)[0]
+
+
+def target(environ):
+    return _setting(environ)[2]
 
 
 def cap(environ):
@@ -88,7 +97,7 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
     def note(code):
         counts["why"][code] = counts["why"].get(code, 0) + 1
 
-    limit, stopped = cap(environ), False
+    limit, stopped, only = cap(environ), False, target(environ)
     try:
         for parent in scan.items:
             context.require_time()
@@ -106,6 +115,8 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
                 counts["rounds"]["machine" if child.identity_valid is True else "human_titled" if child.legacy else "human_other"] += 1
             if kind not in CONVERTIBLE:
                 continue
+            if only and not notion.same_notion_id(parent.page_id, only):
+                continue                                                 # a targeted run touches that one page only
             if how != "all" or stopped or counts["converted"] >= limit:
                 counts["waiting"] += 1
                 continue
