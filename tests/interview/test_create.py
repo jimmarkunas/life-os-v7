@@ -457,3 +457,68 @@ class Causes(unittest.TestCase):
         self.assertTrue(notion.human_tail(Deep(), "p", blocks))                  # 120 containers: more than the 40 reads one scan is allowed
         self.assertEqual(notion.PROTECTED_MAX_CALLS, 400)
         self.assertEqual(notion.MAX_CALLS, 40)                                     # the scans keep their own limit
+
+
+class ProtectedReadCauseTests(unittest.TestCase):
+    """Runs 39627629137 and 39632692329: SH/FT and Smith ended interview_protected_incomplete with 400 reads available. Jim's Interview Notes list sits in his columns, so the interview child pages are nested blocks of the protected read, and the read walked into their own deep UI 4 trees."""
+
+    @staticmethod
+    def block(ident, kind="callout", children=False):
+        return {"id": ident, "type": kind, kind: {"rich_text": [], "title": ident}, "has_children": children}
+
+    def tree(self, interview_tree):
+        """first line, then a column list > column > (callout, child_page); the child page holds `interview_tree` blocks."""
+        blocks = {"page": [self.block("first", "paragraph"), self.block("cols", "column_list", True)],
+                  "cols": [self.block("col", "column", True)],
+                  "col": [self.block("note", "callout"), self.block("round", "child_page", True)],
+                  "round": interview_tree}
+
+        class Client:
+            calls = []
+            def call(inner, method, path, body=None):
+                ident = path.split("/")[2]
+                inner.calls.append(ident)
+                return {"results": blocks[ident], "has_more": False}
+        return blocks, Client()
+
+    def test_an_interview_page_nested_in_jims_columns_is_not_read_as_part_of_his_page(self):
+        deep = [self.block("d0", "column_list", True)]
+        blocks, client = self.tree(deep)
+        for depth in range(1, 12):                                          # far past MAX_DEPTH and a lot of reads, if it were walked
+            blocks[f"d{depth - 1}"] = [self.block(f"d{depth}", "column", True)]
+        blocks["d11"] = [self.block("leaf", "paragraph")]
+        page = blocks["page"]
+        digest = notion.human_tail(client, "page", page)
+        self.assertTrue(digest)
+        self.assertNotIn("round", [c for c in client.calls if c != "round"])
+        self.assertNotIn("d0", client.calls)                                  # its children were never fetched
+        blocks["d11"] = [self.block("leaf", "paragraph"), self.block("added by a refresh", "paragraph")]
+        self.assertEqual(notion.human_tail(client, "page", page), digest)     # a round page changing under the list leaves the protected digest alone
+
+    def test_each_way_a_protected_read_ends_has_its_own_fixed_code(self):
+        def chain(length):
+            blocks = {"page": [self.block("first", "paragraph"), self.block("c0", "callout", True)]}
+            for i in range(length):
+                blocks[f"c{i}"] = [self.block(f"c{i + 1}", "callout", True)]
+            blocks[f"c{length}"] = []
+            return blocks
+
+        def client_for(blocks, more=False):
+            class Client:
+                def call(self, method, path, body=None):
+                    return {"results": blocks[path.split("/")[2]], "has_more": more, "next_cursor": "same" if more else None}
+            return Client()
+        blocks = chain(notion.MAX_DEPTH + 3)
+        with self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
+        blocks = chain(3)
+        with patch.object(notion, "PROTECTED_MAX_CALLS", 2), self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_BUDGET")
+        with self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks, more=True), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_READ")
+        with self.assertRaises(NotionError) as caught:                         # no Jim's notes heading and callout on a page that is read whole
+            notion.human_tail(client_for(blocks), "page")
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_SHAPE")
