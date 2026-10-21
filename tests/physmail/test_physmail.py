@@ -163,7 +163,7 @@ class StageTests(unittest.TestCase):
         counts, gmail = self.run_stage([mail("n1", "New Mail (3)"), actions("a1", "Mail #4801 scanned")])
         self.assertEqual((counts["listed"], counts["arrivals_new"], counts["actions_new"], counts["saved"], counts["state_unidentified"]), (2, 1, 1, 1, 13))
         after = int(state.ANCHOR_AT.timestamp())
-        self.assertEqual(gmail.queries, [(f"from:{events.DOMAIN} after:{after}", 1000)])
+        self.assertEqual(gmail.queries, [(f"(from:{events.DOMAIN} OR from:{events.FEDEX_SENDER}) after:{after}", 1000)])
         self.assertEqual((self.store.saves, self.store.row["anchor_count"], self.store.row["accepted_at"]), (1, 11, NOW.isoformat()))
 
     def test_without_state_or_anchor_nothing_is_saved_and_the_failure_is_a_fixed_code(self):
@@ -180,7 +180,7 @@ class StageTests(unittest.TestCase):
         counts, _ = self.run_stage(env={}, gmail=again)                                     # the anchor is no longer needed
         self.assertEqual((counts["arrivals_new"], counts["saved"]), (0, 1))
         floor = max(NOW - stage.OVERLAP, state.ANCHOR_AT)                                   # the overlap never reaches back before the anchor
-        self.assertEqual(again.queries[0][0], f"from:{events.DOMAIN} after:{int(floor.timestamp())}")
+        self.assertEqual(again.queries[0][0], f"(from:{events.DOMAIN} OR from:{events.FEDEX_SENDER}) after:{int(floor.timestamp())}")
 
     def test_an_incomplete_listing_or_an_unreadable_message_fails_closed_and_changes_nothing(self):
         self.run_stage([mail("n1", "New Mail (3)")])
@@ -733,6 +733,50 @@ class RebuildTests(unittest.TestCase):
 
     def test_the_rebuild_is_read_only_toward_gmail(self):
         self.assertNotIn("modify", inspect.getsource(stage))
+
+
+FEDEX = events.FEDEX_SENDER
+
+
+def fedex_html(rows_html, status="Out for delivery"):
+    return html_only("<html><body><table><tr><td>Online FedEx Tracking</td></tr><tr><td>Ship date</td></tr><tr><td>10/20/2026</td></tr><tr><td><img alt=\"Delivery progress bar\"></td></tr>"
+                     f"<tr><td>{status}</td></tr></table><table><tr><td>Tracking results as of Oct 21, 2026 4:42p GMT</td></tr><tr><td>Date/Time</td><td>Activity/Location</td></tr>{rows_html}</table>"
+                     "<p>Standard transit is the date the package is scheduled to be delivered by</p></body></html>")
+
+
+class FedexTests(unittest.TestCase):
+    NUMBER = "123456789012"
+
+    def read(self, rows_html, subject=None, sender=FEDEX, at="2026-10-21T16:42:35+00:00"):
+        body = gmail_mod._find_text(fedex_html(rows_html), True)
+        return events.extract({"id": "f1", "sender": sender, "subject": subject or f"Online FedEx Tracking - {self.NUMBER}", "received_at": at, "body_text": body})
+
+    def test_the_newest_activity_row_is_the_state_and_only_a_delivered_row_delivers(self):
+        got = self.read("<tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr><tr><td></td><td>CITY, ST</td></tr><tr><td>10/21/2026 7:26 am</td><td>At local FedEx facility</td></tr>")
+        self.assertEqual((got["kind"], got["number"], got["state"], got["delivered"]), ("SHIPMENT", self.NUMBER, "On FedEx vehicle for delivery", False))
+        done = self.read("<tr><td>10/21/2026 11:02 am</td><td>Delivered</td></tr><tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr>")
+        self.assertEqual((done["state"], done["delivered"]), ("Delivered", True))
+        self.assertEqual(self.read("<tr><td>10/21/2026 7:54 am</td><td>x</td></tr>", subject="Your FedEx package")["kind"], "IGNORED")
+        self.assertEqual(self.read("<tr><td>nothing</td></tr>")["reason"], "SHIPMENT_STATE_MISSING")
+        self.assertEqual(self.read("<tr><td>10/21/2026 7:54 am</td><td>x</td></tr>", sender=f"someone{AT}fedex-lookalike.invalid")["kind"], "IGNORED")
+
+    def test_a_followed_shipment_updates_its_piece_and_delivery_removes_it_from_the_list_for_good(self):
+        st = ItemLevelTests().full()
+        st, _ = state.record_tracking(st, FORWARDED, {"carrier": "FedEx", "number": self.NUMBER}, "operator", NOW)
+        way = self.read("<tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr>")
+        st, _ = state.apply(st, [way], NOW)
+        text = [report_region.plain(b) for b in card.render(st, datetime(2026, 10, 21, 17, 0, tzinfo=timezone.utc))[0]]
+        self.assertIn(f"#{FORWARDED}  ·  forwarded Oct 20  ·  FedEx {self.NUMBER}  ·  On FedEx vehicle for delivery", text)
+        done = {**self.read("<tr><td>10/21/2026 11:02 am</td><td>Delivered</td></tr>", at="2026-10-21T16:02:00+00:00"), "id": "f2"}
+        late = {**way, "id": "f3", "at": "2026-10-21T16:30:00+00:00"}                                       # a stale "on the way" copy that arrives after delivery
+        st, _ = state.apply(st, [done, late], NOW)
+        text = [report_region.plain(b) for b in card.render(st, datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc))[0]]
+        self.assertFalse(any(t.startswith(f"#{FORWARDED}") for t in text))
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded, 1 delivered")
+        again, _ = state.apply(st, [done, late], NOW)
+        self.assertEqual(again, st)                                                                          # idempotent
+        other, _ = state.apply(ItemLevelTests().full(), [way], NOW)                                          # an update for a number no piece holds changes no piece
+        self.assertTrue(any(t.startswith(f"#{FORWARDED}") and "Tracking unavailable" in t for t in [report_region.plain(b) for b in card.render(other, datetime(2026, 10, 21, 17, 0, tzinfo=timezone.utc))[0]]))
 
 
 if __name__ == "__main__":
