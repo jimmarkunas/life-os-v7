@@ -152,6 +152,33 @@ def release_held(cursor, profile, today, gate, counts, register=None):
     return released, failed
 
 
+KEPT_CANARY_ROWS = ("SELECT f.job_id, j.title, j.company, f.cloud_score, f.cloud_confidence, f.cloud_rationale, f.cloud_model, f.exclusion FROM v7_job_fit f"
+                    " JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.admission='EXCLUDE' AND j.status='EXCLUDED_FIT'"
+                    " AND j.unresolved_reason='lane_exclude' AND j.notion_page_id IS NULL AND f.cloud_score IS NOT NULL ORDER BY f.job_id LIMIT 500")
+RETURN_TO_PROMOTION = "UPDATE v7_job_fit SET cloud_status='DEGRADED', cloud_reason=%s WHERE job_id=%s AND cloud_status='CANARY' AND admission='EXCLUDE'"
+
+
+def repromote_kept(cursor, profile, today, gate, counts, register=None):
+    """Jim's keep list (D115) changed after a role was already cloud-scored and excluded for Fit: the static pass never re-picks a canary row and regate_canary only replays
+    the stored admission, so the role would stay excluded under the policy that has since been changed. Each such role (lanes.on_keep_list, nothing else) is re-decided from
+    its stored cloud score by the current lane policy, through the same promotion as release_held (no model call). A role the policy still excludes stays excluded and is
+    simply re-stored; one that cannot be promoted stays visible as CANARY_PROMOTION_FAILED. -> (re-decided, failed)."""
+    cursor.execute(KEPT_CANARY_ROWS)
+    redecided = failed = 0
+    for job_id, title, company, score, confidence, rationale, model, exclusion in cursor.fetchall():
+        if not lanes.on_keep_list(company, title):
+            continue
+        cursor.execute(RETURN_TO_PROMOTION, (fit_cloud.PROMOTION_FAILED, job_id))
+        if cursor.rowcount != 1:
+            continue
+        judgment = Judgment(int(score), "No-Go" if exclusion or score < UNIVERSAL_FIT_FLOOR else "Go", rationale or "", confidence or "low")
+        if promote_cloud(cursor, job_id, judgment, model or "model", profile, today, gate, counts, register) is True:
+            redecided += 1
+        else:
+            failed += 1
+    return redecided, failed
+
+
 def cloud_promoter(profile, gate, counts, register):
     """-> promote(job_id, judgment, model): one store session per promotion (D219: the cloud run writes each job's answer right after its call)."""
     def promote(job_id, judgment, model):
@@ -246,6 +273,7 @@ def run(limit, live, environ=os.environ):
     if live and gate:
         with store.connect() as connection, connection.cursor() as cursor:
             counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
+            counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(cursor, profile, _now().date(), gate, counts, register)
     scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
