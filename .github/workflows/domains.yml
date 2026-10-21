@@ -1274,6 +1274,7 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_API_TOKEN }}
           INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
+          INTERVIEW_LEADS: ${{ vars.INTERVIEW_LEADS }}
           INTERVIEW_TEST_COMPANIES: ${{ vars.INTERVIEW_TEST_COMPANIES }}
           INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
