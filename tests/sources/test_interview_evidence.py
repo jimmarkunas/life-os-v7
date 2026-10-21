@@ -57,6 +57,9 @@ def outreach(role="Program Manager", client="ExampleCo", person="Pat Example", u
             "body": f"Hi Jim,\n\nI'm a senior recruiter at Staffing Example Inc. I am hiring for a {role} role" + (f" for our client {client}" if client else "") + f". {extra}\n\n{person}\nSenior Recruiter\nStaffing Example Inc\n"}
 
 
+NOTES_TOP = [{"id": "n", "type": "heading_2", "heading_2": {"rich_text": [{"plain_text": notion.JIM_NOTES}]}}]      # a page that already has the Jim's notes heading (UI 3b)
+
+
 class Writer:
     """The Jobs token's Ledger client: the target check, the key lookup, one create and its read-back."""
     source = "ledger-source"
@@ -83,8 +86,8 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE):
-        self.writer, self.owner = writer, owner
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=()):
+        self.writer, self.owner, self.tops = writer, owner, list(tops)
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -100,6 +103,7 @@ class Run:
 
         with patch.object(notion, "parent_scan", return_value=Scan(tuple(self.parents), True)), \
              patch.object(notion, "ownership", return_value=self.owner), \
+             patch.object(notion, "children", return_value=self.tops), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
@@ -145,7 +149,7 @@ class Refresh(unittest.TestCase):
             self.assertEqual(counts["failed"], 1, label)
 
     def test_a_ui3b_page_waiting_for_migration_is_degraded_not_a_quiet_success(self):
-        counts, got = Run(facts={"p1": None})()
+        counts, got = Run(facts={"p1": None}, tops=NOTES_TOP)()
         self.assertEqual((got["evidence"], counts["failed"], counts["why"]), ([], 1, {"parent_legacy_layout": 1}))
 
     def test_one_gap_does_not_stop_another_valid_page(self):
@@ -452,14 +456,17 @@ class Conversion(unittest.TestCase):
         counts, got = self.go(Ownership.HUMAN)
         self.assertEqual((got["evidence"], counts["convert"]["awaiting_adopt_line"], counts["failed"]), ([], 1, 0))
 
-    def test_a_pursuit_nobody_named_is_never_converted(self):
-        for owner in (Ownership.ADOPT, Ownership.HUMAN):
-            counts, got = self.go(owner, title="Gamma — Program Manager")
-            self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}), owner)
-        counts, got = self.go(Ownership.MACHINE, title="Gamma — Program Manager")
-        self.assertEqual((got["evidence"], counts["why"].get("parent_legacy_layout")), ([], 1))           # unnamed: still the visible gap it always was
+    def test_an_adopt_line_converts_any_page_but_a_page_nobody_named_without_one_is_never_touched(self):
+        counts, got = self.go(Ownership.ADOPT, title="Gamma — Program Manager")
+        self.assertEqual((len(got["evidence"]), counts["convert"]["adopt"]), (1, 1))                    # Jim's own line is the opt-in
+        counts, got = self.go(Ownership.HUMAN, title="Gamma — Program Manager")
+        self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}))
 
-    def test_a_named_machine_page_in_the_old_layout_is_upgraded_not_reported_as_a_gap(self):
+    def test_a_ui3b_page_is_reported_as_waiting_for_its_own_migration_not_upgraded(self):
+        counts, got = Run(parents=(("p1", "Gamma — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, rows=(), roster=[], records=[], tops=NOTES_TOP)()
+        self.assertEqual((got["evidence"], counts["why"].get("parent_legacy_layout")), ([], 1))
+
+    def test_a_machine_skeleton_page_is_upgraded_not_reported_as_a_gap(self):
         counts, got = self.go(Ownership.MACHINE, title="Alpha — Senior Manager")
         self.assertEqual((len(got["evidence"]), counts["convert"]["upgrade"], counts["why"].get("parent_legacy_layout")), (1, 1, None))
 
@@ -570,13 +577,33 @@ class Window(unittest.TestCase):
 
 
 class Pursuits(unittest.TestCase):
-    """A pursuit with no Applied Ledger row (an inbound lead) is matched and reported, never written, until E01b."""
-    def test_a_request_for_a_pursuit_with_no_applied_row_is_counted_as_a_lead_and_nothing_is_queued_for_it(self):
+    """M1 (LIFE-25 handoff): a verified scheduling request for a V7 pursuit page that has no Applied Ledger row becomes that page's Interview 1, Scheduling Pending."""
+    def test_a_request_for_a_keyed_pursuit_page_is_its_interview_1_scheduling_pending(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[mail()])()
-        self.assertEqual(got["evidence"], [])
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, parent.role, query.ordinal, query.interview_date, query.source, query.stable_job_key),
+                         ("ExampleCo", "Program Manager", 1, None, "https://example.test/thread/9", "exampleco-r-1"))
+        self.assertEqual((counts["requests"], counts["pursuit_requests"], counts["failed"]), (0, 1, 0))
+        counts_only(counts)
+
+    def test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing(self):
+        same = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": ("exampleco-r-1", "https://example.test/thread/9")}, kids={"p1": (child(),)}, roster=[], records=[mail()])
+        counts, got = same()
+        self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["failed"]), ([], 0))             # the round exists and names this same message
+        other = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": (child(),)}, roster=[], records=[mail()])       # the page's request link is another message
+        counts, got = other()
+        self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["why"].get("round_identity_incomplete")), ([], 1))
+
+    def test_a_request_for_a_page_without_a_key_is_counted_and_never_guessed(self):
+        counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, roster=[], records=[mail()], tops=NOTES_TOP)()
+        self.assertEqual((got["evidence"], counts["pursuit_requests"]), ([], 0))
         self.assertEqual(sorted(counts["lead_requests"].values()), [1])
-        self.assertEqual((counts["requests"], counts["failed"]), (0, 0))
         self.assertTrue(all(len(label) == 6 for label in counts["lead_requests"]))                  # a short hash, never a name
+
+    def test_a_request_naming_another_company_never_lands_on_this_page(self):
+        other = mail(subject="Schedule your interview - OtherCo Program Manager", body="Please select a time for a call.", sender_name="Talent Team")
+        counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[other])()
+        self.assertEqual((got["evidence"], counts["pursuit_requests"]), ([], 0))
 
     def test_a_pursuit_that_is_also_an_applied_row_is_one_job_not_two(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[APPLIED], records=[mail()])()
