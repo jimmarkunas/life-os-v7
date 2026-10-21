@@ -463,7 +463,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D125: Explain: where every job of a company is and why, in the public log (2026-10-04)
 - D126: A tick never replaces a manual run (2026-10-04)
 - D127: Attention: a weekly exception queue V7 owns (2026-10-04)
-- D128: The Attention card: one line above the interactive view (2026-10-04)
+- D128: The Attention card: status and next decisions above the interactive view (2026-10-04; updated 2026-10-21)
 - D129: The Attention callout has no heading, so the card is headless (2026-10-04)
 - D130: Attention admits what Jim routes to it; a push for new items; the card removes leftover lines (2026-10-04)
 - D131: The Attention status line is the callout's own text (2026-10-04)
