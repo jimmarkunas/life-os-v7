@@ -67,7 +67,7 @@ class WritableFake(Fake):
                 siblings = self.blocks.setdefault(key, [])
                 first = key in self.pages and not siblings                    # a page created from a template, filled now
                 items = self.register(key if first else f"{key}-add{self.appends}", body["children"])
-                at = [b["id"] for b in siblings].index(body["after"]) + 1 if body.get("after") else len(siblings)
+                at = [b["id"] for b in siblings].index(body["after"]) + 1 if body.get("after") else 0 if body.get("position") == {"type": "start"} else len(siblings)
                 siblings[at:at] = items
                 if self.find(key):
                     self.find(key)["has_children"] = True
