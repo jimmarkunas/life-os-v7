@@ -378,7 +378,7 @@
    "lifeos/network/surface.py": "NET-2.3 (D160): the one machine-owned \"Network Leads (n)\" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client."
   },
   "oraclecloud": {
-   "lifeos/oraclecloud/card.py": "The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention)."
+   "lifeos/oraclecloud/card.py": "The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA c"
   },
   "outlook": {
    "lifeos/outlook/stage.py": "Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into ",
