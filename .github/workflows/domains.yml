@@ -844,6 +844,20 @@ jobs:
           oauth-secret: ${{ steps.bws_hiring.outputs.TAILSCALE_OAUTH_CLIENT_SECRET || steps.bws_hiring_retry.outputs.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:v7-runner
           use-cache: "false"
+      - id: interview
+        continue-on-error: true
+        name: Interview OS (LIFE-88; V7 is the sole Interview Canon writer - machine pages refreshed from the Ledger, the page's own identity and accepted Calendar rounds; a dry run unless INTERVIEW_OS_WRITER is v7)
+        env:
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+          HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
+          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
+          GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_hiring.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_hiring_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_hiring.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_hiring_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
+        run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - name: Interview OS warning (does not fail the Jobs run)
+        if: ${{ always() && steps.interview.outcome == 'failure' }}
+        run: echo "::warning title=Interview OS::the Interview OS stage is DEGRADED or failed; pages keep their last accepted content and the Hiring Pipeline region still runs"
       - id: hiring
         continue-on-error: true
         name: Hiring Pipeline (Ledger, Notion pages and Calendar to the private state and the floating region; read-back and whole-page proof; a failed source is DEGRADED)

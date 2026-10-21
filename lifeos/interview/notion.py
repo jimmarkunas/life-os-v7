@@ -280,7 +280,7 @@ def human_tail(client, page_id, blocks=None):
 MUST, TREE_MAX_CALLS = ("column_list", "column", "table", "tab"), 200
 # D16.1 (Jim verified Oct 21): a page created from Jim's blank "Full Width Page" (create-page `template`) is Full width. Notion applies
 # the template after the create returns, so the page's blocks are written once it has had time to.
-FULL_WIDTH, TEMPLATE_WAIT = "4003c5a059268094bab5f904e1dd9c42", 8
+FULL_WIDTH, TEMPLATE_WAIT = "4003c5a0592680a5b787c69c8b827a42", 8
 PLACEHOLDER = {"object": "block", "type": "paragraph", "paragraph": {"rich_text": []}}
 
 

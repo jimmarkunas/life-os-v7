@@ -79,7 +79,7 @@ STAGES = {
     "discover-jobs": lazy("lifeos.sources.web.discover_jobs"),
     "alerts": lazy("lifeos.jobs.alerts"),
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
-    "interview": lazy("lifeos.interview.stage"),
+    "interview": lazy("lifeos.sources.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
@@ -151,7 +151,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def _step_code(counts):

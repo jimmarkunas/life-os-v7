@@ -429,6 +429,7 @@
   "sources": {
    "lifeos/sources/close_app.py": "LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the",
    "lifeos/sources/hiring.py": "Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e",
+   "lifeos/sources/interview_evidence.py": "LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives",
    "lifeos/sources/job_page_outreach.py": "LIFE-10 \u00a72 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).",
    "lifeos/sources/linkedin_search.py": "D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi",
    "lifeos/sources/megibow.py": "MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.",
@@ -504,7 +505,7 @@
   "hiring-outcomes": "lifeos.hiring.outcomes:run",
   "imessage-alerts": "lifeos.imessage.stage:run",
   "imessage-comms": "lifeos.imessage.comms_card:run",
-  "interview": "lifeos.interview.stage:run",
+  "interview": "lifeos.sources.interview_evidence:run",
   "interview-acceptance": "lifeos.interview.acceptance:run",
   "interview-probe": "lifeos.interview.stage:probe",
   "interview-ui-probe": "lifeos.interview.ui_probe:run",
