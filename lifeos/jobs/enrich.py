@@ -166,7 +166,7 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
     problem = quality.jd_problem(desc["full_text"])
     if problem in ("template", "listing"):
         return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
-    if problem == "thin":
+    if problem == "thin" and not (first_party and lanes.lane_for(lane) == "Scale-Up"):          # Jim, Oct 21: a Scale-Up sponsor's own thin page is reviewed from its link (Fit marks it THIN), not held
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict):
         return {"outcome": "mismatch"}
