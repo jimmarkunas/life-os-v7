@@ -15,9 +15,18 @@ READING = {"read_at": "2026-10-20T05:30:00+00:00",
 
 
 class Render(unittest.TestCase):
+    def test_each_line_has_a_bold_label_and_the_plain_text_is_exactly_the_text(self):
+        text, _ = card.render(READING, NOW)
+        segments = card.rich(text)
+        self.assertEqual("".join(x["text"]["content"] for x in segments), text)                                  # the read-back compares plain text, so nothing may be added or lost
+        bold = [x["text"]["content"] for x in segments if x.get("annotations", {}).get("bold")]
+        self.assertEqual(bold, ["AI Capacity", "Codex allowance", "Cloud Fit guard"])
+
     def test_the_approved_layout_tightest_first_remaining_large_used_as_a_bar_resets_in_central(self):
         text, table = card.render(READING, NOW)
-        self.assertEqual(text, "AI Capacity · Updated 12:30 AM CT · 1 near limit · 0 exhausted · our Cloud Fit guard 20/5000 runs today (not a provider limit)")
+        self.assertEqual(text.split("\n")[0], "AI Capacity · Updated 12:30 AM CT · 1 near limit · 0 exhausted")
+        self.assertIn("Cloud Fit guard · 20 of 5,000 runs today (our own limit, not a provider's)", text.split("\n"))
+        self.assertTrue(text.split("\n")[1].startswith("Codex allowance · 5-hour "))                               # the Codex numbers come first, right under the headline
         self.assertEqual(table[0], card.HEADER)
         self.assertEqual(table[1], ["OpenRouter · Monthly key budget ◀ tightest", "20%", "▰▰▰▰▰▰▰▰▱▱ 80%", "Monthly key budget", "—", "NEAR LIMIT"])
         self.assertEqual(table[2], ["Codex allowance · 5-hour", "60%", "▰▰▰▰▱▱▱▱▱▱ 40% · Cloud Fit stops at 50%", "5 hours", "Tue Oct 20, 2:12 AM CDT", "AVAILABLE"])
@@ -31,13 +40,14 @@ class Render(unittest.TestCase):
                    "unavailable": [], "safety_cap": None}
         text, table = card.render(reading, NOW)
         self.assertEqual([table[1][5], table[2][5]], ["EXHAUSTED", "RESERVE REACHED"])
-        self.assertEqual(text, "AI Capacity · Updated 12:30 AM CT · 1 near limit · 1 exhausted")
+        self.assertEqual(text.split("\n")[0], "AI Capacity · Updated 12:30 AM CT · 1 near limit · 1 exhausted")
+        self.assertEqual(text.split("\n")[1], "Codex allowance · 5-hour 55% used · weekly 100% used · Cloud Fit stops at 50%")
 
     def test_more_pools_than_rows_are_counted_not_dropped_silently(self):
         reading = {**READING, "unavailable": ["groq", "google", "ollama", "a", "b"]}
         text, table = card.render(reading, NOW)
         self.assertEqual(len(table), card.ROWS)
-        self.assertTrue(text.endswith("· 2 more not shown"))
+        self.assertIn("· 2 more not shown", text.split("\n")[0])
 
 
 ON = {"V7_AI_CAPACITY_CARD": "on", "ATTENTION_CARD_BLOCK_ID": "att"}
@@ -70,7 +80,7 @@ class FakeNotion:
                 cap = bid.split("-")[0]
                 self.rows[cap][bid] = ["".join(x["text"]["content"] for x in cell) for cell in body["table_row"]["cells"]]
             else:
-                self.text[bid] = body["callout"]["rich_text"][0]["text"]["content"]
+                self.text[bid] = "".join(x["text"]["content"] for x in body["callout"]["rich_text"])             # Notion joins the segments
             return {}
         bid = parts[2]
         if len(parts) == 3:
@@ -193,19 +203,19 @@ class ProposedUsage(unittest.TestCase):
         reading = with_estimate(300, {"basis_calls": 44, "per_call_below": 0.0227, "proposed_percent_at_most": 6.82, "calls_left_at_least": 2200},
                                 {"basis_calls": 44, "per_call_percent": 0.02, "proposed_percent": 6, "calls_left": 2450})
         text, _ = card.render(reading, NOW)
-        self.assertEqual(text.split("\n")[1], "Proposed usage · Cloud Fit backlog (300 jobs): at most 6.82% of the 5-hour window and about 6% of the weekly window"
+        self.assertEqual(next(l for l in text.split("\n") if l.startswith("Proposed usage")), "Proposed usage · Cloud Fit backlog (300 jobs): at most 6.82% of the 5-hour window and about 6% of the weekly window"
                                               " (ESTIMATED from 44 metered calls) · fits under the 50% stop")
 
     def test_a_backlog_that_would_reach_the_stop_says_how_much_fits(self):
         reading = with_estimate(2692, {"basis_calls": 44, "per_call_below": 0.0227, "proposed_percent_at_most": 61.18, "calls_left_at_least": 2200},
                                 {"basis_calls": 44, "per_call_percent": 0.02, "proposed_percent": 53.84, "calls_left": 2450})
-        line = card.render(reading, NOW)[0].split("\n")[1]
+        line = next(l for l in card.render(reading, NOW)[0].split("\n") if l.startswith("Proposed usage"))
         self.assertTrue(line.startswith("Proposed usage · Cloud Fit backlog (2,692 jobs): at most 61.18% of the 5-hour window"))
         self.assertTrue(line.endswith("· about 2,200 calls fit before the 50% stop; the rest wait for the reset"))
 
     def test_nothing_measured_or_nothing_reported_means_no_line(self):
-        self.assertEqual(len(card.render(with_estimate(10, {"basis_calls": 0}, {"basis_calls": 0}), NOW)[0].split("\n")), 1)
-        self.assertEqual(len(card.render(READING, NOW)[0].split("\n")), 1)
+        for reading in (with_estimate(10, {"basis_calls": 0}, {"basis_calls": 0}), READING):
+            self.assertFalse([l for l in card.render(reading, NOW)[0].split("\n") if l.startswith("Proposed usage")])
 
     def test_oracles_estimate_keeps_numbers_only_and_anything_else_is_off_contract(self):
         est = {"proposed": 2692, "reported_at": "2026-10-20T05:40:00+00:00", "windows": [{"label": "5h", "basis_calls": 44, "per_call_below": 0.0227, "note": "dropped"}]}

@@ -73,12 +73,37 @@ def render(reading, now):
     exhausted = sum(1 for c in cells if c[5] == "EXHAUSTED")
     text = f"AI Capacity · Updated {now.strftime('%-I:%M %p')} CT · {near} near limit · {exhausted} exhausted"
     cap = reading.get("safety_cap")
-    if cap:
-        text += f" · our Cloud Fit guard {cap['runs_today']}/{cap['limit']} runs today (not a provider limit)"
     if extra:
         text += f" · {extra} more not shown"
-    lines = [x for x in (proposed_line(reading), signin_line(reading)) if x]
+    lines = [x for x in (codex_line(reading), guard_line(reading), proposed_line(reading), signin_line(reading)) if x]       # one short labelled line each
     return "\n".join([text, *lines]), [HEADER] + cells
+
+
+def codex_line(reading):
+    """The number Jim looks for first: how much of each Codex window is used, and where Cloud Fit stops. None when Oracle reports no Codex pool."""
+    pool = next((p for p in reading["pools"] if p["provider"] == "openai"), None)
+    if not pool or not pool["windows"]:
+        return None
+    parts = [f"{WINDOWS.get(w['label'], (w['label'],))[0]} {w['used']:g}% used" for w in sorted(pool["windows"], key=lambda w: 0 if w["label"] == "5h" else 1)]
+    stop = pool.get("stop")
+    return "Codex allowance · " + " · ".join(parts) + (f" · Cloud Fit stops at {stop}%" if stop else "")
+
+
+def guard_line(reading):
+    cap = reading.get("safety_cap")
+    return f"Cloud Fit guard · {cap['runs_today']:,} of {cap['limit']:,} runs today (our own limit, not a provider's)" if cap else None
+
+
+def rich(text):
+    """The callout's rich text for `text`: the label before the first ' · ' of each line is bold, the rest plain. The plain text is exactly `text`."""
+    out = []
+    for i, line in enumerate(text.split("\n")):
+        label, sep, rest = line.partition(" · ")
+        tail = ("\n" if i < text.count("\n") else "")
+        out.append({"type": "text", "text": {"content": label}, "annotations": {"bold": True}})
+        if sep or tail:
+            out.append({"type": "text", "text": {"content": sep + rest + tail}})
+    return out
 
 
 SIGNIN_NAMES = {"fit": "Cloud Fit sign-in", "meter": "Usage meter sign-in"}
@@ -198,7 +223,7 @@ def write(client, block_id, text, table, live, sleep=time.sleep):
         client.call("PATCH", f"/blocks/{quote(row_id, safe='')}", {"table_row": {"cells": [[{"type": "text", "text": {"content": c}, **bold}] if c else [] for c in want]}})
         result["rows_written"] += 1
     if text_changed:
-        client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
+        client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"callout": {"rich_text": rich(text)}})
         result["text_written"] = True
     for attempt in range(4):                                                          # authoritative read-back; Notion may briefly show the old state
         if attempt:
