@@ -263,7 +263,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l14"                            # bump when a policy changes so stored decisions are re-evaluated
+POLICY_VERSION = "l15"                            # bump when a policy changes so stored decisions are re-evaluated (l15: the Revolut keep-list additions and the Credit Manager (Product) exemption)
 
 
 def lane_for(row_lane):
