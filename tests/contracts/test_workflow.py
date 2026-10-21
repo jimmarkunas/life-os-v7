@@ -141,7 +141,9 @@ class WorkflowTests(unittest.TestCase):
         domains = yaml.safe_load((root / ".github/workflows/domains.yml").read_text())
         group = amazon["concurrency"]["group"]
         self.assertIn("inputs.stage == 'orders'", group)
-        self.assertIn(f"'{domains['concurrency']['group']}'", group)                       # orders: the very group the domain jobs hold
+        self.assertIn("'life-os-v7-domains'", domains["concurrency"]["group"])             # the after-tick domain runs hold the group the orders pass queues behind ...
+        self.assertIn("'life-os-v7-domains'", group)                                        # ... orders: the very group the domain jobs hold
+        self.assertIn("'life-os-v7-domains-manual'", domains["concurrency"]["group"])      # manual domains runs have their own, so a string of them can never replace a waiting after-tick run
         self.assertIn("'life-os-v7-amazon-orders'", group)                                  # backfill, retention, review-reset: their own
         self.assertIs(amazon["concurrency"]["cancel-in-progress"], False)
         self.assertEqual(group, "${{ inputs.stage == 'orders' && 'life-os-v7-domains' || 'life-os-v7-amazon-orders' }}")      # EDGE-1.3 left the queueing exactly as it was
@@ -382,6 +384,16 @@ class DomainsWorkflowTests(unittest.TestCase):
     def test_no_secret_is_declared_at_the_top(self):
         self.assertEqual([k for k, v in (self.doc.get("env") or {}).items() if "secrets." in str(v)], [])
 
+    def test_manual_runs_never_share_a_slot_with_after_tick_runs_and_the_interview_writer_takes_turns(self):
+        group = self.doc["concurrency"]["group"]                                           # Oct 21 2026: a string of manual runs replaced the waiting after-tick runs and the Daily Report header went stale
+        self.assertIn("workflow_run", group)
+        self.assertIn("'life-os-v7-domains-manual'", group)
+        self.assertNotEqual(group.count("life-os-v7-domains'"), 0)                           # the after-tick runs keep the group the manual Amazon and Recruiters workflows queue behind
+        self.assertIs(self.doc["concurrency"]["cancel-in-progress"], False)
+        writer = self.doc["jobs"]["recruiters"]["concurrency"]                              # the one writer of the opportunity pages: after-tick and manual runs take turns
+        self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
+        self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["recruiters"])
+
     def test_only_the_hiring_pipeline_step_reads_the_close_origin_from_its_own_secret(self):
         """D198 S3: the link exists only when the V7_CLOSE_BASE_URL secret is set; one step passes it, from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
@@ -498,7 +510,7 @@ CONSUMERS = {
     "domains": dict(
         jobs={"jira": DB | JUMP | TS | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "outlook": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NTFY_TOPIC"}, "bills": DB | JUMP | TS | {"NOTION_BILLS_TOKEN", "NOTION_JIRA_TOKEN"}, "agenda": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_JIRA_TOKEN"}, "amazon": {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"}, "mail": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "hiring": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_JIRA_TOKEN"}, "attention": DB | JUMP | TS | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "megibow": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"}, "recruiters": DB | JUMP | TS | {"GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_API_TOKEN", "NOTION_INTERVIEW_TOKEN", "NOTION_RECRUITERS_TOKEN"}, "dcc": {"DCC_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"}, "report": {"NTFY_TOPIC"}, "imessage": DB | JUMP | TS | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"}},
         direct=['AMAZON_CARD_BLOCK_ID', 'ATTENTION_CARD_BLOCK_ID', 'BILLS_CARD_BLOCK_ID', 'CALENDAR_CARD_BLOCK_ID', 'GCAL_CALENDAR_ID', 'GMAIL_OAUTH_CLIENT_ID', 'HIRING_CARD_BLOCK_ID', 'HIRING_PIPELINE_PAGE_ID', 'HIRING_STATUS_BLOCK_ID', 'HIRING_TABLE_BLOCK_ID', 'JIRA_BASE_URL', 'JIRA_BOARDS', 'JIRA_CARD_BLOCK_ID', 'JIRA_CARD_PROJECTS', 'JIRA_GTV_CONTEXT_URL', 'JIRA_GTV_EPIC', 'JIRA_SITE_URL', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'MAIL_ALERTS_CARD_BLOCK_ID', 'MEGIBOW_BLOCK_ID', 'MEGIBOW_EXCLUDED_DOMAINS', 'MEGIBOW_REVIEW_DB_ID', 'NOTION_AMAZON_DATA_SOURCE_ID', 'NOTION_BILLS_DATA_SOURCE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID', 'V7_CLOSE_BASE_URL'],
-        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
+        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': "${{ github.event_name == 'workflow_run' && 'life-os-v7-domains' || 'life-os-v7-domains-manual' }}", 'cancel-in-progress': False},
         timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 30, 'imessage': 10, 'report': 5}, digest="06deef8670af36f0"),   # LIFE-88 added the Interview OS stage command to the recruiters job (where the mail credentials are), and a live run showed the job's two mail reads plus the Notion writes need 30 minutes, not 20; LIFE-10 added the job-page-outreach command; D222 (withdrawn Oct 20 2026) removed the job-outreach and installer commands; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning; LIFE-77 D228 the AI Capacity card step
     "hourly": dict(
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
