@@ -132,6 +132,9 @@ class JobLedger:
             return {"properties": {n: {"type": t} for n, t in ledger.REQUIRED.items()}}
         if method == "POST" and path.endswith("/query"):
             where = (body or {}).get("filter") or {}
+            if where.get("property") == "Role":                                  # fit_sync's Role-only backfill: the pages whose Role is still empty
+                return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
+                                    and not "".join(r["plain_text"] for r in self._shown(p).get("Role", {}).get("rich_text", []))], "has_more": False}
             ors = where.get("or")
             wanted = {f["rich_text"]["equals"] for f in ors} if ors else ({where["rich_text"]["equals"]} if where.get("rich_text") else None)   # one key, a batch (D212 read-back) or none (the URL read)
             return {"results": [{"id": i, "properties": self._shown(p)} for i, p in self.pages.items() if not p["archived"]
@@ -339,7 +342,7 @@ class GoldenPath(unittest.TestCase):
         j.resolve_all(["v1", "v2"])
         queries = []
         lookup = j.ledger.call
-        j.ledger.call = lambda method, path, body=None: (queries.append("or" if (body.get("filter") or {}).get("or") else "one" if (body.get("filter") or {}).get("rich_text") else "all")
+        j.ledger.call = lambda method, path, body=None: (queries.append("role" if (body.get("filter") or {}).get("property") == "Role" else "or" if (body.get("filter") or {}).get("or") else "one" if (body.get("filter") or {}).get("rich_text") else "all")
                                                           if body and method == "POST" and path.endswith("/query") else None) or lookup(method, path, body)
         published, _ = j.tick()
         self.assertEqual((published["created"], published["failed"], j.ledger.created), (2, 0, 2))

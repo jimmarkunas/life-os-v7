@@ -310,7 +310,7 @@ class PublishedJobs(Batch):
         self.assertTrue(props["Why It Fits"]["rich_text"][0]["text"]["content"].startswith("Cloud Fit 90% (gpt-6-luna): "))
         self.assertEqual(props["Admission Status"], {"select": {"name": "Admitted"}})
         self.assertFalse({"Applied", "Applied On", "Saturn Decision", "Job"} & set(props))      # human state and the title are never written
-        self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] in ("POST", "DELETE")] or any("in_trash" in (c.args[2] if len(c.args) > 2 else {}) for c in self.client.call.call_args_list))
+        self.assertFalse([c for c in self.client.call.call_args_list if c.args[0] in ("POST", "DELETE") and not c.args[1].endswith("/query")] or any("in_trash" in (c.args[2] if len(c.args) > 2 else {}) for c in self.client.call.call_args_list))
         synced, scored = self.db.raw.execute("SELECT j.fit_synced_at, f.scored_at FROM v7_jobs j JOIN v7_job_fit f ON f.job_id = j.id WHERE j.id = 1").fetchone()
         self.assertGreaterEqual(str(synced), str(scored))
 
