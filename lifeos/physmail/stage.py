@@ -93,6 +93,11 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
             _prove_rebuild(previous, merged, environ, now)                     # fail closed: the known-good row stays; the candidate carries it as `prior` for a rollback
             merged["prior"] = {k: v for k, v in previous.items() if k != "prior"}
         if live:
+            if owns:                                                           # the connection sat idle through the Gmail census and the store tunnel drops it (runs 39659585455 and 39668591536 lost it at this first statement): save on a fresh one
+                manager.__exit__(None, None, None)
+                manager = None
+                manager = db.connect()
+                connection = manager.__enter__()
             STORE.save_verified(connection, KEY, merged, lambda code: PhysMailError("PHYSMAIL_" + code))
             counts["saved"] = 1
             new_ids = set(merged["arrivals"]) - set((stored or {}).get("arrivals", {}))

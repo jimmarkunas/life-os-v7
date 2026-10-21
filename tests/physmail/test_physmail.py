@@ -350,6 +350,69 @@ class WiringTests(unittest.TestCase):
             self.assertIsNone(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", path.read_text()), path.name)
 
 
+class ConnectionTests(unittest.TestCase):
+    """Runs 39659585455 and 39668591536: the store connection opened for the stored state sat idle through the Gmail census and was lost at the first statement of the save."""
+
+    class Db:
+        def __init__(self):
+            self.opened, self.closed = [], []
+
+        def connect(self):
+            outer = self
+
+            class Manager:
+                def __enter__(self):
+                    self.conn = object()
+                    outer.opened.append(self.conn)
+                    return self.conn
+
+                def __exit__(self, *exc):
+                    outer.closed.append(self.conn)
+            return Manager()
+
+    class Store(FakeStore):
+        def __init__(self):
+            super().__init__()
+            self.loaded_on, self.saved_on = [], []
+
+        def load(self, connection, key):
+            self.loaded_on.append(connection)
+            return super().load(connection, key)
+
+        def save_verified(self, connection, key, snapshot, fail):
+            self.saved_on.append(connection)
+            super().save_verified(connection, key, snapshot, fail)
+
+    def run_stage(self, db, store, gmail=None):
+        saved, stage.STORE = stage.STORE, store
+        try:
+            with mock.patch.object(stage.db, "connect", db.connect):
+                return stage.run(1000, True, environ={"PHYSICAL_MAIL_ANCHOR": "11"}, gmail=gmail or FakeGmail([]), now=NOW)
+        finally:
+            stage.STORE = saved
+
+    def test_the_save_uses_a_fresh_connection_and_the_idle_one_is_closed_first(self):
+        db, store = self.Db(), self.Store()
+        counts = self.run_stage(db, store)
+        self.assertEqual((counts["saved"], len(db.opened)), (1, 2))
+        self.assertIsNot(store.saved_on[0], store.loaded_on[0])                    # the connection that sat idle (the first load) is not the one that saves
+        self.assertEqual(db.closed, db.opened)                                      # and every connection opened was closed, once, in order
+
+    def test_a_failed_reconnect_leaves_no_double_close(self):
+        db, store = self.Db(), self.Store()
+        real = db.connect
+        calls = []
+        def connect():
+            calls.append(1)
+            if len(calls) == 2:
+                raise OSError("tunnel down")
+            return real()
+        db.connect = connect
+        with self.assertRaises(OSError):
+            self.run_stage(db, store)
+        self.assertEqual((len(db.opened), len(db.closed), store.saves), (1, 1, 0))     # nothing saved, the first closed once
+
+
 class RuntimePathTests(unittest.TestCase):
     """PRE_MERGE_RUNTIME_GATE: ENTRY POINT -> REQUIRED INPUTS -> CALL CHAIN -> MUTATION OWNER -> SUCCESS / FAIL-CLOSED SIGNAL -> CANONICAL STATE -> READ-BACK, on the production composition."""
 
