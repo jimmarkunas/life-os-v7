@@ -45,6 +45,10 @@ on:
         description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      interview_mail_days:
+        description: "Interview OS dry run only (LIFE-88): read this many days of mail for scheduling requests, 14 to 90, instead of 14. Ignored when Actually write is ticked. Leave blank for the usual 14"
+        type: string
+        default: ""
       calendar_sync:
         description: "Calendar sync only (Outlook invites to your Google calendar, counts only); dry run unless Actually write is ticked"
         type: boolean
@@ -1269,6 +1273,7 @@ jobs:
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_recruiters.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_recruiters_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
+          INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
         continue-on-error: true

@@ -227,6 +227,28 @@ class SchedulingRequests(unittest.TestCase):
         self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"ledger_unreadable": 1}, 1))
 
 
+class Window(unittest.TestCase):
+    def test_a_longer_mail_window_is_for_a_dry_run_only_and_never_beyond_90_days(self):
+        for asked, live, want in (("", False, 14), ("60", False, 60), ("60", True, 14), ("5", False, 14), ("500", False, 90), ("abc", False, 14), ("-3", False, 14)):
+            self.assertEqual(ev.window({"INTERVIEW_MAIL_DAYS": asked}, live), want, (asked, live))
+        self.assertEqual(ev.window({}, False), 14)
+
+
+class Pursuits(unittest.TestCase):
+    """A pursuit with no Applied Ledger row (an inbound lead) is matched and reported, never written, until E01b."""
+    def test_a_request_for_a_pursuit_with_no_applied_row_is_counted_as_a_lead_and_nothing_is_queued_for_it(self):
+        counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[mail()])()
+        self.assertEqual(got["evidence"], [])
+        self.assertEqual(sorted(counts["lead_requests"].values()), [1])
+        self.assertEqual((counts["requests"], counts["failed"]), (0, 0))
+        self.assertTrue(all(len(label) == 6 for label in counts["lead_requests"]))                  # a short hash, never a name
+
+    def test_a_pursuit_that_is_also_an_applied_row_is_one_job_not_two(self):
+        counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[APPLIED], records=[mail()])()
+        self.assertEqual((counts["lead_requests"], counts["requests"], counts["why"]), ({}, 1, {}))
+        self.assertEqual(len(got["evidence"]), 1)
+
+
 class Facts(unittest.TestCase):
     def regions(self, request_links, renders=1):
         run = lambda text, link=None: {"plain_text": text, "text": {"content": text, **({"link": {"url": link}} if link else {})}}

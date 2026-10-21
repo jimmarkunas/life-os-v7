@@ -8,6 +8,7 @@ code for that item alone: nothing is guessed, no round is numbered from the page
 INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Counts and fixed codes only."""
 import os
 import re
+from hashlib import sha1
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -78,12 +79,18 @@ def matches(records, roster):
     return found, codes
 
 
-def read_mail(environ, now, roster, gmail=None, outlook_accounts=None):
-    """-> (records, sources that could not be read in full). Read only; Gmail is narrowed to the Applied companies, Outlook is read whole (as the outcome scan does)."""
-    records, down = [], 0
-    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, terms=outcomes._terms(roster))]
+def window(environ, live):
+    """Mail days to read: 14, or a longer look (INTERVIEW_MAIL_DAYS, up to 90) on a dry run only, so a production tick never reads more than the usual 14."""
+    asked = (environ.get("INTERVIEW_MAIL_DAYS") or "").strip()
+    return min(90, max(mail.WINDOW_DAYS, int(asked))) if asked.isdigit() and not live else mail.WINDOW_DAYS
+
+
+def read_mail(environ, now, roster, gmail=None, outlook_accounts=None, days=mail.WINDOW_DAYS):
+    """-> (records, sources that could not be read in full). Read only; Gmail is narrowed to the companies in the roster, Outlook is read whole (as the outcome scan does)."""
+    records, down, limit = [], 0, mail.MAX_MESSAGES * -(-days // mail.WINDOW_DAYS)
+    reads = [lambda: mail.gmail_records(gmail or Gmail.from_env(), now, limit=limit, days=days, terms=outcomes._terms(roster))]
     for label, account in outlook_accounts if outlook_accounts is not None else mail.outlook_accounts(environ):
-        reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now) if a else ([], 1))
+        reads.append(lambda a=account, l=label: mail.outlook_records(a, l, now, limit=limit, days=days) if a else ([], 1))
     for read in reads:
         try:
             got, bad = read()
@@ -152,13 +159,17 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         roster = pipeline.read_applied(ledger)
     except Exception:                                                        # noqa: BLE001
         flag("ledger_unreadable")
-    if records is None and roster:
-        records, down = read_mail(environ, now, roster, gmail, outlook_accounts)
+    pursuits = [{"id": "page:" + p.page_id, "company": c, "role": r, "title": p.title, "pursuit": True} for p, c, r in titles
+                if c.strip() and r.strip() and not any(same_company(c, a["company"]) and same_role(r, a["role"]) for a in roster)]
+    if records is None and (roster or pursuits):
+        records, down = read_mail(environ, now, roster + pursuits, gmail, outlook_accounts, window(environ, live))
         if down:
             flag("mail_unavailable")                                         # a source read in part is never a trustworthy "no request"
-    asked, codes = matches(records or [], roster)
+    asked, codes = matches(records or [], roster + pursuits)
     for code in codes:
         flag(code)
+    leads = [v for v in asked.values() if v[0].get("pursuit")]                 # a request for a pursuit with no Applied row: the lead path (E01b), reported here, never written
+    asked = {k: v for k, v in asked.items() if not v[0].get("pursuit")}
     for row, message, req in asked.values():                                 # E01a: a scheduling request for a job Jim applied to -> Interview 1, Scheduling Pending
         try:
             props = ledger.call("GET", f"/pages/{row['id']}").get("properties") or {}
@@ -189,5 +200,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
     counts["why"], counts["requests"] = {**counts["why"], **why}, counts_requests
+    counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
+    for row, *_ in leads:
+        label = sha1(row["title"].encode()).hexdigest()[:6]
+        counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
     counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts
