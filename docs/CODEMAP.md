@@ -232,7 +232,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/network/store.py`: NET-1 Hostinger state (approved tables v7_network_people, v7_network_positions, v7_network_batches): the sole writer of them.
 - `lifeos/network/surface.py`: NET-2.3 (D160): the one machine-owned "Network Leads (n)" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client.
 ### lifeos/oraclecloud/
-- `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention).
+- `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA c
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
 - `lifeos/outlook/store.py`: The Outlook token table lives in the platform (other operating systems, such as the calendar bridge, read it too).

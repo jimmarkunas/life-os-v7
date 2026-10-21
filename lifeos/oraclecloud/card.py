@@ -1,4 +1,4 @@
-"""The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention).
+"""The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA card where Jim moved it).
 
 hourly tick -> domains.yml `imessage` job (already on the tailnet as tag:v7-runner) -> Oracle's private endpoint, request `oracle1` -> this stage -> Notion.
 Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs): month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core
@@ -152,18 +152,29 @@ def _children(client, block_id):
     return report_region.children(client, block_id, _fail)
 
 
-def locate(client, anchor):
-    """-> (heading block, paragraph block): exactly one Oracle Cloud callout beside the Attention callout, holding its heading and exactly one paragraph."""
+def _parent_of(client, anchor):
     meta = client.call("GET", f"/blocks/{quote(report_region.clean_id(anchor), safe='')}")
     parent = (meta.get("parent") if isinstance(meta, dict) else None) or {}
-    if parent.get("type") != "block_id":
+    return parent.get("block_id") if parent.get("type") == "block_id" else None
+
+
+def locate(client, anchor, jira=""):
+    """-> (heading block, paragraph block): exactly one Oracle Cloud callout, holding its heading and exactly one paragraph, in the column of the Attention
+    callout or in the column of the JIRA callout (Jim's placement, Oct 21 2026: under the JIRA card). Two cards, or none, is CARD_NOT_OWNED."""
+    home = _parent_of(client, anchor)
+    if not home:
         raise _fail("CARD_NOT_OWNED")
+    homes = [home]
+    other = _parent_of(client, jira) if jira else None
+    if other and other != home:
+        homes.append(other)
     found = []
-    for block in _children(client, parent["block_id"]):
-        if block.get("type") == "callout":
-            kids = _children(client, block["id"])
-            if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
-                found.append(kids)
+    for parent_id in homes:
+        for block in _children(client, parent_id):
+            if block.get("type") == "callout":
+                kids = _children(client, block["id"])
+                if kids and kids[0].get("type") in report_region.HEADINGS and report_region.titled(report_region.plain(kids[0]), TITLE):
+                    found.append(kids)
     if len(found) != 1 or len(found[0]) != 2 or found[0][1].get("type") != "paragraph":
         raise _fail("CARD_NOT_OWNED")
     return found[0][0], found[0][1]
@@ -199,7 +210,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
     router.check_write(MODULE, [TITLE])
     now = now or datetime.now(timezone.utc)
     client = client or _writer(environ)
-    heading, paragraph = locate(client, anchor)
+    heading, paragraph = locate(client, anchor, (environ.get("JIRA_CARD_BLOCK_ID") or "").strip())
     if not due(report_region.plain(heading), now, (environ.get("ORACLE_CARD_FORCE") or "").strip() == "true"):
         return {"due": False, "written": 0}
     try:
