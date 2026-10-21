@@ -66,6 +66,24 @@ def facts(client, page_id, context):
     return (None if renders[0].group(1) == "none" else renders[0].group(1)), (urls.pop() if len(urls) == 1 else None)
 
 
+KEY_TEXT = re.compile(r"Stable Job Key\s+([a-z0-9][a-z0-9-]*)", re.I)
+
+
+def legacy_facts(client, page_id, context):
+    """(Stable Job Key, request URL or None) of a machine page still in the accepted UI 3b layout (marker fold, then the "Canonical opportunity parent" callout), read from the
+    page's own text: exactly one key, else None. Only the pursuits Jim named reach this (migration is authorized for them)."""
+    machine, lines, _ = create.machine_region(client, page_id, context)
+    if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or len(machine) < 2 or not notion.text(machine[1]).startswith("Canonical opportunity parent"):
+        return None
+    stack, keys = list(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], {b.get("id") for b in machine[:1]})), set()
+    while stack:
+        node = stack.pop()
+        keys.update(m.lower() for m in KEY_TEXT.findall(node.get("text") or ""))
+        stack += node.get("children", [])
+    urls = set(_links(client, machine, context))
+    return (keys.pop() if len(keys) == 1 else None), (urls.pop() if len(urls) == 1 else None)
+
+
 def squash(text):
     return re.sub(r"[^a-z0-9]", "", (text or "").lower())
 
@@ -198,7 +216,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
 
     scan = notion.parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
-    convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}
+    convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}
 
     def conversion(company, role, how):                                      # a pursuit Jim named: its existing page becomes the UI 3c page through the page's own adopt / upgrade path
         convert[how] += 1
@@ -222,8 +240,15 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 has_notes = any(b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops)
             except Exception:                                                # noqa: BLE001 - an unread page is a visible gap, never an upgrade
                 has_notes = True
-            if has_notes:
-                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration
+            legacy = legacy_facts(client, parent.page_id, context) if has_notes and named else None
+            if legacy and legacy[0]:
+                try:                                                         # a named UI 3b page: its own key and request, then the existing refresh migrates it (create.refresh(migrate=True))
+                    ready[parent.page_id] = (company, role, *legacy, notion.child_scan(client, parent.page_id, context), read_rows(company))
+                    convert["migrate"] += 1
+                except Exception:                                            # noqa: BLE001 - a fixed code, never the exception text
+                    flag("ledger_unreadable")
+            elif has_notes:
+                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration (only the pursuits Jim named are migrated)
             else:
                 conversion(company, role, "upgrade")                         # V7's own skeleton page (LIFE-46 option B): the approved sections go in once, Jim's notes protected
         elif page[0] is None:
