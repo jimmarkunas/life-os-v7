@@ -8,7 +8,7 @@ limit. Rule: stay UNDER the published limit with a margin, stop a stage on the f
 | TinyFish Fetch | 150 URLs/min, 1,000/day | 100/min (batch 10, 6 s apart), 900/day | free; wallet is $35 and must never be spent |
 | TinyFish Search | 30 req/min, 500/hour | one request per 4.4 s per lane, two lanes share the key (27/min total); 100 LinkedIn + 40 sponsor discovery + 14 title watch per run (154 of 500/hour; Lensa's 300 removed, D201); each job costs ONE search (D35) | free, but the account needs Search API access (402 otherwise) |
 | TinyFish Agent | $0.016/step | forbidden | |
-| Notion API | ~3 req/s average | 2.5/s (0.4 s gap), 60 pages/run | free official API only; 100 child blocks per call; 2,000 chars per rich_text |
+| Notion API | ~3 req/s average | 2.5/s (0.4 s gap), 60 pages/run; the audit trashes at most 40 pages/run | free official API only; 100 child blocks per call; 2,000 chars per rich_text |
 | LinkedIn guest pages | unpublished | 1 request per 1.2 s, 150/run, stop on first 429 | never logged in |
 | Dice tracking redirects | unpublished | 1 request per second, 40/run, stop on first 429 | anonymous GET only; runner access not yet verified |
 | Jobright | unpublished | one login per run, 40 jobs/run, 1.5 s pause | saved secrets; free tier blocks the Apply click, so read the "Original Job Post" link |

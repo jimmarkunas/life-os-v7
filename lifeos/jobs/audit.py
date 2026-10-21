@@ -13,7 +13,7 @@ import os
 
 from lifeos.jobs import guard, hiring_pipeline, lanes, ledger, quality, store
 from lifeos.jobs.identity import norm, url_key, vacancy_id
-from lifeos.platform import notion_client
+from lifeos.platform import limits, notion_client
 
 
 def _now():
@@ -57,7 +57,7 @@ def run(limit, live, environ=os.environ):
             cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
                            " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
             pages = cursor.fetchall()
-    counts["checked"] = len(rows)
+    counts["checked"], counts["pages"], counts["excluded_waiting"] = len(rows), len(pages), len(excluded)
     bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
     already = {r[0] for r, _ in bad}
@@ -90,6 +90,10 @@ def run(limit, live, environ=os.environ):
         if state != "ok":
             counts["protected"]["handoff_unreadable"] = len([1 for r, _ in bad if r[3]])
             bad = [(r, why) for r, why in bad if not r[3]]            # cannot rule out a pursuit: leave every published row alone
+    with_page = [i for i, (r, _) in enumerate(bad) if r[3] and client]
+    later = set(with_page[limits.AUDIT_PAGES_PER_RUN:])                  # D246: a large pile (a re-scored backlog) is cleared over several runs, each ending in time
+    counts["deferred"] = len(later)
+    bad = [b for i, b in enumerate(bad) if i not in later]
     for (job_id, status, url, page_id, _, company, title), why in bad:
         if page_id and client:
             held = guard.protection(client, page_id, company, title, opportunities)

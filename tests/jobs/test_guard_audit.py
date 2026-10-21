@@ -100,3 +100,38 @@ class DuplicatePageTests(unittest.TestCase):
             counts = audit.run(100, False, environ={})
         self.assertEqual(counts["failed"], counts["by_reason"].get("duplicate_page", 0))
         return counts["by_reason"].get("duplicate_page", 0)
+
+
+class PageCapTests(unittest.TestCase):
+    def test_a_large_excluded_pile_is_trashed_a_bounded_slice_per_run_and_the_rest_counted(self):     # D246
+        from unittest import mock
+        from lifeos.jobs import audit
+        from lifeos.platform import limits
+
+        excluded = [(i, "PUBLISHED", f"https://x.example/{i}", f"p{i}", None, f"Co{i}", "Program Manager") for i in range(1, 101)]
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, args=()):
+                self.rows = excluded if "f.admission='EXCLUDE'" in sql else []
+
+            def fetchall(self):
+                return self.rows
+
+        class Conn(Cur):
+            def cursor(self):
+                return Cur()
+
+        client = mock.Mock()
+        with mock.patch.object(audit.store, "connect", return_value=Conn()), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=client), mock.patch.object(audit.ledger, "verify", return_value=audit.ledger.OK), \
+                mock.patch.object(audit.guard, "protection", return_value=None):
+            counts = audit.run(2000, True, environ={"V7_FIT_GATE": "true"})
+        self.assertEqual((counts["excluded_waiting"], counts["trashed"], counts["deferred"]), (100, limits.AUDIT_PAGES_PER_RUN, 100 - limits.AUDIT_PAGES_PER_RUN))
+        self.assertEqual(counts["excluded_cleared"], limits.AUDIT_PAGES_PER_RUN)
+        self.assertEqual(client.call.call_count, limits.AUDIT_PAGES_PER_RUN)

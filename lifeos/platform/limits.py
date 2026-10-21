@@ -22,6 +22,7 @@ NOTION_MAX_CHILD_BLOCKS = 100            # per create/append call
 NOTION_MAX_RICH_TEXT_CHARS = 2000        # per rich_text item
 NOTION_PAGE_SIZE = 100                   # query page size
 NOTION_PER_RUN = 60                      # ours: pages created per run
+AUDIT_PAGES_PER_RUN = 40                 # ours: pages the precision audit reads and trashes per run (two calls each), so it ends inside its 180 s tick budget (D246)
 BILLS_PAID_PER_RUN = 20                  # paid commands are individually read back and verified
 
 # LinkedIn (public guest pages only; never logged in)
