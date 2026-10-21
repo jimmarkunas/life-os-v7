@@ -207,17 +207,23 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             continue
         owner = notion.ownership(client, parent.page_id, "opportunity")
         named = notion.is_legacy_company(environ, company)
-        if owner == Ownership.ADOPT and named:
-            conversion(company, role, "adopt")
+        if owner == Ownership.ADOPT:
+            conversion(company, role, "adopt")                               # Jim's own `LIFE OS: adopt` line is the opt-in, for any page
         elif owner == Ownership.HUMAN and named:
-            convert["awaiting_adopt_line"] += 1                              # Jim's page without his `LIFE OS: adopt` first line: nothing is written to it
+            convert["awaiting_adopt_line"] += 1                              # a named page without his `LIFE OS: adopt` first line: nothing is written to it
         if owner != Ownership.MACHINE:
             continue
         page = facts(client, parent.page_id, context)
-        if page is None and named:
-            conversion(company, role, "upgrade")
-        elif page is None:
-            flag("parent_legacy_layout")
+        if page is None:
+            try:
+                tops = notion.children(client, parent.page_id, [notion.MAX_CALLS], context)
+                has_notes = any(b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops)
+            except Exception:                                                # noqa: BLE001 - an unread page is a visible gap, never an upgrade
+                has_notes = True
+            if has_notes:
+                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration
+            else:
+                conversion(company, role, "upgrade")                         # V7's own skeleton page (LIFE-46 option B): the approved sections go in once, Jim's notes protected
         elif page[0] is None:
             flag("job_key_missing")
         else:
@@ -284,6 +290,21 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif not page or page_kids.complete:
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
+    pursuit_requests, handled = 0, set()
+    for row, message, req in leads:                                          # M1 (LIFE-25): a request for a keyed V7 pursuit page with no Applied row is that page's Interview 1
+        page = ready.get(row["id"].split(":", 1)[1])
+        if page is None:
+            continue                                                         # no key on the page: counted below, never guessed
+        company, role, page_job, page_url, page_kids, page_rows = page
+        handled.add(row["id"])
+        if any(c.identity_valid is True for c in page_kids.items):
+            if page_url != message["url"]:
+                flag("round_identity_incomplete")                            # the page already has a round and names another message: its number is unknown
+        elif page_kids.complete:
+            queue(company, role, page_job, message["url"], page_rows, None, None, None, req)
+            pursuit_requests += 1
+        else:
+            flag("child_scan_incomplete")
     counts_requests = len(asked)
     every = [split_title(p.title) for p in scan.items] + [(a["company"], a["role"]) for a in roster]
     fresh = {}                                                               # one lead per job: Stable Job Key -> (lead, its own message); the newest message wins
@@ -324,7 +345,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     counts["leads_this_run"] = len(chosen)
     counts["convert"] = convert
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
-    for row, *_ in leads:
+    counts["pursuit_requests"] = pursuit_requests
+    for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
     counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed

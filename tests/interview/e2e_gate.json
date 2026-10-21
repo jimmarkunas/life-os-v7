@@ -8,7 +8,7 @@
     "E01": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "applied-job requests and inbound recruiter leads (role named, from mail) are built and unit-proven, each lead carrying its own source message and ATS link; lead writes need the separate INTERVIEW_LEADS switch (off until the live proof); no real-source run has been read back yet",
+      "missing": "applied-job requests, requests for a keyed V7 pursuit page with no Applied row, and inbound recruiter leads (role named, from mail) are built and unit-proven, each lead carrying its own source message and ATS link; lead writes need the separate INTERVIEW_LEADS switch (off until the live proof); no real-source run has been read back yet",
       "tests": [
         "tests.sources.test_interview_evidence.Facts.test_the_page_names_its_job_and_its_one_request_message",
         "tests.sources.test_interview_evidence.Facts.test_no_request_link_two_different_ones_or_two_render_lines_are_not_guessed",
@@ -20,7 +20,10 @@
         "tests.sources.test_interview_evidence.LeadCorrelation.test_distinct_leads_with_different_ats_links_each_get_exactly_their_own",
         "tests.sources.test_interview_evidence.LeadCorrelation.test_the_newest_message_in_the_mailbox_does_not_lend_its_link_to_an_older_lead",
         "tests.sources.test_interview_evidence.LeadCorrelation.test_the_result_is_counts_only_with_a_ready_page_a_lead_a_conversion_and_a_request_in_one_run",
-        "tests.sources.test_interview_evidence.LeadCorrelation.test_leads_stay_off_until_the_second_switch_is_on_even_when_the_writer_is_live"
+        "tests.sources.test_interview_evidence.LeadCorrelation.test_leads_stay_off_until_the_second_switch_is_on_even_when_the_writer_is_live",
+        "tests.sources.test_interview_evidence.Pursuits.test_a_request_for_a_keyed_pursuit_page_is_its_interview_1_scheduling_pending",
+        "tests.sources.test_interview_evidence.Pursuits.test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing",
+        "tests.sources.test_interview_evidence.Pursuits.test_a_request_naming_another_company_never_lands_on_this_page"
       ]
     },
     "E02": {
@@ -41,7 +44,9 @@
       "tests": [
         "tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
         "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",
-        "tests.interview.test_create.CreationTests.test_parent_round_replay_vertical_slice_and_skeletons"
+        "tests.interview.test_create.CreationTests.test_parent_round_replay_vertical_slice_and_skeletons",
+        "tests.sources.test_interview_evidence.Conversion.test_a_machine_skeleton_page_is_upgraded_not_reported_as_a_gap",
+        "tests.sources.test_interview_evidence.Conversion.test_an_adopt_line_converts_any_page_but_a_page_nobody_named_without_one_is_never_touched"
       ]
     },
     "E04": {
