@@ -89,9 +89,9 @@ class Refresh(unittest.TestCase):
             self.assertEqual(got["evidence"], [], label)
             self.assertEqual(counts["failed"], 1, label)
 
-    def test_a_ui3b_page_waiting_for_migration_is_reported_not_failed(self):
+    def test_a_ui3b_page_waiting_for_migration_is_degraded_not_a_quiet_success(self):
         counts, got = Run(facts={"p1": None})()
-        self.assertEqual((got["evidence"], counts["failed"], counts["why"]), ([], 0, {"parent_legacy_layout": 1}))
+        self.assertEqual((got["evidence"], counts["failed"], counts["why"]), ([], 1, {"parent_legacy_layout": 1}))
 
     def test_one_gap_does_not_stop_another_valid_page(self):
         run = Run(parents=(("p1", "ExampleCo — Program Manager"), ("p2", "OtherCo — Analyst")), facts={"p1": ("exampleco-r-1", URL), "p2": ("otherco-r-1", None)},

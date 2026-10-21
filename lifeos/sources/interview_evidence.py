@@ -112,5 +112,5 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             queue(company, role, job, url, rows, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=context)
     counts["why"] = {**counts["why"], **why}
-    counts["failed"] = sum(why.values()) - why.get("parent_legacy_layout", 0) + counts["blocked"]       # a UI 3b page waiting for migration is reported, not a failure
+    counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts
