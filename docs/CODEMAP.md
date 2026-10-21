@@ -171,7 +171,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/fit/judge.py`: Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, c
 - `lifeos/jobs/fit/lexicon.py`: Generic, public vocabulary: nothing here describes a person. Only what a job description says.
 - `lifeos/jobs/fit/profile.py`: The private fit profile: injected at run time, validated here, never committed (D16).
-- `lifeos/jobs/fit/profile_sync.py`: Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into the one Bitwarden secret the Fit engine already merges (FIT_PROFI
+- `lifeos/jobs/fit/profile_sync.py`: Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small table of the private store (v7_fit_profile_sync), and t
 - `lifeos/jobs/fit/score.py`: Professional Fit, V3 (docs/FIT_MODEL.md): five weighted dimensions over the requirements the posting activates.
 - `lifeos/jobs/fit/semantic.py`: Optional semantic layer (shadow mode): a small local sentence-embedding model reads paraphrase, nothing else.
 - `lifeos/jobs/fit/stage.py`: The `fit` stage: score every job that has a full description and no current score. Counts only in the log.
@@ -330,7 +330,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `pr-tests.yml`: jobs unit-tests; manual no; secrets -
-- `profile-sync.yml`: jobs sync; manual yes; secrets LIFEOS_BWS_PROFILE_SYNC_TOKEN, NOTION_FIT_SYNC_TOKEN
+- `profile-sync.yml`: jobs sync; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_FIT_SYNC_TOKEN
 - `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, LIFEOS_BWS_RUNTIME_TOKEN
@@ -351,6 +351,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_tombstones`: `lifeos/jobs/store.py`
 - `v7_ledger_urls`: `lifeos/jobs/store.py`
 - `v7_spend`: `lifeos/jobs/store.py`
+- `v7_fit_profile_sync`: `lifeos/jobs/store.py`
 - `v7_network_people`: `lifeos/network/store.py`
 - `v7_network_positions`: `lifeos/network/store.py`
 - `v7_network_batches`: `lifeos/network/store.py`

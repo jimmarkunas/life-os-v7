@@ -85,8 +85,9 @@ def _merge(base, extra):
     return merged
 
 
-def load(environ):
-    """The profile from the FIT_PROFILE_JSON secret, plus the optional FIT_PROFILE_EXTRA_JSON block (D105: evidence added without replacing the profile);
+def load(environ, synced=None):
+    """The profile from the FIT_PROFILE_JSON secret, plus the optional FIT_PROFILE_EXTRA_JSON block (D105: evidence added without replacing the profile) and the optional `synced` block
+    (the Notion page's approved evidence, read from the store by profile_sync.stored_block);
     ProfileError when either is present but invalid, or the profile is absent."""
     raw = (environ.get("FIT_PROFILE_JSON") or "").strip()
     if not raw:
@@ -104,6 +105,8 @@ def load(environ):
             data = _merge(data, extra)
         except (ValueError, TypeError, KeyError) as error:
             raise ProfileError("FIT_PROFILE_EXTRA_JSON is not a valid profile block") from error
+    if synced:                                                                  # the Notion-approved block (profile_sync): appended like the extra block
+        data = _merge(data, synced)
     try:
         return Profile(data)
     except (ValueError, TypeError, KeyError) as error:

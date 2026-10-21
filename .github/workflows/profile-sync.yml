@@ -1,12 +1,12 @@
 name: profile-sync
-# Fit profile sync: Jim's Notion page is the authority; the approved evidence block is copied into the one Bitwarden secret the Fit engine already merges (FIT_PROFILE_EXTRA_JSON).
-# The main pipeline still reads only Bitwarden. This job holds the only write token and a read token for the one Notion page, and nothing else; it prints one fixed code.
-# Manual dispatch (dry run unless "live"), and after every hourly tick when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
+# Fit profile sync: Jim's Notion page is the authority; its approved evidence block is copied into one small table of the private store (v7_fit_profile_sync) and the Fit profile loader merges it in.
+# Nothing is written to Bitwarden: the job only READS the store credentials from it, like the other store jobs. It holds one Notion read token for the one sync page and prints one fixed code.
+# Manual dispatch (dry run unless "live"), and after every successful hourly tick when the repository variable FIT_PROFILE_SYNC is "on" (inert until Jim sets it). No schedule of its own.
 on:
   workflow_dispatch:
     inputs:
       live:
-        description: "Write the Bitwarden secret (unticked = dry run: reads the page and the secret, writes nothing)"
+        description: "Write the store row (unticked = dry run: reads the page and the stored row, writes nothing)"
         type: boolean
         default: false
   workflow_run:
@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-profile-sync
+  group: life-os-v7-domains                       # it uses the same store as the domain jobs, so it queues behind them instead of colliding
   cancel-in-progress: false
 jobs:
   sync:
@@ -25,18 +25,50 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
-      - name: Install the pinned Bitwarden Secrets Manager CLI (bws 2.1.0, SHA-256 checked before use)
-        run: |
-          set -euo pipefail
-          curl -fsSL -o /tmp/bws.zip https://github.com/bitwarden/sdk-sm/releases/download/bws-v2.1.0/bws-x86_64-unknown-linux-gnu-2.1.0.zip
-          echo "ba8233c3a4aee5d43e3c73bbd04d99e9bc5aba13bbbfd06d89b073abe732b860  /tmp/bws.zip" | sha256sum -c -
-          unzip -o /tmp/bws.zip -d /tmp/bws-bin
-          sudo install -m 0755 /tmp/bws-bin/bws /usr/local/bin/bws
-      - name: Sync the approved Fit evidence block (counts and one fixed code only)
+      - id: bws_sync
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 7; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_sync.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_sync_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_sync.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+      - name: Fit profile sync (the approved Notion evidence block into the store; counts and one fixed code only)
         env:
-          BWS_ACCESS_TOKEN: ${{ secrets.LIFEOS_BWS_PROFILE_SYNC_TOKEN }}
           NOTION_FIT_SYNC_TOKEN: ${{ secrets.NOTION_FIT_SYNC_TOKEN }}
           NOTION_FIT_SYNC_PAGE_ID: ${{ vars.NOTION_FIT_SYNC_PAGE_ID }}
-          FIT_PROFILE_EXTRA_SECRET_ID: ${{ vars.FIT_PROFILE_EXTRA_SECRET_ID }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_sync_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_sync_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_DB_USER || steps.bws_sync_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_sync_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_sync_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_sync_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_sync.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_sync_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           LIVE: ${{ github.event_name == 'workflow_run' || inputs.live }}
-        run: python -m lifeos.run fit-profile-sync $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run fit-profile-sync --limit 0 $([ "$LIVE" = "true" ] && echo --live)

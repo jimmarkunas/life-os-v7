@@ -120,7 +120,8 @@ Add the Actions secrets `NOTION_RECRUITERS_TOKEN` (the Notion integration shared
 V7 writes the Daily Command Center callout on the Daily Report (the last card of every tick). Add the callout's block ID as a Bitwarden secret named `DCC_CARD_BLOCK_ID` in the LIFE OS GitHub Actions project (the `dcc` job loads it with the same runtime token as its other secrets; put its Bitwarden id in the loader step of `domains.yml`); the card reuses the existing `NOTION_JIRA_TOKEN` Daily Report integration and reads the other cards' block IDs that already exist. Its first child must be the heading "ChatGPT · Daily Command Center" (renaming it needs `router.DCC_REGION` changed too). Until the secret exists the stage reports `not_configured` and changes nothing. Before the first live run, remove the Command Center section from the ChatGPT task's instructions so only one writer remains. Manual run: `domains.yml` with the `dcc` input (dry run unless Actually write is ticked).
 
 ## Fit profile sync (one-time setup, Jim)
-1. Bitwarden: a machine account with **read + write on the one `FIT_PROFILE_EXTRA_JSON` secret only**; put its access token in the repository secret `LIFEOS_BWS_PROFILE_SYNC_TOKEN`.
-2. Notion: an integration with **read access to the one sync page only**; put its token in the repository secret `NOTION_FIT_SYNC_TOKEN`.
-3. Repository variables: `NOTION_FIT_SYNC_PAGE_ID` (the sync page), `FIT_PROFILE_EXTRA_SECRET_ID` (the Bitwarden secret id of `FIT_PROFILE_EXTRA_JSON`), and, when ready for it to run after every tick, `FIT_PROFILE_SYNC=on`.
-4. Try it: dispatch `profile-sync` with live unticked and read the code in the log (`SYNC_WOULD_WRITE` means it found an approved, changed block).
+No Bitwarden change is needed: the job reads the same store credentials the other store jobs read.
+1. Notion: an internal integration with **read access** only, shared with the one sync page ("Fit Profile Sync Block") and nothing else. Put its token in the repository secret `NOTION_FIT_SYNC_TOKEN`.
+2. Repository variable `NOTION_FIT_SYNC_PAGE_ID` = the sync page's id.
+3. Try it: dispatch `profile-sync` with live unticked and read the code in the log (`SYNC_WOULD_WRITE` means it found an approved, changed block); then dispatch it again with live ticked (`SYNC_WRITTEN`).
+4. When ready for it to run after every successful tick, set the repository variable `FIT_PROFILE_SYNC=on`.

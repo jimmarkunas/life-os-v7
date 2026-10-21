@@ -38,10 +38,13 @@ Thresholds are starting values, to be tuned from the shadow counts against your 
 Recall depends on the profile's term lists (a requirement the profile does not name is Unsupported). Calibrate against the
 accepted outcomes and the Job Ledger before turning the gate on.
 
-## Profile sync (Notion page -> the Bitwarden extra block)
-Jim's Notion page is the authority for new evidence; the Fit engine still reads only Bitwarden. `lifeos.jobs.fit.profile_sync` (stage `fit-profile-sync`, workflow `profile-sync.yml`, its own isolated job)
-copies the page's **approved** JSON block into the existing `FIT_PROFILE_EXTRA_JSON` secret (D105). Only entries the sync owns change (capability ids starting `nsync_`, functions with `"owner": "nsync"`);
-every other entry in the secret is kept exactly. The page carries one JSON code block and one paragraph `APPROVED HASH: <16 hex>`; a block whose content hash differs is not adopted, so an unreviewed edit never
-reaches scoring. A failure at any step leaves the secret as it was. The log prints one fixed code (`SYNC_WRITTEN`, `SYNC_UNCHANGED`, `SYNC_NOT_APPROVED`, `SYNC_BLOCK_INVALID`, ...) and a count, never page content.
-A changed secret changes the profile hash, which already re-scores every job. The cloud (Oracle) brief is a separate copy and is not touched by this stage.
-Inert until Jim sets the variable `FIT_PROFILE_SYNC=on`; dispatch it by hand (dry run unless ticked) to try it.
+## Profile sync (Notion page -> a small table in the store)
+Jim's Notion page is the authority for new evidence. `lifeos.jobs.fit.profile_sync` (stage `fit-profile-sync`, workflow `profile-sync.yml`, its own isolated job) copies the page's **approved** JSON block into the
+store table `v7_fit_profile_sync` (one row). `profile.load(environ, synced=...)` then appends that block to the profile exactly as it appends `FIT_PROFILE_EXTRA_JSON` (D105); the Fit stage, the cloud backlog and the
+safety audit all load it. Bitwarden is never written: the secrets stay read-only for every job. The block may only carry `capabilities` (ids starting `nsync_`) and `functions` (tagged `owner: nsync`), so it can add
+evidence but never replace or remove an entry of the secret profile, and it cannot add exclusions.
+The page carries one JSON code block and one paragraph that is exactly `APPROVED HASH: <16 hex>`; a block whose content hash differs is not stored, and prose that merely quotes the line is not an approval. The reader returns
+the block only when the stored hash matches the block's own recomputed hash; a store that cannot be read, or a row that does not match, makes the profile unavailable for that run (the Fit stage does nothing), never a profile that
+silently lost its block. Nothing synced yet, or no store configured, means no change. The log prints one fixed code (`SYNC_WRITTEN`, `SYNC_UNCHANGED`, `SYNC_NOT_APPROVED`, `SYNC_BLOCK_INVALID`, ...) and a count, never page content.
+A stored change changes the profile hash, which already re-scores every job. The cloud (Oracle) brief is a separate copy and is not touched by this stage.
+Inert until Jim sets the variable `FIT_PROFILE_SYNC=on`; dispatch `profile-sync` by hand (dry run unless ticked) to try it.

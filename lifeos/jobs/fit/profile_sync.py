@@ -1,23 +1,23 @@
-"""Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into the one Bitwarden secret the Fit engine already merges
-(FIT_PROFILE_EXTRA_JSON, D105), so the main pipeline keeps reading only Bitwarden.
+"""Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small table of the private store (v7_fit_profile_sync), and the Fit
+profile loader merges that block in (profile.load(..., synced=stored_block())). Bitwarden stays read-only for everyone and nothing here writes a secret.
 
-Runs in its own isolated job (profile-sync.yml): it holds a Bitwarden write token and a Notion read token and nothing else. Nothing about the page content is ever printed:
+Runs in its own isolated job (profile-sync.yml): it holds the store credentials and one Notion read token for the one page, and nothing else. Nothing about the page content is ever printed:
 the log carries one fixed code and counts.
 
 The page (NOTION_FIT_SYNC_PAGE_ID) carries two things, written by Jim or by a prompt:
-  * one JSON code block, the managed evidence block: {"capabilities": [...], "functions": [...]} in the shape of profile.py. Every managed capability id starts with
-    "nsync_" and every managed function carries "owner": "nsync", so the sync owns exactly those entries and never touches the rest of the secret;
-  * one paragraph "APPROVED HASH: <16 hex>": the content hash of the block Jim approved. A block whose hash differs is NOT adopted, so a stray edit never reaches scoring.
+  * one JSON code block, the managed evidence block: {"capabilities": [...], "functions": [...]} in the shape of profile.py. Every capability id starts with "nsync_" and every
+    function carries "owner": "nsync", so the block can never replace an entry of the secret profile;
+  * one paragraph that is exactly "APPROVED HASH: <16 hex>": the content hash of the block Jim approved. A block whose hash differs is NOT adopted, so a stray edit never reaches scoring.
 
-Adoption is: read page -> parse -> validate (strict keys, size, loads as a Profile on top of the current secret) -> approved? -> changed? -> write -> read back. Any failure keeps the
-secret exactly as it was (never blank, never partial). A dry run (the default) does everything except the write."""
+Adoption is: read page -> parse -> validate (strict keys, size, loads as a Profile) -> approved? -> changed? -> write the row -> read it back. Any failure keeps the stored row exactly as it was.
+The reader returns the block only when the stored hash matches the block's own recomputed hash; a store that cannot be read raises ProfileError (the Fit stage then does nothing that run,
+never scoring against a profile without its block). A dry run (the default) does everything except the write."""
 from hashlib import sha256
 import json
 import os
 import re
-import shutil
-import subprocess
 
+from lifeos.jobs import store
 from lifeos.jobs.fit.profile import Profile, ProfileError
 from lifeos.platform.notion_client import Client, NotionError
 
@@ -27,7 +27,7 @@ ALLOWED_KEYS = ("capabilities", "functions")
 MAX_BYTES = 24_000
 MAX_ENTRIES = 80
 _HASH = re.compile(r"^\s*APPROVED HASH:\s*([0-9a-f]{16})\s*$", re.I)       # the WHOLE paragraph: prose that quotes the line is never an approval
-_SECRET_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+ROW_ID = 1
 
 
 class SyncError(RuntimeError):
@@ -87,50 +87,42 @@ def parse(text):
     return block
 
 
-def merge(current, block):
-    """The secret's current extra block with the sync-owned entries replaced by `block`; every entry the sync does not own is kept exactly."""
-    kept = dict(current)
-    kept["capabilities"] = [row for row in current.get("capabilities") or [] if not str(row.get("id") or "").startswith(ID_PREFIX)] + block["capabilities"]
-    kept["functions"] = [row for row in current.get("functions") or [] if row.get("owner") != OWNER] + block["functions"]
-    return kept
-
-
-def owned(extra):
-    return {"capabilities": [r for r in extra.get("capabilities") or [] if str(r.get("id") or "").startswith(ID_PREFIX)],
-            "functions": [r for r in extra.get("functions") or [] if r.get("owner") == OWNER]}
-
-
-class Bitwarden:
-    """The one secret, through the pinned bws CLI (installed by the workflow). The value never reaches a log."""
-
-    def __init__(self, secret_id, environ=os.environ, run=subprocess.run):
-        if not _SECRET_ID.match(secret_id or ""):
-            raise SyncError("SYNC_SECRET_ID_INVALID")
-        if not shutil.which("bws") and run is subprocess.run:
-            raise SyncError("SYNC_BWS_MISSING")
-        self.id, self.run, self.env = secret_id, run, {**environ}
-
-    def _bws(self, *args):
-        done = self.run(["bws", *args, "--output", "json"], capture_output=True, text=True, env=self.env, timeout=60)
-        if done.returncode != 0:
-            raise SyncError("SYNC_BWS_FAILED")
-        try:
-            return json.loads(done.stdout)
-        except ValueError:
-            raise SyncError("SYNC_BWS_FAILED") from None
+class Store:
+    """The one row. The connection is the pipeline's own store connection (an SSH tunnel to the private database)."""
 
     def read(self):
-        value = (self._bws("secret", "get", self.id).get("value") or "").strip()
-        try:
-            data = json.loads(value) if value else {}
-        except ValueError:
-            raise SyncError("SYNC_SECRET_NOT_JSON") from None
-        if not isinstance(data, dict):
-            raise SyncError("SYNC_SECRET_NOT_JSON")
-        return data
+        with store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT content_hash, block FROM v7_fit_profile_sync WHERE id = %s", (ROW_ID,))
+            row = cursor.fetchone()
+        return (row[0], json.loads(row[1])) if row else (None, None)
 
-    def write(self, data):
-        self._bws("secret", "edit", self.id, "--value", json.dumps(data, sort_keys=True, separators=(",", ":")))
+    def write(self, block):
+        digest = content_hash(block)
+        with store.connect() as connection:
+            store.ensure_schema(connection)
+            with connection.cursor() as cursor:
+                cursor.execute("REPLACE INTO v7_fit_profile_sync (id, content_hash, block, synced_at) VALUES (%s, %s, %s, UTC_TIMESTAMP())",
+                               (ROW_ID, digest, json.dumps(block, sort_keys=True, separators=(",", ":"))))
+            connection.commit()
+
+
+def stored_block(environ=os.environ, vault=None):
+    """-> the approved block the sync stored, or None when nothing has been synced. Raises ProfileError when the store cannot be read or the row does not match its own hash:
+    the caller then treats the profile as unavailable for this run (it never scores against a profile that silently lost its block)."""
+    if vault is None and not (environ.get("LIFEOS_ACQ_DB_NAME") or "").strip():
+        return None                                                       # no store configured (a unit test, a local run): nothing was ever synced here, and the stage could not write anyway
+    try:
+        digest, block = (vault or Store()).read()
+        if block is None:
+            return None
+        if content_hash(block) != digest:
+            raise ProfileError("synced block does not match its hash")
+        Profile({"years": 1, **block})
+        return block
+    except ProfileError:
+        raise
+    except Exception as error:                                            # a store or JSON failure: fixed message, nothing about the data
+        raise ProfileError("synced block unavailable") from error
 
 
 def run(limit, live, environ=os.environ, notion=None, vault=None):
@@ -145,24 +137,26 @@ def run(limit, live, environ=os.environ, notion=None, vault=None):
         block = parse(text)
         digest = content_hash(block)
         out["entries"] = len(block["capabilities"]) + len(block["functions"])
-        vault = vault or Bitwarden((environ.get("FIT_PROFILE_EXTRA_SECRET_ID") or "").strip(), environ)
-        current = vault.read()
-        merged = merge(current, block)
+        vault = vault or Store()
         try:
-            Profile({"years": 1, **merged})                                    # the whole secret must still load
-        except (ValueError, TypeError, KeyError, ProfileError):
-            raise SyncError("SYNC_MERGED_INVALID") from None
+            stored_digest, _ = vault.read()
+        except Exception:
+            raise SyncError("SYNC_STORE_UNAVAILABLE") from None
         if approved != digest:
             out["code"] = "SYNC_NOT_APPROVED"
             return out
-        if owned(current) == block:
+        if stored_digest == digest:
             out["code"] = "SYNC_UNCHANGED"
             return out
         if not live:
             out["code"] = "SYNC_WOULD_WRITE"
             return out
-        vault.write(merged)
-        if owned(vault.read()) != block:
+        try:
+            vault.write(block)
+            readback, saved = vault.read()
+        except Exception:
+            raise SyncError("SYNC_STORE_UNAVAILABLE") from None
+        if readback != digest or saved != block:
             raise SyncError("SYNC_READBACK_MISMATCH")
         out["code"] = "SYNC_WRITTEN"
     except SyncError as error:

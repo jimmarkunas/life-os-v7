@@ -515,6 +515,11 @@ CONSUMERS = {
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'OUTLOOK_CLIENT_ID'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-outlook', 'cancel-in-progress': False},
         timeouts={'outlook': 20}, digest="24b93048ee6bec2c"),
+    "profile-sync": dict(                                                # the Notion-approved Fit evidence block into the store; reads the store credentials from Bitwarden, writes nothing to it
+        jobs={"sync": DB},
+        direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_FIT_SYNC_TOKEN'],
+        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
+        timeouts={'sync': 10}, digest="0b34447bfaff37cf"),
     "recruiters": dict(
         jobs={"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}},
         direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_RECRUITERS_DATA_SOURCE_ID', 'OUTLOOK_CLIENT_ID'],
@@ -701,15 +706,19 @@ CONSUMER_STEPS = {
             'Outlook probe (read-only; counts only)': DB,
         },
     },
+    "profile-sync": {
+        "sync": {
+            'Fit profile sync (the approved Notion evidence block into the store; counts and one fixed code only)': DB,
+        },
+    },
     "recruiters": {
         "recruiters": {
             'Recruiters (read-only mail to the Recruiters data source; counts only)': DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"},
         },
     },
 }
-CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "recruiters")
+CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "hourly", "network", "outlook", "profile-sync", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-ISOLATED_SYNC = ("profile-sync",)         # the Fit profile sync: the only writer of a Bitwarden secret; its own test below pins exactly what it may hold
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
 
@@ -812,26 +821,27 @@ class BitwardenConsumerTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256("\n--\n".join(runs).encode()).hexdigest()[:16], want["digest"], name)   # live/dry-run switches and stage commands included
 
     def test_only_the_known_workflows_exist_and_the_four_accepted_pilots_are_in_the_table(self):
-        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE) + list(ISOLATED_SYNC)))
+        self.assertEqual(sorted(p.stem for p in self.root.glob("*.yml")), sorted(list(CONSUMERS) + list(SECRET_FREE)))
         self.assertEqual(sorted(CUT_OVER + PILOTS), sorted(CONSUMERS))
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class ProfileSyncWorkflowTests(unittest.TestCase):
-    """The Fit profile sync holds a Bitwarden write token, so it is pinned tightly: two secrets, no schedule, one command, a checksummed CLI."""
+    """The Fit profile sync reads the store credentials from Bitwarden like any store job, writes nothing to Bitwarden, and holds one Notion read token for one page."""
 
     def setUp(self):
         self.root = pathlib.Path(".github/workflows")
         self.text = (self.root / "profile-sync.yml").read_text()
         self.doc = yaml.safe_load(self.text)
 
-    def test_it_holds_exactly_the_write_token_and_the_notion_read_token(self):
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", self.text))), ["LIFEOS_BWS_PROFILE_SYNC_TOKEN", "NOTION_FIT_SYNC_TOKEN"])
+    def test_nothing_in_it_can_write_to_bitwarden(self):
+        self.assertNotIn("bws secret", self.text)
+        self.assertNotIn("sdk-sm/releases", self.text)                         # no CLI is installed: the pinned read-only action is the only Bitwarden contact
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", self.text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 2)
 
-    def test_no_other_workflow_can_see_the_write_token(self):
+    def test_only_it_can_see_the_notion_sync_token(self):
         for path in self.root.glob("*.yml"):
             if path.stem != "profile-sync":
-                self.assertNotIn("LIFEOS_BWS_PROFILE_SYNC_TOKEN", path.read_text(), path.stem)
                 self.assertNotIn("NOTION_FIT_SYNC_TOKEN", path.read_text(), path.stem)
 
     def test_it_has_no_schedule_no_top_level_secret_and_runs_one_stage(self):
@@ -846,8 +856,4 @@ class ProfileSyncWorkflowTests(unittest.TestCase):
         self.assertFalse(self.doc["on"]["workflow_dispatch"]["inputs"]["live"]["default"] if "on" in self.doc else self.doc[True]["workflow_dispatch"]["inputs"]["live"]["default"])
         self.assertIn("vars.FIT_PROFILE_SYNC == 'on'", self.text)
 
-    def test_the_bitwarden_cli_is_pinned_by_version_and_checksum(self):
-        self.assertIn("bws-v2.1.0", self.text)
-        self.assertIn("ba8233c3a4aee5d43e3c73bbd04d99e9bc5aba13bbbfd06d89b073abe732b860", self.text)
-        self.assertIn("sha256sum -c", self.text)
 

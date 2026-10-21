@@ -314,7 +314,7 @@
    "lifeos/jobs/fit/judge.py": "Fit v2 (LIFE-41): the request the named OpenClaw Jobs Fit capability gets and the code-owned envelope its answer must pass (it judges semantic match only; scoreability, c",
    "lifeos/jobs/fit/lexicon.py": "Generic, public vocabulary: nothing here describes a person. Only what a job description says.",
    "lifeos/jobs/fit/profile.py": "The private fit profile: injected at run time, validated here, never committed (D16).",
-   "lifeos/jobs/fit/profile_sync.py": "Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into the one Bitwarden secret the Fit engine already merges (FIT_PROFI",
+   "lifeos/jobs/fit/profile_sync.py": "Fit profile sync: Jim's Notion page is the authority; this stage copies its approved evidence block into one small table of the private store (v7_fit_profile_sync), and t",
    "lifeos/jobs/fit/score.py": "Professional Fit, V3 (docs/FIT_MODEL.md): five weighted dimensions over the requirements the posting activates.",
    "lifeos/jobs/fit/semantic.py": "Optional semantic layer (shadow mode): a small local sentence-embedding model reads paraphrase, nothing else.",
    "lifeos/jobs/fit/stage.py": "The `fit` stage: score every job that has a full description and no current score. Counts only in the log.",
@@ -557,6 +557,7 @@
   "v7_alerts": "lifeos/jobs/store.py",
   "v7_calendar_sync": "lifeos/calendar_bridge/watch.py",
   "v7_feed": "lifeos/jobs/store.py",
+  "v7_fit_profile_sync": "lifeos/jobs/store.py",
   "v7_jira_rollover": "lifeos/jira/watch.py",
   "v7_job_descriptions": "lifeos/jobs/store.py",
   "v7_job_fit": "lifeos/jobs/store.py",
@@ -768,7 +769,8 @@
    ],
    "manual": true,
    "secrets": [
-    "LIFEOS_BWS_PROFILE_SYNC_TOKEN",
+    "LIFEOS_ACQ_SSH_PORT",
+    "LIFEOS_BWS_RUNTIME_TOKEN",
     "NOTION_FIT_SYNC_TOKEN"
    ]
   },
