@@ -51,7 +51,7 @@ class StageTests(unittest.TestCase):
         self.assertGreater(result["blocked"], 0)
 
     def test_cli_uses_interview_owned_stage(self):
-        with patch("lifeos.interview.stage.run", return_value={"writes": 0}) as run:
+        with patch("lifeos.sources.interview_evidence.run", return_value={"writes": 0}) as run:       # LIFE-88: the normal path composes the evidence, then calls stage.run
             self.assertEqual(STAGES["interview"](2, False), {"writes": 0})
             run.assert_called_once_with(2, False)
         with patch("lifeos.interview.stage.probe", return_value={"writes": 0}) as probe:

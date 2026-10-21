@@ -91,8 +91,9 @@ class Delegation(unittest.TestCase):
 
     def test_stage_is_registered_and_normal_stages_stay_evidence_free(self):
         self.assertIn("interview-acceptance", STAGES)
-        for name, target in (("interview", "run"), ("interview-probe", "probe")):
-            with patch.object(stage, target, return_value={}) as call:
+        from lifeos.sources import interview_evidence
+        for name, owner, target in (("interview", interview_evidence, "run"), ("interview-probe", stage, "probe")):
+            with patch.object(owner, target, return_value={}) as call:
                 STAGES[name](20, False)
             self.assertEqual(call.call_args.args, (20, False))
             self.assertEqual(call.call_args.kwargs, {})

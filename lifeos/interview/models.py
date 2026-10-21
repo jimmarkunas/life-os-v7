@@ -58,6 +58,7 @@ class Child:
     interviewer: str | None = None
     ordinal: int | None = None
     identity_valid: bool | None = None
+    legacy: bool = False                       # LIFE-88: a hand-made round page whose number and date Jim let V7 read from its title (named pursuits only); shown, never written
 
 
 @dataclass(frozen=True)

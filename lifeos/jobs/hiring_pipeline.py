@@ -26,6 +26,7 @@ class Opportunity:
     rounds: int = 0               # interview child pages
     company: str = ""
     role: str = ""
+    lead: bool = False            # E01b: a round-less page whose machine render line names a minted recruiter key
 
 
 @dataclass
@@ -35,6 +36,9 @@ class Handoff:
     interview_progression: bool = False
     evidence: list = field(default_factory=list)     # [{"type", "source_id"}]  (page ids only, never titles or text)
     confidence: str = "authoritative"
+
+
+LEAD_LINE = re.compile(r"v7-render:1;job=recruiter-")
 
 
 def _title_of(block):
@@ -84,7 +88,13 @@ def read(client, root_id, rounds=True):
                     opp = Opportunity(block["id"], text, context or ACTIVE)
                     opp.company, opp.role = split_title(text)
                     if rounds:
-                        opp.rounds = sum(1 for c in _children(client, block["id"], budget) if c.get("type") == "child_page")
+                        kids = _children(client, block["id"], budget)
+                        opp.rounds = sum(1 for c in kids if c.get("type") == "child_page")
+                        if not opp.rounds and kids and kids[0].get("type") == "toggle" and kids[0].get("has_children"):
+                            try:
+                                opp.lead = any(LEAD_LINE.match(_title_of(c)) for c in _children(client, kids[0]["id"], budget))
+                            except NotionError:
+                                pass                                         # best effort: an unread fold is simply not a lead, as before
                     found.append(opp)
             elif block.get("has_children") and depth < MAX_DEPTH and (kind in ("toggle", "column_list", "column") or kind.startswith("heading")):
                 walk(block["id"], context, depth + 1)

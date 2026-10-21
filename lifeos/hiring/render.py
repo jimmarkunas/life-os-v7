@@ -47,6 +47,8 @@ RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actio
 def next_step(row, now):
     """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented."""
     outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
+    if row.get("stage") == M.LEAD and not outcome:                   # E01b: recruiter outreach is the first warning; there is no deadline to invent
+        return RED, "Recruiter outreach · reply, or close it", ""
     if outcome:                                                      # D190: outcome mail is a source-backed action to confirm, never a stage or a deadline; its received date is the evidence
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
         if outcome["kind"] == "OFFER":

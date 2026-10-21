@@ -39,7 +39,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
 - `imessage-comms` -> `lifeos.imessage.comms_card:run`
-- `interview` -> `lifeos.interview.stage:run`
+- `interview` -> `lifeos.sources.interview_evidence:run`
 - `interview-acceptance` -> `lifeos.interview.acceptance:run`
 - `interview-probe` -> `lifeos.interview.stage:probe`
 - `interview-ui-probe` -> `lifeos.interview.ui_probe:run`
@@ -135,16 +135,17 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/interview/advisor.py`: Private Interview Advisor contracts and deterministic B3 compiler.
 - `lifeos/interview/advisor_queue.py`: Immutable Request/Response handoff for the private Interview Advisor queue.
 - `lifeos/interview/advisor_store.py`: Bounded private Notion store and immutable Advisor preview pages.
-- `lifeos/interview/create.py`: Insert-only B2 vertical slice; one page per evidence pass, no write retries.
+- `lifeos/interview/create.py`: B2 vertical slice; one page per evidence pass, no write retries. LIFE-88: pages are the approved UI 3c / UI 4 trees, and a UI 3c opportunity page's machine region is reco
 - `lifeos/interview/identity.py`: Fail-closed identity decisions with platform-owned normalization.
 - `lifeos/interview/models.py`: Internal identity evidence; never serialize these records into public logs.
 - `lifeos/interview/notion.py`: Notion evidence and reusable protected read-back primitives.
 - `lifeos/interview/post_interview.py`: Grounded, deterministic contracts for post-interview review output.
-- `lifeos/interview/prep.py`: Deterministic, append-once Interview Derived content.
+- `lifeos/interview/prep.py`: Deterministic, append-once Interview Derived content. LIFE-88: on a UI 4 interview page it is the Prepare tab, written once from its not-run state; its hashes sit in the 
 - `lifeos/interview/progression.py`: LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.
 - `lifeos/interview/stage.py`: Counts-only Interview probe and bounded B2 evidence execution.
-- `lifeos/interview/template.py`: LIFE-42: the accepted LIFE-47 UI 4 interview page (Jim, LIFE-42 comment 10829) as Notion blocks, for a new machine-owned round.
-- `lifeos/interview/ui_probe.py`: LIFE-88 first gate: can the V7 Notion REST transport build and maintain the accepted UI 3c block tree? Manual only (diag.yml, stage interview-ui-probe, typed confirmation
+- `lifeos/interview/template.py`: LIFE-88 / LIFE-46: the two Jim-approved native Notion layouts as block trees, nothing else.
+- `lifeos/interview/ui_probe.py`: LIFE-88 QA acceptance probe. Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never on a tick. Interview token. Writes only under the QA Interview
+- `lifeos/interview/view.py`: LIFE-88 / LIFE-46: the source-keyed view models the UI 3c opportunity page and the UI 4 interview page are rendered from.
 ### lifeos/jira/
 - `lifeos/jira/boards.py`: Which Jira boards V7 manages: JIRA_BOARDS="KEY:board_id[:flag...],..." (a secret; keys and ids stay out of the public repo). Flags: all = triage every non-Epic item; read
 - `lifeos/jira/card.py`: The Jira card in the Daily Report (Phase B). V7 owns exactly one Notion block - the "JIRA Execution" callout named by JIRA_CARD_BLOCK_ID - and nothing else on the page. C
@@ -277,6 +278,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/sources/
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
+- `lifeos/sources/interview_evidence.py`: LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives
 - `lifeos/sources/job_page_outreach.py`: LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.

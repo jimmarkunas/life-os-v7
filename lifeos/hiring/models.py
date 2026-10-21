@@ -12,6 +12,8 @@ NOTES_LABEL, NO_NOTES = "Opportunity Page ↗", "Needs Notes"
 
 SUBMITTED, RECRUITER_SCREEN, HM_SCHEDULED, INTERVIEWING, ASSESSMENT = (
     "Submitted", "Recruiter Screen", "Hiring-Manager Interview Scheduled", "Interviewing", "Assessment")
+LEAD = "Recruiter lead"                                       # E01b: a Notes page for recruiter outreach with no application, round or event
+LEAD_REASONS = {"I'm passing": ("Withdrew", "Passed: not interested"), "Not a real job": ("Other", "Not a real job"), "Went nowhere": ("Other", "Went nowhere")}      # the Close screen's three lead reasons, recorded as an existing outcome plus a fixed note
 RANK = {SUBMITTED: 1, RECRUITER_SCREEN: 2, ASSESSMENT: 2, HM_SCHEDULED: 3, INTERVIEWING: 4}
 AWAIT_DAYS = 14                                                # D189: a role waiting on an outcome or a response this long says so and asks for a follow-up (it is still listed)
 APPLIED_DAYS = 30                                              # a submitted role with no newer evidence is listed for 30 days after Applied On, then counted in the status line, never dropped silently

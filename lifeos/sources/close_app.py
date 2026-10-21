@@ -107,6 +107,9 @@ def _post(req, who, secrets):
     fields = {"o": pid, "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": exp, "st": st, "t": form["t"]}     # the token was verified above; the review step adds its own
     if step == "edit":
         return 200, HTML, S.form(opp, fields, outcome, notes), ()
+    if opp["kind"] == "notes" and outcome in M.LEAD_REASONS:         # E01b: "I'm passing", "Not a real job", "Went nowhere" are recorded as an existing outcome plus a fixed note
+        outcome, fixed = M.LEAD_REASONS[outcome]
+        notes = (fixed + (": " + notes if notes else ""))[:D.REASON_MAX]
     if outcome not in M.OUTCOMES or len(notes) > D.REASON_MAX or not (notes or outcome != "Other") or not (notes or "x").isprintable():
         return 400, HTML, S.form(opp, fields, outcome if outcome in M.OUTCOMES else "", notes[:D.REASON_MAX], "Choose a closure reason. Other needs a short note (up to 200 characters)."), ()
     sign = _mac(secret, "c", login, pid, st, exp, outcome, notes)

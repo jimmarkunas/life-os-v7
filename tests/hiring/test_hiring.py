@@ -116,6 +116,19 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual([(r["company"], r["stage"]) for r in got["rows"]], [("Acme", "Interviewing")])
         self.assertEqual((got["unsupported"], got["reasons"]), (1, []))
 
+    def test_a_recruiter_lead_page_is_listed_with_its_own_next_step_and_a_plain_notes_page_still_is_not(self):
+        got = compile_([], [dict(parent("p1", "Acme", "Program Manager"), lead=True), parent("p2", "Globex", "Director")])
+        self.assertEqual([(r["company"], r["stage"]) for r in got["rows"]], [("Acme", "Recruiter lead")])
+        self.assertEqual(got["unsupported"], 1)
+        self.assertEqual(render.next_step(got["rows"][0], NOW)[1], "Recruiter outreach · reply, or close it")
+        self.assertEqual(render.row_cells(got["rows"][0], NOW, "https://close.example.test/?o=x")[3][-1], ("Close ↗", "https://close.example.test/?o=x"))
+
+    def test_a_lead_that_becomes_an_application_or_gets_a_round_is_no_longer_a_lead(self):
+        applied_lead = compile_([applied("Acme", "Program Manager")], [dict(parent("p1", "Acme", "Program Manager"), lead=True)])
+        self.assertEqual(applied_lead["rows"][0]["stage"], "Submitted")
+        with_round = compile_([], [dict(parent("p1", "Acme", "Program Manager", rounds=1), lead=True)])
+        self.assertEqual(with_round["rows"][0]["stage"], "Interviewing")
+
     def test_a_notes_page_without_a_company_and_role_title_is_ignored_not_degraded(self):
         got = compile_([applied("Acme", "Senior Program Manager")], [parent("p1", "Babylist", "")])
         self.assertEqual((got["reasons"], got["untitled_pages"], [r["company"] for r in got["rows"]]), ([], 1, ["Acme"]))

@@ -15,6 +15,7 @@ NEAR_MISS_FLOOR = 68                    # D100: unchanged. A Fit under this with
 REVIEW_FLOOR = 60                       # D84: below 60 is excluded
 POSITIVE, NEGATIVE, UNRESOLVED = "POSITIVE", "NEGATIVE", "UNRESOLVED"
 ADMIT, REVIEW, EXCLUDE, DISABLED = "ADMIT", "REVIEW", "EXCLUDE", "DISABLED"
+RECRUITER = "Recruiter"          # LIFE-88 E01b: a recruiter's outreach. Not an acquisition lane: it takes no part in the visible-lane precedence, and decide_all admits it without the Fit gate
 PRECEDENCE = ("Scale-Up", "Skilled Worker", "US Remote")      # the visible lane when a job is eligible for several
 
 
@@ -45,6 +46,7 @@ POLICIES = {
     # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 72 like every lane.
     "Skilled Worker": LanePolicy("Skilled Worker", "UK", "£", pay_floor=65_000, max_age_days=14, route="Skilled Worker",
                                  geography_required=True, market_required=True, bucket="Target"),
+    RECRUITER: LanePolicy(RECRUITER, "US", "$", unknown_date_blocks=False),          # no gate of its own (decide_all); present so freshness and hold lookups find a policy
 }
 
 
@@ -381,6 +383,8 @@ def decide_all(row_lane, facts, today, exclusion=None):
     own = lane_for(row_lane)
     if exclusion:
         return Decision(EXCLUDE, f"excluded: {exclusion}"), own, []
+    if own == RECRUITER:                                              # Jim: a recruiter wrote to him, so the job is shown whatever its Fit; the score is still stored and shown
+        return Decision(ADMIT, "recruiter outreach: admitted without the Fit gate"), RECRUITER, [RECRUITER]
     results, visible = qualify_all(facts, today, own=own)
     eligible = [n for n in PRECEDENCE if n in results and results[n].status == ADMIT]
     if own in results and results[own].status == ADMIT:

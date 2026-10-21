@@ -200,6 +200,21 @@ class Post(unittest.TestCase):
             self.assertEqual((status, ws.where(ws.target), "Opportunity closed" in body), (200, ws.retired[0], True), outcome)
             self.assertIn(f"Hiring decision (V7) · {outcome} · ", ws.digest(ws.target)[-1][2])
 
+    def test_a_lead_is_closed_with_one_of_three_reasons_recorded_as_an_existing_outcome_and_a_fixed_note(self):
+        for label, outcome, fixed in (("I'm passing", "Withdrew", "Passed: not interested"), ("Not a real job", "Other", "Not a real job"), ("Went nowhere", "Other", "Went nowhere")):
+            nts = Harness()
+            pid = nts.world.ws.target.replace("-", "")
+            self.assertIn(label, html.unescape(nts.open(pid)[1]))
+            status, body, _ = nts.close(pid, label, "")
+            ws = nts.world.ws
+            self.assertEqual((status, ws.where(ws.target), "Opportunity closed" in body), (200, ws.retired[0], True), label)
+            record = ws.digest(ws.target)[-1][2]
+            self.assertIn(f"Hiring decision (V7) · {outcome} · ", record)
+            self.assertIn(fixed, record)
+        led = Harness([(TD.TARGET, COMPANY, ROLE)])
+        self.assertNotIn("Not a real job", html.unescape(led.open(TD.TARGET)[1]))              # an application on the Ledger keeps the six outcomes
+        self.assertEqual(led.review(TD.TARGET, "Not a real job")[0], 400)
+
     def test_a_missing_ledger_option_or_a_changed_record_writes_nothing(self):
         bare = Harness([(TD.TARGET, COMPANY, ROLE)], full=False)
         status, body, _ = bare.close(TD.TARGET, "Hired")
