@@ -105,9 +105,8 @@ class ComposeTests(unittest.TestCase):
         self.assertTrue(m["detail"][1].startswith("✅ 7 of 7 source cards current"))
         self.assertNotIn("focus", m)
         self.assertNotIn("sub", m)
-        self.assertEqual([i[0] for i in m["items"]], ["Triage overdue bills", "Clear overdue or blocked Jira items", "Review Attention exceptions"])
-        self.assertEqual(m["items"][0][2], "https://example.invalid/tracker")
-        self.assertEqual(m["hiring"], "5 active hiring opportunities")
+        self.assertNotIn("items", m)
+        self.assertNotIn("hiring", m)
         self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Overdue bills"), ("6", "Jira Overdue / Blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
         self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
 
@@ -118,8 +117,8 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(m["health"], "Source health and freshness · 5 of 7 current · Bills STALE · Attention DEGRADED")
         self.assertTrue(m["detail"][1].startswith("⚠️ 5 of 7"))
         self.assertEqual([(v, t) for v, n, t in m["kpis"] if n in ("Overdue bills", "Attention items")], [("—", "STALE · Bills (last 9:44 AM)"), ("—", "DEGRADED · Attention (last 10:05 PM)")])
-        self.assertTrue(m["items"][0][0].startswith("Check Bills, Attention"))
-        self.assertNotIn("Triage overdue bills", str(m["items"]))                                         # no decision is drawn from a card that is not current
+        self.assertIn("Bills STALE", m["health"])
+        self.assertIn("Attention DEGRADED", m["health"])
 
     def test_a_missing_gtv_action_or_an_unreadable_jira_card_says_so_instead_of_choosing_one(self):
         m = card.compose(self.areas(Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [SPRINT]}), NOW)
@@ -138,7 +137,6 @@ class ComposeTests(unittest.TestCase):
                            Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]})
         areas["Mail Alerts"] = {"status": "Updated 10:12 PM CT · 0 waiting · 0 need review", "lines": []}
         m = card.compose(areas, NOW)
-        self.assertEqual(m["items"], [("Nothing flagged by the cards", "continue the day's planned work", None)])
         self.assertEqual([v for v, _, _ in m["kpis"]], ["0", "0", "0", "0"])                   # a verified zero is a zero, Jira included
 
     def test_the_jira_card_shows_its_combined_overdue_blocked_count_and_never_a_number_it_cannot_verify(self):
@@ -156,14 +154,10 @@ class ComposeTests(unittest.TestCase):
         text = report_region.plain(attention_card.render(23, NOW)[0])
         self.assertEqual(card.compose(self.areas(Attention={"status": text, "lines": []}), NOW)["kpis"][2][0], "23")
 
-    def test_render_places_source_health_under_heading_above_four_kpis_and_keeps_decisions(self):
-        health, kpi_row, decisions_row = card.render(card.compose(self.areas(), NOW))
+    def test_render_places_source_health_under_heading_above_four_kpis(self):
+        health, kpi_row = card.render(card.compose(self.areas(), NOW))
         self.assertEqual(health["type"], "toggle")
         self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.25] * 4)
-        self.assertEqual([c["column"]["width_ratio"] for c in decisions_row["column_list"]["children"]], [1.0])
-        decisions = decisions_row["column_list"]["children"][0]["column"]["children"]
-        self.assertEqual([b["type"] for b in decisions], ["callout"])
-        self.assertEqual([b["type"] for b in decisions[0]["callout"]["children"]], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
         self.assertEqual([c["column"]["width_ratio"] for c in kpi_row["column_list"]["children"]], [0.25] * 4)
         kpis = [c["column"]["children"][0]["callout"] for c in kpi_row["column_list"]["children"]]
         self.assertEqual([[b["type"] for b in k["children"]] for k in kpis], [["heading_3", "paragraph", "paragraph"]] * 4)
@@ -182,12 +176,11 @@ class RunTests(unittest.TestCase):
         before = {k: notion.full_tree(k) for k in ("calendar-callout", "jira-callout", "bills-callout", "amazon-callout", "attention-callout", "mail-callout")}
         counts = go(notion)
         kids = notion.children["dcc-callout"]
-        self.assertEqual([b["type"] for b in kids][1:], ["toggle", "column_list", "column_list"])
+        self.assertEqual([b["type"] for b in kids][1:], ["toggle", "column_list"])
         self.assertEqual((report_region.plain(kids[0]), kids[0]["id"]), (router.DCC_REGION, "heading-dcc-callout"))        # the heading keeps its identity
         self.assertNotIn("Protected DCC content", str(self.shape(notion)))                                                  # the old flat line is gone
-        health, kpi_row, decisions_row = (b["id"] for b in kids[1:])
+        health, kpi_row = (b["id"] for b in kids[1:])
         self.assertEqual(len(notion.children[health]), 2)
-        self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[decisions_row]], [1])
         self.assertEqual([len(notion.children[c["id"]]) for c in notion.children[kpi_row]], [1, 1, 1, 1])
         self.assertEqual({k: notion.full_tree(k) for k in before}, before)
         self.assertEqual((counts["fresh"], counts["not_current"], counts["removed"]), (6, 1, 1))
@@ -206,7 +199,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(self.shape(notion), first)
         notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due through one week from now · 27 overdue · Bill Tracker")
         counts = go(notion)
-        self.assertEqual(counts["blocks_written"], 2)                                                                       # the KPI number and the first suggestion's detail
+        self.assertEqual(counts["blocks_written"], 1)                                                                       # only the changed KPI number remains in the DCC
         self.assertEqual({k: [b["id"] for b in notion.children[k]] for k in ids}, ids)                                      # no block was added, removed or replaced
         self.assertEqual(sum(1 for m, _ in notion.log if m == "APPEND"), made)                                              # only the first run created blocks
 
@@ -215,6 +208,7 @@ class RunTests(unittest.TestCase):
         go(notion)
         text = str(self.shape(notion))
         self.assertNotIn("Primary focus", text)
+        self.assertNotIn("Suggested next decisions", text)
         self.assertIn("Hiring Pipeline unset", text)
         self.assertIn("Source health and freshness · 6 of 7 current · Hiring Pipeline UNSET", text)
         self.assertNotIn("Current focus", text)
@@ -240,38 +234,15 @@ class RunTests(unittest.TestCase):
         self.assertIn("Protected DCC content", "\n".join(lines_of(notion)))             # the old lines are removed only after the replacement is verified
         self.assertEqual([p for m, p in notion.log if m == "DELETE"], [])
 
-    def quiet(self, notion):
-        """Make every card say there is nothing to do (one suggestion), or put the busy day back (three)."""
-        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 0 overdue")
-        notion.children["jira-callout"][2] = text_block(notion, "sprint-quiet", "paragraph", "JFM Sprint 15 · 0 Overdue/Blocked · 1 Today")
-        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": "Updated 10:05 PM CT · No active exceptions.", "text": {"content": "Updated 10:05 PM CT · No active exceptions."}}]}
-
-    def decisions(self, notion):
-        right = notion.children[notion.children["dcc-callout"][3]["id"]][0]["id"]
-        return [(b["type"], report_region.plain(b)) for b in notion.children[notion.children[right][0]["id"]]]
-
-    def test_the_suggestion_list_goes_three_one_three_on_the_same_tree_keeping_the_hiring_footer(self):
+    def test_the_exact_legacy_decision_widget_is_removed_and_protected_regions_survive(self):
         notion = page()
         go(notion)
-        self.assertEqual([t for t, _ in self.decisions(notion)], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
-        busy = {k: list(v) for k, v in notion.children.items()}
-        right = notion.children[notion.children[notion.children["dcc-callout"][3]["id"]][0]["id"]][0]["id"]
-        kept = [b["id"] for b in notion.children[right]]
-        self.quiet(notion)
+        stale = card._b("callout", children=[card._b("paragraph", card._t("Suggested next decisions", bold=True)), card._b("paragraph", card._t("legacy"))])
+        notion.children["dcc-callout"].append(notion._make(stale))
+        before = notion.full_tree("attention-callout")
         go(notion)
-        self.assertEqual([t for t, _ in self.decisions(notion)], ["paragraph", "numbered_list_item", "paragraph"])
-        self.assertEqual([b["id"] for b in notion.children[right]][:2], kept[:2])                      # the title and the first item keep their blocks
-        for key in ("bills-callout", "jira-callout"):
-            notion.children[key] = busy[key]
-        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": "Updated 10:05 PM CT · 23 active exceptions", "text": {"content": "Updated 10:05 PM CT · 23 active exceptions"}}]}
-        go(notion)
-        shown = self.decisions(notion)
-        self.assertEqual([t for t, _ in shown], ["paragraph", "numbered_list_item", "numbered_list_item", "numbered_list_item", "paragraph"])
-        self.assertEqual(sum(1 for _, text in shown if text.endswith("See Hiring Pipeline below.")), 1)       # the fixed footer survives, once
-        self.assertEqual(len(notion.children[right]), 5)
-        mark = len(notion.log)
-        go(notion)
-        self.assertEqual([m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")], [])
+        self.assertNotIn("Suggested next decisions", str(self.shape(notion)))
+        self.assertEqual(notion.full_tree("attention-callout"), before)
 
     def writes_since(self, notion, mark):
         return [m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")]
@@ -311,10 +282,10 @@ class RunTests(unittest.TestCase):
         self.assertEqual([m for m, _ in notion.log if m in ("APPEND", "DELETE", "PATCH")], [])
         notion = page()
         go(notion)
-        decisions_row = notion.children["dcc-callout"][3]["id"]
-        decisions = notion.children[notion.children[notion.children[decisions_row][0]["id"]][0]["id"]]
-        first = decisions[1]
-        first["type"], first["paragraph"] = "bulleted_list_item", {"rich_text": []}                                         # somebody turned a line into a bullet
+        kpi_row = notion.children["dcc-callout"][2]["id"]
+        kpi = notion.children[notion.children[notion.children[kpi_row][0]["id"]][0]["id"]]
+        first = kpi[0]
+        first["type"], first["paragraph"] = "paragraph", {"rich_text": []}                                         # somebody changed the KPI's heading structure
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
             go(notion)
