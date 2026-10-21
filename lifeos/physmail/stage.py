@@ -37,7 +37,7 @@ def _anchor_count(environ):
 
 
 def window_query(since):
-    return f"{events.SENDER_QUERY} after:{int(since.timestamp())}"
+    return f"({events.SENDER_QUERY} OR from:{events.FEDEX_SENDER}) after:{int(since.timestamp())}"
 
 
 def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
