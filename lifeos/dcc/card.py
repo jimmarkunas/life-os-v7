@@ -153,8 +153,6 @@ def compose(areas, now):
 
     return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {l} {s.upper()}" for l, s in bad),
             "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
-            "focus": f"Primary focus: {title}" if gtv else "Primary focus: unavailable", "link": ((jira.get("links") or {}).get(gtv)) if gtv else None,
-            "sub": " · ".join(x for x in (("One designated action", state) if gtv else (source("Jira") if states.get("Jira", ("unset",))[0] != "fresh" else "No GTV action on the Jira card",)) + (f"Updated {now.strftime('%-I:%M %p')} CT",) if x),
             "items": items[:3] or [("Nothing flagged by the cards", "continue the day's planned work", None)],
             "hiring": f"{hiring} active hiring opportunities" if hiring is not None else "Hiring Pipeline " + states.get("Hiring Pipeline", ("unset",))[0],
             "kpis": [kpi(overdue, "Overdue bills", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
@@ -174,20 +172,19 @@ def _b(kind, *parts, children=None, icon=None):
 
 
 def render(model):
-    """The approved native layout: a row of four equal KPI callouts, then a 50/50 row (source health toggle and primary focus | suggested decisions)."""
+    """Source health directly below the heading, then four equal KPI callouts and suggested decisions."""
     def column(ratio, *kids):
         return {"object": "block", "type": "column", "column": {"width_ratio": ratio, "children": list(kids)}}
 
     def row(*cols):
         return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
 
-    left = column(0.5, _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]]),
-                  _b("paragraph", _t(model["focus"], bold=True, link=model["link"])), _b("paragraph", _t(model["sub"], gray=True)))
-    right = column(0.5, _b("callout", icon="checkmark-square", children=[_b("paragraph", _t("Suggested next decisions", bold=True)),
+    health = _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]])
+    decisions = column(1.0, _b("callout", icon="checkmark-square", children=[_b("paragraph", _t("Suggested next decisions", bold=True)),
                                                                           *[_b("numbered_list_item", _t(a, bold=True, link=l), _t(" — " + d)) for a, d, l in model["items"]],
                                                                           _b("paragraph", _t(model["hiring"], bold=True), _t(" · See Hiring Pipeline below."))]))
-    return [row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
-                  for icon, (value, name, text) in zip(ICONS, model["kpis"])]), row(left, right)]
+    return [health, row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
+                         for icon, (value, name, text) in zip(ICONS, model["kpis"])]), row(decisions)]
 
 
 def run(limit, live, environ=os.environ, client=None, now=None):

@@ -355,8 +355,9 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
         router.check_write(module, [title])
     except router.RouterError:
         raise fail("CARD_NOT_OWNED") from None
-    if any(b.get("type") != "column_list" for b in ours):
-        raise fail("CARD_NOT_OWNED")                                                  # anything else under the heading is not ours to rewrite
+    owned_types = {b.get("type") for b in spec}
+    if any(b.get("type") not in owned_types for b in ours):
+        raise fail("CARD_NOT_OWNED")                                                  # only the rendered component types under the heading are ours to rewrite
     if not live:
         return _sync(client, block_id, ours, spec, existing[0]["id"], fail, False), 0
     _sync(client, block_id, ours, spec, existing[0]["id"], fail, False)                   # preflight: the whole tree is checked before the first write
@@ -365,7 +366,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
         changes = _sync(client, block_id, ours, spec, existing[0]["id"], fail, True)
     finally:
         _prove(client, module, before, protected_ids, tag, fail)
-    if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") == "column_list"], spec, None, fail, False):
+    if _sync(client, block_id, [b for b in children(client, block_id, fail)[1:] if b.get("type") not in TEXT_KINDS], spec, None, fail, False):
         raise fail("CARD_VERIFY_FAILED")
     removed = 0
     for old in old_text:
@@ -377,7 +378,7 @@ def replace_tree(client, block_id, title, module, spec, protected_ids, fail, tag
                 raise
     _prove(client, module, before, protected_ids, tag, fail)
     after = children(client, block_id, fail)
-    if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != ["column_list"] * len(spec):
+    if [b.get("id") for b in after[:1]] != [existing[0]["id"]] or [b.get("type") for b in after[1:]] != [b.get("type") for b in spec]:
         raise fail("CARD_VERIFY_FAILED")
     return changes, removed
 
