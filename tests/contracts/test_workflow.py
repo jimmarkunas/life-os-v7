@@ -518,7 +518,7 @@ CONSUMERS = {
     "profile-sync": dict(                                                # the Notion-approved Fit evidence block into the store; reads the store credentials from Bitwarden, writes nothing to it
         jobs={"sync": DB},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_FIT_SYNC_TOKEN'],
-        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-domains', 'cancel-in-progress': False},
+        on=['workflow_dispatch', 'workflow_run'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-profile-sync', 'cancel-in-progress': False},   # its own group: a waiting run in a shared group is cancelled by the next one, which would cancel a waiting domain run
         timeouts={'sync': 10}, digest="0b34447bfaff37cf"),
     "recruiters": dict(
         jobs={"recruiters": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_TOKEN"}},

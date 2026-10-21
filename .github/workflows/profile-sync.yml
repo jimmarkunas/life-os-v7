@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-domains                       # it uses the same store as the domain jobs, so it queues behind them instead of colliding
+  group: life-os-v7-profile-sync                  # its own group: in a shared group a waiting run is cancelled by the next one, so this job could cancel a waiting domain run (and be cancelled by one)
   cancel-in-progress: false
 jobs:
   sync:
