@@ -186,7 +186,17 @@ def _decision_component(client, block, fail):
     return len(kids) == 1 and _decision_component(client, kids[0], fail)
 
 
-def _remove_decision_component(client, block_id, protected_ids, fail, live):
+def _attention_has_decisions(client, attention_id, fail):
+    """True only when the Attention callout's own text already carries the decisions this widget used to show."""
+    if not attention_id:
+        return False
+    meta = client.call("GET", f"/blocks/{report_region.clean_id(attention_id)}")
+    if not isinstance(meta, dict) or meta.get("type") != "callout":
+        return False
+    return "Suggested next decisions" in report_region.plain({"type": "callout", "callout": meta.get("callout") or {}})
+
+
+def _remove_decision_component(client, block_id, protected_ids, fail, live, replaced=True):
     meta = client.call("GET", f"/blocks/{report_region.clean_id(block_id)}")
     kids = report_region.children(client, report_region.clean_id(block_id), fail)
     if not isinstance(meta, dict) or meta.get("type") != "callout" or not kids or kids[0].get("type") not in report_region.HEADINGS or report_region.plain(kids[0]).strip() != TITLE:
@@ -194,6 +204,8 @@ def _remove_decision_component(client, block_id, protected_ids, fail, live):
     matches = [(index, block) for index, block in enumerate(kids[1:], 1) if _decision_component(client, block, fail)]
     if not matches:
         return False, 0
+    if not replaced:
+        raise fail("DECISIONS_NOT_IN_ATTENTION")                       # never delete the only copy: the Attention card has not written the decisions yet
     if len(matches) != 1 or matches[0][0] != len(kids) - 1:
         raise fail("CARD_STRUCTURE_CHANGED")
     retired = matches[0][1]
@@ -227,14 +239,15 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     states = list(by_area.values())
     spec = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    retired, removed_widget = _remove_decision_component(client, block_id, protected_ids, _fail, live)
+    replaced = _attention_has_decisions(client, environ.get("ATTENTION_CARD_BLOCK_ID"), _fail)
+    retired, removed_widget = _remove_decision_component(client, block_id, protected_ids, _fail, live, replaced)
     if retired and not live:
         changed, removed = 0, 0
     else:
         changed, removed = report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)
     counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
     if live:
-        counts["blocks_written"], counts["removed"] = changed + removed_widget, removed + removed_widget
+        counts["blocks_written"], counts["removed"] = changed + removed_widget, removed
     try:
         counts["header"] = header.run(client, report_region.clean_id(block_id), now, live, _fail)                      # D183: never changes the Command Center's own result
     except NotionError as error:

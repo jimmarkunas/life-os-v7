@@ -239,10 +239,24 @@ class RunTests(unittest.TestCase):
         go(notion)
         stale = card._b("callout", children=[card._b("paragraph", card._t("Suggested next decisions", bold=True)), card._b("paragraph", card._t("legacy"))])
         notion.children["dcc-callout"].append(notion._make(stale))
+        text = "Updated 10:05 PM CT · 23 active exceptions\n\nSuggested next decisions\n1. Triage overdue bills"            # the Attention card has written the decisions
+        notion.metas["attention-callout"]["callout"] = {"rich_text": [{"plain_text": text, "text": {"content": text}}]}
         before = notion.full_tree("attention-callout")
         go(notion)
         self.assertNotIn("Suggested next decisions", str(self.shape(notion)))
         self.assertEqual(notion.full_tree("attention-callout"), before)
+
+    def test_the_old_decision_widget_is_never_deleted_before_the_attention_card_holds_the_decisions(self):
+        notion = page()
+        go(notion)
+        stale = card._b("callout", children=[card._b("paragraph", card._t("Suggested next decisions", bold=True)), card._b("paragraph", card._t("legacy"))])
+        notion.children["dcc-callout"].append(notion._make(stale))
+        mark = len(notion.log)
+        with self.assertRaises(NotionError) as error:                       # the Attention card has not written them (its step failed or has not run)
+            go(notion)
+        self.assertIn("DECISIONS_NOT_IN_ATTENTION", str(error.exception))
+        self.assertEqual(self.writes_since(notion, mark), [])
+        self.assertIn("legacy", str(self.shape(notion)))
 
     def writes_since(self, notion, mark):
         return [m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")]

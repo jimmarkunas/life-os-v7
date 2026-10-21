@@ -59,6 +59,15 @@ class Render(unittest.TestCase):
         self.assertTrue(decisions[0][0].startswith("Check Bills"))
         self.assertNotIn("Triage overdue bills", [item[0] for item in decisions])
 
+    def test_a_card_that_cannot_be_read_however_it_fails_never_stops_the_status_line(self):
+        from unittest import mock
+        with mock.patch.object(card, "_text_of", side_effect=KeyError("odd block")):
+            areas = card._areas(None, ENV, NOW)
+        self.assertTrue(all(area in ({"unreadable": True}, {"unset": True}) for area in areas.values()))
+        self.assertEqual(areas["Bills"], {"unreadable": True})
+        decisions, _ = card._decisions({**areas, "Attention": {"status": "Updated 1:30 PM CT · 2 active exceptions"}}, NOW)
+        self.assertTrue(decisions[0][0].startswith("Check "))
+
 
 def own(regions):
     return report_region.plain({"type": "callout", "callout": regions.metas["attention-callout"].get("callout") or {}})

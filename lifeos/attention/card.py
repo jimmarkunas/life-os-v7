@@ -99,7 +99,7 @@ def _areas(client, environ, now):
                     if url:
                         links[report_region.plain(block).strip()] = url
             areas[label] = {"status": status, "lines": lines, "links": links}
-        except NotionError:
+        except Exception:                                  # one card that cannot be read, however it fails, must never stop the status line
             areas[label] = {"unreadable": True}
     return areas
 

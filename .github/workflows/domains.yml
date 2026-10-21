@@ -34,7 +34,7 @@ on:
         type: boolean
         default: false
       attention:
-        description: "Attention only: the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
+        description: "Attention sync only (the Attention card itself runs with Daily Command Center or Run every domain job): the Gmail label LifeOS/Attention and the Outlook category 'LifeOS Attention' (also spelled 'LIFE OS Attention') into the Attention data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
       dcc:
@@ -887,6 +887,8 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.attention }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      sync: ${{ steps.attention.outcome }}                  # the Attention card (a step of the dcc job, after every other writer) shows a failed sync as DEGRADED
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
@@ -968,23 +970,8 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN || steps.bws_attention_retry.outputs.NOTION_JIRA_TOKEN }}
           NTFY_TOPIC: ${{ steps.bws_attention.outputs.NTFY_TOPIC || steps.bws_attention_retry.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run attention $([ "$LIVE" = "true" ] && echo --live)
-      - id: attncard
-        continue-on-error: true
-        name: Attention card (status and suggested decisions above the interactive view; writes only when live; a failed sync is shown as DEGRADED)
-        if: ${{ always() }}
-        env:
-          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
-          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
-          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
-          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
-          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
-          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
-          MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
-          ATTENTION_SYNC_OUTCOME: ${{ steps.attention.outcome }}
-          NOTION_JIRA_TOKEN: ${{ steps.bws_attention.outputs.NOTION_JIRA_TOKEN || steps.bws_attention_retry.outputs.NOTION_JIRA_TOKEN }}
-        run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Attention warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.attention.outcome == 'failure' || steps.attncard.outcome == 'failure') }}
+        if: ${{ always() && steps.attention.outcome == 'failure' }}
         run: echo "::warning title=Attention::the Attention stage failed or a source was unread; the Jobs pipeline is unaffected"
 
   megibow:
@@ -1088,7 +1075,7 @@ jobs:
   dcc:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
-    needs: [jira, agenda, bills, amazon, attention, mail, hiring]
+    needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage]
     if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.dcc) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1118,6 +1105,22 @@ jobs:
           secrets: |
             53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
             b78d1476-663e-496d-9bc4-b4e1003b61b0 > DCC_CARD_BLOCK_ID
+      - id: attncard
+        continue-on-error: true
+        name: Attention card (status and suggested decisions above the interactive view; writes only when live; a failed sync is shown as DEGRADED)
+        # Runs after every other Daily Report writer (the dcc job's needs), so the decisions are built from this tick's cards, not the last tick's.
+        if: ${{ always() }}
+        env:
+          ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
+          AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
+          BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
+          CALENDAR_CARD_BLOCK_ID: ${{ secrets.CALENDAR_CARD_BLOCK_ID }}
+          JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
+          HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          MAIL_ALERTS_CARD_BLOCK_ID: ${{ secrets.MAIL_ALERTS_CARD_BLOCK_ID }}
+          ATTENTION_SYNC_OUTCOME: ${{ needs.attention.outputs.sync }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_dcc.outputs.NOTION_JIRA_TOKEN || steps.bws_dcc_retry.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run attention-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: dcccard
         continue-on-error: true
         name: Daily Command Center (rules over the cards' first lines; writes only its own callout when live; every other region proven unchanged)
