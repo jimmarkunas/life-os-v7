@@ -242,7 +242,7 @@ class CardRenderTests(unittest.TestCase):
         text = self.lines(blocks)
         self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 14 waiting · 0 need review"), text[0])
         self.assertIn("13 new item(s) not yet identified by a mail number", text)
-        self.assertIn("#4801 · Forwarded Oct 5 · Tracking unavailable — obtain from provider · not delivered until evidence says so", text)
+        self.assertIn("#4801  ·  forwarded Oct 5  ·  ⚠ Tracking unavailable — obtain from provider", text)
         self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/in")
         self.assertEqual((counts["status"], counts["waiting"]), ("fresh", 14))
 
@@ -517,13 +517,14 @@ class ItemLevelTests(unittest.TestCase):
         self.assertEqual((facts["identified"], facts["opened"], facts["done"], facts["waiting_tracking"], facts["unidentified"], facts["review"]), (21, 9, 11, 1, 0, 0))
         text, blocks, counts = self.lines(st)
         self.assertEqual(text[0], "Updated 10:00 AM CT · 10 waiting · 0 need review")                   # the first line keeps the shape the Command Center and Attention read
-        self.assertIn("11 disposed (10 recycled, 1 shredded) · 21 mail numbers identified from the vendor's notices", text)
         items = [t for t in text if t.startswith("#")]
         self.assertEqual(len(items), 10)
         self.assertEqual([t.split(" ")[0] for t in items], [f"#{FORWARDED}"] + [f"#{n}" for n in sorted(SCANNED, reverse=True)])      # forwarded first, then newest number first
         self.assertTrue(all(b["type"] == "bulleted_list_item" for b in blocks if report_region.plain(b).startswith("#")))
-        self.assertEqual(items[1], f"#{SCANNED[-1]} · Scanned Oct 19 · Next: decide to forward, shred or recycle")
+        self.assertEqual(items[1], f"#{SCANNED[-1]}  ·  scanned Oct 19")
         self.assertEqual(counts["listed"], 10)
+        self.assertEqual([t for t in text if t[:1] in "🚚📥"], ["🚚 Forwarded — not delivered until tracking says so (1)", "📥 Scanned — decide: forward, shred or recycle (9)"])      # the shared next action is said once per group
+        self.assertEqual(text[-1], "11 disposed (10 recycled, 1 shredded) · 21 mail numbers identified from the vendor's notices")        # history sits last, muted
 
     def test_each_mail_number_is_one_line_and_disposed_pieces_are_never_listed(self):
         text, _, _ = self.lines(self.full())
@@ -535,11 +536,11 @@ class ItemLevelTests(unittest.TestCase):
     def test_a_piece_moves_through_scan_forward_and_disposal_as_evidence_arrives(self):
         e = lambda mid, line, at: events.extract(mail(mid, "Completed Action Requests", line, at))
         st = piece_state([e("a", f"Mail #{SCANNED[0]}: Scan completed", "2026-10-05T10:00:00+00:00")])
-        self.assertIn(f"#{SCANNED[0]} · Scanned Oct 5 · Next: decide to forward, shred or recycle", self.lines(st)[0])
+        self.assertIn(f"#{SCANNED[0]}  ·  scanned Oct 5", self.lines(st)[0])
         st, _ = state.apply(st, [e("b", f"Mail #{SCANNED[0]}: Forward completed", "2026-10-06T10:00:00+00:00")], NOW)
-        self.assertTrue(any(t.startswith(f"#{SCANNED[0]} · Forwarded Oct 6 · Tracking unavailable") for t in self.lines(st)[0]))
+        self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  forwarded Oct 6  ·  ⚠ Tracking unavailable") for t in self.lines(st)[0]))
         st, _ = state.apply(st, [e("c", f"Mail #{SCANNED[0]}: Recycle completed", "2026-10-07T10:00:00+00:00")], NOW)    # forward then recycle contradict: REVIEW, never guessed
-        self.assertTrue(any(t.startswith(f"#{SCANNED[0]} · Needs a look") for t in self.lines(st)[0]))
+        self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  last notice") for t in self.lines(st)[0]))
         other = piece_state([e("d", f"Mail #{SCANNED[1]}: Scan completed", "2026-10-05T10:00:00+00:00"), e("e", f"Mail #{SCANNED[1]}: Recycle completed", "2026-10-06T10:00:00+00:00")])
         self.assertFalse(any(t.startswith("#") for t in self.lines(other)[0]))
         self.assertIn("1 disposed (1 recycled, 0 shredded)", " ".join(self.lines(other)[0]))
@@ -549,12 +550,12 @@ class ItemLevelTests(unittest.TestCase):
         text, blocks, _ = self.lines(st)
         flagged = next(t for t in text if t.startswith(f"#{FORWARDED}"))
         self.assertIn("Tracking unavailable — obtain from provider", flagged)
-        self.assertIn("not delivered until evidence says so", flagged)
+        self.assertIn("not delivered until tracking says so", "\n".join(self.lines(st)[0]))
         self.assertNotIn("Delivered", flagged)                                                              # forward completed is never delivery
         st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "ExampleCarrier", "number": "TRK0001", "url": "https://example.invalid/t/TRK0001", "state": "In transit"}
         text, blocks, _ = self.lines(st)
         shown = next(t for t in text if t.startswith(f"#{FORWARDED}"))
-        self.assertEqual(shown, f"#{FORWARDED} · Forwarded Oct 20 · ExampleCarrier TRK0001 · In transit")
+        self.assertEqual(shown, f"#{FORWARDED}  ·  forwarded Oct 20  ·  ExampleCarrier TRK0001  ·  In transit")
         block = next(b for b in blocks if report_region.plain(b).startswith(f"#{FORWARDED}"))
         self.assertEqual([p["text"]["link"]["url"] for p in block["bulleted_list_item"]["rich_text"] if p["text"].get("link")], ["https://example.invalid/t/TRK0001"])
         st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "x", "number": "  "}                          # a blank number is no tracking

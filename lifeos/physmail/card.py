@@ -64,22 +64,41 @@ def _https(value):
     return value if isinstance(value, str) and value.startswith("https://") else None
 
 
+def _label(text):
+    """A bold group label (a paragraph, so the bullets under it stay a plain list)."""
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{**piece, "annotations": {"bold": True}} for piece in rich_text(text)]}}
+
+
+def _muted(text, link=None):
+    rich = rich_text(text)
+    for piece in rich:
+        piece["annotations"] = {"color": "gray"}
+        if link:
+            piece["text"]["link"] = {"url": link}
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}
+
+
 def _line(piece, portal, now):
-    """-> one active piece: mail number, evidence-backed state and date, and what to do next. Forward completed is never shown as delivered."""
+    """-> one active piece as a short bullet: bold mail number, then only what differs from its group (the group label carries the shared next action). Forward completed is never shown as delivered."""
     number, status, when = piece["number"], piece["status"], _day(piece["at"])
     head = (f"#{number}", True, None)
     if status == chains.REVIEW:
-        return _item([head, (f" · Needs a look · conflicting notices (last {when})", False, None)])
+        return _item([head, (f"  ·  last notice {when}", False, None)])
     if status == chains.OPEN:
-        return _item([head, (f" · Scanned {when} · Next: decide to forward, shred or recycle", False, None)])
+        return _item([head, (f"  ·  scanned {when}", False, None)])
     tracking = piece.get("tracking") if isinstance(piece.get("tracking"), dict) else None
     if tracking and isinstance(tracking.get("number"), str) and tracking["number"].strip():
         carrier = tracking.get("carrier") if isinstance(tracking.get("carrier"), str) and tracking["carrier"].strip() else "Carrier not stated"
         state_text = tracking.get("state") if isinstance(tracking.get("state"), str) and tracking["state"].strip() else "no delivery status yet"
-        return _item([head, (f" · Forwarded {when} · {carrier} ", False, None), (tracking["number"].strip(), False, _https(tracking.get("url"))), (f" · {state_text}", False, None)])
+        return _item([head, (f"  ·  forwarded {when}  ·  {carrier} ", False, None), (tracking["number"].strip(), False, _https(tracking.get("url"))), (f"  ·  {state_text}", False, None)])
     aged = _local(datetime.fromisoformat(piece["at"])) < now - timedelta(days=state_mod.AGED_DAYS)
-    return _item([head, (f" · Forwarded {when} · ", False, None), ("Tracking unavailable — obtain from provider", True, portal),
-                  (" · not delivered until evidence says so" + (f" · over {state_mod.AGED_DAYS} days, check the portal" if aged else ""), False, None)])
+    return _item([head, (f"  ·  forwarded {when}  ·  ", False, None), ("⚠ Tracking unavailable — obtain from provider", True, portal),
+                  (f"  ·  over {state_mod.AGED_DAYS} days, check the portal" if aged else "", False, None)])
+
+
+GROUPS = ((chains.REVIEW, "⚠️ Needs a look — notices conflict"),
+          (chains.WAITING, "🚚 Forwarded — not delivered until tracking says so"),
+          (chains.OPEN, "📥 Scanned — decide: forward, shred or recycle"))
 
 
 def render(stored, now, sync_failed=False):
@@ -100,13 +119,16 @@ def render(stored, now, sync_failed=False):
     waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"]
     blocks = [_paragraph(f"{head} · {waiting} waiting · {facts['review']} need review")]
     gone = state_mod.disposed(stored)
-    if facts["done"]:
-        blocks.append(_paragraph(f"{facts['done']} disposed ({gone['recycled']} recycled, {gone['shredded']} shredded) · {facts['identified']} mail numbers identified from the vendor's notices"))
     if facts["unidentified"]:
         blocks.append(_paragraph(f"{facts['unidentified']} new item(s) not yet identified by a mail number"))
     portal = _https(stored.get("portal"))
     items = state_mod.pieces(stored)
-    blocks += [_line(piece, portal, now) for piece in items[:MAX_ITEMS]]
+    shown = items[:MAX_ITEMS]
+    for status, label in GROUPS:
+        group = [piece for piece in shown if piece["status"] == status]
+        if group:
+            blocks.append(_label(f"{label} ({sum(1 for piece in items if piece['status'] == status)})"))
+            blocks += [_line(piece, portal, now) for piece in group]
     if len(items) > MAX_ITEMS:
         blocks.append(_paragraph(f"+{len(items) - MAX_ITEMS} more active pieces: open the mailbox portal"))
     if facts["review"] > sum(1 for piece in items if piece["status"] == chains.REVIEW):
@@ -115,6 +137,8 @@ def render(stored, now, sync_failed=False):
         blocks.append(_paragraph("No physical mail waiting"))
     if portal and (waiting or facts["review"]):
         blocks.append(_paragraph("Open the mailbox portal", portal))
+    if facts["done"]:
+        blocks.append(_muted(f"{facts['done']} disposed ({gone['recycled']} recycled, {gone['shredded']} shredded) · {facts['identified']} mail numbers identified from the vendor's notices"))
     return blocks, {"status": "degraded" if reason else "fresh", "reason": reason or "", "waiting": waiting, "review": facts["review"], "listed": len(items[:MAX_ITEMS]), "blocks_written": 0}
 
 
