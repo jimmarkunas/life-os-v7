@@ -1140,7 +1140,7 @@ jobs:
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.recruiters }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python

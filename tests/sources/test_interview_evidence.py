@@ -98,7 +98,7 @@ class Run:
         captured = {}
 
         def fake_stage(limit, live, environ, client, evidence, context):
-            captured.update(evidence=list(evidence), live=live)
+            captured.update(evidence=list(evidence), live=live, context=context)
             return {"blocked": 0, "why": {}}
 
         with patch.object(notion, "parent_scan", return_value=Scan(tuple(self.parents), True)), \
@@ -561,6 +561,19 @@ class LeadCorrelation(unittest.TestCase):
         for private in ("ExampleCo", "AlphaCo", "Program Manager", "Alpha Role", "greenhouse", "example.test", "Pat Example"):
             self.assertNotIn(private, text)
         self.assertIsInstance(counts["lead_rows"], int)                                  # the old collision made this the Ledger's own rows
+
+
+class StageClock(unittest.TestCase):
+    """Live run 39551231241: the mail read took minutes, the write stage inherited the clock started before it, and all four queued conversions failed pipeline_incomplete with zero writes."""
+    def test_the_write_stage_gets_a_clock_started_after_the_mail_has_been_read(self):
+        order = []
+        real = ev.RunContext.start
+        with patch.object(ev.RunContext, "start", side_effect=lambda *a, **k: order.append("clock") or real(*a, **k)), \
+             patch.object(ev, "read_mail", side_effect=lambda *a, **k: order.append("mail") or ([], 0)):
+            counts, got = Run(records=None, roster=[])()
+        self.assertEqual(order, ["clock", "mail", "clock"])                                   # the early one for the scans, a fresh one for the writes
+        self.assertEqual(got["context"].timeout_seconds, ev.STAGE_SECONDS)
+        self.assertGreater(got["context"].remaining_seconds(), ev.STAGE_SECONDS - 5)
 
 
 class Window(unittest.TestCase):
