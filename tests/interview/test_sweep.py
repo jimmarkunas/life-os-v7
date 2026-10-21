@@ -113,6 +113,22 @@ class SweepTests(unittest.TestCase):
         self.assertEqual((counts["converted"], counts["waiting"]), (1, 1))
         self.assertEqual(sweep.classify(client, "retired"), "human")
 
+    def test_a_run_short_of_time_defers_the_pages_it_has_not_started_and_is_not_a_failure(self):
+        from lifeos.platform.runtime import RunContext
+        client = SweepFake()
+        before = copy.deepcopy(client.blocks)
+        short = RunContext.start(sweep.PAGE_SECONDS - 1)                  # run 39662178449 ended failed 1 (deadlineexceeded) though nothing was wrong: the budget ran out between pages
+        counts = sweep.run(CONVERT, True, client, scan_of(client), lambda company, role: "synthetic-key", lambda c, page_id, context: None, short)
+        self.assertEqual((counts["failed"], counts["converted"], counts["writes"], counts["waiting"], counts["why"]), (0, 0, 0, 2, {"time_budget": 1}))
+        self.assertEqual(client.blocks, before)
+
+    def test_time_running_out_inside_a_page_is_still_a_failure(self):
+        from lifeos.platform.runtime import RunContext
+        ticks = iter([0.0, 0.0, 0.0] + [1000.0] * 500)                   # enough time at the check, none a moment later
+        client = SweepFake()
+        counts = sweep.run(CONVERT, True, client, scan_of(client), lambda company, role: "synthetic-key", lambda c, page_id, context: None, RunContext.start(300, clock=lambda: next(ticks)))
+        self.assertEqual(counts["failed"], 1)
+
     def test_the_first_failure_stops_the_sweep_and_leaves_the_next_page_alone(self):
         client = SweepFake()
         real = client.call

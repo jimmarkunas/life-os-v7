@@ -15,6 +15,7 @@ from lifeos.platform.runtime import DeadlineExceeded, RunContext
 MODES = ("inventory", "all")
 DEFAULT_CAP = 2
 SWEEP_SECONDS = 300                                                      # the recruiters job has 30 minutes: mail read, evidence and the write stage come first
+PAGE_SECONDS = 75                                                        # run 39662178449: five pages took about 60 s each; a page is not started with less than this left
 CONVERTIBLE = ("human", "adopt_line", "skeleton", "prefold", "ui3b")
 NEUTRAL = ("parent_unchanged",)                                             # a current page whose region already says what its interviews say
 DONE = ("parent_adopted", "parent_upgraded", "parent_refreshed", "adopt_allowed", "upgrade_allowed", "refresh_allowed", "adopt_line_allowed")
@@ -107,7 +108,11 @@ def run(environ, live, client, scan, mint, legacy_key, context=None):
 
     limit, stopped, only = cap(environ), False, target(environ)
     try:
-        for parent in scan.items:
+        for index, parent in enumerate(scan.items):
+            if context.remaining_seconds() < PAGE_SECONDS:                # not a failure: nothing was started, the pages not yet seen wait for the next run (a converted page is never redone)
+                counts["waiting"] += len(scan.items) - index
+                note("time_budget")
+                break
             context.require_time()
             company, role = split_title(parent.title)
             counts["retired"] += int(not parent.active)
