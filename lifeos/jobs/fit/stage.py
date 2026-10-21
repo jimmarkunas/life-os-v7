@@ -206,6 +206,34 @@ def reask_kept(cursor):
     return cleared
 
 
+REOPEN_ROWS = ("SELECT f.job_id FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s AND j.status='EXCLUDED_FIT'"
+               " AND j.notion_page_id IS NULL AND j.source LIKE 'web:su-%%' ORDER BY f.job_id LIMIT %s")
+REOPEN_BATCH = 300                       # per run: the excluded Scale-Up backlog is cleared over a few ticks
+
+
+def reopen_scale_up(cursor, limit=REOPEN_BATCH):
+    """Jim (Oct 21): the Scale-Up roles the cloud excluded under the OLD brief are judged again under the new profile and brief. A cloud-scored (CANARY) row is never re-picked by the
+    static pass, so its marker is cleared (once: a later answer is stamped after BRIEF_CHANGED_AT); a manual Fit run with `fit_all` and a company filter then re-scores it
+    statically, a role that now qualifies is revived (_gate), and the existing cloud backlog (its own quota, stop at Jim's 50 %) asks only those. No model call here. -> rows cleared."""
+    cursor.execute(REOPEN_ROWS, (BRIEF_CHANGED_AT, limit))
+    cleared = 0
+    for (job_id,) in cursor.fetchall():
+        cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
+        cleared += int(cursor.rowcount or 0)
+    return cleared
+
+
+RETIRE_STUCK = ("UPDATE v7_jobs SET status='EXCLUDED_FIT', unresolved_reason='retired_by_jim', updated_at=%s WHERE status='NEW' AND notion_page_id IS NULL"
+                " AND source IN ('web:su-prepaid-financial-services-lim', 'web:su-futuristic-technologies-ltd') AND unresolved_reason LIKE 'audit_url_%%'")
+
+
+def retire_stuck(cursor):
+    """Jim (Oct 21): the roles from these two boards that sit at NEW because their link fails the audit are retired for good ('Kill them'). The reason `retired_by_jim`
+    is not one any revive step reads, so they stay retired. Idempotent. -> roles retired."""
+    cursor.execute(RETIRE_STUCK, (_now(),))
+    return int(cursor.rowcount or 0)
+
+
 def cloud_promoter(profile, gate, counts, register):
     """-> promote(job_id, judgment, model): one store session per promotion (D219: the cloud run writes each job's answer right after its call)."""
     def promote(job_id, judgment, model):
@@ -302,6 +330,8 @@ def run(limit, live, environ=os.environ):
             counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
             counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(cursor, profile, _now().date(), gate, counts, register)
             counts["kept_reasked"] = reask_kept(cursor)
+            counts["scale_up_reopened"] = reopen_scale_up(cursor)
+            counts["jim_retired"] = retire_stuck(cursor)
     scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
