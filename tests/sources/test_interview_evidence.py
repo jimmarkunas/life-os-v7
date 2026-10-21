@@ -345,19 +345,13 @@ class LeadRows(unittest.TestCase):
 
 
 class Exceptions(unittest.TestCase):
-    """A named test pursuit may be older than 14 days; nothing else is."""
+    """Naming test pursuits never lengthens a live tick's mail read (run 907 hit the 20 minute job limit at 60 days)."""
     NOW = ev.datetime(2026, 10, 21, 12, tzinfo=ev.TZ)
 
-    def test_the_window_widens_only_when_test_pursuits_are_named(self):
-        self.assertEqual((ev.window({}, True), ev.window({"INTERVIEW_TEST_COMPANIES": "Alpha, Beta"}, True), ev.window({"INTERVIEW_TEST_COMPANIES": " , "}, True)), (14, 60, 14))
-
-    def test_an_old_message_is_kept_only_when_it_names_a_test_pursuit(self):
-        old, new = "2026-09-10T10:00:00Z", "2026-10-20T10:00:00Z"
-        named, other = {**mail(), "received": old, "subject": "Alpha interview"}, {**mail(), "received": old, "subject": "Gamma interview"}
-        recent = {**mail(), "received": new, "subject": "Gamma interview"}
-        env = {"INTERVIEW_TEST_COMPANIES": "Alpha"}
-        self.assertEqual(ev.recent_or_named([named, other, recent], env, self.NOW, True), [named, recent])
-        self.assertEqual(ev.recent_or_named([named, other, recent], {**env, "INTERVIEW_MAIL_DAYS": "60"}, self.NOW, False), [named, other, recent])      # an explicit dry-run look keeps all
+    def test_naming_pursuits_does_not_widen_a_live_or_dry_read_beyond_14_days(self):
+        named = {"INTERVIEW_TEST_COMPANIES": "Alpha, Beta"}
+        self.assertEqual((ev.window(named, True), ev.window(named, False), ev.window({}, True)), (14, 14, 14))
+        self.assertEqual((ev.window({**named, "INTERVIEW_MAIL_DAYS": "60"}, False), ev.window({**named, "INTERVIEW_MAIL_DAYS": "60"}, True)), (60, 14))
 
     def test_a_linkedin_sender_headline_names_the_employer(self):
         body = "You have a new message\n\nPat Example (Senior Recruiter at Example Corp | Hiring)\n(https://example.test/in/pat)\n\nThis email was intended for Jim (Engineer at Elsewhere)\n"
