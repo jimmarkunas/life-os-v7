@@ -34,6 +34,16 @@ class ParsingTests(unittest.TestCase):
                    hit("http://www.revolut.com/careers/position/product-owner-22222222-2222-2222-2222-222222222222/", "Product Owner")]
         self.assertEqual([c[0] for c in tw.candidates(SOURCE, results)], [CRYPTO, CREATIVE])
 
+    def test_revolut_watches_credit_manager_and_still_finds_the_product_owner_roles(self):
+        revolut = next(x for x in registry.load(registry.PATHS["Scale-Up"]) if x["id"] == "su-revolut-ltd")
+        titles = revolut["title_watch"]["titles"]
+        self.assertIn("Credit Manager", titles)
+        for default in tw.DEFAULT_TITLES:
+            self.assertIn(default, titles)
+        url = "https://www.revolut.com/careers/position/credit-manager-product-92e04817-f950-4b94-8b2a-6f2cbbe6d054/"
+        found = tw.candidates(revolut, [hit(url, "Credit Manager (Product) | Revolut", "London")])
+        self.assertEqual([(c[0], c[1]) for c in found], [(url, "Credit Manager (Product)")])
+
     def test_token_is_the_uuid_or_the_last_path_segment(self):
         self.assertEqual(tw.token(CREATIVE), "92db1b5f-56bc-4524-bc8b-5f1d2188ae1a")
         self.assertEqual(tw.token("https://truvi.com/careers/product-manager-london"), "product-manager-london")
@@ -54,8 +64,9 @@ class ParsingTests(unittest.TestCase):
         pairs = tw.pairs(registry.load(registry.PATHS["Scale-Up"]))
         got = tw.forced(pairs, "revolut")
         self.assertEqual({s["id"] for s, _ in got}, {"su-revolut-ltd"})
-        self.assertEqual(len(got), len(tw.DEFAULT_TITLES))
-        self.assertEqual(tw.forced(pairs, "board:Revolut, truvi").__len__(), 2 * len(tw.DEFAULT_TITLES))
+        revolut_titles = len(next(x for x in registry.load(registry.PATHS["Scale-Up"]) if x["id"] == "su-revolut-ltd")["title_watch"]["titles"])
+        self.assertEqual(len(got), revolut_titles)
+        self.assertEqual(tw.forced(pairs, "board:Revolut, truvi").__len__(), revolut_titles + len(tw.DEFAULT_TITLES))
         self.assertEqual(tw.forced(pairs, ""), [])
         self.assertEqual(tw.forced(pairs, "funnel"), [])
         self.assertEqual(tw.forced(pairs, "ab"), [])                                            # names need 3 letters

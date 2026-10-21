@@ -339,7 +339,19 @@
     "domains": [
      "revolut.com"
     ],
-    "path": "/careers/position/"
+    "path": "/careers/position/",
+    "titles": [
+     "Product Owner",
+     "Head of Product",
+     "Product Manager",
+     "Program Manager",
+     "Project Manager",
+     "Campaign Creative Lead",
+     "Partnerships Manager",
+     "Operations Manager",
+     "Strategy & Operations Manager",
+     "Credit Manager"
+    ]
    }
   },
   {
