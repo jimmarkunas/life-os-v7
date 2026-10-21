@@ -206,9 +206,22 @@ def _pick(connection, limit, gated=False, hour=None):
         known = set()
         for row in rows:
             cursor.execute("SELECT 1 FROM v7_ledger_urls WHERE url_hash=%s", (url_key(row[4]),))
-            if cursor.fetchone():
+            if cursor.fetchone() and not lanes.on_keep_list(row[3], row[2]):         # a keep-list role the audit once trashed is Jim's choice now; the Ledger listing below still stops a real duplicate
                 known.add(row[0])
     return rows, known
+
+
+def release_kept_in_ledger(connection):
+    """A keep-list role set aside as `in_ledger` only because its remembered URL outlived a page the precision audit trashed (the audit keeps the hash so the role is never
+    published again) goes back to READY: Jim put it on the list. A page that still exists is found by the Ledger listing at publish time, so no duplicate is made. -> count."""
+    released = 0
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status='DUPLICATE' AND unresolved_reason='in_ledger' AND notion_page_id IS NULL")
+        for job_id, company, title in cursor.fetchall():
+            if lanes.on_keep_list(company, title):
+                cursor.execute("UPDATE v7_jobs SET status='READY', unresolved_reason='released_keep_list', updated_at=%s WHERE id=%s AND status='DUPLICATE'", (_now(), job_id))
+                released += 1
+    return released
 
 
 def run(limit, live, environ=os.environ):
@@ -227,6 +240,9 @@ def run(limit, live, environ=os.environ):
         with store.connect() as connection:
             counts["released"] = _store_seed(connection, urls)
         counts["seeded"] = len(urls)
+    if live:
+        with store.connect() as connection:
+            counts["kept_released"] = release_kept_in_ledger(connection)
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
