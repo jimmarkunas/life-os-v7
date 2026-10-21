@@ -84,8 +84,11 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
                 break
             result = apply(client, environ, parent_query, round_query, live, context, deferred)
             for key, value in result.items():
-                if key != "code":
+                if key not in ("code", "cause"):
                     counts[key] = counts.get(key, 0) + value
+            if result.get("cause"):
+                causes = counts.setdefault("causes", {})
+                causes[result["cause"]] = causes.get(result["cause"], 0) + 1
             reason(result["code"])
             if result["code"] == "child_match":
                 counts["matched"] += 1
@@ -114,9 +117,12 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
                     result["writes"] > 0 and result["code"] != "derived_created"):
                 break
         return counts
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError) as error:
+        from .create import cause_of
         counts["blocked"] += 1
         reason("pipeline_incomplete")
+        causes = counts.setdefault("causes", {})                       # counts only: a fixed code or the exception's class name
+        causes[cause_of(error)] = causes.get(cause_of(error), 0) + 1
         return counts
 
 

@@ -424,3 +424,36 @@ class ConfiguredUuidTests(unittest.TestCase):
                 client.pages["active"]["parent"]["page_id"] = invalid
                 self.assertIsNone(notion.active_target(client, compact, RunContext.start(60)))
                 self.assertFalse(notion.parent_scan(client, compact, RunContext.start(60)).complete)
+
+
+class Causes(unittest.TestCase):
+    """Live runs 39556923423 and 39565054862 ended two conversions as the bare pipeline_incomplete with zero planned writes; the cause is now a fixed code in the counts."""
+    def test_a_cause_is_a_fixed_code_or_the_class_name_never_the_text(self):
+        from lifeos.platform.runtime import DeadlineExceeded
+        self.assertEqual(create.cause_of(NotionError("INTERVIEW_SCAN_INCOMPLETE")), "interview_scan_incomplete")
+        self.assertEqual(create.cause_of(NotionError("private message with a name")), "notionerror")
+        self.assertEqual(create.cause_of(DeadlineExceeded("x")), "deadlineexceeded")
+        self.assertEqual(create.cause_of(KeyError("secret")), "keyerror")
+
+    def test_the_stage_counts_the_cause_of_a_page_that_ends_incomplete(self):
+        from unittest.mock import patch
+        from lifeos.interview import stage
+        def broken(*args, **kwargs):
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        client = WritableFake()
+        with patch.object(create.notion, "target_check", return_value="target_ok"), patch.object(create.notion, "parent_scan", side_effect=broken):
+            result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        self.assertEqual(result["why"].get("pipeline_incomplete"), 1)
+        self.assertEqual(result["causes"], {"interview_scan_incomplete": 1})
+        self.assertNotIn("cause", result)
+
+    def test_jims_content_may_nest_far_deeper_than_a_scan_before_the_protected_read_gives_up(self):
+        blocks = [{"id": "first", "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False}]
+        blocks += [{"id": f"b{i}", "type": "callout", "callout": {"rich_text": []}, "has_children": True} for i in range(120)]
+
+        class Deep:
+            def call(self, method, path, body=None):
+                return {"results": [{"id": "x" + path.split("/")[2], "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False}], "has_more": False}
+        self.assertTrue(notion.human_tail(Deep(), "p", blocks))                  # 120 containers: more than the 40 reads one scan is allowed
+        self.assertEqual(notion.PROTECTED_MAX_CALLS, 400)
+        self.assertEqual(notion.MAX_CALLS, 40)                                     # the scans keep their own limit

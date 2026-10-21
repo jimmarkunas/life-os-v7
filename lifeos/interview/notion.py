@@ -25,6 +25,7 @@ FOLD = "⚙️ LIFE OS"
 ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
+PROTECTED_MAX_CALLS = 400                  # Jim's own content on an adopted page can nest far deeper than a scan: every container is one read, and the whole of it is digested before and after a write
 
 
 def same_notion_id(a, b):
@@ -241,7 +242,7 @@ def protected_snapshot(client, page_id, kind="round"):
     An opportunity parent may instead carry Jim's notes (NOTES; LIFE-46/LIFE-88): that region runs to the end of the page,
     through any headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of
     its parent; their contents are never read here. A UI 4 round (LIFE-46 10875) keeps them in its left column instead."""
-    budget, regions = [MAX_CALLS], {}
+    budget, regions = [PROTECTED_MAX_CALLS], {}
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
     order = []
@@ -290,7 +291,7 @@ def _round_regions(client, tops, budget):
 def human_tail(client, page_id, blocks=None):
     """Private digest of Jim's own content on an adoption page: every top-level block after the first line before adoption
     (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
-    budget = [MAX_CALLS]
+    budget = [PROTECTED_MAX_CALLS]
     if blocks is None:
         blocks = children(client, page_id, budget)
         heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]

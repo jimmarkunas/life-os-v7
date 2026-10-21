@@ -79,6 +79,14 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     return _sections_readback(client, parent.page_id, before, out, "parent_adopted", current, sections)
 
 
+def cause_of(error):
+    """Why a page's pass ended as pipeline_incomplete, as a fixed code: the Notion client's own code (upper-case letters, digits and underscores) or the exception's class name."""
+    text = str(error)
+    if isinstance(error, NotionError) and re.fullmatch(r"[A-Z0-9_]{3,60}", text):
+        return text.lower()
+    return type(error).__name__.lower()
+
+
 def today():
     return datetime.now(ZoneInfo("America/Chicago")).date().isoformat()
 
@@ -377,5 +385,6 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         out["readback_failed"], out["readback_ok"] = 0, 1
         out["parents_created" if kind == "opportunity" else "rounds_created"] = 1
         return finish("parent_created" if kind == "opportunity" else "round_created")
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError) as error:
+        out["cause"] = cause_of(error)                                 # counts only: a fixed code or the exception's class name, never its text
         return finish("readback_unreadable" if out["writes"] else "pipeline_incomplete")
