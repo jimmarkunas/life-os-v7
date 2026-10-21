@@ -93,55 +93,18 @@ class ProbeTests(unittest.TestCase):
             with self.subTest(live=live, env=env), self.assertRaises(NotionError):
                 P.run(0, live, environ=env, client=Fake(), sleep=NOSLEEP)
 
-    def test_builds_the_ui_3c_structures_once_with_a_tab_mirroring_the_preview(self):
+    def test_writes_only_the_template_probe_page_and_prints_no_content(self):
         client = Fake()
-        first = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
-        self.assertEqual(first["page"], "created")
-        self.assertEqual((first["nonstandard_types"], first["nonstandard_shapes"]), (["tab"], {"tab": []}))
-        self.assertEqual(first["ui3c_tab_tree"], ["1:paragraph", "2:heading_3", "1:paragraph", "2:paragraph"])   # panes and their content, types only
-        for name in ("read_ui3c_tree", "probe_page", "action_center_callout", "action_center_columns_67_33", "main_columns_63_37", "create_tab",
-                     "read_tab_panes", "update_tab_pane", "interviews_callout", "table_in_callout", "read_table_rows", "update_table_row",
-                     "update_callout", "link_to_page", "read_probe_tree"):
-            self.assertEqual(first["checks"][name], "ok", name)
-        self.assertEqual(first["failed"], 0)
-        self.assertEqual(first["column_ratios"], [0.63, 0.37])
-        tab = first["probe_tree"].index("2:tab")                            # columns → column → tab → panes → content
-        self.assertEqual(first["probe_tree"][tab + 1:tab + 5], ["3:paragraph", "4:paragraph", "3:paragraph", "4:paragraph"])
-        self.assertIn("3:table", first["probe_tree"])                       # columns → column → callout → table
-        second = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
-        self.assertEqual(second["page"], "reused")
-        probes = [b for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TITLE]
-        self.assertEqual(len(probes), 1)                                     # no duplicate probe page
-        self.assertEqual(second["probe_tree"], first["probe_tree"])           # rebuilt identically after the clear
-        self.assertEqual(client.kids[P.QA_PARENT][0]["id"], "other")          # nothing else under the QA parent touched
-        self.assertEqual(len(client.templates), 1)                          # the template probe page is created once
-        self.assertEqual(second["checks"]["template_page"], "UI_PROBE_TEMPLATE_PAGE_EXISTS")
-
-    def test_writes_only_inside_the_probe_page_and_prints_no_content(self):
-        client = Fake(refuse=())
         counts = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
-        self.assertEqual(counts["failed"], 0)
-        probe = next(b["id"] for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TITLE)
+        self.assertEqual((counts["checks"], counts["failed"]), ({"template_page": "ok", "qa_render": "ok"}, 0))
         made = {b["id"] for b in client.kids[P.QA_PARENT] if b["type"] == "child_page" and b["child_page"]["title"] == P.TEMPLATE_TITLE}
-        inside = {probe} | made | {b["id"] for blocks in client.kids.values() for b in blocks if b["id"].startswith("b")}
         for method, path in client.calls:
             if method in ("PATCH", "DELETE"):
-                self.assertIn(path.split("/")[2], inside)
+                self.assertIn(path.split("/")[2], made)
+        self.assertEqual(client.kids[P.QA_PARENT][0], {"id": "other", "type": "child_page", "child_page": {"title": "Smartsheet notes"}, "has_children": True})
         text = json.dumps(counts)
-        for private in ("Private tab title", "Smartsheet", P.QA_PARENT, P.UI3C, probe, "shell", *made, "synthetic"):
+        for private in ("Smartsheet", P.QA_PARENT, "shell", *made, "synthetic"):
             self.assertNotIn(private, text)
-
-    def test_a_refused_tab_is_a_code_and_the_rest_still_runs(self):
-        counts = P.run(0, True, environ=LIVE, client=Fake(refuse=("tab",)), sleep=NOSLEEP)
-        self.assertEqual((counts["checks"]["create_tab"], counts["failed"]), ("NOTION_HTTP_400 validation_error body.children[0].type", 1))
-        self.assertEqual(counts["checks"]["update_callout"], "ok")
-
-    def test_a_second_probe_page_stops_before_any_write(self):
-        client = Fake()
-        client.kids[P.QA_PARENT] += [{"id": f"dup{i}", "type": "child_page", "child_page": {"title": P.TITLE}} for i in range(2)]
-        counts = P.run(0, True, environ=LIVE, client=client, sleep=NOSLEEP)
-        self.assertEqual(counts["checks"]["probe_page"], "UI_PROBE_DUPLICATE_PAGE")
-        self.assertFalse([c for c in client.calls if c[0] != "GET"])
 
     def test_the_template_page_is_made_from_the_shell_once_and_never_trashed(self):
         client = Fake()
@@ -164,7 +127,7 @@ class ProbeTests(unittest.TestCase):
             with self.subTest(code=code):
                 counts = P.run(0, True, environ=LIVE, client=fake, sleep=NOSLEEP)
                 self.assertEqual((counts["checks"]["template_page"], counts["failed"]), (code, 1))
-                self.assertEqual(counts["checks"]["create_tab"], "ok")
+                self.assertEqual(counts["checks"]["qa_render"], "ok")
                 self.assertFalse([b for b in fake.kids[P.QA_PARENT] if b.get("child_page", {}).get("title") == P.TEMPLATE_TITLE])
 
 

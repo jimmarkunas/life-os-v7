@@ -285,7 +285,7 @@
    "lifeos/interview/progression.py": "LIFE-42: one verified interview request -> the existing Interview OS writer's queries, or a fail-closed refusal.",
    "lifeos/interview/stage.py": "Counts-only Interview probe and bounded B2 evidence execution.",
    "lifeos/interview/template.py": "LIFE-88 / LIFE-46: the two Jim-approved native Notion layouts as block trees, nothing else.",
-   "lifeos/interview/ui_probe.py": "LIFE-88 first gate: can the V7 Notion REST transport build and maintain the accepted UI 3c block tree? Manual only (diag.yml, stage interview-ui-probe, typed confirmation",
+   "lifeos/interview/ui_probe.py": "LIFE-88 QA acceptance probe. Manual only (diag.yml, stage interview-ui-probe, typed confirmation QA); never on a tick. Interview token. Writes only under the QA Interview",
    "lifeos/interview/view.py": "LIFE-88 / LIFE-46: the source-keyed view models the UI 3c opportunity page and the UI 4 interview page are rendered from."
   },
   "jira": {
