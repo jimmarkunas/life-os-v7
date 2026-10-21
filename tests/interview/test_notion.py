@@ -93,6 +93,26 @@ class NotionTests(unittest.TestCase):
         client.blocks["p"] = [client.blocks["p"][0], client.blocks["p"][3], client.blocks["p"][1], client.blocks["p"][2]]
         self.assertNotEqual(before, notion.protected_snapshot(client, "p"))
 
+    def nested(self):
+        client = Fake()
+        cp = lambda id, title: {"id": id, "type": "child_page", "child_page": {"title": title}}
+        client.blocks["p"] = client.blocks["p"] + [{"id": "cols", "type": "column_list", "has_children": True}]
+        client.blocks["cols"] = [{"id": "col", "type": "column", "has_children": True}]
+        client.blocks["col"] = [cp("n1", "Interview 1: Jane Doe (9/10/26)"), cp("n2", "Meeting notes"), cp("n3", "Interview 2: Joe Roe (9/14/26)")]
+        client.pages["n1"], client.pages["n2"], client.pages["n3"] = page(), page(), page()
+        client.pages["n1"]["parent"], client.pages["n2"]["parent"], client.pages["n3"]["parent"] = {"block_id": "col"}, {"block_id": "col"}, {"block_id": "elsewhere"}
+        for key in ("n1", "n2", "n3"):
+            client.blocks[key] = [block("my own words")]
+        return client
+
+    def test_a_named_pursuits_hand_made_round_pages_in_jims_columns_count_by_title_only(self):
+        client = self.nested()
+        found = notion.child_scan(client, "p", legacy=True)
+        self.assertTrue(found.complete)
+        self.assertEqual([(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)])    # n2 is not a round title; n3 sits under another block
+        self.assertEqual(notion.child_scan(client, "p").items, ())               # an unnamed pursuit's nested pages are never read as rounds
+        self.assertTrue(all(method == "GET" for method, _ in client.calls))
+
     def test_incomplete_scans_fail_closed(self):
         client = Fake()
         client.more = True
