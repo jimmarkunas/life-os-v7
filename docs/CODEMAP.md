@@ -77,6 +77,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `safety-fit-capture` -> `lifeos.jobs.safety:run_fit_capture`
 - `safety-fit-golden` -> `lifeos.jobs.safety:run_fit_golden`
 - `safety-sql-smoke` -> `lifeos.jobs.safety:run_sql_smoke`
+- `scale-up-boards` -> `lifeos.sources.web.boardstate:run`
 - `scale-up-holds` -> `lifeos.jobs.holds:run`
 - `scale-up-links` -> `lifeos.jobs.linkcheck:run`
 - `sponsors` -> `lifeos.sources.sponsor_register:run`
@@ -306,6 +307,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/web/boardcheck.py`: Board check (D110): for named Scale-Up employers, what does the LIVE board return, and what became of each job?
 - `lifeos/sources/web/boards.py`: D202: the employer-board pass. About 10,700 Greenhouse, Ashby and Lever boards (the Open Jobs board list, CC0, plus the extras in boards.json) read through the same web r
 - `lifeos/sources/web/boards_seed.py`: D202: rebuild boards.json from an Open Jobs board list (slugs.json, CC0). Run by hand when a newer list is wanted; V7 never downloads it.
+- `lifeos/sources/web/boardstate.py`: Counts-only diagnostic: for every Scale-Up board in the registry, what did V7 see and what became of it? Reads the store, writes nothing, prints no title, link or text.
 - `lifeos/sources/web/diff.py`: Classify a board listing against the accepted state: NEW, MATERIAL_CHANGE, UNCHANGED and (only after a COMPLETE listing) REMOVED.
 - `lifeos/sources/web/discover_jobs.py`: Scale-Up sponsors with no job board of their own: find their jobs through web search (free TinyFish Search), then let the normal pipeline decide.
 - `lifeos/sources/web/html_readers.py`: First-party careers-page readers for the Scale-Up sponsors that have no public ATS API.
@@ -578,3 +580,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D244: Merged branches are archived automatically and deleted only when safe; a weekly stale-branch report goes on the Weekly LIFE OS Review (2026-10-20, Jim; LIFE-81)
 - D245: Usage integrity accepts the cache-outside-input convention, exactly (2026-10-20, Jim; LIFE-41)
 - D246: The precision audit trashes at most 40 Ledger pages a run, and reports how many rejected pages are still waiting (2026-10-20, Jim; LIFE-41)
+- D247: Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE issue to be assigned)

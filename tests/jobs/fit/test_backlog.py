@@ -512,6 +512,21 @@ class KeepListRolesAreRedecided(Batch):
         self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "READY")
         self.assertEqual(self.redecide(), (0, 0))                                                          # decided once: nothing is left to re-decide
 
+    def test_a_role_the_audit_excluded_after_it_was_published_is_put_back_for_publishing(self):
+        """audit.py leaves a trashed-page job as EXCLUDED_FIT / 'excluded_fit' with no page id; _gate's own revive does not cover that reason."""
+        self.excluded(1, "Product Owner (UX)")
+        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', notion_page_id=NULL WHERE id=1")
+        self.assertEqual(self.redecide(), (1, 0))
+        self.assertEqual(self.row(1, ("admission",)), ("REVIEW",))
+        self.assertEqual(self.db.raw.execute("SELECT status, unresolved_reason FROM v7_jobs WHERE id=1").fetchone(), ("READY", "requeued_fit"))
+
+    def test_an_audit_excluded_role_that_the_policy_still_excludes_stays_excluded(self):
+        self.excluded(1, "Product Owner (UX)")
+        self.db.raw.execute("UPDATE v7_jobs SET unresolved_reason='excluded_fit', location_text='Lagos, Nigeria' WHERE id=1")        # a place that is not London: the lane still excludes it
+        self.redecide()
+        self.assertEqual(self.row(1, ("admission",)), ("EXCLUDE",))
+        self.assertEqual(self.db.raw.execute("SELECT status FROM v7_jobs WHERE id=1").fetchone()[0], "EXCLUDED_FIT")
+
     def test_roles_not_on_the_keep_list_are_never_touched(self):
         self.excluded(1, "Product Owner (Crypto)")
         self.excluded(2, "Product Owner (UX)", company="Acme Ltd")
@@ -537,6 +552,47 @@ class KeepListRolesAreRedecided(Batch):
             counts = stage.run(10, True, env)
         self.assertEqual((counts["kept_redecided"], counts["kept_redecide_failed"], counts["failed"]), (1, 0, 0))
         self.assertEqual(self.row(1, ("admission",)), ("REVIEW",))
+
+
+class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
+    """The Oracle brief changed at stage.BRIEF_CHANGED_AT: a keep-list role the cloud answered before that goes back to 'never asked'; nothing else does."""
+
+    def answered(self, job_id, title, company="Revolut Ltd", at="2026-10-20 12:00:00", status="PUBLISHED", admission="REVIEW"):
+        self.titled(job_id, title, status=status, admission=admission, cloud_status="CANARY", page=f"page-{job_id}" if status == "PUBLISHED" else None)
+        self.db.raw.execute("UPDATE v7_jobs SET company=? WHERE id=?", (company, job_id))
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_at=?, cloud_score=68, cloud_run_id='old' WHERE job_id=?", (at, job_id))
+
+    def clear(self):
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.reask_kept(cursor)
+
+    def test_a_keep_list_role_answered_before_the_new_brief_is_cleared_and_keeps_its_score_until_the_new_answer(self):
+        self.answered(1, "Product Owner (Technical)")
+        self.assertEqual(self.clear(), 1)
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id", "cloud_score")), (None, None, 68))
+        self.assertEqual(self.clear(), 0)                                                                   # cleared once
+
+    def test_nothing_else_is_cleared(self):
+        self.answered(1, "Product Owner (Crypto)")                                                            # not on the keep list
+        self.answered(2, "Product Owner (Technical)", company="Acme Ltd")                                      # another company
+        self.answered(3, "Product Owner (Technical)", at="2026-10-21 06:00:00")                                # already answered with the new brief
+        self.answered(4, "Product Owner (Technical)", status="EXCLUDED_FIT", admission="EXCLUDE")              # not a candidate for the backlog anyway
+        self.assertEqual(self.clear(), 0)
+        for job_id in (1, 2, 3, 4):
+            self.assertEqual(self.row(job_id, ("cloud_status",)), ("CANARY",))
+
+    def test_the_fit_stage_does_it_only_when_live_and_gated(self):
+        self.answered(1, "Product Owner (Technical)")
+        env = {**ENV, "V7_CLOUD_FIT": "off"}
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+            self.assertNotIn("kept_reasked", stage.run(10, False, env))
+            self.assertNotIn("kept_reasked", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
+            self.assertEqual(self.row(1, ("cloud_status",)), ("CANARY",))
+            counts = stage.run(10, True, env)
+        self.assertEqual(counts["kept_reasked"], 1)
+        self.assertEqual(self.row(1, ("cloud_status",)), (None,))
 
 
 def metered(used_5h, used_week=1, stop=50):
