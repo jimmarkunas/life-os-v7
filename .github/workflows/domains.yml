@@ -53,6 +53,10 @@ on:
         description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      interview_convert:
+        description: "Interview OS page conversion (Jim, Oct 21): inventory = classify every opportunity page, write nothing; all = convert the legacy ones a few per run (cap INTERVIEW_CONVERT_CAP, default 2) with Jim's content proven unchanged, stopping at the first failure. Blank = the INTERVIEW_CONVERT repository variable"
+        type: string
+        default: ""
       interview_mail_days:
         description: "Interview OS dry run only (LIFE-88): read this many days of mail for scheduling requests, 14 to 90, instead of 14. Ignored when Actually write is ticked. Leave blank for the usual 14"
         type: string
@@ -1300,6 +1304,8 @@ jobs:
           INTERVIEW_LEADS: ${{ vars.INTERVIEW_LEADS }}
           INTERVIEW_TEST_COMPANIES: ${{ vars.INTERVIEW_TEST_COMPANIES }}
           INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
+          INTERVIEW_CONVERT: ${{ inputs.interview_convert || vars.INTERVIEW_CONVERT }}
+          INTERVIEW_CONVERT_CAP: ${{ vars.INTERVIEW_CONVERT_CAP }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
         continue-on-error: true
