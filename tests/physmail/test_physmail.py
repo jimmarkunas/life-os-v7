@@ -480,6 +480,17 @@ class HtmlNoticeTests(unittest.TestCase):
         self.assertEqual({verb for _, verb in got["actions"]}, {"SCAN", "RECYCLE"})
         self.assertEqual(sum(1 for _, verb in got["actions"] if verb == "SCAN"), 9)
 
+    def test_the_mailbox_link_in_an_html_only_notice_is_found_only_when_lines_are_kept_and_is_never_an_action(self):
+        link = f"https://box.{events.DOMAIN}/login?url=%2Fapp%2Fmail"
+        arrival = html_only(f"<html><body><p>1 new mail item(s) have been added.</p><p><a href=\"{link}\">View Mail</a></p><p>Powered by <a href=\"https://www.{events.DOMAIN}\">x</a></p></body></html>")
+        kept = events.extract({"id": "n", "sender": self.SENDER, "subject": "New Mail", "received_at": "2026-10-19T15:00:00+00:00", "body_text": gmail_mod._find_text(arrival, True)})
+        self.assertEqual((kept["kind"], kept["portal"]), ("ARRIVAL", link))
+        flat = events.extract({"id": "n", "sender": self.SENDER, "subject": "New Mail", "received_at": "2026-10-19T15:00:00+00:00", "body_text": gmail_mod._find_text(arrival, False)})
+        self.assertIsNone(flat["portal"])                                                                  # every other consumer keeps the flat text, with no link targets
+        done = html_only(f"<html><body><p>Mail #5000001: Forward Completed</p><p><a href=\"{link}\">Log In</a></p></body></html>")
+        got = self.extract(done, True)
+        self.assertEqual((got["kind"], got["actions"]), ("ACTIONS", [("5000001", "FORWARD")]))
+
     def test_every_other_consumer_keeps_the_flat_body_and_plain_text_is_the_same_either_way(self):
         flat = self.extract(census()[0][2], False)
         self.assertEqual((flat["kind"], flat["reason"]), ("REVIEW", "ID_AMBIGUOUS"))                    # the default (Amazon, Attention, delivery census) is untouched
