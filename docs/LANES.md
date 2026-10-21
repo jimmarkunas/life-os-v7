@@ -68,6 +68,6 @@ is configured but unreadable, retention retires nothing. When it is not configur
 ## Publication order (D186)
 Which READY jobs publish is unchanged: with the gate on only ADMIT and REVIEW decisions (EXCLUDE never), and in shadow mode (gate off) every READY job with a JD and no page, including one whose stored decision is EXCLUDE. Only the order changes when more are ready than one run publishes: ADMIT before REVIEW, then higher Fit, then the newer Posting Date, then First Surfaced and id, with one place in four reserved for the oldest waiting jobs (a run of fewer than four places reserves its one place on clock hours divisible by four). A missing score or date never lifts a job.
 
-## Phase 2 backlog (Jim, 2026-10-21)
+## Phase 2 backlog (Jim, 2026-10-21; LIFE-94)
 - **The 12 Scale-Up sponsors with no discoverable ATS** (status `fallback` in `lifeos/sources/web/scale_up.json`) are never read, or fail on read (`bad_shape`, `not_found`), so nothing they post can arrive. They need a recovery channel for evidence (the registry's own `fallback` note says so). Not a bug fix: feature work, parked for Phase 2.
 - Public Web results that are not vacancies (a remote-working marketing page, a visa-statistics article) still reach Review from the `Public Web` source; screening them out is part of the same Phase 2 pass.
