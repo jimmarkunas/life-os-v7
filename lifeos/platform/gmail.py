@@ -145,8 +145,9 @@ class Gmail:
                 raise GmailError("GMAIL_LISTING_INCOMPLETE")
         raise GmailError("GMAIL_LISTING_INCOMPLETE")
 
-    def message_record(self, message_id):
-        """Read source fields and labels; decoded content stays in memory and errors never include message data."""
+    def message_record(self, message_id, keep_lines=False):
+        """Read source fields and labels; decoded content stays in memory and errors never include message data.
+        keep_lines: an HTML-only body keeps one line per block element (a table row, a list item, a <br>) instead of one flat line; text/plain is unchanged either way."""
         full = self._request("GET", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}?format=full")
         if not isinstance(full, dict) or not isinstance(full.get("payload"), dict):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
@@ -167,7 +168,7 @@ class Gmail:
         if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
         return {"id": str(message_id), "sender": values.get("from", ""), "subject": values.get("subject", ""),
-                "received_at": received, "body_text": _find_text(full["payload"]), "label_ids": labels}
+                "received_at": received, "body_text": _find_text(full["payload"], keep_lines), "label_ids": labels}
 
     MAIL_HEADERS = ("From", "Subject", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe", "X-Auto-Response-Suppress", "Reply-To")
 
@@ -291,8 +292,8 @@ class _TextFromHtml(HTMLParser):
             self.pieces.append(data)
 
 
-def _find_text(part):
-    """Prefer a text/plain alternative and fall back to readable HTML text."""
+def _find_text(part, keep_lines=False):
+    """Prefer a text/plain alternative and fall back to readable HTML text. keep_lines keeps the HTML fallback's line breaks (one normalised line per block element)."""
     plain, html = [], []
 
     def visit(node):
@@ -320,4 +321,7 @@ def _find_text(part):
         parser.close()
     except Exception:
         raise GmailError("GMAIL_BODY_DECODE_FAILED") from None
+    if keep_lines:
+        lines = (" ".join(line.split()) for line in " ".join(parser.pieces).split("\n"))
+        return "\n".join(line for line in lines if line)
     return " ".join(" ".join(parser.pieces).split())

@@ -7,15 +7,18 @@ the overlap re-read changes nothing because every event is keyed by message id.
 Binding is by count, not identity (order-independent): the starting pile (Jim's October 4 anchor) and each arrival notice are units; each first-seen mail number
 consumes one unit. Pending-unidentified = units - bound. A first-seen mail number with no unit left is tolerated only up to GRACE_DAYS after the anchor and is otherwise DEGRADED."""
 import copy
+import re
 from datetime import datetime, timedelta, timezone
 
 from . import chains
 
 SCHEMA = 1
+REPLAY = 2                                                               # the notice parser that built the row: a row from an older parser is rebuilt once from the anchor (LIFE-95)
 ANCHOR_DATE = "2026-10-04"
 ANCHOR_AT = datetime(2026, 10, 4, 5, 0, tzinfo=timezone.utc)            # midnight Oct 4, 2026 in Chicago (CDT)
 GRACE_DAYS = 14
-AGED_DAYS = 30
+AGED_DAYS = 7
+KEEP_DAYS = 7                                       # a disposed or delivered piece is counted on the card this long, then it is not mentioned (the stored history stays)
 MAX_REVIEW = 100
 
 
@@ -27,7 +30,7 @@ def new_state(anchor_count, now):
     if not isinstance(anchor_count, int) or not 0 <= anchor_count <= 999:
         raise StateError("PHYSMAIL_ANCHOR_INVALID")
     return {"schema": SCHEMA, "taken_at": now.isoformat(), "anchor_date": ANCHOR_DATE, "anchor_count": anchor_count, "through": ANCHOR_AT.isoformat(),
-            "accepted_at": None, "arrivals": {}, "chains": {}, "review": [], "portal": None, "ignored": 0}
+            "accepted_at": None, "arrivals": {}, "chains": {}, "review": [], "portal": None, "ignored": 0, "replay": REPLAY}
 
 
 def _at(value):
@@ -36,7 +39,7 @@ def _at(value):
 
 def apply(state, extracted, now):
     """-> (new state, counts). Pure: merges the extracted events keyed by message id; events dated before the anchor are ignored."""
-    st, counts = copy.deepcopy(state), {"arrivals_new": 0, "actions_new": 0, "review_new": 0, "ignored": 0, "before_anchor": 0}
+    st, counts = copy.deepcopy(state), {"arrivals_new": 0, "actions_new": 0, "review_new": 0, "review_resolved": 0, "ignored": 0, "before_anchor": 0}
     seen_review = {item["id"] for item in st["review"]}
     for event in extracted:
         kind = event.get("kind")
@@ -46,6 +49,10 @@ def apply(state, extracted, now):
         if event.get("at") and _at(event["at"]) < ANCHOR_AT:
             counts["before_anchor"] += 1
             continue
+        if kind in ("ARRIVAL", "ACTIONS") and event.get("id") in seen_review:        # the same message now parses cleanly: its earlier REVIEW (an older, flatter parse) is resolved, nothing else is touched
+            st["review"] = [item for item in st["review"] if item["id"] != event["id"]]
+            seen_review.discard(event["id"])
+            counts["review_resolved"] += 1
         if kind == "ARRIVAL":
             if event["id"] not in st["arrivals"]:
                 st["arrivals"][event["id"]] = {"at": event["at"], "count": event["count"]}
@@ -67,6 +74,54 @@ def apply(state, extracted, now):
     return st, counts
 
 
+def _status_of(chain):
+    return chains.fold([tuple(v) for v in chain["events"].values()])
+
+
+def pieces(state):
+    """The active pieces, one per vendor mail number (DONE pieces are history, not listed): [{number, status, verb, at, tracking}], needs-a-look first, then forwarded, then scanned (newest number first)."""
+    out = []
+    for number, chain in state["chains"].items():
+        status = _status_of(chain)
+        if status == chains.DONE:
+            continue
+        at, verb = max(chain["events"].values())
+        out.append({"number": number, "status": status, "verb": verb, "at": at, "tracking": chain.get("tracking")})
+    rank = {chains.REVIEW: 0, chains.WAITING: 1, chains.OPEN: 2}
+    return sorted(out, key=lambda p: (rank[p["status"]], -int(p["number"]) if p["number"].isdigit() else 0, p["number"]))
+
+
+TRACKING_FIELDS = ("bundle", "carrier", "service", "number", "url", "state", "delivered")
+
+
+def record_tracking(state, number, entry, source, now):
+    """-> (new state, recorded). Attaches shipment tracking to ONE forwarded piece (stored with that piece, so it leaves with it): only fixed text fields, only for a piece that is currently waiting for tracking,
+    never a guess. Re-recording identical facts changes nothing. `source` names where the facts came from (an authoritative reader, or the operator)."""
+    st = copy.deepcopy(state)
+    chain = st["chains"].get(str(number))
+    if chain is None or _status_of(chain) != chains.WAITING:
+        return st, False
+    clean = {k: entry[k].strip()[:120] for k in TRACKING_FIELDS if isinstance(entry.get(k), str) and entry[k].strip()}
+    if not clean.get("number") or not re.fullmatch(r"[A-Za-z0-9 -]{6,40}", clean["number"]) or (clean.get("url") and not clean["url"].startswith("https://")):
+        return st, False
+    if {k: v for k, v in (chain.get("tracking") or {}).items() if k in TRACKING_FIELDS} == clean:
+        return st, False
+    chain["tracking"] = {**clean, "source": source, "recorded_at": now.isoformat()}
+    return st, True
+
+
+def disposed(state, since=None):
+    """{"recycled": n, "shredded": n} for the pieces whose chain is DONE (the verbs of one DONE chain are never both, the fold sends that to REVIEW). With `since`, only pieces whose last notice is that recent."""
+    out = {"recycled": 0, "shredded": 0}
+    for chain in state["chains"].values():
+        if _status_of(chain) == chains.DONE:
+            if since is not None and _at(max(v[0] for v in chain["events"].values())) < since:
+                continue
+            verbs = {v[1] for v in chain["events"].values()}
+            out["recycled" if "RECYCLE" in verbs else "shredded"] += 1
+    return out
+
+
 def summary(state, now):
     """Counts and the degraded reason, if any: a pure function of the stored state."""
     chain_status = {number: chains.fold([tuple(v) for v in chain["events"].values()]) for number, chain in state["chains"].items()}
@@ -79,5 +134,5 @@ def summary(state, now):
     waiting = {n: s for n, s in chain_status.items() if s == chains.WAITING}
     aged = sum(1 for n in waiting if _at(max(v[0] for v in state["chains"][n]["events"].values())) < now - timedelta(days=AGED_DAYS))
     return {"unidentified": units - bound, "opened": sum(1 for s in chain_status.values() if s == chains.OPEN), "waiting_tracking": len(waiting),
-            "aged": aged, "done": sum(1 for s in chain_status.values() if s == chains.DONE),
+            "aged": aged, "done": sum(1 for s in chain_status.values() if s == chains.DONE), "identified": len(chain_status),
             "review": sum(1 for s in chain_status.values() if s == chains.REVIEW) + len(state["review"]), "degraded_reason": degraded}
