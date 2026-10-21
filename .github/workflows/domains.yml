@@ -740,6 +740,7 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
+          PHYSICAL_MAIL_EXPECT: ${{ vars.PHYSICAL_MAIL_EXPECT }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_mail_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_mail_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -1079,8 +1080,9 @@ jobs:
   dcc:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
+    # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
     needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage]
-    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.dcc) }}
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

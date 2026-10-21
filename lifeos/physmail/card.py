@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from lifeos.platform import db, report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
-from . import state as state_mod
+from . import chains, state as state_mod
 from .stage import KEY, STORE
 
 TZ = ZoneInfo("America/Chicago")
@@ -39,8 +39,51 @@ def _local(now):
     return (now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ))
 
 
+MAX_ITEMS = 30                                      # a pile longer than this ends with a "+N more" line: the heading's count is always the whole pile
+WORDS = {"SCAN": "Scanned", "FORWARD": "Forwarded"}
+
+
+def _item(parts):
+    """One native bulleted line: [(text, bold, link)]."""
+    rich = []
+    for text, bold, link in parts:
+        for piece in rich_text(text):
+            if bold:
+                piece["annotations"] = {"bold": True}
+            if link:
+                piece["text"]["link"] = {"url": link}
+            rich.append(piece)
+    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich}}
+
+
+def _day(iso):
+    return _local(datetime.fromisoformat(iso)).strftime("%b %-d")
+
+
+def _https(value):
+    return value if isinstance(value, str) and value.startswith("https://") else None
+
+
+def _line(piece, portal, now):
+    """-> one active piece: mail number, evidence-backed state and date, and what to do next. Forward completed is never shown as delivered."""
+    number, status, when = piece["number"], piece["status"], _day(piece["at"])
+    head = (f"#{number}", True, None)
+    if status == chains.REVIEW:
+        return _item([head, (f" · Needs a look · conflicting notices (last {when})", False, None)])
+    if status == chains.OPEN:
+        return _item([head, (f" · Scanned {when} · Next: decide to forward, shred or recycle", False, None)])
+    tracking = piece.get("tracking") if isinstance(piece.get("tracking"), dict) else None
+    if tracking and isinstance(tracking.get("number"), str) and tracking["number"].strip():
+        carrier = tracking.get("carrier") if isinstance(tracking.get("carrier"), str) and tracking["carrier"].strip() else "Carrier not stated"
+        state_text = tracking.get("state") if isinstance(tracking.get("state"), str) and tracking["state"].strip() else "no delivery status yet"
+        return _item([head, (f" · Forwarded {when} · {carrier} ", False, None), (tracking["number"].strip(), False, _https(tracking.get("url"))), (f" · {state_text}", False, None)])
+    aged = _local(datetime.fromisoformat(piece["at"])) < now - timedelta(days=state_mod.AGED_DAYS)
+    return _item([head, (f" · Forwarded {when} · ", False, None), ("Tracking unavailable — obtain from provider", True, portal),
+                  (" · not delivered until evidence says so" + (f" · over {state_mod.AGED_DAYS} days, check the portal" if aged else ""), False, None)])
+
+
 def render(stored, now, sync_failed=False):
-    """-> (blocks, counts). Pure."""
+    """-> (blocks, counts). Pure. The first line keeps its shape (the Command Center and Attention read it); then one native line per active piece."""
     now = _local(now)
     if stored is None:
         return ([_paragraph(f"DEGRADED · Physical Mail starting state unknown at {now.strftime('%-I:%M %p')} CT · nothing accepted yet")],
@@ -56,20 +99,23 @@ def render(stored, now, sync_failed=False):
         head = f"Updated {now.strftime('%-I:%M %p')} CT"
     waiting = facts["unidentified"] + facts["opened"] + facts["waiting_tracking"]
     blocks = [_paragraph(f"{head} · {waiting} waiting · {facts['review']} need review")]
+    gone = state_mod.disposed(stored)
+    if facts["done"]:
+        blocks.append(_paragraph(f"{facts['done']} disposed ({gone['recycled']} recycled, {gone['shredded']} shredded) · {facts['identified']} mail numbers identified from the vendor's notices"))
     if facts["unidentified"]:
         blocks.append(_paragraph(f"{facts['unidentified']} new item(s) not yet identified by a mail number"))
-    if facts["opened"]:
-        blocks.append(_paragraph(f"{facts['opened']} opened or scanned, no final action yet"))
-    if facts["waiting_tracking"]:
-        blocks.append(_paragraph(f"{facts['waiting_tracking']} forwarded, waiting for tracking" + (f" · {facts['aged']} waiting over {state_mod.AGED_DAYS} days, check the portal" if facts["aged"] else "")))
-    if facts["review"]:
-        blocks.append(_paragraph(f"{facts['review']} item(s) with unclear or conflicting notices need a look"))
+    portal = _https(stored.get("portal"))
+    items = state_mod.pieces(stored)
+    blocks += [_line(piece, portal, now) for piece in items[:MAX_ITEMS]]
+    if len(items) > MAX_ITEMS:
+        blocks.append(_paragraph(f"+{len(items) - MAX_ITEMS} more active pieces: open the mailbox portal"))
+    if facts["review"] > sum(1 for piece in items if piece["status"] == chains.REVIEW):
+        blocks.append(_paragraph(f"{facts['review'] - sum(1 for piece in items if piece['status'] == chains.REVIEW)} notice(s) could not be read and need a look"))
     if not waiting and not facts["review"] and not reason:
         blocks.append(_paragraph("No physical mail waiting"))
-    portal = stored.get("portal")
-    if isinstance(portal, str) and portal.startswith("https://") and (waiting or facts["review"]):
+    if portal and (waiting or facts["review"]):
         blocks.append(_paragraph("Open the mailbox portal", portal))
-    return blocks, {"status": "degraded" if reason else "fresh", "reason": reason or "", "waiting": waiting, "review": facts["review"], "blocks_written": 0}
+    return blocks, {"status": "degraded" if reason else "fresh", "reason": reason or "", "waiting": waiting, "review": facts["review"], "listed": len(items[:MAX_ITEMS]), "blocks_written": 0}
 
 
 def _writer(environ):
