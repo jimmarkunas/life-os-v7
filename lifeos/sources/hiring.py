@@ -149,11 +149,16 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         conn = connection if connection is not None else stack.enter_context(db.connect())
         snapshot.STORE.ensure(conn)
         prior = snapshot.load(conn)
+        outcome_reason = None
         try:
-            heard, _ = outcome_mail.load(conn)                        # D190: what the mail scan last found; unavailable never stops the pipeline
+            heard, scanned = outcome_mail.load(conn)                  # D190: what the mail scan last found; unavailable never stops the pipeline
+            if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=outcome_mail.STALE_HOURS)):
+                outcome_reason = "OUTCOME_MAIL_STALE"                 # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
         except Exception:                                             # noqa: BLE001
-            heard = {}
+            heard, outcome_reason = {}, "OUTCOME_MAIL_UNREADABLE"
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard)
+        if outcome_reason:                                            # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
+            result["reasons"] = sorted({*result["reasons"], outcome_reason})
         text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
