@@ -10,7 +10,7 @@ import json
 import os
 import time
 
-from lifeos.jobs import lanes, sponsors, store
+from lifeos.jobs import lanes, quality, sponsors, store
 from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cloud as fit_cloud, profile as fit_profile, profile_sync, semantic as fit_semantic
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
@@ -64,12 +64,13 @@ def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
     for job_id, title, company, text, fingerprint, *rest in rows:
         lane, location, salary, posted, first_seen, route, source = (list(rest) + [None] * 7)[:7]
         result = evaluate(title, company, text, profile, today, semantic)
+        thin = lanes.thin_review_source(source) and quality.jd_problem(text) == "thin"        # Jim, Oct 21: Review from the apply link, never held, never excluded for Fit alone
         if register is not None:
             route = lanes.join_routes(route, **{sponsors.ROUTE: register.state(company)})
         score = (fit or {}).get(job_id, result.score)
         facts = lanes.facts_for(score, title, location, text, salary, posted, first_seen or today, route=route, first_party=lanes.first_party_source(source),
-                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source),
-                                title_only=lanes.title_watch_source(source))
+                                kept=lanes.on_keep_list(company, title) or lanes.title_watch_source(source) or thin,
+                                title_only=lanes.title_watch_source(source), thin=thin)
         exclusion = None if lanes.keep_overrides_exclusion(company, title) else result.exclusion       # a keep-list role Jim chose over a title rule
         decision, lane_name, eligible = lanes.decide_all(lane, facts, today, exclusion)
         out.append((job_id, fingerprint, result, decision, lane_name, facts.work_mode, eligible))
