@@ -26,7 +26,7 @@ ID_PREFIX = "nsync_"
 ALLOWED_KEYS = ("capabilities", "functions")
 MAX_BYTES = 24_000
 MAX_ENTRIES = 80
-_HASH = re.compile(r"APPROVED HASH:\s*([0-9a-f]{16})\b", re.I)
+_HASH = re.compile(r"^\s*APPROVED HASH:\s*([0-9a-f]{16})\s*$", re.I)       # the WHOLE paragraph: prose that quotes the line is never an approval
 _SECRET_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
@@ -54,7 +54,7 @@ def read_page(client, page_id):
         if kind == "code" and payload.get("language") == "json" and text is None:
             text = plain
         elif kind == "paragraph":
-            found = _HASH.search(plain)
+            found = _HASH.match(plain)
             if found:
                 approved = found.group(1).lower()
     if text is None:

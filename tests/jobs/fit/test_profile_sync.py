@@ -62,6 +62,16 @@ class AdoptionTests(unittest.TestCase):
         vault = Vault(OLD)
         self.assertEqual(go(Page(json.dumps(edited), approved_for(BLOCK)), vault)["code"], "SYNC_NOT_APPROVED")     # approval is of the exact content
 
+    def test_prose_that_merely_quotes_the_approval_line_is_not_an_approval(self):
+        page = Page(json.dumps(BLOCK))
+        digest = approved_for(BLOCK)
+        for prose in (f"To approve, write APPROVED HASH: {digest}", f"approved hash: {digest} (pending)", f"note APPROVED HASH: {digest}"):
+            page.children["results"] = page.children["results"][:1] + [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": prose}]}}]
+            vault = Vault(OLD)
+            self.assertEqual((go(page, vault)["code"], vault.writes), ("SYNC_NOT_APPROVED", 0), prose)
+        page.children["results"][1]["paragraph"]["rich_text"][0]["plain_text"] = f"APPROVED HASH: {digest}"
+        self.assertEqual(go(page, Vault(OLD))["code"], "SYNC_WRITTEN")
+
     def test_a_dry_run_changes_nothing_and_says_what_it_would_do(self):
         vault = Vault(OLD)
         out = go(Page(json.dumps(BLOCK), approved_for(BLOCK)), vault, live=False)
