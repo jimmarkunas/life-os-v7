@@ -20,7 +20,7 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def judge(url, full_text, proven=False, title_only=False):
+def judge(url, full_text, proven=False, title_only=False, thin_ok=False):
     """None when the row is sound, else a fixed reason code. proven: Enrich proved the page by title, so an ambiguous link shape is no longer a reason.
     title_only (D123): a title-search find has a title and a snippet by design, so a thin description is not a reason."""
     problem = quality.url_problem(url)
@@ -29,6 +29,8 @@ def judge(url, full_text, proven=False, title_only=False):
     if title_only:
         return None
     problem = quality.jd_problem(full_text)
+    if problem == "thin" and thin_ok:                      # Jim, Oct 21: a thin page on a Scale-Up sponsor's own board is Review, not a reason to demote
+        return None
     return "audit_jd_" + problem if problem else None
 
 
@@ -52,13 +54,15 @@ def run(limit, live, environ=os.environ):
             proven = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:titlewatch:%",))
             watched = {r[0] for r in cursor.fetchall()}
+            cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:su-%",))
+            thin_ok = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
             watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)
             cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
                            " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
             pages = cursor.fetchall()
     counts["checked"], counts["pages"], counts["excluded_waiting"] = len(rows), len(pages), len(excluded)
-    bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched)) for r in rows]
+    bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched, r[0] in thin_ok)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
     already = {r[0] for r, _ in bad}
     dupe_of = {}
