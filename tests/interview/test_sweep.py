@@ -83,6 +83,14 @@ class SweepTests(unittest.TestCase):
         self.assertEqual((sweep.mode({"INTERVIEW_CONVERT": " All "}), sweep.cap({}), sweep.cap({"INTERVIEW_CONVERT_CAP": "5"}), sweep.cap({"INTERVIEW_CONVERT_CAP": "99"})), ("all", 2, 5, 2))
         self.assertEqual((sweep.mode({"INTERVIEW_CONVERT": "all:1"}), sweep.cap({"INTERVIEW_CONVERT": "all:1", "INTERVIEW_CONVERT_CAP": "5"}), sweep.mode({"INTERVIEW_CONVERT": "inventory:3"})), ("all", 1, ""))
 
+    def test_a_targeted_run_converts_exactly_the_named_page(self):
+        client = SweepFake()
+        counts = sweep_run(client, {**CONVERT, "INTERVIEW_CONVERT": "all:1@" + "a" * 32})
+        self.assertEqual((sweep.target({"INTERVIEW_CONVERT": "all:1@" + "a" * 32}), counts["converted"], counts["waiting"]), ("a" * 32, 0, 0))
+        self.assertEqual((sweep.classify(client, "opportunity"), sweep.classify(client, "retired")), ("human", "human"))
+        for bad in ("inventory:2", "inventory@" + "a" * 32, "all:1@xyz", "all@", "all:100"):
+            self.assertEqual(sweep.mode({"INTERVIEW_CONVERT": bad}), "")
+
     def test_a_hand_made_page_is_adopted_with_every_one_of_jims_blocks_in_place_and_the_retired_one_too(self):
         client = SweepFake()
         kept = {key: [(b["id"], notion.text(b)) for b in client.blocks[key]] for key in ("opportunity", "retired")}
@@ -144,6 +152,24 @@ class SweepTests(unittest.TestCase):
         out = {}
         self.assertEqual(create.begin_adopt(client, "opportunity", True, out), "adopt_line_conflict")
         self.assertEqual(out, {})
+
+
+class CurrentPageTests(unittest.TestCase):
+    def test_a_converted_page_shows_jims_hand_made_rounds_once_and_is_then_left_alone(self):
+        from tests.interview.test_ui3c import texts, written
+        client, page_id = written()
+        client.blocks[page_id].append({"id": "lr", "type": "child_page", "child_page": {"title": "Interview 1: Jane Doe (9/10/26)"}})
+        client.pages["lr"], client.blocks["lr"] = page("Interview 1: Jane Doe (9/10/26)", page_id), [block("mine")]
+        client.pages["round-1"], client.blocks["round-1"] = page("Interview 1", page_id), [block("an untitled-by-rule round")]
+        tail = notion.human_tail(client, page_id)
+        self.assertNotIn("Jane Doe", " ".join(texts(client, page_id)))
+        first = sweep_run(client)
+        self.assertEqual((first["why"].get("parent_refreshed"), first["failed"]), (1, 0))
+        self.assertIn("Jane Doe", " ".join(texts(client, page_id)))
+        self.assertEqual(notion.human_tail(client, page_id), tail)                                   # Jim's notes and the round page untouched
+        again = sweep_run(client)
+        self.assertEqual((again["why"].get("parent_unchanged"), again["why"].get("parent_refreshed"), again["writes"]), (1, None, 0))
+        self.assertEqual(sweep_run(client, {**ENV, "INTERVIEW_CONVERT": "inventory"})["writes"], 0)
 
 
 class MigrationTests(unittest.TestCase):
