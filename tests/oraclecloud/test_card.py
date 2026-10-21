@@ -129,6 +129,29 @@ class Card(unittest.TestCase):
         with self.assertRaises(card.OracleCardError):
             self.run_card(report(), env={**self.ENV, "ATTENTION_CARD_BLOCK_ID": ""})
 
+    def test_the_card_is_found_under_the_jira_card_where_jim_moved_it(self):
+        rep = Report()
+        rep.add("col2", "column", "root")
+        rep.add("jira", "callout", "col2", [text("JIRA Execution")])
+        rep.add("oracle", "callout", "col2", [])
+        rep.add("ohead", "heading_3", "oracle", [text("Oracle Cloud (Updated Oct 14 · 6:07 AM CT)")])
+        rep.add("obody", "paragraph", "oracle", [])
+        env = {**self.ENV, "JIRA_CARD_BLOCK_ID": "jira"}
+        counts, _ = self.run_card(rep, env=env)
+        self.assertEqual(counts["written"], 2)
+        self.assertEqual(rep.plain("ohead"), "Oracle Cloud (Updated Oct 15 · 8:05 AM CT)")
+        with self.assertRaises(card.OracleCardError):                                  # without the JIRA anchor that column is not searched
+            self.run_card(rep)
+        both = report()                                                                 # a second card beside Attention makes it ambiguous
+        both.add("col2", "column", "root")
+        both.add("jira", "callout", "col2", [text("JIRA Execution")])
+        both.add("oracle2", "callout", "col2", [])
+        both.add("ohead2", "heading_3", "oracle2", [text("Oracle Cloud")])
+        both.add("obody2", "paragraph", "oracle2", [])
+        with self.assertRaises(card.OracleCardError):
+            self.run_card(both, env=env)
+        self.assertEqual(both.patches, [])
+
     def test_a_changed_protected_region_fails_after_the_write(self):
         states = iter([{"Attention": "a"}, {"Attention": "b"}])
         with mock.patch.object(report_region, "protected", lambda client, ids, fail: next(states)), contextlib.redirect_stdout(io.StringIO()):
