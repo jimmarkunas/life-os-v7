@@ -539,6 +539,47 @@ class KeepListRolesAreRedecided(Batch):
         self.assertEqual(self.row(1, ("admission",)), ("REVIEW",))
 
 
+class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
+    """The Oracle brief changed at stage.BRIEF_CHANGED_AT: a keep-list role the cloud answered before that goes back to 'never asked'; nothing else does."""
+
+    def answered(self, job_id, title, company="Revolut Ltd", at="2026-10-20 12:00:00", status="PUBLISHED", admission="REVIEW"):
+        self.titled(job_id, title, status=status, admission=admission, cloud_status="CANARY", page=f"page-{job_id}" if status == "PUBLISHED" else None)
+        self.db.raw.execute("UPDATE v7_jobs SET company=? WHERE id=?", (company, job_id))
+        self.db.raw.execute("UPDATE v7_job_fit SET cloud_at=?, cloud_score=68, cloud_run_id='old' WHERE job_id=?", (at, job_id))
+
+    def clear(self):
+        with mock.patch.object(stage.store, "connect", return_value=self.db):
+            with self.db.cursor() as cursor:
+                return stage.reask_kept(cursor)
+
+    def test_a_keep_list_role_answered_before_the_new_brief_is_cleared_and_keeps_its_score_until_the_new_answer(self):
+        self.answered(1, "Product Owner (Technical)")
+        self.assertEqual(self.clear(), 1)
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id", "cloud_score")), (None, None, 68))
+        self.assertEqual(self.clear(), 0)                                                                   # cleared once
+
+    def test_nothing_else_is_cleared(self):
+        self.answered(1, "Product Owner (Crypto)")                                                            # not on the keep list
+        self.answered(2, "Product Owner (Technical)", company="Acme Ltd")                                      # another company
+        self.answered(3, "Product Owner (Technical)", at="2026-10-21 06:00:00")                                # already answered with the new brief
+        self.answered(4, "Product Owner (Technical)", status="EXCLUDED_FIT", admission="EXCLUDE")              # not a candidate for the backlog anyway
+        self.assertEqual(self.clear(), 0)
+        for job_id in (1, 2, 3, 4):
+            self.assertEqual(self.row(job_id, ("cloud_status",)), ("CANARY",))
+
+    def test_the_fit_stage_does_it_only_when_live_and_gated(self):
+        self.answered(1, "Product Owner (Technical)")
+        env = {**ENV, "V7_CLOUD_FIT": "off"}
+        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.store, "ensure_schema"), \
+                mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), mock.patch.object(stage.sponsors, "load", return_value=None):
+            self.assertNotIn("kept_reasked", stage.run(10, False, env))
+            self.assertNotIn("kept_reasked", stage.run(10, True, {**env, "V7_FIT_GATE": "false"}))
+            self.assertEqual(self.row(1, ("cloud_status",)), ("CANARY",))
+            counts = stage.run(10, True, env)
+        self.assertEqual(counts["kept_reasked"], 1)
+        self.assertEqual(self.row(1, ("cloud_status",)), (None,))
+
+
 def metered(used_5h, used_week=1, stop=50):
     return {"stop": stop, "windows": [{"label": "5h", "used": used_5h, "reset_at": "2026-10-20T07:12:19+00:00"},
                                       {"label": "Week", "used": used_week, "reset_at": "2026-10-24T21:26:54+00:00"}]}

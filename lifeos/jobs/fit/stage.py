@@ -179,6 +179,27 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
     return redecided, failed
 
 
+# The Oracle-held brief (what the cloud model is told about Jim) was replaced with Jim's confirmed evidence at this moment (UTC). A keep-list role the cloud scored before it was
+# judged on the old brief; clearing its answer lets the existing backlog batch ask again with the new one. Cleared once: a new answer is stamped after this time.
+BRIEF_CHANGED_AT = datetime(2026, 10, 21, 5, 28, 14)
+KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
+                     " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL ORDER BY f.job_id LIMIT 500")
+CLEAR_FOR_REASK = ("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, cloud_run_id=NULL, cloud_request_hash=NULL"
+                   " WHERE job_id=%s AND cloud_status='CANARY' AND cloud_at < %s")
+
+
+def reask_kept(cursor):
+    """Keep-list roles (lanes.on_keep_list, nothing else) whose cloud answer predates the new Oracle brief go back to 'never asked' so the cloud backlog batch (D219, its own
+    quota and 50 % allowance stop) asks again. The stored score and decision stay until the new answer replaces them; no model call is made here. -> roles cleared."""
+    cursor.execute(KEPT_ASKED_BEFORE, (BRIEF_CHANGED_AT,))
+    cleared = 0
+    for job_id, title, company in cursor.fetchall():
+        if lanes.on_keep_list(company, title):
+            cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
+            cleared += int(cursor.rowcount or 0)
+    return cleared
+
+
 def cloud_promoter(profile, gate, counts, register):
     """-> promote(job_id, judgment, model): one store session per promotion (D219: the cloud run writes each job's answer right after its call)."""
     def promote(job_id, judgment, model):
@@ -274,6 +295,7 @@ def run(limit, live, environ=os.environ):
         with store.connect() as connection, connection.cursor() as cursor:
             counts["cloud_held_released"], counts["cloud_held_failed"] = release_held(cursor, profile, _now().date(), gate, counts, register)
             counts["kept_redecided"], counts["kept_redecide_failed"] = repromote_kept(cursor, profile, _now().date(), gate, counts, register)
+            counts["kept_reasked"] = reask_kept(cursor)
     scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
     for _, _, result, decision, _, _, _ in scored:
         counts["lane_" + decision.status.lower()] += 1
