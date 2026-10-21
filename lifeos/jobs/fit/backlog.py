@@ -19,7 +19,7 @@ import os
 import re
 
 from lifeos.jobs import fit_sync, guard, ledger, sponsors, store
-from lifeos.jobs.fit import cloud as fit_cloud, profile as fit_profile, stage
+from lifeos.jobs.fit import cloud as fit_cloud, profile as fit_profile, profile_sync, stage
 from lifeos.jobs.fit import edge                                          # LIFE-77: only the no-model `limits` request, to report the backlog count
 
 LEDGER_SKIP = {guard.APPLIED, guard.APPLIED_ON, guard.UNREADABLE}
@@ -62,7 +62,7 @@ def run(limit, live, environ=os.environ, client=None):
         calls = counts["backlog_calls_allowed"] = 1
         counts["backlog_targeted"] = 1
     try:
-        profile = fit_profile.load(environ)
+        profile = fit_profile.load(environ, profile_sync.stored_block(environ))
     except fit_profile.ProfileError:
         counts.update(cloud_fit="DEGRADED(PROFILE_MISSING)", cloud_degraded=1, failed=1)
         return counts
