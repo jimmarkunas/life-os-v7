@@ -126,6 +126,12 @@ def close_ids(rows, applied, parents):
     return ids
 
 
+def _stale_hours(environ):
+    """The outcome-mail staleness limit: the real one, or a smaller whole number of hours from the manual LIFE-19 proof input. It can only tighten the limit, never loosen it; anything else is ignored."""
+    raw = (environ.get("HIRING_OUTCOME_STALE_HOURS") or "").strip()
+    return int(raw) if raw.isdigit() and int(raw) < outcome_mail.STALE_HOURS else outcome_mail.STALE_HOURS
+
+
 def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
@@ -152,7 +158,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         outcome_reason = None
         try:
             heard, scanned = outcome_mail.load(conn)                  # D190: what the mail scan last found; unavailable never stops the pipeline
-            if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=outcome_mail.STALE_HOURS)):
+            if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=_stale_hours(environ))):
                 outcome_reason = "OUTCOME_MAIL_STALE"                 # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
         except Exception:                                             # noqa: BLE001
             heard, outcome_reason = {}, "OUTCOME_MAIL_UNREADABLE"

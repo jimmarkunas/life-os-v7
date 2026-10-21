@@ -953,6 +953,15 @@ class OutcomeConsumerTests(unittest.TestCase):
         t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))
         self.assertEqual((counts["status"], counts["reasons"]), ("fresh", []))
 
+    def test_the_manual_proof_input_can_only_tighten_the_staleness_limit_and_leaves_the_accepted_rows_on_the_card(self):
+        for value, status in (("0", "degraded"), ("1", "degraded"), ("", "fresh"), ("18", "fresh"), ("99", "fresh"), ("-1", "fresh"), ("soon", "fresh")):
+            with self.subTest(value=value):
+                with mock.patch.dict(RUN_ENV, {"HIRING_OUTCOME_STALE_HOURS": value}):
+                    t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))               # the scan is 2 hours old
+                self.assertEqual(counts["status"], status)
+                self.assertEqual(counts["reasons"], ["OUTCOME_MAIL_STALE"] if status == "degraded" else [])
+                self.assertEqual((counts["mail_outcomes"], len(table_state(t))), (1, 1))                  # the last accepted outcome and row stay either way
+
     def test_a_pipeline_with_no_accepted_state_yet_is_not_degraded_by_a_scan_that_has_nothing_to_look_for(self):
         t, store, counts = self.go(lambda conn: ({}, None))
         self.assertEqual(counts["status"], "fresh")

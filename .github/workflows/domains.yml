@@ -33,6 +33,10 @@ on:
         description: "Hiring Pipeline only (HIRE-1.2, no mail): the Job Ledger Applied state, the Hiring Pipeline pages and the Calendar into the private state row and the floating Hiring Pipeline region; dry run unless Actually write is ticked"
         type: boolean
         default: false
+      hiring_outcome_stale_hours:
+        description: "Hiring Pipeline PROOF only (LIFE-19, E13): treat the last outcome-mail scan as stale after this many hours (0 to 17; blank = the real 18). 0 shows the DEGRADED banner with the last accepted rows kept; the next normal run clears it. Never loosens the real limit"
+        type: string
+        default: ""
       imessage:
         description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
         type: boolean
@@ -865,6 +869,7 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_OUTCOME_STALE_HOURS: ${{ inputs.hiring_outcome_stale_hours }}
           HIRING_STATUS_BLOCK_ID: ${{ secrets.HIRING_STATUS_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
