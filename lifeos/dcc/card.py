@@ -133,31 +133,19 @@ def compose(areas, now):
 
     jira = areas.get("Jira") or {}
     fresh_lines = list(jira.get("lines", [])) if states.get("Jira", ("unset",))[0] == "fresh" else []
-    gtv, sprint = next((t for t in fresh_lines if t.startswith("GTV Action")), None), next((t for t in fresh_lines if "Overdue/Blocked" in t), None)
-    overdue, review = count("Bills", r"(\d+) overdue"), count("Mail Alerts", r"(\d+) need review")
-    waiting, hiring, combined = count("Mail Alerts", r"(\d+) waiting"), count("Hiring Pipeline", r"(\d+) active"), count("Jira", r"(\d+) Overdue/Blocked", sprint)
+    sprint = next((t for t in fresh_lines if "Overdue/Blocked" in t), None)
+    overdue, waiting = count("Bills", r"(\d+) overdue"), count("Mail Alerts", r"(\d+) waiting")
+    combined = count("Jira", r"(\d+) Overdue/Blocked", sprint)
     exceptions = 0 if "No active exceptions" in ((areas.get("Attention") or {}).get("status") or "") and states["Attention"][0] == "fresh" else count("Attention", r"(\d+) active exception")
     freshness = " · ".join(f"{label} {stamp}" if state == "fresh" else f"{label} {state}" + (f" (last {stamp})" if stamp else "") for label, (state, stamp) in states.items())
-    label, _, rest = (gtv or "").partition(" · ")
-    title, _, state = rest.rpartition(" · ")
-    title, state = (title, state) if title else (rest, "")                         # a GTV line with no status still names its task
-    bills_link = ((areas.get("Bills") or {}).get("links") or {}).get((areas.get("Bills") or {}).get("status"))
-    items = ([("Check " + ", ".join(l for l, _ in bad), "not current, so no decision is drawn from them", None)] if bad else [])
-    items += [("Triage overdue bills", f"{overdue} on the Bills card", bills_link)] if overdue else []
-    items += [("Clear overdue or blocked Jira items", f"{combined} on the Jira card", None)] if combined else []
-    items += [("Review Attention exceptions", f"{exceptions} active", None)] if exceptions else []
-    items += [("Review mail items", f"{review} need review", None)] if review else []
 
     def kpi(value, name, text):
         return (str(value) if value is not None else "—", name, text)
 
-    return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {l} {s.upper()}" for l, s in bad),
+    return {"health": f"Source health and freshness · {len(ok)} of {len(states)} current" + "".join(f" · {label} {state.upper()}" for label, state in bad),
             "detail": [freshness, ("✅" if not bad else "⚠️") + f" {len(ok)} of {len(states)} source cards current · This is source-card health, not proof that every task is complete."],
-            "items": items[:3] or [("Nothing flagged by the cards", "continue the day's planned work", None)],
-            "hiring": f"{hiring} active hiring opportunities" if hiring is not None else "Hiring Pipeline " + states.get("Hiring Pipeline", ("unset",))[0],
             "kpis": [kpi(overdue, "Overdue bills", source("Bills")), kpi(combined, "Jira Overdue / Blocked", source("Jira") + (" · count not reported" if combined is None and states.get("Jira", ("unset",))[0] == "fresh" else "")),
                      kpi(exceptions, "Attention items", source("Attention")), kpi(waiting, "Mail waiting", source("Mail Alerts"))]}
-
 
 ICONS = ("credit-card", "arrow-right", "arrow-up", "inbox")                  # the approved mockup's native icons, in card order
 
@@ -172,7 +160,7 @@ def _b(kind, *parts, children=None, icon=None):
 
 
 def render(model):
-    """Source health directly below the heading, then four equal KPI callouts and suggested decisions."""
+    """Source health directly below the heading, then four equal KPI callouts."""
     def column(ratio, *kids):
         return {"object": "block", "type": "column", "column": {"width_ratio": ratio, "children": list(kids)}}
 
@@ -180,11 +168,61 @@ def render(model):
         return {"object": "block", "type": "column_list", "column_list": {"children": list(cols)}}
 
     health = _b("toggle", _t(model["health"]), children=[_b("paragraph", _t(text)) for text in model["detail"]])
-    decisions = column(1.0, _b("callout", icon="checkmark-square", children=[_b("paragraph", _t("Suggested next decisions", bold=True)),
-                                                                          *[_b("numbered_list_item", _t(a, bold=True, link=l), _t(" — " + d)) for a, d, l in model["items"]],
-                                                                          _b("paragraph", _t(model["hiring"], bold=True), _t(" · See Hiring Pipeline below."))]))
     return [health, row(*[column(0.25, _b("callout", icon=icon, children=[_b("heading_3", _t(value)), _b("paragraph", _t(name, bold=True)), _b("paragraph", _t(text, gray=True))]))
-                         for icon, (value, name, text) in zip(ICONS, model["kpis"])]), row(decisions)]
+                         for icon, (value, name, text) in zip(ICONS, model["kpis"])])]
+
+
+def _decision_component(client, block, fail):
+    """Recognize only the standalone DCC decision callout and its one-column wrapper from the retired layout."""
+    if block.get("type") == "callout":
+        kids = report_region.children(client, block["id"], fail)
+        return bool(kids and report_region.plain(kids[0]).strip() == "Suggested next decisions")
+    if block.get("type") != "column_list":
+        return False
+    columns = report_region.children(client, block["id"], fail)
+    if len(columns) != 1 or columns[0].get("type") != "column":
+        return False
+    kids = report_region.children(client, columns[0]["id"], fail)
+    return len(kids) == 1 and _decision_component(client, kids[0], fail)
+
+
+def _attention_has_decisions(client, attention_id, fail):
+    """True only when the Attention callout's own text already carries the decisions this widget used to show."""
+    if not attention_id:
+        return False
+    meta = client.call("GET", f"/blocks/{report_region.clean_id(attention_id)}")
+    if not isinstance(meta, dict) or meta.get("type") != "callout":
+        return False
+    return "Suggested next decisions" in report_region.plain({"type": "callout", "callout": meta.get("callout") or {}})
+
+
+def _remove_decision_component(client, block_id, protected_ids, fail, live, replaced=True):
+    meta = client.call("GET", f"/blocks/{report_region.clean_id(block_id)}")
+    kids = report_region.children(client, report_region.clean_id(block_id), fail)
+    if not isinstance(meta, dict) or meta.get("type") != "callout" or not kids or kids[0].get("type") not in report_region.HEADINGS or report_region.plain(kids[0]).strip() != TITLE:
+        raise fail("CARD_NOT_OWNED")
+    matches = [(index, block) for index, block in enumerate(kids[1:], 1) if _decision_component(client, block, fail)]
+    if not matches:
+        return False, 0
+    if not replaced:
+        raise fail("DECISIONS_NOT_IN_ATTENTION")                       # never delete the only copy: the Attention card has not written the decisions yet
+    if len(matches) != 1 or matches[0][0] != len(kids) - 1:
+        raise fail("CARD_STRUCTURE_CHANGED")
+    retired = matches[0][1]
+    try:
+        router.check_write(MODULE, [TITLE])
+    except router.RouterError:
+        raise fail("CARD_NOT_OWNED") from None
+    if not live:
+        return True, 0
+    before = report_region.protected(client, protected_ids, fail)
+    try:
+        client.call("DELETE", f"/blocks/{retired['id']}")
+    finally:
+        report_region._prove(client, MODULE, before, protected_ids, "dcc", fail)
+    if any(block.get("id") == retired["id"] for block in report_region.children(client, report_region.clean_id(block_id), fail)):
+        raise fail("CARD_VERIFY_FAILED")
+    return True, 1
 
 
 def run(limit, live, environ=os.environ, client=None, now=None):
@@ -201,10 +239,15 @@ def run(limit, live, environ=os.environ, client=None, now=None):
     states = list(by_area.values())
     spec = render(compose(areas, now))
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
-    changed, removed = report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)
+    replaced = _attention_has_decisions(client, environ.get("ATTENTION_CARD_BLOCK_ID"), _fail)
+    retired, removed_widget = _remove_decision_component(client, block_id, protected_ids, _fail, live, replaced)
+    if retired and not live:
+        changed, removed = 0, 0
+    else:
+        changed, removed = report_region.replace_tree(client, block_id, TITLE, MODULE, spec, protected_ids, _fail, "dcc", live)
     counts = {"areas": len(areas), "fresh": states.count("fresh"), "not_current": len(states) - states.count("fresh"), "states": by_area, "status": "fresh", "blocks_written": 0}
     if live:
-        counts["blocks_written"], counts["removed"] = changed, removed
+        counts["blocks_written"], counts["removed"] = changed + removed_widget, removed
     try:
         counts["header"] = header.run(client, report_region.clean_id(block_id), now, live, _fail)                      # D183: never changes the Command Center's own result
     except NotionError as error:

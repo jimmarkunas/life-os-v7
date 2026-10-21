@@ -100,7 +100,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/amazon/retention.py`: D139: Amazon order mail older than 30 days goes to the Gmail Trash, once its order is safely recorded in the canonical Amazon Orders data source.
 - `lifeos/amazon/stage.py`: Gmail to canonical Notion Amazon Orders; filing follows a verified durable write.
 ### lifeos/attention/
-- `lifeos/attention/card.py`: Attention card (D128): the one line the Daily Report's Attention callout shows above Jim's interactive Attention view.
+- `lifeos/attention/card.py`: Attention card (D128): status, suggested decisions and hiring summary above Jim's interactive view.
 - `lifeos/attention/policy.py`: Attention admission policy (D127). Attention is a small weekly exception queue for genuine unresolved human judgment, never a second task list.
 - `lifeos/attention/reconcile.py`: Attention reconciler (D127): week math, natural key and the plan of writes. Pure: no clock, no network.
 - `lifeos/attention/stage.py`: Attention (D127): Gmail label and Outlook category Jim controls -> the canonical Notion Attention data source. Counts and fixed codes only.
@@ -465,7 +465,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D125: Explain: where every job of a company is and why, in the public log (2026-10-04)
 - D126: A tick never replaces a manual run (2026-10-04)
 - D127: Attention: a weekly exception queue V7 owns (2026-10-04)
-- D128: The Attention card: one line above the interactive view (2026-10-04)
+- D128: The Attention card: status and next decisions above the interactive view (2026-10-04; updated 2026-10-21)
 - D129: The Attention callout has no heading, so the card is headless (2026-10-04)
 - D130: Attention admits what Jim routes to it; a push for new items; the card removes leftover lines (2026-10-04)
 - D131: The Attention status line is the callout's own text (2026-10-04)
