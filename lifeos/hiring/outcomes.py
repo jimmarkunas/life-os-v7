@@ -22,6 +22,7 @@ from . import snapshot as hiring_snapshot
 
 STORE, KEY, SCHEMA_V = Store("v7_hiring_outcomes"), 1, 1
 SCAN_EVERY_HOURS = 12                  # outcome mail is not urgent; the stage decides when it is due, so a tick that is not due reads no mail
+STALE_HOURS = 18                       # E13: a scan not saved for this long (one missed cycle plus a tick) makes the Hiring card DEGRADED; the last accepted outcomes stay shown
 MIN_DAYS, MAX_DAYS = 14, 60            # how far back it reads: from the oldest evidence in the pipeline, between these bounds
 BODY_CHARS = 3000
 REJECTED, OFFER = "REJECTED", "OFFER"

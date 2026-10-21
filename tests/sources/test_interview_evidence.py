@@ -625,6 +625,8 @@ class StageClock(unittest.TestCase):
         self.assertEqual(order, ["clock", "mail", "clock"])                                   # the early one for the scans, a fresh one for the writes
         self.assertEqual(got["context"].timeout_seconds, ev.STAGE_SECONDS)
         self.assertGreater(got["context"].remaining_seconds(), ev.STAGE_SECONDS - 5)
+        self.assertEqual(ev.STAGE_SECONDS, 720)                                      # long enough for the page scans of five pursuits and their writes, and inside the 30-minute recruiters job
+
 
 
 class Window(unittest.TestCase):
