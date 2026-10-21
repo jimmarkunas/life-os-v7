@@ -44,43 +44,67 @@ def _plain(page_id):
     return str(page_id or "").replace("-", "").lower()
 
 
-def _role_text(page):
-    return "".join(part.get("plain_text", "") for part in ((page.get("properties") or {}).get("Role") or {}).get("rich_text") or []).strip()
+def _text(page, name):
+    return "".join(part.get("plain_text", "") for part in ((page.get("properties") or {}).get(name) or {}).get("rich_text") or []).strip()
 
 
-def backfill_roles(client, live, limit=ROLE_BATCH):
-    """Fill an EMPTY Role on a published page from the job's own title, whether or not the job has a Fit score. Selected by what Notion actually holds (an empty Role), so no stored flag stands in for a write:
-    once a page reads back with its Role it is never selected again. Writes the Role property only; Fit, Fit Authority, admission, lanes, human state and an existing Role are never touched."""
-    counts = {"role_due": 0, "role_filled": 0, "role_failed": 0}
-    empty, cursor = {}, None
+def _empty_roles(client, counts):
+    """{page id: Stable Job Key} of every Ledger page whose Role is empty, or None when the Ledger could not be read in full (counted, so an incomplete read is never a zero)."""
+    found, cursor = {}, None
     for _ in range(ROLE_PAGES):
         body = {"page_size": 100, "filter": {"property": "Role", "rich_text": {"is_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
         try:
-            found = client.call("POST", f"/data_sources/{client.source}/query", body)
+            answer = client.call("POST", f"/data_sources/{client.source}/query", body)
         except NotionError:
-            counts["role_failed"] += 1                                       # an unreadable Ledger leaves every page as it was; the next run asks again
-            return counts
-        results = found.get("results") if isinstance(found, dict) else None
+            counts["role_failed"] += 1                                         # an unreadable Ledger leaves every page as it was; the next run asks again
+            return None
+        results = answer.get("results") if isinstance(answer, dict) else None
         if not isinstance(results, list) or not all(isinstance(page, dict) and page.get("id") for page in results):
-            counts["role_failed"] += 1                                       # an answer that is not a page list is never read as "nothing to fill"
-            return counts
-        empty.update({_plain(page["id"]): page["id"] for page in results})
-        cursor = found.get("next_cursor") if found.get("has_more") else None
+            counts["role_failed"] += 1                                         # an answer that is not a page list is never read as "nothing to fill"
+            return None
+        found.update({page["id"]: _text(page, "Stable Job Key") for page in results})
+        cursor = answer.get("next_cursor") if answer.get("has_more") else None
         if not cursor:
-            break
+            return found
+    counts["role_incomplete"] = 1                                              # more empty pages than this run reads: say so, never report the part read as the whole
+    return found
+
+
+def backfill_roles(client, live, limit=ROLE_BATCH):
+    """Fill an EMPTY Role on a Ledger page from the job's own title, whether or not the job has a Fit score or a stored page id. The pages are selected by what Notion actually holds (an empty Role), then matched to
+    v7_jobs by the page's id or its Stable Job Key, so no stored flag stands in for a write and a row whose page id was cleared still finds its page. Once a page reads back with its Role it is never selected again.
+    Writes the Role property only; Fit, Fit Authority, admission, lanes, human state and an existing Role are never touched. Counts say why an empty page was left: no job row, no title, or not a job page."""
+    counts = {"role_empty": 0, "role_due": 0, "role_filled": 0, "role_failed": 0, "role_no_row": 0, "role_no_title": 0, "role_not_job": 0}
+    empty = _empty_roles(client, counts)
     if not empty:
         return counts
+    counts["role_empty"] = len(empty)
+    pages = {_plain(page_id): page_id for page_id in empty}
+    keys = {key: page_id for page_id, key in empty.items() if key}
+    counts["role_not_job"] = len([1 for key in empty.values() if not key])
     with store.connect() as connection, connection.cursor() as cursor_:
-        cursor_.execute("SELECT notion_page_id, title FROM v7_jobs WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL AND title IS NOT NULL AND title <> ''")
-        titles = {_plain(page_id): title.strip() for page_id, title in cursor_.fetchall() if _plain(page_id) in empty and title.strip()}
+        marks = lambda n: ", ".join(["%s"] * n)                               # noqa: E731
+        ids = list(empty) + [_plain(page_id) for page_id in empty]
+        cursor_.execute(f"SELECT notion_page_id, dedupe_key, title FROM v7_jobs WHERE notion_page_id IN ({marks(len(ids))}) OR dedupe_key IN ({marks(len(keys) or 1)})", (*ids, *(keys or ("",))))
+        rows = cursor_.fetchall()
+    titles, seen = {}, set()
+    for page_id, key, title in rows:
+        target = pages.get(_plain(page_id)) or keys.get(key)
+        if not target:
+            continue
+        seen.add(target)
+        if (title or "").strip():
+            titles[target] = title.strip()
+        else:
+            counts["role_no_title"] += 1
+    counts["role_no_row"] = len([1 for page_id, key in empty.items() if key and page_id not in seen])
     counts["role_due"] = len(titles)
     if not live:
         return counts
-    for key, title in sorted(titles.items())[:limit]:
-        page_id = empty[key]
+    for page_id, title in sorted(titles.items())[:limit]:
         try:
             client.call_once("PATCH", f"/pages/{page_id}", {"properties": {"Role": {"rich_text": rich_text(title)}}})      # one write, never retried blind: the read-back decides
-            ok = _role_text(client.call("GET", f"/pages/{page_id}")) == title
+            ok = _text(client.call("GET", f"/pages/{page_id}"), "Role") == title
         except NotionError:
             ok = False
         counts["role_filled" if ok else "role_failed"] += 1
@@ -101,8 +125,9 @@ def run(client, live, gated=False, limit=150):
         row_meta = {"lane": job_lane, "location": location, "salary": salary, "route": route, "text": text}
         try:
             client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title)})
-        except NotionError:
+        except NotionError as error:
             counts["failed"] += 1
+            counts["failed_why"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]            # a fixed code (and Notion's own error code), as publish reports it: the failure is diagnosable from the log
             if counts["failed"] >= 3:
                 break
             continue
