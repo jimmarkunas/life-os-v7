@@ -86,8 +86,8 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=()):
-        self.writer, self.owner, self.tops = writer, owner, list(tops)
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None):
+        self.writer, self.owner, self.tops, self.legacy = writer, owner, list(tops), legacy or {}
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -105,6 +105,7 @@ class Run:
              patch.object(notion, "ownership", return_value=self.owner), \
              patch.object(notion, "children", return_value=self.tops), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
+             patch.object(ev, "legacy_facts", side_effect=lambda client, page_id, context: self.legacy.get(page_id)), \
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
@@ -443,7 +444,7 @@ class Conversion(unittest.TestCase):
         (parent, query), = got["evidence"]
         self.assertEqual((parent.company, parent.role, query.stable_job_key, query.confirmed_round, query.ordinal, query.interview_date),
                          ("SH/FT", "Technical Program Manager", "recruiter-sh-ft-technical-program-manager", True, None, None))
-        self.assertEqual(counts["convert"], {"adopt": 1, "upgrade": 0, "awaiting_adopt_line": 0})
+        self.assertEqual(counts["convert"], {"adopt": 1, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0})
         self.assertEqual(counts["failed"], 0)
 
     def test_a_named_page_without_the_adopt_line_is_counted_and_not_written(self):
@@ -454,7 +455,7 @@ class Conversion(unittest.TestCase):
         counts, got = self.go(Ownership.ADOPT, title="Gamma — Program Manager")
         self.assertEqual((len(got["evidence"]), counts["convert"]["adopt"]), (1, 1))                    # Jim's own line is the opt-in
         counts, got = self.go(Ownership.HUMAN, title="Gamma — Program Manager")
-        self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}))
+        self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}))
 
     def test_a_ui3b_page_is_reported_as_waiting_for_its_own_migration_not_upgraded(self):
         counts, got = Run(parents=(("p1", "Gamma — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, rows=(), roster=[], records=[], tops=NOTES_TOP)()
@@ -463,6 +464,56 @@ class Conversion(unittest.TestCase):
     def test_a_machine_skeleton_page_is_upgraded_not_reported_as_a_gap(self):
         counts, got = self.go(Ownership.MACHINE, title="Alpha — Senior Manager")
         self.assertEqual((len(got["evidence"]), counts["convert"]["upgrade"], counts["why"].get("parent_legacy_layout")), (1, 1, None))
+
+
+class UiThreeBMigration(unittest.TestCase):
+    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True)); every other UI 3b page still waits."""
+    KEY = "walmart-r-2612137"
+
+    def go(self, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Walmart"}, legacy=True, title="Walmart — Senior Manager, Operations and Implementation", rows=None):
+        row = {**ROW, "company": "Walmart", "role": "Senior Manager, Operations and Implementation", "stable_job_key": self.KEY}
+        return Run(parents=(("p1", title),), facts={"p1": None}, legacy={"p1": (self.KEY, URL)} if legacy else {}, kids={"p1": (child(),)},
+                   rows=rows if rows is not None else (row,), roster=[], records=[], environ=environ, tops=NOTES_TOP)()
+
+    def test_a_named_ui3b_page_queues_its_refresh_from_its_own_key_and_request(self):
+        counts, got = self.go()
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, query.stable_job_key, query.source, query.ordinal), ("Walmart", self.KEY, URL, 1))
+        self.assertEqual((counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout"), counts["failed"]), (1, None, 0))
+
+    def test_a_ui3b_page_nobody_named_a_page_without_a_readable_key_or_a_missing_ledger_row_is_not_migrated(self):
+        counts, got = self.go(title="Gamma — Program Manager")
+        self.assertEqual((got["evidence"], counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout")), ([], 0, 1))
+        counts, got = self.go(legacy=False)
+        self.assertEqual((got["evidence"], counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout")), ([], 0, 1))
+        counts, got = self.go(rows=())
+        self.assertEqual(got["evidence"], [])
+        self.assertEqual(counts["failed"], 1)
+
+    def test_the_stage_passes_migrate_only_for_a_named_pursuit(self):
+        import inspect
+        self.assertIn("migrate=notion.is_legacy_company(environ, parent_query.company)", inspect.getsource(create.apply))
+
+    def regions(self, key_texts, layout=True, urls=(URL,)):
+        run = lambda text, link=None: {"plain_text": text, "text": {"content": text, **({"link": {"url": link}} if link else {})}}
+        machine = [{"id": "fold", "type": "toggle", "toggle": {"rich_text": []}}, {"id": "cp", "type": "callout", "has_children": False,
+                   "callout": {"rich_text": [run("Canonical opportunity parent" if layout else "Something else")]}},
+                   {"id": "req", "type": "paragraph", "paragraph": {"rich_text": [run(ev.REQUEST, u) for u in urls]}}]
+        lines = [{"id": "m", "type": "paragraph", "paragraph": {"rich_text": [run(notion.MARKERS["opportunity"])]}}]
+        nodes = [{"text": t, "children": []} for t in key_texts]
+        return machine, lines, nodes
+
+    def read(self, key_texts, **kw):
+        machine, lines, nodes = self.regions(key_texts, **kw)
+        with patch.object(create, "machine_region", return_value=(machine, lines, [])), patch.object(notion, "region_nodes", return_value=nodes):
+            return ev.legacy_facts(object(), "p1", None)
+
+    def test_the_key_is_read_from_the_page_text_and_two_keys_or_another_layout_are_not_guessed(self):
+        self.assertEqual(self.read(["Job Ledger: row · requisition R-2612137 / Stable Job Key walmart-r-2612137"]), (self.KEY, URL))
+        self.assertEqual(self.read(["Stable Job Key a-1", "Stable Job Key b-2"]), (None, URL))
+        self.assertEqual(self.read(["no key here"]), (None, URL))
+        self.assertIsNone(self.read(["Stable Job Key a-1"], layout=False))
+        self.assertEqual(self.read(["Stable Job Key a-1"], urls=(URL, OTHER)), ("a-1", None))
 
 
 class LegacyRounds(unittest.TestCase):

@@ -337,7 +337,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             code = creation_eligibility(target, parent, owner, child, children, query)
             current = views.opportunity(client, parent_query, query, pipeline, children, today())
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
-                done = refresh(client, parent.page_id, current, live, out, context)
+                done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))     # a UI 3b page migrates only for a pursuit Jim named
                 if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
                     done = link_transcript(client, child.page_id, live, out)           # the round page links its Full Transcript page
                     done = done if done in ("transcript_linked", "transcript_link_allowed", "readback_content_mismatch") else "parent_unchanged"
