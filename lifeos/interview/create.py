@@ -79,6 +79,33 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     return _sections_readback(client, parent.page_id, before, out, "parent_adopted", current, sections)
 
 
+def begin_adopt(client, page_id, live, out, context=None):
+    """The batch conversion's first step for a hand-made opportunity page (Jim: convert all of them): put the one `LIFE OS: adopt` line Jim would have typed at the very top, then prove every block that was
+    there is still there, in order, unchanged. Nothing is edited, moved or deleted; the normal adopt then converts the page. A page that already has any LIFE OS line, fold or notes heading is never touched."""
+    blocks = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    labels = [notion.text(b) for b in blocks]
+    if not blocks or notion.ADOPT in labels or notion.FOLD in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
+        return "adopt_line_conflict"
+    before = notion.human_tail(client, page_id, [{}] + blocks)          # every block already on the page, child pages left out
+    out["writes_planned"] = 1
+    if not live:
+        return "adopt_line_allowed"
+    if context:
+        context.require_time()
+    try:
+        client.call("PATCH", f"/blocks/{page_id}/children", {"children": [notion.paragraph(notion.ADOPT)], "position": {"type": "start"}})
+    except NotionError:
+        return "write_failed"
+    out["writes"] = out["readback_failed"] = 1
+    after = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    if len(after) != len(blocks) + 1 or notion.text(after[0]) != notion.ADOPT or [b.get("id") for b in after[1:]] != [b.get("id") for b in blocks]:
+        return "readback_layout_mismatch"
+    if notion.human_tail(client, page_id, after) != before:
+        return "readback_protected_changed"
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    return "adopt_line_added"
+
+
 def cause_of(error):
     """Why a page's pass ended as pipeline_incomplete, as a fixed code: the Notion client's own code (upper-case letters, digits and underscores) or the exception's class name."""
     text = str(error)
@@ -111,6 +138,16 @@ def machine_region(client, page_id, context=None):
     if len(heads) != 1 or not notion.is_fold(tops[0]):
         return None, [], tops
     return tops[:heads[0]], notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
+
+
+def prefold_region(client, page_id, context=None):
+    """(machine blocks, [marker], top blocks) of a page V7 wrote before the marker was folded: its first block is the plain opportunity marker line (D235), everything before the one Jim's Notes heading is V7's.
+    None when the page is not that shape."""
+    tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
+    if len(heads) != 1 or not tops or tops[0].get("type") != "paragraph" or not notion.is_marker(notion.text(tops[0]), "opportunity") or notion.is_fold(tops[0]):
+        return None, [], tops
+    return tops[:heads[0]], [tops[0]], tops
 
 
 def _pages(tops):
@@ -149,6 +186,10 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     line names this job and still matches a fresh read of the region) is replaced; a human edit there, another job's page or an
     unrecognized layout stops with a code and writes nothing. Jim's Notes and the child pages are digest-checked."""
     machine, lines, tops = machine_region(client, page_id, context)
+    prefold = False
+    if machine is None and migrate:                                     # a page V7 wrote with the plain marker line (no fold, no render line): its region is V7's, replaced once like a UI 3b page
+        machine, lines, tops = prefold_region(client, page_id, context)
+        prefold = machine is not None
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
     sections, source = rendered(current)
@@ -162,7 +203,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
             return "machine_region_edited"
         if previous == source:
             return "parent_unchanged"
-    elif not (migrate and len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")):
+    elif not (migrate and (prefold or (len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")))):
         return "parent_legacy_layout"                                   # UI 3b (D235-D237): migrated only when authorized
     before = (notion.human_tail(client, page_id), _pages(tops))
     out["writes_planned"] = 1

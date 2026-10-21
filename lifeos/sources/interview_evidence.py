@@ -25,7 +25,7 @@ from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import RunContext
-from lifeos.sources import hiring as pipeline
+from lifeos.sources import hiring as pipeline, interview_sweep as sweep
 
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
@@ -371,10 +371,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
     counts["convert"] = convert
+    if sweep.mode(environ) and scan.complete:                                # Jim, Oct 21: every opportunity page becomes the new page; INTERVIEW_CONVERT=inventory only counts them
+        counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     counts["pursuit_requests"] = pursuit_requests
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
-    counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    counts["failed"] = sum(why.values()) + counts["blocked"] + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts

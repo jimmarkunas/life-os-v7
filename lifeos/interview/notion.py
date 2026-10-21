@@ -505,6 +505,11 @@ def append_children(client, page_id, heading_id, blocks):
     return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
 
 
+def paragraph(content):
+    from lifeos.platform.notion_client import rich_text
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(content)}}
+
+
 def delete_block(client, block_id):
     return client.call("DELETE", f"/blocks/{block_id}")
 
