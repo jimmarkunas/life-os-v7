@@ -291,6 +291,28 @@ class FirstPartyAge(unittest.TestCase):
             self.assertFalse(lanes.first_party_source(source), source)
 
 
+class ThinPageTests(unittest.TestCase):
+    """Jim, Oct 21: a Scale-Up sponsor's own board role whose page is too thin to judge is reviewed from its apply link."""
+
+    def facts(self, fit, thin, kept=False):
+        return lanes.facts_for(fit, "Delivery Lead", "London \u00b7 office \u00b7 United Kingdom", "x", None, None, date(2026, 10, 4),
+                               route="Scale-up:POSITIVE", first_party=True, kept=kept or thin, thin=thin)
+
+    def test_a_thin_page_never_admits_and_is_never_excluded_for_fit_alone(self):
+        today = date(2026, 10, 4)
+        decision = lanes.decide("Scale-Up", self.facts(90, True), today)[0]
+        self.assertEqual((decision.status, decision.reason), (lanes.REVIEW, lanes.THIN_REASON))              # a good score from thin text is not a Go
+        low = lanes.decide("Scale-Up", self.facts(40, True), today)[0]
+        self.assertEqual(low.status, lanes.REVIEW)                                                          # and a poor one is not an exclusion
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(40, False), today)[0].status, lanes.EXCLUDE)   # a real description is judged as before
+        self.assertEqual(lanes.public_reason(lanes.THIN_REASON), "thin_description")
+
+    def test_only_a_scale_up_boards_own_source_counts(self):
+        self.assertTrue(lanes.thin_review_source("web:su-veramed-limited"))
+        for source in ("web:openjobs", "web:greenhouse-acme", "web:titlewatch:su-revolut-ltd", "jobright", "", None):
+            self.assertFalse(lanes.thin_review_source(source), source)
+
+
 class KeepListTests(unittest.TestCase):
     """D115: a role on Jim's keep list is never excluded for Fit alone; it goes to Review."""
 

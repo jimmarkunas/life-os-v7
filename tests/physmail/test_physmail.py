@@ -140,7 +140,7 @@ class FakeGmail:
             raise GmailError(self.list_error)
         return list(self.messages)
 
-    def message_record(self, message_id):
+    def message_record(self, message_id, keep_lines=False):
         if self.read_error == message_id:
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
         return copy.deepcopy(self.messages[message_id])
@@ -163,7 +163,7 @@ class StageTests(unittest.TestCase):
         counts, gmail = self.run_stage([mail("n1", "New Mail (3)"), actions("a1", "Mail #4801 scanned")])
         self.assertEqual((counts["listed"], counts["arrivals_new"], counts["actions_new"], counts["saved"], counts["state_unidentified"]), (2, 1, 1, 1, 13))
         after = int(state.ANCHOR_AT.timestamp())
-        self.assertEqual(gmail.queries, [(f"from:{events.DOMAIN} after:{after}", 1000)])
+        self.assertEqual(gmail.queries, [(f"(from:{events.DOMAIN} OR from:{events.FEDEX_SENDER}) after:{after}", 1000)])
         self.assertEqual((self.store.saves, self.store.row["anchor_count"], self.store.row["accepted_at"]), (1, 11, NOW.isoformat()))
 
     def test_without_state_or_anchor_nothing_is_saved_and_the_failure_is_a_fixed_code(self):
@@ -180,7 +180,7 @@ class StageTests(unittest.TestCase):
         counts, _ = self.run_stage(env={}, gmail=again)                                     # the anchor is no longer needed
         self.assertEqual((counts["arrivals_new"], counts["saved"]), (0, 1))
         floor = max(NOW - stage.OVERLAP, state.ANCHOR_AT)                                   # the overlap never reaches back before the anchor
-        self.assertEqual(again.queries[0][0], f"from:{events.DOMAIN} after:{int(floor.timestamp())}")
+        self.assertEqual(again.queries[0][0], f"(from:{events.DOMAIN} OR from:{events.FEDEX_SENDER}) after:{int(floor.timestamp())}")
 
     def test_an_incomplete_listing_or_an_unreadable_message_fails_closed_and_changes_nothing(self):
         self.run_stage([mail("n1", "New Mail (3)")])
@@ -242,8 +242,8 @@ class CardRenderTests(unittest.TestCase):
         text = self.lines(blocks)
         self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 14 waiting · 0 need review"), text[0])
         self.assertIn("13 new item(s) not yet identified by a mail number", text)
-        self.assertIn("1 forwarded, waiting for tracking", text)
-        self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/in")
+        self.assertIn("#4801  ·  forwarded Oct 5  ·  ⚠ Tracking unavailable — obtain from provider", text)
+        self.assertEqual(blocks[-1]["paragraph"]["rich_text"][0]["text"]["link"]["url"], f"https://app.{events.DOMAIN}/")
         self.assertEqual((counts["status"], counts["waiting"]), ("fresh", 14))
 
     def test_missing_stale_failed_or_unbound_evidence_is_degraded_and_never_none(self):
@@ -395,6 +395,8 @@ class RuntimePathTests(unittest.TestCase):
         self.assertTrue(ingest["continue-on-error"] and card_step["continue-on-error"])               # a failure is a warning, not a Jobs failure
         for name in ("physical_mail", "physical_mail_anchor"):
             self.assertIn(name, domains[True]["workflow_dispatch"]["inputs"])
+        self.assertIn("inputs.physical_mail", domains["jobs"]["dcc"]["if"])                          # LIFE-95: a mail-only run refreshes the Command Center in the same run, through the existing job
+        self.assertEqual(ingest["env"]["PHYSICAL_MAIL_EXPECT"], "${{ vars.PHYSICAL_MAIL_EXPECT }}")    # Jim's own tally (counts only) gates the one-time rebuild
         self.assertNotIn("mail", yaml.safe_load((root / "hourly.yml").read_text())["jobs"])          # no second scheduler, workflow family or hourly step
         self.assertNotIn("schedule", domains[True])
 
@@ -415,6 +417,366 @@ class RuntimePathTests(unittest.TestCase):
     def test_the_state_table_is_the_one_snapshot_table_with_one_row(self):
         self.assertEqual((stage.STORE.table, stage.KEY), ("v7_physical_mail", 1))
         self.assertIn("CREATE TABLE IF NOT EXISTS v7_physical_mail", stage.STORE.schema[0])
+
+
+# ---- LIFE-95: individual pieces, the HTML-only notices, the one-time rebuild ---------------------------------------------------------------------------------------------
+import base64
+
+from lifeos.platform import gmail as gmail_mod
+
+
+def _b64(text):
+    return base64.urlsafe_b64encode(text.encode()).decode()
+
+
+def html_only(html):
+    return {"mimeType": "multipart/alternative", "parts": [{"mimeType": "text/html", "body": {"data": _b64(html)}}]}
+
+
+def rows(numbers, verb):
+    return "".join(f"<tr><td>Mail #{n}</td><td>{verb}</td></tr>" for n in numbers)
+
+
+SCANNED = [5000000 + i for i in range(1, 10)]            # synthetic numbers only: nothing here is a real mail number
+RECYCLED = [5000000 + i for i in range(10, 20)]
+SHREDDED, FORWARDED = 5000020, 5000021
+ANCHOR = 21
+
+
+class HtmlGmail(FakeGmail):
+    """Builds each message the way Gmail answers an HTML-only vendor notice and reads it through the real extraction, honouring keep_lines."""
+
+    def __init__(self, notices, **kw):
+        super().__init__([mail(mid, subject, "", at) for mid, subject, _, at in notices], **kw)
+        self.payloads = {mid: payload for mid, _, payload, _ in notices}
+        self.keep = []
+
+    def message_record(self, message_id, keep_lines=False):
+        record = super().message_record(message_id)
+        self.keep.append(keep_lines)
+        record["body_text"] = gmail_mod._find_text(self.payloads[message_id], keep_lines)
+        return record
+
+
+def census(first_at="2026-10-19T15:00:00+00:00"):
+    scan_and_recycle = html_only("<html><body><p>Completed Action Requests</p><table>" + rows(SCANNED, "Scan") + rows(RECYCLED, "Recycle") + "</table></body></html>")
+    shred = {"mimeType": "text/plain", "body": {"data": _b64(f"Mail #{SHREDDED}: Shred completed")}}
+    forward = html_only(f"<html><body><ul><li>Item {FORWARDED} - Forward completed</li></ul></body></html>")
+    return [("c1", "Completed Action Requests", scan_and_recycle, first_at), ("c2", "Completed Action Requests", shred, "2026-10-19T16:00:00+00:00"),
+            ("c3", "Completed Action Requests", forward, "2026-10-20T15:00:00+00:00")]
+
+
+class HtmlNoticeTests(unittest.TestCase):
+    SENDER = VENDOR
+
+    def extract(self, payload, keep):
+        body = gmail_mod._find_text(payload, keep)
+        return events.extract({"id": "m", "sender": self.SENDER, "subject": "Completed Action Requests", "received_at": "2026-10-19T15:00:00+00:00", "body_text": body})
+
+    def test_an_html_only_multi_item_notice_keeps_one_action_per_line(self):
+        payload = census()[0][2]
+        got = self.extract(payload, True)
+        self.assertEqual((got["kind"], len(got["actions"])), ("ACTIONS", 19))
+        self.assertEqual({verb for _, verb in got["actions"]}, {"SCAN", "RECYCLE"})
+        self.assertEqual(sum(1 for _, verb in got["actions"] if verb == "SCAN"), 9)
+
+    def test_every_other_consumer_keeps_the_flat_body_and_plain_text_is_the_same_either_way(self):
+        flat = self.extract(census()[0][2], False)
+        self.assertEqual((flat["kind"], flat["reason"]), ("REVIEW", "ID_AMBIGUOUS"))                    # the default (Amazon, Attention, delivery census) is untouched
+        plain = {"mimeType": "text/plain", "body": {"data": _b64("Mail #5000001: Scan completed\nMail #5000002: Scan completed")}}
+        self.assertEqual(gmail_mod._find_text(plain, True), gmail_mod._find_text(plain, False))
+        self.assertFalse(inspect.signature(gmail_mod.Gmail.message_record).parameters["keep_lines"].default)
+
+    def test_genuine_ambiguity_stays_review_even_with_lines_kept(self):
+        two = html_only("<table><tr><td>Mail #5000001 and #5000002</td><td>Scan</td></tr></table>")
+        self.assertEqual(self.extract(two, True)["reason"], "ID_AMBIGUOUS")
+        none = html_only("<table><tr><td>Mail waiting</td><td>Scan</td></tr><tr><td>- Scan</td></tr></table>")
+        self.assertEqual(self.extract(none, True)["kind"], "REVIEW")
+
+
+def piece_state(extracted, anchor=ANCHOR, accepted=True):
+    st, _ = state.apply(state.new_state(anchor, NOW), extracted, NOW)
+    st["accepted_at"] = NOW.isoformat() if accepted else None
+    return st
+
+
+class ItemLevelTests(unittest.TestCase):
+    def lines(self, st, now=NOW, sync_failed=False):
+        blocks, counts = card.render(st, now, sync_failed)
+        return [report_region.plain(b) for b in blocks], blocks, counts
+
+    def full(self):
+        return piece_state([events.extract(mail(mid, subject, "\n".join(f"Mail #{n}: {v}" for n, v in body), at)) for mid, subject, body, at in [
+            ("c1", "Completed Action Requests", [(n, "Scan completed") for n in SCANNED] + [(n, "Recycle completed") for n in RECYCLED], "2026-10-19T15:00:00+00:00"),
+            ("c2", "Completed Action Requests", [(SHREDDED, "Shred completed")], "2026-10-19T16:00:00+00:00"),
+            ("c3", "Completed Action Requests", [(FORWARDED, "Forward completed")], "2026-10-20T15:00:00+00:00")]])
+
+    def test_the_expected_reconciliation_and_ten_individual_lines(self):
+        st = self.full()
+        facts = state.summary(st, NOW)
+        self.assertEqual((facts["identified"], facts["opened"], facts["done"], facts["waiting_tracking"], facts["unidentified"], facts["review"]), (21, 9, 11, 1, 0, 0))
+        text, blocks, counts = self.lines(st)
+        self.assertEqual(text[0], "Updated 10:00 AM CT · 10 waiting · 0 need review")                   # the first line keeps the shape the Command Center and Attention read
+        items = [t for t in text if t.startswith("#")]
+        self.assertEqual(len(items), 10)
+        self.assertEqual([t.split(" ")[0] for t in items], [f"#{FORWARDED}"] + [f"#{n}" for n in sorted(SCANNED, reverse=True)])      # forwarded first, then newest number first
+        self.assertTrue(all(b["type"] == "bulleted_list_item" for b in blocks if report_region.plain(b).startswith("#")))
+        self.assertEqual(items[1], f"#{SCANNED[-1]}  ·  scanned Oct 19")
+        self.assertEqual(counts["listed"], 10)
+        self.assertEqual([t for t in text if t[:1] in "🚚📥"], ["🚚 Forwarded — not delivered until tracking says so (1)", "📥 Scanned — decide: forward, shred or recycle (9)"])      # the shared next action is said once per group
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded")        # history sits last, muted
+
+    def test_each_mail_number_is_one_line_and_disposed_pieces_are_never_listed(self):
+        text, _, _ = self.lines(self.full())
+        listed = " ".join(t for t in text if t.startswith("#"))
+        for n in RECYCLED + [SHREDDED]:
+            self.assertNotIn(str(n), listed)
+        self.assertEqual(len({t.split(" ")[0] for t in text if t.startswith("#")}), 10)
+
+    def test_a_piece_moves_through_scan_forward_and_disposal_as_evidence_arrives(self):
+        e = lambda mid, line, at: events.extract(mail(mid, "Completed Action Requests", line, at))
+        st = piece_state([e("a", f"Mail #{SCANNED[0]}: Scan completed", "2026-10-05T10:00:00+00:00")])
+        self.assertIn(f"#{SCANNED[0]}  ·  scanned Oct 5", self.lines(st)[0])
+        st, _ = state.apply(st, [e("b", f"Mail #{SCANNED[0]}: Forward completed", "2026-10-06T10:00:00+00:00")], NOW)
+        self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  forwarded Oct 6  ·  ⚠ Tracking unavailable") for t in self.lines(st)[0]))
+        st, _ = state.apply(st, [e("c", f"Mail #{SCANNED[0]}: Recycle completed", "2026-10-07T10:00:00+00:00")], NOW)    # forward then recycle contradict: REVIEW, never guessed
+        self.assertTrue(any(t.startswith(f"#{SCANNED[0]}  ·  last notice") for t in self.lines(st)[0]))
+        other = piece_state([e("d", f"Mail #{SCANNED[1]}: Scan completed", "2026-10-05T10:00:00+00:00"), e("e", f"Mail #{SCANNED[1]}: Recycle completed", "2026-10-06T10:00:00+00:00")])
+        self.assertFalse(any(t.startswith("#") for t in self.lines(other)[0]))
+        self.assertIn("Last 7 days: 1 recycled", " ".join(self.lines(other)[0]))
+
+    def test_tracking_is_flagged_when_absent_and_shown_with_its_own_evidence_when_present(self):
+        st = self.full()
+        text, blocks, _ = self.lines(st)
+        flagged = next(t for t in text if t.startswith(f"#{FORWARDED}"))
+        self.assertIn("Tracking unavailable — obtain from provider", flagged)
+        self.assertIn("not delivered until tracking says so", "\n".join(self.lines(st)[0]))
+        self.assertNotIn("Delivered", flagged)                                                              # forward completed is never delivery
+        st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "ExampleCarrier", "number": "TRK0001", "url": "https://example.invalid/t/TRK0001", "state": "In transit"}
+        text, blocks, _ = self.lines(st)
+        shown = next(t for t in text if t.startswith(f"#{FORWARDED}"))
+        self.assertEqual(shown, f"#{FORWARDED}  ·  forwarded Oct 20  ·  ExampleCarrier TRK0001  ·  In transit")
+        block = next(b for b in blocks if report_region.plain(b).startswith(f"#{FORWARDED}"))
+        self.assertEqual([p["text"]["link"]["url"] for p in block["bulleted_list_item"]["rich_text"] if p["text"].get("link")], ["https://example.invalid/t/TRK0001"])
+        st["chains"][str(FORWARDED)]["tracking"] = {"carrier": "x", "number": "  "}                          # a blank number is no tracking
+        self.assertIn("Tracking unavailable", next(t for t in self.lines(st)[0] if t.startswith(f"#{FORWARDED}")))
+
+    def test_tracking_is_recorded_with_its_piece_shown_as_written_and_a_delivery_leaves_the_list(self):
+        st = self.full()
+        entry = {"bundle": "Bundle A", "carrier": "ExampleCarrier", "service": "Example Overnight", "number": "TRK000002", "url": "https://example.invalid/t/TRK000002"}
+        for bad in ({"number": "  "}, {"number": "x"}, {"number": "TRK000002", "url": "http://insecure.invalid"}):          # nothing is stored that is not a plain tracking number
+            self.assertFalse(state.record_tracking(st, FORWARDED, bad, "operator", NOW)[1])
+        self.assertFalse(state.record_tracking(st, SCANNED[0], entry, "operator", NOW)[1])                         # only a forwarded piece takes tracking
+        self.assertFalse(state.record_tracking(st, "999", entry, "operator", NOW)[1])
+        st, recorded = state.record_tracking(st, FORWARDED, entry, "operator", NOW)
+        self.assertTrue(recorded)
+        self.assertFalse(state.record_tracking(st, FORWARDED, entry, "operator", NOW)[1])                         # idempotent
+        text, blocks, _ = self.lines(st)
+        self.assertEqual(next(t for t in text if t.startswith(f"#{FORWARDED}")), f"#{FORWARDED}  ·  forwarded Oct 20  ·  Bundle A Example Overnight TRK000002  ·  no delivery status yet")
+        st["chains"][str(FORWARDED)]["tracking"]["delivered"] = "2026-10-22"
+        text, _, counts = self.lines(st, now=datetime(2026, 10, 23, 15, 0, tzinfo=timezone.utc))
+        self.assertFalse(any(t.startswith(f"#{FORWARDED}") for t in text))
+        self.assertTrue(text[0].endswith("9 waiting · 0 need review"))
+        self.assertEqual(counts["waiting"], 9)
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded, 1 delivered")
+
+    def test_the_portal_link_is_the_notices_own_host_and_the_operator_entry_reaches_the_stage_and_survives_a_rebuild(self):
+        st = self.full()
+        st["portal"] = "https://box.example.invalid/login?url=%2Fapp%2Fmail%2Fcompleted"
+        blocks, _ = card.render(st, NOW)
+        link = next(b for b in blocks if report_region.plain(b) == "Open the mailbox portal")
+        self.assertEqual(link["paragraph"]["rich_text"][0]["text"]["link"]["url"], "https://box.example.invalid/")
+        self.assertEqual(stage._entered_tracking({"PHYSICAL_MAIL_TRACKING_ENTRY": f"{FORWARDED} | FedEx | Overnight | 123456789012 | Bundle 1"}),
+                         (str(FORWARDED), {"carrier": "FedEx", "service": "Overnight", "number": "123456789012", "bundle": "Bundle 1", "url": "https://www.fedex.com/fedextrack/?trknbr=123456789012"}))
+        for bad in ("", "x | a | b | c", f"{FORWARDED} | only | three"):
+            self.assertIsNone(stage._entered_tracking({"PHYSICAL_MAIL_TRACKING_ENTRY": bad}))
+
+    def test_disposed_and_delivered_pieces_stop_being_mentioned_after_seven_days_but_stay_in_the_history(self):
+        st = self.full()
+        later = datetime(2026, 11, 25, 15, 0, tzinfo=timezone.utc)
+        text = self.lines(st, now=later)[0]
+        self.assertFalse(any(t.startswith("Last 7 days") for t in text))
+        self.assertEqual(state.disposed(st), {"recycled": 10, "shredded": 1})
+
+    def test_an_unreadable_source_keeps_the_last_accepted_pieces_under_a_degraded_line(self):
+        text, _, counts = self.lines(self.full(), sync_failed=True)
+        self.assertTrue(text[0].startswith("DEGRADED · Physical Mail sync failed"))
+        self.assertEqual(sum(1 for t in text if t.startswith("#")), 10)
+        self.assertEqual(counts["status"], "degraded")
+
+    def test_a_long_pile_ends_with_a_count_not_a_silent_cut(self):
+        many = piece_state([events.extract(mail("big", "Completed Action Requests", "\n".join(f"Mail #{6000000 + i}: Scan completed" for i in range(40))))], anchor=40)
+        text, _, counts = self.lines(many)
+        self.assertEqual(sum(1 for t in text if t.startswith("#")), card.MAX_ITEMS)
+        self.assertIn("+10 more active pieces: open the mailbox portal", text)
+        self.assertTrue(text[0].startswith("Updated 10:00 AM CT · 40 waiting"))
+
+    def test_the_item_lines_are_written_and_read_back_natively_and_the_rest_of_the_page_is_untouched(self):
+        st = self.full()
+        store = FakeStore(st)
+        saved, card.STORE = card.STORE, store
+        try:
+            notion = MailRegions()
+            before = {k: notion.full_tree(k) for k in ("jira-callout", "calendar-callout", "bills-callout", "amazon-callout", "attention-callout")}
+            out = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)
+            kids = notion.children["mail-callout"]
+            self.assertEqual(report_region.plain(kids[0]), "Mail Alerts")
+            written = [report_region.plain(k) for k in kids[1:]]
+            self.assertEqual(sum(1 for t in written if t.startswith("#")), 10)
+            self.assertEqual(kids[-1]["id"], "mail-table-old")                                              # Jim's own non-text block stays last
+            self.assertEqual({k: notion.full_tree(k) for k in before}, before)
+            again = card.run(0, True, environ=dict(ENV), connection=object(), client=notion, now=NOW)       # idempotent: the same lines, no duplicates
+            self.assertEqual([report_region.plain(k) for k in notion.children["mail-callout"][1:]], written)
+            self.assertEqual(out["listed"], again["listed"])
+        finally:
+            card.STORE = saved
+
+
+class ReviewReplayTests(unittest.TestCase):
+    def test_a_later_clean_parse_resolves_that_message_only(self):
+        st = state.new_state(21, NOW)
+        st["review"] = [{"id": "c1", "at": "2026-10-19T15:00:00+00:00", "reason": "ID_AMBIGUOUS"}, {"id": "other", "at": "2026-10-19T15:00:00+00:00", "reason": "COUNT_MISSING"}]
+        good = events.extract(actions("c1", "Mail #5000001: Scan completed", at="2026-10-19T15:00:00+00:00"))
+        merged, delta = state.apply(st, [good], NOW)
+        self.assertEqual([r["id"] for r in merged["review"]], ["other"])
+        self.assertEqual((delta["review_resolved"], state.summary(merged, NOW)["review"]), (1, 1))
+        again, second = state.apply(merged, [good], NOW)
+        self.assertEqual((again, second["review_resolved"]), (merged, 0))                                    # idempotent
+        still = events.extract(actions("c1", "Mail #5000001 and #5000002 scanned", at="2026-10-19T15:00:00+00:00"))
+        kept, _ = state.apply(st, [still], NOW)
+        self.assertEqual([r["id"] for r in kept["review"]], ["c1", "other"])                                 # a message that still does not parse is not resolved
+
+
+class RebuildTests(unittest.TestCase):
+    def setUp(self):
+        self.store = FakeStore()
+        self._saved, stage.STORE = stage.STORE, self.store
+
+    def tearDown(self):
+        stage.STORE = self._saved
+
+    def old_row(self):
+        """What the flat parser left: the same anchor, the chains it did see, and the notices it sent to review."""
+        st, _ = state.apply(state.new_state(ANCHOR, NOW), [events.extract(actions("c2", f"Mail #{SHREDDED}: Shred completed", at="2026-10-19T16:00:00+00:00")),
+                                                           events.extract(actions("c3", f"Mail #{FORWARDED}: Forward completed", at="2026-10-20T15:00:00+00:00")),
+                                                           events.extract(actions("c1", "Mail #5000001 and #5000002 scanned", at="2026-10-19T15:00:00+00:00"))], NOW)
+        st["accepted_at"], st["through"] = NOW.isoformat(), NOW.isoformat()
+        st.pop("replay", None)
+        return st
+
+    def go(self, notices=None, live=True, env=None):
+        gmail = HtmlGmail(notices or census())
+        counts = stage.run(1000, live, environ=env or {}, gmail=gmail, connection=object(), now=NOW)
+        return counts, gmail
+
+    def test_the_whole_census_is_replayed_from_the_anchor_and_replaces_the_row_only_after_proof(self):
+        self.store.row = self.old_row()
+        old = copy.deepcopy(self.store.row)
+        counts, gmail = self.go(env={"PHYSICAL_MAIL_EXPECT": "21,9,11,1,0,0"})
+        self.assertEqual((counts["rebuild"], counts["saved"], counts["state_identified"], counts["state_opened"], counts["state_done"], counts["state_waiting_tracking"],
+                          counts["state_unidentified"], counts["state_review"]), (1, 1, 21, 9, 11, 1, 0, 0))
+        self.assertEqual(self.store.row["replay"], state.REPLAY)
+        self.assertEqual(self.store.row["prior"], old)                                                       # the known-good row is carried for a rollback
+        self.assertNotIn("prior", self.store.row["prior"])
+        self.assertEqual(self.store.row["review"], [])
+        self.assertTrue(all(gmail.keep))                                                                      # the stage asked for lines
+        self.assertNotIn("notified", counts)                                                                  # a rebuild never pushes old arrivals to the phone
+
+    def test_the_second_run_is_an_ordinary_overlap_run_and_changes_nothing(self):
+        self.store.row = self.old_row()
+        self.go()
+        after = copy.deepcopy(self.store.row)
+        counts, gmail = self.go()
+        self.assertEqual((counts["rebuild"], counts["actions_new"], counts["review_new"]), (0, 0, 0))
+        self.assertEqual({k: v for k, v in self.store.row.items() if k not in ("taken_at", "accepted_at", "through")}, {k: v for k, v in after.items() if k not in ("taken_at", "accepted_at", "through")})
+        self.assertTrue(any("after:" in q for q, _ in gmail.queries))
+
+    def test_a_candidate_that_does_not_match_jims_tally_or_loses_a_number_is_rejected_and_the_row_stays(self):
+        self.store.row = self.old_row()
+        old = copy.deepcopy(self.store.row)
+        with self.assertRaises(stage.PhysMailError) as error:
+            self.go(env={"PHYSICAL_MAIL_EXPECT": "21,9,12,0,0,0"})
+        self.assertIn("REBUILD_REJECTED", str(error.exception))
+        self.assertEqual((self.store.saves, self.store.row), (0, old))
+        fewer = [n for n in census() if n[0] != "c3"]                                                         # the forward notice is missing: a number the row knew would be lost
+        with self.assertRaises(stage.PhysMailError):
+            self.go(notices=fewer)
+        self.assertEqual((self.store.saves, self.store.row), (0, old))
+        with self.assertRaises(stage.PhysMailError) as bad:
+            self.go(env={"PHYSICAL_MAIL_EXPECT": "1,2"})
+        self.assertIn("EXPECT_INVALID", str(bad.exception))
+
+    def test_an_unreadable_message_or_a_dry_run_changes_nothing(self):
+        self.store.row = self.old_row()
+        old = copy.deepcopy(self.store.row)
+        gmail = HtmlGmail(census(), read_error="c2")
+        with self.assertRaises(stage.PhysMailError):
+            stage.run(1000, True, environ={}, gmail=gmail, connection=object(), now=NOW)
+        counts, _ = self.go(live=False)
+        self.assertEqual((counts["saved"], counts["rebuild"], counts["state_review"]), (0, 1, 0))             # a dry run shows the candidate's counts and writes nothing
+        self.assertEqual((self.store.saves, self.store.row), (0, old))
+
+    def test_a_first_run_is_already_a_full_replay_and_needs_no_rebuild(self):
+        counts, _ = self.go(env={"PHYSICAL_MAIL_ANCHOR": str(ANCHOR)})
+        self.assertEqual((counts["rebuild"], counts["state_identified"], counts["saved"]), (0, 21, 1))
+        self.assertEqual(self.store.row["replay"], state.REPLAY)
+        self.assertNotIn("prior", self.store.row)
+
+    def test_tracking_recorded_on_a_piece_survives_the_rebuild_and_a_one_off_entry_is_saved_with_it(self):
+        self.store.row = self.old_row()
+        self.store.row["chains"][str(FORWARDED)] = {"events": {"c3:FORWARD": ["2026-10-20T15:00:00+00:00", "FORWARD"]}, "tracking": {"number": "TRK000003", "carrier": "ExampleCarrier"}}
+        self.go()
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["number"], "TRK000003")
+        self.go(env={"PHYSICAL_MAIL_TRACKING_ENTRY": f"{FORWARDED} | ExampleCarrier | Overnight | TRK000004 | Bundle 2"})
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["number"], "TRK000004")
+        self.assertEqual(self.store.row["chains"][str(FORWARDED)]["tracking"]["source"], "operator")
+
+    def test_the_rebuild_is_read_only_toward_gmail(self):
+        self.assertNotIn("modify", inspect.getsource(stage))
+
+
+FEDEX = events.FEDEX_SENDER
+
+
+def fedex_html(rows_html, status="Out for delivery"):
+    return html_only("<html><body><table><tr><td>Online FedEx Tracking</td></tr><tr><td>Ship date</td></tr><tr><td>10/20/2026</td></tr><tr><td><img alt=\"Delivery progress bar\"></td></tr>"
+                     f"<tr><td>{status}</td></tr></table><table><tr><td>Tracking results as of Oct 21, 2026 4:42p GMT</td></tr><tr><td>Date/Time</td><td>Activity/Location</td></tr>{rows_html}</table>"
+                     "<p>Standard transit is the date the package is scheduled to be delivered by</p></body></html>")
+
+
+class FedexTests(unittest.TestCase):
+    NUMBER = "123456789012"
+
+    def read(self, rows_html, subject=None, sender=FEDEX, at="2026-10-21T16:42:35+00:00"):
+        body = gmail_mod._find_text(fedex_html(rows_html), True)
+        return events.extract({"id": "f1", "sender": sender, "subject": subject or f"Online FedEx Tracking - {self.NUMBER}", "received_at": at, "body_text": body})
+
+    def test_the_newest_activity_row_is_the_state_and_only_a_delivered_row_delivers(self):
+        got = self.read("<tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr><tr><td></td><td>CITY, ST</td></tr><tr><td>10/21/2026 7:26 am</td><td>At local FedEx facility</td></tr>")
+        self.assertEqual((got["kind"], got["number"], got["state"], got["delivered"]), ("SHIPMENT", self.NUMBER, "On FedEx vehicle for delivery", False))
+        done = self.read("<tr><td>10/21/2026 11:02 am</td><td>Delivered</td></tr><tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr>")
+        self.assertEqual((done["state"], done["delivered"]), ("Delivered", True))
+        self.assertEqual(self.read("<tr><td>10/21/2026 7:54 am</td><td>x</td></tr>", subject="Your FedEx package")["kind"], "IGNORED")
+        self.assertEqual(self.read("<tr><td>nothing</td></tr>")["reason"], "SHIPMENT_STATE_MISSING")
+        self.assertEqual(self.read("<tr><td>10/21/2026 7:54 am</td><td>x</td></tr>", sender=f"someone{AT}fedex-lookalike.invalid")["kind"], "IGNORED")
+
+    def test_a_followed_shipment_updates_its_piece_and_delivery_removes_it_from_the_list_for_good(self):
+        st = ItemLevelTests().full()
+        st, _ = state.record_tracking(st, FORWARDED, {"carrier": "FedEx", "number": self.NUMBER}, "operator", NOW)
+        way = self.read("<tr><td>10/21/2026 7:54 am</td><td>On FedEx vehicle for delivery</td></tr>")
+        st, _ = state.apply(st, [way], NOW)
+        text = [report_region.plain(b) for b in card.render(st, datetime(2026, 10, 21, 17, 0, tzinfo=timezone.utc))[0]]
+        self.assertIn(f"#{FORWARDED}  ·  forwarded Oct 20  ·  FedEx {self.NUMBER}  ·  On FedEx vehicle for delivery", text)
+        done = {**self.read("<tr><td>10/21/2026 11:02 am</td><td>Delivered</td></tr>", at="2026-10-21T16:02:00+00:00"), "id": "f2"}
+        late = {**way, "id": "f3", "at": "2026-10-21T16:30:00+00:00"}                                       # a stale "on the way" copy that arrives after delivery
+        st, _ = state.apply(st, [done, late], NOW)
+        text = [report_region.plain(b) for b in card.render(st, datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc))[0]]
+        self.assertFalse(any(t.startswith(f"#{FORWARDED}") for t in text))
+        self.assertEqual(text[-1], "Last 7 days: 10 recycled, 1 shredded, 1 delivered")
+        again, _ = state.apply(st, [done, late], NOW)
+        self.assertEqual(again, st)                                                                          # idempotent
+        other, _ = state.apply(ItemLevelTests().full(), [way], NOW)                                          # an update for a number no piece holds changes no piece
+        self.assertTrue(any(t.startswith(f"#{FORWARDED}") and "Tracking unavailable" in t for t in [report_region.plain(b) for b in card.render(other, datetime(2026, 10, 21, 17, 0, tzinfo=timezone.utc))[0]]))
 
 
 if __name__ == "__main__":

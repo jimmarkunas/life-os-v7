@@ -65,6 +65,7 @@ def properties(row):
     provider = row.get("provider") or row["source"]
     props = {
         "Job": {"title": rich_text(row["title"] or "Untitled")},
+        "Role": {"rich_text": rich_text(row["title"] or "")},                       # the Ledger's Role column: the job's own title
         "Company": {"rich_text": rich_text(row["company"] or "")},
         "Apply URL": {"url": row["url"]},
         "Source Provider": {"rich_text": rich_text(provider)},

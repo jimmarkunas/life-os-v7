@@ -72,10 +72,16 @@ KEEP_OVERRIDES_EXCLUSION = (
 
 TITLE_WATCH_PREFIX = "web:titlewatch:"
 TITLE_ONLY_REASON = "found by title search; description not read"
+THIN_REASON = "description too short to judge; Review from its apply link"      # Jim, Oct 21: a thin page on a Scale-Up sponsor's own board is never held, only reviewed
 
 
 def title_watch_source(source):
     return bool(source) and source.startswith(TITLE_WATCH_PREFIX)
+
+
+def thin_review_source(source):
+    """A Scale-Up sponsor's own board (`web:su-<id>`): its roles with a page too thin to judge are reviewed from their apply link, never held (Jim, Oct 21)."""
+    return bool(source) and source.startswith("web:su-")
 
 
 def on_keep_list(company, title):
@@ -100,6 +106,7 @@ class Facts:
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
     kept: bool = False                   # D115: on Jim's keep list (or found by a title watch: Jim chose the title)
+    thin: bool = False                   # Jim, Oct 21: a Scale-Up sponsor's own board whose page text is too thin to judge: a score from it is never a Go; Jim decides from the link
     title_only: bool = False             # D123: found by a title search; the page text could not be read, so the Fit rests on the title alone
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
     open_application: bool = False       # D213: an unsolicited / general application ("Initiativbewerbung", "Talent Pool"): not a vacancy
@@ -119,6 +126,8 @@ def qualify(policy, facts, today):
         return Decision(EXCLUDE, f"Fit {facts.fit} below {NEAR_MISS_FLOOR} and {decision.reason}")
     if facts.title_only and decision.status == ADMIT:                  # D123: a score from a title alone is never a Go; Jim decides from the link
         return Decision(REVIEW, TITLE_ONLY_REASON)
+    if facts.thin and decision.status == ADMIT:
+        return Decision(REVIEW, THIN_REASON)
     return decision
 
 
@@ -362,7 +371,7 @@ def open_application(title):
     return bool(_OPEN_APPLICATION.search(title or ""))
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False):
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False, thin=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
@@ -372,7 +381,7 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     if first_party and not market and (US_PLACES.search(location or "") or _US_ELIGIBLE.search(text or "")):
         market = "US"
     return Facts(fit=fit, market=market, work_mode=mode, work_evidence=evidence, pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only,
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only, thin=thin,
                  open_application=open_application(title))
 
 
@@ -416,7 +425,7 @@ PUBLIC_REASONS = (                                       # (lane reason, the fix
     (r"market unresolved", "market_unresolved"), (r"market .+ is not .+", "market_mismatch"), (r"market not shown to be .+", "market_not_shown"),
     (r"geography unresolved", "geography_unresolved"), (r"geography does not qualify", "geography_not_qualifying"), (r"not in London", "not_in_london"),
     (r".+ route negative", "route_negative"), (r".+ route unresolved", "route_unresolved"), (r"lane disabled", "lane_disabled"),
-    (re.escape(TITLE_ONLY_REASON), "title_only"), (r"excluded: .*", "excluded_private_rule"), (rf"Fit {_N} below {_N}", "fit_below_floor"))     # last: an older floor
+    (re.escape(TITLE_ONLY_REASON), "title_only"), (re.escape(THIN_REASON), "thin_description"), (r"excluded: .*", "excluded_private_rule"), (rf"Fit {_N} below {_N}", "fit_below_floor"))     # last: an older floor
 
 
 def public_reason(reason):

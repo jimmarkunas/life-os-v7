@@ -424,3 +424,120 @@ class ConfiguredUuidTests(unittest.TestCase):
                 client.pages["active"]["parent"]["page_id"] = invalid
                 self.assertIsNone(notion.active_target(client, compact, RunContext.start(60)))
                 self.assertFalse(notion.parent_scan(client, compact, RunContext.start(60)).complete)
+
+
+class Causes(unittest.TestCase):
+    """Live runs 39556923423 and 39565054862 ended two conversions as the bare pipeline_incomplete with zero planned writes; the cause is now a fixed code in the counts."""
+    def test_a_cause_is_a_fixed_code_or_the_class_name_never_the_text(self):
+        from lifeos.platform.runtime import DeadlineExceeded
+        self.assertEqual(create.cause_of(NotionError("INTERVIEW_SCAN_INCOMPLETE")), "interview_scan_incomplete")
+        self.assertEqual(create.cause_of(NotionError("private message with a name")), "notionerror")
+        self.assertEqual(create.cause_of(DeadlineExceeded("x")), "deadlineexceeded")
+        self.assertEqual(create.cause_of(KeyError("secret")), "keyerror")
+
+    def test_the_stage_counts_the_cause_of_a_page_that_ends_incomplete(self):
+        from unittest.mock import patch
+        from lifeos.interview import stage
+        def broken(*args, **kwargs):
+            raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+        client = WritableFake()
+        with patch.object(create.notion, "target_check", return_value="target_ok"), patch.object(create.notion, "parent_scan", side_effect=broken):
+            result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
+        self.assertEqual(result["why"].get("pipeline_incomplete"), 1)
+        self.assertEqual(result["causes"], {"interview_scan_incomplete": 1})
+        self.assertNotIn("cause", result)
+
+    def test_jims_content_may_nest_far_deeper_than_a_scan_before_the_protected_read_gives_up(self):
+        blocks = [{"id": "first", "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False}]
+        blocks += [{"id": f"b{i}", "type": "callout", "callout": {"rich_text": []}, "has_children": True} for i in range(120)]
+
+        class Deep:
+            def call(self, method, path, body=None):
+                return {"results": [{"id": "x" + path.split("/")[2], "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False}], "has_more": False}
+        self.assertTrue(notion.human_tail(Deep(), "p", blocks))                  # 120 containers: more than the 40 reads one scan is allowed
+        self.assertEqual(notion.PROTECTED_MAX_CALLS, 400)
+        self.assertEqual(notion.MAX_CALLS, 40)                                     # the scans keep their own limit
+
+
+class ProtectedReadCauseTests(unittest.TestCase):
+    """Runs 39627629137 and 39632692329: SH/FT and Smith ended interview_protected_incomplete with 400 reads available. Jim's Interview Notes list sits in his columns, so the interview child pages are nested blocks of the protected read, and the read walked into their own deep UI 4 trees."""
+
+    @staticmethod
+    def block(ident, kind="callout", children=False):
+        return {"id": ident, "type": kind, kind: {"rich_text": [], "title": ident}, "has_children": children}
+
+    def tree(self, interview_tree):
+        """first line, then a column list > column > (callout, child_page); the child page holds `interview_tree` blocks."""
+        blocks = {"page": [self.block("first", "paragraph"), self.block("cols", "column_list", True)],
+                  "cols": [self.block("col", "column", True)],
+                  "col": [self.block("note", "callout"), self.block("round", "child_page", True)],
+                  "round": interview_tree}
+
+        class Client:
+            calls = []
+            def call(inner, method, path, body=None):
+                ident = path.split("/")[2]
+                inner.calls.append(ident)
+                return {"results": blocks[ident], "has_more": False}
+        return blocks, Client()
+
+    def test_an_interview_page_nested_in_jims_columns_is_not_read_as_part_of_his_page(self):
+        deep = [self.block("d0", "column_list", True)]
+        blocks, client = self.tree(deep)
+        for depth in range(1, 12):                                          # far past MAX_DEPTH and a lot of reads, if it were walked
+            blocks[f"d{depth - 1}"] = [self.block(f"d{depth}", "column", True)]
+        blocks["d11"] = [self.block("leaf", "paragraph")]
+        page = blocks["page"]
+        digest = notion.human_tail(client, "page", page)
+        self.assertTrue(digest)
+        self.assertNotIn("round", [c for c in client.calls if c != "round"])
+        self.assertNotIn("d0", client.calls)                                  # its children were never fetched
+        blocks["d11"] = [self.block("leaf", "paragraph"), self.block("added by a refresh", "paragraph")]
+        self.assertEqual(notion.human_tail(client, "page", page), digest)     # a round page changing under the list leaves the protected digest alone
+
+    def test_each_way_a_protected_read_ends_has_its_own_fixed_code(self):
+        def chain(length):
+            blocks = {"page": [self.block("first", "paragraph"), self.block("c0", "callout", True)]}
+            for i in range(length):
+                blocks[f"c{i}"] = [self.block(f"c{i + 1}", "callout", True)]
+            blocks[f"c{length}"] = []
+            return blocks
+
+        def client_for(blocks, more=False):
+            class Client:
+                def call(self, method, path, body=None):
+                    return {"results": blocks[path.split("/")[2]], "has_more": more, "next_cursor": "same" if more else None}
+            return Client()
+        blocks = chain(notion.MAX_DEPTH + 3)
+        with self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
+        blocks = chain(3)
+        with patch.object(notion, "PROTECTED_MAX_CALLS", 2), self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_BUDGET")
+        with self.assertRaises(NotionError) as caught:
+            notion.human_tail(client_for(blocks, more=True), "page", blocks["page"])
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_READ")
+        with self.assertRaises(NotionError) as caught:                         # no Jim's notes heading and callout on a page that is read whole
+            notion.human_tail(client_for(blocks), "page")
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_SHAPE")
+
+
+class HostedFileTests(unittest.TestCase):
+    """Run 39637099250: Smith's page converted, then the read-back said readback_protected_changed although every block of Jim's was intact. Her page holds a Notion-hosted PDF (the submitted resume), whose signed URL and expiry are new on every read."""
+
+    @staticmethod
+    def file_block(url, expiry, name="resume.pdf"):
+        return {"id": "f1", "type": "file", "has_children": False,
+                "file": {"type": "file", "file": {"url": url, "expiry_time": expiry}, "caption": [], "name": name}}
+
+    def test_a_hosted_files_signed_url_does_not_change_the_protected_digest_but_its_name_does(self):
+        class Client:
+            def call(self, *args, **kwargs):
+                raise AssertionError("no children to read")
+        first = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=1", "2026-10-21T18:00:00Z")])
+        again = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=2", "2026-10-21T19:00:00Z")])
+        renamed = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=2", "2026-10-21T19:00:00Z", "other.pdf")])
+        self.assertEqual(first, again)
+        self.assertNotEqual(first, renamed)

@@ -25,6 +25,7 @@ FOLD = "⚙️ LIFE OS"
 ROUND_FOLD = "⚙️ LIFE OS · Source Health"
 ADOPTED = re.compile(re.escape(MARKERS["opportunity"]) + r";adopted=(\d{4}-\d{2}-\d{2})")
 MAX_CALLS, MAX_DEPTH = 40, 4
+PROTECTED_MAX_CALLS = 400                  # Jim's own content on an adopted page can nest far deeper than a scan: every container is one read, and the whole of it is digested before and after a write
 
 
 def same_notion_id(a, b):
@@ -223,12 +224,25 @@ def explicit_child(client, page_id):
     return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
+def _protected_children(client, page_id, budget):
+    """children() for a protected read, with its failures told apart by fixed code: the read budget ran out, or the API answer was malformed."""
+    try:
+        return children(client, page_id, budget)
+    except NotionError:
+        raise NotionError("INTERVIEW_PROTECTED_BUDGET" if budget[0] <= 0 else "INTERVIEW_PROTECTED_READ")
+
+
 def _subtree(client, block, budget, depth=0):
     if depth > MAX_DEPTH:
-        raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+        raise NotionError("INTERVIEW_PROTECTED_DEPTH")
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
+    if block.get("type") in ("child_page", "child_database"):
+        return {"id": value.get("id"), "type": value.get("type")}                # a page or database nested in Jim's columns (his Interview Notes list) is its own page: never read as part of this one, like a top-level child page
+    body = value.get(value.get("type"))
+    if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
+        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL and expiry change on every read; the name, caption and the block itself stay in the digest
     if block.get("has_children"):
-        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in children(client, block["id"], budget)]
+        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
 
 
@@ -241,11 +255,11 @@ def protected_snapshot(client, page_id, kind="round"):
     An opportunity parent may instead carry Jim's notes (NOTES; LIFE-46/LIFE-88): that region runs to the end of the page,
     through any headings Jim writes. Child pages are left out of it because Notion appends every new round page at the end of
     its parent; their contents are never read here. A UI 4 round (LIFE-46 10875) keeps them in its left column instead."""
-    budget, regions = [MAX_CALLS], {}
+    budget, regions = [PROTECTED_MAX_CALLS], {}
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
     order = []
-    tops = children(client, page_id, budget)
+    tops = _protected_children(client, page_id, budget)
     for block in tops:
         label = text(block)
         if current in NOTES:
@@ -254,7 +268,7 @@ def protected_snapshot(client, page_id, kind="round"):
             continue
         if label in labels and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
             if label in regions:
-                raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+                raise NotionError("INTERVIEW_PROTECTED_SHAPE")
             current = label
             order.append((label, block.get("id")))
             regions[label] = []
@@ -290,12 +304,12 @@ def _round_regions(client, tops, budget):
 def human_tail(client, page_id, blocks=None):
     """Private digest of Jim's own content on an adoption page: every top-level block after the first line before adoption
     (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
-    budget = [MAX_CALLS]
+    budget = [PROTECTED_MAX_CALLS]
     if blocks is None:
-        blocks = children(client, page_id, budget)
+        blocks = _protected_children(client, page_id, budget)
         heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]
         if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
-            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+            raise NotionError("INTERVIEW_PROTECTED_SHAPE")
         blocks = blocks[heads[0] + 2:]
     else:
         blocks = blocks[1:]
