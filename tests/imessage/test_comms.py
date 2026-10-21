@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import datetime as dt
 import io
 import json
@@ -248,13 +249,14 @@ class Card(unittest.TestCase):
         with self.assertRaises(card.CommsError):
             self.run_card(Report(), env={**self.ENV, "ATTENTION_CARD_BLOCK_ID": ""})
 
-    def add_row(self, report, name, links=False):
-        """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist); with links=True it holds a launch link too."""
+    def add_row(self, report, name, links=False, own_links=False):
+        """Another two-column row in the callout, as Jim added below a divider (Reminders | Todoist); with links=True it holds a launch link too (a channel's: ambiguous),
+        with own_links=True the labels link to their own launch pages (Reminders, Todoist: not channels this card writes)."""
         report.add(name, "column_list", "comms")
         report.add(name + "L", "column", name)
         report.add(name + "R", "column", name)
-        report.add(name + "l", "paragraph", name + "L", [text("Reminders (-)", LAUNCH % "messages" if links else None)])
-        report.add(name + "r", "paragraph", name + "R", [text("Todoist (-)")])
+        report.add(name + "l", "paragraph", name + "L", [text("Reminders (-)", LAUNCH % "reminders" if own_links else LAUNCH % "messages" if links else None)])
+        report.add(name + "r", "paragraph", name + "R", [text("Todoist (-)", LAUNCH % "todoist" if own_links else None)])
 
     def test_another_row_of_jims_own_is_left_alone_and_the_channel_rows_are_still_written(self):
         report = Report()
@@ -263,6 +265,16 @@ class Card(unittest.TestCase):
         counts, _ = self.run_card(report)
         self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])
         self.assertEqual((report.plain("extral"), report.plain("extrar")), ("Reminders (-)", "Todoist (-)"))
+        self.assertEqual(counts["written"], 7)
+
+    def test_the_reminders_and_todoist_labels_may_link_to_their_own_launch_pages_and_are_left_exactly_as_they_are(self):
+        report = Report()
+        report.add("div", "divider", "comms")
+        self.add_row(report, "extra", own_links=True)
+        before = (copy.deepcopy(report.blocks["extral"]), copy.deepcopy(report.blocks["extrar"]))
+        counts, _ = self.run_card(report)
+        self.assertEqual([p[0] for p in report.patches], ["l0", "r0", "l1", "r1", "l2", "r2", "head"])      # the channel rows are still written, nothing else
+        self.assertEqual((report.blocks["extral"], report.blocks["extrar"]), before)                    # label, icon-less text, count and link untouched
         self.assertEqual(counts["written"], 7)
 
     def test_two_rows_with_launch_links_are_ambiguous_and_nothing_is_written(self):
