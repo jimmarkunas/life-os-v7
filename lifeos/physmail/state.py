@@ -54,12 +54,12 @@ def apply(state, extracted, now):
             st["review"] = [item for item in st["review"] if item["id"] != event["id"]]
             seen_review.discard(event["id"])
             counts["review_resolved"] += 1
+        if kind in ("ARRIVAL", "ACTIONS") and event.get("portal") and (st["portal"] is None or _at(event["at"]) >= _at(st.get("portal_at") or ANCHOR_AT.isoformat())):
+            st["portal"], st["portal_at"] = event["portal"], event["at"]               # both vendor notices carry the mailbox login link; the newest one wins
         if kind == "ARRIVAL":
             if event["id"] not in st["arrivals"]:
                 st["arrivals"][event["id"]] = {"at": event["at"], "count": event["count"]}
                 counts["arrivals_new"] += 1
-            if event.get("portal") and (st["portal"] is None or _at(event["at"]) >= _at(st.get("portal_at") or ANCHOR_AT.isoformat())):
-                st["portal"], st["portal_at"] = event["portal"], event["at"]
         elif kind == "ACTIONS":
             for number, verb in event["actions"]:
                 chain = st["chains"].setdefault(number, {"events": {}})

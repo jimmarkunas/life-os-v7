@@ -107,7 +107,7 @@ def extract(message):
             return _review(message_id, at, bad)
         if not actions:
             return _review(message_id, at, "NO_LINES")
-        return {"kind": "ACTIONS", "id": message_id, "at": at, "actions": sorted(set(actions))}
+        return {"kind": "ACTIONS", "id": message_id, "at": at, "actions": sorted(set(actions)), "portal": _portal(body)}
     return {"kind": "IGNORED", "reason": "SUBJECT_NOT_SCOPED"}
 
 
