@@ -94,6 +94,7 @@ STAGES = {
     "agenda-card": lazy("lifeos.agenda.card"),
     "fit-profile-sync": lazy("lifeos.jobs.fit.profile_sync"),     # Fit profile: the approved Notion block into the one Bitwarden extra secret (isolated job, profile-sync.yml)
     "scale-up-holds": lazy("lifeos.jobs.holds"),
+    "scale-up-boards": lazy("lifeos.sources.web.boardstate"),          # read-only per-board view of the Scale-Up registry: last read, vacancies listed, what became of them (diag.yml)
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
     "alerts-open": lazy("lifeos.jobs.alertstate"),
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
