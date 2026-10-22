@@ -22,7 +22,11 @@ class Calendar:
         self.events = list(events)
 
     def list_events(self, start, end):
-        return self.events
+        return [e for e in self.events if e.get("status") != "cancelled"]
+
+    def request(self, method, path, params=None):                          # the deleted-inclusive read (LIFE-46 E07)
+        assert (method, path, params["showDeleted"]) == ("GET", "/events", "true")
+        return {"items": list(self.events)}
 
 
 def event(title, start="2026-10-28T10:00:00-05:00", **extra):
@@ -187,6 +191,36 @@ class CalendarRounds(unittest.TestCase):
             self.assertEqual((confirm.explicit_child_page_id, confirm.interview_date, confirm.ordinal, confirm.stable_job_key), ("c1", "2026-10-28", 1, "exampleco-r-1"), title)
             self.assertEqual((refresh.interview_date, counts["failed"]), (None, 0), title)
 
+    def test_a_confirm_carries_the_events_reference_never_its_id(self):
+        _, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        confirm = got["evidence"][0][1]
+        self.assertEqual(confirm.calendar_ref, ev.reference("ExampleCo Program Manager Interview"))
+        self.assertNotIn("ExampleCo", confirm.calendar_ref)
+
+    def moved(self, *events, recorded=None):
+        dated = {"p1": (child("c2", "2026-10-21", None, 1),)}
+        with patch.object(create, "round_calendar", return_value=recorded or (ev.reference("ExampleCo Program Manager Interview"), False)):
+            return Run(kids=dated, calendar=Calendar(*events))()
+
+    def test_the_same_event_at_a_new_time_reschedules_its_own_round(self):
+        counts, got = self.moved(event("ExampleCo Program Manager Interview"))
+        (_, move), _ = got["evidence"]
+        self.assertEqual((move.explicit_child_page_id, move.interview_date, move.ordinal, move.cancelled, counts["failed"]), ("c2", "2026-10-28", 1, False, 0))
+
+    def test_another_event_at_a_new_time_never_moves_a_round(self):
+        counts, got = self.moved(event("ExampleCo Program Manager Interview 1"), recorded=("ffffffffffff", False))
+        self.assertEqual((len(got["evidence"]), counts["why"]), (1, {"round_conflict": 1}))
+
+    def test_a_cancelled_event_cancels_only_the_round_that_recorded_it(self):
+        gone = {**event("ExampleCo Program Manager Interview", start="2026-10-21T10:00:00-05:00"), "status": "cancelled"}
+        counts, got = self.moved(gone)
+        (_, cancel), _ = got["evidence"]
+        self.assertEqual((cancel.explicit_child_page_id, cancel.interview_date, cancel.cancelled, counts["failed"]), ("c2", "2026-10-21", True, 0))
+        counts, got = self.moved(gone, recorded=("ffffffffffff", False))
+        self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))                  # someone else's cancelled event: nothing
+        counts, got = self.moved(gone, recorded=(ev.reference("ExampleCo Program Manager Interview"), True))
+        self.assertEqual(len(got["evidence"]), 1)                                           # already cancelled: no second write queued
+
     def test_two_accepted_times_for_one_pending_round_choose_neither(self):
         counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview"), event("ExampleCo Program Manager Interview", start="2026-10-30T10:00:00-05:00")))()
         self.assertEqual(len(got["evidence"]), 1)                              # only the refresh
@@ -219,6 +253,9 @@ class CalendarRounds(unittest.TestCase):
     def test_an_unreadable_calendar_is_reported_and_the_refresh_still_runs(self):
         class Broken:
             def list_events(self, *_):
+                raise RuntimeError("down")
+
+            def request(self, *_):
                 raise RuntimeError("down")
         counts, got = Run(calendar=Broken())()
         self.assertEqual((len(got["evidence"]), counts["why"], counts["failed"]), (1, {"calendar_unavailable": 1}, 1))
