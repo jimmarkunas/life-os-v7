@@ -112,7 +112,7 @@ def _health(view, rounds_label):
     rows = [("Interviews", rounds_label),
             ("Job Ledger", {"linked": "exact row linked by Stable Job Key", "mismatch": "row does not match this job's Stable Job Key",
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
-            ("Request message", "linked" if view.request_url else "not recorded")]
+            ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
     rows += [(name, "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))

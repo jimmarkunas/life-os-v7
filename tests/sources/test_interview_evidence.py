@@ -758,6 +758,25 @@ class Pursuits(unittest.TestCase):
         self.assertEqual((counts["requests"], counts["pursuit_requests"], counts["failed"]), (0, 1, 0))
         counts_only(counts)
 
+    def test_the_one_request_for_a_lead_page_whose_link_is_the_outreach_becomes_its_interview_1_request(self):
+        lead = {"p1": ("recruiter-exampleco-777777", "https://example.test/thread/5")}            # the page links the recruiter's outreach, not a request
+        rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
+        request = mail(body="Please select a time for a call. Requisition 777777.")
+        counts, got = Run(facts=lead, rows=rows, roster=[], records=[outreach(extra="Requisition 777777."), request])()
+        self.assertEqual((counts["failed"], counts.get("where", {})), (0, {}))
+        self.assertEqual([q.source for _, q in got["evidence"]], [request["url"]])               # the refresh links the request on the opportunity
+        other = mail(subject="Schedule your interview - ExampleCo Program Manager (2)", body="Please select a time for a call.", url="https://example.test/thread/7")
+        counts, _ = Run(facts={"p1": ("recruiter-exampleco-777777", other["url"])}, rows=rows, roster=[], records=[other, request])()
+        self.assertEqual(counts["where"], {"pursuit_other_request": 1})                         # the page already names another request: never guessed
+
+    def test_a_request_naming_another_requisition_than_the_pursuits_key_is_a_conflict(self):
+        keyed = {"p1": ("recruiter-exampleco-777777", URL)}
+        rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
+        counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 999999.")])()
+        self.assertEqual((got["evidence"], counts["why"].get("requisition_conflict"), counts["where"]), ([], 1, {"pursuit_requisition": 1}))
+        counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 777777.")])()
+        self.assertEqual(len(got["evidence"]), 1)                                   # the same requisition: Interview 1
+
     def test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing(self):
         same = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": ("exampleco-r-1", "https://example.test/thread/9")}, kids={"p1": (child(),)}, roster=[], records=[mail()])
         counts, got = same()

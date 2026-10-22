@@ -375,15 +375,22 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
     pursuit_requests, handled = 0, set()
+    outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}      # recruiter outreach in the mailbox that is provably not a request, by its own link
     for row, message, req in leads:                                          # M1 (LIFE-25): a request for a keyed V7 pursuit page with no Applied row is that page's Interview 1
         page = ready.get(row["id"].split(":", 1)[1])
         if page is None:
             continue                                                         # no key on the page: counted below, never guessed
         company, role, page_job, page_url, page_kids, page_rows = page
         handled.add(row["id"])
-        if any(c.identity_valid is True for c in page_kids.items):
-            if page_url != message["url"]:
-                flag("round_identity_incomplete", "pursuit_other_request")          # the page already has a round and names another message: its number is unknown
+        keyed_by_requisition = (page_job or "").startswith("recruiter-") and page_job != mint(company, role)
+        if req and keyed_by_requisition and page_job != mint(company, role, req):
+            flag("requisition_conflict", "pursuit_requisition")             # LIFE-25: the request names another requisition than the one this job was keyed by
+        elif any(c.identity_valid is True for c in page_kids.items):
+            held = [c for c in page_kids.items if c.identity_valid is True]
+            if page_url != message["url"] and page_url in outreach and len(held) == 1 and held[0].ordinal == 1:
+                ready[row["id"].split(":", 1)[1]] = (company, role, page_job, message["url"], page_kids, page_rows)     # the page still links the recruiter's outreach: this request is its Interview 1's
+            elif page_url != message["url"]:
+                flag("round_identity_incomplete", "pursuit_other_request")          # the page already has a round and names another request: its number is unknown
         elif page_kids.complete:
             queue(company, role, page_job, message["url"], page_rows, None, None, None, req)
             pursuit_requests += 1
