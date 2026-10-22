@@ -102,6 +102,25 @@ class Projection(unittest.TestCase):
         self.assertEqual(O.project([row], {O._id(JOB_A): {"company": "x", "role": "y", "url": "u"}}, date(2026, 10, 15)), [])
 
 
+class EntryPoint(unittest.TestCase):
+    BASE = "https://close.example.ts.net:47443"
+
+    def test_link_is_exact_job_https_only_and_absent_without_an_origin(self):
+        self.assertEqual(JP.action_link(self.BASE + "/", "aaaa-aaaa"), f"{self.BASE}/referral?j=aaaaaaaa")
+        for base in ("", None, "http://close.example", "close.example"):
+            self.assertIsNone(JP.action_link(base, JOB_A))
+
+    def test_only_an_open_conversation_carries_the_link_and_it_is_a_link_not_an_action(self):
+        link = JP.action_link(self.BASE, JOB_A)
+        rows = [store.read(_row(a)) for a in ("Waiting", "Referral Offered", "Declined")]
+        cells = JP.cells(rows, date(2026, 10, 15), link)
+        urls = [[span[1] for span in row[2] if span[1]] for row in cells]
+        self.assertEqual(sorted(map(len, urls)), [0, 1, 1])
+        self.assertEqual([u for u in sum(urls, []) if u != link], [])
+        self.assertEqual(JP.cells(rows, date(2026, 10, 15)), JP.cells(rows, date(2026, 10, 15), None))
+        self.assertTrue(all(span[1] is None for row in JP.cells(rows, date(2026, 10, 15)) for span in row[2]))
+
+
 class Screen(unittest.TestCase):
     def test_signed_flow_records_confirmed_and_get_review_never_write(self):
         ledger, rec = world()
