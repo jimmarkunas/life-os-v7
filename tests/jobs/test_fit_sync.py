@@ -74,6 +74,48 @@ class FitSync(unittest.TestCase):
         self.assertEqual(counts["failed_why"], "NOTION_HTTP_500")                                  # the failing pages' reason reaches the log as a fixed code
 
 
+class PageGone(unittest.TestCase):
+    """The two pages that failed every tick with a bare validation_error: a page in Notion's trash refuses every write."""
+
+    class Refusing(Client):
+        def __init__(self, page):
+            super().__init__()
+            self.page = page
+
+        def call(self, method, path, body=None):
+            if method == "PATCH":
+                raise NotionError("NOTION_HTTP_400")
+            if method == "GET":
+                if self.page == "unreadable":
+                    raise NotionError("NOTION_HTTP_500")
+                return self.page
+            return super().call(method, path, body)
+
+        call_once = call
+
+    def run_with(self, page):
+        marked = []
+        c = conn([ROW])
+        with mock.patch.object(fit_sync.store, "connect", side_effect=lambda: c), mock.patch.object(fit_sync, "_mark_synced", side_effect=marked.append):
+            counts = fit_sync.run(self.Refusing(page), True, gated=True)
+        return counts, marked
+
+    def test_a_page_in_the_trash_is_not_a_failure_and_is_marked_so_it_is_not_asked_again(self):
+        counts, marked = self.run_with({"in_trash": True})
+        self.assertEqual((counts["failed"], counts["synced"], counts["page_gone"], marked), (0, 0, 1, [1]))
+        self.assertNotIn("failed_why", counts)
+
+    def test_an_open_page_that_refuses_is_still_a_failure_and_says_the_page_is_open(self):
+        counts, marked = self.run_with({"in_trash": False, "archived": False, "properties": {}})
+        self.assertEqual((counts["failed"], counts["failed_page"], counts["failed_why"], marked), (1, "open", "NOTION_HTTP_400", []))
+        self.assertNotIn("page_gone", counts)
+
+    def test_an_unreadable_page_is_a_failure_never_a_gone_page(self):
+        counts, marked = self.run_with("unreadable")
+        self.assertEqual((counts["failed"], counts["failed_page"], marked), (1, "unreadable", []))
+        self.assertNotIn("page_gone", counts)
+
+
 def jobs(rows):
     """(notion_page_id, dedupe_key, title) rows of v7_jobs, whatever the status or the Fit say."""
     c = FakeConn()
