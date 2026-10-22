@@ -76,6 +76,8 @@
         "tests.sources.test_interview_evidence.Ordinal.test_only_an_explicit_single_round_number_counts",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_that_states_its_round_adds_that_round_before_the_refresh",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_unnumbered_event_beside_a_scheduling_pending_round_is_named_as_that_case",
         "tests.sources.test_interview_evidence.CalendarRounds.test_events_that_are_not_interviews_or_not_this_job_or_not_accepted_are_ignored",
         "tests.interview.test_create.CreationTests.test_same_run_duplicate_evidence_defers_round"
       ]
