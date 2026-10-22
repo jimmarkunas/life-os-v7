@@ -94,6 +94,11 @@ class Run:
         self.kids = kids if kids is not None else {"p1": (child(),)}
         self.rows, self.calendar, self.environ, self.live = rows, calendar if calendar is not None else Calendar(), environ, live
 
+    def ledger_rows(self, company):
+        if isinstance(self.rows, Exception):
+            raise self.rows
+        return list(self.rows)
+
     def __call__(self):
         captured = {}
 
@@ -109,7 +114,7 @@ class Run:
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), self.complete)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
-            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows),
+            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
                             ledger=self.ledger, records=self.records, writer=self.writer)
         return counts, captured
 
@@ -284,9 +289,9 @@ class SchedulingRequests(unittest.TestCase):
 
 
 class Leads(unittest.TestCase):
-    """E01b: every recruiter outreach that names a role is a lead with a minted Stable Job Key, and its page is created on the first message, with no reply needed."""
+    """E01b: every recruiter outreach that names a role is a lead; with no posting link, only the employer's requisition gives it a Stable Job Key (LIFE-25, Jim 10851)."""
     def test_a_recruiters_first_message_names_a_client_a_role_and_a_minted_key(self):
-        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, "recruiter-exampleco-program-manager", "https://example.test/thread/5"))
+        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, None, "https://example.test/thread/5"))      # no requisition, no posting: no key, never the role
         company, role, req, key, _ = ev.lead_of(outreach(extra="Requisition 123456."))
         self.assertEqual((req, key), ("123456", "recruiter-exampleco-123456"))
         self.assertEqual(ev.lead_of(outreach(client=""))[0], "Staffing Example Inc")             # no client named: the recruiter's company, as stated
@@ -299,10 +304,10 @@ class Leads(unittest.TestCase):
             self.assertIsNone(ev.lead_of(message), label)
 
     def test_the_first_message_queues_a_parent_with_no_round_and_the_minted_key(self):
-        counts, got = Run(parents=(), kids={}, roster=[], records=[outreach()])()
+        counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=[outreach(extra=REQ_TEXT)])()
         (parent, query), = got["evidence"]
         self.assertEqual((parent.company, parent.role), ("ExampleCo", "Program Manager"))
-        self.assertEqual((query.stable_job_key, query.source, query.ledger_page_id, query.interview_date), ("recruiter-exampleco-program-manager", "https://example.test/thread/5", None, None))
+        self.assertEqual((query.stable_job_key, query.source, query.ledger_page_id, query.interview_date), (REQ_KEY, "https://example.test/thread/5", None, None))
         self.assertEqual((counts["leads"], counts["failed"]), (1, 0))
 
     def test_an_existing_active_or_retired_page_or_an_applied_job_is_never_a_second_lead(self):
@@ -310,14 +315,14 @@ class Leads(unittest.TestCase):
                            ("applied job", Run(parents=(), kids={}, roster=[APPLIED], records=[outreach()]))):
             counts, got = run()
             self.assertEqual(counts["leads"], 0, label)
-            self.assertNotIn("recruiter-exampleco-program-manager", [q.stable_job_key for _, q in got["evidence"]], label)
+            self.assertEqual([q.source for _, q in got["evidence"] if q.source == "https://example.test/thread/5"], [], label)
 
     def test_one_job_from_two_messages_is_one_lead_and_a_burst_is_capped_newest_first(self):
-        twice = [outreach(url="https://example.test/thread/1", received="2026-10-19T10:00:00Z"), outreach(url="https://example.test/thread/2", received="2026-10-20T10:00:00Z")]
-        _, got = Run(parents=(), kids={}, roster=[], records=twice)()
+        twice = [outreach(url="https://example.test/thread/1", received="2026-10-19T10:00:00Z", extra=REQ_TEXT), outreach(url="https://example.test/thread/2", received="2026-10-20T10:00:00Z", extra=REQ_TEXT)]
+        _, got = Run(parents=(), kids={}, roster=[], rows=(), records=twice)()
         self.assertEqual([q.source for _, q in got["evidence"]], ["https://example.test/thread/2"])
-        many = [outreach(role=f"Role Number {n}", client=f"Client{chr(65 + n)} Corp", url=f"https://example.test/m/{n}", received=f"2026-10-{10 + n}T10:00:00Z") for n in range(8)]
-        counts, got = Run(parents=(), kids={}, roster=[], records=many)()
+        many = [outreach(role=f"Role Number {n}", client=f"Client{chr(65 + n)} Corp", url=f"https://example.test/m/{n}", received=f"2026-10-{10 + n}T10:00:00Z", extra=f"Requisition 10000{n}.") for n in range(8)]
+        counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=many)()
         self.assertEqual((counts["leads"], len(got["evidence"])), (8, ev.LEADS_PER_RUN))
         self.assertEqual([q.source for _, q in got["evidence"]][:2], ["https://example.test/m/7", "https://example.test/m/6"])
 
@@ -329,19 +334,20 @@ class Leads(unittest.TestCase):
 
 
 LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on"}
+REQ_TEXT, REQ_KEY = "Requisition 123456.", "recruiter-exampleco-123456"
 
 
 class LeadRows(unittest.TestCase):
     """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
-    def go(self, writer, live=True):
-        return Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE if live else ENV, writer=writer)()
+    def go(self, writer, live=True, rows=(), extra=None):
+        return Run(parents=(), kids={}, roster=[], rows=rows, records=[outreach(extra=REQ_TEXT if extra is None else extra)], environ=LIVE if live else ENV, writer=writer)()
 
     def test_a_live_run_writes_the_ledger_row_then_queues_the_page(self):
         writer = Writer()
         counts, got = self.go(writer)
         row, = writer.created
         self.assertEqual((row["Visible Lane"]["select"]["name"], row["Admission Status"]["select"]["name"], row["Stable Job Key"]["rich_text"][0]["text"]["content"]),
-                         ("Recruiter", "Admitted", "recruiter-exampleco-program-manager"))
+                         ("Recruiter", "Admitted", REQ_KEY))
         self.assertNotIn("Applied", row)
         self.assertEqual((counts["lead_rows"], len(got["evidence"]), counts["failed"]), (1, 1, 0))
 
@@ -363,6 +369,52 @@ class LeadRows(unittest.TestCase):
     def test_two_rows_for_one_key_are_refused(self):
         counts, got = self.go(Writer(held=2))
         self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed")), ([], 1))
+
+
+class LeadRequisition(unittest.TestCase):
+    """LIFE-25 (Jim, comment 10851): a recruiter lead with no posting link creates a Ledger row only from the employer's requisition; anything less is REVIEW with no write."""
+    def go(self, records, rows=(), writer=None):
+        writer = writer or Writer()
+        counts, got = Run(parents=(), kids={}, roster=[], rows=rows, records=records, environ=LIVE, writer=writer)()
+        return writer, counts, got
+
+    def test_no_requisition_is_review_with_no_row_no_page_and_no_failure(self):
+        writer, counts, got = self.go([outreach()])
+        self.assertEqual((writer.created, got["evidence"], counts["lead_rows"]), ([], [], 0))
+        self.assertEqual((counts["lead_review"], counts["failed"], counts["leads"]), ({"requisition_missing": 1}, 0, 1))
+
+    def test_an_exact_requisition_is_one_row_and_its_replay_writes_nothing_more(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)])
+        self.assertEqual((len(writer.created), counts["lead_rows"], [q.stable_job_key for _, q in got["evidence"]]), (1, 1, [REQ_KEY]))
+        replay, counts, got = self.go([outreach(extra=REQ_TEXT)], writer=Writer(held=1))
+        self.assertEqual((replay.created, counts["lead_rows"], len(got["evidence"]), counts["failed"]), ([], 0, 1, 0))
+
+    def test_two_requisitions_at_one_company_are_two_jobs_and_never_merged(self):
+        a = outreach(role="Alpha Role", url="https://example.test/m/1", received="2026-10-18T10:00:00Z", extra="Requisition 111111.")
+        b = outreach(role="Beta Role", url="https://example.test/m/2", received="2026-10-19T10:00:00Z", extra="Requisition 222222.")
+        writer, counts, got = self.go([a, b])
+        self.assertEqual(sorted(r["Stable Job Key"]["rich_text"][0]["text"]["content"] for r in writer.created), ["recruiter-exampleco-111111", "recruiter-exampleco-222222"])
+        same_title = [a, {**b, "subject": a["subject"], "body": a["body"].replace("111111", "222222")}]
+        writer, counts, got = self.go(same_title)
+        self.assertEqual((writer.created, got["evidence"], counts["lead_review"]), ([], [], {"requisition_ambiguous": 1}))
+
+    def test_an_existing_row_holding_the_requisition_key_is_reused_not_created_again(self):
+        held = {**ROW, "stable_job_key": REQ_KEY}
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=(held,), writer=Writer(held=1))
+        self.assertEqual((writer.created, [q.stable_job_key for _, q in got["evidence"]], counts["failed"]), ([], [REQ_KEY], 0))
+
+    def test_a_row_for_the_same_title_under_another_key_is_an_identity_conflict_and_nothing_is_written(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=(ROW,))
+        self.assertEqual((writer.created, got["evidence"], counts["why"].get("identity_conflict"), counts["where"]), ([], [], 1, {"lead_requisition": 1}))
+
+    def test_an_unreadable_ledger_is_degraded_and_writes_nothing(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=RuntimeError("down"))
+        self.assertEqual((writer.created, got["evidence"], counts["why"].get("ledger_unreadable"), counts["failed"] > 0), ([], [], 1, True))
+
+    def test_a_posting_link_still_names_the_job_with_no_requisition(self):
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            writer, counts, got = self.go([outreach(extra=POSTING)])
+        self.assertEqual((job.call_count, writer.created, counts["lead_review"]), (1, [], {}))
 
 
 class Exceptions(unittest.TestCase):
@@ -418,7 +470,7 @@ class LinkLeads(unittest.TestCase):
         for label, links in (("two postings", (POSTING, "https://boards.greenhouse.io/exampleco/jobs/7654321")), ("not an ATS", ("https://www.example.com/jobs/1",)),
                              ("a listing, not one vacancy", ("https://boards.greenhouse.io/exampleco",)), ("no link", ())):
             self.assertIsNone(ev.posting_link(self.message(*links)), label)
-        self.assertEqual(ev.lead_of(self.message())[3], "recruiter-exampleco-program-manager")
+        self.assertIsNone(ev.lead_of(self.message())[3])                                  # no posting and no requisition: no key (LIFE-25)
 
     def test_a_new_lead_job_is_inserted_resolved_in_the_recruiter_lane_at_its_own_link(self):
         cursor = Cursor()
@@ -438,7 +490,7 @@ class LinkLeads(unittest.TestCase):
             counts, got = Run(parents=(), kids={}, roster=[], records=[outreach(extra=POSTING)], environ=LIVE, writer=writer)()
         self.assertEqual((job.call_count, writer.created, counts["lead_jobs"], counts["lead_rows"], len(got["evidence"])), (1, [], 1, 0, 1))
         with patch.object(ev, "lead_job", return_value=True) as job:
-            counts, _ = Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE, writer=writer)()
+            counts, _ = Run(parents=(), kids={}, roster=[], rows=(), records=[outreach(extra=REQ_TEXT)], environ=LIVE, writer=writer)()
         self.assertEqual((job.call_count, len(writer.created), counts["lead_rows"]), (0, 1, 1))
 
     def test_a_job_store_failure_is_degraded_and_creates_no_page(self):
@@ -596,10 +648,10 @@ class LeadCorrelation(unittest.TestCase):
         self.assertEqual(len([c for c in calls if c[0] == "AlphaCo"]), 1)
 
     def test_a_linkless_lead_never_borrows_a_link_from_another_message(self):
-        linkless = outreach(role="Epsilon Role", client="EpsilonCo", url="https://example.test/m/e", received="2026-10-17T10:00:00Z")
+        linkless = outreach(role="Epsilon Role", client="EpsilonCo", url="https://example.test/m/e", received="2026-10-17T10:00:00Z", extra=REQ_TEXT)
         writer = Writer()
         with patch.object(ev, "lead_job", return_value=True) as job:
-            counts, got = Run(parents=(), kids={}, roster=[], records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
+            counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
         self.assertEqual(job.call_count, 1)                                    # only the lead that has its own link
         self.assertEqual((len(writer.created), counts["lead_rows"], counts["lead_jobs"]), (1, 1, 1))
         self.assertEqual(writer.created[0]["Apply URL"]["url"], "https://example.test/m/e")
