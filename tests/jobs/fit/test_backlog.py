@@ -573,6 +573,17 @@ class KeepListRolesAreAskedAgainWithTheNewBrief(Batch):
         self.assertEqual(self.row(1, ("cloud_status", "cloud_run_id", "cloud_score")), (None, None, 68))
         self.assertEqual(self.clear(), 0)                                                                   # cleared once
 
+    def test_a_keep_list_role_admitted_over_a_static_exclusion_is_asked_again_and_the_stored_exclusion_stops_hiding_it(self):
+        """Credit Manager (Product): the cloud answered under the old brief, the static financial-risk exclusion is still stored, and both the re-ask and the backlog skipped any row with an exclusion."""
+        self.answered(1, "Credit Manager (Product)", admission="ADMIT")
+        self.db.raw.execute("UPDATE v7_job_fit SET exclusion='financial risk / fincrime / treasury / audit domain role' WHERE job_id=1")
+        self.assertEqual(self.clear(), 1)
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_score", "exclusion")), (None, 68, None))
+        self.answered(2, "Technology Manager", admission="REVIEW")                                           # on no keep-list override: an exclusion it carries is left alone
+        self.db.raw.execute("UPDATE v7_job_fit SET exclusion='some other exclusion' WHERE job_id=2")
+        self.assertEqual(self.clear(), 0)
+        self.assertEqual(self.row(2, ("cloud_status", "exclusion")), ("CANARY", "some other exclusion"))
+
     def test_nothing_else_is_cleared(self):
         self.answered(1, "Product Owner (Crypto)")                                                            # not on the keep list
         self.answered(2, "Product Owner (Technical)", company="Acme Ltd")                                      # another company
