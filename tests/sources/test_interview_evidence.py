@@ -180,10 +180,17 @@ class CalendarRounds(unittest.TestCase):
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
         self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})        # LIFE-78: the cause names WHICH check raised it, as a fixed word
 
-    def test_an_unnumbered_event_beside_a_scheduling_pending_round_is_named_as_that_case(self):
-        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
-        self.assertEqual(len(got["evidence"]), 1)                              # the pending child is not given this time (E07 is not built)
-        self.assertEqual((counts["why"], counts["where"], counts["failed"]), ({"round_identity_incomplete": 1}, {"calendar_event_pending_round": 1}, 1))
+    def test_an_invite_for_the_pending_interview_1_dates_that_same_page(self):
+        for title in ("ExampleCo Program Manager Interview", "ExampleCo Program Manager Interview 1"):
+            counts, got = Run(calendar=Calendar(event(title)))()
+            (_, confirm), (_, refresh) = got["evidence"]                       # LIFE-46 E07: the pending child itself, named by its page id
+            self.assertEqual((confirm.explicit_child_page_id, confirm.interview_date, confirm.ordinal, confirm.stable_job_key), ("c1", "2026-10-28", 1, "exampleco-r-1"), title)
+            self.assertEqual((refresh.interview_date, counts["failed"]), (None, 0), title)
+
+    def test_two_accepted_times_for_one_pending_round_choose_neither(self):
+        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview"), event("ExampleCo Program Manager Interview", start="2026-10-30T10:00:00-05:00")))()
+        self.assertEqual(len(got["evidence"]), 1)                              # only the refresh
+        self.assertEqual((counts["why"], counts["where"], counts["failed"]), ({"calendar_event_ambiguous": 1}, {"calendar_event_pending_round": 1}, 1))
 
     def test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure(self):
         counts, got = Run(kids={"p1": (child("c2", "2026-10-28", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
