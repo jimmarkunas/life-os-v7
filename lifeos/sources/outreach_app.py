@@ -14,6 +14,10 @@ from .close_app import TTL, HTML, _mac, _now, _same
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
 PEOPLE_MAX = 10
+STATUS_PATH = "Job Ledger / Outreach / Record reply or referral"
+OUTREACH_TITLE = "🤝 Outreach"
+CHOICES = (("Replied", "They replied"), ("Referral Offered", "They offered to refer me (not yet confirmed)"),
+           ("Referral Confirmed", "The referral is confirmed (submitted by them)"), ("Declined", "They declined"))
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
@@ -170,3 +174,115 @@ def handle(req, who, secrets):
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)
     except NotionError as error:
         return _stop(409, "Not changed", "This job cannot be marked here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+
+
+def conversations_on_page(client, page_id):
+    """The people with a recorded conversation on this job page: the first line of the first cell of each row of the page's own Outreach table. Read only; no table -> []."""
+    top = N.children(client, page_id)
+    for i, block in enumerate(top):
+        if block.get("type") == "heading_3" and N._plain(block).startswith(OUTREACH_TITLE) and i + 1 < len(top) and top[i + 1].get("type") == "table":
+            rows = N.children(client, top[i + 1]["id"])[1:]
+            first = lambda row: (((row.get("table_row") or {}).get("cells") or [[]])[0] or [{}])[0].get("plain_text", "")      # noqa: E731 - the bold person line
+            people = [O.valid_person(first(row)) for row in rows]
+            return [p for p in people if p][:PEOPLE_MAX]
+    return []
+
+
+def _status_form(j, fields, people, notice="", picked="", status=""):
+    warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
+    who = "".join(f'<label class="reason"><input type="radio" name="who" value="{i}" required{" checked" if picked == str(i) else ""}><span><strong>{e(name)}</strong></span></label>' for i, name in enumerate(people))
+    what = "".join(f'<label class="reason"><input type="radio" name="status" value="{e(value)}" required{" checked" if status == value else ""}><span><strong>{e(label)}</strong></span></label>' for value, label in CHOICES)
+    return S.page("Record reply or referral", "Record only what you have seen. LIFE OS never contacts anyone and never marks the job Applied.", _job_section(j) + (
+        f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Outreach status</div>'
+        f'<fieldset><legend class="step-title">Which conversation? <span aria-label="Required">*</span></legend><div class="people">{who}</div></fieldset>'
+        f'<fieldset><legend class="step-title">What happened? <span aria-label="Required">*</span></legend><div class="people">{what}</div></fieldset>{warn}'
+        '<div class="notice">An offered referral stays Offered until you confirm it. Confirming stops redundant referral prompts; applying is still yours to mark.</div></section>'
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'),
+        STATUS_PATH, "Record reply or referral")
+
+
+def _status_review(j, fields, person, status):
+    return S.page("Review outreach status", "Your confirmation is required before anything is recorded.", (
+        f'<form method="post" action="/referral">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
+        f'<dl class="review"><dt>Company</dt><dd>{e(j["company"])}</dd><dt>Role</dt><dd>{e(j["role"])}</dd><dt>Conversation</dt><dd>{e(person)}</dd><dt>Record</dt><dd>{e(status)}</dd></dl>'
+        '<div class="notice alert">Confirming updates the recorded conversation; it is shown as done only after the canonical record is read back.</div></section>'
+        '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'),
+        STATUS_PATH, "Record reply or referral")
+
+
+def _status_stop(status, eyebrow, title, text, detail, css="alert"):
+    return status, HTML, S.page(title, "A status counts only after the canonical record is read back.",
+                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
+                                f'<div class="notice {css}">{e(detail)}</div></section>', STATUS_PATH, "Record reply or referral"), ()
+
+
+def _people_sign(secret, login, pid, st, exp, people):
+    return {**{f"l{i}": name for i, name in enumerate(people)}, "lm": _mac(secret, "q", login, pid, st, exp, *people)}
+
+
+def _status_get(req, who, secrets):
+    pid = D._page_id(req["query"].get("j"))
+    if not pid:
+        return _status_stop(400, "Invalid link", "No job selected", "Open this screen from a Job Ledger job.", "Nothing was changed.")
+    j = job(secrets["reader"], secrets["config"], pid)
+    people = conversations_on_page(secrets["reader"], j["id"])
+    if not people:
+        return _status_stop(409, "Nothing to update", "No recorded conversation", "Mark someone as sent on this job first.", "Nothing was changed.")
+    exp, st = str(int(_now().timestamp()) + TTL), _fp(j)
+    fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "t": _mac(secrets["link"], "r", who["login"], j["id"], st, exp)}
+    return 200, HTML, _status_form(j, {**fields, **_people_sign(secrets["link"], who["login"], j["id"], st, exp, people)}, people), ()
+
+
+def _status_post(req, who, secrets):
+    form, secret, login = req["form"], secrets["link"], who["login"]
+    pid, step, exp, st = D._page_id(form.get("j")), form.get("step"), form.get("exp", ""), form.get("st", "")
+    bad = lambda: _status_stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")   # noqa: E731
+    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "r", login, pid, st, exp)):
+        return bad()
+    if step == "cancel":
+        return _status_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    shown = {"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}
+    people = []
+    while f"l{len(people)}" in form and len(people) < PEOPLE_MAX:
+        people.append(form[f"l{len(people)}"])
+    if not _same(_fp(shown), st) or not _same(form.get("lm"), _people_sign(secret, login, pid, st, exp, people)["lm"]):
+        return bad()
+    fields = {**{k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "t")}, **_people_sign(secret, login, pid, st, exp, people)}
+    index, status = form.get("who", ""), form.get("status", "")
+    person = people[int(index)] if index.isdigit() and int(index) < len(people) else ""
+    if step == "edit":
+        return 200, HTML, _status_form(shown, fields, people, picked=index, status=status), ()
+    if not person or status not in [value for value, _ in CHOICES]:
+        return 400, HTML, _status_form(shown, fields, people, "Choose the conversation and what happened.", index, status), ()
+    sign = _mac(secret, "u", login, pid, st, exp, person, status)
+    if step == "review":
+        return 200, HTML, _status_review(shown, {**fields, "who": index, "status": status, "c": sign}, person, status), ()
+    if not _same(form.get("c"), sign):
+        return _status_stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
+    config, token = secrets["config"], secrets["notion"].decode()
+    current = job(Client({"NOTION_API_TOKEN": token, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]}), config, pid)
+    if _fp(current) != st:
+        return _status_stop(409, "Conflict", "Job changed", "The job changed since this form was opened.", "No write attempted. Reload the job and review it again.")
+    try:
+        recruiters = Client({"NOTION_API_TOKEN": token, "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or ""}, source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+        done = O.set_conversation(recruiters, current, person, status, config["ledger"])
+    except NotionError as error:
+        code = str(error)[:60]
+        if code in ("OUTREACH_SCHEMA_MISSING", "OUTREACH_AMBIGUOUS", "NOTION_CONFIG_MISSING", "OUTREACH_STATUS_UNAVAILABLE", "OUTREACH_NOT_RECORDED"):
+            return _status_stop(409, "Not changed", "Status was not recorded", "This status is not enabled yet, or the conversation is not recorded.", f"Refused: {code}. Nothing was changed.")
+        return _status_stop(500, "Unavailable", "Could not verify the status", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {code}", "danger")
+    if done.get("verified") is not True:
+        return _status_stop(500, "Unavailable", "Could not verify the status", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+    head = f"{current['company']} — {current['role']} · {person}"
+    if done["status"] == "recorded":
+        return _status_stop(200, "Recorded", f"Recorded: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
+    if done["status"] == "already_recorded":
+        return _status_stop(200, "Already recorded", "Already recorded", "This status was recorded before; nothing was changed.", f"{head} · {done['action']}.", "")
+    return _status_stop(409, "Not changed", "Nothing was changed", "The conversation is closed, or already further along than this status.", f"{head} · currently {done['action'] or 'no status'}.")
+
+
+def handle_status(req, who, secrets):
+    try:
+        return (_status_get if req["method"] == "GET" else _status_post)(req, who, secrets)
+    except NotionError as error:
+        return _status_stop(409, "Not changed", "This job cannot be updated here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
