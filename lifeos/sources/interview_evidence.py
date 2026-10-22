@@ -141,8 +141,9 @@ def lead_of(message):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
     link = posting_link(message)                                         # a public posting is a real job: its Stable Job Key is the one Jobs OS gives that link, so the Ledger row will match
-    key = identity.url_hash(link) if link else mint(company, found["role"], req.group(1) if req else None)
-    return company, found["role"], req.group(1) if req else None, key, message["url"]
+    requisition = req.group(1) if req else None                          # LIFE-25 (Jim, 10851): with no posting, only the employer's requisition names the job; none -> key None (REVIEW)
+    key = identity.url_hash(link) if link else (mint(company, found["role"], requisition) if requisition else None)
+    return company, found["role"], requisition, key, message["url"]
 
 
 def window(environ, live):
@@ -351,21 +352,39 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
         found = lead_of(message)
         if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
-            fresh[found[3]] = (found, message)
+            fresh[found[3] or ("review", message["url"])] = (found, message)
     leads_live = live and environ.get("INTERVIEW_LEADS") == "on"              # Jim's second switch: lead rows, jobs and pages stay off until it is "on"
     made_rows = made_jobs = 0
-    chosen, titles_taken = [], set()
+    review = {}                                                              # LIFE-25: a lead held for review is counted by reason, writes nothing and is not a failure (the source message stays in the mailbox)
+    groups = {}
     for lead, source in sorted(fresh.values(), key=lambda v: v[1]["received"], reverse=True):
-        title = (tuple(tokens(lead[0])), tuple(tokens(lead[1])))
-        if title not in titles_taken and len(chosen) < LEADS_PER_RUN:        # two links for one company and role are one pursuit, never two pages
-            titles_taken.add(title)
-            chosen.append((lead, source))
+        groups.setdefault((tuple(tokens(lead[0])), tuple(tokens(lead[1]))), []).append((lead, source))
+    chosen = []
+    for items in groups.values():                                            # newest first within each company and role
+        keyed = [(lead, source) for lead, source in items if lead[3]]
+        if not keyed:
+            review["requisition_missing"] = review.get("requisition_missing", 0) + 1
+        elif len({lead[3] for lead, source in keyed if not posting_link(source)}) > 1:
+            review["requisition_ambiguous"] = review.get("requisition_ambiguous", 0) + 1     # two requisitions under one title: two jobs that one page title cannot tell apart, never merged
+        elif len(chosen) < LEADS_PER_RUN:                                    # two links for one company and role are one pursuit, never two pages
+            chosen.append(keyed[0])
     for (company, role, req, key, url), source in chosen:
         if live and not leads_live:
             continue                                                         # live, but Jim has not turned leads on: nothing is written or queued for a lead
+        link = posting_link(source)                                          # this lead's own message, never another one's
+        if not link:                                                         # LIFE-25: the requisition names the job; an existing row for this title either is it or conflicts
+            try:
+                same = [r for r in read_rows(company) if same_company(r.get("company") or "", company) and same_role(r.get("role") or "", role)]
+            except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
+                flag("ledger_unreadable")
+                continue
+            held = [r for r in same if r.get("stable_job_key") == key or (r.get("requisition") and squash(r["requisition"]) == squash(req))]
+            if len(held) > 1 or (same and not held):
+                flag("identity_conflict", "lead_requisition")                # another requisition already holds this title, or two rows claim this one: nothing is written
+                continue
+            key = held[0]["stable_job_key"] if held else key                 # the existing row is the job: no second row
         if leads_live:                                                       # the job or Ledger row first: no page for a lead Jobs OS does not hold
             try:
-                link = posting_link(source)                                  # this lead's own message, never another one's
                 if link:
                     made_jobs += bool(lead_job(company, role, link, source, now))
                 else:
@@ -385,6 +404,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         counts["where"] = where
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
+    counts["lead_review"] = review
     counts["convert"] = convert
     if sweep.mode(environ) and scan.complete:                                # Jim, Oct 21: every opportunity page becomes the new page; INTERVIEW_CONVERT=inventory only counts them
         counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
