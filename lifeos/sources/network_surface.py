@@ -185,7 +185,7 @@ def _run(limit, live, environ, connection, client, now, today):
     queue, candidates = _queue(surfaced, others, with_leads, budget, now)
     for key, page, company, title, target in queue:
         try:
-            _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts)
+            _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, (environ.get("V7_CLOSE_BASE_URL") or "").strip())
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
@@ -195,7 +195,7 @@ def _run(limit, live, environ, connection, client, now, today):
     return _finish(counts)
 
 
-def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts):
+def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base=""):
     page = notion.call("GET", f"/pages/{page_id}")
     top, owned = surface.read_page(notion, page_id)
     counts["pages_read"] += 1
@@ -220,7 +220,7 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         aliases.update(dict(new_aliases))
     shown, _ = _leads(company, title, index, details, today, local_aliases, local_dismissed, key)
     counts["with_leads"] += bool(shown)
-    action = surface.apply(notion, page_id, top, owned, shown, live)
+    action = surface.apply(notion, page_id, top, owned, shown, live, surface.sent_url(close_base, page_id))
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
 
 
