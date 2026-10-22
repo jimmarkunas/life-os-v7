@@ -253,6 +253,24 @@ def explicit_child(client, page_id, home=None, via=None):
     return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
+CALENDAR_REF = re.compile(r"^Calendar event: (Accepted invite|Cancelled) · ref ([0-9a-f]{12})$")
+
+
+def round_calendar(client, page_id, budget=None):
+    """LIFE-46 E07: (ref, cancelled) a UI 4 round page's Logistics records for its Calendar event, (None, False) when it records none.
+    The Logistics callout is the first callout of the right column; an unknown layout raises a fixed code (nothing is guessed)."""
+    budget = budget or [MAX_CALLS]
+    lists = [b for b in children(client, page_id, budget) if b.get("type") == "column_list"]
+    columns = children(client, lists[0]["id"], budget) if len(lists) == 1 else []
+    right = children(client, columns[1]["id"], budget) if len(columns) == 2 else []
+    calls = [b for b in right if b.get("type") == "callout"]
+    lines = [text(b) for b in children(client, calls[0]["id"], budget)] if calls else []
+    if not lines or lines[0] != "Logistics":
+        raise NotionError("INTERVIEW_ROUND_LAYOUT")
+    found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
+    return (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+
+
 def _protected_children(client, page_id, budget):
     """children() for a protected read, with its failures told apart by fixed code: the read budget ran out, or the API answer was malformed."""
     try:

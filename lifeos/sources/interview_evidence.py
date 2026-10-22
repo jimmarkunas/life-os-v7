@@ -124,6 +124,11 @@ def posting_link(message):
     return found.pop() if len(found) == 1 else None
 
 
+def reference(event_id):
+    """LIFE-46 E07: the short hash a round page records for its Calendar event (never the event id itself)."""
+    return sha1(str(event_id).encode()).hexdigest()[:12]
+
+
 def mint(company, role, requisition=None):
     """The Stable Job Key of a recruiter lead or a converted pursuit that has no public posting: recruiter-<company>-<requisition or role>."""
     slug = lambda text: "-".join(re.findall(r"[a-z0-9]+", " ".join(tokens(text)).lower()))[:40]
@@ -211,10 +216,10 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
             where[site] = where.get(site, 0) + 1
 
-    def queue(company, role, job, url, rows, date, who, number, requisition=None):
+    def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
-            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url)))
+            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref)))
         else:
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
@@ -262,37 +267,75 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 ready[parent.page_id] = (company, role, *page, notion.child_scan(client, parent.page_id, context), read_rows(company))
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("ledger_unreadable")
-    events = []
+    events, gone = [], []
     try:
-        for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now):
-            at, _ = hiring.match_event(event["title"], [{"company": c, "role": r} for _, c, r in titles])
+        cancelled = []
+        mapped = lambda title: hiring.match_event(title, [{"company": c, "role": r} for _, c, r in titles])[0]
+        for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now, cancelled):
+            at = mapped(event["title"])
             if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
                 events.append((titles[at][0].page_id, event))
+        for event in cancelled:                                              # LIFE-46 E07: a cancelled invite, matched to its round only by the round's own recorded reference below
+            at = mapped(event["title"])
+            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
+                gone.append((titles[at][0].page_id, event))
     except Exception:                                                        # noqa: BLE001
         flag("calendar_unavailable")
-    confirms = {}                                                            # LIFE-46 E07: page id -> the dates accepted events give its one Scheduling Pending Interview 1
+    recorded = {}
+
+    def calendar_of(child):                                                  # the event reference a dated round page records, read only when an event needs it
+        if child.page_id not in recorded:
+            try:
+                recorded[child.page_id] = notion.round_calendar(client, child.page_id)
+            except Exception:                                                # noqa: BLE001 - an older layout records none: it is never moved or cancelled
+                recorded[child.page_id] = (None, False)
+        return recorded[child.page_id]
+
+    confirms, moves, cancels = {}, {}, {}                                    # LIFE-46 E07: the round pages Calendar moves in place
     for page_id, event in events:                                            # a new round first: the refresh below then waits for the next run
         company, role, job, url, kids, rows = ready[page_id]
-        held, number, day = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10]
+        held, number, day, ref = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10], reference(event["id"])
         if not kids.complete:
             flag("child_scan_incomplete")
         elif any(c.interview_date == day for c in held):
             continue                                                         # the round page exists: no number is needed to add nothing
         elif number in (None, 1) and len(held) == 1 and held[0].interview_date is None and held[0].ordinal == 1:
-            confirms.setdefault(page_id, set()).add(day)                     # the invite for the pending Interview 1: that page is dated, never a second one
+            confirms.setdefault(page_id, set()).add((day, ref))              # the invite for the pending Interview 1: that page is dated, never a second one
+        elif len(linked := [c for c in held if c.interview_date and calendar_of(c)[0] == ref]) == 1:
+            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add(day)     # the same event at a new time: that round is rescheduled
         elif number is None:                                                 # a new round is never numbered from the pages
             flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
         elif any(c.ordinal == number for c in held):
             flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
         else:
-            queue(company, role, job, url, rows, day, None, number)
-    for page_id, days in confirms.items():
+            queue(company, role, job, url, rows, day, None, number, ref=ref)
+    for page_id, event in gone:
+        kids = ready[page_id][4]
+        for child in [c for c in kids.items if c.identity_valid is True and c.interview_date] if kids.complete else []:
+            if calendar_of(child) == (reference(event["id"]), False):
+                cancels[child.page_id] = (page_id, child)
+    for page_id, found in confirms.items():
         company, role, job, url, kids, rows = ready[page_id]
-        if len(days) > 1:
+        if len(found) > 1:
             flag("calendar_event_ambiguous", "calendar_event_pending_round")    # two accepted times for one pending round: neither is chosen
             continue
+        (day, ref), = found
         pending = [c for c in kids.items if c.identity_valid is True][0]
-        evidence.append((ParentQuery(company, role), RoundQuery(True, days.pop(), pending.interviewer, 1, explicit_child_page_id=pending.page_id, stable_job_key=job, source=url)))
+        evidence.append((ParentQuery(company, role), RoundQuery(True, day, pending.interviewer, 1, explicit_child_page_id=pending.page_id, stable_job_key=job,
+                                                                source=url, calendar_ref=ref)))
+    for child_id, (page_id, child, days) in moves.items():
+        company, role, job, url, kids, rows = ready[page_id]
+        if len(days) > 1 or child_id in cancels:
+            flag("calendar_event_ambiguous", "calendar_event_moved")         # one event, two times (or moved and cancelled): neither is chosen
+            continue
+        evidence.append((ParentQuery(company, role), RoundQuery(True, days.pop(), child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
+                                                                source=url, calendar_ref=calendar_of(child)[0])))
+    for child_id, (page_id, child) in cancels.items():
+        if child_id in moves:
+            continue
+        company, role, job, url, kids, rows = ready[page_id]
+        evidence.append((ParentQuery(company, role), RoundQuery(True, child.interview_date, child.interviewer, child.ordinal, explicit_child_page_id=child_id,
+                                                                stable_job_key=job, source=url, calendar_ref=calendar_of(child)[0], cancelled=True)))
     roster = []
     try:
         ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
