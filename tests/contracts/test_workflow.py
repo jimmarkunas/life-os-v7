@@ -279,10 +279,19 @@ class PullRequestTestsWorkflow(unittest.TestCase):
     def test_it_is_pull_request_only_read_only_and_holds_no_secret(self):
         text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
         self.assertEqual(list(doc[True]), ["pull_request"])
-        self.assertEqual(doc["permissions"], {"contents": "read"})
+        self.assertEqual(doc["permissions"], {"contents": "read", "pull-requests": "read"})        # LIFE-78: the lane guard reads the other open PRs; nothing is written
         for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)
         self.assertEqual([j for j in doc["jobs"]], ["unit-tests"])
+
+    def test_the_lane_guard_step_is_stdlib_read_only_and_runs_before_the_unit_tests(self):
+        steps = yaml.safe_load(self.path.read_text())["jobs"]["unit-tests"]["steps"]
+        names = [s.get("name", "") for s in steps]
+        guard = next(s for s in steps if s.get("name", "").startswith("Lane guard"))
+        self.assertEqual(guard["run"], "python -m lifeos.lane_guard")
+        self.assertEqual(guard["env"], {"GITHUB_TOKEN": "${{ github.token }}"})
+        self.assertLess(names.index(guard["name"]), [i for i, n in enumerate(names) if n.startswith("Unit tests")][0])
+        self.assertEqual(steps[0]["with"], {"persist-credentials": False, "fetch-depth": 0})
 
     def test_it_reuses_the_shared_python_action_and_runs_the_accepted_command_with_the_runtime_limits(self):
         doc = yaml.safe_load(self.path.read_text())

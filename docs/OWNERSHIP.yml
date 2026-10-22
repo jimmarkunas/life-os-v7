@@ -1,0 +1,228 @@
+# Lane ownership for the V7 repository (LIFE-78; Jim-approved Oct 21, 2026, concurrent lane ownership). Read by `python -m lifeos.lane_guard`, which runs on every pull request in pr-tests.
+# The map on the PR's BASE decides, so a PR cannot grant itself ownership. A path no rule covers FAILS (unknown ownership). Most specific rule wins (longest literal prefix).
+# kind: both = every other lane must be named in a Handoff; generated / append = any lane (append: additions only); unassigned = any lane, reported as a warning until Jim assigns an owner.
+# Format is a strict YAML subset (see lifeos/lane_guard.py): scalars, [inline, lists], and the nesting below. Status: the guard runs now; the concurrent-lane rules stay INACTIVE until their gates are verified.
+version: 1
+lanes: [career-v7, edge-oracle]
+rules:
+  # --- career-v7: Jobs, Recruiters, Hiring, Interview, Network, sources and the Close/Outreach screens
+  - path: lifeos/jobs/**
+    lane: career-v7
+  - path: lifeos/recruiters/**
+    lane: career-v7
+  - path: lifeos/interview/**
+    lane: career-v7
+  - path: lifeos/hiring/**
+    lane: career-v7
+  - path: lifeos/network/**
+    lane: career-v7
+  - path: lifeos/sources/**
+    lane: career-v7
+  - path: tests/jobs/**
+    lane: career-v7
+  - path: tests/recruiters/**
+    lane: career-v7
+  - path: tests/interview/**
+    lane: career-v7
+  - path: tests/hiring/**
+    lane: career-v7
+  - path: tests/network/**
+    lane: career-v7
+  - path: tests/sources/**
+    lane: career-v7
+  - path: docs/NETWORK_INTELLIGENCE_SCOPE.md
+    lane: career-v7
+  - path: docs/INTERVIEW_HANDOFF.md
+    lane: career-v7
+  - path: docs/US_REMOTE_WEB.md
+    lane: career-v7
+  - path: docs/FIT_MODEL.md
+    lane: career-v7
+  - path: .github/workflows/recruiters.yml
+    lane: career-v7
+  - path: .github/workflows/network.yml
+    lane: career-v7
+  # --- edge-oracle: Oracle host, Gateway, messaging attention, cloud Fit (LIFE-41), monitoring and alerting (LIFE-72-75)
+  - path: lifeos/edge/**
+    lane: edge-oracle
+  - path: lifeos/imessage/**
+    lane: edge-oracle
+  - path: lifeos/oraclecloud/**
+    lane: edge-oracle
+  - path: lifeos/telegram/**
+    lane: edge-oracle
+  - path: lifeos/whatsapp/**
+    lane: edge-oracle
+  - path: lifeos/attention/**
+    lane: edge-oracle
+  - path: lifeos/jobs/fit/**
+    lane: edge-oracle
+  - path: lifeos/jobs/alerts.py
+    lane: edge-oracle
+  - path: lifeos/jobs/alertstate.py
+    lane: edge-oracle
+  - path: lifeos/platform/alerts.py
+    lane: edge-oracle
+  - path: lifeos/platform/gate.py
+    lane: edge-oracle
+  - path: tests/edge/**
+    lane: edge-oracle
+  - path: tests/imessage/**
+    lane: edge-oracle
+  - path: tests/oraclecloud/**
+    lane: edge-oracle
+  - path: tests/telegram/**
+    lane: edge-oracle
+  - path: tests/whatsapp/**
+    lane: edge-oracle
+  - path: tests/attention/**
+    lane: edge-oracle
+  - path: tests/jobs/fit/**
+    lane: edge-oracle
+  - path: docs/EDGE_GATEWAY_SCOPE.md
+    lane: edge-oracle
+  - path: .github/workflows/safety.yml
+    lane: edge-oracle
+  - path: .github/workflows/watchdog.yml
+    lane: edge-oracle
+  - path: .github/workflows/fit-edge-test.yml
+    lane: edge-oracle
+  - path: .github/workflows/profile-sync.yml
+    lane: edge-oracle
+  # --- shared files, owned by section (a changed line or YAML block belongs to the first matching section, else to the rule's lane)
+  - path: .github/workflows/hourly.yml
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: block
+        item_indent: 6
+        match: '(?i)cloud[-_ ]?fit|v7-runner|lifeos-fit|ntfy|alerts push'
+  - path: .github/workflows/domains.yml
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: block
+        item_indent: 2
+        match: '^  (imessage|report):'
+      - lane: edge-oracle
+        scope: block
+        item_indent: 6
+        match: '(?i)ntfy|alerts push'
+  - path: lifeos/jobs/store.py
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: line
+        match: 'cloud_'
+  - path: lifeos/run.py
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: line
+        match: '(?i)gateway|alerts|fit_cloud|cloud_fit'
+  # --- everyone
+  - path: docs/DECISIONS.md
+    kind: append
+  - path: docs/DECISIONS_INDEX.md
+    kind: generated
+  - path: docs/CODEMAP.md
+    kind: generated
+  - path: docs/codemap.json
+    kind: generated
+  - path: docs/OWNERSHIP.yml
+    kind: both
+  - path: lifeos/lane_guard.py
+    kind: both
+  - path: lifeos/__init__.py
+    kind: both
+  - path: tests/contracts/**
+    kind: both
+  - path: .github/workflows/pr-tests.yml
+    kind: both
+  - path: AGENTS.md
+    kind: both
+  - path: CLAUDE.md
+    kind: both
+  - path: README.md
+    kind: both
+  - path: .gitignore
+    kind: both
+  # --- not yet assigned by Jim: any lane may change them, and the guard says so on the PR
+  - path: lifeos/platform/**
+    kind: unassigned
+  - path: lifeos/agenda/**
+    kind: unassigned
+  - path: lifeos/amazon/**
+    kind: unassigned
+  - path: lifeos/bills/**
+    kind: unassigned
+  - path: lifeos/calendar_bridge/**
+    kind: unassigned
+  - path: lifeos/dcc/**
+    kind: unassigned
+  - path: lifeos/delivery/**
+    kind: unassigned
+  - path: lifeos/jira/**
+    kind: unassigned
+  - path: lifeos/megibow/**
+    kind: unassigned
+  - path: lifeos/outlook/**
+    kind: unassigned
+  - path: lifeos/physmail/**
+    kind: unassigned
+  - path: lifeos/codemap.py
+    kind: unassigned
+  - path: lifeos/decisions.py
+    kind: unassigned
+  - path: lifeos/probe.py
+    kind: unassigned
+  - path: tests/platform/**
+    kind: unassigned
+  - path: tests/agenda/**
+    kind: unassigned
+  - path: tests/amazon/**
+    kind: unassigned
+  - path: tests/bills/**
+    kind: unassigned
+  - path: tests/calendar_bridge/**
+    kind: unassigned
+  - path: tests/dcc/**
+    kind: unassigned
+  - path: tests/delivery/**
+    kind: unassigned
+  - path: tests/jira/**
+    kind: unassigned
+  - path: tests/megibow/**
+    kind: unassigned
+  - path: tests/outlook/**
+    kind: unassigned
+  - path: tests/physmail/**
+    kind: unassigned
+  - path: tests/kit/**
+    kind: unassigned
+  - path: tests/*.py
+    kind: unassigned
+  - path: tests/__init__.py
+    kind: unassigned
+  - path: docs/**
+    kind: unassigned
+  - path: widgets/**
+    kind: unassigned
+  - path: requirements*.txt
+    kind: unassigned
+  - path: .github/workflows/agenda.yml
+    kind: unassigned
+  - path: .github/workflows/amazon.yml
+    kind: unassigned
+  - path: .github/workflows/bills.yml
+    kind: unassigned
+  - path: .github/workflows/branches.yml
+    kind: unassigned
+  - path: .github/workflows/calendar.yml
+    kind: unassigned
+  - path: .github/workflows/diag.yml
+    kind: unassigned
+  - path: .github/workflows/outlook.yml
+    kind: unassigned
+  - path: .github/actions/**
+    kind: unassigned
