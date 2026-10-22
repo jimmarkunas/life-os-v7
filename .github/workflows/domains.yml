@@ -61,6 +61,10 @@ on:
         description: "Interview OS dry run only (LIFE-88): read this many days of mail for scheduling requests, 14 to 90, instead of 14. Ignored when Actually write is ticked. Leave blank for the usual 14"
         type: string
         default: ""
+      interview_journey_proof:
+        description: "Synthetic Interview journey proof (LIFE-78): type QA, tick Recruiters, leave Actually write UNticked. Runs the real Interview OS runner on a fresh sandbox under the QA Interview OS page with invented mail, Calendar and Ledger; the real Hiring Pipeline, mailbox, calendar and Ledger are untouched. Blank = the normal Interview step"
+        type: string
+        default: ""
       calendar_sync:
         description: "Calendar sync only (Outlook invites to your Google calendar, counts only); dry run unless Actually write is ticked"
         type: boolean
@@ -1304,6 +1308,7 @@ jobs:
           INTERVIEW_LEADS: ${{ vars.INTERVIEW_LEADS }}
           INTERVIEW_TEST_COMPANIES: ${{ vars.INTERVIEW_TEST_COMPANIES }}
           INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
+          INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
           INTERVIEW_CONVERT: ${{ inputs.interview_convert || vars.INTERVIEW_CONVERT }}
           INTERVIEW_CONVERT_CAP: ${{ vars.INTERVIEW_CONVERT_CAP }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
