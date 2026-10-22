@@ -90,6 +90,8 @@ def rule_for(doc, path):
 def block_text(lines, i, indent):
     """The block around line i whose first line is the nearest one at exactly `indent` spaces; None when line i is not inside such a block."""
     depth = lambda s: len(s) - len(s.lstrip())                                       # noqa: E731
+    if not 0 <= i < len(lines):                                                      # no file text to read the block from (another PR's patch): the caller falls back to the line
+        return None
     j = i
     while j >= 0 and not (lines[j].strip() and depth(lines[j]) == indent):
         if lines[j].strip() and depth(lines[j]) < indent:
@@ -236,7 +238,7 @@ def main(environ=os.environ):
             files.append({"path": path, "base": _show(base, path), "head": _show(head, path), "removed": removed, "added": added})
         pr = parse_pr(event.get("body"))
         others = others_from_api(doc, environ["GITHUB_REPOSITORY"], environ["GITHUB_TOKEN"], event["number"])
-    except (GuardError, KeyError, ValueError, OSError, subprocess.CalledProcessError) as error:
+    except (GuardError, KeyError, ValueError, IndexError, TypeError, OSError, subprocess.CalledProcessError) as error:
         print(f"lane-guard: FAILED CLOSED ({type(error).__name__}: {str(error)[:60]})")
         return 1
     bad, warn = check(doc, pr, files, others)

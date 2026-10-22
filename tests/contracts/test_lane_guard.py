@@ -169,10 +169,26 @@ class PullRequestBodyAndOverlap(unittest.TestCase):
         self.assertEqual(G.check(DOC, pr(), gen, [self.other(path="docs/CODEMAP.md", lanes=("edge-oracle",))])[0], [])
 
 
+class OtherPullRequests(unittest.TestCase):
+    def test_another_prs_patch_is_attributed_without_the_file_text(self):
+        """Regression (CI, PR 1): block-scope sections have no file to read when only another PR's patch is known; they fall back to the changed line."""
+        patch = "@@ -10,0 +11 @@\n+        run: python -m lifeos.run fit-cloud-backlog\n"
+        pages = {"pulls?state=open&per_page=100": [{"number": 5, "body": "Lane: edge-oracle"}],
+                 "pulls/5/files?per_page=100": [{"filename": ".github/workflows/hourly.yml", "patch": patch}, {"filename": "docs/CODEMAP.md", "patch": ""}]}
+        with mock.patch.object(G, "_api", lambda repo, path, token: pages[path]):
+            [other] = G.others_from_api(DOC, "o/r", "t", 1)
+        self.assertEqual((other["number"], other["lane"]), (5, "edge-oracle"))
+        self.assertEqual([(f["path"], f["lanes"]) for f in other["files"]], [(".github/workflows/hourly.yml", {"edge-oracle"}), ("docs/CODEMAP.md", {None})])
+
+    def test_a_crash_while_reading_other_prs_fails_closed(self):
+        with mock.patch.object(G, "_api", side_effect=OSError("network")):
+            self.assertEqual(Entrypoint.run_main(Entrypoint(), {G.OWNERSHIP: OWNERSHIP, "lifeos/jobs/lanes.py": "a\n"}, {"lifeos/jobs/lanes.py": "b\n"}, "Lane: career-v7", real_api=True), 1)
+
+
 class Entrypoint(unittest.TestCase):
     """main() against a real temporary git repository: the base's map decides, and any unreadable input fails closed."""
 
-    def run_main(self, base_files, head_files, body, others=()):
+    def run_main(self, base_files, head_files, body, others=(), real_api=False):
         with tempfile.TemporaryDirectory() as tmp:
             git = lambda *a: subprocess.run(["git", *a], cwd=tmp, check=True, capture_output=True, text=True).stdout.strip()      # noqa: E731
             git("init", "-q")
@@ -195,6 +211,8 @@ class Entrypoint(unittest.TestCase):
             before = os.getcwd()
             os.chdir(tmp)
             try:
+                if real_api:
+                    return G.main(env)
                 with mock.patch.object(G, "others_from_api", lambda *a: list(others)):
                     return G.main(env)
             finally:
