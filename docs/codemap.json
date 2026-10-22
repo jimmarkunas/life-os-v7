@@ -737,6 +737,13 @@
     "V7_CLOUD_FIT_PROFILE_REF"
    ]
   },
+  "lane-guard.yml": {
+   "jobs": [
+    "lane-guard"
+   ],
+   "manual": false,
+   "secrets": []
+  },
   "network.yml": {
    "jobs": [
     "network"
