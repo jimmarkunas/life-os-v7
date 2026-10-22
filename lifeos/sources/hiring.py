@@ -15,6 +15,7 @@ from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.notion_client import Client, NotionError
 
 TZ = ZoneInfo("America/Chicago")
+CALENDAR_PAGES = 40                                               # the same page cap as the Calendar client's own listing
 PAST_DAYS, FUTURE_DAYS = 30, 45                                  # the Calendar window the compiler may use as evidence
 MAX_PAGES = 40
 
@@ -93,16 +94,41 @@ def read_parents(client, root_id):
     return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead} for o in found]
 
 
-def read_events(calendar, now):
-    """Accepted events in the window: not cancelled, not declined, timed (an all-day event is no interview time). -> [{"id", "title", "start"}]."""
-    raw = calendar.list_events((now - timedelta(days=PAST_DAYS)).isoformat(), (now + timedelta(days=FUTURE_DAYS)).isoformat())
+def _with_deleted(calendar, time_min, time_max):
+    """The window's single events including cancelled ones (showDeleted), read completely through the Calendar client's own request, or refused.
+    The shared client's list_events leaves cancelled events out; this reader needs them to tell a cancelled invite from one outside the window."""
+    params, out = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime", "maxResults": 250, "showDeleted": "true"}, []
+    for _ in range(CALENDAR_PAGES):
+        page = calendar.request("GET", "/events", params)
+        if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+            raise NotionError("HIRING_CALENDAR_INCOMPLETE")
+        out += page["items"]
+        token = page.get("nextPageToken")
+        if not token:
+            return out
+        if not isinstance(token, str):
+            raise NotionError("HIRING_CALENDAR_INCOMPLETE")
+        params = {**params, "pageToken": token}
+    raise NotionError("HIRING_CALENDAR_INCOMPLETE")
+
+
+def read_events(calendar, now, cancelled=None):
+    """Accepted events in the window: not cancelled, not declined, timed (an all-day event is no interview time). -> [{"id", "title", "start"}].
+    With a `cancelled` list (LIFE-46 E07), the window is read with deleted events and each cancelled one that still names a title is added to it
+    as {"id", "title"}; the accepted list is the same."""
+    window = ((now - timedelta(days=PAST_DAYS)).isoformat(), (now + timedelta(days=FUTURE_DAYS)).isoformat())
+    raw = calendar.list_events(*window) if cancelled is None else _with_deleted(calendar, *window)
     if not isinstance(raw, list):
         raise NotionError("HIRING_CALENDAR_INCOMPLETE")
     events = []
     for event in raw:
         if not isinstance(event, dict):
             raise NotionError("HIRING_CALENDAR_INCOMPLETE")
-        if event.get("status") == "cancelled" or event.get("eventType") == "workingLocation":
+        if event.get("status") == "cancelled":
+            if cancelled is not None and isinstance(event.get("id"), str) and (event.get("summary") or "").strip():
+                cancelled.append({"id": event["id"], "title": event["summary"].strip()})
+            continue
+        if event.get("eventType") == "workingLocation":
             continue
         if any(isinstance(a, dict) and a.get("self") is True and a.get("responseStatus") == "declined" for a in event.get("attendees") or []):
             continue

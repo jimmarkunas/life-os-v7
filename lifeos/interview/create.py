@@ -319,6 +319,24 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
 
 
+CALENDAR_REF = re.compile(r"^Calendar event: (Accepted invite|Cancelled) · ref ([0-9a-f]{12})$")
+
+
+def round_calendar(client, page_id, budget=None):
+    """LIFE-46 E07: (ref, cancelled) a UI 4 round page's Logistics records for its Calendar event, (None, False) when it records none.
+    The Logistics callout is the first callout of the right column; an unknown layout raises a fixed code (nothing is guessed)."""
+    budget = budget or [notion.MAX_CALLS]
+    lists = [b for b in notion.children(client, page_id, budget) if b.get("type") == "column_list"]
+    columns = notion.children(client, lists[0]["id"], budget) if len(lists) == 1 else []
+    right = notion.children(client, columns[1]["id"], budget) if len(columns) == 2 else []
+    calls = [b for b in right if b.get("type") == "callout"]
+    lines = [notion.text(b) for b in notion.children(client, calls[0]["id"], budget)] if calls else []
+    if not lines or lines[0] != "Logistics":
+        raise NotionError("INTERVIEW_ROUND_LAYOUT")
+    found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
+    return (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+
+
 def _changed(old, new, path=()):
     """[(path, old block, new block)] for every block whose text differs between two renders of one round page; the shapes must match."""
     if len(old) != len(new):
@@ -358,27 +376,44 @@ def _round_targets(client, page_id, edits, budget):
     return found
 
 
-def confirm(client, parent_id, child_id, current, date, live, out, context=None):
-    """LIFE-46 E07: an accepted Calendar interview for Interview 1 in Scheduling Pending dates THAT round page in place. The identity line keeps
-    its v1 format (`interview_date` null -> the date; interviewer and ordinal unchanged) and is written last, so a page is dated only when every
-    machine block already says so; the Live and Raw Notes digest must not change. Nothing else is created, renamed or moved."""
+def transition(client, parent_id, child_id, current, want, live, out, context=None):
+    """LIFE-46 E07: one round page moved, in place, to the state an accepted or cancelled Calendar event gives it (`want`): Interview 1 in
+    Scheduling Pending dated, a dated round re-dated (rescheduled) or marked cancelled. Re-dating and cancelling need the page's own recorded
+    event reference to equal the event's; nothing is matched by date or title alone. The identity line keeps its v1 format (only the date
+    changes; interviewer and ordinal never do) and is written last, so a page is re-identified only when every machine block already says
+    so; a cancelled round keeps its date and identity. Only the blocks whose text differs between the two renders change, in the fold, the
+    snapshot or the right column, and each must read as either render; the Live and Raw Notes digest must not change. Nothing is created,
+    renamed or moved."""
     fresh = notion.explicit_child(client, child_id)
-    if (fresh is None or fresh.identity_valid is not True or fresh.interview_date is not None or fresh.ordinal != 1
-            or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(date)):
+    if (fresh is None or fresh.identity_valid is not True or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(want.interview_date)
+            or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
         return "round_unconfirmable"
-    pending = RoundQuery(True, None, fresh.interviewer, 1)
-    dated = RoundQuery(True, date, fresh.interviewer, 1)
-    edits = _changed(round_page(current, pending, parent_id, identity_text(pending)), round_page(current, dated, parent_id, identity_text(dated)))
     budget = [notion.MAX_CALLS]
+    ref, cancelled = round_calendar(client, child_id, budget)
+    if fresh.interview_date is None:
+        if fresh.ordinal != 1 or want.cancelled or not want.calendar_ref:
+            return "round_unconfirmable"
+        source, kind = RoundQuery(True, None, fresh.interviewer, 1), "confirm"
+    else:
+        if not ref or ref != want.calendar_ref:
+            return "round_unlinked"                                     # no recorded event, or another one: a move or cancel is never guessed
+        source = RoundQuery(True, fresh.interview_date, fresh.interviewer, fresh.ordinal, calendar_ref=ref, cancelled=cancelled)
+        if want.cancelled and want.interview_date != fresh.interview_date:
+            return "round_unconfirmable"
+        kind = "cancel" if want.cancelled else "reschedule"
+    if source == want:
+        return "round_unchanged"
+    edits = _changed(round_page(current, source, parent_id, identity_text(source)), round_page(current, want, parent_id, identity_text(want)))
     targets = _round_targets(client, child_id, edits, budget)
-    if targets is None or [notion.text(b) for b, *_ in targets if notion.text(b).startswith(IDENTITY_PREFIX)] != [identity_text(pending)]:
+    lines = [notion.text(b) for b in notion.machine_lines(client, child_id, 2)[0]]
+    if targets is None or len(lines) < 2 or lines[1] != identity_text(source):
         return "machine_region_edited"
     before = notion.protected_snapshot(client, child_id, "round")
     if before is None:
         return "readback_protected_missing"
     out["writes_planned"] = 1
     if not live:
-        return "confirm_allowed"
+        return f"{kind}_allowed"
     if context:
         context.require_time()
     todo = sorted([t for t in targets if notion.text(t[0]) != notion.text(t[2])], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
@@ -390,20 +425,21 @@ def confirm(client, parent_id, child_id, current, date, live, out, context=None)
             out["writes"] = out["readback_failed"] = 1
     except NotionError:
         try:
-            for block, old in reversed(done):                           # roll the machine blocks back to the pending page
+            for block, old in reversed(done):                           # roll the machine blocks back to the page as it was
                 notion.set_text(client, block["id"], block["type"], old[old["type"]]["rich_text"])
         except NotionError:
             return "write_failed_partial"
         return "write_failed"
     after = notion.explicit_child(client, child_id)
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
-    if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (date, fresh.interviewer, 1)
-            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)):
+    if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
+            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
+            or round_calendar(client, child_id) != (want.calendar_ref, want.cancelled)):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"
     out["readback_failed"], out["readback_ok"] = 0, 1
-    return "round_confirmed"
+    return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled"}[kind]
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
@@ -464,10 +500,11 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
             current = views.opportunity(client, parent_query, query, pipeline, children, today())
-            pending = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True and c.interview_date is None]
-            if code == "child_match" and query.explicit_child_page_id and query.interview_date and pending:
-                deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the pending round is dated in place)
-                return finish(confirm(client, parent.page_id, pending[0].page_id, current, query.interview_date, live, out, context))
+            held = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True]
+            if code == "child_match" and query.explicit_child_page_id and query.interview_date and query.calendar_ref and held:
+                deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the round moves in place)
+                want = RoundQuery(True, query.interview_date, held[0].interviewer, held[0].ordinal, calendar_ref=query.calendar_ref, cancelled=query.cancelled)
+                return finish(transition(client, parent.page_id, held[0].page_id, current, want, live, out, context))
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
                 done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))     # a UI 3b page migrates only for a pursuit Jim named
                 if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
