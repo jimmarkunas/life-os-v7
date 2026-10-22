@@ -1,0 +1,49 @@
+name: interview-proof
+# LIFE-78. Manual only: the synthetic Interview journey (lifeos/sources/interview_journey_proof.py) on real Notion, in a fresh sandbox under the QA Interview OS
+# parent. Mail, Calendar and the Job Ledger are synthetic and in memory, so this job loads only the Interview Notion token: no mail read, no store, and it never
+# waits behind the domain runs. The real Hiring Pipeline is never read or written. Counts, fixed codes and PASS/FAIL per step only.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type QA to create a fresh synthetic sandbox and run the journey in it"
+        type: string
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-interview-proof              # its own sandbox per run, so it shares no queue with the real Interview writer
+  cancel-in-progress: false
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_proof
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 1; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_proof.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_proof_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_proof.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Interview journey proof (synthetic mail, Calendar and Ledger; real Notion in a fresh QA sandbox only; refuses unless confirm is QA)
+        env:
+          INTERVIEW_JOURNEY_PROOF: ${{ inputs.confirm }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_proof.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_proof_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+        run: python -m lifeos.run interview --limit 20

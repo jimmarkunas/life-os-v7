@@ -1,5 +1,6 @@
-"""LIFE-78 synthetic journey proof on real Notion. Manual only: a domains dispatch with `interview_journey_proof = QA` and Actually write UNticked,
-so every other step in the job stays a dry run. The QA confirmation is this proof's only write switch.
+"""LIFE-78 synthetic journey proof on real Notion. Manual only: the interview-proof workflow with `confirm = QA` (the Interview token only, its own queue,
+no mail read), or a domains dispatch with `interview_journey_proof = QA` and Actually write UNticked, so every other step in that job stays a dry run.
+The QA confirmation is this proof's only write switch.
 
 It drives the REAL Interview runner (`interview_evidence.run`) and the REAL Notion writer with the Interview token, tick after tick, against a FRESH
 sandbox made for this run under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities". Mail, Google
