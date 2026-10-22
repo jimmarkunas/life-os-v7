@@ -1,7 +1,12 @@
-# Lane ownership for the V7 repository (LIFE-78; Jim-approved Oct 21, 2026, concurrent lane ownership). Read by `python -m lifeos.lane_guard`, which runs on every pull request in pr-tests.
-# The map on the PR's BASE decides, so a PR cannot grant itself ownership. A path no rule covers FAILS (unknown ownership). Most specific rule wins (longest literal prefix).
-# kind: both = every other lane must be named in a Handoff; generated / append = any lane (append: additions only); unassigned = any lane, reported as a warning until Jim assigns an owner.
-# Format is a strict YAML subset (see lifeos/lane_guard.py): scalars, [inline, lists], and the nesting below. Status: the guard runs now; the concurrent-lane rules stay INACTIVE until their gates are verified.
+# Lane ownership for the V7 repository (LIFE-78; Jim-approved Oct 21, 2026, concurrent lane ownership). Read by `lifeos/lane_guard.py` in the trusted lane-guard workflow, from the DEFAULT branch.
+# Every path has exactly ONE answer, and an answer that is not a lane never lets either lane through:
+#   lane: career-v7 | edge-oracle   the one accountable owner; the other lane needs a handoff entry merged into docs/HANDOFFS.yml first
+#   kind: generated                 derived files, mechanically verified by an existing test (CODEMAP: tests/contracts/test_codemap.py), so no ownership decision is involved; any lane
+#   kind: append                    additions only (decision numbers are claimed through lifeos.decisions); any lane
+#   kind: protected                 governance and agent-instruction files: the guard FAILS; only Jim's protected review changes them
+#   kind: unresolved                Jim has not decided an owner: the guard FAILS, never warns. Each entry below is a decision waiting for Jim; do not assign one by assumption.
+# A path no rule covers FAILS. Most specific rule wins (longest literal prefix). Notion/Jira schemas are live systems and never repository changes; the schema DEFINITIONS in code are owned below.
+# Format is a strict YAML subset (see lifeos/lane_guard.py). The concurrent-lane rules stay INACTIVE until their gates are verified.
 version: 1
 lanes: [career-v7, edge-oracle]
 rules:
@@ -41,6 +46,19 @@ rules:
   - path: .github/workflows/recruiters.yml
     lane: career-v7
   - path: .github/workflows/network.yml
+    lane: career-v7
+  # --- Notion schema DEFINITIONS in code (the live Ledger / Recruiters / Hiring Decision schemas are Jim-approved Notion changes, not repository changes): career-v7, named so the boundary is explicit
+  - path: lifeos/jobs/ledger.py
+    lane: career-v7
+  - path: lifeos/jobs/publish.py
+    lane: career-v7
+  - path: lifeos/jobs/meta.py
+    lane: career-v7
+  - path: lifeos/recruiters/notion.py
+    lane: career-v7
+  - path: lifeos/recruiters/outreach.py
+    lane: career-v7
+  - path: lifeos/hiring/decision.py
     lane: career-v7
   # --- edge-oracle: Oracle host, Gateway, messaging attention, cloud Fit (LIFE-41), monitoring and alerting (LIFE-72-75)
   - path: lifeos/edge/**
@@ -108,6 +126,27 @@ rules:
         scope: block
         item_indent: 6
         match: '(?i)ntfy|alerts push'
+  - path: lifeos/sources/close_app.py
+    lane: career-v7
+    sections:
+      # the CLOSURE tuple (the Close release bundle list) joins Career code to the Oracle installer; its owner is not decided
+      - lane: unresolved
+        scope: line
+        match: '"lifeos/[a-z0-9_/]+\.py"|^CLOSURE'
+  - path: lifeos/edge/close_gate.py
+    lane: edge-oracle
+    sections:
+      # policy.json field names and the config keys the application receives are the Career-to-Oracle contract; its owner is not decided
+      - lane: unresolved
+        scope: line
+        match: 'policy(\.get|\[)|secrets\["config"\]'
+  - path: lifeos/edge/oracle/close_release.py
+    lane: edge-oracle
+    sections:
+      # EDGE (the gate's own file list) and the `policy` subcommand fields: same contract, same open decision
+      - lane: unresolved
+        scope: line
+        match: '"lifeos/[a-z0-9_/]+\.py"|policy|^EDGE'
   - path: lifeos/jobs/store.py
     lane: career-v7
     sections:
@@ -120,7 +159,7 @@ rules:
       - lane: edge-oracle
         scope: line
         match: '(?i)gateway|alerts|fit_cloud|cloud_fit'
-  # --- everyone
+  # --- generated / append / protected (see the header)
   - path: docs/DECISIONS.md
     kind: append
   - path: docs/DECISIONS_INDEX.md
@@ -130,99 +169,105 @@ rules:
   - path: docs/codemap.json
     kind: generated
   - path: docs/OWNERSHIP.yml
-    kind: both
+    kind: protected
   - path: lifeos/lane_guard.py
-    kind: both
+    kind: protected
   - path: lifeos/__init__.py
-    kind: both
+    kind: protected
+  - path: tests/contracts/test_lane_guard.py
+    kind: protected
+  - path: docs/HANDOFFS.yml
+    kind: protected
+  - path: .github/workflows/lane-guard.yml
+    kind: protected
   - path: tests/contracts/**
-    kind: both
+    kind: unresolved
   - path: .github/workflows/pr-tests.yml
-    kind: both
+    kind: protected
   - path: AGENTS.md
-    kind: both
+    kind: protected
   - path: CLAUDE.md
-    kind: both
+    kind: protected
   - path: README.md
-    kind: both
+    kind: protected
   - path: .gitignore
-    kind: both
-  # --- not yet assigned by Jim: any lane may change them, and the guard says so on the PR
+    kind: protected
+  # --- UNRESOLVED: Jim has not assigned an owner. Edits here fail the guard for both lanes until he decides (each line is one decision)
   - path: lifeos/platform/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/agenda/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/amazon/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/bills/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/calendar_bridge/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/dcc/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/delivery/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/jira/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/megibow/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/outlook/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/physmail/**
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/codemap.py
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/decisions.py
-    kind: unassigned
+    kind: unresolved
   - path: lifeos/probe.py
-    kind: unassigned
+    kind: unresolved
   - path: tests/platform/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/agenda/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/amazon/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/bills/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/calendar_bridge/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/dcc/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/delivery/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/jira/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/megibow/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/outlook/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/physmail/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/kit/**
-    kind: unassigned
+    kind: unresolved
   - path: tests/*.py
-    kind: unassigned
+    kind: unresolved
   - path: tests/__init__.py
-    kind: unassigned
+    kind: unresolved
   - path: docs/**
-    kind: unassigned
+    kind: unresolved
   - path: widgets/**
-    kind: unassigned
+    kind: unresolved
   - path: requirements*.txt
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/agenda.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/amazon.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/bills.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/branches.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/calendar.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/diag.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/workflows/outlook.yml
-    kind: unassigned
+    kind: unresolved
   - path: .github/actions/**
-    kind: unassigned
+    kind: unresolved

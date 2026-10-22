@@ -1,11 +1,15 @@
-"""LIFE-78: the lane guard decides ownership from docs/OWNERSHIP.yml, never from a promise. Synthetic repositories and pull requests only; nothing is read from GitHub or production."""
+"""LIFE-78: the lane guard decides ownership from the DEFAULT branch's docs/OWNERSHIP.yml and docs/HANDOFFS.yml, reads a pull request only as data, and fails closed on anything it cannot prove.
+Synthetic pull requests and a fake GitHub API only; nothing is read from GitHub or production. CHECK CODE = lifeos/lane_guard.py and the default branch's maps; PR DATA = everything a pull request supplies."""
 import json
 import os
 import subprocess
 import tempfile
 import unittest
+import urllib.error
+from datetime import date
 from pathlib import Path
 from unittest import mock
+from urllib.parse import parse_qs, urlparse
 
 from lifeos import lane_guard as G
 
@@ -15,9 +19,9 @@ except ImportError:                                                        # the
     yaml = None
 
 ROOT = Path(__file__).resolve().parents[2]
-OWNERSHIP = (ROOT / G.OWNERSHIP).read_text()
-DOC = G.validate(G.parse_ownership(OWNERSHIP))
+DOC = G.validate(G.parse_map((ROOT / G.OWNERSHIP).read_text()))
 APPROVAL = "https://jimmarkunas.atlassian.net/browse/LIFE-41?focusedCommentId=10515"
+TODAY = date(2026, 10, 22)
 HOURLY = """jobs:
   finish:
     steps:
@@ -29,223 +33,309 @@ HOURLY = """jobs:
       - name: Sync
         run: python -m lifeos.run sync-seen
 """
+CLOUD_EDIT = HOURLY.replace("fit-cloud-backlog", "fit-cloud-backlog --limit 5")
+CAREER_EDIT = HOURLY.replace("sync-seen", "sync-seen --live")
 
 
-def change(path, base="", head="", removed=(), added=()):
-    return {"path": path, "base": base, "head": head, "removed": list(removed), "added": list(added)}
+def handoff(pr=7, path="lifeos/jobs/fit/**", owner="edge-oracle", expires="2026-12-31"):
+    return {"pr": pr, "path": path, "owner": owner, "approval": APPROVAL, "expires": expires}
 
 
-def pr(lane="career-v7", handoffs=(), coordinated=()):
-    return {"lane": lane, "handoffs": list(handoffs), "coordinated": set(coordinated)}
+def pr(lane="career-v7", number=7):
+    return {"number": number, "lane": lane}
+
+
+def f(path, base="", head=""):
+    return {"path": path, "base": base, "head": head}
+
+
+def run(lane, files, handoffs=(), others=(), number=7):
+    return G.check(DOC, list(handoffs), pr(lane, number), files, list(others), TODAY)
 
 
 class Map(unittest.TestCase):
-    def test_the_committed_map_parses_like_yaml_and_validates(self):
-        if yaml is not None:
-            self.assertEqual(G.parse_ownership(OWNERSHIP), yaml.safe_load(OWNERSHIP))
+    def test_the_committed_maps_parse_like_yaml_and_validate(self):
+        for name in (G.OWNERSHIP, G.HANDOFFS):
+            if yaml is not None:
+                self.assertEqual(G.parse_map((ROOT / name).read_text()), yaml.safe_load((ROOT / name).read_text()))
+        self.assertEqual(G.validate_handoffs(G.parse_map((ROOT / G.HANDOFFS).read_text()), DOC["lanes"]), [])
         self.assertEqual(DOC["lanes"], ["career-v7", "edge-oracle"])
 
-    def test_every_tracked_file_has_an_owner(self):
+    def test_every_tracked_file_has_exactly_one_answer(self):
         files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
         self.assertEqual([p for p in files if not (ROOT / p).is_symlink() and G.rule_for(DOC, p) is None], [])
-
-    def test_the_most_specific_rule_wins(self):
-        self.assertEqual(G.rule_for(DOC, "lifeos/jobs/fit/stage.py")["lane"], "edge-oracle")
-        self.assertEqual(G.rule_for(DOC, "lifeos/jobs/lanes.py")["lane"], "career-v7")
-        self.assertEqual(G.rule_for(DOC, "lifeos/jobs/alertstate.py")["lane"], "edge-oracle")
-        self.assertIsNone(G.rule_for(DOC, "somewhere/new.py"))
-
-    def test_malformed_maps_fail_closed(self):
-        for text in ("", "  indented: 1\n", "version: 1\nlanes: [a]\nrules:\n  - path: x\n    lane: b\n", "version: 2\nlanes: [a]\nrules: []\n"):
+        for text in ("version: 1\nlanes: [a]\nrules:\n  - path: x\n    lane: a\n    kind: protected\n",      # a lane AND a kind
+                     "version: 1\nlanes: [a]\nrules:\n  - path: x\n",                                           # neither
+                     "version: 1\nlanes: [a]\nrules:\n  - path: x\n    kind: unassigned\n"):                  # the old warn-then-pass kind no longer exists
             with self.assertRaises(G.GuardError):
-                G.validate(G.parse_ownership(text))
-        with self.assertRaises(G.GuardError):
-            G.validate(G.parse_ownership("version: 1\nlanes: [a]\nrules:\n  - path: x\n    lane: a\n    kind: both\n"))      # a rule has a lane or a kind, not both
+                G.validate(G.parse_map(text))
+
+    def test_the_unresolved_decisions_are_a_pinned_list_for_jim(self):
+        """Adding or removing an unresolved path is a conscious edit of this list: each entry is an ownership decision Jim has not made."""
+        got = sorted(r["path"] for r in DOC["rules"] if r.get("kind") == "unresolved")
+        self.assertIn("lifeos/platform/**", got)
+        self.assertIn("tests/contracts/**", got)
+        self.assertNotIn("lifeos/platform/alerts.py", got)
+        self.assertEqual(len(got), 40)
+        self.assertEqual(sorted(r["path"] for r in DOC["rules"] if r.get("kind") == "protected"),
+                         sorted([".gitignore", ".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml", "AGENTS.md", "CLAUDE.md", "README.md", "docs/HANDOFFS.yml", "docs/OWNERSHIP.yml",
+                                 "lifeos/__init__.py", "lifeos/lane_guard.py", "tests/contracts/test_lane_guard.py"]))
+
+    def test_named_boundaries_have_one_owner_or_are_blocked(self):
+        for path in ("lifeos/jobs/ledger.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/outreach.py", "lifeos/hiring/decision.py"):          # Notion schema definitions in code
+            self.assertEqual(G.rule_for(DOC, path)["lane"], "career-v7", path)
+        self.assertEqual(G.rule_for(DOC, "lifeos/platform/alerts.py")["lane"], "edge-oracle")
+        self.assertEqual(G.rule_for(DOC, "lifeos/platform/notion_client.py")["kind"], "unresolved")
+        close = G.rule_for(DOC, "lifeos/sources/close_app.py")
+        self.assertEqual(G.line_lane(close, '           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py",', [], 0), "unresolved")      # the Close bundle list
+        self.assertEqual(G.line_lane(close, "def handle(req, who, secrets):", [], 0), "career-v7")
+        gate = G.rule_for(DOC, "lifeos/edge/close_gate.py")
+        self.assertEqual(G.line_lane(gate, '    if policy.get("recruiters"):', [], 0), "unresolved")                # policy.json field boundary
+        self.assertEqual(G.line_lane(gate, "def respond(out, code):", [], 0), "edge-oracle")
 
 
 class Check(unittest.TestCase):
     def test_a_path_in_the_prs_own_lane_passes(self):
-        bad, warn = G.check(DOC, pr(), [change("lifeos/jobs/lanes.py", "a\n", "b\n", [(1, "a")], [(1, "b")])])
-        self.assertEqual((bad, warn), ([], []))
+        self.assertEqual(run("career-v7", [f("lifeos/jobs/lanes.py", "a\n", "b\n")]), [])
 
-    def test_unknown_ownership_fails(self):
-        bad, _ = G.check(DOC, pr(), [change("brand_new/area.py")])
-        self.assertEqual(bad, ["UNKNOWN_OWNERSHIP brand_new/area.py"])
-
-    def test_missing_or_unknown_pr_lane_fails(self):
+    def test_unknown_ownership_and_a_missing_or_unknown_lane_fail(self):
+        self.assertEqual(run("career-v7", [f("brand_new/area.py", "", "x\n")]), ["UNKNOWN_OWNERSHIP brand_new/area.py"])
         for lane in (None, "someone-else"):
-            bad, _ = G.check(DOC, pr(lane), [change("lifeos/jobs/lanes.py")])
-            self.assertTrue(bad[0].startswith("PR_LANE_MISSING_OR_UNKNOWN"))
+            self.assertTrue(run(lane, [f("lifeos/jobs/lanes.py")])[0].startswith("PR_LANE_MISSING_OR_UNKNOWN"))
 
-    def test_another_lanes_path_fails_until_a_valid_handoff_names_it(self):
-        files = [change("lifeos/jobs/fit/stage.py", "a\n", "b\n", [(1, "a")], [(1, "b")])]
-        self.assertTrue(G.check(DOC, pr(), files)[0][0].startswith("OUT_OF_LANE lifeos/jobs/fit/stage.py owned by edge-oracle"))
-        ok = pr(handoffs=[("lifeos/jobs/fit/**", "edge-oracle", APPROVAL)])
-        self.assertEqual(G.check(DOC, ok, files)[0], [])
+    def test_unresolved_paths_fail_for_both_lanes_and_no_handoff_lifts_them(self):
+        files = [f("lifeos/bills/card.py", "a\n", "b\n")]
+        for lane in DOC["lanes"]:
+            self.assertEqual(run(lane, files), ["UNRESOLVED_OWNERSHIP lifeos/bills/card.py: no owner decided; blocked until Jim decides"])
+        self.assertEqual(len(run("career-v7", files, [handoff(path="lifeos/bills/**", owner="edge-oracle")])), 1)
 
-    def test_invalid_handoffs_do_not_clear_anything(self):
-        files = [change("lifeos/jobs/fit/stage.py", "a\n", "b\n", [(1, "a")], [(1, "b")])]
-        for handoff in (("lifeos/jobs/fit/**", "career-v7", APPROVAL),                              # owner is the PR's own lane
-                        ("lifeos/jobs/fit/**", "edge-oracle", "https://evil.example/approve"),    # host not approved
-                        ("lifeos/jobs/lanes.py", "edge-oracle", APPROVAL),                          # glob does not cover the changed path
-                        ("lifeos/jobs/fit/**", "nobody", APPROVAL)):
-            bad, _ = G.check(DOC, pr(handoffs=[handoff]), files)
-            self.assertTrue(any(b.startswith("OUT_OF_LANE") for b in bad), handoff)
-            self.assertEqual(any(b.startswith("HANDOFF_INVALID") for b in bad), handoff[0] != "lifeos/jobs/lanes.py", handoff)     # a glob that misses the path is only unhelpful
+    def test_protected_paths_fail_even_with_a_handoff_so_the_guard_cannot_be_tampered_with(self):
+        for path in ("lifeos/lane_guard.py", "docs/OWNERSHIP.yml", "docs/HANDOFFS.yml", ".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml", "tests/contracts/test_lane_guard.py", "AGENTS.md"):
+            for lane in DOC["lanes"]:
+                got = run(lane, [f(path, "a\n", "b\n")], [handoff(path=path, owner=o) for o in DOC["lanes"]])
+                self.assertEqual(got, [f"PROTECTED_PATH {path}: needs Jim's protected review"], (path, lane))
 
-    def test_a_both_path_needs_every_other_lane_named(self):
-        files = [change("docs/OWNERSHIP.yml", "a\n", "b\n", [(1, "a")], [(1, "b")])]
-        self.assertTrue(G.check(DOC, pr(), files)[0][0].startswith("OUT_OF_LANE docs/OWNERSHIP.yml owned by edge-oracle"))
-        self.assertEqual(G.check(DOC, pr(handoffs=[("docs/OWNERSHIP.yml", "edge-oracle", APPROVAL)]), files)[0], [])
+    def test_another_lanes_path_needs_a_default_branch_handoff_for_this_pr_owner_and_path(self):
+        files = [f("lifeos/jobs/fit/stage.py", "a\n", "b\n")]
+        self.assertTrue(run("career-v7", files)[0].startswith("OUT_OF_LANE lifeos/jobs/fit/stage.py owned by edge-oracle"))
+        self.assertEqual(run("career-v7", files, [handoff()]), [])
+        for bad in (handoff(pr=8), handoff(owner="career-v7"), handoff(path="lifeos/jobs/lanes.py"), handoff(expires="2026-10-21")):
+            self.assertTrue(run("career-v7", files, [bad])[0].startswith("OUT_OF_LANE"), bad)
 
-    def test_generated_append_and_unassigned_kinds(self):
-        self.assertEqual(G.check(DOC, pr("edge-oracle"), [change("docs/CODEMAP.md", "a", "b", [(1, "a")], [(1, "b")])]), ([], []))
-        self.assertEqual(G.check(DOC, pr(), [change("docs/DECISIONS.md", "a\n", "a\nb\n", [], [(2, "b")])])[0], [])
-        self.assertEqual(G.check(DOC, pr(), [change("docs/DECISIONS.md", "a\n", "b\n", [(1, "a")], [(1, "b")])])[0], ["APPEND_ONLY_VIOLATED docs/DECISIONS.md"])
-        bad, warn = G.check(DOC, pr(), [change("lifeos/bills/card.py", "a", "b", [(1, "a")], [(1, "b")])])
-        self.assertEqual((bad, warn), ([], ["UNASSIGNED_PATH lifeos/bills/card.py (owner not yet decided)"]))
+    def test_handoffs_are_validated_when_read(self):
+        ok = {"version": 1, "handoffs": [handoff()]}
+        self.assertEqual(G.validate_handoffs(ok, DOC["lanes"]), [handoff()])
+        for broken in ({**handoff(), "approval": "https://evil.example/x"}, {**handoff(), "approval": "http://github.com/x"}, {**handoff(), "owner": "nobody"}, {**handoff(), "expires": "soon"}, {**handoff(), "pr": "7"}):
+            with self.assertRaises(G.GuardError):
+                G.validate_handoffs({"version": 1, "handoffs": [broken]}, DOC["lanes"])
+
+    def test_generated_and_append_kinds(self):
+        self.assertEqual(run("edge-oracle", [f("docs/CODEMAP.md", "a", "b")]), [])
+        self.assertEqual(run("career-v7", [f("docs/DECISIONS.md", "a\n", "a\nb\n")]), [])
+        self.assertEqual(run("career-v7", [f("docs/DECISIONS.md", "a\n", "b\n")]), ["APPEND_ONLY_VIOLATED docs/DECISIONS.md"])
 
 
 class SharedFileSections(unittest.TestCase):
-    head = HOURLY.replace("fit-cloud-backlog", "fit-cloud-backlog --limit 5")
-
-    def line_no(self, text, needle):
-        return next(i for i, row in enumerate(text.splitlines(), 1) if needle in row)
+    hourly = ".github/workflows/hourly.yml"
 
     def test_a_career_pr_may_edit_a_career_step_but_not_a_cloud_fit_step(self):
-        edit = HOURLY.replace("sync-seen", "sync-seen --live")
-        n = self.line_no(edit, "sync-seen")
-        ok = change(".github/workflows/hourly.yml", HOURLY, edit, [(n, "        run: python -m lifeos.run sync-seen")], [(n, "        run: python -m lifeos.run sync-seen --live")])
-        self.assertEqual(G.check(DOC, pr(), [ok])[0], [])
-        n = self.line_no(self.head, "fit-cloud-backlog")
-        cloud = change(".github/workflows/hourly.yml", HOURLY, self.head, [(n, "          python -m lifeos.run fit-cloud-backlog")], [(n, "          python -m lifeos.run fit-cloud-backlog --limit 5")])
-        self.assertTrue(G.check(DOC, pr(), [cloud])[0][0].startswith("OUT_OF_LANE .github/workflows/hourly.yml owned by edge-oracle"))
+        self.assertEqual(run("career-v7", [f(self.hourly, HOURLY, CAREER_EDIT)]), [])
+        got = run("career-v7", [f(self.hourly, HOURLY, CLOUD_EDIT)])
+        self.assertTrue(got[0].startswith("OUT_OF_LANE .github/workflows/hourly.yml owned by edge-oracle"), got)
+        self.assertEqual(run("career-v7", [f(self.hourly, HOURLY, CLOUD_EDIT)], [handoff(path=self.hourly)]), [])
 
     def test_the_block_not_just_the_changed_line_decides(self):
-        """A line inside the Cloud-Fit step that does not itself mention cloud fit still belongs to that step."""
-        edit = HOURLY.replace("run: |\n          python -m lifeos.run fit-cloud-backlog", "run: |\n          set -e\n          python -m lifeos.run fit-cloud-backlog")
-        n = self.line_no(edit, "set -e")
-        change_ = change(".github/workflows/hourly.yml", HOURLY, edit, [], [(n, "          set -e")])
-        self.assertEqual(G.touched(G.rule_for(DOC, ".github/workflows/hourly.yml"), HOURLY, edit, [], [(n, "          set -e")]), {"edge-oracle"})
-        self.assertTrue(G.check(DOC, pr(), [change_])[0])
+        edit = HOURLY.replace("run: |\n          python -m", "run: |\n          set -e\n          python -m")
+        self.assertTrue(run("career-v7", [f(self.hourly, HOURLY, edit)])[0].startswith("OUT_OF_LANE"))
 
     def test_store_cloud_fields_belong_to_edge_oracle_and_the_rest_to_career(self):
-        rule = G.rule_for(DOC, "lifeos/jobs/store.py")
-        self.assertEqual(G.touched(rule, "", "cloud_status TEXT\nnotion_page_id TEXT\n", [], [(1, "cloud_status TEXT")]), {"edge-oracle"})
-        self.assertEqual(G.touched(rule, "", "cloud_status TEXT\nnotion_page_id TEXT\n", [], [(2, "notion_page_id TEXT")]), {"career-v7"})
+        self.assertTrue(run("career-v7", [f("lifeos/jobs/store.py", "x\n", "x\ncloud_status TEXT\n")])[0].startswith("OUT_OF_LANE"))
+        self.assertEqual(run("career-v7", [f("lifeos/jobs/store.py", "x\n", "x\nnotion_page_id TEXT\n")]), [])
 
-    def test_block_text_bounds(self):
+    def test_a_section_with_no_decided_owner_blocks_both_lanes(self):
+        base = 'CLOSURE = ("lifeos/hiring/close_screen.py",\n           "lifeos/sources/outreach_app.py")\nTTL = 900\n'
+        head = base.replace('"lifeos/sources/outreach_app.py")', '"lifeos/sources/outreach_app.py", "lifeos/sources/new_screen.py")')
+        for lane in DOC["lanes"]:
+            self.assertEqual(run(lane, [f("lifeos/sources/close_app.py", base, head)], [handoff(path="lifeos/sources/**", owner="edge-oracle")]),
+                             ["UNRESOLVED_OWNERSHIP lifeos/sources/close_app.py: a shared section has no owner decided; blocked until Jim decides"], lane)
+
+    def test_ambiguous_attribution_fails_closed(self):
+        doc = G.validate({"version": 1, "lanes": ["a", "b"], "rules": [{"path": "shared.txt", "lane": "a", "sections": [{"lane": "a", "match": "zebra"}, {"lane": "b", "match": "quokka"}]}]})
+        self.assertEqual(G.check(doc, [], {"number": 1, "lane": "a"}, [f("shared.txt", "", "zebra and quokka\n")], [], TODAY), ["AMBIGUOUS_SECTION shared.txt"])
+        self.assertEqual(G.check(doc, [], {"number": 1, "lane": "a"}, [f("shared.txt", "", "zebra alone\n")], [], TODAY), [])
+
+    def test_a_block_that_cannot_be_read_fails_closed_and_outside_a_block_is_the_default_lane(self):
+        with self.assertRaises(G.Unverifiable):
+            G.block_text(["a"], 5, 6)
         lines = HOURLY.splitlines()
+        self.assertIsNone(G.block_text(lines, 1, 6))
         self.assertIn("Cloud-Fit shadow", G.block_text(lines, 7, 6))
         self.assertNotIn("Sync", G.block_text(lines, 7, 6))
-        self.assertIsNone(G.block_text(lines, 1, 6))
 
 
-class PullRequestBodyAndOverlap(unittest.TestCase):
-    def test_the_body_declares_lane_handoffs_and_coordination(self):
-        body = f"x\nLane: edge-oracle\nHandoff: path=lifeos/jobs/** owner=career-v7 approval={APPROVAL}\nCoordinated-with: #12\nCoordinated-with: #13\n"
-        self.assertEqual(G.parse_pr(body), {"lane": "edge-oracle", "handoffs": [("lifeos/jobs/**", "career-v7", APPROVAL)], "coordinated": {12, 13}})
-        self.assertEqual(G.parse_pr(None), {"lane": None, "handoffs": [], "coordinated": set()})
+class OverlappingPullRequests(unittest.TestCase):
+    hourly = ".github/workflows/hourly.yml"
 
-    def test_changed_lines_from_a_zero_context_diff(self):
-        diff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -3,2 +3 @@\n-a\n-b\n+c\n@@ -9 +8,2 @@\n+d\n+e\n"
-        self.assertEqual(G.changed_lines(diff), ([(3, "a"), (4, "b")], [(3, "c"), (8, "d"), (9, "e")]))
+    def other(self, lane="edge-oracle", number=9, base=HOURLY, head=CLOUD_EDIT):
+        return {"number": number, "lane": lane, "files": [f(self.hourly, base, head)]}
 
-    def other(self, number=7, lane="edge-oracle", path="lifeos/jobs/store.py", lanes=("edge-oracle",)):
-        return {"number": number, "lane": lane, "files": [{"path": path, "lanes": set(lanes)}]}
+    def test_a_different_lane_pr_in_the_same_section_fails_with_no_coordination_bypass(self):
+        mine = [f(self.hourly, HOURLY, CLOUD_EDIT)]
+        got = run("career-v7", mine, [handoff(path=self.hourly)], [self.other()])
+        self.assertEqual(got, ["OVERLAPPING_PR #9 (edge-oracle) changes .github/workflows/hourly.yml in the same section: merge one first, then update the other"])
 
-    def test_a_different_lane_pr_touching_the_same_section_fails_unless_coordinated(self):
-        files = [change("lifeos/jobs/store.py", "", "cloud_x\n", [], [(1, "cloud_x")])]
-        mine = pr(handoffs=[("lifeos/jobs/store.py", "edge-oracle", APPROVAL)])
-        bad, _ = G.check(DOC, mine, files, [self.other()])
-        self.assertEqual(bad, ["OVERLAPPING_PR #7 (edge-oracle) changes lifeos/jobs/store.py: coordinate with `Coordinated-with: #7`"])
-        self.assertEqual(G.check(DOC, {**mine, "coordinated": {7}}, files, [self.other()])[0], [])
+    def test_a_different_section_the_same_lane_or_a_generated_file_does_not_overlap(self):
+        self.assertEqual(run("career-v7", [f(self.hourly, HOURLY, CAREER_EDIT)], [], [self.other()]), [])
+        self.assertEqual(run("career-v7", [f(self.hourly, HOURLY, CAREER_EDIT)], [], [self.other(lane="career-v7", head=CAREER_EDIT)]), [])
+        gen = {"number": 9, "lane": "edge-oracle", "files": [f("docs/CODEMAP.md", "a", "b")]}
+        self.assertEqual(run("career-v7", [f("docs/CODEMAP.md", "a", "c")], [], [gen]), [])
 
-    def test_same_lane_or_different_section_or_generated_files_do_not_overlap(self):
-        files = [change("lifeos/jobs/store.py", "", "notion_page_id TEXT\n", [], [(1, "notion_page_id TEXT")])]
-        self.assertEqual(G.check(DOC, pr(), files, [self.other()])[0], [])                                   # other PR touched the cloud section only
-        self.assertEqual(G.check(DOC, pr(), files, [self.other(lane="career-v7", lanes=("career-v7",))])[0], [])
-        gen = [change("docs/CODEMAP.md", "a", "b", [(1, "a")], [(1, "b")])]
-        self.assertEqual(G.check(DOC, pr(), gen, [self.other(path="docs/CODEMAP.md", lanes=("edge-oracle",))])[0], [])
+    def test_a_pr_with_no_declared_lane_counts_as_another_lane(self):
+        got = run("career-v7", [f(self.hourly, HOURLY, CAREER_EDIT)], [], [self.other(lane=None, head=CAREER_EDIT)])
+        self.assertEqual(got, ["OVERLAPPING_PR #9 (no lane declared) changes .github/workflows/hourly.yml in the same section: merge one first, then update the other"])
+
+    def test_the_prs_own_text_grants_nothing(self):
+        self.assertIsNone(G.parse_lane("Handoff: path=lifeos/jobs/fit/** owner=edge-oracle approval=" + APPROVAL))
+        self.assertEqual(G.parse_lane("x\nLane: edge-oracle\n"), "edge-oracle")
 
 
-class OtherPullRequests(unittest.TestCase):
-    def test_another_prs_patch_is_attributed_without_the_file_text(self):
-        """Regression (CI, PR 1): block-scope sections have no file to read when only another PR's patch is known; they fall back to the changed line."""
-        patch = "@@ -10,0 +11 @@\n+        run: python -m lifeos.run fit-cloud-backlog\n"
-        pages = {"pulls?state=open&per_page=100": [{"number": 5, "body": "Lane: edge-oracle"}],
-                 "pulls/5/files?per_page=100": [{"filename": ".github/workflows/hourly.yml", "patch": patch}, {"filename": "docs/CODEMAP.md", "patch": ""}]}
-        with mock.patch.object(G, "_api", lambda repo, path, token: pages[path]):
-            [other] = G.others_from_api(DOC, "o/r", "t", 1)
-        self.assertEqual((other["number"], other["lane"]), (5, "edge-oracle"))
-        self.assertEqual([(f["path"], f["lanes"]) for f in other["files"]], [(".github/workflows/hourly.yml", {"edge-oracle"}), ("docs/CODEMAP.md", {None})])
+class FakeGitHub:
+    """A fake of the read-only API: pulls, their files (paged), open-PR pages, and file texts by SHA."""
 
-    def test_a_crash_while_reading_other_prs_fails_closed(self):
-        with mock.patch.object(G, "_api", side_effect=OSError("network")):
-            self.assertEqual(Entrypoint.run_main(Entrypoint(), {G.OWNERSHIP: OWNERSHIP, "lifeos/jobs/lanes.py": "a\n"}, {"lifeos/jobs/lanes.py": "b\n"}, "Lane: career-v7", real_api=True), 1)
+    def __init__(self, prs, texts, page=100):
+        self.prs, self.texts, self.page, self.calls = prs, texts, page, []
+
+    def api(self, repo, path, token):
+        self.calls.append(path)
+        url = urlparse(path)
+        query, parts = parse_qs(url.query), url.path.split("/")
+        if parts[0] == "pulls" and len(parts) == 1:
+            numbers = sorted(n for n, p in self.prs.items() if p.get("open", True))
+            return [{"number": n, "body": self.prs[n].get("body", ""), "base": {"sha": self.prs[n]["base"]}, "head": {"sha": self.prs[n]["head"]}} for n in numbers][self.slice(query)]
+        number = int(parts[1])
+        pr = self.prs[number]
+        if len(parts) == 2:
+            return {"changed_files": pr.get("count", len(pr["files"])), "number": number}
+        return [{"filename": a, "status": b, **({"previous_filename": c} if c else {})} for a, b, c in pr["files"]][self.slice(query)]
+
+    def slice(self, query):
+        size, page = int(query["per_page"][0]), int(query["page"][0])
+        return slice((page - 1) * min(size, self.page), page * min(size, self.page))
+
+    def text(self, repo, path, ref, token, missing_ok):
+        if (path, ref) in self.texts:
+            return self.texts[(path, ref)]
+        if missing_ok:
+            return ""
+        raise G.Unverifiable("CONTENT_UNREADABLE")
 
 
-class Entrypoint(unittest.TestCase):
-    """main() against a real temporary git repository: the base's map decides, and any unreadable input fails closed."""
+class Run(unittest.TestCase):
+    """main() end to end against the fake API, with the trusted maps read from the working directory."""
 
-    def run_main(self, base_files, head_files, body, others=(), real_api=False):
+    def go(self, prs, texts, event=None, page=100, body="Lane: career-v7", cwd=None, env=None):
         with tempfile.TemporaryDirectory() as tmp:
-            git = lambda *a: subprocess.run(["git", *a], cwd=tmp, check=True, capture_output=True, text=True).stdout.strip()      # noqa: E731
-            git("init", "-q")
-            git("config", "user.email", "t@example.com")
-            git("config", "user.name", "t")
-            for path, text in base_files.items():
-                Path(tmp, path).parent.mkdir(parents=True, exist_ok=True)
-                Path(tmp, path).write_text(text)
-            git("add", "-A")
-            git("commit", "-qm", "base")
-            base = git("rev-parse", "HEAD")
-            for path, text in head_files.items():
-                Path(tmp, path).parent.mkdir(parents=True, exist_ok=True)
-                Path(tmp, path).write_text(text)
-            git("add", "-A")
-            git("commit", "-qm", "head")
-            event = Path(tmp, "event.json")
-            event.write_text(json.dumps({"pull_request": {"number": 1, "body": body, "base": {"sha": base}, "head": {"sha": git("rev-parse", "HEAD")}}}))
-            env = {"GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t"}
+            event_path = Path(tmp, "event.json")
+            event_path.write_text(json.dumps({"pull_request": {"number": 1, "body": body, "base": {"sha": "B1"}, "head": {"sha": "H1"}, **(event or {})}}))
+            fake = FakeGitHub(prs, texts, page)
             before = os.getcwd()
-            os.chdir(tmp)
+            os.chdir(cwd or ROOT)
             try:
-                if real_api:
-                    return G.main(env)
-                with mock.patch.object(G, "others_from_api", lambda *a: list(others)):
-                    return G.main(env)
+                with mock.patch.object(G, "PAGE", page):
+                    code = G.main({"GITHUB_EVENT_PATH": str(event_path), "GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t", **(env or {})}, fake.api, fake.text)
             finally:
                 os.chdir(before)
+        return code, fake
 
-    def test_in_lane_change_passes_and_out_of_lane_change_fails(self):
-        base = {G.OWNERSHIP: OWNERSHIP, "lifeos/jobs/lanes.py": "a\n", "lifeos/jobs/fit/stage.py": "a\n"}
-        self.assertEqual(self.run_main(base, {"lifeos/jobs/lanes.py": "b\n"}, "Lane: career-v7"), 0)
-        self.assertEqual(self.run_main(base, {"lifeos/jobs/fit/stage.py": "b\n"}, "Lane: career-v7"), 1)
-        self.assertEqual(self.run_main(base, {"lifeos/jobs/lanes.py": "b\n"}, "no lane declared"), 1)
+    def mine(self, files, **kw):
+        return {1: {"base": "B1", "head": "H1", "files": files, **kw}}
 
-    def test_a_pr_cannot_grant_itself_ownership(self):
-        base = {G.OWNERSHIP: OWNERSHIP, "lifeos/jobs/fit/stage.py": "a\n"}
-        grant = OWNERSHIP.replace("  - path: lifeos/jobs/fit/**\n    lane: edge-oracle", "  - path: lifeos/jobs/fit/**\n    lane: career-v7")
-        self.assertNotEqual(grant, OWNERSHIP)
-        self.assertEqual(self.run_main(base, {G.OWNERSHIP: grant, "lifeos/jobs/fit/stage.py": "b\n"}, "Lane: career-v7"), 1)
+    def test_in_lane_passes_and_out_of_lane_fails(self):
+        texts = {("lifeos/jobs/lanes.py", "B1"): "a\n", ("lifeos/jobs/lanes.py", "H1"): "b\n", ("lifeos/jobs/fit/stage.py", "B1"): "a\n", ("lifeos/jobs/fit/stage.py", "H1"): "b\n"}
+        self.assertEqual(self.go(self.mine([("lifeos/jobs/lanes.py", "modified", None)]), texts)[0], 0)
+        self.assertEqual(self.go(self.mine([("lifeos/jobs/fit/stage.py", "modified", None)]), texts)[0], 1)
 
-    def test_unreadable_inputs_fail_closed(self):
-        self.assertEqual(G.main({}), 1)
-        self.assertEqual(self.run_main({"x.py": "a\n"}, {"x.py": "b\n"}, "Lane: career-v7"), 1)               # neither the base nor the head has a map
-        self.assertEqual(self.run_main({"x.py": "a\n"}, {G.OWNERSHIP: "version: 1\nlanes: [a]\nrules:\n  - path: x\n    lane: b\n"}, "Lane: a"), 1)   # a bootstrap map is validated too
+    def test_a_false_approval_url_in_the_pr_body_grants_nothing(self):
+        texts = {("lifeos/jobs/fit/stage.py", "B1"): "a\n", ("lifeos/jobs/fit/stage.py", "H1"): "b\n"}
+        body = f"Lane: career-v7\nHandoff: path=lifeos/jobs/fit/** owner=edge-oracle approval={APPROVAL}\nCoordinated-with: #9"
+        self.assertEqual(self.go(self.mine([("lifeos/jobs/fit/stage.py", "modified", None)]), texts, body=body)[0], 1)
 
-    def test_the_pr_that_adds_the_map_is_judged_by_it_once(self):
-        head = {G.OWNERSHIP: OWNERSHIP, "lifeos/lane_guard.py": "x = 1\n", "tests/contracts/test_lane_guard.py": "y = 1\n"}
-        self.assertEqual(self.run_main({"README.md": "r\n"}, head, "Lane: career-v7", ), 1)      # both-kind files still need the other lane named
-        body = f"Lane: career-v7\nHandoff: path=docs/OWNERSHIP.yml owner=edge-oracle approval={APPROVAL}\nHandoff: path=lifeos/lane_guard.py owner=edge-oracle approval={APPROVAL}\nHandoff: path=tests/contracts/** owner=edge-oracle approval={APPROVAL}"
-        self.assertEqual(self.run_main({"README.md": "r\n"}, head, body), 0)
+    def test_a_pr_that_edits_the_guard_the_workflow_or_the_maps_cannot_pass(self):
+        changed = ("lifeos/lane_guard.py", ".github/workflows/lane-guard.yml", "docs/OWNERSHIP.yml", "docs/HANDOFFS.yml")
+        texts = {(p, r): t for p in changed for r, t in (("B1", "a\n"), ("H1", "return 0\n"))}
+        for path in changed:
+            self.assertEqual(self.go(self.mine([(path, "modified", None)]), texts)[0], 1, path)
 
-    def test_an_overlapping_open_pr_fails_the_run(self):
-        base = {G.OWNERSHIP: OWNERSHIP, "lifeos/jobs/store.py": "x\n"}
-        other = [{"number": 9, "lane": "edge-oracle", "files": [{"path": "lifeos/jobs/store.py", "lanes": {"career-v7"}}]}]
-        self.assertEqual(self.run_main(base, {"lifeos/jobs/store.py": "y\n"}, "Lane: career-v7", other), 1)
-        self.assertEqual(self.run_main(base, {"lifeos/jobs/store.py": "y\n"}, "Lane: career-v7\nCoordinated-with: #9", other), 0)
+    def test_the_map_comes_from_the_working_directory_the_default_branch_not_the_pr(self):
+        """The PR rewrites OWNERSHIP.yml to give itself fit/**; the guard still judges it by the trusted copy."""
+        grant = (ROOT / G.OWNERSHIP).read_text().replace("  - path: lifeos/jobs/fit/**\n    lane: edge-oracle", "  - path: lifeos/jobs/fit/**\n    lane: career-v7")
+        texts = {("lifeos/jobs/fit/stage.py", "B1"): "a\n", ("lifeos/jobs/fit/stage.py", "H1"): "b\n", (G.OWNERSHIP, "B1"): "a\n", (G.OWNERSHIP, "H1"): grant}
+        self.assertEqual(self.go(self.mine([("lifeos/jobs/fit/stage.py", "modified", None), (G.OWNERSHIP, "modified", None)]), texts)[0], 1)
+
+    def test_a_trusted_handoff_clears_exactly_its_pr_owner_and_path(self):
+        texts = {("lifeos/jobs/fit/stage.py", "B1"): "a\n", ("lifeos/jobs/fit/stage.py", "H1"): "b\n"}
+        files = self.mine([("lifeos/jobs/fit/stage.py", "modified", None)])
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "docs").mkdir()
+            (Path(tmp) / G.OWNERSHIP).write_text((ROOT / G.OWNERSHIP).read_text())
+            for pr_number, want in ((1, 0), (2, 1)):
+                (Path(tmp) / G.HANDOFFS).write_text(f"version: 1\nhandoffs:\n  - pr: {pr_number}\n    path: lifeos/jobs/fit/**\n    owner: edge-oracle\n    approval: {APPROVAL}\n    expires: 2999-01-01\n")
+                self.assertEqual(self.go(files, texts, cwd=tmp)[0], want, pr_number)
+
+    def test_a_rename_judges_both_paths(self):
+        texts = {("lifeos/jobs/fit/old.py", "B1"): "a\n", ("lifeos/jobs/lanes2.py", "H1"): "a\n"}
+        self.assertEqual(self.go(self.mine([("lifeos/jobs/lanes2.py", "renamed", "lifeos/jobs/fit/old.py")]), texts)[0], 1)
+
+    def test_incomplete_evidence_fails_closed(self):
+        texts = {("lifeos/jobs/lanes.py", "B1"): "a\n", ("lifeos/jobs/lanes.py", "H1"): "b\n"}
+        files = [("lifeos/jobs/lanes.py", "modified", None)]
+        self.assertEqual(self.go(self.mine(files), texts)[0], 0)
+        self.assertEqual(self.go(self.mine(files, count=2), texts)[0], 1)                                 # the file list is shorter than the PR's own changed_files
+        self.assertEqual(self.go(self.mine(files), {("lifeos/jobs/lanes.py", "H1"): "b\n"})[0], 1)         # a base text that cannot be read
+        self.assertEqual(self.go(self.mine(files), texts, cwd=tempfile.gettempdir())[0], 1)                # no trusted map in the working directory
+        self.assertEqual(G.main({}, None, None), 1)
+
+    def test_open_pr_discovery_must_be_complete(self):
+        texts = {("lifeos/jobs/lanes.py", "B1"): "a\n", ("lifeos/jobs/lanes.py", "H1"): "b\n"}
+        prs = self.mine([("lifeos/jobs/lanes.py", "modified", None)])
+        for n in range(2, 6):                                                                              # four more open PRs, none touching the same path
+            prs[n] = {"base": f"B{n}", "head": f"H{n}", "files": [("README.md", "modified", None)]}
+        self.assertEqual(self.go(prs, texts, page=2)[0], 0)                                                # complete across three pages
+        with mock.patch.object(G, "PAGES", 2):
+            self.assertEqual(self.go(prs, texts, page=2)[0], 1)                                            # the page cap is reached with a full last page: never read as "no overlap"
+
+    def test_an_overlapping_open_pr_fails_and_its_missing_or_truncated_evidence_fails_closed(self):
+        texts = {(".github/workflows/hourly.yml", "B1"): HOURLY, (".github/workflows/hourly.yml", "H1"): CLOUD_EDIT,
+                 (".github/workflows/hourly.yml", "B9"): HOURLY, (".github/workflows/hourly.yml", "H9"): CLOUD_EDIT.replace("--limit 5", "--limit 9")}
+        prs = self.mine([(".github/workflows/hourly.yml", "modified", None)])
+        prs[9] = {"base": "B9", "head": "H9", "body": "Lane: edge-oracle", "files": [(".github/workflows/hourly.yml", "modified", None)]}
+        body = "Lane: edge-oracle"
+        self.assertEqual(self.go(prs, texts, body=body)[0], 0)                                             # same lane: no overlap finding
+        self.assertEqual(self.go(prs, texts)[0], 1)                                                        # career-v7 touching the edge-oracle section needs a handoff AND overlaps
+        prs[9]["count"] = 5                                                                                # the other PR's file list is shorter than its changed_files
+        self.assertEqual(self.go(prs, texts, body=body)[0], 1)
+        prs[9]["count"] = 1
+        prs[8] = {"base": "B8", "head": "H8", "files": [("README.md", "modified", None)], "count": 4}         # an unrelated PR whose file list is incomplete still cannot be read as "no shared path"
+        self.assertEqual(self.go(prs, texts, body=body)[0], 1)
+        del prs[8]
+        self.assertEqual(self.go(prs, {k: v for k, v in texts.items() if k[1] != "H9"}, body=body)[0], 1)   # the other PR's head text is missing
+
+    def test_a_non_list_api_answer_fails_closed(self):
+        with self.assertRaises(G.Unverifiable):
+            G.paged("o/r", "pulls?state=open", "t", lambda *a: {"message": "rate limited"})
+
+
+class Http(unittest.TestCase):
+    def test_a_404_is_absence_only_where_the_caller_expects_it(self):
+        error = urllib.error.HTTPError("u", 404, "nf", {}, None)
+        with mock.patch.object(G, "_request", side_effect=error):
+            self.assertEqual(G._text("o/r", "p", "sha", "t", True), "")
+            with self.assertRaises(G.Unverifiable):
+                G._text("o/r", "p", "sha", "t", False)
+        with mock.patch.object(G, "_request", side_effect=urllib.error.HTTPError("u", 500, "x", {}, None)), self.assertRaises(G.Unverifiable):
+            G._text("o/r", "p", "sha", "t", True)
+        with mock.patch.object(G, "_request", return_value=b"\xff\xfe"), self.assertRaises(G.Unverifiable):
+            G._text("o/r", "p", "sha", "t", True)
 
 
 if __name__ == "__main__":
