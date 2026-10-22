@@ -108,8 +108,11 @@ def run(limit, live, environ=os.environ):
                 client.call("PATCH", f"/pages/{page_id}", {"in_trash": True})
                 counts["trashed"] += 1
             except notion_client.NotionError:
-                counts["trash_errors"] += 1
-                continue                                   # keep the row PUBLISHED so the next audit retries
+                if ledger.page_state(client, page_id) == "gone":      # already in Notion's trash: the page is trashed, so the row is cleared below and stops failing on every run
+                    counts["already_trashed"] = counts.get("already_trashed", 0) + 1
+                else:
+                    counts["trash_errors"] += 1
+                    continue                               # keep the row PUBLISHED so the next audit retries
         if why == "duplicate_page":                        # the same opening under another location or link: keep the ledger hash so it is never published again
             with store.connect() as connection, connection.cursor() as cursor:
                 cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, notion_page_id=NULL, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",

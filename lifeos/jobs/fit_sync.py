@@ -4,7 +4,7 @@ Fit fields when its stored score is newer than the last sync: LIFE OS Fit, Why I
 and runs only after the Job Ledger target check. Counts only."""
 from datetime import datetime, timezone
 
-from lifeos.jobs import lanes, meta, store
+from lifeos.jobs import lanes, ledger, meta, store
 from lifeos.platform.notion_client import NotionError, rich_text
 
 PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admission_reason, f.work_mode, f.lane, f.eligible,"
@@ -38,6 +38,11 @@ def properties(score, line, admission, reason, work_mode, lane, eligible, gated,
     if row_meta:                                                       # Location / Work Mode, Market, Visa Route, Compensation
         props.update(meta.properties(row_meta["location"], row_meta["salary"], row_meta["text"], row_meta["route"], eligible, lane or row_meta["lane"]))
     return props
+
+
+def _mark_synced(job_id):
+    with store.connect() as connection, connection.cursor() as cursor:
+        cursor.execute("UPDATE v7_jobs SET fit_synced_at=%s, meta_v=%s WHERE id=%s", (_now(), meta.META_VERSION, job_id))
 
 
 def _plain(page_id):
@@ -126,13 +131,18 @@ def run(client, live, gated=False, limit=150):
         try:
             client.call("PATCH", f"/pages/{page_id}", {"properties": properties(score, line, admission, reason, work_mode, lane, eligible, gated, row_meta, title)})
         except NotionError as error:
+            state = ledger.page_state(client, page_id)
+            if state == "gone":                                  # the page is in Notion's trash (deleted by hand, or trashed before the store was updated): it refuses every write and will never take this one,
+                counts["page_gone"] = counts.get("page_gone", 0) + 1       # so it is not a failure and is not asked again until the job is re-scored. The audit's trash pass clears the row.
+                _mark_synced(job_id)
+                continue
             counts["failed"] += 1
             counts["failed_why"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]            # a fixed code (and Notion's own error code), as publish reports it: the failure is diagnosable from the log
+            counts["failed_page"] = state                        # open | unreadable: the page is there (or cannot be read), so the refusal is about the request, not the page
             if counts["failed"] >= 3:
                 break
             continue
-        with store.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("UPDATE v7_jobs SET fit_synced_at=%s, meta_v=%s WHERE id=%s", (_now(), meta.META_VERSION, job_id))
+        _mark_synced(job_id)
         counts["synced"] += 1
     counts.update(backfill_roles(client, live))                              # after the main pass, so a scored page's Role arrives with its Fit and this finds only what is left
     return counts
