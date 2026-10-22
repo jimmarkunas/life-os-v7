@@ -10,7 +10,7 @@ from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
-from .models import Ownership, State
+from .models import Ownership, RoundQuery, State
 from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
@@ -319,6 +319,93 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
 
 
+def _changed(old, new, path=()):
+    """[(path, old block, new block)] for every block whose text differs between two renders of one round page; the shapes must match."""
+    if len(old) != len(new):
+        raise NotionError("INTERVIEW_RENDER_SHAPE")
+    out = []
+    for index, (a, b) in enumerate(zip(old, new)):
+        if a["type"] != b["type"]:
+            raise NotionError("INTERVIEW_RENDER_SHAPE")
+        if notion.text(a) != notion.text(b):
+            out.append((path + (index,), a, b))
+        out += _changed(notion.kids(a), notion.kids(b), path + (index,))
+    return out
+
+
+def _round_targets(client, page_id, edits, budget):
+    """[(block, old block, new block)] on the live page for each changed render path, or None when any target is not machine-owned or reads as
+    neither render (a human edit or an unknown layout). Top level: the fold, the Interview snapshot callout and the one column list; the left
+    column (tabs, Live Notes, Raw Notes) is never a target."""
+    tops = notion.children(client, page_id, budget)
+    lists = [b for b in tops if b.get("type") == "column_list"]
+    calls = [b for b in tops[1:] if b.get("type") == "callout"]
+    if not tops or not notion.is_fold(tops[0]) or len(lists) != 1 or not calls:
+        return None
+    anchors, found = {0: tops[0], 1: calls[0], 2: lists[0]}, []
+    for path, old, new in edits:
+        if path[:2] == (2, 0) or path[0] not in anchors:
+            return None
+        block = anchors[path[0]]
+        for index in path[1:]:
+            below = notion.children(client, block["id"], budget)
+            if index >= len(below):
+                return None
+            block = below[index]
+        if block.get("type") != old["type"] or notion.text(block) not in (notion.text(old), notion.text(new)):
+            return None
+        found.append((block, old, new))
+    return found
+
+
+def confirm(client, parent_id, child_id, current, date, live, out, context=None):
+    """LIFE-46 E07: an accepted Calendar interview for Interview 1 in Scheduling Pending dates THAT round page in place. The identity line keeps
+    its v1 format (`interview_date` null -> the date; interviewer and ordinal unchanged) and is written last, so a page is dated only when every
+    machine block already says so; the Live and Raw Notes digest must not change. Nothing else is created, renamed or moved."""
+    fresh = notion.explicit_child(client, child_id)
+    if (fresh is None or fresh.identity_valid is not True or fresh.interview_date is not None or fresh.ordinal != 1
+            or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(date)):
+        return "round_unconfirmable"
+    pending = RoundQuery(True, None, fresh.interviewer, 1)
+    dated = RoundQuery(True, date, fresh.interviewer, 1)
+    edits = _changed(round_page(current, pending, parent_id, identity_text(pending)), round_page(current, dated, parent_id, identity_text(dated)))
+    budget = [notion.MAX_CALLS]
+    targets = _round_targets(client, child_id, edits, budget)
+    if targets is None or [notion.text(b) for b, *_ in targets if notion.text(b).startswith(IDENTITY_PREFIX)] != [identity_text(pending)]:
+        return "machine_region_edited"
+    before = notion.protected_snapshot(client, child_id, "round")
+    if before is None:
+        return "readback_protected_missing"
+    out["writes_planned"] = 1
+    if not live:
+        return "confirm_allowed"
+    if context:
+        context.require_time()
+    todo = sorted([t for t in targets if notion.text(t[0]) != notion.text(t[2])], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
+    done = []
+    try:
+        for block, old, new in todo:                                    # the identity line last: it is the commit point
+            notion.set_text(client, block["id"], block["type"], new[new["type"]]["rich_text"])
+            done.append((block, old))
+            out["writes"] = out["readback_failed"] = 1
+    except NotionError:
+        try:
+            for block, old in reversed(done):                           # roll the machine blocks back to the pending page
+                notion.set_text(client, block["id"], block["type"], old[old["type"]]["rich_text"])
+        except NotionError:
+            return "write_failed_partial"
+        return "write_failed"
+    after = notion.explicit_child(client, child_id)
+    check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
+    if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (date, fresh.interviewer, 1)
+            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)):
+        return "readback_content_mismatch"
+    if notion.protected_snapshot(client, child_id, "round") != before:
+        return "readback_protected_changed"
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    return "round_confirmed"
+
+
 def apply(client, environ, parent_query, query, live, context, deferred):
     """Private evidence in, counts and fixed code out. deferred forbids parent+round in one run."""
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
@@ -377,6 +464,10 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
             current = views.opportunity(client, parent_query, query, pipeline, children, today())
+            pending = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True and c.interview_date is None]
+            if code == "child_match" and query.explicit_child_page_id and query.interview_date and pending:
+                deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the pending round is dated in place)
+                return finish(confirm(client, parent.page_id, pending[0].page_id, current, query.interview_date, live, out, context))
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
                 done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))     # a UI 3b page migrates only for a pursuit Jim named
                 if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
