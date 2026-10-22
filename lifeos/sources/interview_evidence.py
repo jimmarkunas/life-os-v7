@@ -202,17 +202,19 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     injected = context
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
-    why, evidence, ready = {}, [], {}
+    why, evidence, ready, where = {}, [], {}, {}
 
-    def flag(code):
+    def flag(code, site=None):
         why[code] = why.get(code, 0) + 1
+        if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
+            where[site] = where.get(site, 0) + 1
 
     def queue(company, role, job, url, rows, date, who, number, requisition=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
             evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url)))
         else:
-            flag(made.code)
+            flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
     scan = notion.parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
@@ -270,7 +272,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         company, role, job, url, kids, rows = ready[page_id]
         held, number, day = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10]
         if number is None:
-            flag("round_identity_incomplete")
+            flag("round_identity_incomplete", "calendar_event_no_ordinal")
         elif not kids.complete:
             flag("child_scan_incomplete")
         elif any(c.interview_date == day for c in held):
@@ -313,7 +315,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("identity_conflict")
         elif page and any(c.identity_valid is True for c in page_kids.items):
             if page_url != message["url"]:
-                flag("round_identity_incomplete")                            # another request for a job that already has a round: its round number is unknown
+                flag("round_identity_incomplete", "applied_row_other_request")      # another request for a job that already has a round: its round number is unknown
         elif not page or page_kids.complete:
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
@@ -326,7 +328,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         handled.add(row["id"])
         if any(c.identity_valid is True for c in page_kids.items):
             if page_url != message["url"]:
-                flag("round_identity_incomplete")                            # the page already has a round and names another message: its number is unknown
+                flag("round_identity_incomplete", "pursuit_other_request")          # the page already has a round and names another message: its number is unknown
         elif page_kids.complete:
             queue(company, role, page_job, message["url"], page_rows, None, None, None, req)
             pursuit_requests += 1
@@ -368,6 +370,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    if where:
+        counts["where"] = where
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
     counts["convert"] = convert
