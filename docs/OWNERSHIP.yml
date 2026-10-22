@@ -96,7 +96,7 @@ rules:
       - lane: edge-oracle
         scope: block
         item_indent: 6
-        match: '(?i)cloud[-_ ]?fit|v7-runner|lifeos-fit|ntfy|alerts push'
+        match: '(?i)cloud[-_ ]?fit|fit[-_ ]?cloud|v7-runner|lifeos-fit|ntfy|alerts push'
   - path: .github/workflows/domains.yml
     lane: career-v7
     sections:
