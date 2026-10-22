@@ -1314,6 +1314,7 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           JOB_PAGE_OUTREACH: ${{ vars.JOB_PAGE_OUTREACH }}
+          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_API_TOKEN }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
