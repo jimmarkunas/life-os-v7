@@ -49,4 +49,5 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 
 ## Reporting
 Counts only. Say what you could not verify (real data, live runs). One PR per task; do not merge.
+**Times for Jim: Central Time only (Jim, Oct 22, 2026).** Every time shown to Jim (chat, reports, Jira receipts, PR text) is US Central Time (America/Chicago), labeled CT, 12-hour (e.g. 4:34 PM CT). Never show UTC, not even in brackets; convert any UTC from logs, APIs or cron lines first.
 
