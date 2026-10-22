@@ -83,6 +83,25 @@ class EmbeddedDataTests(unittest.TestCase):
         self.assertEqual((result["outcome"], result["source_kind"]), ("ready", "next_data"))
 
 
+class LinkedInGuestPageTests(unittest.TestCase):
+    def test_the_description_is_the_employers_text_not_the_sign_in_page(self):
+        from tests.jobs.test_jd import LINKEDIN_PAGE
+        body = LINKEDIN_PAGE.replace("<ul><li>10 years of program delivery</li></ul>", "<ul><li>10 years of program delivery</li></ul>" + "<p>Experience with program governance and risk. </p>" * 8)
+        result = enrich.parse_html("https://www.linkedin.com/jobs/view/4443205698", "Principal Technical Program Manager", body)
+        self.assertEqual((result["outcome"], result["source_kind"]), ("ready", "page_text"))
+        text = result["description"]["full_text"]
+        self.assertIn("Own the program plan", text)
+        self.assertNotIn("Password", text)
+        self.assertNotIn("Join or sign in", text)
+
+    def test_a_guest_page_with_an_empty_description_is_not_made_ready_by_its_sign_in_text(self):
+        page = ('<html><head><title>Principal Technical Program Manager | Oracle | LinkedIn</title></head><body><h1>Principal Technical Program Manager</h1>'
+                '<p>Join or sign in to find your next job. Email or phone. Password. Sign in. New to LinkedIn? Join now. By clicking Continue to join or sign in, '
+                'you agree to the User Agreement, Privacy Policy and Cookie Policy.</p><div class="show-more-less-html__markup"></div></body></html>')
+        result = enrich.parse_html("https://www.linkedin.com/jobs/view/4443205698", "Principal Technical Program Manager", page)
+        self.assertEqual((result["outcome"], result.get("reason")), ("blocked", "description_empty"))
+
+
 if __name__ == "__main__":
     unittest.main()
 
