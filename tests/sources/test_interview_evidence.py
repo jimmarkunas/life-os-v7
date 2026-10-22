@@ -173,6 +173,7 @@ class CalendarRounds(unittest.TestCase):
         counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
         self.assertEqual(len(got["evidence"]), 1)                              # only the refresh of the existing page
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
+        self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})        # LIFE-78: the cause names WHICH check raised it, as a fixed word
 
     def test_the_same_round_number_on_another_date_conflicts_and_creates_nothing(self):
         counts, got = Run(kids={"p1": (child("c2", "2026-10-01", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview 2")))()
@@ -247,6 +248,7 @@ class SchedulingRequests(unittest.TestCase):
         self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))
         counts, got = Run(roster=[APPLIED], records=[mail()])()               # another message: its round number is unknown, so it is reported, not numbered
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
+        self.assertEqual(counts["where"], {"applied_row_other_request": 1})
         self.assertEqual([q.source for _, q in got["evidence"]], [URL])
 
     def test_a_machine_parent_with_no_round_gets_interview_1(self):
@@ -653,6 +655,7 @@ class Pursuits(unittest.TestCase):
         other = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": (child(),)}, roster=[], records=[mail()])       # the page's request link is another message
         counts, got = other()
         self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["why"].get("round_identity_incomplete")), ([], 1))
+        self.assertEqual(counts["where"], {"pursuit_other_request": 1})
 
     def test_a_request_for_a_page_without_a_key_is_counted_and_never_guessed(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, roster=[], records=[mail()], tops=NOTES_TOP)()
