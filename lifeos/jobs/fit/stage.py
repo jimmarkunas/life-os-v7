@@ -189,8 +189,9 @@ def repromote_kept(cursor, profile, today, gate, counts, register=None):
 # The Oracle-held brief (what the cloud model is told about Jim) was replaced with Jim's confirmed evidence at this moment (UTC). A keep-list role the cloud scored before it was
 # judged on the old brief; clearing its answer lets the existing backlog batch ask again with the new one. Cleared once: a new answer is stamped after this time.
 BRIEF_CHANGED_AT = datetime(2026, 10, 21, 5, 28, 14)
-KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
-                     " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') AND f.exclusion IS NULL ORDER BY f.job_id LIMIT 500")
+KEPT_ASKED_BEFORE = ("SELECT f.job_id, j.title, j.company, f.exclusion FROM v7_job_fit f JOIN v7_jobs j ON j.id = f.job_id WHERE f.cloud_status='CANARY' AND f.cloud_at < %s"
+                     " AND j.status IN ('READY', 'RESOLVED', 'PUBLISHED') AND f.admission IN ('ADMIT', 'REVIEW') ORDER BY f.job_id LIMIT 500")
+CLEAR_OVERRIDDEN_EXCLUSION = "UPDATE v7_job_fit SET exclusion=NULL WHERE job_id=%s AND cloud_status IS NULL AND exclusion IS NOT NULL"
 CLEAR_FOR_REASK = ("UPDATE v7_job_fit SET cloud_status=NULL, cloud_reason=NULL, cloud_run_id=NULL, cloud_request_hash=NULL"
                    " WHERE job_id=%s AND cloud_status='CANARY' AND cloud_at < %s")
 
@@ -200,10 +201,16 @@ def reask_kept(cursor):
     quota and 50 % allowance stop) asks again. The stored score and decision stay until the new answer replaces them; no model call is made here. -> roles cleared."""
     cursor.execute(KEPT_ASKED_BEFORE, (BRIEF_CHANGED_AT,))
     cleared = 0
-    for job_id, title, company in cursor.fetchall():
-        if lanes.on_keep_list(company, title):
-            cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
-            cleared += int(cursor.rowcount or 0)
+    for job_id, title, company, exclusion in cursor.fetchall():
+        if not lanes.on_keep_list(company, title):
+            continue
+        if exclusion and not lanes.keep_overrides_exclusion(company, title):
+            continue                                                       # a static exclusion Jim's keep list does not override: the backlog would never ask this role
+        cursor.execute(CLEAR_FOR_REASK, (job_id, BRIEF_CHANGED_AT))
+        done = int(cursor.rowcount or 0)
+        if done and exclusion:
+            cursor.execute(CLEAR_OVERRIDDEN_EXCLUSION, (job_id,))          # Credit Manager (Product): admitted by the keep list over the static financial-risk exclusion, so the stored exclusion no longer applies and must not hide it from the backlog
+        cleared += done
     return cleared
 
 
