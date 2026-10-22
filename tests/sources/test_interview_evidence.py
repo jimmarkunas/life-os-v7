@@ -86,8 +86,8 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None):
-        self.writer, self.owner, self.tops, self.legacy = writer, owner, list(tops), legacy or {}
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True):
+        self.writer, self.owner, self.tops, self.legacy, self.complete = writer, owner, list(tops), legacy or {}, complete
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
@@ -106,7 +106,7 @@ class Run:
              patch.object(notion, "children", return_value=self.tops), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
              patch.object(ev, "legacy_facts", side_effect=lambda client, page_id, context: self.legacy.get(page_id)), \
-             patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
+             patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), self.complete)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows),
@@ -170,10 +170,24 @@ class CalendarRounds(unittest.TestCase):
         self.assertEqual(counts["failed"], 0)
 
     def test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages(self):
-        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        counts, got = Run(kids={"p1": (child("c1", "2026-10-01", "Pat Example", 1),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
         self.assertEqual(len(got["evidence"]), 1)                              # only the refresh of the existing page
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
         self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})        # LIFE-78: the cause names WHICH check raised it, as a fixed word
+
+    def test_an_unnumbered_event_beside_a_scheduling_pending_round_is_named_as_that_case(self):
+        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        self.assertEqual(len(got["evidence"]), 1)                              # the pending child is not given this time (E07 is not built)
+        self.assertEqual((counts["why"], counts["where"], counts["failed"]), ({"round_identity_incomplete": 1}, {"calendar_event_pending_round": 1}, 1))
+
+    def test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure(self):
+        counts, got = Run(kids={"p1": (child("c2", "2026-10-28", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        self.assertEqual((len(got["evidence"]), counts["failed"], counts["why"]), (1, 0, {}))
+
+    def test_an_unreadable_round_list_is_reported_before_any_number_is_looked_for(self):
+        counts, _ = Run(complete=False, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        self.assertIn("child_scan_incomplete", counts["why"])
+        self.assertNotIn("round_identity_incomplete", counts["why"])
 
     def test_the_same_round_number_on_another_date_conflicts_and_creates_nothing(self):
         counts, got = Run(kids={"p1": (child("c2", "2026-10-01", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview 2")))()

@@ -271,12 +271,12 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for page_id, event in events:                                            # a new round first: the refresh below then waits for the next run
         company, role, job, url, kids, rows = ready[page_id]
         held, number, day = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10]
-        if number is None:
-            flag("round_identity_incomplete", "calendar_event_no_ordinal")
-        elif not kids.complete:
+        if not kids.complete:
             flag("child_scan_incomplete")
         elif any(c.interview_date == day for c in held):
-            continue                                                         # the round page exists
+            continue                                                         # the round page exists: no number is needed to add nothing
+        elif number is None:                                                 # a new round is never numbered from the pages; E07 names the pending case
+            flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
         elif any(c.ordinal == number for c in held):
             flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
         else:
