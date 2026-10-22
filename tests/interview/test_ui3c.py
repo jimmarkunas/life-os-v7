@@ -129,6 +129,25 @@ class Sim(WritableFake):
     """The production-shaped writable fake."""
 
 
+class FillerSim(Sim):
+    """A template page that carries one empty paragraph, applied before the write ("before") or after it ("after"), as the Full Width template did."""
+
+    def __init__(self, lands):
+        super().__init__()
+        self.lands, self.template_page = lands, None
+
+    def call(self, method, path, body=None):
+        out = super().call(method, path, body)
+        if method == "POST" and path == "/pages" and body.get("template"):
+            self.template_page = out["id"]
+            if self.lands == "before":
+                self.blocks[out["id"]].insert(0, block(""))
+        if method == "PATCH" and path.endswith("/children") and self.lands == "after" and self.template_page and path.split("/")[2] == self.template_page:
+            self.lands = "done"
+            self.blocks[self.template_page].insert(0, block(""))
+        return out
+
+
 def written(current=None):
     """A UI 3c page written by the staged writer under "active", with Jim's own note and an interview page after it."""
     client = Sim()
@@ -165,6 +184,27 @@ class Layout(unittest.TestCase):
         self.assertNotIn("children", client.posts[-1])                       # Notion takes no children with a template
         self.assertEqual(notion.outline(notion.read_tree(client, page_id, [500])), UI3C)
         self.assertEqual(create.finalize(client, page_id, opportunity(), blocks), "readback_ok")
+
+    def test_a_template_that_leaves_an_empty_paragraph_on_top_does_not_break_the_page(self):
+        """The 8 PM run: Notion's Full Width template left an empty first paragraph, so the marker was not the first block and the page read as not ours."""
+        for lands in ("before", "after"):
+            client = FillerSim(lands)
+            blocks = create.rendered(opportunity(), tail=None)[0]
+            page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH)
+            top = client.blocks[page_id]
+            self.assertNotEqual((top[0]["type"], notion.text(top[0])), ("paragraph", ""), lands)
+            self.assertEqual(notion.readback(client, page_id, "active", "opportunity"), "readback_ok", lands)
+            self.assertEqual(notion.ownership(client, page_id, "opportunity"), notion.Ownership.MACHINE, lands)
+
+    def test_clearing_filler_never_touches_text_or_a_page_that_would_be_left_empty(self):
+        client = Sim()
+        client.blocks["p"] = [block("", id="e0")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), 0)                      # the only block stays
+        client.blocks["p"] = [block("Jim wrote this", id="t"), block("", id="e")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), 0)                      # text on top stays
+        client.blocks["p"] = [block("", id=f"e{i}") for i in range(4)] + [block("fold", id="fold")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), notion.FILLER_MAX)      # bounded
+        self.assertEqual([notion.text(b) for b in client.blocks["p"]], ["", "fold"])
 
     def test_values_come_from_the_view_and_missing_sources_say_so(self):
         current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),

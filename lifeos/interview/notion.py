@@ -397,6 +397,25 @@ def _fill(client, block_id, plan, budget):
         delete_block(client, made[0]["id"])
 
 
+FILLER_MAX = 3
+
+
+def clear_template_filler(client, page_id, budget):
+    """Delete the empty paragraphs a template page leaves at the TOP of a page this writer has just created. Only a leading paragraph with no text, no children and no
+    mention is removed, at most FILLER_MAX of them, and never the last block of the page: nothing a person wrote is ever touched (the page is seconds old and machine made).
+    The first block must be the machine fold or marker, or ownership() reads the page as a human's and it can never be refreshed."""
+    top = children(client, page_id, budget)
+    gone = 0
+    while gone < FILLER_MAX and len(top) - gone > 1:
+        block = top[gone]
+        runs = (block.get("paragraph") or {}).get("rich_text") or []
+        if block.get("type") != "paragraph" or block.get("has_children") or text(block).strip() or any(r.get("type", "text") != "text" for r in runs):
+            break
+        delete_block(client, block["id"])
+        gone += 1
+    return gone
+
+
 def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None):
     """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
     id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
@@ -415,7 +434,10 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         if template:                                                    # a template page takes no children in the same request
             target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
             time.sleep(TEMPLATE_WAIT)
-            return write_tree(client, target, blocks, budget=budget)
+            clear_template_filler(client, target, budget)               # a template that lands first leaves its empty paragraph above the machine fold: the page would read as not ours
+            written = write_tree(client, target, blocks, budget=budget)
+            clear_template_filler(client, target, budget)               # and one that lands after the write puts it first just the same
+            return written
         target = client.call("POST", "/pages", {**page, **body})["id"]
         made = children(client, target, budget)
     else:
