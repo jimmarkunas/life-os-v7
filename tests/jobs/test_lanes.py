@@ -496,3 +496,22 @@ class RecruiterLane(unittest.TestCase):
         decision, lane, eligible = lanes.decide_all("US Remote", facts, date(2026, 10, 21))
         self.assertEqual((decision.status, lane, "Recruiter" in eligible), (ADMIT, "US Remote", False))
         self.assertNotIn("Recruiter", lanes.PRECEDENCE)
+
+
+class OfficeDaysPastTheWindow(unittest.TestCase):
+    """Snap's LinkedIn posting (Oct 21): "expect our team members to work in an office 4+ days per week" sits in a culture paragraph far below the 1,500-character window, and "4+" was not a number."""
+    FILLER = "Responsibilities include planning programs and reporting status. " * 40
+
+    def test_a_required_number_of_office_days_far_down_the_posting_is_hybrid_not_remote_assumed(self):
+        policy = ('"Default Together" Policy: we practice a "default together" approach and expect our team members to work in an office 4+ days per week.')
+        self.assertEqual(lanes.detect_work_mode("Bellevue, WA", "Security TPM", self.FILLER + policy), "hybrid")
+        self.assertEqual(lanes.detect_work_mode("Remote - US", "TPM", self.FILLER + "Plan to be in the office three days a week."), "hybrid")
+        self.assertEqual(lanes.detect_work_mode("Austin, TX", "TPM", self.FILLER + "You will work 3 days per week in the office."), "hybrid")
+
+    def test_optional_or_conditional_office_days_and_unrelated_numbers_are_not_a_requirement(self):
+        for text in ("Office access is optional, 4 days a week in the office if you prefer.",
+                     "No requirement to be in the office 3 days a week.",
+                     "For candidates near our Seattle office, in the office two days a week is available.",
+                     "We run 4 days of onboarding and 5 days of training at our office occasionally.",
+                     "Occasional travel to the office 2 days per quarter."):
+            self.assertEqual(lanes.detect_work_mode("Denver, CO", "", self.FILLER + text), "unknown", text)
