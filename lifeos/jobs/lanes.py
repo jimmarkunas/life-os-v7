@@ -213,6 +213,10 @@ _NEGATED = re.compile(r"\b(?:not|no|never|isn't|aren't|without|optional|optional
 _HYBRID_REQ = re.compile(r"\bhybrid (?:role|work|schedule|position|model|arrangement|working)\b|"
                          r"\b(?:\d|one|two|three|four)\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:the |our |an? )?(?:office|hq|headquarters|studio|campus)\b|"
                          r"\b(?:in[- ]office|on-?site)\s+(?:\d|one|two|three|four)\s+days?\b", re.I)
+# A required number of office days a week, stated anywhere in the posting (benefits and culture paragraphs sit past the 1,500-character window): "work in an office 4+ days per week",
+# "in the office three days a week", "4+ days per week in the office". Only the specific "N days ... office" shapes are searched past the window, never the generic words.
+_HYBRID_DAYS = re.compile(r"\b(?:in|at|from)\s+(?:the |our |an? )?(?:[a-z]+ )?(?:office|hq|headquarters|studio|campus)s?\s+(?:at least |a minimum of )?(?:\d\+?|one|two|three|four)\+?\s+days?\b|"
+                          r"\b(?:\d\+?|one|two|three|four)\+?\s+days?\s+(?:a|per|each)\s+week\s+(?:in|at|from)\s+(?:the |our |an? )?(?:[a-z]+ )?(?:office|hq|headquarters|studio|campus)\b", re.I)
 _ONSITE_REQ = re.compile(r"\b(?:must|required to|requires you to|expected to|will need to|need to)\s+(?:be\s+|work\s+|report\s+)?(?:on-?site|in[- ]office|in (?:the|our) office|(?:from|at|in) (?:the|our) (?:office|hq|headquarters|campus))\b|"
                          r"\bthis (?:is an? |role is |position is )(?:an? )?(?:on-?site|in[- ]office|office[- ]based)\b|"
                          r"\b(?:fully|100%|five days)\s+(?:on-?site|in[- ]office|in the office)\b|\b(?:on-?site|in[- ]office|office[- ]based)\s+(?:role|position|job)\b|"
@@ -251,6 +255,9 @@ def work_mode_evidence(location, title="", text="", window=1500):
         found = _required(pattern, body)
         if found:
             return mode, found
+    found = _required(_HYBRID_DAYS, text or "")
+    if found:
+        return "hybrid", found
     tag = re.search(r"#li-(hybrid|onsite)\b", text or "", re.I)
     if tag:
         return tag.group(1).lower(), tag.group(0)
