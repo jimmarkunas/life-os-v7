@@ -18,8 +18,9 @@ from datetime import date
 from pathlib import Path
 
 OWNERSHIP, HANDOFFS = "docs/OWNERSHIP.yml", "docs/HANDOFFS.yml"
-KINDS = ("generated", "append", "protected", "unresolved")
+KINDS = ("generated", "append", "protected", "unresolved", "shared")
 FAILS = ("protected", "unresolved")
+SHARED_PATHS = frozenset((".claude/settings.json",))
 HOSTS = ("jimmarkunas.atlassian.net", "github.com", "app.notion.com", "www.notion.so")
 PAGE, PAGES = 100, 30
 
@@ -82,6 +83,8 @@ def validate(doc):
     for rule in doc["rules"]:
         if not isinstance(rule.get("path"), str) or (rule.get("lane") in lanes) == (rule.get("kind") in KINDS):
             raise GuardError("OWNERSHIP_RULE_INVALID")                              # exactly one answer: a lane XOR a kind
+        if rule.get("kind") == "shared" and rule["path"] not in SHARED_PATHS:
+            raise GuardError("SHARED_PATH_INVALID")
         for s in rule.get("sections", []):
             if s.get("lane") not in lanes + ["unresolved"] or not s.get("match") or s.get("scope", "line") not in ("line", "block"):
                 raise GuardError("OWNERSHIP_SECTION_INVALID")
@@ -183,6 +186,9 @@ def check(doc, handoffs, pr, files, others=(), today=None):
         if kind in FAILS:
             bad.append(f"{'PROTECTED_PATH' if kind == 'protected' else 'UNRESOLVED_OWNERSHIP'} {f['path']}: " + ("needs Jim's protected review" if kind == "protected" else "no owner decided; blocked until Jim decides"))
             continue
+        if kind == "shared":
+            seen[f["path"]] = {"shared"}
+            continue
         try:
             lanes, removed = touched(rule, f["base"], f["head"])
         except Unverifiable as error:
@@ -201,11 +207,14 @@ def check(doc, handoffs, pr, files, others=(), today=None):
             elif not handoff_ok(handoffs, pr["number"], owner, f["path"], today):
                 bad.append(f"OUT_OF_LANE {f['path']} owned by {owner}: no approved handoff for PR #{pr['number']} in {HANDOFFS} on the default branch")
     for other in others:
-        if other["lane"] == pr["lane"]:
+        if other["lane"] == pr["lane"] and pr["lane"] in doc["lanes"]:
             continue
         for o in other["files"]:
             rule = rule_for(doc, o["path"])
             if o["path"] not in seen or rule is None or rule.get("kind") in ("generated", "append") + FAILS:
+                continue
+            if rule.get("kind") == "shared":
+                bad.append(f"OVERLAPPING_PR #{other['number']} ({other['lane'] or 'no lane declared'}) changes {o['path']} (shared path): merge one first, then update the other")
                 continue
             try:
                 theirs, _ = touched(rule, o["base"], o["head"])
