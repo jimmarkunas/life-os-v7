@@ -139,3 +139,54 @@ class PageCapTests(unittest.TestCase):
         self.assertEqual((counts["excluded_waiting"], counts["trashed"], counts["deferred"]), (100, limits.AUDIT_PAGES_PER_RUN, 100 - limits.AUDIT_PAGES_PER_RUN))
         self.assertEqual(counts["excluded_cleared"], limits.AUDIT_PAGES_PER_RUN)
         self.assertEqual(client.call.call_count, limits.AUDIT_PAGES_PER_RUN)
+
+
+class AlreadyTrashedPageTests(unittest.TestCase):
+    """A page deleted by hand refuses every write, so its trash call failed on every run and its row never cleared."""
+
+    def _run(self, page_after_error):
+        from unittest import mock
+        from lifeos.jobs import audit
+
+        rows = [(1, "PUBLISHED", "https://x.example/1", "p1", None, "Co", "Program Manager")]
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, args=()):
+                self.rows = rows if "f.admission='EXCLUDE'" in sql else []
+
+            def fetchall(self):
+                return self.rows
+
+        class Conn(Cur):
+            def cursor(self):
+                return Cur()
+
+        client = mock.Mock()
+
+        def call(method, path, body=None):
+            if method == "PATCH":
+                raise NotionError("NOTION_HTTP_400")
+            if page_after_error == "unreadable":
+                raise NotionError("NOTION_HTTP_500")
+            return page_after_error
+
+        client.call.side_effect = call
+        with mock.patch.object(audit.store, "connect", return_value=Conn()), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=client), mock.patch.object(audit.ledger, "verify", return_value=audit.ledger.OK), \
+                mock.patch.object(audit.guard, "protection", return_value=None):
+            return audit.run(100, True, environ={"V7_FIT_GATE": "true"})
+
+    def test_a_page_already_in_the_trash_counts_as_trashed_and_the_row_is_cleared(self):
+        counts = self._run({"in_trash": True})
+        self.assertEqual((counts["trash_errors"], counts.get("already_trashed"), counts["excluded_cleared"]), (0, 1, 1))
+
+    def test_an_open_or_unreadable_page_that_refuses_the_trash_stays_an_error_and_the_row_stays(self):
+        for page in ({"in_trash": False, "archived": False}, "unreadable"):
+            counts = self._run(page)
+            self.assertEqual((counts["trash_errors"], counts.get("already_trashed"), counts.get("excluded_cleared")), (1, None, None))

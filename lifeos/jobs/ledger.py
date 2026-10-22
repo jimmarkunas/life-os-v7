@@ -25,6 +25,18 @@ def verify(client):
     return result
 
 
+def page_state(client, page_id):
+    """'gone' | 'open' | 'unreadable': whether Notion still holds this page. A page in the trash or archived answers a read (so it is told apart from one that cannot be read)
+    but refuses every property write, which is how a page that was deleted by hand stays 'due' and 'failed' on every run. Read only."""
+    try:
+        page = client.call("GET", f"/pages/{page_id}")
+    except NotionError:
+        return "unreadable"
+    if not isinstance(page, dict):
+        return "unreadable"
+    return "gone" if page.get("archived") or page.get("in_trash") else "open"
+
+
 def missing(client):
     """Names of required properties that are absent or the wrong type (counts-only diagnostics: names are schema, not content)."""
     props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
