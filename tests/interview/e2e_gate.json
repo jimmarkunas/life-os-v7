@@ -77,17 +77,27 @@
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_that_states_its_round_adds_that_round_before_the_refresh",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure",
-        "tests.sources.test_interview_evidence.CalendarRounds.test_an_unnumbered_event_beside_a_scheduling_pending_round_is_named_as_that_case",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_two_accepted_times_for_one_pending_round_choose_neither",
         "tests.sources.test_interview_evidence.CalendarRounds.test_events_that_are_not_interviews_or_not_this_job_or_not_accepted_are_ignored",
         "tests.interview.test_create.CreationTests.test_same_run_duplicate_evidence_defers_round"
       ]
     },
     "E07": {
-      "machine": "PENDING",
+      "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "a confirmed Calendar time for a Scheduling Pending round returns round_conflict; promotion, reschedule and cancel of the same child are not built",
+      "missing": "an accepted Calendar time dates the same Scheduling Pending Interview 1 in place (identity line v1, machine blocks only, Live/Raw Notes digest, rollback); reschedule and cancel of a dated round are not built: the round page records no Calendar event identity, so a moved or cancelled event cannot be told from another round",
       "tests": [
-        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing"
+        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_invite_for_the_pending_interview_1_dates_that_same_page",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_two_accepted_times_for_one_pending_round_choose_neither",
+        "tests.interview.test_confirm.Confirm.test_the_pending_round_is_dated_in_place_and_nothing_else_is_created",
+        "tests.interview.test_confirm.Confirm.test_replay_of_the_same_event_never_dates_or_creates_again",
+        "tests.interview.test_confirm.Confirm.test_a_dry_run_plans_one_write_and_changes_nothing",
+        "tests.interview.test_confirm.Confirm.test_a_human_edit_in_a_machine_block_stops_with_no_write",
+        "tests.interview.test_confirm.Confirm.test_a_changed_live_note_during_the_write_is_reported_and_the_date_is_not_trusted",
+        "tests.interview.test_confirm.Confirm.test_a_failed_write_rolls_the_machine_blocks_back_and_leaves_the_round_pending",
+        "tests.interview.test_confirm.Confirm.test_a_dated_round_or_another_parents_child_is_never_rewritten",
+        "tests.interview.test_confirm.Confirm.test_life_43_reads_the_dated_round_as_the_same_valid_machine_identity"
       ]
     },
     "E08": {
