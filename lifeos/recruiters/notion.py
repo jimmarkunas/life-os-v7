@@ -22,7 +22,9 @@ SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Clie
 MAX_PAGES = 20
 NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
 REOPENABLE = ("", WAITING)
-HISTORY = ("Completed", "Dismissed")                                  # history: a later message changes nothing on these rows
+REPLIED, OFFERED, CONFIRMED, DECLINED = "Replied", "Referral Offered", "Referral Confirmed", "Declined"
+CONVERSATION = (REPLIED, OFFERED, CONFIRMED)                          # Jim-recorded progress of a job-linked outreach row, in order (offered is never confirmed)
+HISTORY = ("Completed", "Dismissed", DECLINED)                        # history: a later message changes nothing on these rows
 FOLLOW_UP_DAYS = 2
 FILLABLE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
 

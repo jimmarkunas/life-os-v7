@@ -361,7 +361,7 @@ DOMAIN_SECRETS = {         # the only secrets each domain job may see; adding on
     "megibow": DB | {"GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "MEGIBOW_BLOCK_ID", "MEGIBOW_EXCLUDED_DOMAINS", "MEGIBOW_REVIEW_DB_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC", "OUTLOOK_CLIENT_ID"},
     "dcc": {"ATTENTION_SYNC_OUTCOME", "AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "DCC_CARD_BLOCK_ID", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN"},
     "recruiters": DB | {"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_RECRUITERS_DATA_SOURCE_ID", "NOTION_RECRUITERS_TOKEN", "OUTLOOK_CLIENT_ID",
-                     "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID",
+                     "NOTION_API_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID", "V7_CLOSE_BASE_URL",
                      "GCAL_CALENDAR_ID", "GCAL_SERVICE_ACCOUNT_JSON", "HIRING_PIPELINE_PAGE_ID", "NOTION_INTERVIEW_TOKEN"},   # LIFE-10: the job-page outreach step reads and writes Job Ledger pages; LIFE-88: the Interview OS step
     "mail": DB | {"AMAZON_CARD_BLOCK_ID", "ATTENTION_CARD_BLOCK_ID", "BILLS_CARD_BLOCK_ID", "CALENDAR_CARD_BLOCK_ID", "GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET",
                   "GMAIL_OAUTH_REFRESH_TOKEN", "HIRING_CARD_BLOCK_ID", "JIRA_CARD_BLOCK_ID", "MAIL_ALERTS_CARD_BLOCK_ID", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
@@ -395,12 +395,13 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
         self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["recruiters"])
 
-    def test_only_the_hiring_pipeline_step_reads_the_close_origin_from_its_own_secret(self):
-        """D198 S3: the link exists only when the V7_CLOSE_BASE_URL secret is set; one step passes it, from that secret, and nothing else names it."""
+    def test_only_the_hiring_pipeline_and_job_page_outreach_steps_read_the_close_origin_from_its_own_secret(self):
+        """D198 S3 / LIFE-78: the links exist only when the V7_CLOSE_BASE_URL secret is set; two steps pass it (Hiring Pipeline Close links, job-page Record reply or referral link), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(seen, [("hiring", "hiring")])
-        step = next(s for s in self.doc["jobs"]["hiring"]["steps"] if s.get("id") == "hiring")
-        self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
+        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("recruiters", "jpoutreach")])
+        for job, ident in seen:
+            step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
+            self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
             if path.name != "domains.yml":
                 self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
