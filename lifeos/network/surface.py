@@ -26,8 +26,19 @@ def evidence_hash(lead, company_key, title, verified):
     return hashlib.sha256(f"{lead['person_id']}|{lead['tier']}|{company_key}|{title or ''}|{verified}".encode()).hexdigest()[:12]
 
 
-def set_hash(leads):
-    return hashlib.sha256("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads).encode()).hexdigest()[:12] if leads else ""
+SENT_TEXT = "Mark as Sent ↗"
+
+
+def sent_url(base, page_id):
+    """LIFE-78: the private Close Mark as Sent screen for THIS page's job, or None when no https origin is configured (then the block is exactly what it was before)."""
+    base = (base or "").strip().rstrip("/")
+    page = str(page_id or "").replace("-", "").lower()
+    return f"{base}/sent?j={page}" if base.startswith("https://") and len(page) == 32 and page.isalnum() else None
+
+
+def set_hash(leads, link=None):
+    """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "")).encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -55,9 +66,13 @@ def _todo(text):
     return {"object": "block", "type": "to_do", "to_do": {"rich_text": rich_text(text), "checked": False}}
 
 
-def build_block(leads):
-    """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key, evidence_hash}. -> one toggle block with children."""
-    kids = [_para(rich_text(f"{MARK} {set_hash(leads)}"))]
+def build_block(leads, link=None):
+    """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key, evidence_hash}. -> one toggle block with children. `link` (sent_url) adds ONE quote block, right after the marker,
+    that opens the signed Mark as Sent form for this job. A quote, not a paragraph: the leads reader (leads_on_page, also in the deployed Close service) only reads paragraphs and to_dos, so it ignores the link."""
+    kids = [_para(rich_text(f"{MARK} {set_hash(leads, link)}"))]
+    if link:
+        kids.append({"object": "block", "type": "quote", "quote": {"rich_text": [{"type": "text", "text": {"content": SENT_TEXT, "link": {"url": link}}},
+                                                                                   {"type": "text", "text": {"content": " · after you have messaged someone about this job. LIFE OS sends nothing."}}]}})
     for lead in leads:
         runs = rich_text(f"{lead['name']} · {reason(lead)} · ")
         if lead.get("url_key"):
@@ -166,12 +181,12 @@ def _verify(client, page_id, others, want, count):
     return top, owned
 
 
-def apply(client, page_id, top, owned, desired_leads, live):
+def apply(client, page_id, top, owned, desired_leads, live, link=None):
     """-> "unchanged" | "created" | "replaced" | "converged" | "removed" | "none" (prefixed "would_" when not live). Only owned blocks are ever touched; the others are proven unchanged.
 
     A replacement is recoverable: the new block is appended and PROVEN first, and only then is the previously accepted block retired. If the run is interrupted anywhere in between, the page
     holds the old and the new block, the old one is still visible, and the next run (the new block's hash is the wanted one) retires the extras and converges. Duplicates never accumulate."""
-    want = set_hash(desired_leads)
+    want = set_hash(desired_leads, link)
     others = _others(top, owned)
     matching = [o for o in owned if o["hash"] == want] if desired_leads else []
     if not desired_leads:
@@ -192,7 +207,7 @@ def apply(client, page_id, top, owned, desired_leads, live):
     elif keep:
         retire = [o for o in owned if o is not keep]
     else:
-        client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [build_block(desired_leads)]})
+        client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [build_block(desired_leads, link)]})
         _, now_owned = read_page(client, page_id)
         fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
         if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:
