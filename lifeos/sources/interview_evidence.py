@@ -205,6 +205,9 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
 
 
 def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None):
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
+        from lifeos.sources import interview_journey_proof
+        return interview_journey_proof.run(environ, live, now=now, client=client)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
     injected = context
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
