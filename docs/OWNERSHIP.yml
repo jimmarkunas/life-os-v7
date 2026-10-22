@@ -168,6 +168,8 @@ rules:
     kind: generated
   - path: docs/codemap.json
     kind: generated
+  - path: .claude/settings.json
+    kind: shared
   - path: docs/OWNERSHIP.yml
     kind: protected
   - path: lifeos/lane_guard.py

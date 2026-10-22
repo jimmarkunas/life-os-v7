@@ -98,6 +98,22 @@ class Check(unittest.TestCase):
     def test_a_path_in_the_prs_own_lane_passes(self):
         self.assertEqual(run("career-v7", [f("lifeos/jobs/lanes.py", "a\n", "b\n")]), [])
 
+    def test_only_the_named_claude_settings_path_is_shared_by_both_lanes(self):
+        path = ".claude/settings.json"
+        for lane in DOC["lanes"]:
+            self.assertEqual(run(lane, [f(path, "{}\n", '{"permissions": {}}\n')]), [])
+        with self.assertRaises(G.GuardError):
+            G.validate(G.parse_map("version: 1\nlanes: [a]\nrules:\n  - path: .claude/**\n    kind: shared\n"))
+
+    def test_shared_settings_conflict_across_other_or_undeclared_lanes(self):
+        path = ".claude/settings.json"
+        files = [f(path, "{}\n", '{"permissions": {}}\n')]
+        for other_lane in ("edge-oracle", None, "unknown"):
+            other = {"number": 8, "lane": other_lane,
+                     "files": [f(path, "{}\n", '{"permissions": {"allow": []}}\n')]}
+            self.assertEqual(len(run("career-v7", files, others=[other])), 1)
+            self.assertIn("OVERLAPPING_PR #8", run("career-v7", files, others=[other])[0])
+
     def test_unknown_ownership_and_a_missing_or_unknown_lane_fail(self):
         self.assertEqual(run("career-v7", [f("brand_new/area.py", "", "x\n")]), ["UNKNOWN_OWNERSHIP brand_new/area.py"])
         for lane in (None, "someone-else"):
