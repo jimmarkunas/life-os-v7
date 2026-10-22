@@ -424,16 +424,21 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
         self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["recruiters"])
 
-    def test_only_the_hiring_pipeline_and_job_page_outreach_steps_read_the_close_origin_from_its_own_secret(self):
-        """D198 S3 / LIFE-78: the links exist only when the V7_CLOSE_BASE_URL secret is set; two steps pass it (Hiring Pipeline Close links, job-page Record reply or referral link), from that secret, and nothing else names it."""
+    def test_only_three_steps_read_the_close_origin_from_its_own_secret(self):
+        """D198 S3 / LIFE-78: the links exist only when the V7_CLOSE_BASE_URL secret is set; three steps pass it (Hiring Pipeline Close links, the job-page Outreach links, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
         self.assertEqual(sorted(seen), [("hiring", "hiring"), ("recruiters", "jpoutreach")])
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
         for path in (pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows").glob("*.y*ml"):
-            if path.name != "domains.yml":
+            if path.name not in ("domains.yml", "hourly.yml"):
                 self.assertNotIn("V7_CLOSE_BASE_URL", path.read_text(), path.name)
+        hourly = yaml.safe_load((pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hourly.yml").read_text())
+        named = [(job, step.get("id")) for job, spec in hourly["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
+        self.assertEqual(named, [("finish", "network_surface")])                                   # the Jobs pipeline's one reader: it never reaches the other finish steps
+        self.assertEqual(next(s for s in hourly["jobs"]["finish"]["steps"] if s.get("id") == "network_surface")["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")
+        self.assertNotIn("V7_CLOSE_BASE_URL", str(hourly.get("env")))
 
     def test_the_calendar_mass_delete_brake_is_skipped_only_by_a_manual_input_and_that_run_touches_nothing_else(self):
         inputs = self.doc[True]["workflow_dispatch"]["inputs"]
@@ -545,7 +550,7 @@ CONSUMERS = {
         timeouts={'jira': 15, 'outlook': 10, 'bills': 15, 'agenda': 15, 'amazon': 15, 'mail': 10, 'hiring': 15, 'attention': 15, 'megibow': 20, 'dcc': 10, 'recruiters': 30, 'imessage': 10, 'report': 5}, digest="d5eb84a64fccb65e"),   # LIFE-88 added the Interview OS stage command to the recruiters job (where the mail credentials are), and a live run showed the job's two mail reads plus the Notion writes need 30 minutes, not 20; LIFE-10 added the job-page-outreach command; D222 (withdrawn Oct 20 2026) removed the job-outreach and installer commands; LIFE-31 added the imessage-alerts stage command, its warning and the report job's imessage entry; LIFE-34 the imessage-comms command and its warning; the Oracle Cloud card (Oct 15 2026) the oracle-card command and its warning; LIFE-77 D228 the AI Capacity card step
     "hourly": dict(
         jobs={"prep": DB | JUMP | TS | HRL, "jobright": DB | JUMP | TS | HRL, "linkedin": DB | JUMP | TS | HRL, "lensa": DB | JUMP | TS | HRL, "finish": DB | JUMP | TS | HRL | {"NTFY_TOPIC", "TAILSCALE_OAUTH_CLIENT_ID", "TAILSCALE_OAUTH_CLIENT_SECRET", "IMESSAGE_ALERTS_HOST"}, "interview": {"NOTION_INTERVIEW_TOKEN"}, "report": {"NTFY_TOPIC"}},
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
+        direct=['GMAIL_OAUTH_CLIENT_ID', 'HIRING_PIPELINE_PAGE_ID', 'INTERVIEW_ACCEPTANCE_JSON', 'INTERVIEW_ACCEPTANCE_NEGATIVE_JSON', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID', 'V7_CLOSE_BASE_URL', 'V7_CLOUD_FIT_PROFILE_REF'],   # LIFE-41: the shadow's brief reference, masked (a variable is not)
         on=['schedule', 'workflow_dispatch'], crons=['7 * * * *', '27 * * * *', '47 * * * *'], perms={'contents': 'read'}, conc={'group': "life-os-v7-hourly-${{ (github.event_name == 'schedule' || inputs.tick) && 'tick' || 'manual' }}", 'cancel-in-progress': False},
         timeouts={'prep': 45, 'jobright': 40, 'linkedin': 40, 'lensa': 40, 'finish': 58, 'interview': 15, 'report': 5}, digest="0059df15f6e964c5"),   # D238: finish 58 min and the batch to 45 min, so a tick's batch fills the hour;   # D233 (LIFE-42): + the always-dry-run negative interview acceptance case;   # D208 (LIFE-76 PR 4b): a tick (and a manual quick proof, with --quick) runs python -m lifeos.jobs.tick in the finish job; the Dice job and its command are gone (the tick resolves Dice);   # D206 (LIFE-76 PR 1): bulk discovery (boards, Scale-Up, title watch, sponsors) moved after finalize; boards --limit follows the quick input;   # D202 review: + the read-only boards-preview command (D204 acceptance: over the 600-board sample); D203: + linkedin-search;   # D201 removed the resolve-lensa and openjobs commands; D202 added the boards command and its finish-loop entry; LIFE-41 the tick's batch is sized to the hour
     "network": dict(
