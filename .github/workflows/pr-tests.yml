@@ -1,11 +1,10 @@
 name: pr-tests
 # Secret-free pull request check: the same unit-test command as the `prep` job of hourly.yml, on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
-# the pinned requirements, nothing dispatched or scheduled. The lane guard step (LIFE-78) checks the PR against docs/OWNERSHIP.yml and reads the other open PRs through the GitHub API (read only). Runtime contract of the deterministic suite: a warning at 45 seconds, a failure at 60 seconds (hang guard: timeout-minutes).
+# the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 45 seconds, a failure at 60 seconds (hang guard: timeout-minutes).
 on:
   pull_request:
 permissions:
   contents: read
-  pull-requests: read                       # the lane guard lists the other open PRs and their files; read only
 concurrency:
   group: life-os-v7-pr-tests-${{ github.event.pull_request.number }}
   cancel-in-progress: true                  # a newer push to the same PR replaces its older check; it shares no group with any tick or manual run
@@ -17,14 +16,9 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          fetch-depth: 0                     # the lane guard diffs the PR head against its base
       - uses: ./.github/actions/python
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         run: pip install pyyaml
-      - name: Lane guard (docs/OWNERSHIP.yml; stdlib only, read only; fails closed)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python -m lifeos.lane_guard
       - name: Unit tests (warn at 45 s, fail at 60 s)
         run: |
           start=$(date +%s)
