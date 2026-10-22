@@ -286,7 +286,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     def calendar_of(child):                                                  # the event reference a dated round page records, read only when an event needs it
         if child.page_id not in recorded:
             try:
-                recorded[child.page_id] = notion.round_calendar(client, child.page_id)
+                recorded[child.page_id] = create.round_calendar(client, child.page_id)
             except Exception:                                                # noqa: BLE001 - an older layout records none: it is never moved or cancelled
                 recorded[child.page_id] = (None, False)
         return recorded[child.page_id]

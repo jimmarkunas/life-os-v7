@@ -319,6 +319,24 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
 
 
+CALENDAR_REF = re.compile(r"^Calendar event: (Accepted invite|Cancelled) · ref ([0-9a-f]{12})$")
+
+
+def round_calendar(client, page_id, budget=None):
+    """LIFE-46 E07: (ref, cancelled) a UI 4 round page's Logistics records for its Calendar event, (None, False) when it records none.
+    The Logistics callout is the first callout of the right column; an unknown layout raises a fixed code (nothing is guessed)."""
+    budget = budget or [notion.MAX_CALLS]
+    lists = [b for b in notion.children(client, page_id, budget) if b.get("type") == "column_list"]
+    columns = notion.children(client, lists[0]["id"], budget) if len(lists) == 1 else []
+    right = notion.children(client, columns[1]["id"], budget) if len(columns) == 2 else []
+    calls = [b for b in right if b.get("type") == "callout"]
+    lines = [notion.text(b) for b in notion.children(client, calls[0]["id"], budget)] if calls else []
+    if not lines or lines[0] != "Logistics":
+        raise NotionError("INTERVIEW_ROUND_LAYOUT")
+    found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
+    return (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+
+
 def _changed(old, new, path=()):
     """[(path, old block, new block)] for every block whose text differs between two renders of one round page; the shapes must match."""
     if len(old) != len(new):
@@ -371,7 +389,7 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
             or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
         return "round_unconfirmable"
     budget = [notion.MAX_CALLS]
-    ref, cancelled = notion.round_calendar(client, child_id, budget)
+    ref, cancelled = round_calendar(client, child_id, budget)
     if fresh.interview_date is None:
         if fresh.ordinal != 1 or want.cancelled or not want.calendar_ref:
             return "round_unconfirmable"
@@ -416,7 +434,7 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
     if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
             or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
-            or notion.round_calendar(client, child_id) != (want.calendar_ref, want.cancelled)):
+            or round_calendar(client, child_id) != (want.calendar_ref, want.cancelled)):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"

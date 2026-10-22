@@ -199,7 +199,7 @@ class CalendarRounds(unittest.TestCase):
 
     def moved(self, *events, recorded=None):
         dated = {"p1": (child("c2", "2026-10-21", None, 1),)}
-        with patch.object(notion, "round_calendar", return_value=recorded or (ev.reference("ExampleCo Program Manager Interview"), False)):
+        with patch.object(create, "round_calendar", return_value=recorded or (ev.reference("ExampleCo Program Manager Interview"), False)):
             return Run(kids=dated, calendar=Calendar(*events))()
 
     def test_the_same_event_at_a_new_time_reschedules_its_own_round(self):

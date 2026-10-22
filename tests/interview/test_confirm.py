@@ -46,7 +46,7 @@ class Confirm(unittest.TestCase):
         (dated,) = notion.child_scan(client, parent).items
         self.assertEqual((dated.page_id, dated.interview_date, dated.ordinal, dated.interviewer, dated.identity_valid), (child, DATE, 1, None, True))
         self.assertEqual(texts(client, child + "-block-0")[1], create.identity_text(RoundQuery(True, DATE, None, 1)))   # still the v1 line
-        self.assertEqual(notion.round_calendar(client, child), (REF, False))
+        self.assertEqual(create.round_calendar(client, child), (REF, False))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)     # Live and Raw Notes untouched
         self.assertIn(f"{DATE} · accepted Calendar invite", snapshot(client, child))
         self.assertNotIn("Scheduling Pending", snapshot(client, child))
@@ -100,7 +100,7 @@ class Confirm(unittest.TestCase):
         self.assertEqual(result["why"].get("write_failed"), 1)
         self.assertEqual(snapshot(client, child), before)
         self.assertIsNone(notion.child_scan(client, "created-1").items[0].interview_date)
-        self.assertEqual(notion.round_calendar(client, child), (None, False))
+        self.assertEqual(create.round_calendar(client, child), (None, False))
 
     def test_another_parents_child_or_a_cancel_of_a_pending_round_is_refused(self):
         client, parent, child = pending_round()
@@ -123,7 +123,7 @@ class Reschedule(unittest.TestCase):
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_rescheduled")), (1, 1, 1))
         (round_,) = notion.child_scan(client, parent).items
         self.assertEqual((round_.page_id, round_.interview_date, round_.ordinal), (child, LATER, 1))
-        self.assertEqual((notion.round_calendar(client, child), len(client.posts)), ((REF, False), posts))
+        self.assertEqual((create.round_calendar(client, child), len(client.posts)), ((REF, False), posts))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
 
     def test_another_event_never_moves_a_dated_round(self):
@@ -142,7 +142,7 @@ class Cancel(unittest.TestCase):
         self.assertEqual((result["writes"], result["readback_ok"], result["why"].get("round_cancelled")), (1, 1, 1))
         (round_,) = notion.child_scan(client, parent).items
         self.assertEqual((round_.interview_date, round_.ordinal, round_.identity_valid), (DATE, 1, True))      # LIFE-43: still one valid machine child
-        self.assertEqual(notion.round_calendar(client, child), (REF, True))
+        self.assertEqual(create.round_calendar(client, child), (REF, True))
         self.assertIn(f"Cancelled {DATE}", snapshot(client, child))
         self.assertEqual(notion.protected_snapshot(client, child, "round"), notes)
         again = move(client, child, cancelled=True)
