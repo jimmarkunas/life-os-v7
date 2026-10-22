@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Atlassian_MCP__executeWrite",
+      "mcp__Atlassian_MCP__editJiraIssue",
+      "mcp__Atlassian_MCP__transitionJiraIssue",
+      "mcp__Atlassian_MCP__addOrEditJiraIssueComment",
+      "mcp__Atlassian_MCP__createJiraIssue"
+    ]
+  }
+}
