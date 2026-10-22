@@ -40,11 +40,69 @@ class _Text(HTMLParser):
             self.parts.append(data)
 
 
+def _clean(parts):
+    lines = (" ".join(line.split()) for line in "".join(parts).split("\n"))
+    return "\n".join(line for line in lines if line)
+
+
 def html_to_text(html):
     parser = _Text()
     parser.feed(html or "")
-    lines = (" ".join(line.split()) for line in "".join(parser.parts).split("\n"))
-    return "\n".join(line for line in lines if line)
+    return _clean(parser.parts)
+
+
+VOID_TAGS = {"br", "hr", "img", "input", "meta", "link", "wbr"}
+LINKEDIN_MARKUP = "show-more-less-html__markup"      # the element LinkedIn's public guest posting page puts the employer's description in
+
+
+class _Region(_Text):
+    """The text of the FIRST element carrying one class, and nothing around it."""
+
+    def __init__(self, marker):
+        super().__init__()
+        self.marker, self.depth, self.done = marker, 0, False
+
+    def handle_starttag(self, tag, attrs):
+        if self.done:
+            return
+        if self.depth == 0:
+            if self.marker in (dict(attrs).get("class") or "").split():
+                self.depth = 1
+            return
+        if tag not in VOID_TAGS:
+            self.depth += 1
+        super().handle_starttag(tag, attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        if self.depth and not self.done and tag in VOID_TAGS:
+            super().handle_starttag(tag, attrs)
+        elif tag not in VOID_TAGS:
+            self.handle_starttag(tag, attrs)
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        if self.done or self.depth == 0 or tag in VOID_TAGS:
+            return
+        self.depth -= 1
+        if self.depth == 0:
+            self.done = True
+        else:
+            super().handle_endtag(tag)
+
+    def handle_data(self, data):
+        if self.depth and not self.done:
+            super().handle_data(data)
+
+
+def linkedin_description(html):
+    """The employer's description from a LinkedIn guest posting page, without the page's sign-in forms, cookie notice and Show more/less chrome.
+    None when the page has no such element (the caller keeps its whole-page reading, never a guess); '' when it has one and it is empty, which is an empty
+    description, not a cue to read the sign-in text instead."""
+    if LINKEDIN_MARKUP not in (html or ""):
+        return None
+    parser = _Region(LINKEDIN_MARKUP)
+    parser.feed(html)
+    return _clean(parser.parts)
 
 
 def _heading_kind(line):
