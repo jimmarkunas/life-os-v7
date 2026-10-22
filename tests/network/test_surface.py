@@ -390,7 +390,10 @@ class MarkAsSentLink(unittest.TestCase):
 
     def test_a_live_run_with_the_origin_writes_the_link_and_a_replay_writes_nothing(self):
         conn, ledger = self.world()
+        before = ledger.texts(self.PAGE)
         go(conn, ledger, live=True, environ=self.ENV)
+        self.assertEqual(ledger.texts(self.PAGE)[:3], before)                                       # the description (every other block) is untouched and first
+        self.assertEqual(set(ledger.writes), {"APPEND"})                                            # the only write is the one new owned block: no delete, no other page, nothing in any other store
         owned = ledger.owned(self.PAGE)
         self.assertEqual([c["type"] for c in owned], ["paragraph", "quote", "paragraph", "to_do", "paragraph", "to_do"])
         self.assertTrue(owned[1]["quote"]["rich_text"][0]["plain_text"].startswith("Mark as Sent ↗"))
