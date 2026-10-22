@@ -1,0 +1,5 @@
+# Approved cross-lane handoffs (LIFE-78). Read by `lifeos/lane_guard.py` from the DEFAULT branch only, so an entry exists only after Jim merges it: a PR's own text never grants one.
+# One entry lets exactly one PR number change paths covered by `path` that the OWNING lane (`owner`) holds, until `expires`. `approval` is the https link to the owning lane's recorded approval (evidence for the reviewer; CI checks only
+# that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
+version: 1
+handoffs: []
