@@ -61,6 +61,12 @@ def _next(r, today):
         return _two("Needs action: follow up", f"Overdue since {_day(due)}" if due and due < today.isoformat() else "Due now")
     if r["action"] == store.WAITING and r["follow_up"]:
         return _two("Follow up", f"Due {_day(r['follow_up'])}")
+    if r["action"] == store.CONFIRMED:
+        return _two("No follow-up", "Referral confirmed · applying is still yours to mark")
+    if r["action"] == store.OFFERED:
+        return _two("Confirm the referral", "Offered, not yet confirmed")
+    if r["action"] == store.REPLIED:
+        return _two("Reply received", "Decide the next step")
     return _two("No follow-up scheduled")
 
 

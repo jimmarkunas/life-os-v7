@@ -105,6 +105,45 @@ def mark_sent(notion, job, person, now, ledger_source, employer=""):
     return {"status": "recorded", "verified": True, "state": "open", "action": store.WAITING, "follow_up": want}
 
 
+def _options(notion):
+    props = notion.call("GET", f"/data_sources/{quote(notion.source, safe='')}").get("properties") or {}
+    return {o.get("name") for o in ((props.get("Action Status") or {}).get("select") or {}).get("options") or [] if isinstance(o, dict)}
+
+
+def set_conversation(notion, job, person, status, ledger_source):
+    """Jim's confirmed update of ONE recorded conversation (job, person) to Replied, Referral Offered, Referral Confirmed or Declined. Never creates a row (a conversation exists only after
+    Mark as Sent), never moves an open conversation backwards (Confirmed never becomes Offered), never touches a closed one, and refuses before any write when the Action Status option does
+    not exist yet (the schema is never extended by a write). Offered and Confirmed stay distinct. -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action", "follow_up"}"""
+    person = valid_person(person)
+    if status not in (*store.CONVERSATION, store.DECLINED) or not person or not job.get("id"):
+        raise store.RecruitersError("OUTREACH_REQUEST_INVALID")
+    check_schema(notion, ledger_source)
+    if status not in _options(notion):
+        raise store.RecruitersError("OUTREACH_STATUS_UNAVAILABLE")
+    mine = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
+    if len(mine) > 1:
+        raise store.RecruitersError("OUTREACH_AMBIGUOUS")
+    if not mine:
+        raise store.RecruitersError("OUTREACH_NOT_RECORDED")
+    row = mine[0]
+    seen = {"verified": True, "action": row["action"], "follow_up": row["follow_up"]}
+    if row["done"] or not row["active"] or row["action"] in store.HISTORY:
+        return {**seen, "status": "not_changed"}
+    if row["action"] == status:
+        return {**seen, "status": "already_recorded"}
+    rank = lambda a: store.CONVERSATION.index(a) if a in store.CONVERSATION else -1       # noqa: E731 - Waiting / Needs Action / blank rank below Replied
+    if status != store.DECLINED and rank(status) < rank(row["action"]):
+        return {**seen, "status": "not_changed"}
+    try:
+        notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
+    except NotionError:
+        raise store.RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
+    after = [r for r in job_rows(notion, job["id"]) if norm(r["person"]) == norm(person)]
+    if len(after) != 1 or after[0]["page_id"] != row["page_id"] or after[0]["action"] != status or after[0]["follow_up"] != row["follow_up"] or after[0]["done"] or not after[0]["active"]:
+        raise store.RecruitersError("OUTREACH_READBACK_MISMATCH")
+    return {"status": "recorded", "verified": True, "action": status, "follow_up": row["follow_up"]}
+
+
 def project(rows, jobs, today):
     """The native Job Outreach table: one row per exact job (never per person), from Recruiters rows linked to a job. `jobs` maps a Ledger page id to
     {"company", "role", "url"}; a row whose job is not in `jobs` (closed, unreadable) is not shown. Sorted by the most urgent next follow-up.
@@ -127,5 +166,8 @@ def project(rows, jobs, today):
             nxt, sort = ("Follow up · Today" if dates[0] <= today.isoformat() else f"Follow up · {datetime.fromisoformat(dates[0]):%b} {int(dates[0][8:])}"), dates[0]
         else:
             nxt, sort = "—", "9999-99-99"
-        out.append({"job": f"{job['company']} — {job['role']}", "outreach": f"{len(items)} contacted · {len(act)} need action", "next": nxt, "link": job["url"], "sort": sort})
+        replied = len([r for r in items if r["action"] in store.CONVERSATION])
+        confirmed = len([r for r in items if r["action"] == store.CONFIRMED])
+        extra = (f" · {replied} replied" if replied else "") + (f" · {confirmed} referral{'s' if confirmed != 1 else ''} confirmed" if confirmed else "")
+        out.append({"job": f"{job['company']} — {job['role']}", "outreach": f"{len(items)} contacted · {len(act)} need action{extra}", "next": nxt, "link": job["url"], "sort": sort})
     return sorted(out, key=lambda r: (r["sort"], r["job"]))
