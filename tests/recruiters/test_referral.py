@@ -121,6 +121,28 @@ class EntryPoint(unittest.TestCase):
         self.assertTrue(all(span[1] is None for row in JP.cells(rows, date(2026, 10, 15)) for span in row[2]))
 
 
+class MarkAsSentInTheTable(unittest.TestCase):
+    """Jim (Oct 21): Mark as Sent belongs in the Outreach table under the contact's channel, not in the page properties."""
+    BASE = "https://close.example.ts.net:47443"
+
+    def test_the_link_is_the_exact_job_https_only_and_absent_without_an_origin(self):
+        self.assertEqual(JP.sent_link(self.BASE + "/", "aaaa-aaaa"), f"{self.BASE}/sent?j=aaaaaaaa")
+        for base in ("", None, "http://close.example", "close.example"):
+            self.assertIsNone(JP.sent_link(base, JOB_A))
+        self.assertIsNone(JP.sent_link(self.BASE, ""))
+
+    def test_every_row_carries_it_under_its_channel_and_nowhere_else(self):
+        sent = JP.sent_link(self.BASE, JOB_A)
+        rows = [store.read(_row(a)) for a in ("Waiting", "Referral Offered", "Declined")]
+        cells = JP.cells(rows, date(2026, 10, 15), None, sent)
+        for row in cells:
+            self.assertEqual([span[:2] for span in row[1] if span[1]], [("Mark as Sent ↗", sent)])      # the channel cell, under the channel and role lines
+            self.assertEqual([span for col in (0, 2, 3) for span in row[col] if span[1]], [])
+        plain = JP.cells(rows, date(2026, 10, 15))
+        self.assertTrue(all(span[1] is None for row in plain for span in row[1]))                          # no origin, no link, no dangling text
+        self.assertTrue(all(len(row[1]) == 1 or row[1][-1][0] != "Mark as Sent ↗" for row in plain))                  # and no dangling "Mark as Sent" text without a link
+
+
 class Screen(unittest.TestCase):
     def test_signed_flow_records_confirmed_and_get_review_never_write(self):
         ledger, rec = world()
