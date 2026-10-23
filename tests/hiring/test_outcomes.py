@@ -140,7 +140,7 @@ class ShownTests(unittest.TestCase):
     def test_an_outcome_older_than_the_rows_last_evidence_is_ignored_and_the_row_ages_as_before(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=60)).isoformat(), "match": "role"})
         self.assertNotIn("outcome", result["rows"][0])
-        self.assertEqual(self.action(result), "No news in 35 days · follow up (due Sep 22)")
+        self.assertEqual(self.action(result), "Stale · no news in 35 days · follow up (due Sep 15)")
 
     def test_a_retired_page_still_closes_the_pursuit_whatever_the_mail_says(self):
         result = C.compile_rows([{"company": "Walmart", "role": "Senior Manager, Operations and Implementation", "applied_on": "2026-09-01"}],
@@ -225,6 +225,36 @@ class RunTests(unittest.TestCase):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring-outcomes"].target, ("lifeos.hiring.outcomes", "run"))
         self.assertEqual(mail.WINDOW_DAYS, 14)                                           # the Recruiters scan's own window is unchanged
+
+
+class ContactTests(unittest.TestCase):
+    """LIFE-26: the newest direct, non-automated message for one pipeline row resets its Stale clock; automated senders and ambiguous mail never do."""
+    def test_a_person_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
+        found = outcomes.contacts([msg(subject="Uber next steps", address="maria@example.com", days_ago=9, mid="a"),
+                                   msg(subject="Uber next steps", address="maria@example.com", days_ago=2, mid="b")], [UBER])
+        self.assertEqual(found, {UBER["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
+
+    def test_automated_ats_or_unattributable_mail_is_never_contact(self):
+        for address in ("no-reply@example.com", "noreply@example.com", "notifications@example.com", "jobs@example.com", "talent@example.com",
+                        "recruiter@linkedin.com", "broken-address"):
+            self.assertEqual(outcomes.contacts([msg(subject="Uber update", address=address)], [UBER]), {}, address)
+        self.assertEqual(outcomes.contacts([msg(subject="Uber and Walmart roles", address="pat@example.com")], [UBER, WALMART]), {})     # two companies: never guessed
+        self.assertEqual(outcomes.contacts([msg(subject="Uber update", address="pat@example.com", days_ago=20)], [UBER]), {})          # before the interview
+
+    def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
+        counts, store, _ = RunTests().go([msg(subject="Uber next steps", address="maria@example.com", days_ago=2)])
+        self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [UBER["key"]]))
+        with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
+            self.assertEqual(outcomes.load(object())[2], store.doc["contacts"])
+        old = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
+        with mock.patch.object(outcomes, "STORE", old), mock.patch.object(outcomes, "_exists", lambda c: True):
+            self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}))
+        self.assertNotIn("example.com", json.dumps(counts))
+
+    def test_the_compiler_carries_the_contact_onto_its_row(self):
+        got = C.compile_rows([{"company": "Uber", "role": UBER["role"], "applied_on": "2026-09-01"}], [], [], None,
+                             {"ledger": True, "parents": True, "calendar": True}, NOW, contacts={UBER["key"]: NOW.isoformat()})
+        self.assertEqual(got["rows"][0]["contact"], NOW.isoformat())
 
 
 class EntryPointTests(unittest.TestCase):

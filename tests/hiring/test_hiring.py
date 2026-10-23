@@ -47,7 +47,7 @@ class CompilerTests(unittest.TestCase):
         got = compile_([applied("Acme Inc", "Senior Program Manager")])
         self.assertEqual([(r["stage"], r["company"]) for r in got["rows"]], [("Submitted", "Acme Inc")])
         self.assertEqual(got["reasons"], [])
-        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted", "Awaiting response · follow up Oct 16"])
+        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted", "Awaiting response · follow up Oct 9"])
 
     def test_two_ledger_rows_for_one_company_and_role_are_one_opportunity(self):
         got = compile_([applied("Acme", "Senior Program Manager", "2026-10-01"), applied("ACME Inc.", "senior program manager", "2026-10-03")])
@@ -348,20 +348,31 @@ class LifecycleTests(unittest.TestCase):
         got = compile_([], [self.retired("r1", "Walmart", "Senior Manager")], events=[{"id": "e1", "title": "Interview - Walmart", "start": at(-20)}])
         self.assertEqual(got["rows"] or [], [])
 
-    def test_waiting_on_an_outcome_says_so_after_fourteen_days_and_not_before(self):
-        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-13), "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 23 · follow up Oct 7")
-        row["event_start"] = at(-14)
-        self.assertEqual(cells(row)[2], "No news in 14 days · follow up (due Oct 6)")
+    def test_waiting_on_an_outcome_is_stale_after_seven_days_and_not_before(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-6), "parent": None, "parent_state": "none", "rounds": 0}
+        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 30 · follow up Oct 7")
+        row["event_start"] = at(-7)
+        self.assertEqual(cells(row)[2], "Stale · no news in 7 days · follow up (due Oct 6)")         # LIFE-26: 7 calendar days
         row["event_start"] = at(-30)
-        self.assertEqual(cells(row)[2], "No news in 30 days · follow up (due Sep 20)")
-        self.assertEqual(cells(row)[1], "Interviewing")                                         # the stage is unchanged
+        self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
+        self.assertEqual(cells(row)[1], "Interviewing")                                         # Stale is attention, never a stage change or closure
 
-    def test_a_submitted_role_waiting_fourteen_days_asks_for_a_follow_up(self):
-        row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=13)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
+    def test_a_submitted_role_waiting_seven_days_is_stale(self):
+        row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=6)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
         self.assertEqual(cells(row)[2], "Awaiting response · follow up Oct 7")
-        row["applied_on"] = (NOW - timedelta(days=14)).date().isoformat()
-        self.assertEqual(cells(row)[2], "No response in 14 days · follow up (due Oct 6)")
+        row["applied_on"] = (NOW - timedelta(days=7)).date().isoformat()
+        self.assertEqual(cells(row)[2], "Stale · no response in 7 days · follow up (due Oct 6)")
+
+    def test_a_direct_message_resets_the_stale_clock_and_an_older_one_does_not(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-30), "parent": None, "parent_state": "none", "rounds": 0}
+        row["contact"] = (NOW - timedelta(days=2)).isoformat()
+        self.assertEqual(cells(row)[2], "Last contact Oct 4 · follow up Oct 11")
+        row["contact"] = (NOW - timedelta(days=9)).isoformat()
+        self.assertEqual(cells(row)[2], "Stale · no contact in 9 days · follow up (due Oct 4)")
+        row["contact"] = (NOW - timedelta(days=40)).isoformat()                                  # before the interview: the interview is the newer evidence
+        self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
+        future = dict(row, event_start=at(3, 10), contact=None)
+        self.assertTrue(cells(future)[2].startswith("Prepare for the interview"))                # a confirmed future interview protects it
 
 
 class ActiveTableTests(unittest.TestCase):
@@ -374,8 +385,8 @@ class ActiveTableTests(unittest.TestCase):
         _, table, _ = render.render(got, None, NOW)
         self.assertEqual([[t for t, _ in row] for row in table], [
             ["Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
-            ["Initech — PM", "Submitted", "No response in 16 days · follow up (due Oct 4)", "Needs Notes"],
-            ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 16", "Needs Notes"],
+            ["Initech — PM", "Submitted", "Stale · no response in 16 days · follow up (due Sep 27)", "Needs Notes"],
+            ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 9", "Needs Notes"],
             ["Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
         self.assertEqual(table[3][3][1], "https://www.notion.so/1234abcd000040008000000000000001")
 

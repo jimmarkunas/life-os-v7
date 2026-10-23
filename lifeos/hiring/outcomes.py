@@ -32,6 +32,9 @@ REJECT = re.compile("|".join((
     r"\b(?:move|moving|proceed|proceeding|go|going)\s+forward with (?:other|another|different)\b", r"\bpursu(?:e|ing) (?:other|another) (?:candidate|applicant|individual)s?\b",
     r"\bdecided not to (?:move|proceed|go) forward\b", r"\bregret to inform\b", r"\bnot (?:been )?selected\b", r"\bposition (?:has been|was) filled\b", r"\bunable to (?:offer|move forward|proceed)\b",
     r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b", r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b")), re.I)
+AUTOMATED = re.compile(r"(?i)^(?:no-?reply|do-?not-?reply|notifications?|mailer(?:-daemon)?|bounces?|alerts?|jobs?|careers?|talent|recruiting|hr|info|support)[@+.]"
+                       r"|@(?:[a-z0-9-]+\.)*(?:greenhouse(?:-mail)?\.io|lever\.co|myworkday(?:jobs)?\.com|workday\.com|icims\.com|smartrecruiters\.com|ashbyhq\.com"
+                       r"|workablemail\.com|workable\.com|jobvite\.com|taleo\.net|successfactors\.com|linkedin\.com|indeed\.com|ziprecruiter\.com)$")
 OFFERED = re.compile("|".join((r"\bpleased to (?:offer|extend)\b", r"\boffer of employment\b", r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b", r"\boffer letter\b")), re.I)
 
 
@@ -106,21 +109,40 @@ def find(messages, roster):
             continue
         stats["outcome_messages"] += 1
         at = _received(message)
-        named = [row for row in roster if mentions(message, row["company"]) and (_since(row) is None or at > _since(row))]
-        if not named:
-            stats["unmatched"] += 1
+        row, why = attribute(message, roster, at)
+        if row is None:
+            stats[why] += 1
             continue
-        companies = {tuple(_tokens(row["company"])) for row in named}
-        if len(companies) > 1:
-            stats["ambiguous"] += 1                              # the message names two pipeline companies: never guessed
-            continue
-        by_role = [row for row in named if role_in(message, row["role"])]
-        pick = by_role if by_role else named
-        if len(pick) != 1:
-            stats["ambiguous"] += 1                              # two roles at one company that the text cannot tell apart
-            continue
-        found[pick[0]["key"]] = {"kind": kind, "received": at.astimezone(timezone.utc).isoformat(), "match": "role" if by_role else "company"}
+        found[row["key"]] = {"kind": kind, "received": at.astimezone(timezone.utc).isoformat(), "match": why}
     return found, stats
+
+
+def attribute(message, roster, at):
+    """-> (the one roster row this message belongs to, "role" | "company"), or (None, "unmatched" | "ambiguous"). It must name the company and arrive
+    after the row's last evidence; two pipeline companies, or two roles at one company the text cannot tell apart, are ambiguous and never guessed."""
+    named = [row for row in roster if mentions(message, row["company"]) and (_since(row) is None or at > _since(row))]
+    if not named:
+        return None, "unmatched"
+    if len({tuple(_tokens(row["company"])) for row in named}) > 1:
+        return None, "ambiguous"
+    by_role = [row for row in named if role_in(message, row["role"])]
+    pick = by_role if by_role else named
+    return (pick[0], "role" if by_role else "company") if len(pick) == 1 else (None, "ambiguous")
+
+
+def contacts(messages, roster):
+    """LIFE-26: {row key: the newest received time of a direct, non-automated message for that row}. Pure. A sender that is a no-reply, notification or
+    ATS address, or a message that cannot be attributed to exactly one row, never counts: an unknown is never contact (a row only goes Stale sooner)."""
+    found = {}
+    for message in sorted(messages, key=_received):
+        sender = message.get("sender_address") or ""
+        if sender.count("@") != 1 or AUTOMATED.search(sender):
+            continue
+        at = _received(message)
+        row, _ = attribute(message, roster, at)
+        if row is not None:
+            found[row["key"]] = at.astimezone(timezone.utc).isoformat()
+    return found
 
 
 def window_days(roster, now):
@@ -137,18 +159,18 @@ def _exists(connection):
 
 
 def load(connection):
-    """The stored outcomes ({row key: {...}}) and when they were last fully read, or ({}, None)."""
+    """The stored outcomes ({row key: {...}}), when they were last fully read, and LIFE-26's last direct contact per row ({row key: time}), or ({}, None, {})."""
     if not _exists(connection):
-        return {}, None
+        return {}, None, {}
     try:
         stored = STORE.load(connection, KEY)
     except (TypeError, ValueError):
         raise fail("STORE_INVALID") from None
     if stored is None:
-        return {}, None
-    if stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict):
+        return {}, None, {}
+    if stored.get("schema") != SCHEMA_V or not isinstance(stored.get("outcomes"), dict) or not isinstance(stored.get("contacts", {}), dict):
         raise fail("STORE_INVALID")
-    return stored["outcomes"], stored.get("scanned_at")
+    return stored["outcomes"], stored.get("scanned_at"), stored.get("contacts", {})
 
 
 def _roster(prior):
@@ -166,13 +188,13 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
     from lifeos.platform import db                                 # noqa: PLC0415
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     counts = {"status": "not_due", "roster": 0, "window_days": 0, "messages": 0, "unreadable": 0, "sources_failed": 0, "outcome_messages": 0, "matched": 0,
-              "rejected": 0, "offers": 0, "ambiguous": 0, "unmatched": 0, "saved": 0}
+              "rejected": 0, "offers": 0, "ambiguous": 0, "unmatched": 0, "contacts": 0, "saved": 0}
     with contextlib.ExitStack() as stack:
         conn = connection if connection is not None else stack.enter_context(db.connect())
         prior = hiring_snapshot.load(conn)
         roster = _roster(prior)
         counts["roster"] = len(roster)
-        _, scanned = load(conn)
+        _, scanned, _ = load(conn)
         if scanned and datetime.fromisoformat(scanned) > now - timedelta(hours=SCAN_EVERY_HOURS):
             return counts
         if not roster:
@@ -204,13 +226,14 @@ def run(limit, live, environ=os.environ, gmail=None, outlook_accounts=None, conn
             take(lambda c=client, l=label: mail.outlook_records(c, l, now, days=days))
         counts["messages"], counts["sources_failed"] = len(records), failed
         outcomes, stats = find(records, roster)
-        counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER))
+        heard = contacts(records, roster)
+        counts.update(stats, matched=len(outcomes), rejected=sum(1 for o in outcomes.values() if o["kind"] == REJECTED), offers=sum(1 for o in outcomes.values() if o["kind"] == OFFER), contacts=len(heard))
         if failed or counts["unreadable"]:                       # a listing that is complete but had a message that could not be read is just as incomplete
             counts["status"] = "degraded"                         # a source that could not be read in full is never a trustworthy "no outcome": nothing is saved, the last accepted outcomes stay
             print("hiring-outcomes:", json.dumps(counts, sort_keys=True))
             raise fail("DEGRADED_SOURCE_INCOMPLETE")
         counts["status"] = "fresh"
         if live:
-            STORE.save_verified(conn, KEY, {"schema": SCHEMA_V, "taken_at": now.isoformat(), "scanned_at": now.isoformat(), "outcomes": outcomes}, fail)
+            STORE.save_verified(conn, KEY, {"schema": SCHEMA_V, "taken_at": now.isoformat(), "scanned_at": now.isoformat(), "outcomes": outcomes, "contacts": heard}, fail)
             counts["saved"] = 1
     return counts

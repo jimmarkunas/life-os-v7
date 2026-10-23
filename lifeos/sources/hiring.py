@@ -194,12 +194,13 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         prior = snapshot.load(conn)
         outcome_reason = None
         try:
-            heard, scanned = outcome_mail.load(conn)                  # D190: what the mail scan last found; unavailable never stops the pipeline
+            heard, scanned, *rest = outcome_mail.load(conn)           # D190: what the mail scan last found; unavailable never stops the pipeline
+            contacts = rest[0] if rest else {}                         # LIFE-26: each row's last direct contact (a scan saved before LIFE-26 has none)
             if prior and prior.get("rows") and (scanned is None or datetime.fromisoformat(scanned) < now - timedelta(hours=_stale_hours(environ))):
                 outcome_reason = "OUTCOME_MAIL_STALE"                 # E13: a failed or incomplete outcome-mail save is never shown as a fresh "no outcome"
         except Exception:                                             # noqa: BLE001
-            heard, outcome_reason = {}, "OUTCOME_MAIL_UNREADABLE"
-        result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard)
+            heard, contacts, outcome_reason = {}, {}, "OUTCOME_MAIL_UNREADABLE"
+        result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard, contacts=contacts)
         if outcome_reason:                                            # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
             result["reasons"] = sorted({*result["reasons"], outcome_reason})
         text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
