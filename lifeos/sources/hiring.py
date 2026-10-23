@@ -113,7 +113,7 @@ def _with_deleted(calendar, time_min, time_max):
 
 
 def read_events(calendar, now, cancelled=None):
-    """Accepted events in the window: not cancelled, not declined, timed (an all-day event is no interview time). -> [{"id", "title", "start"}].
+    """Accepted events in the window: not cancelled, not declined, timed (an all-day event is no interview time). -> [{"id", "title", "start"}], plus "meeting" when the invite carries joining details.
     With a `cancelled` list (LIFE-46 E07), the window is read with deleted events and each cancelled one that still names a title is added to it
     as {"id", "title"}; the accepted list is the same."""
     window = ((now - timedelta(days=PAST_DAYS)).isoformat(), (now + timedelta(days=FUTURE_DAYS)).isoformat())
@@ -136,7 +136,18 @@ def read_events(calendar, now, cancelled=None):
         if not isinstance(start, str) or not isinstance(event.get("id"), str):
             continue
         events.append({"id": event["id"], "title": (event.get("summary") or "").strip(), "start": datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(TZ).isoformat()})
+        if joining := meeting(event):
+            events[-1]["meeting"] = joining
     return events
+
+
+def meeting(event):
+    """E10: an accepted invite's own joining details, (join link, location), or None when it carries neither. The join link is the invite's video entry point,
+    else its Meet link, https only; the location is the invite's own text. Nothing is read from the description or guessed."""
+    points = [p.get("uri") for p in (event.get("conferenceData") or {}).get("entryPoints") or [] if isinstance(p, dict) and p.get("entryPointType") == "video"]
+    join = next((u for u in points + [event.get("hangoutLink")] if isinstance(u, str) and u.startswith("https://")), None)
+    place = " ".join(str(event.get("location") or "").split())[:200] or None
+    return (join, place) if join or place else None
 
 
 def close_ids(rows, applied, parents):

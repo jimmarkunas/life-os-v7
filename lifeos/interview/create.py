@@ -320,21 +320,39 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
 
 
 CALENDAR_REF = re.compile(r"^Calendar event: (Accepted invite|Cancelled) · ref ([0-9a-f]{12})$")
+MEETING = "Meeting link / location: "
 
 
 def round_calendar(client, page_id, budget=None):
     """LIFE-46 E07: (ref, cancelled) a UI 4 round page's Logistics records for its Calendar event, (None, False) when it records none.
     The Logistics callout is the first callout of the right column; an unknown layout raises a fixed code (nothing is guessed)."""
+    return round_logistics(client, page_id, budget)[:2]
+
+
+def round_logistics(client, page_id, budget=None):
+    """(ref, cancelled, meeting): round_calendar plus E10's joining details the Logistics callout records, (join link, location) or None
+    (the meeting_parts line read back; "Unavailable" or no line is None)."""
     budget = budget or [notion.MAX_CALLS]
     lists = [b for b in notion.children(client, page_id, budget) if b.get("type") == "column_list"]
     columns = notion.children(client, lists[0]["id"], budget) if len(lists) == 1 else []
     right = notion.children(client, columns[1]["id"], budget) if len(columns) == 2 else []
     calls = [b for b in right if b.get("type") == "callout"]
-    lines = [notion.text(b) for b in notion.children(client, calls[0]["id"], budget)] if calls else []
+    nodes = notion.children(client, calls[0]["id"], budget) if calls else []
+    lines = [notion.text(b) for b in nodes]
     if not lines or lines[0] != "Logistics":
         raise NotionError("INTERVIEW_ROUND_LAYOUT")
     found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
-    return (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+    ref, cancelled = (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+    held = [b for b, line in zip(nodes, lines) if line.startswith(MEETING)]
+    value = notion.text(held[0])[len(MEETING):] if len(held) == 1 else "Unavailable"
+    join = next(iter(_links(held[0])), None) if len(held) == 1 else None
+    place = value.removeprefix("Join link ↗").removeprefix(" · ") if join else value
+    return ref, cancelled, (join, place or None) if join or (place and place != "Unavailable") else None
+
+
+def _links(block):
+    return [((p.get("text") or {}).get("link") or {}).get("url") or p.get("href") for p in (block.get(block.get("type")) or {}).get("rich_text") or []
+            if ((p.get("text") or {}).get("link") or {}).get("url") or p.get("href")]
 
 
 def _changed(old, new, path=()):
@@ -345,7 +363,7 @@ def _changed(old, new, path=()):
     for index, (a, b) in enumerate(zip(old, new)):
         if a["type"] != b["type"]:
             raise NotionError("INTERVIEW_RENDER_SHAPE")
-        if notion.text(a) != notion.text(b):
+        if (notion.text(a), _links(a)) != (notion.text(b), _links(b)):
             out.append((path + (index,), a, b))
         out += _changed(notion.kids(a), notion.kids(b), path + (index,))
     return out
@@ -389,7 +407,7 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
             or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
         return "round_unconfirmable"
     budget = [notion.MAX_CALLS]
-    ref, cancelled = round_calendar(client, child_id, budget)
+    ref, cancelled, joining = round_logistics(client, child_id, budget)
     if fresh.interview_date is None:
         if fresh.ordinal != 1 or want.cancelled or not want.calendar_ref:
             return "round_unconfirmable"
@@ -397,10 +415,10 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     else:
         if not ref or ref != want.calendar_ref:
             return "round_unlinked"                                     # no recorded event, or another one: a move or cancel is never guessed
-        source = RoundQuery(True, fresh.interview_date, fresh.interviewer, fresh.ordinal, calendar_ref=ref, cancelled=cancelled)
+        source = RoundQuery(True, fresh.interview_date, fresh.interviewer, fresh.ordinal, calendar_ref=ref, cancelled=cancelled, meeting=joining)
         if want.cancelled and want.interview_date != fresh.interview_date:
             return "round_unconfirmable"
-        kind = "cancel" if want.cancelled else "reschedule"
+        kind = "cancel" if want.cancelled else "reschedule" if want.interview_date != fresh.interview_date or cancelled else "details"
     if source == want:
         return "round_unchanged"
     edits = _changed(round_page(current, source, parent_id, identity_text(source)), round_page(current, want, parent_id, identity_text(want)))
@@ -416,7 +434,7 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
         return f"{kind}_allowed"
     if context:
         context.require_time()
-    todo = sorted([t for t in targets if notion.text(t[0]) != notion.text(t[2])], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
+    todo = sorted([t for t in targets if (notion.text(t[0]), _links(t[0])) != (notion.text(t[2]), _links(t[2]))], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
     done = []
     try:
         for block, old, new in todo:                                    # the identity line last: it is the commit point
@@ -434,12 +452,12 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
     if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
             or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
-            or round_calendar(client, child_id) != (want.calendar_ref, want.cancelled)):
+            or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled else want.meeting)):
         return "readback_content_mismatch"
     if notion.protected_snapshot(client, child_id, "round") != before:
         return "readback_protected_changed"
     out["readback_failed"], out["readback_ok"] = 0, 1
-    return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled"}[kind]
+    return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled", "details": "round_details"}[kind]
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
@@ -503,7 +521,8 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             held = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True]
             if code == "child_match" and query.explicit_child_page_id and query.interview_date and query.calendar_ref and held:
                 deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the round moves in place)
-                want = RoundQuery(True, query.interview_date, held[0].interviewer, held[0].ordinal, calendar_ref=query.calendar_ref, cancelled=query.cancelled)
+                want = RoundQuery(True, query.interview_date, held[0].interviewer, held[0].ordinal, calendar_ref=query.calendar_ref, cancelled=query.cancelled,
+                                  meeting=query.meeting)
                 return finish(transition(client, parent.page_id, held[0].page_id, current, want, live, out, context))
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
                 done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))     # a UI 3b page migrates only for a pursuit Jim named

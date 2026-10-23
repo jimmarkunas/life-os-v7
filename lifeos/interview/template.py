@@ -268,15 +268,22 @@ def transcript_lines(state="absent", page_id=None):
             field("Full Transcript page", "Exists — not an accepted transcript · ", mention(page_id)))
 
 
+def meeting_parts(join, place):
+    """E10: the Logistics value for the accepted invite's joining details; create.round_meeting reads it back."""
+    return [p for p in (("Join link ↗", False, join) if join else None, " · " if join and place else None, place) if p] or ["Unavailable"]
+
+
 def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):
     pending = not query.interview_date
     who = (query.interviewer or "").strip() or None
     name = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
     ref, cancelled = query.calendar_ref, bool(query.calendar_ref and query.cancelled and not pending)
+    join, place = (query.meeting or (None, None)) if ref and not pending and not cancelled else (None, None)
     status = ("Scheduling Pending" if pending else f"Cancelled {query.interview_date} · Calendar" if cancelled
               else f"Scheduled {query.interview_date} · " + ("Calendar invite accepted" if ref else "Calendar not verified"))
     health = callout([field("Round identity", f"{name} · {status}"),
-                      field("Calendar / meeting", "The Calendar invite was cancelled." if cancelled else "Accepted Calendar invite linked by reference; join URL not verified."
+                      field("Calendar / meeting", "The Calendar invite was cancelled." if cancelled else ("Accepted Calendar invite linked by reference; joining details from the invite."
+                            if join or place else "Accepted Calendar invite linked by reference; join URL not verified.")
                             if ref and not pending else "No confirmed event, join URL or original invite verified."),
                       field("Request message", "linked" if view.request_url else "not recorded"),
                       field("Preparation", "accepted source-grounded preparation" if prep else "not run"),
@@ -316,7 +323,7 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
     left = [tabs(("Prepare", prepare_pane(prep, query.ordinal)), (LIVE_PANE, live), ("After Interview", after)),
             h(3, RAW_HEADING), toggle(RAW_TOGGLE, [para(("Write unprocessed notes here. LIFE OS never overwrites them.", False, None, True))])]
     right = [callout([h(3, "Logistics"), field("Date / time", query.interview_date or NV), field("Calendar event", f"{'Cancelled' if cancelled else 'Accepted invite'} · ref {ref}" if ref and not pending else "Unavailable"),
-                      field("Meeting link / location", "Unavailable"),
+                      field("Meeting link / location", *meeting_parts(join, place)),
                       note("Only the exact confirmed invitation and joining information for this round is linked.")], "📅", "gray_background"),
              callout([h(3, "Interviewer"), field("Name", who or NV), field("Role", NV), field("LinkedIn", NV)], "👤", "gray_background"),
              callout([h(3, "Transcript & Recording"), field("Granola", "Not imported / not verified"),
