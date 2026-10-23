@@ -35,6 +35,9 @@ class RoundQuery:
     ledger_page_id: str | None = None          # LIFE-46: the exact Job Ledger row progression linked (private page content only)
     calendar_ref: str | None = None            # LIFE-46 E07: a short hash of the accepted Calendar event's id (never the id), kept in the round's Logistics
     cancelled: bool = False                    # LIFE-46 E07: that event was cancelled in Calendar; the round keeps its date and identity
+    meeting: tuple | None = None               # E10: (join link, location) from that accepted invite, either may be None; private page content only
+    recruiters: tuple = ()                     # LIFE-78 E10: Recruiters rows whose Source URL is exactly `source`, as (person, company, thread url); private page content only
+    recruiters_state: str | None = None        # None = the Recruiters source is not connected to this run; "linked" | "none" | "unreadable"
 
 
 @dataclass(frozen=True)

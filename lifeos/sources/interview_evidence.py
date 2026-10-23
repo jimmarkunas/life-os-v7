@@ -24,6 +24,7 @@ from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
+from lifeos.recruiters import notion as recruiters_store
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import RunContext
 from lifeos.sources import hiring as pipeline, interview_sweep as sweep
@@ -204,7 +205,31 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
     return records, down
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None):
+def recruiter_threads(environ, evidence, recruiters=None):
+    """LIFE-78 E10: each request's Recruiters rows, matched only by an exactly equal Source URL (the request message itself; never a name or company).
+    -> (evidence with recruiters on each request, failed?). Not connected (no Recruiters token or data source in this step) leaves the evidence unchanged."""
+    urls = sorted({q.source for _, q in evidence if (q.source or "").startswith("https://")})
+    if not urls:
+        return evidence, False
+    if recruiters is None:
+        if not ((environ.get("NOTION_RECRUITERS_TOKEN") or "").strip() and (environ.get("NOTION_RECRUITERS_DATA_SOURCE_ID") or "").strip()):
+            return evidence, False
+        recruiters = Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+    found = {}
+    try:
+        for url in urls:
+            page = recruiters.query_data_source(None, {"page_size": 20, "filter": {"property": "Source URL", "url": {"equals": url}}})
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or page.get("has_more") is not False:
+                raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
+            rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
+            found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
+    except NotionError:                                                      # unknown is never "no recruiter": every linked request reads DEGRADED this run
+        return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
+    return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
+            for p, q in evidence], False
+
+
+def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
         from lifeos.sources import interview_journey_proof
         return interview_journey_proof.run(environ, live, now=now, client=client)
@@ -219,10 +244,10 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
             where[site] = where.get(site, 0) + 1
 
-    def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None):
+    def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None, meeting=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
-            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref)))
+            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref, meeting=meeting)))
         else:
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
@@ -294,24 +319,34 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 recorded[child.page_id] = (None, False)
         return recorded[child.page_id]
 
+    def joined(child, ref, joining):                                         # E10: the dated round linked to this very invite records other joining details (one page read)
+        try:
+            found = create.round_logistics(client, child.page_id)
+        except Exception:                                                    # noqa: BLE001 - an older layout is never rewritten for its details
+            found = (None, False, None)
+        recorded[child.page_id] = found[:2]
+        return found[:2] == (ref, False) and found[2] != joining
+
     confirms, moves, cancels = {}, {}, {}                                    # LIFE-46 E07: the round pages Calendar moves in place
     for page_id, event in events:                                            # a new round first: the refresh below then waits for the next run
         company, role, job, url, kids, rows = ready[page_id]
         held, number, day, ref = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10], reference(event["id"])
+        joining = event.get("meeting")
         if not kids.complete:
             flag("child_scan_incomplete")
-        elif any(c.interview_date == day for c in held):
-            continue                                                         # the round page exists: no number is needed to add nothing
+        elif same := [c for c in held if c.interview_date == day]:           # the round page exists: no number is needed to add nothing
+            if len(same) == 1 and joined(same[0], ref, joining):
+                moves.setdefault(same[0].page_id, (page_id, same[0], set()))[2].add((day, joining))   # E10: its own invite's joining details changed
         elif number in (None, 1) and len(held) == 1 and held[0].interview_date is None and held[0].ordinal == 1:
-            confirms.setdefault(page_id, set()).add((day, ref))              # the invite for the pending Interview 1: that page is dated, never a second one
+            confirms.setdefault(page_id, set()).add((day, ref, joining))     # the invite for the pending Interview 1: that page is dated, never a second one
         elif len(linked := [c for c in held if c.interview_date and calendar_of(c)[0] == ref]) == 1:
-            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add(day)     # the same event at a new time: that round is rescheduled
+            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add((day, joining))     # the same event at a new time: that round is rescheduled
         elif number is None:                                                 # a new round is never numbered from the pages
             flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
         elif any(c.ordinal == number for c in held):
             flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
         else:
-            queue(company, role, job, url, rows, day, None, number, ref=ref)
+            queue(company, role, job, url, rows, day, None, number, ref=ref, meeting=joining)
     for page_id, event in gone:
         kids = ready[page_id][4]
         for child in [c for c in kids.items if c.identity_valid is True and c.interview_date] if kids.complete else []:
@@ -322,17 +357,18 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         if len(found) > 1:
             flag("calendar_event_ambiguous", "calendar_event_pending_round")    # two accepted times for one pending round: neither is chosen
             continue
-        (day, ref), = found
+        (day, ref, joining), = found
         pending = [c for c in kids.items if c.identity_valid is True][0]
         evidence.append((ParentQuery(company, role), RoundQuery(True, day, pending.interviewer, 1, explicit_child_page_id=pending.page_id, stable_job_key=job,
-                                                                source=url, calendar_ref=ref)))
+                                                                source=url, calendar_ref=ref, meeting=joining)))
     for child_id, (page_id, child, days) in moves.items():
         company, role, job, url, kids, rows = ready[page_id]
         if len(days) > 1 or child_id in cancels:
             flag("calendar_event_ambiguous", "calendar_event_moved")         # one event, two times (or moved and cancelled): neither is chosen
             continue
-        evidence.append((ParentQuery(company, role), RoundQuery(True, days.pop(), child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
-                                                                source=url, calendar_ref=calendar_of(child)[0])))
+        day, joining = days.pop()
+        evidence.append((ParentQuery(company, role), RoundQuery(True, day, child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
+                                                                source=url, calendar_ref=calendar_of(child)[0], meeting=joining)))
     for child_id, (page_id, child) in cancels.items():
         if child_id in moves:
             continue
@@ -452,6 +488,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
+    evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
+    if unreadable:
+        flag("recruiters_unreadable")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where

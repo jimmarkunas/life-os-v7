@@ -114,8 +114,11 @@ def _health(view, rounds_label):
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
             ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
     linked = [r for r in view.rounds if r.calendar]
-    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified"
-              if name == "Calendar" and linked else "not connected to LIFE OS yet") for name in UNCONNECTED]
+    threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
+               "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
+    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
+              else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
+              else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
 
@@ -130,6 +133,18 @@ def _interviews(view):
                      [mention(r.page_id)] if r.page_id else name])
     if len(rows) == 1:
         rows.append(["No interview pages yet", "—", "—"])
+    return rows
+
+
+def _recruiters(view):
+    """E10: one row per Recruiters row linked by the exact request message; the Email cell opens that thread (never composes)."""
+    rows = [["Person", "Role", "Email"]]
+    for person, company, url in view.recruiters:
+        rows.append([[(person or NV, True)], " · ".join(x for x in ("Recruiter", company) if x),
+                     [("Latest thread ↗", False, url)] if url.startswith("https://") else NV])
+    if len(rows) == 1:
+        rows.append(["DEGRADED · Recruiters source unreadable this run" if view.recruiters_state == "unreadable" else "No verified recruiters or coordinators",
+                     "—", "Not verified"])
     return rows
 
 
@@ -177,8 +192,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Interviews"), table(_interviews(view)),
                  note("Names link to LinkedIn and dates to the Calendar event only once verified; Interview links open the "
                       "interview page.")], "📅", "gray_background"),
-        callout([h(3, "Recruiters & Coordinators"), table([["Person", "Role", "Email"], ["No verified recruiters or coordinators",
-                                                                                         "—", "Not verified"]]),
+        callout([h(3, "Recruiters & Coordinators"), table(_recruiters(view)),
                  note("Email opens the latest verified thread for THIS job only, never composes. Interview participants are "
                       "listed only under Interviews.")], "👥", "gray_background"),
         callout([h(3, "Materials Sent"), bullet(("Submitted résumé", True), " — File link not yet verified"),
@@ -254,15 +268,22 @@ def transcript_lines(state="absent", page_id=None):
             field("Full Transcript page", "Exists — not an accepted transcript · ", mention(page_id)))
 
 
+def meeting_parts(join, place):
+    """E10: the Logistics value for the accepted invite's joining details; create.round_meeting reads it back."""
+    return [p for p in (("Join link ↗", False, join) if join else None, " · " if join and place else None, place) if p] or ["Unavailable"]
+
+
 def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):
     pending = not query.interview_date
     who = (query.interviewer or "").strip() or None
     name = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
     ref, cancelled = query.calendar_ref, bool(query.calendar_ref and query.cancelled and not pending)
+    join, place = (query.meeting or (None, None)) if ref and not pending and not cancelled else (None, None)
     status = ("Scheduling Pending" if pending else f"Cancelled {query.interview_date} · Calendar" if cancelled
               else f"Scheduled {query.interview_date} · " + ("Calendar invite accepted" if ref else "Calendar not verified"))
     health = callout([field("Round identity", f"{name} · {status}"),
-                      field("Calendar / meeting", "The Calendar invite was cancelled." if cancelled else "Accepted Calendar invite linked by reference; join URL not verified."
+                      field("Calendar / meeting", "The Calendar invite was cancelled." if cancelled else ("Accepted Calendar invite linked by reference; joining details from the invite."
+                            if join or place else "Accepted Calendar invite linked by reference; join URL not verified.")
                             if ref and not pending else "No confirmed event, join URL or original invite verified."),
                       field("Request message", "linked" if view.request_url else "not recorded"),
                       field("Preparation", "accepted source-grounded preparation" if prep else "not run"),
@@ -302,7 +323,7 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
     left = [tabs(("Prepare", prepare_pane(prep, query.ordinal)), (LIVE_PANE, live), ("After Interview", after)),
             h(3, RAW_HEADING), toggle(RAW_TOGGLE, [para(("Write unprocessed notes here. LIFE OS never overwrites them.", False, None, True))])]
     right = [callout([h(3, "Logistics"), field("Date / time", query.interview_date or NV), field("Calendar event", f"{'Cancelled' if cancelled else 'Accepted invite'} · ref {ref}" if ref and not pending else "Unavailable"),
-                      field("Meeting link / location", "Unavailable"),
+                      field("Meeting link / location", *meeting_parts(join, place)),
                       note("Only the exact confirmed invitation and joining information for this round is linked.")], "📅", "gray_background"),
              callout([h(3, "Interviewer"), field("Name", who or NV), field("Role", NV), field("LinkedIn", NV)], "👤", "gray_background"),
              callout([h(3, "Transcript & Recording"), field("Granola", "Not imported / not verified"),
