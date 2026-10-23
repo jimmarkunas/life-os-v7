@@ -1304,6 +1304,8 @@ jobs:
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_recruiters.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_recruiters_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_API_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}   # LIFE-78 E10: read only, recruiter threads by the exact request message
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
           INTERVIEW_LEADS: ${{ vars.INTERVIEW_LEADS }}
           INTERVIEW_TEST_COMPANIES: ${{ vars.INTERVIEW_TEST_COMPANIES }}
