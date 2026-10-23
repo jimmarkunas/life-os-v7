@@ -137,14 +137,35 @@ def first_contact(row, kept):
     return day if day and latest and day <= latest else None
 
 
-def cells(row, today, first=None):
+def _id(value):
+    raw = str(value or "").replace("-", "").lower()
+    return raw if re.fullmatch(r"[0-9a-f]{32}", raw) else ""
+
+
+def action_link(base, row):
+    """The private Close service's one action for this row, or None without an https origin (V7_CLOSE_BASE_URL): a row linked to exactly one job -> that job's Record reply or
+    referral; a row linked to no job -> Close recruiter record (Completed / Dismissed). A link, never an action: opening it writes nothing."""
+    base = (base or "").strip().rstrip("/")
+    if not base.startswith("https://"):
+        return None
+    if len(row["jobs"]) == 1 and _id(row["jobs"][0]):
+        return ("Record reply or referral ↗", f"{base}/referral?j={_id(row['jobs'][0])}")
+    if not row["jobs"] and _id(row["page_id"]):
+        return ("Close ↗", f"{base}/recruiter?r={_id(row['page_id'])}")
+    return None
+
+
+def cells(row, today, first=None, base=None):
     """One open row -> the four cells. Line 1 bold, line 2 gray (D222 spans); the name links to the verified contact channel (the database's Contact link, else the original
-    message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified"."""
+    message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified". Line 2 of Next Step · Due ends with
+    the row's one action link (action_link) when the Close origin is configured."""
+    action = action_link(base, row)
+    due = [("\n" + _due(row, today) + " · ", None, "gray"), (action[0], action[1], "gray")] if action else [("\n" + _due(row, today), None, "gray")]
     contact = _link(row["contact"]) or _link(row["source_url"])
     return [[(row["person"].strip() or "Name not recorded", contact, "bold"), ("\n" + (row["company"].strip() or "Company not recorded"), None, "gray")],
             [_channel(row), ("\n" + (row["role"].strip() or "Role not recorded"), None, "gray")],
             [(_shown(first) if first else NOT_VERIFIED, None)],
-            [(row["action"], None, "bold"), ("\n" + _due(row, today), None, "gray")]]
+            [(row["action"], None, "bold"), *due]]
 
 
 def ordered(rows):
@@ -282,6 +303,6 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         kept = kept_dates(current)
         firsts = [first_contact(r, kept) for r in shown]
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
-        return [cells(r, today, f) for r, f in zip(shown, firsts)]
+        return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
     counts.update(present(target, environ, build, f"{TITLE} (Updated {clock})", write))
     return counts

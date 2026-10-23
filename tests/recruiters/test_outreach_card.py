@@ -323,6 +323,39 @@ class FirstContactTests(unittest.TestCase):
         self.assertEqual((done["first_contact_shown"], writes(t)), (1, []))
 
 
+class ActionLinkTests(unittest.TestCase):
+    """Jim (Oct 23 2026): each row's one action link sits on line 2 of Next Step · Due. A job-linked row -> Record reply or referral; an inbound row -> Close."""
+    BASE = "https://close.example.test"
+
+    def row(self, jobs=(), pid="c" * 32):
+        r = store.read(page(1, "Pat", follow_up="2026-10-27"))
+        return {**r, "page_id": pid, "jobs": list(jobs)}
+
+    def test_an_inbound_row_links_close_and_a_job_linked_row_links_its_referral_action(self):
+        today = NOW.date()
+        self.assertEqual(card.cells(self.row(), today, base=self.BASE)[3],
+                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray")])
+        self.assertEqual(card.cells(self.row(jobs=["a" * 8 + "-" + "a" * 24]), today, base=self.BASE)[3][2],
+                         ("Record reply or referral ↗", f"{self.BASE}/referral?j={'a' * 32}", "gray"))
+
+    def test_no_origin_two_jobs_or_a_bad_id_means_no_link_and_the_cell_is_unchanged(self):
+        today = NOW.date()
+        plain = [("Needs Action", None, "bold"), ("\nOct 27, 2026", None, "gray")]
+        for row, base in ((self.row(), None), (self.row(), "http://close.example.test"), (self.row(jobs=["a" * 32, "b" * 32]), self.BASE), (self.row(pid="p1"), self.BASE)):
+            self.assertEqual(card.cells(row, today, base=base)[3], plain)
+
+    def test_links_are_written_once_and_a_replay_writes_nothing(self):
+        pages = [page(1, "Pat", source="https://mail.google.com/mail/u/0/#all/x1")]
+        pages[0]["id"] = "c" * 32
+        t = report()
+        env = {**ENV, "V7_CLOSE_BASE_URL": self.BASE}
+        go(t, Source(pages), env=env)
+        self.assertEqual(shown(t)[0][3][2], ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray"))
+        log = len(t.log)
+        go(t, Source(pages), env=env)
+        self.assertEqual([e for e in t.log[log:] if e[0] != "GET"], [])
+
+
 class ProtectionTests(unittest.TestCase):
     def test_the_historical_snapshot_hiring_pipeline_jira_and_link_are_untouched(self):
         t = report(old_rows=2)

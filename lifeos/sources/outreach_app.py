@@ -9,7 +9,7 @@ from html import escape as e
 from lifeos.hiring import close_screen as S, decision as D
 from lifeos.network import surface as N
 from lifeos.platform.notion_client import Client, NotionError
-from lifeos.recruiters import outreach as O
+from lifeos.recruiters import notion as store, outreach as O
 from .close_app import TTL, HTML, _mac, _now, _same
 
 PATH = "Daily Report / Job Outreach / Mark as Sent"
@@ -286,3 +286,110 @@ def handle_status(req, who, secrets):
         return (_status_get if req["method"] == "GET" else _status_post)(req, who, secrets)
     except NotionError as error:
         return _status_stop(409, "Not changed", "This job cannot be updated here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+
+
+# --- LIFE-20 (Jim, Oct 23 2026): close one open recruiter row from the Daily Report's Recruiter Outreach table -------------------------------------------------------------
+CLOSE_PATH = "Daily Report / Recruiter Outreach / Close"
+CLOSE_CHOICES = (("Completed", "Done — I have handled it"), ("Dismissed", "Not relevant — dismiss it"))
+
+
+def _recruiters(secrets):
+    config = secrets["config"]
+    return Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_RECRUITERS_DATA_SOURCE_ID": config.get("recruiters") or ""}, source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+
+
+def _row_fp(r):
+    return _mac(b"fp", r["page_id"], r["person"], r["company"], r["role"], r["action"])[:16]
+
+
+def _row_section(r):
+    return ('<section class="section"><div class="eyebrow">Recruiter</div><div class="jobhead"><div>'
+            f'<h2>{e(r["person"] or "Name not recorded")}</h2><div class="company">{e(r["company"] or "Company not recorded")} · {e(r["role"] or "Role not recorded")}</div></div></div>'
+            f'<div class="fine">Currently: {e(r["action"] or "no status")}</div></section>')
+
+
+def _close_form(r, fields, notice="", status=""):
+    warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
+    what = "".join(f'<label class="reason"><input type="radio" name="status" value="{e(value)}" required{" checked" if status == value else ""}><span><strong>{e(label)}</strong></span></label>' for value, label in CLOSE_CHOICES)
+    return S.page("Close recruiter record", "Close it only when nothing is left to do. LIFE OS never contacts anyone.", _row_section(r) + (
+        f'<form method="post" action="/recruiter">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Close recruiter record</div>'
+        f'<fieldset><legend class="step-title">How should it close? <span aria-label="Required">*</span></legend><div class="people">{what}</div></fieldset>{warn}'
+        '<div class="notice">Closing sets this one record\'s Action Status; it leaves the Recruiter Outreach table on the next refresh. Nothing else changes.</div></section>'
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="review">Review →</button></div></form>'),
+        CLOSE_PATH, "Close recruiter record")
+
+
+def _close_review(r, fields, status):
+    return S.page("Review close", "Your confirmation is required before anything is recorded.", (
+        f'<form method="post" action="/recruiter">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review action</div>'
+        f'<dl class="review"><dt>Recruiter</dt><dd>{e(r["person"])}</dd><dt>Company</dt><dd>{e(r["company"] or "Not recorded")}</dd><dt>Role</dt><dd>{e(r["role"] or "Not recorded")}</dd>'
+        f'<dt>Record</dt><dd>{e(status)}</dd></dl>'
+        '<div class="notice alert">Confirming closes this record; it is shown as done only after the canonical record is read back.</div></section>'
+        '<div class="actions"><button class="btn" name="step" value="edit" formnovalidate>← Edit</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'),
+        CLOSE_PATH, "Close recruiter record")
+
+
+def _close_stop(status, eyebrow, title, text, detail, css="alert"):
+    return status, HTML, S.page(title, "A close counts only after the canonical record is read back.",
+                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
+                                f'<div class="notice {css}">{e(detail)}</div></section>', CLOSE_PATH, "Close recruiter record"), ()
+
+
+def _close_get(req, who, secrets):
+    pid = D._page_id(req["query"].get("r"))
+    if not pid:
+        return _close_stop(400, "Invalid link", "No recruiter selected", "Open this screen from the Recruiter Outreach table.", "Nothing was changed.")
+    if not secrets["config"].get("recruiters"):
+        return _close_stop(409, "Not changed", "Not configured", "The Recruiters database is not configured for this service.", "Refused: NOTION_CONFIG_MISSING. Nothing was changed.")
+    r = store.own_row(secrets["reader"], pid, secrets["config"]["recruiters"])          # GET reads through the gate's read-only client
+    if r["done"] or not r["active"] or r["action"] not in (store.NEEDS_ACTION, store.WAITING):
+        return _close_stop(409, "Nothing to close", "This record is not open", "It is already closed or not an action item.", f"Currently: {r['action'] or 'no status'}. Nothing was changed.", "")
+    exp, st = str(int(_now().timestamp()) + TTL), _row_fp(r)
+    fields = {"r": pid, "pe": r["person"], "co": r["company"], "ro": r["role"], "ac": r["action"], "exp": exp, "st": st, "t": _mac(secrets["link"], "k", who["login"], pid, st, exp)}
+    return 200, HTML, _close_form(r, fields), ()
+
+
+def _close_post(req, who, secrets):
+    form, secret, login = req["form"], secrets["link"], who["login"]
+    pid, step, exp, st = D._page_id(form.get("r")), form.get("step"), form.get("exp", ""), form.get("st", "")
+    bad = lambda: _close_stop(403, "Not accepted", "This form is no longer valid", "Reload it from the Recruiter Outreach table.", "Nothing was changed.", "danger")   # noqa: E731
+    if not pid or step not in ("cancel", "edit", "review", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "k", login, pid, st, exp)):
+        return bad()
+    if step == "cancel":
+        return _close_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    shown = {"page_id": pid, "person": form.get("pe", ""), "company": form.get("co", ""), "role": form.get("ro", ""), "action": form.get("ac", "")}
+    if not _same(_row_fp(shown), st):
+        return bad()
+    fields = {k: form.get(k, "") for k in ("r", "pe", "co", "ro", "ac", "exp", "st", "t")}
+    status = form.get("status", "")
+    if step == "edit":
+        return 200, HTML, _close_form(shown, fields, status=status), ()
+    if status not in [value for value, _ in CLOSE_CHOICES]:
+        return 400, HTML, _close_form(shown, fields, "Choose how it should close.", status), ()
+    sign = _mac(secret, "x", login, pid, st, exp, status)
+    if step == "review":
+        return 200, HTML, _close_review(shown, {**fields, "status": status, "c": sign}, status), ()
+    if not _same(form.get("c"), sign):
+        return _close_stop(403, "Not accepted", "This confirmation is not valid", "Review it again.", "Nothing was changed.", "danger")
+    recruiters = _recruiters(secrets)
+    if _row_fp(store.own_row(recruiters, pid)) != st:
+        return _close_stop(409, "Conflict", "Record changed", "The record changed since this form was opened.", "No write attempted. Reload it and review it again.")
+    try:
+        done = store.close_row(recruiters, pid, status)
+    except NotionError as error:
+        return _close_stop(500, "Unavailable", "Could not verify the close", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+    head = f"{shown['person']} · {shown['company'] or 'Company not recorded'}"
+    if done.get("verified") is not True:
+        return _close_stop(500, "Unavailable", "Could not verify the close", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+    if done["status"] == "recorded":
+        return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
+    if done["status"] == "already_recorded":
+        return _close_stop(200, "Already recorded", "Already closed", "This record was closed that way before; nothing was changed.", f"{head} · {done['action']}.", "")
+    return _close_stop(409, "Not changed", "Nothing was changed", "The record is no longer open.", f"{head} · currently {done['action'] or 'no status'}.")
+
+
+def handle_close(req, who, secrets):
+    try:
+        return (_close_get if req["method"] == "GET" else _close_post)(req, who, secrets)
+    except NotionError as error:
+        return _close_stop(409, "Not changed", "This record cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
