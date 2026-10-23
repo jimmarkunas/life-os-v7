@@ -231,8 +231,8 @@ class RunTests(unittest.TestCase):
 class ContactTests(unittest.TestCase):
     """LIFE-26: only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the employer's own domain."""
     def test_a_person_at_the_employer_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
-        found = outcomes.contacts([msg(subject="Next steps", address="maria.lopez@example.com", days_ago=9, mid="a"),
-                                   msg(subject="Next steps", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
+        found = outcomes.contacts([msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=9, mid="a"),
+                                   msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
         self.assertEqual(found, {EXAMPLE["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
 
     def test_mailboxes_other_domains_junk_and_unattributable_mail_are_never_contact(self):
@@ -241,18 +241,22 @@ class ContactTests(unittest.TestCase):
                         "pat@gmail.com", "recruiter@linkedin.com", "broken-address"):
             self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
         for marker in ("bulk", "auto", "noreply"):                                                                                     # list, newsletter or auto-submitted mail
-            marked = dict(msg(subject="Example weekly update", address="maria@example.com"), markers={marker: True})
+            marked = dict(msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"), markers={marker: True})
             self.assertEqual(outcomes.contacts([marked], [EXAMPLE]), {}, marker)
-        for address in ("help@example.com", "receipts@example.com", "deals@example.com", "rewards@example.com"):
-            self.assertEqual(outcomes.contacts([msg(subject="Your Example order", address=address)], [EXAMPLE]), {}, address)
-        junk = dict(msg(subject="Example update", address="maria@example.com"), folder="JUNK")
+        for sender, address in (("Example.com", "payments-messages@example.com"), ("Example Customer Service", "cs-reply@example.com"),
+                                ("Example Events", "events@example.com"), ("Uber Receipts", "uber@example.com"), ("Delivery Notice", "delivery-notice@example.com")):    # brand or team senders
+            self.assertEqual(outcomes.contacts([msg(subject="Your Example refund", sender=sender, address=address)], [EXAMPLE]), {}, address)
+        for domain, own in (("example.com", True), ("example.co.uk", True), ("mail.example.com", False), ("example.myworkday.com", False),
+                            ("example.zendesk.com", False), ("examples.com", False)):                                              # the registered domain only, never a tenant
+            self.assertEqual(outcomes._own_domain(domain, "Example"), own, domain)
+        junk = dict(msg(subject="Example update", sender="Maria Lopez", address="maria@example.com"), folder="JUNK")
         self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})                                                                         # spam never resets the clock
-        self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
-        self.assertEqual(outcomes.contacts([msg(subject="Example update", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})        # before the interview
+        self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", sender="Maria Lopez", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
+        self.assertEqual(outcomes.contacts([msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})        # before the interview
 
     def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
         prior = {"rows": [dict(EXAMPLE)]}
-        counts, store, _ = RunTests().go([msg(subject="Example next steps", address="maria@example.com", days_ago=2)], prior=prior)
+        counts, store, _ = RunTests().go([msg(subject="Example next steps", sender="Maria Lopez", address="maria@example.com", days_ago=2)], prior=prior)
         self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [EXAMPLE["key"]]))
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object())[2], store.doc["contacts"])
