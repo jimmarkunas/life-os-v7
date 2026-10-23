@@ -80,6 +80,15 @@ class Journey(unittest.TestCase):
         self.assertEqual((ticks[-1]["failed"], ticks[-1]["why"].get("round_identity_incomplete")), (0, None), "a settled run must not stay DEGRADED")
         return ticks
 
+    def shown(self, page_id):
+        """Every text on a page, nested blocks and table cells included, as Jim reads it."""
+        def walk(block_id):
+            for b in self.notion.blocks.get(block_id, []):
+                yield notion.text(b)
+                yield from ("".join(r.get("text", {}).get("content", "") for r in cell) for cell in (b.get("table_row") or {}).get("cells", []))
+                yield from walk(b.get("id"))
+        return "\n".join(walk(page_id))
+
     def pages(self):
         """The opportunities this journey made (the fake pipeline also holds one human page, "Legacy — Manager", which must stay untouched)."""
         scan = notion.parent_scan(self.notion, "root")
@@ -114,6 +123,10 @@ class Journey(unittest.TestCase):
         (page, (round_,)), = self.pages()
         self.assertEqual((round_.page_id, round_.interview_date), (kids[0].page_id, "2026-10-28"))
         self.assertEqual(create.round_calendar(self.notion, round_.page_id), (ev.reference(INVITE), False))
+        self.settle(LEAD, NO_REQ, REQUEST)                                            # E10: the opportunity reads the round's recorded invite
+        opportunity = self.shown(page.page_id)
+        self.assertIn("2026-10-28 · accepted Calendar invite", opportunity)
+        self.assertIn("from the accepted Calendar invite", opportunity)
 
         # 5. The recruiter moves the same invite a week: the same page is re-dated, no second round.
         self.events[0] = event(INVITE, start="2026-11-04T10:00:00-05:00")
@@ -129,6 +142,10 @@ class Journey(unittest.TestCase):
         (page, (round_,)), = self.pages()
         self.assertEqual((round_.page_id, round_.interview_date, round_.identity_valid), (kids[0].page_id, "2026-11-04", True))
         self.assertEqual(create.round_calendar(self.notion, round_.page_id), (ev.reference(INVITE), True))
+        opportunity = self.shown(page.page_id)                                       # the opportunity no longer says scheduled or Prepare
+        self.assertIn("Interview 1 cancelled in Calendar", opportunity)
+        self.assertIn("Ask the recruiter whether Interview 1 moves to a new time.", opportunity)
+        self.assertNotIn("Prepare for Interview 1", opportunity)
 
         # Across the whole journey: one Ledger row, one opportunity, one round, Jim's notes on the opportunity and the human page never touched.
         self.assertEqual((len(self.ledger.rows), len(self.pages()), len(self.pages()[0][1])), (1, 1, 1))

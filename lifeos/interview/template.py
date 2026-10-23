@@ -113,7 +113,9 @@ def _health(view, rounds_label):
             ("Job Ledger", {"linked": "exact row linked by Stable Job Key", "mismatch": "row does not match this job's Stable Job Key",
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
             ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
-    rows += [(name, "not connected to LIFE OS yet") for name in UNCONNECTED]
+    linked = [r for r in view.rounds if r.calendar]
+    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified"
+              if name == "Calendar" and linked else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
 
@@ -123,7 +125,8 @@ def _interviews(view):
     for r in view.rounds:
         name = f"Interview {r.ordinal}" if r.ordinal else f"Interview — {r.date}"
         rows.append([r.interviewer or "Interviewer not verified",
-                     f"{r.date} · Calendar event not verified" if r.date else "Scheduling pending · no Calendar event",
+                     (f"{r.date} · " + {"accepted": "accepted Calendar invite", "cancelled": "cancelled in Calendar"}.get(r.calendar, "Calendar event not verified"))
+                     if r.date else "Scheduling pending · no Calendar event",
                      [mention(r.page_id)] if r.page_id else name])
     if len(rows) == 1:
         rows.append(["No interview pages yet", "—", "—"])
