@@ -138,6 +138,29 @@ class QAWorkspace(NotionLike):
         return self.sources_fake.create(self.source, props)["id"]
 
 
+class LaggingWorkspace(QAWorkspace):
+    """LIFE-108: real Notion can list a parent's children without a just-created child page for a few seconds. Each new "Interview …" page is left
+    out of its parent's child listing for its first `reads` listings, as a lagging read would."""
+    def __init__(self, reads):
+        super().__init__()
+        self.reads, self.hidden = reads, {}
+
+    def call(self, method, path, body=None):
+        out = super().call(method, path, body)
+        if method == "POST" and path == "/pages" and (body.get("parent") or {}).get("type") == "page_id" and _plain(
+                (body.get("properties", {}).get("title") or {}).get("title", [])).startswith("Interview"):
+            self.hidden[out["id"]] = self.reads
+        elif method == "GET" and path.split("?")[0].endswith("/children") and isinstance(out, dict):
+            kept = []
+            for block in out.get("results", []):
+                if self.hidden.get(block.get("id"), 0) > 0:
+                    self.hidden[block["id"]] -= 1
+                    continue
+                kept.append(block)
+            out = {**out, "results": kept}
+        return out
+
+
 def workspace(refuse_databases=False):
     client = QAWorkspace(refuse_databases)
     return client, client.sources_fake
@@ -163,6 +186,17 @@ class Scoped(unittest.TestCase):
         with patch.object(proof, "report_page", lambda c, container: pins):
             counts = proof.run(M1M2, False, now=NOW, client=client, reader=client, report=tree)
         return counts, client, sources, tree, real_pipeline
+
+
+class ChildListingLag(unittest.TestCase):
+    def test_a_lagging_child_listing_after_a_new_round_never_makes_the_replay_write(self):
+        for reads in (1, 2, 4):
+            client = LaggingWorkspace(reads)
+            tree, pins = report_tree()
+            with patch.object(proof, "report_page", lambda c, container: pins), patch.object(proof, "SLEEP", lambda s: None):
+                counts = proof.run(M1M2, False, now=NOW, client=client, reader=client, report=tree)
+            self.assertEqual(counts["assertions"]["6c replay writes nothing"], "PASS", (reads, counts["tick_codes"]))
+            self.assertEqual(counts["failed"], 0, (reads, [k for k, v in counts["assertions"].items() if v != "PASS"]))
 
 
 class M1M2Proof(Scoped):
