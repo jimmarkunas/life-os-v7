@@ -114,6 +114,7 @@ STAGES = {
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
+    "recruiter-outreach": lazy("lifeos.recruiters.outreach_card"),     # LIFE-20: the Daily Report's Recruiter Outreach table, after the Recruiters stage; live writes need RECRUITER_OUTREACH=on
     "attention": lazy("lifeos.attention.stage", floor=200),
     "imessage-alerts": lazy("lifeos.imessage.stage"),
     "imessage-comms": lazy("lifeos.imessage.comms_card"),

@@ -70,6 +70,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
+- `recruiter-outreach` -> `lifeos.recruiters.outreach_card:run`
 - `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`
@@ -276,6 +277,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/recruiters/intent.py`: 'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (D54: no language model, D193).
 - `lifeos/recruiters/notion.py`: The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
 - `lifeos/recruiters/outreach.py`: LIFE-21 / LIFE-47 (D221): role-specific outreach on the canonical Recruiters data source, linked to ONE exact Job Ledger job by the additive `Job` relation.
+- `lifeos/recruiters/outreach_card.py`: LIFE-20: the Daily Report's one "🤝 Recruiter Outreach" table, refreshed in place from the Recruiters data source after the Recruiters stage. V7 owns it exclusively (route
 - `lifeos/recruiters/qualify.py`: Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 - `lifeos/recruiters/stage.py`: RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
 ### lifeos/sources/

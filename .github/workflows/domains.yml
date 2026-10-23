@@ -1176,7 +1176,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: bws_recruiters
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
@@ -1199,6 +1199,7 @@ jobs:
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
         if: ${{ steps.bws_recruiters.outcome == 'failure' }}
         run: sleep $((30 + RANDOM % 45))
@@ -1226,6 +1227,7 @@ jobs:
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
@@ -1312,6 +1314,17 @@ jobs:
           INTERVIEW_CONVERT: ${{ inputs.interview_convert || vars.INTERVIEW_CONVERT }}
           INTERVIEW_CONVERT_CAP: ${{ vars.INTERVIEW_CONVERT_CAP }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - id: routreach
+        continue-on-error: true
+        name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
+        env:
+          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}
+          RECRUITER_OUTREACH: ${{ vars.RECRUITER_OUTREACH }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
+          HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
         continue-on-error: true
         name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
@@ -1324,8 +1337,8 @@ jobs:
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Recruiters warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure' || steps.interview.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
-        run: echo "::warning title=Recruiters::the Recruiters stage, the hiring outcome-mail scan, the Interview OS stage (DEGRADED or failed) or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
+        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure' || steps.interview.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
+        run: echo "::warning title=Recruiters::the Recruiters stage, the hiring outcome-mail scan, the Interview OS stage (DEGRADED or failed), the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
 
   imessage:
     # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the

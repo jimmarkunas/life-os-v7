@@ -15,14 +15,15 @@ HIRING_REGION = "📈 Hiring Pipeline"                    # V7 owns it exclusive
 DCC_REGION = "ChatGPT · Daily Command Center"      # the one region the Daily Command Center module may write; V7 stage `dcc-card` has been that module since D175 (the heading text is unchanged, so renaming it in Notion needs this constant changed too)
 COMMS_REGION = "Communications Attention"                # V7 owns only the Messages row and the heading time (lifeos/imessage/comms_card.py, LIFE-34); the rest of the callout is Jim's
 ORACLE_REGION = "Oracle Cloud"                           # V7 owns it exclusively (lifeos/oraclecloud/card.py): the heading and the one paragraph under it
+RECRUITER_OUTREACH_REGION = "🤝 Recruiter Outreach"      # LIFE-20: V7 owns it exclusively (lifeos/recruiters/outreach_card.py). A second floating region: a heading_3 and one four-column table, right under the Hiring Pipeline table
 REPO_REGION = "🧹 Repository hygiene"                   # D244 (LIFE-81): V7 owns it exclusively (lifeos/platform/branches.py). Not on the Daily Report: one callout on the Weekly LIFE OS Review page
-OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", HIRING_REGION: "v7-hiring", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center", COMMS_REGION: "v7-comms", ORACLE_REGION: "v7-oracle", REPO_REGION: "v7-repo-hygiene"}
+OWNERS = {JIRA_REGION: "v7-jira", CALENDAR_REGION: "v7-calendar", BILLS_REGION: "v7-bills", AMAZON_REGION: "v7-amazon", MAIL_ALERTS_REGION: "v7-mail-alerts", HIRING_REGION: "v7-hiring", ATTENTION_REGION: "v7-attention", DCC_REGION: "daily-command-center", COMMS_REGION: "v7-comms", ORACLE_REGION: "v7-oracle", REPO_REGION: "v7-repo-hygiene", RECRUITER_OUTREACH_REGION: "v7-recruiter-outreach"}
 
-FLOATING = (HIRING_REGION,)                              # owned regions that are NOT callouts; every other owned region is one (single ownership is unchanged: one OWNERS entry each)
+FLOATING = (HIRING_REGION, RECRUITER_OUTREACH_REGION)   # owned regions that are NOT callouts; every other owned region is one (single ownership is unchanged: one OWNERS entry each)
 
 
 def is_callout(heading):
-    """True for an owned region that is a callout; the floating Hiring region is not one."""
+    """True for an owned region that is a callout; the floating Hiring Pipeline and Recruiter Outreach regions are not."""
     return heading in OWNERS and heading not in FLOATING
 
 

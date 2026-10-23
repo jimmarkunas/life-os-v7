@@ -149,6 +149,7 @@ class StageTests(unittest.TestCase):
         row = store.read(notion.pages[0])
         self.assertEqual((row["person"], row["company"], row["week_ending"], row["done"], row["active"], row["needs_review"], row["what"], row["medium"]),
                          ("Pat Example", "Acme Staffing", "2026-10-11", False, True, False, "", "Email"))
+        self.assertEqual(row["first_contact"], row["last_contact"])                              # LIFE-20: set once, from the message the row is created from
         again = run([signed()], notion, live=True)
         self.assertEqual((again["created"], again["existing"], len(notion.pages)), (0, 1, 1))
 
@@ -158,6 +159,8 @@ class StageTests(unittest.TestCase):
         self.assertEqual((counts["updated"], counts["created"], len(notion.pages)), (1, 0, 1))
         row = store.read(notion.pages[0])
         self.assertEqual((row["last_contact"], row["what"], row["done"]), ("2026-10-08T09:00:00+00:00", "wants a call", False))
+        self.assertEqual(row["first_contact"], "")                                                # a later message never writes First Contact, and nothing is backfilled
+        self.assertTrue(all("First Contact" not in props for _, props in notion.writes))
 
     def test_an_older_message_changes_nothing(self):
         notion = FakeRecruiters([page("Pat Example", "Acme Staffing", role="Data Engineer", last="2026-10-09T15:00:00+00:00")])
