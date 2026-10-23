@@ -288,7 +288,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/interview_sweep.py`: LIFE-88 (Jim, Oct 21 2026): every opportunity page, active or retired, becomes the new UI 3c page.
 - `lifeos/sources/job_page_outreach.py`: LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
-- `lifeos/sources/m1m2_proof.py`: LIFE-78 bounded synthetic M1/M2 engineering exit: ONE finite case from a vacancy to a second interview round, through the real V7 code. Manual only: the interview-proof w
+- `lifeos/sources/m1m2_proof.py`: LIFE-78 bounded synthetic M1/M2 engineering exit: ONE finite case from an acquired vacancy to a second interview round, through the real V7 code, on native Notion QA surf
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
 - `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
