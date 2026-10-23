@@ -1,10 +1,10 @@
-# Lane ownership for the V7 repository (LIFE-78; Jim-approved Oct 21, 2026, concurrent lane ownership). Read by `lifeos/lane_guard.py` in the trusted lane-guard workflow, from the DEFAULT branch.
+# Lane ownership for V7 (LIFE-78; concurrent lane ownership; LIFE-79, Jim-approved Oct 23, 2026, Career Claude is the sole repository-heavy writer). Read by `lifeos/lane_guard.py` in the trusted lane-guard workflow, from the DEFAULT branch.
 # Every path has exactly ONE answer, and an answer that is not a lane never lets either lane through:
 #   lane: career-v7 | edge-oracle   the one accountable owner; the other lane needs a handoff entry merged into docs/HANDOFFS.yml first
 #   kind: generated                 derived files, mechanically verified by an existing test (CODEMAP: tests/contracts/test_codemap.py), so no ownership decision is involved; any lane
 #   kind: append                    additions only (decision numbers are claimed through lifeos.decisions); any lane
 #   kind: protected                 governance and agent-instruction files: the guard FAILS; only Jim's protected review changes them
-#   kind: unresolved                Jim has not decided an owner: the guard FAILS, never warns. Each entry below is a decision waiting for Jim; do not assign one by assumption.
+#   kind: unresolved                an explicit undecided path: the guard FAILS closed, never warns.
 # A path no rule covers FAILS. Most specific rule wins (longest literal prefix). Notion/Jira schemas are live systems and never repository changes; the schema DEFINITIONS in code are owned below.
 # Format is a strict YAML subset (see lifeos/lane_guard.py). The concurrent-lane rules stay INACTIVE until their gates are verified.
 version: 1
@@ -131,22 +131,22 @@ rules:
   - path: lifeos/sources/close_app.py
     lane: career-v7
     sections:
-      # the CLOSURE tuple (the Close release bundle list) joins Career code to the Oracle installer; its owner is not decided
-      - lane: unresolved
+      # the CLOSURE tuple (the Close release bundle list) joins Career code to the Oracle installer; edge-oracle owns this boundary
+      - lane: edge-oracle
         scope: line
         match: '"lifeos/[a-z0-9_/]+\.py"|^CLOSURE'
   - path: lifeos/edge/close_gate.py
     lane: edge-oracle
     sections:
-      # policy.json field names and the config keys the application receives are the Career-to-Oracle contract; its owner is not decided
-      - lane: unresolved
+      # policy.json field names and the config keys the application receives are the Career-to-Oracle contract; edge-oracle owns this boundary
+      - lane: edge-oracle
         scope: line
         match: 'policy(\.get|\[)|secrets\["config"\]'
   - path: lifeos/edge/oracle/close_release.py
     lane: edge-oracle
     sections:
-      # EDGE (the gate's own file list) and the `policy` subcommand fields: same contract, same open decision
-      - lane: unresolved
+      # EDGE (the gate's own file list) and the `policy` subcommand fields: edge-oracle owns this boundary
+      - lane: edge-oracle
         scope: line
         match: '"lifeos/[a-z0-9_/]+\.py"|policy|^EDGE'
   - path: lifeos/jobs/store.py
@@ -177,7 +177,7 @@ rules:
   - path: lifeos/lane_guard.py
     kind: protected
   - path: lifeos/__init__.py
-    kind: protected
+    lane: career-v7
   - path: tests/contracts/test_lane_guard.py
     kind: protected
   - path: docs/HANDOFFS.yml
@@ -185,93 +185,93 @@ rules:
   - path: .github/workflows/lane-guard.yml
     kind: protected
   - path: tests/contracts/**
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/pr-tests.yml
     kind: protected
   - path: AGENTS.md
-    kind: protected
+    lane: career-v7
   - path: CLAUDE.md
-    kind: protected
+    lane: career-v7
   - path: README.md
-    kind: protected
+    lane: career-v7
   - path: .gitignore
-    kind: protected
-  # --- UNRESOLVED: Jim has not assigned an owner. Edits here fail the guard for both lanes until he decides (each line is one decision)
+    lane: career-v7
+  # --- Career-owned shared platform, domains, tests, docs, widgets, requirements and workflows (Jim-approved LIFE-79, October 23, 2026)
   - path: lifeos/platform/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/agenda/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/amazon/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/bills/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/calendar_bridge/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/dcc/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/delivery/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/jira/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/megibow/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/outlook/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/physmail/**
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/codemap.py
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/decisions.py
-    kind: unresolved
+    lane: career-v7
   - path: lifeos/probe.py
-    kind: unresolved
+    lane: career-v7
   - path: tests/platform/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/agenda/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/amazon/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/bills/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/calendar_bridge/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/dcc/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/delivery/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/jira/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/megibow/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/outlook/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/physmail/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/kit/**
-    kind: unresolved
+    lane: career-v7
   - path: tests/*.py
-    kind: unresolved
+    lane: career-v7
   - path: tests/__init__.py
-    kind: unresolved
+    lane: career-v7
   - path: docs/**
-    kind: unresolved
+    lane: career-v7
   - path: widgets/**
-    kind: unresolved
+    lane: career-v7
   - path: requirements*.txt
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/agenda.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/amazon.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/bills.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/branches.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/calendar.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/diag.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/workflows/outlook.yml
-    kind: unresolved
+    lane: career-v7
   - path: .github/actions/**
-    kind: unresolved
+    lane: career-v7
