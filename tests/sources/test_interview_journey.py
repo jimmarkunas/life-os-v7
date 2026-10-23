@@ -6,6 +6,7 @@ from datetime import datetime
 from unittest.mock import patch
 from lifeos.interview import create, notion
 from lifeos.jobs import ledger as jobs_ledger
+from lifeos.platform.notion_client import NotionError
 from lifeos.sources import interview_evidence as ev
 from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV
@@ -48,6 +49,21 @@ class Ledger:
         return [r for r in self.rows.values() if r["company"] == company]
 
 
+class Recruiters:
+    """The Recruiters data source, read only: rows filtered by an exactly equal Source URL, as Notion answers."""
+    def __init__(self, rows=(), broken=False):
+        self.rows, self.broken, self.queries = list(rows), broken, []
+
+    def query_data_source(self, source, body):
+        if self.broken:
+            raise NotionError("NOTION_HTTP_503")
+        url = body["filter"]["url"]["equals"]
+        self.queries.append(url)
+        text = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
+        return {"results": [{"id": f"rec-{i}", "properties": {"Recruiter / Person": text(person), "Recruiter Company": text(company), "Source URL": {"type": "url", "url": link}}}
+                            for i, (person, company, link) in enumerate(self.rows) if link == url], "has_more": False}
+
+
 class NotionLike(WritableFake):
     """The production-shaped fake, plus what Notion itself adds on read: every rich-text run carries its plain_text."""
     def register(self, prefix, items, depth=0):
@@ -60,7 +76,7 @@ class NotionLike(WritableFake):
 
 class Journey(unittest.TestCase):
     def setUp(self):
-        self.notion, self.ledger, self.events = NotionLike(), Ledger(), []
+        self.notion, self.ledger, self.events, self.recruiters = NotionLike(), Ledger(), [], None
         self.human = [dict(b) for b in self.notion.blocks["human"]]
 
     def tick(self, *records):
@@ -69,7 +85,7 @@ class Journey(unittest.TestCase):
                                          "request": lambda s, m, p, params=None: {"items": list(self.events)}})()
         with patch.object(ev.pipeline, "read_applied", return_value=[]):
             return ev.run(20, True, environ=LIVE, client=self.notion, calendar=calendar, now=NOW, ledger=object(), records=list(records),
-                          ledger_rows=self.ledger.for_company, writer=self.ledger)
+                          ledger_rows=self.ledger.for_company, writer=self.ledger, recruiters=self.recruiters)
 
     def settle(self, *records):
         """Ticks until a tick writes nothing (each opportunity takes at most one write per tick); -> every tick's counts."""
@@ -151,6 +167,43 @@ class Journey(unittest.TestCase):
         self.assertEqual((len(self.ledger.rows), len(self.pages()), len(self.pages()[0][1])), (1, 1, 1))
         self.assertEqual(notion.protected_snapshot(self.notion, page.page_id, "opportunity"), notes)
         self.assertEqual(self.notion.blocks["human"], self.human)
+
+    def test_e10_the_recruiter_of_the_exact_request_message_is_linked_and_a_same_name_row_elsewhere_is_not(self):
+        """LIFE-78 E10: the Recruiters row whose Source URL IS the request message reaches the opportunity page; a row for the same person on another
+        message never does (no name matching), and an unreadable Recruiters source is DEGRADED on the page and in the run, never "no recruiter"."""
+        self.recruiters = Recruiters([("Pat Example", "Staffing Example Inc", LEAD["url"]),
+                                      ("Pat Example", "Other Staffing", "https://example.test/thread/elsewhere")])
+        self.settle(LEAD, NO_REQ)
+        (page, _), = self.pages()
+        shown = self.shown(page.page_id)
+        self.assertIn("Recruiter · Staffing Example Inc", shown)
+        self.assertIn("1 thread(s) linked from the Recruiters database", shown)
+        self.assertNotIn("Other Staffing", shown)
+        self.assertNotIn("https://example.test/thread/elsewhere", self.recruiters.queries)          # only the opportunities' own request links are asked for
+        self.assertEqual(self.tick(LEAD, NO_REQ)["writes"], 0)                                       # replay: nothing changes
+
+    def test_e10_an_unreadable_recruiters_source_is_degraded_never_no_recruiter(self):
+        self.recruiters = Recruiters(broken=True)
+        first = self.tick(LEAD, NO_REQ)
+        self.assertEqual(first["why"].get("recruiters_unreadable"), 1)
+        self.assertGreater(first["failed"], 0)
+        self.settle_until_quiet(LEAD, NO_REQ)
+        (page, _), = self.pages()
+        shown = self.shown(page.page_id)
+        self.assertIn("Recruiter email threads: DEGRADED · Recruiters source unreadable this run", shown)
+        self.assertNotIn("No verified recruiters or coordinators", shown)
+
+    def test_e10_without_the_recruiters_token_in_this_step_nothing_is_asked_and_the_page_says_not_connected(self):
+        evidence = [(None, ev.RoundQuery(True, None, None, 1, source=LEAD["url"]))]
+        self.assertEqual(ev.recruiter_threads({}, evidence), (evidence, False))
+        self.settle(LEAD, NO_REQ)
+        (page, _), = self.pages()
+        self.assertIn("Recruiter email threads: not connected to LIFE OS yet", self.shown(page.page_id))
+
+    def settle_until_quiet(self, *records):
+        for _ in range(6):
+            if not self.tick(*records)["writes"]:
+                return
 
     def test_a_request_naming_another_requisition_for_the_same_job_creates_nothing(self):
         self.settle(LEAD)

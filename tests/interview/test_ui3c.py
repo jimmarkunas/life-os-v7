@@ -270,6 +270,24 @@ class Layout(unittest.TestCase):
         self.assertEqual([r.calendar for r in got], [None, "accepted", "cancelled", None, None])
         self.assertNotIn("pending", calls)                                    # an undated round has no invite to read
 
+    def test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded(self):
+        """LIFE-78 E10: Recruiters & Coordinators lists the rows linked by the exact request message; the Email cell opens the thread."""
+        linked = dataclasses.replace(opportunity(), recruiters=(("Pat Example", "Staffing Example Inc", "https://mail.google.com/mail/u/0/#all/abc"),),
+                                     recruiters_state="linked")
+        client, page_id = written(linked)
+        shown = "\n".join(texts(client, page_id))
+        for value in ("Pat Example", "Recruiter · Staffing Example Inc", "Latest thread ↗",
+                      "Recruiter email threads: 1 thread(s) linked from the Recruiters database by this job's exact request message"):
+            self.assertIn(value, shown)
+        self.assertIn("https://mail.google.com/mail/u/0/#all/abc", str(client.blocks))
+        self.assertNotIn("No verified recruiters or coordinators", shown)
+        unreadable = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="unreadable"))))
+        self.assertIn("Recruiter email threads: DEGRADED · Recruiters source unreadable this run", unreadable)
+        self.assertIn("DEGRADED · Recruiters source unreadable this run", unreadable.split("Recruiters & Coordinators")[1])
+        none = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="none"))))
+        self.assertIn("Recruiter email threads: no Recruiters row for this job's exact request message", none)
+        self.assertIn("No verified recruiters or coordinators", none)
+
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}

@@ -114,8 +114,11 @@ def _health(view, rounds_label):
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
             ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
     linked = [r for r in view.rounds if r.calendar]
-    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified"
-              if name == "Calendar" and linked else "not connected to LIFE OS yet") for name in UNCONNECTED]
+    threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
+               "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
+    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
+              else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
+              else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
 
@@ -130,6 +133,18 @@ def _interviews(view):
                      [mention(r.page_id)] if r.page_id else name])
     if len(rows) == 1:
         rows.append(["No interview pages yet", "—", "—"])
+    return rows
+
+
+def _recruiters(view):
+    """E10: one row per Recruiters row linked by the exact request message; the Email cell opens that thread (never composes)."""
+    rows = [["Person", "Role", "Email"]]
+    for person, company, url in view.recruiters:
+        rows.append([[(person or NV, True)], " · ".join(x for x in ("Recruiter", company) if x),
+                     [("Latest thread ↗", False, url)] if url.startswith("https://") else NV])
+    if len(rows) == 1:
+        rows.append(["DEGRADED · Recruiters source unreadable this run" if view.recruiters_state == "unreadable" else "No verified recruiters or coordinators",
+                     "—", "Not verified"])
     return rows
 
 
@@ -177,8 +192,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Interviews"), table(_interviews(view)),
                  note("Names link to LinkedIn and dates to the Calendar event only once verified; Interview links open the "
                       "interview page.")], "📅", "gray_background"),
-        callout([h(3, "Recruiters & Coordinators"), table([["Person", "Role", "Email"], ["No verified recruiters or coordinators",
-                                                                                         "—", "Not verified"]]),
+        callout([h(3, "Recruiters & Coordinators"), table(_recruiters(view)),
                  note("Email opens the latest verified thread for THIS job only, never composes. Interview participants are "
                       "listed only under Interviews.")], "👥", "gray_background"),
         callout([h(3, "Materials Sent"), bullet(("Submitted résumé", True), " — File link not yet verified"),
