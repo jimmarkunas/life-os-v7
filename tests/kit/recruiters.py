@@ -43,6 +43,12 @@ class FakeRecruiters:
         week = body["filter"]["date"]["equals"]
         return {"results": [p for p in self.pages if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
 
+    def get_page(self, page_id):
+        found = [p for p in self.pages if p["id"] == page_id]
+        if not found:
+            raise NotionError("NOTION_HTTP_404")
+        return {"parent": {"type": "data_source_id", "data_source_id": self.source}, **found[0]}
+
     def call_once(self, method, path, body=None):
         assert (method, path) == ("POST", "/pages")
         self.writes.append(("create", body["properties"]))

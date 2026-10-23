@@ -425,10 +425,10 @@ class DomainsWorkflowTests(unittest.TestCase):
         self.assertEqual(writer, {"group": "life-os-v7-interview-writer", "cancel-in-progress": False})
         self.assertEqual([name for name, job in self.doc["jobs"].items() if "concurrency" in job], ["recruiters"])
 
-    def test_only_three_steps_read_the_close_origin_from_its_own_secret(self):
-        """D198 S3 / LIFE-78: the links exist only when the V7_CLOSE_BASE_URL secret is set; three steps pass it (Hiring Pipeline Close links, the job-page Outreach links, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
+    def test_only_four_steps_read_the_close_origin_from_its_own_secret(self):
+        """D198 S3 / LIFE-78 / LIFE-20: the links exist only when the V7_CLOSE_BASE_URL secret is set; four steps pass it (Hiring Pipeline Close links, the job-page Outreach links, the Recruiter Outreach table's action links, and hourly's network-surface step for the Mark as Sent link in a Network Leads block), from that secret, and nothing else names it."""
         seen = [(job, step.get("id")) for job, spec in self.doc["jobs"].items() for step in spec.get("steps", []) if "V7_CLOSE_BASE_URL" in str(step)]
-        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("recruiters", "jpoutreach")])
+        self.assertEqual(sorted(seen), [("hiring", "hiring"), ("recruiters", "jpoutreach"), ("recruiters", "routreach")])      # LIFE-20: the Recruiter Outreach table's action links
         for job, ident in seen:
             step = next(s for s in self.doc["jobs"][job]["steps"] if s.get("id") == ident)
             self.assertEqual(step["env"]["V7_CLOSE_BASE_URL"], "${{ secrets.V7_CLOSE_BASE_URL }}")

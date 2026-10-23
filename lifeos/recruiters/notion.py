@@ -301,3 +301,43 @@ def set_follow_up(notion, row, props):
         expected["action"] = props["Action Status"]["select"]["name"]
     if {k: v for k, v in after[0].items() if k != "edited_by"} != {k: v for k, v in expected.items() if k != "edited_by"}:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+
+
+CLOSE_TO = ("Completed", "Dismissed")                                 # LIFE-20 (Jim, Oct 23 2026): the two ways Jim closes an open recruiter row from the Daily Report
+
+
+def own_row(notion, page_id, source=None):
+    """ONE row of this data source (`source`, else the client's own) by its exact page id, read fresh; a page anywhere else is refused."""
+    try:
+        page = notion.get_page(page_id)
+    except NotionError:
+        raise RecruitersError("RECRUITERS_ROW_UNREADABLE") from None
+    flat = lambda value: str(value or "").replace("-", "").lower()      # noqa: E731
+    parent = page.get("parent") if isinstance(page, dict) else None
+    if (not isinstance(parent, dict) or parent.get("type") != "data_source_id" or not flat(parent.get("data_source_id"))
+            or flat(parent.get("data_source_id")) != flat(source or notion.source) or page.get("in_trash") or page.get("archived")):
+        raise RecruitersError("RECRUITERS_ROW_NOT_IN_SOURCE")
+    return read(page)
+
+
+def close_row(notion, page_id, status):
+    """Jim's confirmed close of ONE open row (Needs Action or Waiting, not Done, Active) as Completed or Dismissed. Only Action Status is written, once, then the row is read back:
+    the status as written and every other value unchanged. A row already closed that way is left alone; any other row is not changed.
+    -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    if status not in CLOSE_TO:
+        raise RecruitersError("RECRUITERS_CLOSE_INVALID")
+    check_schema(notion)
+    row = own_row(notion, page_id)
+    if row["action"] == status:
+        return {"status": "already_recorded", "verified": True, "action": row["action"]}
+    if row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING):
+        return {"status": "not_changed", "verified": True, "action": row["action"]}
+    try:
+        notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
+    except NotionError:
+        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
+    after = own_row(notion, page_id)
+    keep = lambda r: {k: v for k, v in r.items() if k not in ("action", "edited_by")}      # noqa: E731
+    if after["action"] != status or keep(after) != keep(row):
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+    return {"status": "recorded", "verified": True, "action": status}
