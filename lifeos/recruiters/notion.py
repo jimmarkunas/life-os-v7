@@ -62,7 +62,13 @@ def read(page):
             "needs_review": bool((props.get("Needs review") or {}).get("checkbox")), "source_url": (props.get("Source URL") or {}).get("url") or "",
             "created_by": _actor(page.get("created_by")), "edited_by": _actor(page.get("last_edited_by")),
             "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10],
-            "jobs": [str(r.get("id") or "") for r in (props.get("Job") or {}).get("relation") or [] if isinstance(r, dict)]}
+            "jobs": [str(r.get("id") or "") for r in (props.get("Job") or {}).get("relation") or [] if isinstance(r, dict)], "contact": _formula(props.get("Contact"))}
+
+
+def _formula(prop):
+    """The `Contact` formula's text (a profile or mail link the database itself computes), or "" when it is absent or not text. Read-only: V7 never writes it."""
+    value = (prop or {}).get("formula") if isinstance(prop, dict) else None
+    return (value.get("string") or "").strip() if isinstance(value, dict) and value.get("type") == "string" else ""
 
 
 def week_rows(notion, week):
@@ -238,9 +244,14 @@ def add_business_days(day, n):
 
 def waiting_rows(notion):
     """Every Waiting row, following every page; an incomplete read raises (nothing is changed on a partial view)."""
+    return rows_where(notion, {"property": "Action Status", "select": {"equals": WAITING}})
+
+
+def rows_where(notion, where):
+    """Every row matching the Notion filter `where`, following every page; an incomplete read raises."""
     rows, cursor, seen = [], None, set()
     for _ in range(MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Action Status", "select": {"equals": WAITING}}, **({"start_cursor": cursor} if cursor else {})}
+        body = {"page_size": 100, "filter": where, **({"start_cursor": cursor} if cursor else {})}
         try:
             page = notion.query_data_source(None, body)
         except NotionError:
