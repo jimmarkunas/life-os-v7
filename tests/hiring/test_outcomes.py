@@ -26,6 +26,7 @@ def row(company, role, event_days_ago=None, applied="2026-09-01"):
 WALMART = row("Walmart", "Senior Manager, Operations and Implementation", 35)
 SMITH = row("Smith", "Senior Project Manager", 35)
 UBER = row("Uber", "Technical Project Manager", 14)
+EXAMPLE = row("Example", "Program Manager", 14)                 # LIFE-26: a synthetic employer whose own domain is example.com
 REJECTION = "Thank you for interviewing. Unfortunately we will not be moving forward with your candidacy at Walmart."
 
 
@@ -140,7 +141,7 @@ class ShownTests(unittest.TestCase):
     def test_an_outcome_older_than_the_rows_last_evidence_is_ignored_and_the_row_ages_as_before(self):
         result = self.compiled({"kind": "REJECTED", "received": (NOW - timedelta(days=60)).isoformat(), "match": "role"})
         self.assertNotIn("outcome", result["rows"][0])
-        self.assertEqual(self.action(result), "No news in 35 days · follow up (due Sep 22)")
+        self.assertEqual(self.action(result), "Stale · no news in 35 days · follow up (due Sep 15)")
 
     def test_a_retired_page_still_closes_the_pursuit_whatever_the_mail_says(self):
         result = C.compile_rows([{"company": "Walmart", "role": "Senior Manager, Operations and Implementation", "applied_on": "2026-09-01"}],
@@ -225,6 +226,49 @@ class RunTests(unittest.TestCase):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring-outcomes"].target, ("lifeos.hiring.outcomes", "run"))
         self.assertEqual(mail.WINDOW_DAYS, 14)                                           # the Recruiters scan's own window is unchanged
+
+
+class ContactTests(unittest.TestCase):
+    """LIFE-26: only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the employer's own domain."""
+    def test_a_person_at_the_employer_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
+        found = outcomes.contacts([msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=9, mid="a"),
+                                   msg(subject="Next steps", sender="Maria Lopez", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
+        self.assertEqual(found, {EXAMPLE["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
+
+    def test_mailboxes_other_domains_junk_and_unattributable_mail_are_never_contact(self):
+        for address in ("no-reply@example.com", "digest-noreply@example.com", "auto-confirm@example.com", "shipment-tracking@example.com",
+                        "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
+                        "pat@gmail.com", "recruiter@linkedin.com", "broken-address"):
+            self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
+        for marker in ("bulk", "auto", "noreply"):                                                                                     # list, newsletter or auto-submitted mail
+            marked = dict(msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"), markers={marker: True})
+            self.assertEqual(outcomes.contacts([marked], [EXAMPLE]), {}, marker)
+        for sender, address in (("Example.com", "payments-messages@example.com"), ("Example Customer Service", "cs-reply@example.com"),
+                                ("Example Events", "events@example.com"), ("Uber Receipts", "uber@example.com"), ("Delivery Notice", "delivery-notice@example.com")):    # brand or team senders
+            self.assertEqual(outcomes.contacts([msg(subject="Your Example refund", sender=sender, address=address)], [EXAMPLE]), {}, address)
+        for domain, own in (("example.com", True), ("example.co.uk", True), ("mail.example.com", False), ("example.myworkday.com", False),
+                            ("example.zendesk.com", False), ("examples.com", False)):                                              # the registered domain only, never a tenant
+            self.assertEqual(outcomes._own_domain(domain, "Example"), own, domain)
+        junk = dict(msg(subject="Example update", sender="Maria Lopez", address="maria@example.com"), folder="JUNK")
+        self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})                                                                         # spam never resets the clock
+        self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", sender="Maria Lopez", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
+        self.assertEqual(outcomes.contacts([msg(subject="Example update", sender="Maria Lopez", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})        # before the interview
+
+    def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
+        prior = {"rows": [dict(EXAMPLE)]}
+        counts, store, _ = RunTests().go([msg(subject="Example next steps", sender="Maria Lopez", address="maria@example.com", days_ago=2)], prior=prior)
+        self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [EXAMPLE["key"]]))
+        with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
+            self.assertEqual(outcomes.load(object())[2], store.doc["contacts"])
+        old = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
+        with mock.patch.object(outcomes, "STORE", old), mock.patch.object(outcomes, "_exists", lambda c: True):
+            self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}))
+        self.assertNotIn("maria", json.dumps(counts))
+
+    def test_the_compiler_carries_the_contact_onto_its_row(self):
+        got = C.compile_rows([{"company": "Uber", "role": UBER["role"], "applied_on": "2026-09-01"}], [], [], None,
+                             {"ledger": True, "parents": True, "calendar": True}, NOW, contacts={UBER["key"]: NOW.isoformat()})
+        self.assertEqual(got["rows"][0]["contact"], NOW.isoformat())
 
 
 class EntryPointTests(unittest.TestCase):
