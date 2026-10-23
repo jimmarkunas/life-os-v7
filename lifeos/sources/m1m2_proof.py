@@ -212,7 +212,7 @@ def drive(client, environ, box, now, results, counts, report=None):
             _request("NotAppliedCo", "Program Lead", "123456", "https://example.test/m1m2/stranger", age(19)))
     for agency, url in ((AGENCY, REQUEST_URL), (DECOY_AGENCY, "https://example.test/m1m2/another-thread")):      # the Recruiters stage's own create for each message
         rstore.create(recruiters, {"person": RECRUITER, "company": agency, "client": COMPANY, "role": ROLE, "medium": "Email", "what": "", "needs_review": False,
-                                   "last_contact": age(24), "week_ending": week_ending(now - timedelta(hours=24)), "source_url": url})
+                                   "last_contact": (now - timedelta(hours=24)).replace(second=0, microsecond=0).isoformat(), "week_ending": week_ending(now - timedelta(hours=24)), "source_url": url})
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": box["pipe"], "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "", "INTERVIEW_TEST_COMPANIES": "",
            "INTERVIEW_JOURNEY_PROOF": ""}
     calendar = Calendar()

@@ -14,12 +14,21 @@ from tests.kit.tree import Tree
 from tests.sources.test_interview_journey import NotionLike
 from tests.sources.test_interview_journey_proof import qa_workspace
 
-NOW = datetime(2026, 10, 23, 13, tzinfo=ev.TZ)
+NOW = datetime(2026, 10, 23, 12, 46, 17, 431743, tzinfo=ev.TZ)      # seconds and fractions, like a real clock (Notion keeps minutes)
 M1M2 = {**ENV, "INTERVIEW_JOURNEY_PROOF": "M1M2"}
 
 
 def _plain(runs):
     return "".join(r.get("plain_text") or (r.get("text") or {}).get("content", "") for r in runs or [])
+
+
+def minutes(value):
+    """Like Notion: a date-time is kept to the minute (seconds and fractions dropped), as 'YYYY-MM-DDTHH:MM:00.000+HH:MM'."""
+    start = (value or {}).get("start") or ""
+    if "T" not in start:
+        return value
+    moment = datetime.fromisoformat(start.replace("Z", "+00:00")).replace(second=0, microsecond=0)
+    return {**value, "start": moment.isoformat(timespec="milliseconds")}
 
 
 class Sources:
@@ -48,7 +57,7 @@ class Sources:
             value = copy.deepcopy((props.get(name) or {}).get(kind, [] if kind in ("title", "rich_text", "multi_select", "relation") else False if kind == "checkbox" else None))
             if kind in ("title", "rich_text"):
                 value = [{"type": "text", "plain_text": _plain([r]), "text": r.get("text", {})} for r in value]
-            stored[name] = {"type": kind, kind: value}
+            stored[name] = {"type": kind, kind: minutes(value) if kind == "date" else value}
         unknown = set(props) - set(self.sources[ds])
         if unknown:
             raise NotionError("NOTION_HTTP_400")
@@ -59,7 +68,7 @@ class Sources:
         page = self.rows[pid]
         for name, value in props.items():
             kind = next(iter(value))
-            page["properties"][name] = {"type": kind, kind: copy.deepcopy(value[kind])}
+            page["properties"][name] = {"type": kind, kind: minutes(copy.deepcopy(value[kind])) if kind == "date" else copy.deepcopy(value[kind])}
         return copy.deepcopy(page)
 
     def query(self, ds, body):
