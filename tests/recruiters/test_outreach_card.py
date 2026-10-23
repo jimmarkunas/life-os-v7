@@ -142,7 +142,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(got[1][0], ("Email", None, "bold"))
 
     def test_original_contact_is_never_inferred_from_last_contact(self):
-        t = report()
+        t = report()                                                                            # no date in the table today: every row is Not verified
         go(t, Source(MIXED))
         self.assertEqual({r[2][0][0] for r in shown(t)}, {"Not verified"})                  # the source has no first-contact date; Last Contact is the latest message
 
@@ -252,6 +252,67 @@ class RegionTests(unittest.TestCase):
             done = go(t, Source(MIXED), env=env, live=live)
             self.assertEqual(writes(t), [])
             self.assertEqual((done["live"], done["would_change"], done["verified"]), (False, 5, False))
+
+
+class FirstContactTests(unittest.TestCase):
+    """TL review on #478: a verified Original Contact date already in the table is kept; Not verified only when there is none. Never Last Contact, never row creation."""
+    YAN = "https://mail.google.com/mail/u/0/#all/y1"
+    HAL = "https://mail.google.com/mail/u/0/#all/h1"
+
+    def live(self, *rows):
+        """The approved table as it stands today: name linked to the message, a plain verified date in Original Contact."""
+        t = report(old_rows=0)
+        for n, cells in enumerate(rows):
+            t.row(f"ro-t-k{n}", "ro-t", cells)
+        return t
+
+    def source(self, **kw):
+        return Source([page(1, "Yan Example", last="2026-10-20T21:06:00Z", source=self.YAN, **kw),
+                       page(2, "Hal Example", last="2026-10-22T20:16:00Z", source=self.HAL, company="Example IT", role="Project Manager")])
+
+    def original(self, tree):
+        return {r[0][0][0]: r[2][0][0] for r in shown(tree)}
+
+    def test_existing_verified_dates_survive_the_first_live_tick_and_every_replay(self):
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 20, 2026", "Needs Action"],
+                      [("Hal Example", self.HAL), ("Gmail ↗", self.HAL), "Oct 22, 2026", "Needs Action"])
+        done = go(t, self.source())
+        self.assertEqual(self.original(t), {"Yan Example": "Oct 20, 2026", "Hal Example": "Oct 22, 2026"})
+        self.assertEqual(done["first_contact_kept"], 2)
+        log = len(t.log)
+        go(t, self.source())
+        self.assertEqual([e for e in t.log[log:] if e[0] != "GET"], [])                         # replay: the kept dates are already there, nothing is written
+        self.assertEqual(self.original(t), {"Yan Example": "Oct 20, 2026", "Hal Example": "Oct 22, 2026"})
+
+    def test_an_unknown_first_contact_is_not_verified_even_with_a_last_contact(self):
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Not verified", "Needs Action"])
+        go(t, self.source())
+        self.assertEqual(self.original(t), {"Yan Example": "Not verified", "Hal Example": "Not verified"})      # Hal has a Last Contact but no verified first contact
+
+    def test_a_date_is_kept_only_for_the_same_recruiter_and_the_same_link(self):
+        other = "https://mail.google.com/mail/u/0/#all/zz"
+        t = self.live([("Yan Example", other), ("Gmail ↗", other), "Oct 20, 2026", "Needs Action"],          # same name, another message
+                      [("Someone Else", self.HAL), ("Gmail ↗", self.HAL), "Oct 22, 2026", "Needs Action"])     # same message, another name
+        go(t, self.source())
+        self.assertEqual(self.original(t), {"Yan Example": "Not verified", "Hal Example": "Not verified"})
+
+    def test_two_matching_rows_or_a_date_after_the_last_contact_is_never_kept(self):
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 19, 2026", "Needs Action"],
+                      [("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 18, 2026", "Needs Action"],
+                      [("Hal Example", self.HAL), ("Gmail ↗", self.HAL), "Oct 23, 2026", "Needs Action"])      # after Hal's latest message: not a first contact
+        go(t, self.source())
+        self.assertEqual(self.original(t), {"Yan Example": "Not verified", "Hal Example": "Not verified"})
+
+    def test_only_a_plain_date_cell_counts(self):
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), ("Oct 20, 2026", self.YAN), "Needs Action"],
+                      [("Hal Example", self.HAL), ("Gmail ↗", self.HAL), "around Oct 22", "Needs Action"])
+        go(t, self.source())
+        self.assertEqual(self.original(t), {"Yan Example": "Not verified", "Hal Example": "Not verified"})
+
+    def test_the_dry_run_reports_the_kept_dates_and_writes_nothing(self):
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 20, 2026", "Needs Action"])
+        done = go(t, self.source(), live=False)
+        self.assertEqual((done["first_contact_kept"], writes(t)), (1, []))
 
 
 class ProtectionTests(unittest.TestCase):

@@ -7,8 +7,11 @@ stamp and the table's data rows are ever written; the header row, the link under
 write and must be identical after it. Anything else raises: nothing is created, moved or guessed.
 
 One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the
-latest contact first. Original Contact is "Not verified" for every row: the data source records no first-contact date (Last Contact is the latest message), and it is never
-inferred. A row with any other status, including a blank one, is not an action item and is not shown.
+latest contact first. A row with any other status, including a blank one, is not an action item and is not shown.
+
+Original Contact: the data source records no first-contact date, and Last Contact (the latest message) or the row's creation is never used for one. A date already shown in
+this table for the same recruiter (same name and the same contact or message link, one unique match, not after the row's Last Contact) is kept as it is; a verified first
+contact is a fact that does not change. Anything else is "Not verified". New rows can only get a date once a First Contact field exists (a schema change, Jim's decision).
 
 Fail closed: if the Recruiters stage failed this run, or the source cannot be read completely, the rows are kept as they are and the heading says DEGRADED. Live writes need
 --live AND the repo variable RECRUITER_OUTREACH=on; otherwise the region is validated and the counts say what would change. Fixed codes and counts only."""
@@ -93,13 +96,48 @@ def _due(row, today):
     return _shown(day) + (" · overdue" if day < today else " · due today" if day == today else "")
 
 
-def cells(row, today):
+def _shown_day(text):
+    try:
+        return datetime.strptime(text, "%b %d, %Y").date()
+    except ValueError:
+        return None
+
+
+def kept_dates(table_rows):
+    """The table's current data rows -> [(name, links, day)] for each row whose Original Contact cell is one plain date (no link, no other text)."""
+    out = []
+    for row in table_rows:
+        view = R.live_view(row)
+        if len(view) != 4 or not view[0] or len(view[2]) != 1 or view[2][0][1] is not None:
+            continue
+        day = _shown_day(view[2][0][0].strip())
+        if day:
+            out.append((view[0][0][0].strip().lower(), {link for cell in view[:2] for _, link, _ in cell if link}, day))
+    return out
+
+
+def first_contact(row, kept):
+    """The date this table already shows for exactly this recruiter, or None. Same name AND a shared contact or message link, one match only, and never after the row's Last
+    Contact (a first contact cannot follow the latest one). Never derived from Last Contact itself."""
+    mine = {u for u in (_link(row["contact"]), _link(row["source_url"])) if u}
+    found = [day for name, links, day in kept if name == row["person"].strip().lower() and links & mine]
+    if len(found) != 1:
+        return None
+    try:
+        last = datetime.fromisoformat(row["last_contact"].replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    latest = (last.astimezone(CHICAGO) if last.tzinfo else last).date()
+    return found[0] if found[0] <= latest else None
+
+
+def cells(row, today, first=None):
     """One open row -> the four cells. Line 1 bold, line 2 gray (D222 spans); the name links to the verified contact channel (the database's Contact link, else the original
-    message), the channel to the original message only."""
+    message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified"."""
     contact = _link(row["contact"]) or _link(row["source_url"])
     return [[(row["person"].strip() or "Name not recorded", contact, "bold"), ("\n" + (row["company"].strip() or "Company not recorded"), None, "gray")],
             [_channel(row), ("\n" + (row["role"].strip() or "Role not recorded"), None, "gray")],
-            [(NOT_VERIFIED, None)],
+            [(_shown(first) if first else NOT_VERIFIED, None)],
             [(row["action"], None, "bold"), ("\n" + _due(row, today), None, "gray")]]
 
 
@@ -175,9 +213,11 @@ def _retitle(client, block_id, text):
     client.call("PATCH", f"/blocks/{quote(block_id, safe='')}", {"heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}})
 
 
-def present(client, environ, rows, heading, live):
-    """Dry run: validate only. Live: rewrite the data rows (None keeps them) and the heading, read back, prove the rest of the page unchanged."""
+def present(client, environ, build, heading, live):
+    """Dry run: validate only. Live: rewrite the data rows and the heading, read back, prove the rest of the page unchanged. build(current data rows) -> the new rows,
+    or build None keeps them."""
     found, before = validate(client, environ)
+    rows = build(found["rows"][1:]) if build else None
     counts = {"rows_changed": 0, "rows_added": 0, "rows_removed": 0, "verified": False}
     if rows is not None:
         have = [R.live_view(r) for r in found["rows"][1:]]
@@ -232,5 +272,10 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         raise fail(f"DEGRADED:{reason}")                            # the rows keep their last accepted content; the step is a warning
     today = now.date()
     counts.update(rows=len(shown), needs_action=sum(r["action"] == store.NEEDS_ACTION for r in shown), waiting=sum(r["action"] == store.WAITING for r in shown))
-    counts.update(present(target, environ, [cells(r, today) for r in shown], f"{TITLE} (Updated {clock})", write))
+    def build(current):
+        kept = kept_dates(current)
+        firsts = [first_contact(r, kept) for r in shown]
+        counts["first_contact_kept"] = sum(1 for f in firsts if f)
+        return [cells(r, today, f) for r, f in zip(shown, firsts)]
+    counts.update(present(target, environ, build, f"{TITLE} (Updated {clock})", write))
     return counts
