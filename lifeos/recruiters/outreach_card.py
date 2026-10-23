@@ -9,9 +9,9 @@ write and must be identical after it. Anything else raises: nothing is created, 
 One table, four columns, open rows only (Action Status Needs Action or Waiting, not Done, Active): Needs Action first, then Waiting, each by Follow-up Date (none last), then the
 latest contact first. A row with any other status, including a blank one, is not an action item and is not shown.
 
-Original Contact: the data source records no first-contact date, and Last Contact (the latest message) or the row's creation is never used for one. A date already shown in
-this table for the same recruiter (same name and the same contact or message link, one unique match, not after the row's Last Contact) is kept as it is; a verified first
-contact is a fact that does not change. Anything else is "Not verified". New rows can only get a date once a First Contact field exists (a schema change, Jim's decision).
+Original Contact, in order: the row's First Contact (set by the Recruiters stage when it creates the row, from that message's own date); else a date already shown in this
+table for the same recruiter (same name and the same contact or message link, one unique match), which keeps the verified dates that predate the field; else "Not verified".
+Either date must not be after the row's Last Contact. Last Contact itself and the row's creation time are never used, and nothing is backfilled.
 
 Fail closed: if the Recruiters stage failed this run, or the source cannot be read completely, the rows are kept as they are and the heading says DEGRADED. Live writes need
 --live AND the repo variable RECRUITER_OUTREACH=on; otherwise the region is validated and the counts say what would change. Fixed codes and counts only."""
@@ -116,19 +116,25 @@ def kept_dates(table_rows):
     return out
 
 
-def first_contact(row, kept):
-    """The date this table already shows for exactly this recruiter, or None. Same name AND a shared contact or message link, one match only, and never after the row's Last
-    Contact (a first contact cannot follow the latest one). Never derived from Last Contact itself."""
-    mine = {u for u in (_link(row["contact"]), _link(row["source_url"])) if u}
-    found = [day for name, links, day in kept if name == row["person"].strip().lower() and links & mine]
-    if len(found) != 1:
-        return None
+def _local_day(text):
+    """A Notion date or datetime -> its Central Time calendar day, or None."""
     try:
-        last = datetime.fromisoformat(row["last_contact"].replace("Z", "+00:00"))
+        moment = datetime.fromisoformat((text or "").replace("Z", "+00:00"))
     except ValueError:
         return None
-    latest = (last.astimezone(CHICAGO) if last.tzinfo else last).date()
-    return found[0] if found[0] <= latest else None
+    return (moment.astimezone(CHICAGO) if moment.tzinfo else moment).date()
+
+
+def first_contact(row, kept):
+    """The row's First Contact; else the date this table already shows for exactly this recruiter (same name AND a shared contact or message link, one match only); else None.
+    Never after the row's Last Contact (a first contact cannot follow the latest one), and never derived from Last Contact itself."""
+    day = _local_day(row.get("first_contact"))
+    if day is None:
+        mine = {u for u in (_link(row["contact"]), _link(row["source_url"])) if u}
+        found = [d for name, links, d in kept if name == row["person"].strip().lower() and links & mine]
+        day = found[0] if len(found) == 1 else None
+    latest = _local_day(row["last_contact"])
+    return day if day and latest and day <= latest else None
 
 
 def cells(row, today, first=None):
@@ -275,7 +281,7 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     def build(current):
         kept = kept_dates(current)
         firsts = [first_contact(r, kept) for r in shown]
-        counts["first_contact_kept"] = sum(1 for f in firsts if f)
+        counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f) for r, f in zip(shown, firsts)]
     counts.update(present(target, environ, build, f"{TITLE} (Updated {clock})", write))
     return counts

@@ -278,7 +278,7 @@ class FirstContactTests(unittest.TestCase):
                       [("Hal Example", self.HAL), ("Gmail ↗", self.HAL), "Oct 22, 2026", "Needs Action"])
         done = go(t, self.source())
         self.assertEqual(self.original(t), {"Yan Example": "Oct 20, 2026", "Hal Example": "Oct 22, 2026"})
-        self.assertEqual(done["first_contact_kept"], 2)
+        self.assertEqual(done["first_contact_shown"], 2)
         log = len(t.log)
         go(t, self.source())
         self.assertEqual([e for e in t.log[log:] if e[0] != "GET"], [])                         # replay: the kept dates are already there, nothing is written
@@ -309,10 +309,18 @@ class FirstContactTests(unittest.TestCase):
         go(t, self.source())
         self.assertEqual(self.original(t), {"Yan Example": "Not verified", "Hal Example": "Not verified"})
 
+    def test_the_first_contact_field_is_shown_and_wins_over_the_table(self):
+        pages = [page(1, "Yan Example", last="2026-10-22T21:06:00Z", source=self.YAN), page(2, "Hal Example", last="2026-10-22T20:16:00Z", source=self.HAL)]
+        pages[0]["properties"]["First Contact"] = {"date": {"start": "2026-10-21T01:30:00.000Z"}}            # 8:30 PM CT on Oct 20: the Central Time day is shown
+        pages[1]["properties"]["First Contact"] = {"date": {"start": "2026-10-23T09:00:00Z"}}                # after the latest message: not a first contact
+        t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 19, 2026", "Needs Action"])
+        go(t, Source(pages))
+        self.assertEqual(self.original(t), {"Yan Example": "Oct 20, 2026", "Hal Example": "Not verified"})
+
     def test_the_dry_run_reports_the_kept_dates_and_writes_nothing(self):
         t = self.live([("Yan Example", self.YAN), ("Gmail ↗", self.YAN), "Oct 20, 2026", "Needs Action"])
         done = go(t, self.source(), live=False)
-        self.assertEqual((done["first_contact_kept"], writes(t)), (1, []))
+        self.assertEqual((done["first_contact_shown"], writes(t)), (1, []))
 
 
 class ProtectionTests(unittest.TestCase):
