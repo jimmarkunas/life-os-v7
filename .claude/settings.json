@@ -5,7 +5,25 @@
       "mcp__Atlassian_MCP__editJiraIssue",
       "mcp__Atlassian_MCP__transitionJiraIssue",
       "mcp__Atlassian_MCP__addOrEditJiraIssueComment",
-      "mcp__Atlassian_MCP__createJiraIssue"
+      "mcp__Atlassian_MCP__createJiraIssue",
+      "Edit(docs/life-os-development-policy.md)",
+      "Edit(AGENTS.md)",
+      "Edit(CLAUDE.md)",
+      "Edit(docs/OWNERSHIP.yml)",
+      "Edit(docs/**)",
+      "Edit(lifeos/**)",
+      "Edit(tests/**)",
+      "Edit(.github/workflows/**)",
+      "Bash(git merge:*)",
+      "Bash(git merge-tree:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(python3 -m unittest:*)",
+      "Bash(python3 -m lifeos.codemap:*)",
+      "mcp__github__create_pull_request",
+      "mcp__github__update_pull_request",
+      "mcp__github__merge_pull_request",
+      "mcp__github__actions_run_trigger"
     ]
   }
 }
