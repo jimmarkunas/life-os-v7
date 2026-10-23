@@ -66,7 +66,7 @@ def next_step(row, now):
         start, waiting, quiet = row.get("applied_on"), "Awaiting response", "response"
         if not start:
             return YELLOW, waiting, "9"
-    if row.get("contact") and datetime.fromisoformat(row["contact"]) > datetime.fromisoformat(start if "T" in start else start + "T00:00:00-05:00"):
+    if row.get("contact") and local(row["contact"]) > local(start if "T" in start else start + "T00:00:00"):
         start, waiting = row["contact"], f"Last contact {local(row['contact']).strftime('%b %-d')}"       # LIFE-26: a direct message resets the clock
         quiet = "contact"
     due, days = local(start).date() + timedelta(days=M.AWAIT_DAYS), (local(now).date() - local(start).date()).days

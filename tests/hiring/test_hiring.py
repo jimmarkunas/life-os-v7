@@ -371,6 +371,8 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(cells(row)[2], "Stale · no contact in 9 days · follow up (due Oct 4)")
         row["contact"] = (NOW - timedelta(days=40)).isoformat()                                  # before the interview: the interview is the newer evidence
         self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
+        naive = dict(row, event_start="2026-09-06T10:00:00", contact=(NOW - timedelta(days=2)).isoformat())                    # a time with no offset is Central, never a crash
+        self.assertEqual(cells(naive)[2], "Last contact Oct 4 · follow up Oct 11")
         future = dict(row, event_start=at(3, 10), contact=None)
         self.assertTrue(cells(future)[2].startswith("Prepare for the interview"))                # a confirmed future interview protects it
 

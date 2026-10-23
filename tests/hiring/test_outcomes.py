@@ -240,6 +240,11 @@ class ContactTests(unittest.TestCase):
                         "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
                         "pat@gmail.com", "recruiter@linkedin.com", "broken-address"):
             self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
+        for marker in ("bulk", "auto", "noreply"):                                                                                     # list, newsletter or auto-submitted mail
+            marked = dict(msg(subject="Example weekly update", address="maria@example.com"), markers={marker: True})
+            self.assertEqual(outcomes.contacts([marked], [EXAMPLE]), {}, marker)
+        for address in ("help@example.com", "receipts@example.com", "deals@example.com", "rewards@example.com"):
+            self.assertEqual(outcomes.contacts([msg(subject="Your Example order", address=address)], [EXAMPLE]), {}, address)
         junk = dict(msg(subject="Example update", address="maria@example.com"), folder="JUNK")
         self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})                                                                         # spam never resets the clock
         self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed

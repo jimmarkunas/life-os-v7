@@ -33,7 +33,7 @@ REJECT = re.compile("|".join((
     r"\bdecided not to (?:move|proceed|go) forward\b", r"\bregret to inform\b", r"\bnot (?:been )?selected\b", r"\bposition (?:has been|was) filled\b", r"\bunable to (?:offer|move forward|proceed)\b",
     r"\bdecided (?:not )?to (?:move|proceed|go) (?:forward )?with (?:other|another|different)\b", r"\bother candidates? (?:whose|who|that) (?:experience|background|qualifications|skills)\b")), re.I)
 AUTOMATED = re.compile(r"(?i)no-?reply|do-?not-?reply|auto|confirm|notif|alert|news|digest|market|ship|order|store|update|mailer|bounce|jobs?\b|careers?|talent"
-                       r"|recruit|\bhr\b|info|support|team|hello|account|security|billing|service|apply|applicant|candidate")     # LIFE-26: a mailbox, not a person
+                       r"|recruit|\bhr\b|info|support|team|hello|help|account|security|billing|service|apply|applicant|candidate|receipt|deal|offer|promo|reward|email|mail")     # LIFE-26: a mailbox, not a person
 OFFERED = re.compile("|".join((r"\bpleased to (?:offer|extend)\b", r"\boffer of employment\b", r"\bextend(?:ing)? (?:you )?an? (?:formal )?offer\b", r"\boffer letter\b")), re.I)
 
 
@@ -131,13 +131,15 @@ def attribute(message, roster, at):
 
 def contacts(messages, roster):
     """LIFE-26: {row key: the newest received time of a direct message from that row's hiring team}. Pure. Only positive evidence counts: an inbox
-    message (never junk) from a person-like mailbox on the employer's own domain, attributed to exactly one row. A mailbox such as no-reply, orders or
+    message (never junk, list, bulk or auto-submitted mail) from a person-like mailbox on the employer's own domain, attributed to exactly one row. A mailbox such as no-reply, orders or
     careers, any other domain (an agency, an ATS, a marketplace), or mail that cannot be attributed never counts: an unknown is never contact, so a row
     only goes Stale sooner."""
     found = {}
     for message in sorted(messages, key=_received):
         local, _, domain = (message.get("sender_address") or "").partition("@")
-        if message.get("folder") != "INBOX" or not local or not domain or "@" in domain or AUTOMATED.search(local):
+        marked = message.get("markers") or {}
+        if (message.get("folder") != "INBOX" or not local or not domain or "@" in domain or AUTOMATED.search(local)
+                or marked.get("bulk") or marked.get("auto") or marked.get("noreply")):         # list, newsletter or auto-submitted mail is never a person writing
             continue
         at = _received(message)
         row, _ = attribute(message, roster, at)
