@@ -3,6 +3,7 @@ Completed or Dismissed through the signed review-and-confirm screen; only Action
 import unittest
 from copy import deepcopy
 
+from lifeos.platform.notion_client import NotionError
 from lifeos.recruiters import notion as store
 from tests.kit.recruiters import FakeRecruiters, page
 from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields
@@ -10,8 +11,17 @@ from tests.recruiters.test_outreach import RECRUITERS, Ledger, Service, fields
 ROW = "c" * 32
 
 
+class Rows(FakeRecruiters):
+    """The shared fake plus one exact page read, as Notion returns it (its parent is the data source)."""
+    def get_page(self, page_id):
+        found = [p for p in self.pages if p["id"] == page_id]
+        if not found:
+            raise NotionError("NOTION_HTTP_404")
+        return {"parent": {"type": "data_source_id", "data_source_id": self.source}, **found[0]}
+
+
 def world(action="Needs Action", **kw):
-    rec = FakeRecruiters([page("Avery Synthetic", company="Example Staffing", role="Program Manager", action=action, pid=ROW, **kw)])
+    rec = Rows([page("Avery Synthetic", company="Example Staffing", role="Program Manager", action=action, pid=ROW, **kw)])
     rec.source = RECRUITERS
     return rec
 
