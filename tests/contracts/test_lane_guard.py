@@ -70,27 +70,29 @@ class Map(unittest.TestCase):
             with self.assertRaises(G.GuardError):
                 G.validate(G.parse_map(text))
 
-    def test_the_unresolved_decisions_are_a_pinned_list_for_jim(self):
-        """Adding or removing an unresolved path is a conscious edit of this list: each entry is an ownership decision Jim has not made."""
-        got = sorted(r["path"] for r in DOC["rules"] if r.get("kind") == "unresolved")
-        self.assertIn("lifeos/platform/**", got)
-        self.assertIn("tests/contracts/**", got)
-        self.assertNotIn("lifeos/platform/alerts.py", got)
-        self.assertEqual(len(got), 40)
+    def test_jim_assigned_all_formerly_unresolved_paths(self):
+        self.assertEqual([r["path"] for r in DOC["rules"] if r.get("kind") == "unresolved"], [])
+        for path in ("lifeos/platform/notion_client.py", "tests/contracts/test_codemap.py",
+                     "tests/kit/builders.py", "docs/life-os-development-policy.md",
+                     "tests/platform/test_notion.py", "tests/test_example.py",
+                     "widgets/card.py", "requirements.txt", ".github/actions/setup/action.yml",
+                     "lifeos/bills/card.py"):
+            self.assertEqual(G.rule_for(DOC, path)["lane"], "career-v7", path)
         self.assertEqual(sorted(r["path"] for r in DOC["rules"] if r.get("kind") == "protected"),
-                         sorted([".gitignore", ".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml", "AGENTS.md", "CLAUDE.md", "README.md", "docs/HANDOFFS.yml", "docs/OWNERSHIP.yml",
-                                 "lifeos/__init__.py", "lifeos/lane_guard.py", "tests/contracts/test_lane_guard.py"]))
+                         sorted([".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml",
+                                 "docs/HANDOFFS.yml", "docs/OWNERSHIP.yml", "lifeos/lane_guard.py",
+                                 "tests/contracts/test_lane_guard.py"]))
 
     def test_named_boundaries_have_one_owner_or_are_blocked(self):
         for path in ("lifeos/jobs/ledger.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/outreach.py", "lifeos/hiring/decision.py"):          # Notion schema definitions in code
             self.assertEqual(G.rule_for(DOC, path)["lane"], "career-v7", path)
         self.assertEqual(G.rule_for(DOC, "lifeos/platform/alerts.py")["lane"], "edge-oracle")
-        self.assertEqual(G.rule_for(DOC, "lifeos/platform/notion_client.py")["kind"], "unresolved")
+        self.assertEqual(G.rule_for(DOC, "lifeos/platform/notion_client.py")["lane"], "career-v7")
         close = G.rule_for(DOC, "lifeos/sources/close_app.py")
-        self.assertEqual(G.line_lane(close, '           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py",', [], 0), "unresolved")      # the Close bundle list
+        self.assertEqual(G.line_lane(close, '           "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py",', [], 0), "edge-oracle")      # the Close bundle list
         self.assertEqual(G.line_lane(close, "def handle(req, who, secrets):", [], 0), "career-v7")
         gate = G.rule_for(DOC, "lifeos/edge/close_gate.py")
-        self.assertEqual(G.line_lane(gate, '    if policy.get("recruiters"):', [], 0), "unresolved")                # policy.json field boundary
+        self.assertEqual(G.line_lane(gate, '    if policy.get("recruiters"):', [], 0), "edge-oracle")                # policy.json field boundary
         self.assertEqual(G.line_lane(gate, "def respond(out, code):", [], 0), "edge-oracle")
 
 
@@ -119,14 +121,15 @@ class Check(unittest.TestCase):
         for lane in (None, "someone-else"):
             self.assertTrue(run(lane, [f("lifeos/jobs/lanes.py")])[0].startswith("PR_LANE_MISSING_OR_UNKNOWN"))
 
-    def test_unresolved_paths_fail_for_both_lanes_and_no_handoff_lifts_them(self):
-        files = [f("lifeos/bills/card.py", "a\n", "b\n")]
+    def test_explicit_unresolved_rules_still_fail_closed(self):
+        unresolved = G.validate(G.parse_map("version: 1\nlanes: [career-v7, edge-oracle]\nrules:\n  - path: sample/**\n    kind: unresolved\n"))
+        files = [f("sample/item.py", "a\n", "b\n")]
         for lane in DOC["lanes"]:
-            self.assertEqual(run(lane, files), ["UNRESOLVED_OWNERSHIP lifeos/bills/card.py: no owner decided; blocked until Jim decides"])
-        self.assertEqual(len(run("career-v7", files, [handoff(path="lifeos/bills/**", owner="edge-oracle")])), 1)
+            self.assertEqual(G.check(unresolved, [], pr(lane), files, [], TODAY),
+                             ["UNRESOLVED_OWNERSHIP sample/item.py: no owner decided; blocked until Jim decides"])
 
     def test_protected_paths_fail_even_with_a_handoff_so_the_guard_cannot_be_tampered_with(self):
-        for path in ("lifeos/lane_guard.py", "docs/OWNERSHIP.yml", "docs/HANDOFFS.yml", ".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml", "tests/contracts/test_lane_guard.py", "AGENTS.md"):
+        for path in ("lifeos/lane_guard.py", "docs/OWNERSHIP.yml", "docs/HANDOFFS.yml", ".github/workflows/lane-guard.yml", ".github/workflows/pr-tests.yml", "tests/contracts/test_lane_guard.py"):
             for lane in DOC["lanes"]:
                 got = run(lane, [f(path, "a\n", "b\n")], [handoff(path=path, owner=o) for o in DOC["lanes"]])
                 self.assertEqual(got, [f"PROTECTED_PATH {path}: needs Jim's protected review"], (path, lane))
@@ -168,12 +171,12 @@ class SharedFileSections(unittest.TestCase):
         self.assertTrue(run("career-v7", [f("lifeos/jobs/store.py", "x\n", "x\ncloud_status TEXT\n")])[0].startswith("OUT_OF_LANE"))
         self.assertEqual(run("career-v7", [f("lifeos/jobs/store.py", "x\n", "x\nnotion_page_id TEXT\n")]), [])
 
-    def test_a_section_with_no_decided_owner_blocks_both_lanes(self):
+    def test_close_bundle_section_is_owned_by_edge_oracle(self):
         base = 'CLOSURE = ("lifeos/hiring/close_screen.py",\n           "lifeos/sources/outreach_app.py")\nTTL = 900\n'
         head = base.replace('"lifeos/sources/outreach_app.py")', '"lifeos/sources/outreach_app.py", "lifeos/sources/new_screen.py")')
-        for lane in DOC["lanes"]:
-            self.assertEqual(run(lane, [f("lifeos/sources/close_app.py", base, head)], [handoff(path="lifeos/sources/**", owner="edge-oracle")]),
-                             ["UNRESOLVED_OWNERSHIP lifeos/sources/close_app.py: a shared section has no owner decided; blocked until Jim decides"], lane)
+        got = run("career-v7", [f("lifeos/sources/close_app.py", base, head)])
+        self.assertTrue(got[0].startswith("OUT_OF_LANE lifeos/sources/close_app.py owned by edge-oracle"), got)
+        self.assertEqual(run("edge-oracle", [f("lifeos/sources/close_app.py", base, head)]), [])
 
     def test_ambiguous_attribution_fails_closed(self):
         doc = G.validate({"version": 1, "lanes": ["a", "b"], "rules": [{"path": "shared.txt", "lane": "a", "sections": [{"lane": "a", "match": "zebra"}, {"lane": "b", "match": "quokka"}]}]})
