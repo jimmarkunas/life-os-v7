@@ -222,6 +222,7 @@ def drive(client, environ, box, now, results, counts, report=None):
         done = ev.run(20, True, environ=env, client=client, calendar=calendar, now=now, ledger=ledger, records=list(records), ledger_rows=_ledger_rows(ledger),
                       writer=ledger, recruiters=recruiters)
         counts["writes"] += done["writes"]
+        counts["tick_codes"].append(f"w{done['writes']}f{done['failed']}:" + ",".join(sorted(k for k in done["why"] if k not in ("child_match", "parent_unchanged"))))      # fixed codes only
         return done
 
     def settle(records):
@@ -324,7 +325,7 @@ def run(environ, live, now=None, client=None, reader=None, report=None):
         box = sandbox(client, now, report)
     except NotionError as error:                                             # e.g. the integration may not create a database under the QA parent
         return {"proof": "blocked", "code": f"sandbox:{str(error)[:40]}", "detail": str(getattr(error, "detail", ""))[:80], "failed": 1, "why": {}, "writes": 0}
-    results, counts = [], {"ticks": 0, "writes": 0, "hiring_writes": 0}
+    results, counts = [], {"ticks": 0, "writes": 0, "hiring_writes": 0, "tick_codes": []}
     for stage, call in (("stopped", lambda: drive(client, environ, box, now, results, counts, report)),
                         ("read-back stopped", lambda: results.extend(readback(reader or notion.make_client(environ), box, report)))):
         try:
