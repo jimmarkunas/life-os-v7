@@ -1,0 +1,81 @@
+{
+ "_note": "LIFE-78 M1/M2 synthetic exit fixture: invented employer, page and profile; no personal data.",
+ "profile": {
+  "years": 15,
+  "scope": {
+   "team_size": 10,
+   "budget_usd": 20000000,
+   "global": "direct",
+   "enterprise": "direct",
+   "multi_team": "direct",
+   "executive": "adjacent",
+   "people_leadership": "direct"
+  },
+  "capabilities": [
+   {
+    "id": "erp",
+    "label": "ERP integrations",
+    "class": "direct",
+    "terms": [
+     "netsuite",
+     "erp"
+    ],
+    "committed": true
+   },
+   {
+    "id": "pay",
+    "label": "payments",
+    "class": "direct",
+    "terms": [
+     "stripe",
+     "payment"
+    ],
+    "bucket": "skill"
+   },
+   {
+    "id": "pm",
+    "label": "program delivery",
+    "class": "direct",
+    "terms": [
+     "program management",
+     "delivery"
+    ],
+    "bucket": "skill"
+   },
+   {
+    "id": "etl",
+    "label": "data pipelines",
+    "class": "method",
+    "terms": [
+     "etl",
+     "snowflake"
+    ]
+   }
+  ],
+  "functions": [
+   {
+    "terms": [
+     "program manager",
+     "technical program manager",
+     "roadmap"
+    ],
+    "class": "direct"
+   },
+   {
+    "terms": [
+     "implementation",
+     "integration"
+    ],
+    "class": "adjacent"
+   }
+  ],
+  "advantage": [
+   "automation"
+  ],
+  "specialization": [
+   "technical program manager"
+  ],
+  "exclusions": []
+ },
+ "description_html": "<p>SampleWorks (a synthetic employer) is hiring a Senior Technical Program Manager to lead delivery of its commerce platform. Fully remote, United States.</p><h3>Responsibilities</h3><ul><li>Own the program roadmap and drive delivery across multiple teams</li><li>Lead integration of NetSuite with the storefront and payment providers</li><li>Report to executive stakeholders on a global enterprise program</li></ul><h3>Requirements</h3><ul><li>8+ years of experience in program management delivering enterprise software</li><li>Experience with NetSuite and Stripe</li><li>Experience leading a team of 8 people</li></ul><h3>Preferred</h3><ul><li>Familiarity with Snowflake</li></ul><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p><p>Join a collaborative remote team shipping software for merchants worldwide.</p>"
+}
