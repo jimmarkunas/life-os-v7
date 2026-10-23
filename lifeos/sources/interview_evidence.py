@@ -24,6 +24,7 @@ from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
+from lifeos.recruiters import notion as recruiters_store
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import RunContext
 from lifeos.sources import hiring as pipeline, interview_sweep as sweep
@@ -204,7 +205,31 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
     return records, down
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None):
+def recruiter_threads(environ, evidence, recruiters=None):
+    """LIFE-78 E10: each request's Recruiters rows, matched only by an exactly equal Source URL (the request message itself; never a name or company).
+    -> (evidence with recruiters on each request, failed?). Not connected (no Recruiters token or data source in this step) leaves the evidence unchanged."""
+    urls = sorted({q.source for _, q in evidence if (q.source or "").startswith("https://")})
+    if not urls:
+        return evidence, False
+    if recruiters is None:
+        if not ((environ.get("NOTION_RECRUITERS_TOKEN") or "").strip() and (environ.get("NOTION_RECRUITERS_DATA_SOURCE_ID") or "").strip()):
+            return evidence, False
+        recruiters = Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+    found = {}
+    try:
+        for url in urls:
+            page = recruiters.query_data_source(None, {"page_size": 20, "filter": {"property": "Source URL", "url": {"equals": url}}})
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or page.get("has_more") is not False:
+                raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
+            rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
+            found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
+    except NotionError:                                                      # unknown is never "no recruiter": every linked request reads DEGRADED this run
+        return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
+    return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
+            for p, q in evidence], False
+
+
+def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
         from lifeos.sources import interview_journey_proof
         return interview_journey_proof.run(environ, live, now=now, client=client)
@@ -452,6 +477,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
+    evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
+    if unreadable:
+        flag("recruiters_unreadable")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where
