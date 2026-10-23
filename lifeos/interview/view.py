@@ -37,6 +37,8 @@ class Opportunity:
     apply_url: str | None = None
     fit_summary: str | None = None
     rounds: tuple = ()
+    recruiters: tuple = ()                       # LIFE-78 E10: (person, company, thread url) from Recruiters rows linked to this job's exact request message
+    recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
 
 
 def _plain(prop):
@@ -109,7 +111,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
     return Opportunity(parent_query.company.strip(), parent_query.role.strip(), query.stable_job_key, query.requisition,
                        query.ledger_page_id if state == "linked" else None, state,
                        request if request.startswith("https://") else None, pipeline_id,
-                       rounds=sort_rounds(with_calendar(client, rounds_of(children)), today), **facts)
+                       rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
+                       recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None), **facts)
 
 
 def primary_action(view, today):
