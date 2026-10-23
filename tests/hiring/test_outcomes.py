@@ -26,6 +26,7 @@ def row(company, role, event_days_ago=None, applied="2026-09-01"):
 WALMART = row("Walmart", "Senior Manager, Operations and Implementation", 35)
 SMITH = row("Smith", "Senior Project Manager", 35)
 UBER = row("Uber", "Technical Project Manager", 14)
+EXAMPLE = row("Example", "Program Manager", 14)                 # LIFE-26: a synthetic employer whose own domain is example.com
 REJECTION = "Thank you for interviewing. Unfortunately we will not be moving forward with your candidacy at Walmart."
 
 
@@ -228,28 +229,32 @@ class RunTests(unittest.TestCase):
 
 
 class ContactTests(unittest.TestCase):
-    """LIFE-26: the newest direct, non-automated message for one pipeline row resets its Stale clock; automated senders and ambiguous mail never do."""
-    def test_a_person_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
-        found = outcomes.contacts([msg(subject="Uber next steps", address="maria@example.com", days_ago=9, mid="a"),
-                                   msg(subject="Uber next steps", address="maria@example.com", days_ago=2, mid="b")], [UBER])
-        self.assertEqual(found, {UBER["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
+    """LIFE-26: only positive evidence of the hiring team writing resets the Stale clock: an inbox message from a person on the employer's own domain."""
+    def test_a_person_at_the_employer_writing_after_the_last_evidence_is_a_contact_and_the_newest_wins(self):
+        found = outcomes.contacts([msg(subject="Next steps", address="maria.lopez@example.com", days_ago=9, mid="a"),
+                                   msg(subject="Next steps", address="maria.lopez@example.com", days_ago=2, mid="b")], [EXAMPLE])
+        self.assertEqual(found, {EXAMPLE["key"]: (NOW - timedelta(days=2)).astimezone(outcomes.timezone.utc).isoformat()})
 
-    def test_automated_ats_or_unattributable_mail_is_never_contact(self):
-        for address in ("no-reply@example.com", "noreply@example.com", "notifications@example.com", "jobs@example.com", "talent@example.com",
-                        "recruiter@linkedin.com", "broken-address"):
-            self.assertEqual(outcomes.contacts([msg(subject="Uber update", address=address)], [UBER]), {}, address)
-        self.assertEqual(outcomes.contacts([msg(subject="Uber and Walmart roles", address="pat@example.com")], [UBER, WALMART]), {})     # two companies: never guessed
-        self.assertEqual(outcomes.contacts([msg(subject="Uber update", address="pat@example.com", days_ago=20)], [UBER]), {})          # before the interview
+    def test_mailboxes_other_domains_junk_and_unattributable_mail_are_never_contact(self):
+        for address in ("no-reply@example.com", "digest-noreply@example.com", "auto-confirm@example.com", "shipment-tracking@example.com",
+                        "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
+                        "pat@gmail.com", "recruiter@linkedin.com", "broken-address"):
+            self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
+        junk = dict(msg(subject="Example update", address="maria@example.com"), folder="JUNK")
+        self.assertEqual(outcomes.contacts([junk], [EXAMPLE]), {})                                                                         # spam never resets the clock
+        self.assertEqual(outcomes.contacts([msg(subject="Example and Walmart roles", address="maria@example.com")], [EXAMPLE, WALMART]), {})  # two companies: never guessed
+        self.assertEqual(outcomes.contacts([msg(subject="Example update", address="maria@example.com", days_ago=20)], [EXAMPLE]), {})        # before the interview
 
     def test_a_scan_saves_the_contacts_and_an_older_save_without_them_still_loads(self):
-        counts, store, _ = RunTests().go([msg(subject="Uber next steps", address="maria@example.com", days_ago=2)])
-        self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [UBER["key"]]))
+        prior = {"rows": [dict(EXAMPLE)]}
+        counts, store, _ = RunTests().go([msg(subject="Example next steps", address="maria@example.com", days_ago=2)], prior=prior)
+        self.assertEqual((counts["contacts"], list(store.doc["contacts"])), (1, [EXAMPLE["key"]]))
         with mock.patch.object(outcomes, "STORE", store), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object())[2], store.doc["contacts"])
         old = FakeStore({"schema": 1, "scanned_at": NOW.isoformat(), "taken_at": NOW.isoformat(), "outcomes": {}})
         with mock.patch.object(outcomes, "STORE", old), mock.patch.object(outcomes, "_exists", lambda c: True):
             self.assertEqual(outcomes.load(object()), ({}, NOW.isoformat(), {}))
-        self.assertNotIn("example.com", json.dumps(counts))
+        self.assertNotIn("maria", json.dumps(counts))
 
     def test_the_compiler_carries_the_contact_onto_its_row(self):
         got = C.compile_rows([{"company": "Uber", "role": UBER["role"], "applied_on": "2026-09-01"}], [], [], None,
