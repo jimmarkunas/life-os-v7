@@ -2,7 +2,22 @@
 # One entry lets exactly one PR number change paths covered by `path` that the OWNING lane (`owner`) holds, until `expires`. `approval` is the https link to the owning lane's recorded approval (evidence for the reviewer; CI checks only
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
-handoffs: []
+handoffs:
+  - pr: 510
+    owner: career-v7
+    path: lifeos/run.py
+    expires: 2026-10-31
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-77?focusedCommentId=11115
+  - pr: 510
+    owner: career-v7
+    path: lifeos/sources/oracle_card.py
+    expires: 2026-10-31
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-77?focusedCommentId=11115
+  - pr: 510
+    owner: career-v7
+    path: tests/sources/test_oracle_card.py
+    expires: 2026-10-31
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-77?focusedCommentId=11115
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
 exemptions: []
