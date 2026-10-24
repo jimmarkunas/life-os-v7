@@ -150,7 +150,7 @@
     "E10": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message (the Interview step has the Recruiters token since #477); the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details, LinkedIn contacts and other sent materials are not connected; the pages say so",
+      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message (the Interview step has the Recruiters token since #477); the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details and other sent materials are not connected; LinkedIn contacts are the job page's own Network Leads (not yet read back live); the pages say so",
       "tests": [
         "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so",
         "tests.interview.test_ui3c.Layout.test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page",
@@ -160,7 +160,10 @@
         "tests.interview.test_ui3c.Layout.test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded",
         "tests.sources.test_interview_journey.Journey.test_e10_the_recruiter_of_the_exact_request_message_is_linked_and_a_same_name_row_elsewhere_is_not",
         "tests.sources.test_interview_journey.Journey.test_e10_an_unreadable_recruiters_source_is_degraded_never_no_recruiter",
-        "tests.sources.test_interview_journey.Journey.test_e10_without_the_recruiters_token_in_this_step_nothing_is_asked_and_the_page_says_not_connected"
+        "tests.sources.test_interview_journey.Journey.test_e10_without_the_recruiters_token_in_this_step_nothing_is_asked_and_the_page_says_not_connected",
+        "tests.interview.test_ui3c.Layout.test_e10_the_jobs_network_leads_fill_linkedin_contacts_and_unknown_is_degraded",
+        "tests.sources.test_interview_evidence.NetworkContacts.test_each_requests_job_page_leads_are_carried_and_read_once",
+        "tests.sources.test_interview_evidence.NetworkContacts.test_an_unreadable_page_is_unreadable_and_flagged_never_none"
       ]
     },
     "E11": {
