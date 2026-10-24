@@ -39,6 +39,9 @@ class Opportunity:
     rounds: tuple = ()
     recruiters: tuple = ()                       # LIFE-78 E10: (person, company, thread url) from Recruiters rows linked to this job's exact request message
     recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
+    done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
+    page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
+    close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
 
 
 def _plain(prop):
