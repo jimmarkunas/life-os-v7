@@ -150,7 +150,7 @@
     "E10": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message (the Interview step has the Recruiters token since #477); the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details and other sent materials are not connected; LinkedIn contacts are the job page's own Network Leads (not yet read back live); the pages say so",
+      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message (the Interview step has the Recruiters token since #477); the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the accepted invite's joining details are on its round page (#481) and the opportunity page counts the round pages that record them; other sent materials are not connected; LinkedIn contacts are the job page's own Network Leads (not yet read back live); the pages say so",
       "tests": [
         "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so",
         "tests.interview.test_ui3c.Layout.test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page",

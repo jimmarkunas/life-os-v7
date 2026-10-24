@@ -244,6 +244,8 @@ class Layout(unittest.TestCase):
         shown = "\n".join(texts(*written(accepted)))
         for value in ("2026-11-02 · accepted Calendar invite", "Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details not verified"):
             self.assertIn(value, shown)
+        joined = "\n".join(texts(*written(opportunity((view.Round("r1", 1, "2026-11-02", None, "accepted", True),)))))
+        self.assertIn("Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details on 1 accepted round page(s)", joined)
         cancelled = opportunity((view.Round("r1", 1, "2026-11-02", None, "cancelled"),))
         self.assertEqual(view.stage(cancelled, TODAY), ("Interview 1 cancelled in Calendar", "Unavailable"))
         label, action, due, link, basis = view.primary_action(cancelled, TODAY)
@@ -262,12 +264,14 @@ class Layout(unittest.TestCase):
             calls.append(page_id)
             if page_id == "old-layout":
                 raise NotionError("INTERVIEW_ROUND_LAYOUT")
-            return {"dated": ("abc123def456", False), "gone": ("abc123def456", True), "no-ref": (None, False)}[page_id]
+            return {"dated": ("abc123def456", False, ("https://meet.example.com/x", None)), "gone": ("abc123def456", True, ("https://meet.example.com/x", None)),
+                    "no-ref": (None, False, None)}[page_id]
         rounds = (view.Round("pending", 1, None, None), view.Round("dated", 2, "2026-11-02", None), view.Round("gone", 3, "2026-11-09", None),
                   view.Round("no-ref", 4, "2026-11-16", None), view.Round("old-layout", 5, "2026-11-23", None))
-        with patch.object(create, "round_calendar", fake):
+        with patch.object(create, "round_logistics", fake):
             got = view.with_calendar(object(), rounds)
         self.assertEqual([r.calendar for r in got], [None, "accepted", "cancelled", None, None])
+        self.assertEqual([r.joining for r in got], [False, True, False, False, False])     # only an accepted round's own recorded joining details count
         self.assertNotIn("pending", calls)                                    # an undated round has no invite to read
 
     def test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded(self):
