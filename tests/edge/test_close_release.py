@@ -172,7 +172,9 @@ class AutoRelease(unittest.TestCase):
         install = script.split("  install)", 1)[1].split("  auto)", 1)[0]
         self.assertNotIn("export", install)                                     # Jim's own install is never mistaken for an automatic one
         self.assertIn('"${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ]', install)
-        self.assertIn('echo "$rolled 3"', script.split("  rollback)", 1)[1])     # a rolled-back commit is never put back
+        self.assertIn('remember "$OPT/current"', script.split("  rollback)", 1)[1])   # rolled-back code was live: never brought back
+        self.assertIn('"$0" verify && remember "$dest"', install)               # every install (auto or Jim's) remembers what went live
+        self.assertIn('if seen "$probe"; then', auto)
         uninstall = script.split("  uninstall)", 1)[1]
         self.assertIn("disable --now lifeos-close-release.timer", uninstall)
         self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])           # waits out a running release

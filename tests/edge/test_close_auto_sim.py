@@ -153,7 +153,7 @@ class AutoReleaseRun(unittest.TestCase):
     def test_a_commit_jim_rolled_back_is_never_put_back(self):
         self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         rc, out = self.run_("rollback")
-        self.assertEqual((rc, self.at("current"), self.etc("auto.attempts")), (0, A[:12], [B, "3"]), out)
+        self.assertEqual((rc, self.at("current")), (0, A[:12]), out)
         os.remove(os.path.join(self.sim, "etc", "auto.checked"))
         self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)
         self.assertEqual(self.at("current"), A[:12])
@@ -188,6 +188,21 @@ class AutoReleaseRun(unittest.TestCase):
         D = "d" * 12 + "5" * 28
         self.run_("auto", HEAD=D, BODY="z lifeos/a.py")                                          # new code is released
         self.assertEqual(self.at("current"), D[:12])
+
+    def test_code_that_was_ever_live_is_never_brought_back_however_jim_moved_away(self):
+        self.run_("install", B, BODY="y lifeos/a.py")                                           # Jim installs main's head himself
+        self.run_("install", A, BODY="x lifeos/a.py")                                           # and goes back by hand, not by rollback
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                  # a docs-only merge still carrying B's code
+        self.assertEqual(self.at("current"), A[:12])
+        self.tree(B[:12], B)                                                                      # a cut-off release of B that settles as verified
+        open(os.path.join(self.sim, "opt", B[:12], "MANIFEST"), "w").write(f"commit {B}\nw lifeos/a.py\n")
+        self.link("current", B[:12])
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        self.run_("auto", HEAD=B)
+        self.run_("install", A, BODY="x lifeos/a.py")
+        D = "d" * 12 + "5" * 28
+        self.assertEqual(self.run_("auto", HEAD=D, BODY="w lifeos/a.py")[0], 0)
+        self.assertEqual(self.at("current"), A[:12])
 
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died

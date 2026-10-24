@@ -8,6 +8,9 @@ set -euo pipefail
 OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
 LOCAL=47344; TAILNET=47443; REL="$(cd "$(dirname "$0")" && pwd)/close_release.py"
 say() { printf '%s\n' "$*"; }
+code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }                 # a tree's files, whatever commit carried them
+seen() { [ -s "$ETC/auto.seen" ] && grep -qx "$(code "$1")" "$ETC/auto.seen"; }
+remember() { install -d -m 755 "$ETC"; seen "$1" || code "$1" >> "$ETC/auto.seen"; }   # every code that has ever been live: auto-release never brings one back
 [ "$(id -u)" = 0 ] || { say "run as root via opc"; exit 2; }
 
 serve_state() {   # ours | free | other | unknown: a failed, empty or malformed status read is unknown, never free
@@ -98,7 +101,7 @@ case "${1:-}" in
     ln -sfn "$dest" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
     units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket >/dev/null
     [ "$st" = ours ] || tailscale serve --bg --tls-terminated-tcp "$TAILNET" --proxy-protocol 2 "tcp://127.0.0.1:$LOCAL" >/dev/null || { say "FAIL: Serve $TAILNET not added (run uninstall)"; exit 1; }
-    "$0" verify ;;
+    "$0" verify && remember "$dest" ;;
   verify)
     ok=0
     check() { if eval "$2"; then say "  [PASS] $1"; else say "  [FAIL] $1"; ok=1; fi; }
@@ -117,11 +120,12 @@ case "${1:-}" in
     cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
     [ -n "$cur" ] || { say "auto: no live tree; the first install is Jim's by hand"; exit 0; }
     systemctl is-enabled --quiet lifeos-close.socket && [ "$(serve_state)" = ours ] || { say "auto: the service is not installed and serving; nothing changed"; exit 0; }
+    remember "$cur"; [ -n "$prev" ] && [ -d "$prev" ] && remember "$prev"
     [ -e "$ETC/auto.pending" ] && [ ! -s "$ETC/auto.pending" ] && rm -f "$ETC/auto.pending"
     if read -r p_commit p_cur p_prev _ 2>/dev/null < "$ETC/auto.pending"; then             # a release this step started and never finished (cut off): finish or undo it first
       relink() { if [ -n "${2:-}" ] && [ -d "$2" ]; then ln -sfn "$2" "$OPT/$1.new" && mv -T "$OPT/$1.new" "$OPT/$1"; else rm -f "$OPT/$1"; fi; }
       if [ "$cur" = "$p_cur" ] && [ "$prev" != "${p_prev:-}" ]; then relink previous "${p_prev:-}"; fi      # cut off between the two links: the live tree's own previous is put back
-      if [ "$cur" = "$OPT/${p_commit:0:12}" ] && "$0" verify && [ "$prev" != "$p_cur" ]; then relink previous "$p_cur"; fi
+      if [ "$cur" = "$OPT/${p_commit:0:12}" ] && "$0" verify; then [ "$prev" = "$p_cur" ] || relink previous "$p_cur"; remember "$cur"; fi
       if [ "$cur" = "$OPT/${p_commit:0:12}" ] && ! "$0" verify; then
         if [ -n "${p_cur:-}" ] && [ -d "$p_cur" ]; then
           ln -sfn "$p_cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
@@ -136,34 +140,28 @@ case "${1:-}" in
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
     [ "$cur" = "$OPT/${commit:0:12}" ] && { echo "$commit" > "$ETC/auto.checked"; exit 0; }   # live and settled (Jim installed it, or a release finished)
-    code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }
     tried=""; n=0; read -r tried n _ 2>/dev/null < "$ETC/auto.attempts" || true
     case "$n" in ''|*[!0-9]*|???*) n=0 ;; esac                                              # anything but a small count reads as none
     [ "$tried" = "$commit" ] || n=0
-    [ "$n" -ge 3 ] && exit 0                                                              # three attempts at this commit (or Jim rolled it back): wait for the next green commit
+    [ "$n" -ge 3 ] && exit 0                                                              # three attempts at this commit: wait for the next green commit
     rm -rf "$probe"
     if ! python3 -I "$REL" stage "$commit" "$probe"; then
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
     fi
-    if [ -s "$ETC/auto.rolled" ] && grep -qx "$(code "$probe")" "$ETC/auto.rolled"; then
-      echo "$commit" > "$ETC/auto.checked"; say "auto: ${commit:0:12} carries the code Jim rolled back; not released"; exit 0
+    if seen "$probe"; then                                                                  # this code has been live before (released, installed, rolled back to or from): never brought back
+      echo "$commit" > "$ETC/auto.checked"; python3 -I "$REL" same "$probe" "$cur" || say "auto: ${commit:0:12} carries code that was live before; not released (Jim installs it by hand)"; exit 0
     fi
-    if [ "$(cat "$ETC/auto.released" 2>/dev/null)" = "$(code "$probe")" ]; then              # the code this step last released: Jim has since chosen another tree by hand
-      echo "$commit" > "$ETC/auto.checked"; exit 0
-    fi
-    if ! python3 -I "$REL" same "$probe" "$cur"; then                                     # the commit changes the Close closure
-      echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                   # counted before the switch, so a cut-off run still counts
-      echo "$commit $cur ${prev:-}" > "$ETC/auto.pending.new" && mv -f "$ETC/auto.pending.new" "$ETC/auto.pending"   # what a cut-off run is settled against (written whole or not at all)
-      if LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"; then
-        code "$probe" > "$ETC/auto.released"; rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
-      else
-        if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                  # verify failed after the switch: back to exactly the live tree, and its own previous tree
-          ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
-          if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
-          if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
-        fi
-        rm -f "$ETC/auto.pending"; exit 1
+    echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                   # new code: counted before the switch, so a cut-off run still counts
+    echo "$commit $cur ${prev:-}" > "$ETC/auto.pending.new" && mv -f "$ETC/auto.pending.new" "$ETC/auto.pending"   # what a cut-off run is settled against (written whole or not at all)
+    if LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"; then
+      rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
+    else
+      if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                  # verify failed after the switch: back to exactly the live tree, and its own previous tree
+        ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
+        if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
+        if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
       fi
+      rm -f "$ETC/auto.pending"; exit 1
     fi
     echo "$commit" > "$ETC/auto.checked"
     keep="$(readlink "$OPT/current" 2>/dev/null || true) $(readlink "$OPT/previous" 2>/dev/null || true)"
@@ -194,11 +192,7 @@ EOF
   rollback)
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
-    rolled="$(head -1 "$OPT/current/MANIFEST" 2>/dev/null | cut -d' ' -f2)"
-    if [ -n "$rolled" ] && [ "$(readlink "$OPT/current")" != "$(readlink "$OPT/previous")" ]; then   # auto-release never puts back code Jim rolled back, under any later commit
-      install -d -m 755 "$ETC"; echo "$rolled 3" > "$ETC/auto.attempts"
-      tail -n +2 "$OPT/current/MANIFEST" | sha256sum | cut -d' ' -f1 >> "$ETC/auto.rolled"          # a set that only grows: every rolled-back code stays out
-    fi
+    [ -d "$OPT/current" ] && remember "$OPT/current"                                       # the code rolled back was live: auto-release never brings it back
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)
