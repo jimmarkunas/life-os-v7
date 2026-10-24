@@ -86,6 +86,11 @@ on:
         type: choice
         options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
         default: "none"
+      refresh:
+        description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close. It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a domains run is already waiting"
+        type: choice
+        options: ["none", "hiring"]
+        default: "none"
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
         type: boolean
@@ -99,7 +104,8 @@ concurrency:
   # group, and a group holds only one WAITING run, so such a run cancels the real run that is waiting (the Oct 20-21 stall: no card refreshed for two and a half hours). It gets
   # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
   # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
-  group: ${{ github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
+  # A Close screen refresh (inputs.refresh) joins the after-tick group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
+  group: ${{ (github.event_name == 'workflow_dispatch' && inputs.refresh == 'hiring') && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
   cancel-in-progress: false
 jobs:
   jira:
@@ -809,7 +815,7 @@ jobs:
     # including mail, so no two jobs ever change the page at once, and it proves the rest of the page unchanged around its write. Read-only toward the Ledger, the Notion pages and the Calendar; no mail.
     # imessage writes the Communications and Oracle Cloud callouts (LIFE-34, Oct 15 2026), so it is one of those writers; `always()` keeps Hiring running when it is skipped or fails.
     needs: [jira, agenda, bills, amazon, attention, mail, imessage]
-    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring) }}
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.hiring || inputs.refresh == 'hiring') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

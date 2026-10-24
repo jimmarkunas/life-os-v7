@@ -55,6 +55,7 @@ class Harness:
             options(self.world.source, NEW)
         self.cfg = {"ledger": TD.LEDGER, "pipeline": self.world.ws.root}
         self.clock = NOW
+        self.after = []
 
     def writes(self):
         return (len([e for e in self.world.source.log if e[0] == "PATCH"]), len(self.world.ws.writes()))
@@ -66,7 +67,7 @@ class Harness:
         if method == "GET":
             secrets["reader"] = close_gate.ReadOnly(both)
         else:
-            secrets["notion"] = TOKEN
+            secrets["notion"], secrets["after"] = TOKEN, self.after             # the gate's refresh requests (close_gate.REFRESH), as close_gate.main passes them
         def factory(cfg):
             assert method != "GET", "GET must not build a writing client"
             return both
@@ -411,6 +412,32 @@ class Contract(unittest.TestCase):
     def test_the_budget_and_the_files(self):
         lines = sum(1 for p in ("lifeos/sources/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
         self.assertLessEqual(lines, 330)                               # E05 Mark Complete lives here too (Jim, Oct 23: the 300-line cap is suspended for the Jobs/Interview OS delivery)
+
+
+class Refresh(unittest.TestCase):
+    """Jim, Oct 24 ("approve the refresh trigger"): after a verified close the app asks the gate to redraw the Hiring Pipeline region now; nothing else asks."""
+
+    def test_a_verified_ledger_or_notes_close_asks_for_the_hiring_redraw_once(self):
+        for pid_of, rows in ((lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE)]), (lambda h: h.world.ws.target.replace("-", ""), [])):
+            h = Harness(rows)
+            self.assertEqual(h.close(pid_of(h), "Rejected")[0], 200)
+            self.assertEqual(h.after, ["hiring"])
+
+    def test_review_cancel_and_a_refused_or_unverified_close_ask_nothing(self):
+        h = Harness([(TD.TARGET, COMPANY, ROLE)])
+        status, _, f = h.review(TD.TARGET, "Rejected")
+        h.call("POST", form={**f, "step": "cancel"})
+        h.call("POST", form={**f, "step": "confirm", "c": "forged"})
+        with mock.patch.object(close_app.D, "confirm_rejected", lambda *a: {"status": "recorded", "verified": False}):
+            self.assertEqual(h.call("POST", form={**f, "step": "confirm"})[0], 500)
+        self.assertEqual((status, h.after), (200, []))
+
+    def test_the_refresh_run_queues_with_the_after_tick_writers_and_runs_only_the_hiring_job(self):
+        text = (ROOT / ".github/workflows/domains.yml").read_text()
+        self.assertIn('options: ["none", "hiring"]', text)
+        self.assertIn("group: ${{ (github.event_name == 'workflow_dispatch' && inputs.refresh == 'hiring') && 'life-os-v7-domains' ||", text)
+        self.assertEqual(text.count("inputs.refresh == 'hiring'"), 2)                             # the group and the hiring job's `if`, nothing else
+        self.assertEqual(close_gate.REFRESH["hiring"], {"refresh": "hiring", "live": "true"})          # the name the app appends is the gate's, and its input is this workflow's
 
 
 class Speed(unittest.TestCase):
