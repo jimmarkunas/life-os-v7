@@ -185,7 +185,7 @@ class AutoRelease(unittest.TestCase):
         self.assertIn('auto.prior', auto)                                      # a cut-off run is restored to the trees live before its switch
         self.assertIn('else rm -f "$OPT/previous"', auto)                       # no previous tree before: none after a restore
         self.assertIn("unverified after a cut-off run", auto)
-        self.assertIn('-ge 3 ] && exit 0', auto)
+        self.assertIn('elif [ "$n" -ge 3 ]; then', auto)
         self.assertIn("RESTORE VERIFY FAILED", auto)
         self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
         uninstall = script.split("  uninstall)", 1)[1]
