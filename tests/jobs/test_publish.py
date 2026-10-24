@@ -309,6 +309,21 @@ class PublicationOrderTests(unittest.TestCase):
         self.assertEqual(chosen, publish.order(list(reversed(rows)), 60))          # the same line whatever order the store returns the rows in
         self.assertEqual(chosen[45:], list(range(1, 16)))                          # the reserved places are the 15 oldest of the rest, oldest first
 
+    def test_d248_a_quarter_of_the_places_go_first_to_the_strongest_jobs_not_from_a_board_scan(self):
+        t0 = datetime.datetime(2026, 10, 24)
+        boards = [(i, "ADMIT", 95, None, t0 + datetime.timedelta(minutes=i), "web:greenhouse:acme") for i in range(1, 101)]      # a backfill flood, all stronger
+        mail = [(1000 + i, "ADMIT", 70 + i, None, t0 + datetime.timedelta(minutes=i), "jobright") for i in range(15)]
+        chosen = publish.order(boards + mail, 40)
+        self.assertEqual(len(chosen), 40)
+        self.assertEqual(chosen[:10], [1014, 1013, 1012, 1011, 1010, 1009, 1008, 1007, 1006, 1005])           # the 10 strongest mail jobs, first
+        self.assertEqual(chosen[10:30], list(range(1, 21)))                                                   # then the strongest of the rest, as before
+        self.assertEqual(len(chosen[30:]), 10)                                                                # D186's oldest share is unchanged
+        self.assertEqual(chosen, publish.order(list(reversed(boards + mail)), 40))
+        self.assertEqual(publish.order(boards, 40), publish.order([r[:5] for r in boards], 40))                # no mail waiting: the line is exactly D186's
+        few = publish.order(boards + mail[:2], 40)
+        self.assertEqual(few[:2], [1001, 1000])                                                               # fewer mail jobs than places: all of them, then the rest
+        self.assertEqual(len(few), 40)
+
     def test_small_runs_reserve_a_place_for_the_oldest_one_run_in_four_and_the_normal_line_is_unchanged(self):
         """Limits 1, 2 and 3 have no whole quarter. Sustained strong arrivals (n new, high-ranked jobs before every run) must still let each older valid job through."""
         for n in (1, 2, 3):
