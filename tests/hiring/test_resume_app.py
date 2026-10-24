@@ -400,6 +400,15 @@ class Applied(unittest.TestCase):
         self.assertIn("Build resume", body)
         self.assertIn("Submitted résumé: unavailable this time", body)
 
+    def test_a_refused_read_while_recording_names_the_record_step_not_a_build(self):
+        r = self.built()
+        _, forms = self.offer(r)
+        with mock.patch.object(resume_app, "job", side_effect=NotionError("DECISION_NOT_FOUND")):
+            status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 409)
+        self.assertIn("A submitted résumé cannot be recorded for this job here", body)
+        self.assertNotIn("cannot be built", body)
+
     def test_cancel_records_nothing(self):
         r = self.built()
         _, forms = self.offer(r)

@@ -68,12 +68,18 @@
       ]
     },
     "E05": {
-      "machine": "PARTIAL",
+      "machine": "PASS",
       "live": "PENDING",
-      "missing": "Mark Complete is shown unavailable (NOT DELIVERED); actions are labelled derived or DEGRADED, never source-backed",
+      "missing": "",
       "tests": [
         "tests.interview.test_ui3c.Layout.test_d15_order_and_no_invented_primary_action",
-        "tests.interview.test_ui3c.ReadbackValues.test_the_opportunity_outcome_is_never_asserted_and_the_action_says_what_it_rests_on"
+        "tests.interview.test_ui3c.ReadbackValues.test_the_opportunity_outcome_is_never_asserted_and_the_action_says_what_it_rests_on",
+        "tests.hiring.test_mark_complete.EdgeScreen.test_the_link_shows_the_action_and_confirm_records_one_line_in_the_fold_read_back",
+        "tests.hiring.test_mark_complete.EdgeScreen.test_a_replayed_confirm_is_already_recorded_and_writes_nothing",
+        "tests.hiring.test_mark_complete.EdgeScreen.test_cancel_a_forged_token_an_expired_form_or_a_changed_action_write_nothing",
+        "tests.hiring.test_mark_complete.EdgeScreen.test_a_write_that_does_not_read_back_is_degraded_never_done",
+        "tests.hiring.test_mark_complete.PageRender.test_the_primary_action_links_to_the_close_screen_by_page_and_action_key",
+        "tests.hiring.test_mark_complete.PageRender.test_a_degraded_action_is_never_completable"
       ]
     },
     "E06": {
@@ -140,7 +146,7 @@
     "E10": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message, but the Interview step does not yet receive the Recruiters token (workflow change, Jim's merge), so production still reads not connected; the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details, LinkedIn contacts and other sent materials are not connected; the pages say so",
+      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message (the Interview step has the Recruiters token since #477); the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details, LinkedIn contacts and other sent materials are not connected; the pages say so",
       "tests": [
         "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so",
         "tests.interview.test_ui3c.Layout.test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page",
@@ -169,13 +175,15 @@
       "tests": []
     },
     "E13": {
-      "machine": "PARTIAL",
+      "machine": "PASS",
       "live": "PENDING",
-      "missing": "LIFE-19: a failed or stale hiring outcome-mail save is not yet proven to make the Hiring Pipeline DEGRADED",
+      "missing": "",
       "tests": [
         "tests.hiring.test_hiring.CompilerTests.test_prior_state_carries_only_as_degraded_and_never_rolls_a_stage_back",
         "tests.hiring.test_hiring.CompilerTests.test_an_unreadable_ledger_or_pages_carries_the_whole_prior_state_or_is_unavailable",
-        "tests.hiring.test_hiring.CompilerTests.test_nothing_computed_with_incomplete_evidence_is_never_a_trustworthy_empty_table"
+        "tests.hiring.test_hiring.CompilerTests.test_nothing_computed_with_incomplete_evidence_is_never_a_trustworthy_empty_table",
+        "tests.hiring.test_hiring.OutcomeConsumerTests.test_unavailable_outcome_mail_degrades_hiring_keeps_the_last_accepted_rows_and_invents_no_outcome",
+        "tests.hiring.test_hiring.OutcomeConsumerTests.test_outcome_mail_not_saved_for_eighteen_hours_or_never_saved_is_degraded_and_a_fresh_save_clears_it"
       ]
     },
     "E14": {
