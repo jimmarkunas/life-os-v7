@@ -91,7 +91,7 @@ def _convert(client, environ, live, context, parent, company, role, kind, key, p
     kids = notion.child_scan(client, parent.page_id, context, legacy=True)   # a pursuit converted here: Jim's hand-made `Interview N: Name (date)` pages count by title
     if not kids.complete:
         return "child_scan_incomplete", out
-    current = views.opportunity(client, pq, query, pipeline, kids, today)
+    current = create._view(client, environ, pq, query, pipeline, kids, today)       # with the Close origin, as the writer's own refresh (E05)
     return create.refresh(client, parent.page_id, current, live, out, context, migrate=True), out
 
 

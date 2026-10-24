@@ -112,21 +112,25 @@ def render_line(job, source, page="pending"):
 
 # ---------- UI 3c opportunity page ----------
 
+def _rounds(view):
+    return ",".join(sorted(r.page_id for r in view.rounds if r.page_id))
+
+
 def fold_lines(view, label, action):
     """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one) and every recorded completion, in the fold."""
-    return ([notion_lines.action_line(action)] if label == "PRIMARY ACTION" else []) + [notion_lines.done_line(k, d) for k, d in view.done]
+    return ([notion_lines.action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [notion_lines.done_line(k, d) for k, d in view.done]
 
 
 def complete_parts(view, label, action):
     """E05 Mark Complete (Jim, Oct 24): done when the Close screen recorded this exact action; otherwise its one link to the private Close
     screen's two-step confirmation; without that screen (or for a degraded action) it says it is unavailable and records nothing."""
-    done = dict(view.done).get(notion_lines.action_key(action)) if label == "PRIMARY ACTION" else None
+    done = dict(view.done).get(notion_lines.action_key(action, _rounds(view))) if label == "PRIMARY ACTION" else None
     if done:
         day = date.fromisoformat(done)
         return [para(("✅ Done ", True), (f"{day:%b} {day.day}", True), " · marked complete on the Close screen. "
                      "The next action appears here when new evidence arrives.")]
     if label == "PRIMARY ACTION" and view.close_base and view.page_id:
-        url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': notion_lines.action_key(action)})}"
+        url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': notion_lines.action_key(action, _rounds(view))})}"
         return [para(("Mark Complete ↗", False, url), " · opens the private Close screen; nothing is recorded until you confirm there.")]
     return [toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
         "Not available here: completion is recorded only through the private Close screen's two-step confirmation, with a canonical "

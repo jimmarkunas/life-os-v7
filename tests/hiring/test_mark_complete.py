@@ -141,6 +141,20 @@ class PageRender(unittest.TestCase):
         self.assertTrue(any(t.startswith("✅ Done Oct 24") for t in texts(blocks)), texts(blocks))
         self.assertFalse([u for u in links(blocks) if "/complete?" in u])
 
+    def test_the_same_wording_for_a_later_round_is_a_new_action_never_already_done(self):
+        one = (view.Round("round-1", None, None, None),)
+        two = one + (view.Round("round-2", None, None, None),)
+        first = opp(rounds=one, close_base="https://edge.example.test", page_id="0" * 32)
+        action = view.primary_action(first, "2026-10-24")[1]
+        key = notion.action_key(action, "round-1")
+        self.assertNotEqual(key, notion.action_key(action, "round-1,round-2"))
+        self.assertTrue(any(t.startswith("✅ Done") for t in texts(template.opportunity_page(replace(first, done=((key, "2026-10-20"),)), "2026-10-24"))))
+        later = replace(first, rounds=two, done=((key, "2026-10-20"),))
+        self.assertEqual(view.primary_action(later, "2026-10-24")[1], action)                          # the very same words for the next round
+        blocks = template.opportunity_page(later, "2026-10-24")
+        self.assertFalse(any(t.startswith("✅ Done") for t in texts(blocks)))
+        self.assertTrue([u for u in links(blocks) if "/complete?" in u])
+
     def test_a_degraded_action_is_never_completable(self):
         blocks = template.opportunity_page(opp(request_url=None, stable_job_key="exampleco-stpm", close_base="https://edge.example.test", page_id="0" * 32), "2026-10-24")
         self.assertFalse([t for t in texts(blocks) if t.startswith("v7-action:")])
@@ -157,7 +171,7 @@ class Writer(unittest.TestCase):
         self.assertEqual(create._undone(nodes), [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"]}]}, {"text": "leaf"}])
 
     def test_a_page_written_before_mark_complete_keeps_its_digest_and_still_refreshes(self):
-        """The region digest of a page with no completion lines is exactly the one main stored, so no existing page reads as edited."""
+        """With no completion lines, the region digest is the plain tree digest main stores in every render line, so no existing page reads as edited."""
         from tests.interview import test_ui3c as U
         client, page_id = U.written()                                                               # written and finalized as main writes it
         machine, lines, _ = create.machine_region(client, page_id)

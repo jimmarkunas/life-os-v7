@@ -166,7 +166,7 @@ def action(client, root, pid, key):
     lines = [_plain(b) for b in _lines(client, tops[0]["id"]) if b.get("type") == "paragraph"]
     if not lines or lines[0] != OPP_MARKER:
         raise D.fail("NOT_A_LIFE_OS_PAGE")
-    found = [m.group(2) for m in map(ACTION_LINE.fullmatch, lines) if m and m.group(1) == key and hashlib.sha256(m.group(2).encode()).hexdigest()[:16] == key]
+    found = [m.group(2) for m in map(ACTION_LINE.fullmatch, lines) if m and m.group(1) == key]
     if len(found) != 1:
         raise D.fail("ACTION_CHANGED")
     done = [m.group(2) for m in map(DONE_LINE.fullmatch, lines) if m and m.group(1) == key]

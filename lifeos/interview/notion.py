@@ -19,12 +19,13 @@ DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
 DONE_MAX = 20                                                  # completion lines carried per page, newest last
 
 
-def action_key(text):
-    return hashlib.sha256(text.encode()).hexdigest()[:16]
+def action_key(text, context=""):
+    """The action's identity: its text, plus the opportunity's rounds when it has any, so the same wording for a later round is a new action, never already done."""
+    return hashlib.sha256((text + "\x1f" + context if context else text).encode()).hexdigest()[:16]
 
 
-def action_line(text):
-    return f"v7-action:1;key={action_key(text)};text={text}"
+def action_line(text, context=""):
+    return f"v7-action:1;key={action_key(text, context)};text={text}"
 
 
 def done_line(key, day):
