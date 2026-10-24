@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from lifeos.edge import close_gate as gate
 from tests.imessage.test_alerts import RUNNER, OTHER, v2
@@ -205,3 +206,73 @@ class RealClientGet(unittest.TestCase):
             with self.assertRaises(rel.Refused) as caught:
                 rel.policy(status, "47443", LOGIN, ledger, self.PIPELINE, nodes)
             self.assertTrue(str(caught.exception).startswith(code))
+
+
+class Refresh(Gate):
+    """Jim, Oct 24: closed rows leave the Daily Report without waiting for the hour. After a POST's 200, the app's refresh request becomes one workflow_dispatch
+    made with the optional `github` credential, which the app never sees."""
+
+    def with_token(self):
+        with open(os.path.join(self.creds, "github"), "wb") as f:
+            f.write(b"synthetic-github-token")
+
+    def asking(self, status=200):
+        def app(req, who, secrets):
+            self.calls.append((req, who, secrets))
+            secrets.get("after", []).append("hiring")
+            return status, "text/html; charset=utf-8", b"<p>ok</p>", ()
+        return app
+
+    def test_a_verified_post_asks_once_after_the_response_and_the_app_never_sees_the_token(self):
+        self.with_token()
+        with mock.patch.object(gate, "refresh", return_value=["dispatched"]) as asked:
+            code, status, _ = self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking())
+        self.assertEqual((code, status), (0, 200))
+        asked.assert_called_once_with(b"synthetic-github-token", ["hiring"])
+        self.assertNotIn(b"synthetic-github-token", repr(self.calls[0][2]).encode())
+
+    def test_no_credential_a_get_or_a_refused_post_asks_nothing(self):
+        with mock.patch.object(gate, "refresh") as asked:
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking())       # no github credential
+            self.with_token()
+            self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())                          # GET: no `after` list at all
+            self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))      # not a success
+        asked.assert_not_called()
+        self.assertNotIn("after", self.calls[1][2])
+
+    def opener(self, runs, fail=False):
+        sent = []
+
+        class Response:
+            def __init__(self, data):
+                self.data = data
+
+            def read(self):
+                return self.data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def open_(req, timeout):
+            sent.append((req.get_method(), req.full_url, req.get_header("Authorization"), req.data and json.loads(req.data)))
+            if fail:
+                raise OSError("down")
+            return Response(json.dumps({"workflow_runs": runs}).encode() if req.get_method() == "GET" else b"")
+        return sent, open_
+
+    def test_one_dispatch_for_the_hiring_region_and_unknown_names_are_ignored(self):
+        sent, open_ = self.opener([{"status": "completed"}, {"status": "in_progress"}])
+        self.assertEqual(gate.refresh(b"tok", ["hiring", "hiring", "anything"], open_), ["dispatched"])
+        self.assertEqual(sent[1], ("POST", gate.API + "/dispatches", "Bearer tok", {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}}))
+        self.assertEqual(len(sent), 2)
+
+    def test_a_waiting_domains_run_is_never_replaced_and_a_failure_is_silent(self):
+        for status in gate.WAITING:
+            sent, open_ = self.opener([{"status": status}])
+            self.assertEqual(gate.refresh(b"tok", ["hiring"], open_), ["waiting"])
+            self.assertEqual([m for m, *_ in sent], ["GET"])
+        sent, open_ = self.opener([], fail=True)
+        self.assertEqual(gate.refresh(b"tok", ["hiring"], open_), ["failed"])

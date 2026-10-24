@@ -1,5 +1,5 @@
 #!/bin/bash
-# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link | units DIR |
+# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link|github|github-off | units DIR |
 #   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
 #   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed, only while installed and serving; verify, else back to the tree that
 #   was live; at most 3 attempts per commit) | auto-units (once, by Jim).
@@ -81,6 +81,9 @@ MemoryMax=128M
 TasksMax=16
 CPUQuota=50%
 EOF
+  if [ -s "$CREDS/lifeos-close.github" ]; then                                       # optional (Jim, Oct 24): the post-close Hiring refresh; absent = never asked
+    sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=github:$CREDS/lifeos-close.github" "$1/lifeos-close@.service"
+  fi
 }
 
 case "${1:-}" in
@@ -94,9 +97,12 @@ case "${1:-}" in
     case "${2:-}" in
       notion) systemd-creds encrypt --name=notion - "$CREDS/lifeos-close.notion" ;;
       link) python3 -I -c 'import secrets; print(secrets.token_hex(32))' | systemd-creds encrypt --name=link - "$CREDS/lifeos-close.link" ;;
-      *) say "credential notion|link"; exit 2 ;;
+      github) say "paste the fine-grained token (this repository, Actions read and write only), then Ctrl-D"; systemd-creds encrypt --name=github - "$CREDS/lifeos-close.github" ;;
+      github-off) rm -f "$CREDS/lifeos-close.github"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "refresh credential removed; the Close screen no longer asks for refreshes"; exit 0 ;;
+      *) say "credential notion|link|github|github-off"; exit 2 ;;
     esac
-    chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)" ;;
+    chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)"
+    if [ "$2" = github ] && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
