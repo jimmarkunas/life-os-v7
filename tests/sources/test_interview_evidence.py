@@ -306,6 +306,8 @@ class SchedulingRequests(unittest.TestCase):
         self.assertEqual((got["evidence"], counts["failed"], counts["retired_skipped"]), ([], 0, 1))
         counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()])()                                             # the same request with no retired page still makes Interview 1
         self.assertEqual((len(got["evidence"]), counts["retired_skipped"]), (1, 0))
+        counts, got = Run(retired=["ExampleCo — Program Manager"], roster=[APPLIED], records=[mail()], owner=Ownership.HUMAN)()                # an Active page too (here not machine-keyed): never skipped as retired
+        self.assertEqual(counts["retired_skipped"], 0)
 
     def test_a_ledger_row_without_a_stable_job_key_is_not_guessed(self):
         counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()], ledger=Ledger(key=""))()

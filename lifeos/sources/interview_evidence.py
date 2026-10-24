@@ -402,7 +402,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             continue
         page = next((v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None)
         _, _, page_job, page_url, page_kids, _ = page or (None,) * 6
-        if not page and any(not p.active and same_company(c, row["company"]) and same_role(r, row["role"]) for p, c, r in ((p, *split_title(p.title)) for p in scan.items)):
+        states = {p.active for p, c, r in ((p, *split_title(p.title)) for p in scan.items) if same_company(c, row["company"]) and same_role(r, row["role"])}
+        if states == {False}:                                                # only a Retired page: an Active one (keyed or not) still takes the request as before
             retired_skips += 1                                               # Jim retired this pursuit: an old request never brings back an Active page (Walmart, Oct 24)
             continue
         if not key:
