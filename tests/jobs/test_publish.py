@@ -412,8 +412,7 @@ class PublicationOrderTests(unittest.TestCase):
                 mock.patch.object(publish, "_now", return_value=datetime.datetime(2026, 10, 13, 9, 0)):
             counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
         self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))
-        sources = [r[0] for r in self.db.raw.execute("SELECT source FROM v7_jobs").fetchall()]
-        self.assertEqual(counts["picked_not_board"], sum(1 for x in sources if not str(x or "").startswith("web:")))     # D248 read-back, counts only
+        self.assertEqual(counts["picked_not_board"], 2)                                         # D248 read-back, counts only: both picked jobs came from mail
         self.assertEqual(created, ["k2", "k1"])                                               # strongest first: the admitted 91, then the admitted 70
         status = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
         self.assertEqual(status, {1: "PUBLISHED", 2: "PUBLISHED", 3: "READY"})                # the Review job (80) waits behind both admitted jobs
