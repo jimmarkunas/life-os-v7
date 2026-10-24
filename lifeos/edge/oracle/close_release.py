@@ -1,7 +1,7 @@
 """LIFE-47 S2 (Edge), stdlib only, used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main; exactly the Edge files plus the
 CLOSURE the Career entry point declares (ast, never executed); regular blobs whose git hashes match the commit tree; imports and builds the GET client with
 nothing outside DEST; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST, no extra file or symlink. `serve-state`: unknown unless
-the status is well-formed. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
+the status is well-formed. `latest`: main's head once main's own hourly run tested it. `same A B`: two trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
 import ast
 import hashlib
 import json
@@ -74,7 +74,11 @@ def stage(commit, dest, fetch=get, importer=None):
 def imports(dest):
     code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.close_app; "
             "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
-    if subprocess.run([sys.executable, "-I", "-B", "-c", code], capture_output=True, timeout=30).returncode != 0:
+    probe = [sys.executable, "-I", "-B", "-c", code]
+    if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):     # on the Edge (root, systemd) a commit's code never runs as root: a throwaway, read-only, offline user imports it
+        probe = ["systemd-run", "--quiet", "--pipe", "--wait", "--collect", "-p", "DynamicUser=yes", "-p", "ProtectSystem=strict", "-p", "ProtectHome=yes",
+                 "-p", "PrivateNetwork=yes", "-p", "PrivateTmp=yes", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=", "-p", "RuntimeMaxSec=30"] + probe
+    if subprocess.run(probe, capture_output=True, timeout=45).returncode != 0:
         raise Refused("CLOSURE_INCOMPLETE")
 
 
@@ -92,6 +96,40 @@ def check(dest):
                 seen[rel] = blob(open(os.path.join(root, n), "rb").read())
     if seen != want:
         raise Refused("TREE_DIFFERS")
+
+
+def head(fetch=get):
+    """main's head commit, green or not (what Jim's own install holds auto-release off)."""
+    commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
+    if not SHA.match(commit):
+        raise Refused("NOT_A_COMMIT")
+    return commit
+
+
+def latest(fetch=get):
+    """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own hourly run tested that exact commit and its `Unit tests` step passed.
+    Runs are read from the Actions runs of hourly.yml on main (never a check run, which any branch's workflow could post); the newest run whose
+    `Unit tests` step finished decides, and one still queued or running decides nothing yet."""
+    commit = head(fetch)
+    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
+    mine = sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == ".github/workflows/hourly.yml"),
+                  key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0), reverse=True)
+    for run in mine:
+        if run.get("status") != "completed":
+            raise Refused("NOT_GREEN")                                  # a newer run still going may yet fail
+        jobs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/runs/{run.get('id')}/jobs?per_page=100")).get("jobs") or []
+        step = next((s for j in jobs if j.get("name") == "prep" for s in j.get("steps") or [] if s.get("name") == "Unit tests"), {})
+        if step.get("conclusion") == "success":
+            return commit
+        if step.get("conclusion") == "failure":
+            raise Refused("NOT_GREEN")
+    raise Refused("NOT_GREEN")                                          # no run of main tested this commit yet (a skipped tick tests nothing)
+
+
+def same(a, b):
+    """True when two staged trees carry the same files (the commit line aside): a main commit that does not touch the Close closure is not a release."""
+    body = lambda d: open(os.path.join(d, "MANIFEST")).read().splitlines()[1:]
+    return body(a) == body(b)
 
 
 def policy(status, port, login, ledger, pipeline, nodes):
@@ -135,6 +173,12 @@ if __name__ == "__main__":
             print(json.dumps(policy(json.load(sys.stdin), *sys.argv[2:6], sys.argv[6:])))
         elif sys.argv[1:2] == ["check"] and len(sys.argv) == 3:
             check(sys.argv[2])
+        elif sys.argv[1:2] == ["latest"]:
+            print(latest())
+        elif sys.argv[1:2] == ["head"]:
+            print(head())
+        elif sys.argv[1:2] == ["same"] and len(sys.argv) == 4:
+            sys.exit(0 if same(sys.argv[2], sys.argv[3]) else 1)
         else:
             sys.exit("usage: close_release.py stage COMMIT DEST | check DEST | serve-state")
     except (Refused, OSError, ValueError, KeyError) as e:
