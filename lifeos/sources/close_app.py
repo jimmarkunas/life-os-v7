@@ -136,8 +136,8 @@ def _post(req, who, secrets):
         return _stop(500, "Unavailable", "Could not verify closure", "Do not assume the opportunity was closed or left unchanged.", f"Status: DEGRADED · {code}", "danger")
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
         return _stop(500, "Unavailable", "Could not verify closure", "Do not assume the opportunity was closed or left unchanged.", "Status: DEGRADED · not verified", "danger")
-    again = " (already recorded)" if done["status"] == "already_recorded" else ""
-    return _stop(200, "Closed", "Opportunity closed", "The canonical record was updated and read back successfully.", f"{opp['company']} — {opp['role']} · Closed — {outcome}{again}.", "ok")
+    secrets.get("after", []).append("hiring")                          # Jim, Oct 24: the gate asks for the Hiring Pipeline region to be redrawn now (close_gate.REFRESH)
+    return _stop(200, "Closed", "Opportunity closed", "The canonical record was updated and read back successfully.", f"{opp['company']} — {opp['role']} · Closed — {outcome}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
 # ---------- E05 Mark Complete (Jim, Oct 24): one opportunity page's one primary action, recorded in that page's own fold after two steps, read back ----------
