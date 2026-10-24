@@ -773,9 +773,10 @@ class Pursuits(unittest.TestCase):
         keyed = {"p1": ("recruiter-exampleco-777777", URL)}
         rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
         counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 999999.")])()
-        self.assertEqual((got["evidence"], counts["why"].get("requisition_conflict"), counts["where"]), ([], 1, {"pursuit_requisition": 1}))
+        self.assertEqual(([e for e in got["evidence"] if not e[1].refresh_only], counts["why"].get("requisition_conflict"), counts["where"]), ([], 1, {"pursuit_requisition": 1}))
+        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [True])          # E05: the lead's page is still brought up to date, never given a round
         counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 777777.")])()
-        self.assertEqual(len(got["evidence"]), 1)                                   # the same requisition: Interview 1
+        self.assertEqual([e[1].refresh_only for e in got["evidence"]], [False])        # the same requisition: Interview 1, and no second item for the page
 
     def test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing(self):
         same = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": ("exampleco-r-1", "https://example.test/thread/9")}, kids={"p1": (child(),)}, roster=[], records=[mail()])

@@ -77,8 +77,11 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         deferred = set()
         for index, (parent_query, round_query) in enumerate(evidence):
             if index >= max(0, limit):
-                counts["blocked"] += 1
-                reason("pipeline_incomplete")
+                if any(not q.refresh_only for _, q in evidence[index:]):
+                    counts["blocked"] += 1
+                    reason("pipeline_incomplete")
+                else:                                                   # E05: refresh-only items come last; the ones past the limit are counted, not an alarm
+                    counts["why"]["refresh_deferred"] = len(evidence) - index
                 break
             if _probe:
                 break
@@ -97,7 +100,8 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             elif result["code"] not in ("parent_created", "round_created", "parent_exists", "parent_adopted", "adopt_allowed", "parent_upgraded",
                                            "upgrade_allowed", "parent_refreshed", "refresh_allowed", "transcript_linked", "transcript_link_allowed",
                                            "round_confirmed", "confirm_allowed", "round_rescheduled", "reschedule_allowed",
-                                           "round_cancelled", "cancel_allowed", "round_details", "details_allowed", "round_unchanged"):
+                                           "round_cancelled", "cancel_allowed", "round_details", "details_allowed", "round_unchanged",
+                                           "refresh_not_machine", "refresh_has_rounds"):
                 counts["blocked"] += 1
             if result["readback_failed"] or result["code"] == "write_failed":
                 break

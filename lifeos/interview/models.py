@@ -38,6 +38,7 @@ class RoundQuery:
     meeting: tuple | None = None               # E10: (join link, location) from that accepted invite, either may be None; private page content only
     recruiters: tuple = ()                     # LIFE-78 E10: Recruiters rows whose Source URL is exactly `source`, as (person, company, thread url); private page content only
     recruiters_state: str | None = None        # None = the Recruiters source is not connected to this run; "linked" | "none" | "unreadable"
+    refresh_only: bool = False                 # E05: bring an existing machine page with no rounds (a recruiter lead) up to date; never creates a page or a round
 
 
 @dataclass(frozen=True)
