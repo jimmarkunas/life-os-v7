@@ -85,6 +85,18 @@ def role_in(message, role):
     return bool(words) and words <= set(_tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}"))
 
 
+MODIFIERS = {"senior", "sr", "junior", "jr", "lead", "principal", "staff", "associate", "head", "chief", "group", "director", "vp", "assistant", "deputy", "executive", "global", "regional", "i", "ii", "iii", "iv", "1", "2", "3"}
+
+
+def exact_role(message, role):
+    """Auto-close (Jim, Oct 24): the role's own words appear together, in order, with no seniority word or level number touching them: "Program Manager" in
+    "your application for Program Manager" is exact, in "Senior Program Manager" or "Program Manager II" it is another role."""
+    want, text = _tokens(role), _tokens(f"{message.get('subject', '')} {(message.get('body') or '')[:BODY_CHARS]}")
+    n = len(want)
+    return n > 0 and any(text[i:i + n] == want and (i == 0 or text[i - 1] not in MODIFIERS) and (i + n == len(text) or text[i + n] not in MODIFIERS)
+                         for i in range(len(text) - n + 1))
+
+
 def _since(row):
     """The moment the pipeline last had evidence for this row: its latest event, else its Applied date (start of that day, Central), else None."""
     value = row.get("event_start") or row.get("applied_on")
@@ -100,7 +112,7 @@ def _received(message):
 
 
 def find(messages, roster):
-    """-> ({row key: {"kind", "received", "match"}}, {"ambiguous": n, "outcome_messages": n, "unmatched": n}). Pure.
+    """-> ({row key: {"kind", "received", "match", "exact"}}, {"ambiguous": n, "outcome_messages": n, "unmatched": n}). Pure.
     roster: [{"key", "company", "role", "event_start", "applied_on"}]. One outcome per row: the newest qualifying message."""
     found, stats = {}, {"ambiguous": 0, "outcome_messages": 0, "unmatched": 0}
     for message in sorted(messages, key=_received):
@@ -113,7 +125,7 @@ def find(messages, roster):
         if row is None:
             stats[why] += 1
             continue
-        found[row["key"]] = {"kind": kind, "received": at.astimezone(timezone.utc).isoformat(), "match": why}
+        found[row["key"]] = {"kind": kind, "received": at.astimezone(timezone.utc).isoformat(), "match": why, "exact": why == "role" and exact_role(message, row["role"])}
     return found, stats
 
 

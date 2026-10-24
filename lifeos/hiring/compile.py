@@ -165,7 +165,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
         if hit and row["stage"] is not None:                      # D190: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
             last = row["event_start"] or row["applied_on"]
             if last is None or datetime.fromisoformat(hit["received"]) > _moment(last):
-                row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company")}
+                row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company"), "exact": hit.get("exact") is True}
         if (contacts or {}).get(key):                             # LIFE-26: the last direct, non-automated message for this row resets its Stale clock
             row["contact"] = contacts[key]
         if row["stage"] is None:                                  # a notes page with no round and no event: nothing supports a stage, so nothing is claimed

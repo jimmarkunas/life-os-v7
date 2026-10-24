@@ -989,6 +989,76 @@ class OutcomeConsumerTests(unittest.TestCase):
         self.assertEqual(counts["status"], "fresh")
 
 
+class AutoCloseTests(unittest.TestCase):
+    """Jim, Oct 24: a known rejection (the email names the role) closes itself through the Close screen's own checked write, behind his HIRING_AUTO_CLOSE switch, and shows as closed for 24 hours."""
+    FOUND = {OutcomeConsumerTests.KEY: {**OutcomeConsumerTests.FOUND[OutcomeConsumerTests.KEY], "exact": True}}
+    TARGET = "aaaa1111-0000-4000-8000-0000000000ff"
+
+    def go(self, found=None, switch="on", live=True, store=None, now=NOW, write=None, rows=(("Acme", "Senior Program Manager", "2026-10-02"),), calendar_broken=False):
+        t, store = page(extra_rows=0), store or FakeStore()
+        calls = []
+        def confirm(client, request, live_, at):
+            calls.append(request)
+            return write(request) if write else {"status": "recorded", "verified": True, "entries": 1}
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND if found is None else found, (now - timedelta(hours=2)).astimezone(timezone.utc).isoformat())), \
+                mock.patch.dict(RUN_ENV, {"HIRING_AUTO_CLOSE": switch}), mock.patch.object(stage.auto_close.decision, "route", lambda a, p, w: ("ledger", {"id": self.TARGET})), \
+                mock.patch.object(stage.auto_close.decision, "confirm_rejected", confirm):
+            counts = run(t, store, live=live, now=now, rows=rows, calendar_broken=calendar_broken)
+        return t, store, counts, calls
+
+    def test_a_role_matched_rejection_closes_once_on_the_ledger_and_shows_as_closed(self):
+        t, store, counts, calls = self.go()
+        self.assertEqual(counts["auto_close"], {"due": 1, "closed": 1, "refused": {}, "switch": True, "shown": 1})
+        (req,) = calls
+        self.assertEqual((req["action"], req["confirmed"], req["outcome"], req["id"]), ("CONFIRM_REJECTED", True, "Rejected", "aaaa11110000400080000000000000ff"))
+        self.assertTrue(req["op"].startswith("auto-") and req["reason"] == "Auto-closed: rejection email received Oct 5 (Jim's standing rule, Oct 24)")
+        (row,) = table_state(t)
+        self.assertEqual((row[1][0], row[2][0]), ("Closed", "Closed — rejection email received Oct 5 · auto-closed Oct 6"))
+        self.assertEqual([e["key"] for e in store.row["auto_closed"]], [OutcomeConsumerTests.KEY])
+        _, _, again, calls2 = self.go(store=store)                                       # the next run sends the same operation: the decision module makes it a no-op
+        self.assertEqual(calls2[0]["op"], req["op"])
+
+    def test_the_closed_row_drops_off_after_24_hours(self):
+        t, store, _, _ = self.go()
+        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=23), rows=())            # the Ledger now carries the decision: the row has left the live table
+        self.assertEqual((counts["auto_close"]["shown"], table_state(t)[-1][1][0]), (1, "Closed"))
+        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=25), rows=())
+        self.assertEqual(counts["auto_close"]["shown"], 0)
+        self.assertNotIn("Closed", [r[1][0] for r in table_state(t)])
+
+    def test_switch_off_dry_run_company_only_or_an_offer_never_writes(self):
+        key = OutcomeConsumerTests.KEY
+        for label, kw in (("switch off", {"switch": ""}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
+                          ("offer", {"found": {key: {**self.FOUND[key], "kind": "OFFER"}}}), ("words only, not the exact role", {"found": {key: {**self.FOUND[key], "exact": False}}}),
+                          ("scan saved before exact existed", {"found": {key: {k: v for k, v in self.FOUND[key].items() if k != "exact"}}}),
+                          ("calendar unreadable", {"calendar_broken": True}),
+                          ("another role there contains these words", {"rows": (("Acme", "Senior Program Manager", "2026-10-02"), ("Acme", "Senior Program Manager, Ads", "2026-09-01"))})):
+            with self.subTest(label):
+                t, _, counts, calls = self.go(**kw)
+                self.assertEqual((calls, counts["auto_close"]["closed"]), ([], 0))
+                if kw.get("live", True):                                                 # a dry run writes no table at all
+                    self.assertNotEqual(table_state(t)[0][1][0], "Closed")
+
+    def test_a_reopened_row_is_never_shown_twice(self):
+        _, store, _, _ = self.go()
+        t, _, counts, _ = self.go(found={}, store=store, now=NOW + timedelta(hours=2))      # Reopen: the Ledger row is open again, so the row is live
+        self.assertEqual((counts["auto_close"]["shown"], [r[1][0] for r in table_state(t)]), (0, ["Submitted"]))
+
+    def test_exact_role_needs_the_whole_title_with_no_seniority_or_level_touching_it(self):
+        from lifeos.hiring import outcomes as O
+        for text, want in (("Your application for Program Manager at Acme", True), ("Update on the Program Manager role", True), ("Senior Program Manager", False),
+                           ("Program Manager II opening", False), ("Program and Product Manager", False), ("Lead Program Manager", False)):
+            self.assertEqual(O.exact_role({"subject": text, "body": ""}, "Program Manager"), want, text)
+
+    def test_a_refused_or_unverified_close_leaves_the_row_to_confirm(self):
+        def refuse(request):
+            raise stage.decision.fail("CONFLICT")
+        for write, code in ((refuse, "DECISION_CONFLICT"), (lambda r: {"status": "recorded", "verified": False}, "DECISION_NOT_VERIFIED")):
+            t, _, counts, _ = self.go(write=write)
+            self.assertEqual((counts["auto_close"]["closed"], counts["auto_close"]["refused"]), (0, {code: 1}))
+            self.assertEqual(table_state(t)[0][2][0], "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
+
+
 class GuardrailTests(unittest.TestCase):
     SOURCES = ["lifeos/hiring/models.py", "lifeos/hiring/compile.py", "lifeos/hiring/render.py", "lifeos/hiring/snapshot.py", "lifeos/hiring/card.py", "lifeos/sources/hiring.py"]
 

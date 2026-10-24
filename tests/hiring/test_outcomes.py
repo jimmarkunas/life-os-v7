@@ -319,7 +319,7 @@ class EntryPointTests(unittest.TestCase):
         code, counts, err, _, tables, conn = self.go(self.REC)
         self.assertEqual((code, err, counts["status"], counts["saved"], counts["rejected"]), (0, "", "fresh", 1, 1))
         stored = json.loads(tables.rows[("v7_hiring_outcomes", 1)])
-        self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["kind", "match", "received"])            # bounded evidence only: no company, sender, subject or text
+        self.assertEqual(sorted(next(iter(stored["outcomes"].values()))), ["exact", "kind", "match", "received"])   # bounded evidence only (exact is a bool): no company, sender, subject or text
         code, counts, err, fake, tables, _ = self.go(self.REC, tables=tables)
         self.assertEqual((code, counts["status"], counts["saved"], fake.queries), (0, "not_due", 0, []))
 
