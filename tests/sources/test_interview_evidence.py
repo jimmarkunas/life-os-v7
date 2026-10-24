@@ -301,6 +301,12 @@ class SchedulingRequests(unittest.TestCase):
         counts, got = self.run_with(mail(body="Select a time. Requisition 99999."))
         self.assertEqual((got["evidence"], counts["why"], counts["failed"]), ([], {"requisition_conflict": 1}, 1))
 
+    def test_a_request_for_a_pursuit_jim_retired_never_brings_back_an_active_page(self):
+        counts, got = Run(parents=(), retired=["ExampleCo — Program Manager"], kids={}, roster=[APPLIED], records=[mail()])()     # Walmart, Oct 24: retired Oct 14, recreated from a September request
+        self.assertEqual((got["evidence"], counts["failed"], counts["retired_skipped"]), ([], 0, 1))
+        counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()])()                                             # the same request with no retired page still makes Interview 1
+        self.assertEqual((len(got["evidence"]), counts["retired_skipped"]), (1, 0))
+
     def test_a_ledger_row_without_a_stable_job_key_is_not_guessed(self):
         counts, got = Run(parents=(), kids={}, roster=[APPLIED], records=[mail()], ledger=Ledger(key=""))()
         self.assertEqual((got["evidence"], counts["why"]), ([], {"job_key_missing": 1}))

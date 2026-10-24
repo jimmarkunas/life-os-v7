@@ -63,6 +63,23 @@ class Pipeline(unittest.TestCase):
         tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)], "o1": [page("r1", "Interview 1")]}
         self.assertFalse(hp.read(Fake(tree), "root")[0].lead)                          # a page with a round is never a lead
 
+    def test_a_lead_is_replied_only_by_a_done_line_for_its_own_reply_action(self):
+        def para(i, line):
+            return {"id": i, "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": line}]}}
+        render, act = "v7-render:1;job=recruiter-acme-program-manager;source=0123456789abcdef;page=pending", "v7-action:1;key=d68334d240ba7eda;text=Reply to the recruiter's message, or close this lead."
+        for done, want in (("v7-done:1;key=d68334d240ba7eda;on=2026-10-24", "2026-10-24"), ("v7-done:1;key=0000000000000000;on=2026-10-24", ""), (None, "")):
+            lines = [para("l1", render), para("l2", act)] + ([para("l3", done)] if done else [])
+            tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)],
+                    "o1": [{"id": "t", "type": "toggle", "toggle": {"rich_text": [{"plain_text": "LIFE OS"}]}, "has_children": True}], "t": lines}
+            (found,) = hp.read(Fake(tree), "root")
+            self.assertEqual((found.lead, found.replied), (True, want), done)
+
+    def test_the_lead_line_formats_are_the_writer_and_close_service_formats(self):
+        from lifeos.interview import template
+        from lifeos.sources import close_app
+        self.assertEqual(hp.DONE_LINE.pattern, template.DONE_LINE.pattern)
+        self.assertTrue(hp.LEAD_ACTION.fullmatch(template.action_line(close_app.LEAD_ACTION + ".", "ctx")))
+
     def test_an_unreadable_fold_is_simply_not_a_lead(self):
         tree = {"root": [page("act", "Active Opportunities", True)], "act": [page("o1", "Acme — Program Manager", True)],
                 "o1": [{"id": "t", "type": "toggle", "toggle": {"rich_text": []}, "has_children": True}]}

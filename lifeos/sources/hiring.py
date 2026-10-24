@@ -91,7 +91,7 @@ def read_parents(client, root_id):
     found, status = hiring_pipeline.snapshot(client, root_id)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
-    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead} for o in found]
+    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied} for o in found]
 
 
 def _with_deleted(calendar, time_min, time_max):
