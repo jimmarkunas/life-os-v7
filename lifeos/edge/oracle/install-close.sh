@@ -10,6 +10,7 @@ LOCAL=47344; TAILNET=47443; REL="$(cd "$(dirname "$0")" && pwd)/close_release.py
 say() { printf '%s\n' "$*"; }
 code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }                 # a tree's files, whatever commit carried them
 seen() { [ -s "$ETC/auto.seen" ] && grep -qx "$(code "$1")" "$ETC/auto.seen"; }
+end_retries() { local t _; read -r t _ 2>/dev/null < "$ETC/auto.attempts" && [ -n "$t" ] && echo "$t 3" > "$ETC/auto.attempts" || true; }   # Jim stepped in: no retry overrides him
 remember() { install -d -m 755 "$ETC"; seen "$1" || code "$1" >> "$ETC/auto.seen"; }   # every code that has ever been live: auto-release never brings one back
 [ "$(id -u)" = 0 ] || { say "run as root via opc"; exit 2; }
 
@@ -88,7 +89,7 @@ case "${1:-}" in
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
-    [ "${LIFEOS_CLOSE_AUTO:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; }   # auto already holds it
+    [ "${LIFEOS_CLOSE_AUTO:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; end_retries; }   # auto already holds it; Jim's own install ends auto's retries
     for f in "$ETC/policy.json" "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link"; do [ -s "$f" ] || { say "STOP: missing $f"; exit 1; }; done
     st="$(serve_state)"; case "$st" in free|ours) ;; *) say "STOP: tailnet port $TAILNET is $st (not verified free or ours)"; exit 1;; esac
     [ "${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ] || { say "STOP: auto-release never re-adds Serve"; exit 1; }
@@ -127,6 +128,7 @@ case "${1:-}" in
       if [ "$cur" = "$p_cur" ] && [ "$prev" != "${p_prev:-}" ]; then relink previous "${p_prev:-}"; fi      # cut off between the two links: the live tree's own previous is put back
       if [ "$cur" = "$OPT/${p_commit:0:12}" ] && "$0" verify; then [ "$prev" = "$p_cur" ] || relink previous "$p_cur"; remember "$cur"; fi
       if [ "$cur" = "$OPT/${p_commit:0:12}" ] && ! "$0" verify; then
+        remember "$cur"                                                                     # it was live: never auto-released again
         if [ -n "${p_cur:-}" ] && [ -d "$p_cur" ]; then
           ln -sfn "$p_cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
           if [ -n "${p_prev:-}" ] && [ -d "$p_prev" ]; then ln -sfn "$p_prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
@@ -157,6 +159,7 @@ case "${1:-}" in
       rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
     else
       if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                  # verify failed after the switch: back to exactly the live tree, and its own previous tree
+        remember "$(readlink "$OPT/current")"                                               # it was live: never auto-released again
         ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
         if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
         if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
@@ -193,6 +196,7 @@ EOF
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     [ -d "$OPT/current" ] && remember "$OPT/current"                                       # the code rolled back was live: auto-release never brings it back
+    end_retries
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)

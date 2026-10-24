@@ -204,6 +204,15 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual(self.run_("auto", HEAD=D, BODY="w lifeos/a.py")[0], 0)
         self.assertEqual(self.at("current"), A[:12])
 
+    def test_a_release_that_went_live_and_failed_never_overrides_jim(self):
+        for jim in (("rollback",), ("install", P)):
+            self.setUp()
+            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py", CHECK_FAIL=B[:12])[0], 1)   # live, failed verify, restored
+            rc, out = self.run_(*jim, BODY="x lifeos/a.py")                                              # Jim reacts by hand
+            chosen = self.at("current")
+            self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)                      # B would now verify, but it was live once
+            self.assertEqual(self.at("current"), chosen, jim)
+
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
