@@ -284,7 +284,7 @@ class Post(unittest.TestCase):
         _, _, a = h.review(TD.TARGET, "Rejected")
         _, _, b = h.review(TD.TARGET, "Hired")
         seen = []
-        with mock.patch.object(close_app.D, "confirm_rejected", lambda client, req, live, now: seen.append(req) or {"status": "recorded", "verified": False}):
+        with mock.patch.object(close_app.D, "confirm_rejected", lambda client, req, live, now, *rest: seen.append(req) or {"status": "recorded", "verified": False}):
             status, body, _ = h.call("POST", form={**a, "step": "confirm"})
             self.assertEqual((status, "Opportunity closed" in body), (500, False))
             h.call("POST", form={**a, "step": "confirm"})
@@ -301,7 +301,7 @@ class Post(unittest.TestCase):
         h = Harness()
         pid = h.world.ws.target.replace("-", "")
         rows, parents = close_app._state(Both(h.world), h.cfg["pipeline"])
-        with mock.patch.object(close_app, "_state", lambda client, root: (rows, parents + [dict(p) for p in parents if p["id"].replace("-", "") == pid])):
+        with mock.patch.object(close_app, "_state", lambda client, root, *rest: (rows, parents + [dict(p) for p in parents if p["id"].replace("-", "") == pid])):
             with self.assertRaises(D.DecisionError) as error:
                 close_app.resolve(Both(h.world), h.cfg, pid)
         self.assertEqual(str(error.exception), "DECISION_AMBIGUOUS")
@@ -411,6 +411,28 @@ class Contract(unittest.TestCase):
     def test_the_budget_and_the_files(self):
         lines = sum(1 for p in ("lifeos/sources/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
         self.assertLessEqual(lines, 330)                               # E05 Mark Complete lives here too (Jim, Oct 23: the 300-line cap is suspended for the Jobs/Interview OS delivery)
+
+
+class Speed(unittest.TestCase):
+    """Jim, Oct 24: "the confirm closure button takes a bit too long". A Ledger confirm reads the Applied rows once and never walks the Notes pages; a Notes confirm still does both."""
+
+    def confirm_reads(self, pid_of, rows):
+        h = Harness(rows)
+        pid = pid_of(h)
+        _, _, f = h.review(pid, "Rejected")
+        src, ws = len(h.world.source.log), len(h.world.ws.log)
+        status, body, _ = h.call("POST", form={**f, "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        return [e for e in h.world.source.log[src:] if e[0] == "QUERY"], [e for e in h.world.ws.log[ws:] if e[:2] == ("GET", "children")]
+
+    def test_a_ledger_confirm_scans_the_ledger_once_and_never_walks_the_notes_pages(self):
+        queries, walked = self.confirm_reads(lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")])
+        self.assertEqual((len(queries), walked), (1, []))
+
+    def test_a_notes_confirm_still_reads_the_notes_pages(self):
+        queries, walked = self.confirm_reads(lambda h: h.world.ws.target.replace("-", ""), [])
+        self.assertTrue(walked)
+        self.assertGreaterEqual(len(queries), 1)
 
 
 if __name__ == "__main__":

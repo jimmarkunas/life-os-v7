@@ -35,20 +35,25 @@ def _stop(status, eyebrow, title, text, detail, css="alert"):
     return status, HTML, S.result(eyebrow, title, text, detail, css), ()
 
 
-def _state(client, root):
-    """-> (Applied Ledger rows, Notes pages) in the shapes decision.route reads; anything short of a complete read raises."""
+def _state(client, root, pid=None, pages=None):
+    """-> (Applied Ledger rows, Notes pages) in the shapes decision.route reads; anything short of a complete read raises. When `pid` is one of the Applied rows the Notes pages are
+    not walked: decision.route closes the one Ledger application without reading them (#497), so the walk would only cost paced calls (Jim, Oct 24: confirm too slow)."""
     rows = [{"company": D._text(p["properties"].get("Company"), "rich_text"), "role": D._text(p["properties"].get("Job"), "title"), "id": p.get("id"),
-             "decision": ((p["properties"].get(D.DECISION) or {}).get("select") or {}).get("name")} for p in D.applied_pages(client)]
+             "decision": ((p["properties"].get(D.DECISION) or {}).get("select") or {}).get("name")} for p in (D.applied_pages(client) if pages is None else pages)]
+    rows = [r for r in rows if r["company"] and r["role"]]
+    if pid and any(D._page_id(r["id"]) == pid for r in rows):
+        return rows, []
     found, status = hiring_pipeline.snapshot(client, root, rounds=False)            # decision.route never reads interview counts: skip one paced call per opportunity
     if status != "ok":
         raise D.fail("PAGES_UNREADABLE")
-    return [r for r in rows if r["company"] and r["role"]], [{"id": o.page_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
+    return rows, [{"id": o.page_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
 
 
 def resolve(client, config, pid):
     """The ONE canonical record with this exact page id, routed by decision.route to that same record, or a fixed refusal: absent, duplicated, ambiguous, or closing on another record (a Notes page whose pursuit
     has a Ledger application). -> {kind, id, company, role, closed, st}; `st` fingerprints what the screen was shown."""
-    rows, parents = _state(client, config["pipeline"])
+    pages = D.applied_pages(client)                                     # read once: the confirm's write selects its row from this same fresh read
+    rows, parents = _state(client, config["pipeline"], pid, pages)
     mine = [("ledger", r) for r in rows if D._page_id(r["id"]) == pid] + [("notes", p) for p in parents if D._page_id(p["id"]) == pid]
     if len(mine) != 1:
         raise D.fail("NOT_FOUND" if not mine else "AMBIGUOUS")
@@ -60,7 +65,7 @@ def resolve(client, config, pid):
     closed = bool(target.get("decision")) if kind == "ledger" else bool(target["retired"])
     if kind == "notes" and not closed and D.unapplied_matches(client, want):
         raise D.fail("LEDGER_UNAPPLIED")                                 # a Ledger row for this role that is not marked Applied may be this application: resolve it first
-    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed)}
+    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed), "pages": pages}
 
 
 def _fingerprint(kind, pid, company, role, closed):
@@ -122,7 +127,7 @@ def _post(req, who, secrets):
     request = {"action": D.ACTION, "confirmed": True, "id": pid, "company": opp["company"], "role": opp["role"], "reason": notes or outcome, "outcome": outcome,
                "op": _mac(secret, "op", pid, st, exp, outcome, notes)[:32]}
     try:
-        done = (D.confirm_rejected(client, request, True, _now()) if opp["kind"] == "ledger"
+        done = (D.confirm_rejected(client, request, True, _now(), opp["pages"]) if opp["kind"] == "ledger"
                 else D.move_page(client, config["pipeline"], request, True, _now(), lambda: _state(client, config["pipeline"])[1]))
     except NotionError as error:
         code = str(error)[:60]
