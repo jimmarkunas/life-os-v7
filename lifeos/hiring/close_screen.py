@@ -65,9 +65,10 @@ fieldset{border:0;margin:0;padding:0}.inl{display:inline}.btn{text-decoration:no
 .btn:not(:disabled):active{transform:translateY(1px)}.busy .btn{pointer-events:none}.busy .btn:not(.spin){opacity:.43}.btn.spin{pointer-events:none}
 .btn.spin::before{content:"";width:12px;height:12px;flex:none;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.btn.spin::before{animation-duration:2.4s}}
 """
-JS = """"use strict";document.addEventListener("submit",function(ev){var f=ev.target;if(f.classList.contains("busy")){ev.preventDefault();return}f.classList.add("busy");if(ev.submitter)ev.submitter.classList.add("spin")});
-document.addEventListener("click",function(ev){var a=ev.target.closest&&ev.target.closest("a.btn");if(a&&!ev.metaKey&&!ev.ctrlKey&&!ev.shiftKey){a.classList.add("spin");document.body.classList.add("busy")}});
-window.addEventListener("pageshow",function(){document.querySelectorAll(".busy,.spin").forEach(function(n){n.classList.remove("busy","spin")})});
+JS = """"use strict";function idle(){document.querySelectorAll(".busy,.spin").forEach(function(n){n.classList.remove("busy","spin")})}function busy(n,b){n.classList.add("busy");if(b)b.classList.add("spin");setTimeout(idle,15000)}
+document.addEventListener("submit",function(ev){var f=ev.target;if(f.classList.contains("busy")){ev.preventDefault();return}busy(f,ev.submitter)});
+document.addEventListener("click",function(ev){var a=ev.target.closest&&ev.target.closest("a.btn");if(!a||a.target||a.hasAttribute("download")||ev.defaultPrevented||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;busy(document.body,a)});
+window.addEventListener("pageshow",idle);
 """
 NONE = "Not recorded"
 

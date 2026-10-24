@@ -138,10 +138,11 @@ class Get(unittest.TestCase):
         status, js, ctype = h.call("GET", "/close.js")
         self.assertEqual((status, ctype), (200, "text/javascript; charset=utf-8"))
         self.assertTrue("busy" in js and "spin" in js and not re.search(r"fetch|XMLHttpRequest|innerHTML|eval|cookie|localStorage|http", js))   # only toggles classes
+        self.assertTrue("a.target" in js and '"download"' in js and "setTimeout(idle,15000)" in js)   # a new-tab link never sticks busy; a stopped load clears itself
         pages = [h.open(TD.TARGET)[1], h.review(TD.TARGET, "Hired")[1], h.close(TD.TARGET, "Hired")[1]]
         for body in pages:
             self.assertEqual(re.findall(r"<script[^>]*>", body.lower()), ['<script src="/close.js" defer>'])   # the one same-origin script, never inline
-            self.assertTrue('href="/close.css"' in body and "</script><" in body and "<style" not in body.lower() and "<style" not in body.lower() and not re.search(r"\sstyle=|\son\w+=|javascript:", body.lower()))
+            self.assertTrue('href="/close.css"' in body and "</script><" in body and "<style" not in body.lower() and not re.search(r"\sstyle=|\son\w+=|javascript:", body.lower()))
 
     def test_only_get_post_and_the_known_paths_are_answered(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
