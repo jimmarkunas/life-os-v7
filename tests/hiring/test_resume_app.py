@@ -351,6 +351,55 @@ class Applied(unittest.TestCase):
             self.assertEqual(status, 500, setup)
             self.assertIn("not read back", body)
 
+    def test_a_drive_or_notion_failure_while_recording_is_a_fixed_code_and_says_retry_is_safe(self):
+        r = self.built()
+        _, forms = self.offer(r)
+
+        def broken(*a):
+            raise gdrive.DriveError("GDRIVE_HTTP_503")
+        r.drive.lock = broken
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 500)
+        self.assertIn("DEGRADED · GDRIVE_HTTP_503", body)
+        self.assertIn("trying again is safe", body)
+        self.assertEqual(r.page.writes, [])
+        r = self.built()
+        _, forms = self.offer(r)
+        once = r.page.call_once
+
+        def notion_down(method, path, body=None):
+            if resume_app.SUBMITTED_COLUMN in ((body or {}).get("properties") or {}):
+                raise NotionError("NOTION_HTTP_502")
+            return once(method, path, body)
+        r.page.call_once = notion_down
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 500)
+        self.assertIn("NOTION_HTTP_502", body)
+        self.assertEqual(len(r.drive.locks), 1)                                                    # locked, not recorded: the page says so and a retry is safe
+
+    def test_a_trashed_renamed_or_unlinked_build_records_nothing(self):
+        for change in ("trashed", "renamed", "unlinked"):
+            r = self.built()
+            _, forms = self.offer(r)
+            stored = r.drive.files["file-1-0123456789"]
+            if change == "trashed":
+                r.drive.lose = True
+            elif change == "renamed":
+                stored["name"] = "Other.docx"
+            else:
+                r.page.appended.clear()
+            status, _ = r.call("POST", form={**forms[0], "step": "record"})
+            self.assertEqual(status, 409, change)
+            self.assertEqual((r.page.writes, r.drive.locks), ([], []), change)
+
+    def test_an_unreadable_page_still_shows_build(self):
+        r = self.built()
+        with mock.patch.object(resume_app, "recorded", side_effect=NotionError("NOTION_HTTP_500")):
+            status, body = r.call("GET", query={"j": PID})
+        self.assertEqual(status, 200)
+        self.assertIn("Build resume", body)
+        self.assertIn("Submitted résumé: unavailable this time", body)
+
     def test_cancel_records_nothing(self):
         r = self.built()
         _, forms = self.offer(r)

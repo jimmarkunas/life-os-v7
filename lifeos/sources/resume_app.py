@@ -161,7 +161,10 @@ def _submit_forms(secret, login, j, st, exp, builds):
 
 def _applied_section(reader, secret, login, j, st, exp):
     """Jim, Oct 24: record which built résumé was actually sent. Shown under Build; read only here."""
-    done, builds = recorded(reader, j["id"]), drive_builds(reader, j["id"])
+    try:
+        done, builds = recorded(reader, j["id"]), drive_builds(reader, j["id"])
+    except NotionError:                                                    # Build still works; only this list is unavailable this time
+        return '<section class="section"><div class="notice alert">Submitted résumé: unavailable this time. Reload to try again.</div></section>'
     if done:
         return ('<section class="section"><div class="eyebrow">Submitted résumé</div>'
                 f'<div class="notice ok">Recorded: {e(", ".join(n or "" for n, _ in done))}. Change it in the job\'s Submitted Résumé field in Notion.</div></section>')
@@ -206,7 +209,8 @@ def _submit(form, who, secrets, step):
     except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only
         if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
             raise
-        return _stop(500, "Unavailable", "Could not record the submitted résumé", "Do not assume it is recorded.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+        return _stop(500, "Unavailable", "Could not record the submitted résumé", "Do not assume it is recorded. The Drive file may already be locked read-only; "
+                     "trying again is safe.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
 
 
 def gdrive_client(raw):
