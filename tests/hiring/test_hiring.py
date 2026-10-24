@@ -774,7 +774,7 @@ def gcal(event_id, title, start, **extra):
 
 
 PARENTS = [hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-000000000001", "Acme - Senior Program Manager", hiring_pipeline.ACTIVE, 0, "Acme", "Senior Program Manager")]
-RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root"}
+RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root", "HIRING_AUTO_CLOSE": "off"}   # tests choose the switch; the repo file never decides for them
 
 
 def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-10-02"),), events=(), parents=PARENTS, ledger_broken=False, calendar_broken=False, pages_ok=True, now=NOW):
