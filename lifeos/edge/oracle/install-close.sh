@@ -84,9 +84,10 @@ case "${1:-}" in
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
+    [ "${LIFEOS_CLOSE_LOCKED:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; export LIFEOS_CLOSE_LOCKED=1; }
     for f in "$ETC/policy.json" "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link"; do [ -s "$f" ] || { say "STOP: missing $f"; exit 1; }; done
     st="$(serve_state)"; case "$st" in free|ours) ;; *) say "STOP: tailnet port $TAILNET is $st (not verified free or ours)"; exit 1;; esac
-    dest="$OPT/${commit:0:12}"; stage="$OPT/.stage-$$"; install -d -m 755 "$OPT"; rm -rf "$stage"
+    dest="$OPT/${commit:0:12}"; stage="$OPT/.stage"; install -d -m 755 "$OPT"; rm -rf "$stage"      # one fixed name: a run killed mid-stage is cleaned by the next
     python3 -I "$REL" stage "$commit" "$stage" || { rm -rf "$stage"; say "STOP: release not verified; nothing changed"; exit 1; }
     chown -R root:root "$stage"; chmod -R go-w,a-w+rX "$stage"
     python3 -I "$REL" check "$stage" || { rm -rf "$stage"; say "STOP: staged tree differs; nothing changed"; exit 1; }
@@ -109,18 +110,34 @@ case "${1:-}" in
     check "Serve terminates TLS on $TAILNET with PROXY v2, no Funnel" '[ "$(serve_state)" = ours ]'
     exit $ok ;;
   auto)
+    install -d -m 755 "$OPT" "$ETC"; exec 9>"$OPT/.lock"; flock -n 9 || exit 0           # one run at a time (a manual install takes the same lock)
+    probe="$OPT/.probe"; trap 'rm -rf "$probe"' EXIT
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
-    cur="$(readlink "$OPT/current" 2>/dev/null || true)"
-    [ "$cur" = "$OPT/${commit:0:12}" ] && exit 0
-    probe="$OPT/.probe-$$"; install -d -m 755 "$OPT"; rm -rf "$probe"
-    python3 -I "$REL" stage "$commit" "$probe" || { rm -rf "$probe"; say "auto: ${commit:0:12} refused; nothing changed"; exit 1; }
-    if [ -n "$cur" ] && python3 -I "$REL" same "$probe" "$cur"; then rm -rf "$probe"; exit 0; fi   # the commit does not touch the Close closure
-    rm -rf "$probe"
-    if "$0" install "$commit"; then say "auto: released ${commit:0:12}"; exit 0; fi
-    if [ -n "$cur" ] && [ "$(readlink "$OPT/current")" != "$cur" ]; then         # verify failed after the switch: back to exactly the tree that was live
-      ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify && say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"
+    [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
+    [ "$(cat "$ETC/auto.failed" 2>/dev/null)" = "$commit" ] && exit 0                     # failed verify once: never retried; the next green commit is
+    cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
+    if [ "$cur" != "$OPT/${commit:0:12}" ]; then
+      rm -rf "$probe"
+      python3 -I "$REL" stage "$commit" "$probe" || { say "auto: ${commit:0:12} refused; nothing changed"; exit 1; }
+      if [ -z "$cur" ] || ! python3 -I "$REL" same "$probe" "$cur"; then                  # the commit changes the Close closure
+        if LIFEOS_CLOSE_LOCKED=1 "$0" install "$commit"; then
+          say "auto: released ${commit:0:12}"
+        else
+          if [ -n "$cur" ] && [ "$(readlink "$OPT/current")" != "$cur" ]; then              # verify failed after the switch: back to exactly the live tree, and its own previous tree
+            ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
+            if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; fi
+            "$0" verify && say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"
+          fi
+          echo "$commit" > "$ETC/auto.failed"; exit 1
+        fi
+      fi
     fi
-    exit 1 ;;
+    echo "$commit" > "$ETC/auto.checked"
+    keep="$(readlink "$OPT/current" 2>/dev/null || true) $(readlink "$OPT/previous" 2>/dev/null || true)"
+    for d in "$OPT"/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]; do
+      [ -d "$d" ] && case " $keep " in *" $d "*) ;; *) rm -rf "$d" ;; esac                # only the live tree and its previous tree are kept
+    done
+    exit 0 ;;
   auto-units)   # once, by Jim: a root-owned copy of these two scripts runs the timer; main can change the app, never the updater
     install -d -m 755 "$OPT/bin"; install -m 755 "$0" "$OPT/bin/install-close.sh"; install -m 644 "$REL" "$OPT/bin/close_release.py"
     cat > "$UNITS/lifeos-close-release.service" <<EOF

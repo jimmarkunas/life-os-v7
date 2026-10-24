@@ -273,12 +273,13 @@ class WorkflowTests(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class PullRequestTestsWorkflow(unittest.TestCase):
-    """pr-tests.yml is the secret-free pull request check: pull_request only, read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 60 s suite limits."""
+    """pr-tests.yml is the secret-free pull request check: pull requests and main's own commits only, read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 60 s suite limits."""
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
 
     def test_it_is_pull_request_only_read_only_and_holds_no_secret(self):
         text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
-        self.assertEqual(list(doc[True]), ["pull_request"])
+        self.assertEqual(list(doc[True]), ["pull_request", "push"])
+        self.assertEqual(doc[True]["push"], {"branches": ["main"]})                     # main's own commits too: the Edge auto-release needs a green check on the exact commit
         self.assertEqual(doc["permissions"], {"contents": "read"})
         for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
             self.assertNotIn(word, text)

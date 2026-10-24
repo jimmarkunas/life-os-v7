@@ -100,7 +100,8 @@ def latest(fetch=get):
     if not SHA.match(commit):
         raise Refused("NOT_A_COMMIT")
     runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/{commit}/check-runs?check_name=unit-tests")).get("check_runs") or []
-    if not any(r.get("name") == "unit-tests" and r.get("status") == "completed" and r.get("conclusion") == "success" for r in runs):
+    if not any(r.get("name") == "unit-tests" and r.get("status") == "completed" and r.get("conclusion") == "success" and r.get("head_sha") == commit
+               and (r.get("app") or {}).get("slug") == "github-actions" for r in runs):
         raise Refused("NOT_GREEN")
     return commit
 

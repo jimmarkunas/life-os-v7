@@ -122,14 +122,17 @@ class IsolatedTree(unittest.TestCase):
 
 class AutoRelease(unittest.TestCase):
     """Jim, Oct 24: the Edge releases main's head by itself, only once unit-tests passed on it, and only when the Close closure changed."""
-    def fetch(self, sha=C, runs=({"name": "unit-tests", "status": "completed", "conclusion": "success"},)):
+    GREEN = {"name": "unit-tests", "status": "completed", "conclusion": "success", "head_sha": C, "app": {"slug": "github-actions"}}
+
+    def fetch(self, sha=C, runs=(GREEN,)):
         return {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
                 f"https://api.github.com/repos/{rel.REPO}/commits/{sha}/check-runs?check_name=unit-tests": json.dumps({"check_runs": list(runs)}).encode()}.__getitem__
 
     def test_only_a_green_head_is_released(self):
         self.assertEqual(rel.latest(self.fetch()), C)
-        for runs in ((), ({"name": "unit-tests", "status": "completed", "conclusion": "failure"},), ({"name": "unit-tests", "status": "in_progress", "conclusion": None},),
-                     ({"name": "lane-guard", "status": "completed", "conclusion": "success"},)):
+        G = self.GREEN
+        for runs in ((), ({**G, "conclusion": "failure"},), ({**G, "status": "in_progress", "conclusion": None},), ({**G, "name": "lane-guard"},),
+                     ({**G, "head_sha": "b" * 40},), ({**G, "app": {"slug": "some-other-app"}},)):
             with self.assertRaises(rel.Refused):
                 rel.latest(self.fetch(runs=runs))
         with self.assertRaises(rel.Refused):
@@ -154,6 +157,10 @@ class AutoRelease(unittest.TestCase):
         auto = script.split("  auto)", 1)[1].split(";;", 1)[0]
         self.assertIn('"$0" install "$commit"', auto)
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
+        self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
         self.assertNotIn("rollback", auto)
+        self.assertIn('auto.failed', auto)                                     # a commit that failed verify is never retried
+        self.assertIn("flock -n 9", auto)
+        self.assertIn("trap", auto)
         units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]
         self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)        # the timer runs Jim's installed copy, not a file main can change
