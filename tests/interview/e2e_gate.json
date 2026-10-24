@@ -79,7 +79,11 @@
         "tests.hiring.test_mark_complete.EdgeScreen.test_cancel_a_forged_token_an_expired_form_or_a_changed_action_write_nothing",
         "tests.hiring.test_mark_complete.EdgeScreen.test_a_write_that_does_not_read_back_is_degraded_never_done",
         "tests.hiring.test_mark_complete.PageRender.test_the_primary_action_links_to_the_close_screen_by_page_and_action_key",
-        "tests.hiring.test_mark_complete.PageRender.test_a_degraded_action_is_never_completable"
+        "tests.hiring.test_mark_complete.PageRender.test_a_degraded_action_is_never_completable",
+        "tests.hiring.test_mark_complete.Writer.test_a_line_the_close_screen_appended_is_carried_and_the_page_shows_the_action_done",
+        "tests.hiring.test_mark_complete.LeadRefresh.test_a_lead_page_gains_its_link_and_a_replay_writes_nothing",
+        "tests.jobs.test_hiring_pipeline.Pipeline.test_a_lead_is_replied_only_by_a_done_line_for_its_own_reply_action",
+        "tests.hiring.test_hiring.CompilerTests.test_a_lead_jim_marked_replied_waits_on_the_recruiter_from_the_reply_day"
       ]
     },
     "E06": {
