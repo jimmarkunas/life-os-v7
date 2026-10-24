@@ -232,21 +232,24 @@ def recruiter_threads(environ, evidence, recruiters=None):
 CONTACTS_SHOWN = 5
 
 
-def network_contacts(client, evidence):
+def network_contacts(client, evidence, context=None, seconds=60):
     """E10 (Jim, Oct 24): each request's job page Network Leads (the exact Ledger row linked, dismissed leads left out), at most CONTACTS_SHOWN, as (name, why).
     -> (evidence with contacts on each request, failed?). A request with no Ledger row is left unchanged; an unreadable page is "unreadable", never "none"."""
     from lifeos.network import surface as network
     out, failed, seen = [], False, {}
+    clock = context or RunContext.start(seconds)                             # its own small budget: past it, the rest read "unreadable" (flagged), never "none"
     for p, q in evidence:
         pid = q.ledger_page_id
         if not pid:
             out.append((p, q))
             continue
+        if pid not in seen and clock.expired():
+            seen[pid], failed = ((), "unreadable"), True
         if pid not in seen:
             try:
                 leads = network.leads_on_page(client, pid, CONTACTS_SHOWN)
                 seen[pid] = (tuple((lead["name"], lead["reason"]) for lead in leads), "linked" if leads else "none")
-            except Exception:                                                # noqa: BLE001 - an enrichment never stops the run: unreadable, flagged, never "none"
+            except NotionError:                                              # SurfaceError included: unreadable, flagged, never "none"
                 seen[pid], failed = ((), "unreadable"), True
         contacts, state = seen[pid]
         out.append((p, replace(q, contacts=contacts, contacts_state=state)))

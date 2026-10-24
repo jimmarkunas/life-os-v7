@@ -877,3 +877,23 @@ class NetworkContacts(unittest.TestCase):
             out, failed = ev.network_contacts(object(), evidence)
         self.assertTrue(failed)
         self.assertEqual((out[0][1].contacts, out[0][1].contacts_state), ((), "unreadable"))
+
+    def test_past_its_own_time_budget_the_rest_are_unreadable_not_none(self):
+        from lifeos.interview.models import ParentQuery, RoundQuery
+
+        class Spent:
+            def expired(self):
+                return True
+        evidence = [(ParentQuery("ExampleCo", "Program Manager"), RoundQuery(True, ledger_page_id="row-1"))]
+        with patch("lifeos.network.surface.leads_on_page", side_effect=AssertionError("must not read")):
+            out, failed = ev.network_contacts(object(), evidence, context=Spent())
+        self.assertTrue(failed)
+        self.assertEqual(out[0][1].contacts_state, "unreadable")
+
+    def test_an_unverified_ledger_row_never_shows_its_leads(self):
+        from lifeos.interview import view
+        from lifeos.interview.models import ParentQuery, RoundQuery
+        q = RoundQuery(True, ledger_page_id="row-1", stable_job_key="exampleco-pm-1", contacts=(("Pat Example", "colleague"),), contacts_state="linked")
+        with patch.object(view, "ledger_facts", return_value=("mismatch", {})):
+            o = view.opportunity(object(), ParentQuery("ExampleCo", "Program Manager"), q, "root")
+        self.assertEqual((o.contacts, o.contacts_state), ((), None))
