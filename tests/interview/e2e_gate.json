@@ -140,10 +140,11 @@
     "E10": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message, but the Interview step does not yet receive the Recruiters token (workflow change, Jim's merge), so production still reads not connected; the invite's joining details, LinkedIn contacts and the submitted résumé/materials are not connected; the pages say so",
+      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message, but the Interview step does not yet receive the Recruiters token (workflow change, Jim's merge), so production still reads not connected; the submitted résumé is read from the exact Job Ledger row's human-owned Submitted Résumé field (never the built Resume column; past applications stay not recorded); the invite's joining details, LinkedIn contacts and other sent materials are not connected; the pages say so",
       "tests": [
         "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so",
         "tests.interview.test_ui3c.Layout.test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page",
+        "tests.interview.test_ui3c.Layout.test_e10_the_submitted_resume_comes_only_from_the_exact_row_s_submitted_resume_field",
         "tests.interview.test_ui3c.Layout.test_e10_only_a_dated_round_page_s_own_logistics_is_read_and_an_unreadable_one_stays_not_verified",
         "tests.sources.test_interview_journey.Journey.test_recruiter_lead_to_interview_scheduled_rescheduled_cancelled_on_one_page",
         "tests.interview.test_ui3c.Layout.test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded",
