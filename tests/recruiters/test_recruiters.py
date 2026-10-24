@@ -574,6 +574,19 @@ class ContractTests(unittest.TestCase):
             self.assertNotRegex(code, r"print\([^)]*(?:body|subject|sender|address|name)", name)
 
 
+
+class RecruitmentTitle(unittest.TestCase):
+    def test_a_sr_recruitment_signature_names_the_company(self):
+        from lifeos.recruiters import classify as C, qualify as Q
+        body = "Hi Jim,\nWe have a Program Manager role.\n\nThanks & Regards\nPat Example\nSr Recruitment | Example Group\npat@example.com"
+        line = C.signature_line(body)
+        self.assertEqual(line, "Sr Recruitment | Example Group")
+        self.assertEqual(Q._company({"signature": line}), "Example Group")
+        for line in ("Recruitment Team", "Recruitment Marketing | Acme", "Recruitment | Acme Corp", "Recruitment fraud notice: we never ask for fees"):
+            self.assertFalse(C.SIGNATURE.search(line), line)                                         # a bare "Recruitment" line is not a recruiter title
+        self.assertFalse(C.FIRST_PERSON.search("I am the recruitment lead for this hire"[:0] + "I am in recruitment marketing"))
+        self.assertTrue(C.SIGNATURE.search("Recruitment Consultant | Acme"))
+
 if __name__ == "__main__":
     unittest.main()
 
