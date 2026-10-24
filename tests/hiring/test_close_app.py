@@ -456,10 +456,37 @@ class Speed(unittest.TestCase):
         queries, walked = self.confirm_reads(lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")])
         self.assertEqual((len(queries), walked), (1, []))
 
-    def test_a_notes_confirm_still_reads_the_notes_pages(self):
+    def test_a_notes_confirm_walks_the_pages_twice_and_reads_the_ledger_only_where_it_decides(self):
         queries, walked = self.confirm_reads(lambda h: h.world.ws.target.replace("-", ""), [])
-        self.assertTrue(walked)
-        self.assertGreaterEqual(len(queries), 1)
+        self.assertEqual((len(queries), len(walked)), (2, 18))                                     # was 4 and 24: the first section check reuses resolve's read, the pre-write one never scans the Ledger
+
+    def test_the_check_right_before_a_notes_move_still_reads_the_pages_fresh(self):
+        h = Harness()
+        pid = h.world.ws.target.replace("-", "")
+        _, _, f = h.review(pid, "Rejected")
+        seen = []
+        real = close_app._state
+        def spy(client, root, pid=None, pages=None):
+            seen.append((pid, pages))
+            return real(client, root, pid, pages)
+        with mock.patch.object(close_app, "_state", spy):
+            self.assertEqual(h.call("POST", form={**f, "step": "confirm"})[0], 200)
+        self.assertEqual([(a, b is None) for a, b in seen], [(pid, False), (None, False)])         # resolve's read (by page id, its own Applied read), then the fresh pages-only read before the write
+        self.assertEqual(seen[1][1], [])
+
+    def test_a_page_that_left_its_section_after_the_screen_read_is_refused_by_the_fresh_check(self):
+        h = Harness()
+        pid = h.world.ws.target.replace("-", "")
+        _, _, f = h.review(pid, "Rejected")
+        real = close_app._state
+        def moved(client, root, pid_=None, pages=None):
+            rows, parents = real(client, root, pid_, pages)
+            return rows, [dict(p, retired=True) for p in parents] if pid_ is None else parents  # only the pre-write read (no page id) sees it in Retired
+        with mock.patch.object(close_app, "_state", moved):
+            status, body, _ = h.call("POST", form={**f, "step": "confirm"})
+        self.assertNotEqual(status, 200)
+        self.assertIn("STALE_SOURCE", body)
+        self.assertEqual(h.writes(), (0, 0))                                                       # nothing appended, nothing moved
 
 
 if __name__ == "__main__":

@@ -187,13 +187,14 @@ def _digest(block):
     return block.get("id"), kind, text
 
 
-def move_page(client, root_id, request, live, now, parents):
+def move_page(client, root_id, request, live, now, parents, known=None):
     """Notes-only: the ONE exact opportunity page moves into the existing Retired Opportunities container (Confirm Rejected), or back into the Active one (Reopen). Placement is the D189 closure signal and the only
     status: the compiler and renderer read the section a page is in, never any text on it. Two append-only RECORD callouts (annotations, read only here for idempotency, never as status) keep the confirmed reason and
     date: `Pending` (intent) before the move and the plain label after the move is verified. States, from what is on the page: no record = nothing written; Pending only = partially applied; Pending + plain label = complete.
     A different operation while any Pending is open is `DECISION_PENDING`; the same operation reconciles (only the missing steps run, no record twice). A move is attempted only while the page is still in the expected
     section (checked on both fetches against `parents()`, the page reader: column or container) and its read-back is checked before the plain label is written. Read-back covers the page's parent, title and its TOP-LEVEL
-    blocks (ids, types, plain text) before and after; nested content is not compared (Notion's move carries the page with its content)."""
+    blocks (ids, types, plain text) before and after; nested content is not compared (Notion's move carries the page with its content). `known`: the caller's own complete page read in this
+    same request (the Close screen's), used for the first section check only; the check immediately before the write always reads `parents()` again (Jim, Oct 24: confirm too slow)."""
     want = parse(request)
     reopen = want["action"] == REOPEN
     label, dest_title = ("Reopened", ACTIVE_TITLE) if reopen else (want["outcome"], RETIRED_TITLE)
@@ -215,8 +216,8 @@ def move_page(client, root_id, request, live, now, parents):
     def parent(page):
         return _page_id((page.get("parent") or {}).get("page_id")) if (page.get("parent") or {}).get("type") == "page_id" else None
 
-    def in_source():
-        here = [p for p in parents() if _page_id(p["id"]) == want["id"]]
+    def in_source(listed=None):
+        here = [p for p in (parents() if listed is None else listed) if _page_id(p["id"]) == want["id"]]
         if len(here) != 1 or bool(here[0].get("retired")) != reopen:
             raise fail("STALE_SOURCE")                                                                  # moved out of the section it was routed from (a column under its heading, or its container)
     page, kids = fetch()
@@ -240,7 +241,7 @@ def move_page(client, root_id, request, live, now, parents):
     if reopen and closed_as == "Hired" and not want["hired_ok"]:
         raise fail("HIRED_REOPEN_UNCONFIRMED")                                                   # reopening a Hired outcome needs its own explicit confirmation
     if parent(page) != dest:
-        in_source()
+        in_source(known)
     if not live:
         return {"status": "dry_run", "verified": False, "route": "notes", "entries": len(marks)}
     again, kids_again = fetch()
