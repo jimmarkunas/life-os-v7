@@ -117,7 +117,8 @@ class Run:
              patch.object(ev, "legacy_facts", side_effect=lambda client, page_id, context: self.legacy.get(page_id)), \
              patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), self.complete)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
-             patch.object(ev.stage, "run", side_effect=fake_stage):
+             patch.object(ev.stage, "run", side_effect=fake_stage), \
+             patch.object(ev, "network_contacts", side_effect=lambda client, evidence: (evidence, False)):        # E10 contacts have their own tests
             counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
                             ledger=self.ledger, records=self.records, writer=self.writer)
         return counts, captured
@@ -845,3 +846,54 @@ class Registered(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NetworkContacts(unittest.TestCase):
+    """E10 (Jim, Oct 24): an opportunity's LinkedIn contacts are its job page's own Network Leads (the exact Ledger row linked), read only."""
+
+    def test_each_requests_job_page_leads_are_carried_and_read_once(self):
+        from lifeos.interview.models import ParentQuery, RoundQuery
+        reads = []
+
+        def leads(client, pid, limit):
+            reads.append((pid, limit))
+            return [{"name": "Pat Example", "reason": "Former colleague at ExampleCo"}] if pid == "row-1" else []
+        evidence = [(ParentQuery("ExampleCo", "Program Manager"), RoundQuery(True, ledger_page_id="row-1")),
+                    (ParentQuery("ExampleCo", "Program Manager"), RoundQuery(True, ordinal=2, ledger_page_id="row-1")),
+                    (ParentQuery("Other Co", "Analyst"), RoundQuery(True, ledger_page_id="row-2")),
+                    (ParentQuery("No Row", "Analyst"), RoundQuery(True))]
+        with patch("lifeos.network.surface.leads_on_page", side_effect=leads):
+            out, failed = ev.network_contacts(object(), evidence)
+        self.assertFalse(failed)
+        self.assertEqual(reads, [("row-1", ev.CONTACTS_SHOWN), ("row-2", ev.CONTACTS_SHOWN)])                 # one read per job page
+        self.assertEqual([(q.contacts, q.contacts_state) for _, q in out],
+                         [((("Pat Example", "Former colleague at ExampleCo"),), "linked")] * 2 + [((), "none"), ((), None)])
+
+    def test_an_unreadable_page_is_unreadable_and_flagged_never_none(self):
+        from lifeos.interview.models import ParentQuery, RoundQuery
+        from lifeos.platform.notion_client import NotionError
+        evidence = [(ParentQuery("ExampleCo", "Program Manager"), RoundQuery(True, ledger_page_id="row-1"))]
+        with patch("lifeos.network.surface.leads_on_page", side_effect=NotionError("X")):
+            out, failed = ev.network_contacts(object(), evidence)
+        self.assertTrue(failed)
+        self.assertEqual((out[0][1].contacts, out[0][1].contacts_state), ((), "unreadable"))
+
+    def test_past_its_own_time_budget_the_rest_are_unreadable_not_none(self):
+        from lifeos.interview.models import ParentQuery, RoundQuery
+
+        class Spent:
+            def expired(self):
+                return True
+        evidence = [(ParentQuery("ExampleCo", "Program Manager"), RoundQuery(True, ledger_page_id="row-1"))]
+        with patch("lifeos.network.surface.leads_on_page", side_effect=AssertionError("must not read")):
+            out, failed = ev.network_contacts(object(), evidence, context=Spent())
+        self.assertTrue(failed)
+        self.assertEqual(out[0][1].contacts_state, "unreadable")
+
+    def test_an_unverified_ledger_row_never_shows_its_leads(self):
+        from lifeos.interview import view
+        from lifeos.interview.models import ParentQuery, RoundQuery
+        q = RoundQuery(True, ledger_page_id="row-1", stable_job_key="exampleco-pm-1", contacts=(("Pat Example", "colleague"),), contacts_state="linked")
+        with patch.object(view, "ledger_facts", return_value=("mismatch", {})):
+            o = view.opportunity(object(), ParentQuery("ExampleCo", "Program Manager"), q, "root")
+        self.assertEqual((o.contacts, o.contacts_state), ((), None))

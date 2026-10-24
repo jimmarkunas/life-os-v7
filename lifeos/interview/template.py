@@ -169,10 +169,13 @@ def _health(view, rounds_label):
     resume = {"recorded": f"{len(view.resume)} submitted résumé file(s) on the exact Job Ledger row; other sent materials not connected",
               "not_recorded": "no submitted résumé recorded on the Job Ledger row; other sent materials not connected",
               "not_connected": "the Job Ledger has no Submitted Résumé field; other sent materials not connected"}
+    contacts = {"linked": f"{len(view.contacts)} Network lead(s) from the job's Ledger page", "none": "no Network leads on the job's Ledger page",
+                "unreadable": "DEGRADED · Network leads unreadable this run"}
     rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
               else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
               else resume.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run")
               if name == "Submitted résumé and sent materials"
+              else contacts.get(view.contacts_state, "not connected (no exact Job Ledger row)") if name == "LinkedIn contacts"
               else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
@@ -188,6 +191,15 @@ def _interviews(view):
                      [mention(r.page_id)] if r.page_id else name])
     if len(rows) == 1:
         rows.append(["No interview pages yet", "—", "—"])
+    return rows
+
+
+def _contacts(view):
+    """E10: the job's own Network Leads (its Ledger page, dismissed leads left out), as the Network section names them; never guessed from names elsewhere."""
+    rows = [["Person", "Role / Relevance", "Outreach Status"]]
+    rows += [[[(name, True)], why or NV, "Not tracked"] for name, why in view.contacts]
+    if len(rows) == 1:
+        rows.append(["DEGRADED · Network leads unreadable this run" if view.contacts_state == "unreadable" else "No separately verified contacts", "—", "Not tracked"])
     return rows
 
 
@@ -234,7 +246,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
                                                    field("Degraded", "Explain missing or conflicting source evidence.")]), para()]
     left = [
         callout([h(3, "LinkedIn Contacts"),
-                 table([["Person", "Role / Relevance", "Outreach Status"], ["No separately verified contacts", "—", "Not tracked"]]),
+                 table(_contacts(view)),
                  note("Networking contacts for this exact opportunity only. Interviewers and recruiting coordinators remain in "
                       "their own tables.")], INFO, PLAIN),
         tabs(("Role Snapshot", [

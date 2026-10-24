@@ -229,6 +229,33 @@ def recruiter_threads(environ, evidence, recruiters=None):
             for p, q in evidence], False
 
 
+CONTACTS_SHOWN = 5
+
+
+def network_contacts(client, evidence, context=None, seconds=60):
+    """E10 (Jim, Oct 24): each request's job page Network Leads (the exact Ledger row linked, dismissed leads left out), at most CONTACTS_SHOWN, as (name, why).
+    -> (evidence with contacts on each request, failed?). A request with no Ledger row is left unchanged; an unreadable page is "unreadable", never "none"."""
+    from lifeos.network import surface as network
+    out, failed, seen = [], False, {}
+    clock = context or RunContext.start(seconds)                             # its own small budget: past it, the rest read "unreadable" (flagged), never "none"
+    for p, q in evidence:
+        pid = q.ledger_page_id
+        if not pid:
+            out.append((p, q))
+            continue
+        if pid not in seen and clock.expired():
+            seen[pid], failed = ((), "unreadable"), True
+        if pid not in seen:
+            try:
+                leads = network.leads_on_page(client, pid, CONTACTS_SHOWN)
+                seen[pid] = (tuple((lead["name"], lead["reason"]) for lead in leads), "linked" if leads else "none")
+            except NotionError:                                              # SurfaceError included: unreadable, flagged, never "none"
+                seen[pid], failed = ((), "unreadable"), True
+        contacts, state = seen[pid]
+        out.append((p, replace(q, contacts=contacts, contacts_state=state)))
+    return out, failed
+
+
 def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
         from lifeos.sources import interview_journey_proof
@@ -500,6 +527,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
     if unreadable:
         flag("recruiters_unreadable")
+    evidence, unreadable = network_contacts(client, evidence)
+    if unreadable:
+        flag("network_unreadable")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where

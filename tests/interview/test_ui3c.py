@@ -331,6 +331,21 @@ class Layout(unittest.TestCase):
         for missing in (dataclasses.replace(with_page, close_base=None), dataclasses.replace(with_page, page_id=None)):
             self.assertNotIn("/manage?", str(written(missing)[0].blocks))
 
+    def test_e10_the_jobs_network_leads_fill_linkedin_contacts_and_unknown_is_degraded(self):
+        linked = dataclasses.replace(opportunity(compensation="$90/hr"), contacts=(("Pat Example", "Former colleague at ExampleCo"),), contacts_state="linked")
+        shown = "\n".join(texts(*written(linked)))
+        self.assertIn("Pat Example", shown.split("LinkedIn Contacts")[1])
+        self.assertIn("Former colleague at ExampleCo", shown)
+        self.assertIn("LinkedIn contacts: 1 Network lead(s) from the job's Ledger page", shown)
+        self.assertNotIn("No separately verified contacts", shown)
+        bad = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="unreadable"))))
+        self.assertIn("LinkedIn contacts: DEGRADED · Network leads unreadable this run", bad)
+        self.assertIn("DEGRADED · Network leads unreadable this run", bad.split("LinkedIn Contacts")[1])
+        none = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), contacts_state="none"))))
+        self.assertIn("LinkedIn contacts: no Network leads on the job's Ledger page", none)
+        unlinked = "\n".join(texts(*written(opportunity())))
+        self.assertIn("LinkedIn contacts: not connected (no exact Job Ledger row)", unlinked)
+
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}

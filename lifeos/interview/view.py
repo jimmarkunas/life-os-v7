@@ -42,6 +42,8 @@ class Opportunity:
     rounds: tuple = ()
     recruiters: tuple = ()                       # LIFE-78 E10: (person, company, thread url) from Recruiters rows linked to this job's exact request message
     recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
+    contacts: tuple = ()                         # E10: (name, why) from the job page's own Network Leads, read by the source adapter
+    contacts_state: str | None = None            # None = no Ledger row linked; "linked" | "none" | "unreadable"
     done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
     page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
     close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
@@ -139,7 +141,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
                        query.ledger_page_id if state == "linked" else None, state,
                        request if request.startswith("https://") else None, pipeline_id,
                        rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
-                       recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None), **facts)
+                       recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None),
+                       contacts=tuple(getattr(query, "contacts", ()) or ()) if state == "linked" else (), contacts_state=getattr(query, "contacts_state", None) if state == "linked" else None, **facts)
 
 
 def primary_action(view, today):
