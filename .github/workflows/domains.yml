@@ -1463,13 +1463,12 @@ jobs:
       - id: oracle
         continue-on-error: true
         if: ${{ always() }}
-        # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention, once a day. Oracle answers numbers only (OCI cost,
-        # metrics and limits read as the VM itself; local memory, disk, services, ChatGPT plan). Each tick reads only the heading unless the card is due.
-        name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
+        # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
+        # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24: written every tick, Codex 5h/Week from the AI Capacity reading.
+        name: Oracle Cloud card (every tick; Codex lines from the same reading as AI Capacity; numbers only in the log; writes only when live)
         env:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
-          ORACLE_CARD_FORCE: ${{ github.event_name == 'workflow_dispatch' }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
