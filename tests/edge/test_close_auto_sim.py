@@ -27,6 +27,8 @@ if c == "serve-state":
     print(E.get("SERVE", "ours"))
 elif c == "latest":
     print(E["HEAD"]) if E.get("HEAD") else sys.exit("REFUSED: NOT_GREEN")
+elif c == "head":
+    print(E["MAIN"]) if E.get("MAIN") else sys.exit("REFUSED: unreadable")
 elif c == "stage":
     if E.get("STAGE_FAIL") == "1":
         sys.exit("REFUSED: stage")
@@ -71,9 +73,18 @@ class AutoReleaseRun(unittest.TestCase):
         self.env = {**os.environ, "SIM": self.sim, "PATH": bin_ + os.pathsep + os.environ["PATH"]}
 
     def tearDown(self):
+        self.writable()
         shutil.rmtree(self.sim, ignore_errors=True)
 
+    def writable(self):
+        for root, dirs, files in os.walk(self.sim):                                            # installed trees are read-only, as on the Edge
+            for n in dirs + files:
+                path = os.path.join(root, n)
+                if not os.path.islink(path):
+                    os.chmod(path, os.stat(path).st_mode | 0o200)
+
     def tree(self, name, commit=None):
+        self.writable()
         os.makedirs(os.path.join(self.sim, "opt", name), exist_ok=True)
         open(os.path.join(self.sim, "opt", name, "MANIFEST"), "w").write(f"commit {commit or name}\nx lifeos/a.py\n")
 
@@ -195,6 +206,7 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                  # a docs-only merge still carrying B's code
         self.assertEqual(self.at("current"), A[:12])
         self.tree(B[:12], B)                                                                      # a cut-off release of B that settles as verified
+        self.writable()
         open(os.path.join(self.sim, "opt", B[:12], "MANIFEST"), "w").write(f"commit {B}\nw lifeos/a.py\n")
         self.link("current", B[:12])
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
@@ -212,6 +224,16 @@ class AutoReleaseRun(unittest.TestCase):
             chosen = self.at("current")
             self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)                      # B would now verify, but it was live once
             self.assertEqual(self.at("current"), chosen, jim)
+
+    def test_jims_install_is_not_overridden_by_main_as_it_was_then_only_by_newer_code(self):
+        rc, out = self.run_("install", P, MAIN=B, BODY="x lifeos/a.py")                         # B is merged and green but not yet live; Jim picks P by hand
+        self.assertEqual(self.at("current"), P, out)
+        self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)                   # B itself: held
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                   # a docs-only C on top of B: B's code counts as seen
+        self.assertEqual(self.at("current"), P)
+        D = "d" * 12 + "5" * 28
+        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)                   # new code: released
+        self.assertEqual(self.at("current"), D[:12])
 
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died

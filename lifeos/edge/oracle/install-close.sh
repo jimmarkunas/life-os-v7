@@ -10,6 +10,11 @@ LOCAL=47344; TAILNET=47443; REL="$(cd "$(dirname "$0")" && pwd)/close_release.py
 say() { printf '%s\n' "$*"; }
 code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }                 # a tree's files, whatever commit carried them
 seen() { [ -s "$ETC/auto.seen" ] && grep -qx "$(code "$1")" "$ETC/auto.seen"; }
+drop() { [ -e "$1" ] && chmod -R u+w "$1" 2>/dev/null; rm -rf "$1"; }                     # a staged tree is read-only
+hold() {                                                                               # Jim installed or rolled back by hand: auto never overrides him with main's code as it is now
+  install -d -m 755 "$ETC"; rm -f "$ETC/auto.pending"; end_retries
+  local h; if h="$(python3 -I "$REL" head 2>/dev/null)"; then echo "$h" > "$ETC/auto.hold"; else say "note: main's head unreadable; auto-release may release it"; fi
+}
 end_retries() { local t _; read -r t _ 2>/dev/null < "$ETC/auto.attempts" && [ -n "$t" ] && echo "$t 3" > "$ETC/auto.attempts" || true; }   # Jim stepped in: no retry overrides him
 remember() { install -d -m 755 "$ETC"; seen "$1" || code "$1" >> "$ETC/auto.seen"; }   # every code that has ever been live: auto-release never brings one back
 [ "$(id -u)" = 0 ] || { say "run as root via opc"; exit 2; }
@@ -89,15 +94,15 @@ case "${1:-}" in
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
-    [ "${LIFEOS_CLOSE_AUTO:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; end_retries; }   # auto already holds it; Jim's own install ends auto's retries
+    [ "${LIFEOS_CLOSE_AUTO:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; hold; }   # auto already holds it; Jim's own install holds auto off main's current code
     for f in "$ETC/policy.json" "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link"; do [ -s "$f" ] || { say "STOP: missing $f"; exit 1; }; done
     st="$(serve_state)"; case "$st" in free|ours) ;; *) say "STOP: tailnet port $TAILNET is $st (not verified free or ours)"; exit 1;; esac
     [ "${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ] || { say "STOP: auto-release never re-adds Serve"; exit 1; }
-    dest="$OPT/${commit:0:12}"; stage="$OPT/.stage"; install -d -m 755 "$OPT"; rm -rf "$stage"      # one fixed name: a run killed mid-stage is cleaned by the next
-    python3 -I "$REL" stage "$commit" "$stage" || { rm -rf "$stage"; say "STOP: release not verified; nothing changed"; exit 1; }
+    dest="$OPT/${commit:0:12}"; stage="$OPT/.stage"; install -d -m 755 "$OPT"; drop "$stage"      # one fixed name: a run killed mid-stage is cleaned by the next
+    python3 -I "$REL" stage "$commit" "$stage" || { drop "$stage"; say "STOP: release not verified; nothing changed"; exit 1; }
     chown -R root:root "$stage"; chmod -R go-w,a-w+rX "$stage"
-    python3 -I "$REL" check "$stage" || { rm -rf "$stage"; say "STOP: staged tree differs; nothing changed"; exit 1; }
-    if [ -e "$dest" ]; then python3 -I "$REL" check "$dest" || { rm -rf "$stage"; say "STOP: existing $dest differs"; exit 1; }; rm -rf "$stage"; else mv -T "$stage" "$dest"; fi
+    python3 -I "$REL" check "$stage" || { drop "$stage"; say "STOP: staged tree differs; nothing changed"; exit 1; }
+    if [ -e "$dest" ]; then python3 -I "$REL" check "$dest" || { drop "$stage"; say "STOP: existing $dest differs"; exit 1; }; drop "$stage"; else mv -T "$stage" "$dest"; fi
     [ -L "$OPT/current" ] && [ "$(readlink "$OPT/current")" != "$dest" ] && ln -sfn "$(readlink "$OPT/current")" "$OPT/previous"
     ln -sfn "$dest" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
     units "$UNITS"; systemctl daemon-reload; systemctl enable --now lifeos-close.socket >/dev/null
@@ -117,7 +122,7 @@ case "${1:-}" in
     exit $ok ;;
   auto)
     install -d -m 755 "$OPT" "$ETC"; exec 9>"$OPT/.lock"; flock -n 9 || exit 0           # one run at a time (install, rollback and uninstall take the same lock)
-    probe="$OPT/.probe"; trap 'rm -rf "$probe"' EXIT
+    probe="$OPT/.probe"; trap 'drop "$probe"' EXIT
     cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
     [ -n "$cur" ] || { say "auto: no live tree; the first install is Jim's by hand"; exit 0; }
     systemctl is-enabled --quiet lifeos-close.socket && [ "$(serve_state)" = ours ] || { say "auto: the service is not installed and serving; nothing changed"; exit 0; }
@@ -140,13 +145,18 @@ case "${1:-}" in
       rm -f "$ETC/auto.pending"; exit 0                                                   # the next tick starts from a settled tree
     fi
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
+    if read -r held _ 2>/dev/null < "$ETC/auto.hold"; then                                 # Jim's hand: main's code at that moment counts as seen, so only newer code is ever released
+      [ "$held" = "$commit" ] && exit 0
+      drop "$probe"; python3 -I "$REL" stage "$held" "$probe" || { say "auto: held commit unreadable; nothing changed"; exit 1; }
+      remember "$probe"; drop "$probe"; rm -f "$ETC/auto.hold"
+    fi
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
     [ "$cur" = "$OPT/${commit:0:12}" ] && { echo "$commit" > "$ETC/auto.checked"; exit 0; }   # live and settled (Jim installed it, or a release finished)
     tried=""; n=0; read -r tried n _ 2>/dev/null < "$ETC/auto.attempts" || true
     case "$n" in ''|*[!0-9]*|???*) n=0 ;; esac                                              # anything but a small count reads as none
     [ "$tried" = "$commit" ] || n=0
     [ "$n" -ge 3 ] && exit 0                                                              # three attempts at this commit: wait for the next green commit
-    rm -rf "$probe"
+    drop "$probe"
     if ! python3 -I "$REL" stage "$commit" "$probe"; then
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
     fi
@@ -169,7 +179,7 @@ case "${1:-}" in
     echo "$commit" > "$ETC/auto.checked"
     keep="$(readlink "$OPT/current" 2>/dev/null || true) $(readlink "$OPT/previous" 2>/dev/null || true)"
     for d in "$OPT"/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]; do
-      [ -d "$d" ] && case " $keep " in *" $d "*) ;; *) rm -rf "$d" ;; esac                # only the live tree and its previous tree are kept
+      [ -d "$d" ] && case " $keep " in *" $d "*) ;; *) drop "$d" ;; esac                # only the live tree and its previous tree are kept
     done
     exit 0 ;;
   auto-units)   # once, by Jim: a root-owned copy of these two scripts runs the timer; main can change the app, never the updater
@@ -196,13 +206,13 @@ EOF
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     [ -d "$OPT/current" ] && remember "$OPT/current"                                       # the code rolled back was live: auto-release never brings it back
-    end_retries
+    hold
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; systemctl stop lifeos-close-release.timer 2>/dev/null || true    # no new run; a running one finishes (never killed mid-switch)
     flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
-    bad=0; st="$(serve_state)"
+    rm -f "$ETC/auto.pending"; bad=0; st="$(serve_state)"
     case "$st" in
       ours) tailscale serve --tls-terminated-tcp "$TAILNET" off >/dev/null || { say "FAIL: Serve $TAILNET not removed"; bad=1; } ;;
       free) ;;

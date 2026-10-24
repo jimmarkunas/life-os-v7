@@ -98,6 +98,14 @@ def check(dest):
         raise Refused("TREE_DIFFERS")
 
 
+def head(fetch=get):
+    """main's head commit, green or not (what Jim's own install holds auto-release off)."""
+    commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
+    if not SHA.match(commit):
+        raise Refused("NOT_A_COMMIT")
+    return commit
+
+
 def latest(fetch=get):
     """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own pr-tests run on that exact commit passed. The run is read from the Actions
     runs of the pr-tests.yml workflow (a push to main), never from a check run, which any branch's workflow could post; its newest attempt decides."""
@@ -161,6 +169,8 @@ if __name__ == "__main__":
             check(sys.argv[2])
         elif sys.argv[1:2] == ["latest"]:
             print(latest())
+        elif sys.argv[1:2] == ["head"]:
+            print(head())
         elif sys.argv[1:2] == ["same"] and len(sys.argv) == 4:
             sys.exit(0 if same(sys.argv[2], sys.argv[3]) else 1)
         else:
