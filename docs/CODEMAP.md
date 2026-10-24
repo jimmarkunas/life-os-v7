@@ -63,7 +63,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
 - `notion-sandbox-access` -> `lifeos.sources.notion_sandbox_access:run`
 - `notion-sandbox-outreach-proof` -> `lifeos.sources.notion_sandbox_outreach_proof:run`
-- `oracle-card` -> `lifeos.oraclecloud.card:run`
+- `oracle-card` -> `lifeos.sources.oracle_card:run`
 - `outlook-auth` -> `lifeos.run:_outlook_auth`
 - `outlook-newsletters` -> `lifeos.sources.newsletters.outlook:run`
 - `outlook-probe` -> `lifeos.outlook.stage:probe`
@@ -234,7 +234,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/network/store.py`: NET-1 Hostinger state (approved tables v7_network_people, v7_network_positions, v7_network_batches): the sole writer of them.
 - `lifeos/network/surface.py`: NET-2.3 (D160): the one machine-owned "Network Leads (n)" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client.
 ### lifeos/oraclecloud/
-- `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA c
+- `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under th
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
 - `lifeos/outlook/store.py`: The Outlook token table lives in the platform (other operating systems, such as the calendar bridge, read it too).
@@ -308,6 +308,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/newsletters/sweep.py`: Stage 1 - sweep: move job-newsletter mail from Inbox to the J Newsletters label.
 - `lifeos/sources/notion_sandbox_access.py`: LIFE-10 §2 (TL comment 10754): a one-time, read-only check of whether the existing Jobs Notion integration (NOTION_API_TOKEN) can read the synthetic sandbox Job Ledger. M
 - `lifeos/sources/notion_sandbox_outreach_proof.py`: LIFE-10 §2 (TL comment 10754, Jim's plan approval on LIFE-10 comment 10773): a one-time, synthetic proof of the job-page outreach writer (D225) against the real Notion AP
+- `lifeos/sources/oracle_card.py`: The Oracle Cloud card stage with its Codex lines taken from the AI Capacity card's own reading (Jim, Oct 24 2026: the two cards must show the same numbers).
 - `lifeos/sources/outreach_app.py`: LIFE-21 / LIFE-47 (D221): Mark as Sent on the private Close service (same Edge gate, same signed-form pattern as close_app). Jim confirms that he messaged one person abou
 - `lifeos/sources/resume_app.py`: LIFE-87 (D234): Build resume on the private Close service (same Edge gate, signing key and fresh-read rule as Mark as Sent, D221). Jim opens one exact open Job Ledger job
 - `lifeos/sources/sponsor_register.py`: Load the UK Home Office register of licensed sponsors (workers) into Hostinger, Skilled Worker route only.
