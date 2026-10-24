@@ -9,8 +9,8 @@ The job description goes in the page BODY (contract v7.jd.1, docs/PLAN.md).
 from datetime import datetime, timezone
 import os
 
-from lifeos.jobs import meta, lanes, ledger, store
-from lifeos.jobs.identity import norm, url_key, vacancy_id
+from lifeos.jobs import classify, meta, lanes, ledger, store
+from lifeos.jobs.identity import aggregator_twin, norm, url_key, vacancy_id
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -26,16 +26,21 @@ def _block(kind, content):
     return {"object": "block", "type": kind, kind: {"rich_text": rich_text(content)}}
 
 
-def same_opening(cursor, job_id, company, title, url=None):
+def same_opening(cursor, job_id, company, title, url=None, location=None):
     """D90: the id of a PUBLISHED job with the same company and title (three words or more, so a generic title is never merged), else None.
     One opening posted under several locations or links is one page. D205: only when both links name the same ATS vacancy (identity.vacancy_id) or
-    neither names one; different vacancies, or an id on one link only (identity not shown), are two openings, whatever their company and title."""
+    neither names one; different vacancies, or an id on one link only (identity not shown), are two openings, whatever their company and title.
+    LIFE-64: except an aggregator link with no id whose place (city and region) is the place the ATS vacancy's link or location names: the same opening."""
     if len(norm(title).split()) < 3 or not norm(company):
         return None
-    cursor.execute("SELECT id, final_apply_url FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
+    cursor.execute("SELECT id, final_apply_url, location_text FROM v7_jobs WHERE status='PUBLISHED' AND id<>%s AND LOWER(TRIM(company))=LOWER(TRIM(%s))"
                    " AND LOWER(TRIM(title))=LOWER(TRIM(%s)) ORDER BY id", (job_id, company, title))
-    mine = vacancy_id(url)
-    return next((row[0] for row in cursor.fetchall() if vacancy_id(row[1]) == mine), None)
+    mine, rows = vacancy_id(url), cursor.fetchall()
+    return next((row[0] for row in rows if vacancy_id(row[1]) == mine), None) or next(
+        (row[0] for row in rows if aggregator_twin(url, location, row[1], row[2], AGGREGATOR)), None)
+
+
+AGGREGATOR = lambda url: classify.apply_kind(url) == "aggregator"      # noqa: E731 - the one host rule, shared with the audit
 
 
 def body_blocks(key, description):
@@ -258,7 +263,7 @@ def run(limit, live, environ=os.environ):
             continue
         if live:
             with store.connect() as connection, connection.cursor() as cursor:
-                original = same_opening(cursor, job_id, company, title, url)
+                original = same_opening(cursor, job_id, company, title, url, location)
                 if original:
                     cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', repost_of=%s, unresolved_reason='same_opening', updated_at=%s WHERE id=%s",
                                    (original, _now(), job_id))

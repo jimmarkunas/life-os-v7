@@ -52,3 +52,25 @@ def fuzzy_key(company, title, location, url=None):
     requisitions with one company, title and place are two openings. A link with no id keeps its stored key."""
     parts = [norm(x) for x in (company, title, location)] + ([vacancy_id(url)] if vacancy_id(url) else [])
     return sha256("|".join(parts).encode()).hexdigest()
+
+
+_COUNTRY = {"united states", "united states of america", "usa", "us"}
+_PREFIX = {"north", "south", "east", "west", "fort", "ft", "port", "saint", "st", "lake", "mount", "mt", "new", "old", "upper", "lower", "west", "el", "la", "los", "las"}   # "South San Francisco" is not San Francisco
+
+
+def same_place(location, url, other_location=""):
+    """LIFE-64 (D205 refinement): a place named on a link with no vacancy id ("Chicago, IL") is the place of an ATS vacancy when its city and its
+    two-letter region, in order, appear in that vacancy's link path or its own location. Only "City, ST" is a place: a state on its own ("New York,
+    United States"), a bare city ("San Francisco"), Remote or nothing never matches."""
+    parts = [norm(x) for x in (location or "").split(",") if norm(x)]
+    parts = parts[:-1] if parts and parts[-1] in _COUNTRY else parts
+    if len(parts) != 2 or not re.fullmatch(r"[a-z]{2}", parts[1]) or "remote" in parts[0].split():
+        return False
+    place, haystack = f"{parts[0]} {parts[1]}".split(), f"{norm(urlsplit(url or '').path)} {norm(other_location)}".split()
+    n = len(place)
+    return any(haystack[i:i + n] == place and (i == 0 or haystack[i - 1] not in _PREFIX) for i in range(len(haystack) - n + 1))
+
+
+def aggregator_twin(url, location, ats_url, ats_location, aggregator):
+    """True when `url` is an aggregator link with no vacancy id and `ats_url` names a vacancy at the same place: one opening seen twice (LIFE-64)."""
+    return aggregator(url) and vacancy_id(url) is None and vacancy_id(ats_url) is not None and same_place(location, ats_url, ats_location)
