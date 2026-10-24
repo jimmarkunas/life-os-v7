@@ -175,25 +175,24 @@ class AutoRelease(unittest.TestCase):
     def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
         auto = script.split("  auto)", 1)[1].split("  auto-units)", 1)[0]
-        self.assertIn('"$0" install "$commit"', auto)
+        self.assertIn('LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"', auto)
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
-        self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
-        self.assertNotIn("rollback", auto)
-        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # a stage or an install counts (before the switch, so a cut-off run counts); at most three per commit
+        self.assertIn('ln -sfn "$prev"', auto)                                  # and its own previous tree is kept
+        self.assertNotIn('"$0" rollback', auto)                               # restores exactly, never through rollback's older target
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # a stage or an install counts (before the switch); at most three per commit
         self.assertIn("case \"$n\" in ''|*[!0-9]*|???*) n=0", auto)               # a malformed or huge count is never fatal
-        self.assertLess(auto.index("unverified after a cut-off run"), auto.index('-ge 3 ]'))   # a cut-off release is verified even after its third attempt
-        self.assertIn('auto.prior', auto)                                      # a cut-off run is restored to the trees live before its switch
-        self.assertIn('else rm -f "$OPT/previous"', auto)                       # no previous tree before: none after a restore
-        self.assertIn("unverified after a cut-off run", auto)
-        self.assertIn('elif [ "$n" -ge 3 ]; then', auto)
+        self.assertLess(auto.index("auto.pending\"; then"), auto.index("latest"))  # a cut-off release is settled first, whatever main's head is now
         self.assertIn("RESTORE VERIFY FAILED", auto)
+        self.assertIn("the first install is Jim's by hand", auto)
         self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
+        self.assertIn("flock -n 9", auto)
+        self.assertIn("trap", auto)
+        install = script.split("  install)", 1)[1].split("  auto)", 1)[0]
+        self.assertNotIn("export", install)                                     # Jim's own install is never mistaken for an automatic one
+        self.assertIn('"${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ]', install)
+        self.assertIn('echo "$rolled 3"', script.split("  rollback)", 1)[1])     # a rolled-back commit is never put back
         uninstall = script.split("  uninstall)", 1)[1]
         self.assertIn("disable --now lifeos-close-release.timer", uninstall)
         self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])           # waits out a running release
-        self.assertIn("auto-release never re-adds Serve", script)
-        self.assertIn("the first install is Jim's by hand", auto)
-        self.assertIn("flock -n 9", auto)
-        self.assertIn("trap", auto)
         units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]
         self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)        # the timer runs Jim's installed copy, not a file main can change
