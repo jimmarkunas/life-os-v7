@@ -32,9 +32,9 @@ Add each one at a time in the repo's Settings -> Secrets and variables -> Action
 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate. Resource owner: you. Repository access: **Only select repositories -> life-os-v7**.
    Permissions: **Actions: Read and write** (nothing else). Expiration: 1 year (put a reminder in your calendar).
 2. At a free cron service (cron-job.org works): new job, URL
-   `https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches`, method POST, schedule **every 30 minutes** (minutes 0 and 30),
+   `https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches`, method POST, schedule **every hour at minute 17**,
    headers `Authorization: Bearer <the token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, body `{"ref":"main","inputs":{"tick":"true"}}`.
-3. Run it once from the service. A tick that arrives within 25 minutes of another tick cancels itself (that is correct; `lifeos/platform/gate.py` MIN_GAP_MINUTES)
+3. Run it once from the service. A tick that arrives within 25 minutes of another tick cancels itself (that is correct; `lifeos/platform/gate.py` MIN_GAP_MINUTES). The workflow's own three crons (:07 :27 :47) then add ticks about every 30 minutes on their own; this timer is the hourly backstop for when GitHub drops them (D30/D31).
 The token lives only at the timer service. Never put it in the repo.
 
 
