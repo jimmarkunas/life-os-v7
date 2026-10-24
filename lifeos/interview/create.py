@@ -10,7 +10,7 @@ from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
-from .models import Ownership, RoundQuery, State
+from .models import Ownership, RoundQuery, Scan, State
 from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
@@ -563,7 +563,13 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         if kind == "opportunity":
             refreshed = resolve_parent(parent_query, notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context))
         else:
-            refreshed = resolve_child(parent, query, notion.child_scan(client, insertion, context))
+            scan = notion.child_scan(client, insertion, context)
+            if scan.complete and not any(notion.same_notion_id(c.page_id, page_id) for c in scan.items):
+                # LIFE-108: Notion can list a parent's children without a just-created page for a few seconds; the new round is read by its
+                # own id (its parent was proven above) and still checked against every listed sibling for a duplicate identity
+                created = notion.explicit_child(client, page_id)
+                scan = Scan(scan.items + ((created,) if created else ()), True)
+            refreshed = resolve_child(parent, query, scan)
             if notion.protected_snapshot(client, insertion, "opportunity") != before:
                 return finish("readback_protected_changed")
         if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, page_id):
