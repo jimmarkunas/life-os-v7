@@ -22,6 +22,10 @@ DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 FILENAME = re.compile(r"Jim_Markunas_(Resume|CV)_[A-Za-z0-9_]{1,80}\.docx\Z")
 MARKER = "v7-jd:1"                                              # publish's first body line (lifeos.jobs.publish.body_blocks)
 RESUME_COLUMN = "Resume"                                        # the Ledger's Files column: the latest resume built for this job
+SUBMITTED_COLUMN = "Submitted Résumé"                           # LIFE-88 E10: the file Jim sent (lifeos.interview.view.SUBMITTED; a test holds them equal)
+DRIVE_FILE = re.compile(r"https://drive\.google\.com/file/d/([A-Za-z0-9_-]{10,200})/view")
+SHOWN_BUILDS = 5                                               # the newest Drive builds offered as "applied with this one"
+LOCK_REASON = "Submitted with the application for this job (LIFE OS)"
 TEXT = ("heading_2", "paragraph", "bulleted_list_item")
 REASONS = {"QUOTA_RESERVE": "Luna's allowance is at your 50% reserve; it resets on its own (see the AI Capacity card).",
            "METER_UNAVAILABLE": "Luna's usage meter could not be read, so nothing was run.",
@@ -128,6 +132,111 @@ def page_url(pid):
     return "https://www.notion.so/" + pid.replace("-", "")
 
 
+def drive_builds(client, pid):
+    """The job page's Drive builds, newest last: (file id, name, link) from its external file blocks (attach_drive writes them)."""
+    out = []
+    for b in _children(client, pid):
+        f = b.get("file") or {} if b.get("type") == "file" else {}
+        hit = DRIVE_FILE.match(((f.get("external") or {}).get("url")) or "")
+        if hit and f.get("name"):
+            out.append((hit.group(1), f["name"], hit.group(0)))
+    return out
+
+
+def recorded(client, pid):
+    """The job's Submitted Résumé entries as (name, link)."""
+    files = ((client.get_page(pid).get("properties") or {}).get(SUBMITTED_COLUMN) or {}).get("files") or []
+    return [(f.get("name"), (f.get("external") or {}).get("url")) for f in files]
+
+
+def _submit_forms(secret, login, j, st, exp, builds):
+    """One signed "applied with this one" form per Drive build (newest first)."""
+    out = ""
+    for fid, name, _ in reversed(builds[-SHOWN_BUILDS:]):
+        fields = {"j": j["id"], "co": j["company"], "ro": j["role"], "exp": exp, "st": st, "f": fid, "n": name, "a": _mac(secret, "a", login, j["id"], st, exp, fid, name)}
+        out += (f'<form method="post" action="/resume">{S._hidden(fields)}<div class="actions"><span class="lead">{e(name)}</span>'
+                '<button class="btn" name="step" value="submit">I applied with this résumé</button></div></form>')
+    return out
+
+
+def _applied_section(reader, secret, login, j, st, exp):
+    """Jim, Oct 24: record which built résumé was actually sent. Shown under Build; read only here."""
+    try:
+        done, builds = recorded(reader, j["id"]), drive_builds(reader, j["id"])
+    except NotionError:                                                    # Build still works; only this list is unavailable this time
+        return '<section class="section"><div class="notice alert">Submitted résumé: unavailable this time. Reload to try again.</div></section>'
+    if done:
+        return ('<section class="section"><div class="eyebrow">Submitted résumé</div>'
+                f'<div class="notice ok">Recorded: {e(", ".join(n or "" for n, _ in done))}. Change it in the job\'s Submitted Résumé field in Notion.</div></section>')
+    if not builds:
+        return ""
+    return ('<section class="section"><div class="eyebrow">Already applied?</div><p class="lead">Record which résumé you sent. It is locked read-only in Google Drive and '
+            'linked in the job\'s Submitted Résumé field; nothing is sent to anyone.</p>' + _submit_forms(secret, login, j, st, exp, builds) + '</section>')
+
+
+def _submit(form, who, secrets, step):
+    """Review, then record: the Drive file must be a build of THIS job (its tag) still linked on its page; it is locked read-only, then the Ledger's
+    Submitted Résumé field is set to it, and both are read back. Nothing else is written; replay of the same file writes nothing."""
+    pid, exp, st, fid, name = D._page_id(form.get("j")), form.get("exp", ""), form.get("st", ""), form.get("f", ""), form.get("n", "")
+    if (not pid or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not fid or not name
+            or not _same(form.get("a"), _mac(secrets["link"], "a", who["login"], pid, st, exp, fid, name))
+            or not _same(_fp({"id": pid, "company": form.get("co", ""), "role": form.get("ro", "")}), st)):
+        return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
+    config = secrets["config"]
+    client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": config["ledger"]})
+    current = job(client, config, pid)
+    if _fp(current) != st:
+        return _stop(409, "Conflict", "Job changed", "The job changed since this page was opened.", "Nothing was changed. Reload the job and try again.")
+    link = next((url for f, n, url in drive_builds(client, pid) if (f, n) == (fid, name)), None)
+    if not link:
+        return _stop(409, "Not recorded", "That résumé is no longer on the job's page", "Reload the job and pick again.", "Nothing was changed.")
+    done = recorded(client, pid)
+    if done == [(name, link)]:
+        return _stop(200, "Already recorded", "This résumé is already recorded as submitted", f"{name}", "Nothing was changed.", "ok")
+    if done:
+        return _stop(409, "Not recorded", "A submitted résumé is already recorded", "Change it in the job's Submitted Résumé field in Notion.", "Nothing was changed.")
+    if step == "submit":
+        fields = {k: form.get(k, "") for k in ("j", "co", "ro", "exp", "st", "f", "n", "a")}
+        return 200, HTML, S.page("Record submitted résumé", "Which résumé you actually sent with this application.", _job_section(current) + (
+            f'<form method="post" action="/resume">{S._hidden(fields)}<section class="section"><div class="eyebrow">Review</div>'
+            f'<p class="step-title">{e(name)}</p><p class="lead">It will be locked read-only in Google Drive and set as this job\'s Submitted Résumé. Nothing is sent to anyone.</p></section>'
+            '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="record">Record it</button></div></form>'),
+            PATH, "Build resume"), ()
+    if not secrets.get("gdrive"):
+        return _stop(409, "Not recorded", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was changed.")
+    try:
+        return _record(client, current, gdrive_client(secrets["gdrive"]), pid, fid, name, link)
+    except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only
+        if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
+            raise
+        return _stop(500, "Unavailable", "Could not record the submitted résumé", "Do not assume it is recorded. The Drive file may already be locked read-only; "
+                     "trying again is safe.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+
+
+def gdrive_client(raw):
+    from lifeos.platform import gdrive                                     # imported here, so a release without the Drive client still serves every other route
+    return gdrive.Drive(raw)
+
+
+def _record(client, current, drive, pid, fid, name, link):
+    from lifeos.platform.gdrive import locked as is_locked
+    meta = drive.get(fid)
+    tags = meta.get("appProperties") or {}
+    if meta.get("trashed") or meta.get("name") != name or tags.get("lifeos") != "resume" or tags.get("job") != pid.replace("-", ""):
+        return _stop(409, "Not recorded", "That file is not a résumé built for this job", "Reload the job and pick again.", "Nothing was changed.")
+    locked = drive.lock(fid, LOCK_REASON)
+    client.call_once("PATCH", f"/pages/{pid}", {"properties": {SUBMITTED_COLUMN: {"files": [{"type": "external", "external": {"url": link}, "name": name}]}}})
+    again = drive.get(fid)
+    if not (is_locked(locked) and is_locked(again) and again.get("md5Checksum") == meta.get("md5Checksum") and recorded(client, pid) == [(name, link)]):
+        return _stop(500, "Unavailable", "Could not verify the submitted résumé", "Do not assume it is recorded.", "Status: DEGRADED · not read back", "danger")
+    return 200, HTML, S.page("Submitted résumé recorded", "Which résumé you actually sent with this application.", (
+        '<section class="section"><div class="eyebrow">Recorded</div><h3 class="step-title">Submitted résumé recorded</h3>'
+        f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
+        f'<div class="notice ok">{e(name)} · locked read-only in Google Drive and set as the job\'s Submitted Résumé · read back.</div></section>'
+        f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
+        PATH, "Build resume"), ()
+
+
 def _attached(current, filename, pid, drive=False):
     """The success screen: what was attached, and a link straight to the job's Ledger page (its Resume column and the file at the bottom of the page)."""
     return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
@@ -150,13 +259,17 @@ def _get(req, who, secrets):
         f'<form method="post" action="/resume">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Build resume</div>'
         '<p class="lead">Luna writes it from this job\'s description and your career evidence; the claims guard checks every title, date and number before it is built.</p>'
         '<div class="notice">This takes about a minute and a half. Keep this page open; the .docx is attached to the job\'s Ledger page and read back before you see it here.</div></section>'
-        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="build">Build resume</button></div></form>'),
-        PATH, "Build resume"), ()
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="build">Build resume</button></div></form>'
+        + _applied_section(secrets["reader"], secrets["link"], who["login"], j, st, exp)), PATH, "Build resume"), ()
 
 
 def _post(req, who, secrets):
     form, secret, login = req["form"], secrets["link"], who["login"]
     pid, step, exp, st = D._page_id(form.get("j")), form.get("step"), form.get("exp", ""), form.get("st", "")
+    if step in ("submit", "record") or (step == "cancel" and form.get("a")):
+        if step == "cancel":
+            return _stop(200, "Cancelled", "Nothing recorded", "No résumé was marked as submitted.", "Nothing was written.", "")
+        return _submit(form, who, secrets, step)
     if not pid or step not in ("cancel", "build") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secret, "r", login, pid, st, exp)):
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload the job from its link.", "Nothing was changed.", "danger")
     if step == "cancel":
@@ -186,8 +299,7 @@ def _post(req, who, secrets):
         return _stop(500, "Unavailable", "The resume came back malformed", "Nothing was attached.", "Status: DEGRADED · WORKER_OFF_CONTRACT", "danger")
     try:
         if secrets.get("gdrive"):                                          # the Drive credential is installed: the file goes to Drive, Notion links it
-            from lifeos.platform import gdrive                             # imported here, so a release without the Drive client still serves every other route
-            verified = attach_drive(client, gdrive.Drive(secrets["gdrive"]), pid, filename, docx, _now())
+            verified = attach_drive(client, gdrive_client(secrets["gdrive"]), pid, filename, docx, _now())
         else:
             verified = attach(client, token, pid, filename, docx, _now())
     except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only; anything else is the gate's 500

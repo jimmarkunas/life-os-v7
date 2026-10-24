@@ -44,7 +44,7 @@ class Page:
                      {"type": "heading_2", "heading_2": {"rich_text": rt("Responsibilities")}},
                      {"type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rt("Lead end-to-end delivery of complex enterprise programs.")}}]
         body += [{"type": "toggle", "toggle": {"rich_text": rt("Network Leads")}}, {"type": "paragraph", "paragraph": {"rich_text": rt("not part of the description")}}]
-        self.blocks, self.appended, self.lose, self.lose_column = body, [], lose_attachments, lose_column
+        self.blocks, self.appended, self.lose, self.lose_column, self.writes = body, [], lose_attachments, lose_column, []
         self.source = LEDGER                                                        # the gate's ReadOnly facade names the client's data source
 
     def get_page(self, pid):
@@ -56,12 +56,19 @@ class Page:
 
     def call_once(self, method, path, body=None):
         if path.replace("-", "") == f"/pages/{PID.replace('-', '')}":
-            assert method == "PATCH" and set(body["properties"]) == {"Resume"}, body                  # the build writes no other property
+            assert method == "PATCH" and len(body["properties"]) == 1 and set(body["properties"]) <= {"Resume", resume_app.SUBMITTED_COLUMN}, body   # one column, nothing else
+            if resume_app.SUBMITTED_COLUMN in body["properties"]:
+                if not self.lose_column:
+                    self.props[resume_app.SUBMITTED_COLUMN] = {"type": "files", "files": [dict(f) for f in body["properties"][resume_app.SUBMITTED_COLUMN]["files"]]}
+                self.writes.append(body)
+                return {}
+            self.writes.append(body)
             if not self.lose_column:
                 self.props["Resume"] = {"type": "files", "files": [{"name": f["name"], "type": "file"} if f["type"] == "file_upload" else dict(f)
                                                                    for f in body["properties"]["Resume"]["files"]]}
             return {}
         assert method == "PATCH" and path.replace("-", "") == f"/blocks/{PID.replace('-', '')}/children", (method, path)
+        self.writes.append(body)
         for child in body["children"]:
             kept = {"external": child["file"]["external"]} if child["file"]["type"] == "external" else {}
             self.appended.append({"type": "file", "file": {"type": child["file"]["type"].replace("file_upload", "file"), "name": child["file"]["name"],
@@ -192,7 +199,7 @@ class BuildResume(unittest.TestCase):
 class FakeDrive:
     """A stand-in for gdrive.Drive: LIFE OS's own files only, as the drive.file scope sees them."""
     def __init__(self, lose=False, fail=None):
-        self.files, self.folders, self.lose, self.fail, self.raw = {}, [], lose, fail, None
+        self.files, self.folders, self.lose, self.fail, self.raw, self.locks, self.no_lock = {}, [], lose, fail, None, [], False
 
     def bind(self, raw):
         self.raw = raw
@@ -205,13 +212,19 @@ class FakeDrive:
         return "folder-1"
 
     def upload(self, folder_id, name, data, mime, tags):
-        fid = f"file-{len(self.files) + 1}"
+        fid = f"file-{len(self.files) + 1}-0123456789"
         self.files[fid] = {"id": fid, "name": name, "md5Checksum": hashlib.md5(data).hexdigest(), "webViewLink": f"https://drive.google.com/file/d/{fid}/view",
                            "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags), "trashed": False, "data": data}
         return dict(self.files[fid])
 
     def get(self, fid):
         return {**self.files[fid], "trashed": self.lose}
+
+    def lock(self, fid, reason):
+        self.locks.append((fid, reason))
+        if not self.no_lock:
+            self.files[fid]["contentRestrictions"] = [{"readOnly": True, "reason": reason}]
+        return dict(self.files[fid])
 
 
 class DriveBuild(unittest.TestCase):
@@ -222,7 +235,7 @@ class DriveBuild(unittest.TestCase):
         self.assertIn("saved in Google Drive (LIFE OS / Résumés)", body)
         self.assertEqual(r.uploads, [])                                                       # nothing is uploaded to Notion
         self.assertEqual(r.drive.raw, GDRIVE)
-        stored = r.drive.files["file-1"]
+        stored = r.drive.files["file-1-0123456789"]
         self.assertEqual((stored["name"], stored["data"], stored["mimeType"], stored["parents"]), (FILENAME, DOCX, resume_app.DOCX, ["folder-1"]))
         self.assertEqual(stored["appProperties"], {"lifeos": "resume", "job": PID.replace("-", "")})
         link = stored["webViewLink"]
@@ -247,6 +260,153 @@ class DriveBuild(unittest.TestCase):
         r = Run(drive=FakeDrive())
         r.call("GET", query={"j": PID})
         self.assertIsNone(r.drive.raw)
+
+
+class Applied(unittest.TestCase):
+    """Jim, Oct 24: "I applied with this résumé" records which built résumé was sent: that Drive file is locked read-only and set as Submitted Résumé."""
+
+    def built(self, **drive):
+        r = Run(drive=FakeDrive(**drive))
+        self.assertEqual(r.build()[0], 200)
+        r.page.writes.clear()
+        return r
+
+    def offer(self, r):
+        status, body = r.call("GET", query={"j": PID})
+        self.assertEqual(status, 200, body)
+        forms = re.findall(r'<form method="post" action="/resume">(.*?)</form>', body, re.S)
+        return body, [{k: html.unescape(v) for k, v in re.findall(r'type="hidden" name="(\w+)" value="([^"]*)"', f)} for f in forms if 'name="a"' in f]
+
+    def record(self, r, form):
+        review = r.call("POST", form={**form, "step": "submit"})
+        self.assertEqual(review[0], 200, review[1])
+        fields = {k: html.unescape(v) for k, v in re.findall(r'type="hidden" name="(\w+)" value="([^"]*)"', review[1])}
+        return review, r.call("POST", form={**fields, "step": "record"})
+
+    def test_the_column_name_is_the_one_the_interview_page_reads(self):
+        from lifeos.interview import view
+        self.assertEqual(resume_app.SUBMITTED_COLUMN, view.SUBMITTED)
+
+    def test_each_drive_build_is_offered_and_recording_locks_it_and_sets_submitted_resume(self):
+        r = self.built()
+        body, forms = self.offer(r)
+        self.assertIn("I applied with this résumé", body)
+        self.assertEqual([f["n"] for f in forms], [FILENAME])
+        (review, done) = self.record(r, forms[0])
+        self.assertIn("Record it", review[1])
+        self.assertEqual(done[0], 200, done[1])
+        self.assertIn("Submitted résumé recorded", done[1])
+        link = r.drive.files["file-1-0123456789"]["webViewLink"]
+        self.assertEqual(r.page.props[resume_app.SUBMITTED_COLUMN]["files"], [{"type": "external", "external": {"url": link}, "name": FILENAME}])
+        self.assertEqual(r.drive.locks, [("file-1-0123456789", resume_app.LOCK_REASON)])
+        self.assertEqual(len(r.page.writes), 1)                                                    # one property write; the review step wrote nothing
+        body, forms = self.offer(r)
+        self.assertIn("Recorded: " + FILENAME, body)
+        self.assertEqual(forms, [])
+
+    def test_a_replay_writes_nothing_and_a_different_recorded_file_is_refused(self):
+        r = self.built()
+        _, forms = self.offer(r)
+        _, done = self.record(r, forms[0])
+        fields = {**forms[0], "step": "record"}
+        again = r.call("POST", form=fields)
+        self.assertIn("already recorded as submitted", again[1])
+        self.assertEqual((len(r.page.writes), len(r.drive.locks)), (1, 1))
+        r.page.props[resume_app.SUBMITTED_COLUMN] = {"type": "files", "files": [{"type": "external", "external": {"url": "https://x"}, "name": "Other.docx"}]}
+        refused = r.call("POST", form=fields)
+        self.assertEqual(refused[0], 409)
+        self.assertIn("already recorded", refused[1])
+        self.assertEqual(len(r.drive.locks), 1)
+
+    def test_tampered_forms_write_nothing(self):
+        r = self.built()
+        _, forms = self.offer(r)
+        for patch in ({"f": "file-9-0123456789"}, {"n": "Other.docx"}, {"a": "bad"}, {"j": "0" * 32}, {"exp": "1"}, {"co": "Mallory"}):
+            self.assertEqual(r.call("POST", form={**forms[0], **patch, "step": "record"})[0], 403, patch)
+        self.assertEqual((r.page.writes, r.drive.locks), ([], []))
+
+    def test_a_file_not_built_for_this_job_or_no_drive_credential_records_nothing(self):
+        r = self.built()
+        _, forms = self.offer(r)
+        r.drive.files["file-1-0123456789"]["appProperties"]["job"] = "f" * 32
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 409)
+        self.assertIn("not a résumé built for this job", body)
+        r.drive.files["file-1-0123456789"]["appProperties"]["job"] = PID.replace("-", "")
+        drive, r.drive = r.drive, None
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 409)
+        self.assertIn("Google Drive is not connected", body)
+        self.assertEqual((r.page.writes, drive.locks), ([], []))
+
+    def test_success_only_after_the_lock_and_the_column_read_back(self):
+        for setup in ("no_lock", "lose_column"):
+            r = self.built()
+            _, forms = self.offer(r)
+            if setup == "no_lock":
+                r.drive.no_lock = True
+            else:
+                r.page.lose_column = True
+            status, body = r.call("POST", form={**forms[0], "step": "record"})
+            self.assertEqual(status, 500, setup)
+            self.assertIn("not read back", body)
+
+    def test_a_drive_or_notion_failure_while_recording_is_a_fixed_code_and_says_retry_is_safe(self):
+        r = self.built()
+        _, forms = self.offer(r)
+
+        def broken(*a):
+            raise gdrive.DriveError("GDRIVE_HTTP_503")
+        r.drive.lock = broken
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 500)
+        self.assertIn("DEGRADED · GDRIVE_HTTP_503", body)
+        self.assertIn("trying again is safe", body)
+        self.assertEqual(r.page.writes, [])
+        r = self.built()
+        _, forms = self.offer(r)
+        once = r.page.call_once
+
+        def notion_down(method, path, body=None):
+            if resume_app.SUBMITTED_COLUMN in ((body or {}).get("properties") or {}):
+                raise NotionError("NOTION_HTTP_502")
+            return once(method, path, body)
+        r.page.call_once = notion_down
+        status, body = r.call("POST", form={**forms[0], "step": "record"})
+        self.assertEqual(status, 500)
+        self.assertIn("NOTION_HTTP_502", body)
+        self.assertEqual(len(r.drive.locks), 1)                                                    # locked, not recorded: the page says so and a retry is safe
+
+    def test_a_trashed_renamed_or_unlinked_build_records_nothing(self):
+        for change in ("trashed", "renamed", "unlinked"):
+            r = self.built()
+            _, forms = self.offer(r)
+            stored = r.drive.files["file-1-0123456789"]
+            if change == "trashed":
+                r.drive.lose = True
+            elif change == "renamed":
+                stored["name"] = "Other.docx"
+            else:
+                r.page.appended.clear()
+            status, _ = r.call("POST", form={**forms[0], "step": "record"})
+            self.assertEqual(status, 409, change)
+            self.assertEqual((r.page.writes, r.drive.locks), ([], []), change)
+
+    def test_an_unreadable_page_still_shows_build(self):
+        r = self.built()
+        with mock.patch.object(resume_app, "recorded", side_effect=NotionError("NOTION_HTTP_500")):
+            status, body = r.call("GET", query={"j": PID})
+        self.assertEqual(status, 200)
+        self.assertIn("Build resume", body)
+        self.assertIn("Submitted résumé: unavailable this time", body)
+
+    def test_cancel_records_nothing(self):
+        r = self.built()
+        _, forms = self.offer(r)
+        status, body = r.call("POST", form={**forms[0], "step": "cancel"})
+        self.assertEqual(status, 200)
+        self.assertIn("Nothing recorded", body)
+        self.assertEqual((r.page.writes, r.drive.locks), ([], []))
 
 
 class DriveClient(unittest.TestCase):
