@@ -5,13 +5,14 @@ fresh reads, and no other role Jim pursued at that company shares its words. A c
 the one Ledger application gets `Hiring Decision = Rejected` (re-read, written, read back), else the one Active Notes page moves to Retired Opportunities. Anything the Close screen would
 refuse is refused here, counted by fixed code, and the row stays as it was. Nothing is deleted, sent or marked in the mailbox, and a Reopen undoes it.
 
-It runs only when the hourly run is live AND the repository variable HIRING_AUTO_CLOSE is "on" (Jim's switch). Off, the rows that would close are only counted.
+It runs only when the hourly run is live AND the HIRING_AUTO_CLOSE switch is on (lifeos/platform/switches.json; a repository variable "off" is Jim's kill switch). Off, the rows that would close are only counted.
 A closed row stays on the Hiring Pipeline for SHOW_HOURS as "Closed — rejection email received <day> · auto-closed <day>", then drops off. Counts and fixed codes only are logged."""
 import hashlib
 from datetime import datetime, timedelta
 
 from lifeos.platform import names
 from lifeos.platform.notion_client import NotionError
+from lifeos.platform import switches
 from . import decision, models as M
 from .outcomes import REJECTED as REJECTION
 
@@ -41,7 +42,7 @@ def request(row, target_id, day):
 
 def run(rows, applied, parents, environ, live, now, ledger_client, pipe, root, read_parents, day_of):
     """-> {"due", "closed": [shown entries], "refused": {code: n}, "switch": bool}. `day_of(iso)` formats a received time as "Sep 17"; `read_parents()` re-reads the pages for move_page."""
-    out = {"due": 0, "closed": [], "refused": {}, "switch": bool(live) and (environ.get(SWITCH) or "").strip() == "on"}
+    out = {"due": 0, "closed": [], "refused": {}, "switch": bool(live) and switches.state(SWITCH, environ)}
     for row in due(rows):
         out["due"] += 1
         if not out["switch"]:
