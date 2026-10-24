@@ -33,7 +33,8 @@ elif c == "stage":
     if E.get("STAGE_FAIL") == "1":
         sys.exit("REFUSED: stage")
     os.makedirs(sys.argv[3])
-    open(sys.argv[3] + "/MANIFEST", "w").write("commit %s\n%s\n" % (sys.argv[2], E.get("BODY", "x lifeos/a.py")))
+    bodies = dict(x.split("=", 1) for x in E.get("BODIES", "").split(",") if "=" in x)          # each commit's own code, when a test needs it
+    open(sys.argv[3] + "/MANIFEST", "w").write("commit %s\n%s\n" % (sys.argv[2], bodies.get(sys.argv[2][:12], E.get("BODY", "x lifeos/a.py"))))
 elif c == "check":
     d = os.path.realpath(sys.argv[2])
     if os.path.basename(d) in E.get("CHECK_FAIL", "").split() or not os.path.isfile(d + "/MANIFEST"):
@@ -71,6 +72,7 @@ class AutoReleaseRun(unittest.TestCase):
             open(os.path.join(self.sim, f), "w").write("x")
         open(os.path.join(self.sim, "log"), "w").close()
         self.env = {**os.environ, "SIM": self.sim, "PATH": bin_ + os.pathsep + os.environ["PATH"]}
+        self.main, self.bodies = None, {}
 
     def tearDown(self):
         self.writable()
@@ -95,6 +97,12 @@ class AutoReleaseRun(unittest.TestCase):
         os.symlink(os.path.join(self.sim, "opt", target), path)
 
     def run_(self, *args, **env):
+        if env.get("HEAD"):                                                                       # what main is, and each commit's code, as the test has shown them
+            self.main = env["HEAD"]
+            self.bodies[env["HEAD"][:12]] = env.get("BODY", self.bodies.get(env["HEAD"][:12], "x lifeos/a.py"))
+        if args[0] in ("install", "rollback") and "MAIN" not in env and getattr(self, "main", None):
+            env["MAIN"] = self.main                                                               # Jim acts while main is readable, unless a test says otherwise
+        env.setdefault("BODIES", ",".join(f"{k}={v}" for k, v in self.bodies.items()))
         done = subprocess.run(["bash", self.script, *args], env={**self.env, **env}, capture_output=True, text=True, timeout=60)
         return done.returncode, done.stdout + done.stderr
 
@@ -234,6 +242,22 @@ class AutoReleaseRun(unittest.TestCase):
         D = "d" * 12 + "5" * 28
         self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)                   # new code: released
         self.assertEqual(self.at("current"), D[:12])
+
+    def test_a_rollback_while_main_is_unreadable_still_holds(self):
+        self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        D = "d" * 12 + "5" * 28
+        self.assertEqual(self.run_("rollback", MAIN="")[0], 0)                                    # GitHub unreadable during the incident
+        self.assertEqual(self.etc("auto.hold"), ["unknown"])
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="w lifeos/a.py")[0], 0)                   # C was merged meanwhile: held, not released
+        self.assertEqual(self.at("current"), A[:12])
+        self.assertEqual(self.run_("auto", HEAD=D, BODY="z lifeos/a.py")[0], 0)                   # newer code after that is released
+        self.assertEqual(self.at("current"), D[:12])
+
+    def test_a_rollback_after_a_cut_off_between_the_links_has_its_target(self):
+        self.link("previous", A[:12])                                                             # cut off: install set previous to the live tree
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        self.assertEqual(self.run_("rollback", MAIN=B)[0], 0)
+        self.assertEqual(self.at("current"), P)
 
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died

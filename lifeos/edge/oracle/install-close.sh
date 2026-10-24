@@ -12,8 +12,14 @@ code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }                
 seen() { [ -s "$ETC/auto.seen" ] && grep -qx "$(code "$1")" "$ETC/auto.seen"; }
 drop() { [ -e "$1" ] && chmod -R u+w "$1" 2>/dev/null; rm -rf "$1"; }                     # a staged tree is read-only
 hold() {                                                                               # Jim installed or rolled back by hand: auto never overrides him with main's code as it is now
-  install -d -m 755 "$ETC"; rm -f "$ETC/auto.pending"; end_retries
-  local h; if h="$(python3 -I "$REL" head 2>/dev/null)"; then echo "$h" > "$ETC/auto.hold"; else say "note: main's head unreadable; auto-release may release it"; fi
+  install -d -m 755 "$ETC"; end_retries
+  local c p n pp _                                                                     # a cut-off release first gets its own previous back, so Jim's rollback has its target
+  if read -r n c pp _ 2>/dev/null < "$ETC/auto.pending" && [ "$(readlink "$OPT/current" 2>/dev/null)" = "$c" ] && [ "$(readlink "$OPT/previous" 2>/dev/null)" != "${pp:-}" ]; then
+    if [ -n "${pp:-}" ] && [ -d "$pp" ]; then ln -sfn "$pp" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
+  fi
+  rm -f "$ETC/auto.pending"
+  local h; h="$(python3 -I "$REL" head 2>/dev/null)" || h=unknown                       # unreadable: auto holds whatever head it next reads
+  echo "$h" > "$ETC/auto.hold"
 }
 end_retries() { local t _; read -r t _ 2>/dev/null < "$ETC/auto.attempts" && [ -n "$t" ] && echo "$t 3" > "$ETC/auto.attempts" || true; }   # Jim stepped in: no retry overrides him
 remember() { install -d -m 755 "$ETC"; seen "$1" || code "$1" >> "$ETC/auto.seen"; }   # every code that has ever been live: auto-release never brings one back
@@ -146,6 +152,7 @@ case "${1:-}" in
     fi
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
     if read -r held _ 2>/dev/null < "$ETC/auto.hold"; then                                 # Jim's hand: main's code at that moment counts as seen, so only newer code is ever released
+      [ "$held" = unknown ] && { echo "$commit" > "$ETC/auto.hold"; exit 0; }              # main was unreadable when Jim acted: the first head read now is held
       [ "$held" = "$commit" ] && exit 0
       drop "$probe"; python3 -I "$REL" stage "$held" "$probe" || { say "auto: held commit unreadable; nothing changed"; exit 1; }
       remember "$probe"; drop "$probe"; rm -f "$ETC/auto.hold"

@@ -1,7 +1,7 @@
 """LIFE-47 S2 (Edge), stdlib only, used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main; exactly the Edge files plus the
 CLOSURE the Career entry point declares (ast, never executed); regular blobs whose git hashes match the commit tree; imports and builds the GET client with
 nothing outside DEST; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST, no extra file or symlink. `serve-state`: unknown unless
-the status is well-formed. `latest`: main's head once unit-tests passed on it. `same A B`: two trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
+the status is well-formed. `latest`: main's head once main's own hourly run tested it. `same A B`: two trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
 import ast
 import hashlib
 import json
@@ -107,17 +107,23 @@ def head(fetch=get):
 
 
 def latest(fetch=get):
-    """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own pr-tests run on that exact commit passed. The run is read from the Actions
-    runs of the pr-tests.yml workflow (a push to main), never from a check run, which any branch's workflow could post; its newest attempt decides."""
-    commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
-    if not SHA.match(commit):
-        raise Refused("NOT_A_COMMIT")
-    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/pr-tests.yml/runs?branch=main&event=push&head_sha={commit}")).get("workflow_runs") or []
-    mine = [r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("event") == "push" and r.get("path") == ".github/workflows/pr-tests.yml"]
-    newest = max(mine, key=lambda r: (r.get("run_attempt") or 0, r.get("id") or 0), default={})
-    if any(r.get("status") != "completed" for r in mine) or not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):   # still queued or running decides nothing
-        raise Refused("NOT_GREEN")
-    return commit
+    """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own hourly run tested that exact commit and its `Unit tests` step passed.
+    Runs are read from the Actions runs of hourly.yml on main (never a check run, which any branch's workflow could post); the newest run whose
+    `Unit tests` step finished decides, and one still queued or running decides nothing yet."""
+    commit = head(fetch)
+    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={commit}&per_page=20")).get("workflow_runs") or []
+    mine = sorted((r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("path") == ".github/workflows/hourly.yml"),
+                  key=lambda r: (r.get("id") or 0, r.get("run_attempt") or 0), reverse=True)
+    for run in mine:
+        if run.get("status") != "completed":
+            raise Refused("NOT_GREEN")                                  # a newer run still going may yet fail
+        jobs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/runs/{run.get('id')}/jobs?per_page=100")).get("jobs") or []
+        step = next((s for j in jobs if j.get("name") == "prep" for s in j.get("steps") or [] if s.get("name") == "Unit tests"), {})
+        if step.get("conclusion") == "success":
+            return commit
+        if step.get("conclusion") == "failure":
+            raise Refused("NOT_GREEN")
+    raise Refused("NOT_GREEN")                                          # no run of main tested this commit yet (a skipped tick tests nothing)
 
 
 def same(a, b):

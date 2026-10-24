@@ -121,22 +121,28 @@ class IsolatedTree(unittest.TestCase):
 
 
 class AutoRelease(unittest.TestCase):
-    """Jim, Oct 24: the Edge releases main's head by itself, only once main's own pr-tests run passed on it, and only when the Close closure changed."""
-    GREEN = {"head_sha": C, "head_branch": "main", "event": "push", "path": ".github/workflows/pr-tests.yml", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
+    """Jim, Oct 24: the Edge releases main's head by itself, only once main's own hourly run tested that commit, and only when the Close closure changed."""
+    RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "status": "completed", "id": 1, "run_attempt": 1}
 
-    def fetch(self, sha=C, runs=(GREEN,)):
-        return {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&event=push&head_sha={sha}": json.dumps({"workflow_runs": list(runs)}).encode()}.__getitem__
+    def fetch(self, sha=C, runs=(RUN,), steps=None):
+        steps = steps or {1: "success"}
+        urls = {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
+                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode()}
+        for run_id, conclusion in steps.items():
+            urls[f"https://api.github.com/repos/{rel.REPO}/actions/runs/{run_id}/jobs?per_page=100"] = json.dumps(
+                {"jobs": [{"name": "prep", "steps": [{"name": "Unit tests", "conclusion": conclusion}]}]}).encode()
+        return urls.__getitem__
 
-    def test_only_main_own_green_test_run_releases(self):
+    def test_only_main_own_tested_head_releases(self):
+        R = self.RUN
         self.assertEqual(rel.latest(self.fetch()), C)
-        G = self.GREEN
-        for runs in ((), ({**G, "conclusion": "failure"},), ({**G, "status": "in_progress", "conclusion": None},), ({**G, "event": "pull_request"},),
-                     ({**G, "head_branch": "feature"},), ({**G, "head_sha": "b" * 40},), ({**G, "path": ".github/workflows/other.yml"},),
-                     (G, {**G, "id": 2, "conclusion": "failure"}), (G, {**G, "id": 2, "status": "queued", "conclusion": None})):
-            with self.assertRaises(rel.Refused, msg=str(runs)):
-                rel.latest(self.fetch(runs=runs))
-        self.assertEqual(rel.latest(self.fetch(runs=({**G, "conclusion": "failure"}, {**G, "run_attempt": 2, "conclusion": "success"}))), C)   # a passing re-run
+        refused = [dict(runs=()), dict(steps={1: "failure"}), dict(steps={1: "skipped"}), dict(runs=({**R, "status": "in_progress"},)),
+                   dict(runs=({**R, "head_branch": "feature"},)), dict(runs=({**R, "head_sha": "b" * 40},)), dict(runs=({**R, "path": ".github/workflows/other.yml"},)),
+                   dict(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "failure"}), dict(runs=(R, {**R, "id": 2, "status": "queued"}))]
+        for kw in refused:
+            with self.assertRaises(rel.Refused, msg=str(kw)):
+                rel.latest(self.fetch(**kw))
+        self.assertEqual(rel.latest(self.fetch(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "skipped"})), C)    # a skipped tick tests nothing: the older test stands
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
 
