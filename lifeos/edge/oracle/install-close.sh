@@ -85,7 +85,7 @@ EOF
   if [ -s "$CREDS/lifeos-close.github" ]; then                                       # optional (Jim, Oct 24): the post-close Hiring refresh; absent = never asked
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=github:$CREDS/lifeos-close.github" "$1/lifeos-close@.service"
   fi
-  if [ -s "$CREDS/lifeos-close.gdrive" ]; then                                       # optional (Jim, Oct 24): Build resume saves to Google Drive (drive.file only); absent = Notion upload
+  if [ -s "$CREDS/lifeos-close.gdrive" ]; then                                       # optional (Jim, Oct 24): Build resume saves to Google Drive (My Drive / LIFE OS / Résumés, full drive scope, Jim Oct 24); absent = Notion upload
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=gdrive:$CREDS/lifeos-close.gdrive" "$1/lifeos-close@.service"
   fi
 }

@@ -789,6 +789,54 @@ class ParallelLanes(Batch):
         self.assertEqual(self.row(1, ("cloud_status", "cloud_reason"))[:2], ("DEGRADED", "FIT_EDGE_REQUEST_TOO_LARGE"))   # recorded on its row: never re-asked
         self.assertEqual(self.batch(10, Endpoint(measured))["cloud_calls"], 0)                                 # a second batch asks nobody again
 
+    def test_oracle_refusing_every_job_for_size_stops_after_three_and_degrades_the_run(self):
+        # review of #525: an Oracle limit fault must not quietly mark the whole backlog DEGRADED while the run stays green
+        for i in range(1, 8):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        endpoint = Endpoint(lambda data: reply(data, status="OVERSIZE", judgment_raw=None))
+        counts = self.batch(10, endpoint)
+        self.assertEqual(len(endpoint.sent), cloud.SIZE_STOP)                                               # stopped: only three rows were marked
+        self.assertEqual((counts["cloud_fit"], counts["failed"]), ("DEGRADED(FIT_EDGE_ALL_TOO_LARGE)", 1))
+        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_OVERSIZE": cloud.SIZE_STOP})
+        self.assertEqual(sum(1 for i in range(1, 8) if self.status(i) is None), 7 - cloud.SIZE_STOP)        # the rest stay unasked
+
+    def test_a_few_oversize_jobs_among_judged_ones_never_stop_or_degrade(self):
+        for i in range(1, 6):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        seen = []
+
+        def answer(data):
+            seen.append(data)
+            return measured(data) if len(seen) % 2 else reply(data, status="OVERSIZE", judgment_raw=None)
+        counts = self.batch(10, Endpoint(answer))
+        self.assertEqual((counts["cloud_fit"], counts["failed"], len(seen)), ("OK", 0, 5))
+        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_OVERSIZE": 2})
+
+    def test_two_jobs_too_large_for_v7s_own_frame_alone_never_fail_the_run(self):
+        long = GOOD + "".join(f"• Own program delivery stream {n} across engineering, data and finance teams\n" for n in range(400))
+        for i in (1, 2):
+            self.titled(i, f"Program Manager {i}", score=90 - i, text=long)
+        counts = self.batch(10, Endpoint(measured))
+        self.assertEqual((counts["cloud_fit"], counts["failed"]), ("OK", 0))
+        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_REQUEST_TOO_LARGE": 2})
+
+    def test_the_size_stop_degrades_even_when_a_parallel_lane_was_judged(self):
+        for i in range(1, 9):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        seen, lock = [], threading.Lock()
+
+        def answer(data):
+            with lock:
+                seen.append(data)
+                n = len(seen)
+            if n == 4:
+                time.sleep(0.3)
+                return measured(data)                                         # a lane already in flight answers after the stop
+            return reply(data, status="OVERSIZE", judgment_raw=None)
+        counts = self.batch(10, Endpoint(answer), environ=self.TWO)
+        self.assertEqual((counts["cloud_fit"], counts["failed"]), ("DEGRADED(FIT_EDGE_ALL_TOO_LARGE)", 1))
+        self.assertLess(len(seen), 8)
+
     def test_a_rejected_judgment_still_degrades_the_batch(self):
         self.titled(1, "Program Manager 1", score=90)
         counts = self.batch(10, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')))
