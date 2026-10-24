@@ -10,6 +10,7 @@ import socket
 import tempfile
 import threading
 import unittest
+import urllib.parse
 from datetime import datetime
 from unittest import mock
 
@@ -465,6 +466,7 @@ class DriveClient(unittest.TestCase):
         self.assertIn(b"refresh_token=rtoken", token[3])
         self.assertIn("name%3D%27LIFE+OS%27+and+%27root%27+in+parents", home[1])                          # exactly the LIFE OS folder at the top of My Drive
         self.assertIn("%27home-1%27+in+parents", search[1])
+        self.assertIn(urllib.parse.quote_plus("name='Re\u0301sume\u0301s'"), search[1])                      # the decomposed spelling a Mac may store matches too
         self.assertEqual(home[2]["Authorization"], "Bearer at")
         self.assertEqual(json.loads(made[3]), {"name": "Résumés", "mimeType": gdrive.FOLDER_MIME, "parents": ["home-1"], "appProperties": {"lifeos": "resumes"}})
         self.assertEqual(again[0], "GET")

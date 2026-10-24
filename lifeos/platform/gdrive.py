@@ -7,6 +7,7 @@ object {"client_id", "client_secret", "refresh_token"} (the Edge stores it encry
 import hashlib
 import json
 import secrets
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -90,7 +91,8 @@ class Drive:
         if len(homes) != 1:
             raise DriveError("GDRIVE_LIFE_OS_FOLDER_" + ("MISSING" if not homes else "AMBIGUOUS"))
         home = homes[0]["id"]
-        found = self.find(f"mimeType='{FOLDER_MIME}' and name='{FOLDER_NAME}' and '{_quote(home)}' in parents")
+        names = " or ".join(f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD")))   # a Mac may store the accents decomposed
+        found = self.find(f"mimeType='{FOLDER_MIME}' and ({names}) and '{_quote(home)}' in parents")
         if found:
             return found[0]["id"]
         made = self._json("POST", API + "?fields=id", {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "parents": [home], "appProperties": {"lifeos": FOLDER_TAG}})
