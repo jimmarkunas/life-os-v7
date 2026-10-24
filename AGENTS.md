@@ -4,6 +4,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
 ## Development entrypoint (all authorized coding agents)
+**Route first:** classify the task as FAST, STANDARD, ENGINEERING or PROTECTED with the policy's **Adaptive Execution** section before any Jira or GitHub read; Fast Start below is the ENGINEERING bootstrap.
 ### Fast Start — routine bootstrap target: 60 seconds
 - **Measure, do not guess:** At session start run `START_EPOCH=$(date -u +%s)`. After essential Jira/GitHub reads report `bootstrap_seconds=$(($(date -u +%s)-START_EPOCH))` and number of remote reads in the existing progress message; no tracking file, scheduler, extra API call or telemetry service. **60 seconds is a target**, not permission to omit required authority or safety checks. If a slow provider exceeds it, begin the safe, ready work and name only the remaining required blocker.
 - **Warm resume by default:** Keep the current LIFE issue, branch/head, relevant policy sections, direct file context and verified results from this session. On resume recheck only live Jira status/ownership when relevant and `origin/main` SHA; compare only changed commits touching the claimed surface. Unchanged facts do not require re-fetching comments, files, contracts or green CI. A new agent uses the specific PR/issue handoff plus these minimal authoritative checks; do not reconstruct history.
