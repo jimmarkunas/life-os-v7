@@ -281,12 +281,13 @@ def move_page(client, root_id, request, live, now, parents):
     return {"status": "recorded", "verified": True, "route": "notes", "entries": len(marks | {want["op"]: 1})}
 
 
-def confirm_rejected(client, request, live, now):
-    """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError. Never success from an HTTP response alone: the exact row is fetched again and compared."""
+def confirm_rejected(client, request, live, now, pages=None):
+    """-> {"status": dry_run | recorded | already_recorded, "verified": bool, "entries": n} or a DecisionError. Never success from an HTTP response alone: the exact row is fetched again and compared.
+    `pages`: the caller's own fresh Applied read in this same request, so the Ledger is not scanned twice; it only selects the row, which is then fetched and checked itself."""
     want = parse(request)
     reopen, was = want["action"] == REOPEN, None
     check_schema(client, want["outcome"])
-    row = target(applied_pages(client), want)
+    row = target(applied_pages(client) if pages is None else pages, want)
     page = client.get_page(row["id"])
     current(page, want, client.source)
     kept, decision, history = snapshot(page)
