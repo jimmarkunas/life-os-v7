@@ -88,6 +88,7 @@ case "${1:-}" in
     [ "${LIFEOS_CLOSE_LOCKED:-}" = 1 ] || { install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: another release is running"; exit 1; }; export LIFEOS_CLOSE_LOCKED=1; }
     for f in "$ETC/policy.json" "$CREDS/lifeos-close.notion" "$CREDS/lifeos-close.link"; do [ -s "$f" ] || { say "STOP: missing $f"; exit 1; }; done
     st="$(serve_state)"; case "$st" in free|ours) ;; *) say "STOP: tailnet port $TAILNET is $st (not verified free or ours)"; exit 1;; esac
+    [ "${LIFEOS_CLOSE_LOCKED:-}" != 1 ] || [ "$st" = ours ] || { say "STOP: auto-release never re-adds Serve"; exit 1; }
     dest="$OPT/${commit:0:12}"; stage="$OPT/.stage"; install -d -m 755 "$OPT"; rm -rf "$stage"      # one fixed name: a run killed mid-stage is cleaned by the next
     python3 -I "$REL" stage "$commit" "$stage" || { rm -rf "$stage"; say "STOP: release not verified; nothing changed"; exit 1; }
     chown -R root:root "$stage"; chmod -R go-w,a-w+rX "$stage"
@@ -118,22 +119,32 @@ case "${1:-}" in
     systemctl is-enabled --quiet lifeos-close.socket && [ "$(serve_state)" = ours ] || { say "auto: the service is not installed and serving; nothing changed"; exit 0; }
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
-    read -r tried n < "$ETC/auto.attempts" 2>/dev/null || true
-    [ "${tried:-}" = "$commit" ] || n=0
-    [ "${n:-0}" -ge 3 ] && exit 0                                                         # three failed attempts at this commit: wait for the next green commit
-    if [ "$cur" != "$OPT/${commit:0:12}" ]; then
+    tried=""; n=0; read -r tried n _ 2>/dev/null < "$ETC/auto.attempts" || true
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    [ "$tried" = "$commit" ] || n=0
+    [ "$n" -ge 3 ] && exit 0                                                              # three attempts at this commit: wait for the next green commit
+    if [ "$cur" = "$OPT/${commit:0:12}" ]; then                                           # live but never recorded: a run cut off after the switch; prove it before trusting it
+      if ! "$0" verify; then
+        echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"
+        if [ -n "$prev" ] && [ "$prev" != "$cur" ]; then
+          ln -sfn "$prev" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
+          if "$0" verify; then say "auto: ${commit:0:12} unverified after a cut-off run; restored ${prev##*/}"; else say "auto: RESTORE VERIFY FAILED (${prev##*/})"; fi
+        fi
+        exit 1
+      fi
+    else
       rm -rf "$probe"
       if ! python3 -I "$REL" stage "$commit" "$probe"; then
         echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
       fi
       if ! python3 -I "$REL" same "$probe" "$cur"; then                                   # the commit changes the Close closure
+        echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                 # counted before the switch, so a cut-off run still counts
         if LIFEOS_CLOSE_LOCKED=1 "$0" install "$commit"; then
           say "auto: released ${commit:0:12}"
         else
-          echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"
           if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                # verify failed after the switch: back to exactly the live tree, and its own previous tree
             ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
-            if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; fi
+            if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
             if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
           fi
           exit 1
@@ -172,6 +183,8 @@ EOF
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)
+    install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; systemctl stop lifeos-close-release.timer 2>/dev/null || true    # no new run; a running one finishes (never killed mid-switch)
+    flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     bad=0; st="$(serve_state)"
     case "$st" in
       ours) tailscale serve --tls-terminated-tcp "$TAILNET" off >/dev/null || { say "FAIL: Serve $TAILNET not removed"; bad=1; } ;;

@@ -179,12 +179,17 @@ class AutoRelease(unittest.TestCase):
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
         self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
         self.assertNotIn("rollback", auto)
-        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # every failure counts one attempt; a commit gets at most three, whatever the cause
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 3)               # every attempt counts (before the switch, so a cut-off run counts); at most three per commit
+        self.assertIn("case \"$n\" in ''|*[!0-9]*) n=0", auto)                    # a malformed count is never fatal
+        self.assertIn('else rm -f "$OPT/previous"', auto)                       # no previous tree before: none after a restore
+        self.assertIn("unverified after a cut-off run", auto)
         self.assertIn('-ge 3 ] && exit 0', auto)
         self.assertIn("RESTORE VERIFY FAILED", auto)
         self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
         uninstall = script.split("  uninstall)", 1)[1]
         self.assertIn("disable --now lifeos-close-release.timer", uninstall)
+        self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])           # waits out a running release
+        self.assertIn("auto-release never re-adds Serve", script)
         self.assertIn("the first install is Jim's by hand", auto)
         self.assertIn("flock -n 9", auto)
         self.assertIn("trap", auto)
