@@ -1,7 +1,7 @@
 """LIFE-47 S2 (Edge), stdlib only, used by install-close.sh as root; changes nothing live. `stage COMMIT DEST`: a full SHA on main; exactly the Edge files plus the
 CLOSURE the Career entry point declares (ast, never executed); regular blobs whose git hashes match the commit tree; imports and builds the GET client with
 nothing outside DEST; any surprise refuses before DEST is written. `check DEST`: exactly its MANIFEST, no extra file or symlink. `serve-state`: unknown unless
-the status is well-formed. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
+the status is well-formed. `latest`: main's head once unit-tests passed on it. `same A B`: two trees carry the same files. `policy PORT LOGIN LEDGER PIPELINE NODE...`: host, login, canonical ids and approved untagged nodes (never this node); no tokens."""
 import ast
 import hashlib
 import json
@@ -94,6 +94,23 @@ def check(dest):
         raise Refused("TREE_DIFFERS")
 
 
+def latest(fetch=get):
+    """Edge auto-release (Jim, Oct 24): main's head commit, only once its `unit-tests` check run passed; anything else refuses and nothing is released this tick."""
+    commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
+    if not SHA.match(commit):
+        raise Refused("NOT_A_COMMIT")
+    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/{commit}/check-runs?check_name=unit-tests")).get("check_runs") or []
+    if not any(r.get("name") == "unit-tests" and r.get("status") == "completed" and r.get("conclusion") == "success" for r in runs):
+        raise Refused("NOT_GREEN")
+    return commit
+
+
+def same(a, b):
+    """True when two staged trees carry the same files (the commit line aside): a main commit that does not touch the Close closure is not a release."""
+    body = lambda d: open(os.path.join(d, "MANIFEST")).read().splitlines()[1:]
+    return body(a) == body(b)
+
+
 def policy(status, port, login, ledger, pipeline, nodes):
     ids = {k: str(v).replace("-", "").lower() for k, v in (("ledger", ledger), ("pipeline", pipeline))}
     if not all(NOTION_ID.match(v) for v in ids.values()):
@@ -135,6 +152,10 @@ if __name__ == "__main__":
             print(json.dumps(policy(json.load(sys.stdin), *sys.argv[2:6], sys.argv[6:])))
         elif sys.argv[1:2] == ["check"] and len(sys.argv) == 3:
             check(sys.argv[2])
+        elif sys.argv[1:2] == ["latest"]:
+            print(latest())
+        elif sys.argv[1:2] == ["same"] and len(sys.argv) == 4:
+            sys.exit(0 if same(sys.argv[2], sys.argv[3]) else 1)
         else:
             sys.exit("usage: close_release.py stage COMMIT DEST | check DEST | serve-state")
     except (Refused, OSError, ValueError, KeyError) as e:

@@ -1,6 +1,7 @@
 #!/bin/bash
 # LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link | units DIR |
 #   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
+#   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed; verify, else back to the tree that was live) | auto-units (once, by Jim).
 # Only port 47443 and its own units/tree are touched: never the Gateway (443/18789), iMessage (47341/47342), Funnel, or `tailscale serve reset`.
 set -euo pipefail
 OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
@@ -107,6 +108,39 @@ case "${1:-}" in
     check "listener on 127.0.0.1 only" '[ "$(ss -Hltn "sport = :$LOCAL" | awk "{print \$4}" | sort -u)" = "127.0.0.1:$LOCAL" ]'
     check "Serve terminates TLS on $TAILNET with PROXY v2, no Funnel" '[ "$(serve_state)" = ours ]'
     exit $ok ;;
+  auto)
+    commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
+    cur="$(readlink "$OPT/current" 2>/dev/null || true)"
+    [ "$cur" = "$OPT/${commit:0:12}" ] && exit 0
+    probe="$OPT/.probe-$$"; install -d -m 755 "$OPT"; rm -rf "$probe"
+    python3 -I "$REL" stage "$commit" "$probe" || { rm -rf "$probe"; say "auto: ${commit:0:12} refused; nothing changed"; exit 1; }
+    if [ -n "$cur" ] && python3 -I "$REL" same "$probe" "$cur"; then rm -rf "$probe"; exit 0; fi   # the commit does not touch the Close closure
+    rm -rf "$probe"
+    if "$0" install "$commit"; then say "auto: released ${commit:0:12}"; exit 0; fi
+    if [ -n "$cur" ] && [ "$(readlink "$OPT/current")" != "$cur" ]; then         # verify failed after the switch: back to exactly the tree that was live
+      ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify && say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"
+    fi
+    exit 1 ;;
+  auto-units)   # once, by Jim: a root-owned copy of these two scripts runs the timer; main can change the app, never the updater
+    install -d -m 755 "$OPT/bin"; install -m 755 "$0" "$OPT/bin/install-close.sh"; install -m 644 "$REL" "$OPT/bin/close_release.py"
+    cat > "$UNITS/lifeos-close-release.service" <<EOF
+[Unit]
+Description=LIFE OS Close service auto-release (main's green head; verify or restore)
+[Service]
+Type=oneshot
+ExecStart=$OPT/bin/install-close.sh auto
+EOF
+    cat > "$UNITS/lifeos-close-release.timer" <<'EOF'
+[Unit]
+Description=LIFE OS Close service auto-release every 15 minutes
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload; systemctl enable --now lifeos-close-release.timer >/dev/null; say "auto-release timer enabled (every 15 minutes; journalctl -u lifeos-close-release)" ;;
   rollback)
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
@@ -122,5 +156,5 @@ case "${1:-}" in
     rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service"; systemctl daemon-reload || bad=1
     [ "$(serve_state)" = free ] || { say "FAIL: Serve $TAILNET not verified free"; bad=1; }
     if [ "$bad" = 0 ]; then say "Removed the socket, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand."; else say "UNINSTALL INCOMPLETE"; exit 1; fi ;;
-  *) say "usage: install-close.sh policy|credential|units|install|verify|rollback|uninstall"; exit 2 ;;
+  *) say "usage: install-close.sh policy|credential|units|install|auto|auto-units|verify|rollback|uninstall"; exit 2 ;;
 esac

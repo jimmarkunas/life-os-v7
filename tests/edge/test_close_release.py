@@ -118,3 +118,42 @@ class IsolatedTree(unittest.TestCase):
                     open(os.path.join(d, p), "wb").write(data)
             with self.assertRaises(rel.Refused):
                 rel.imports(d)
+
+
+class AutoRelease(unittest.TestCase):
+    """Jim, Oct 24: the Edge releases main's head by itself, only once unit-tests passed on it, and only when the Close closure changed."""
+    def fetch(self, sha=C, runs=({"name": "unit-tests", "status": "completed", "conclusion": "success"},)):
+        return {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
+                f"https://api.github.com/repos/{rel.REPO}/commits/{sha}/check-runs?check_name=unit-tests": json.dumps({"check_runs": list(runs)}).encode()}.__getitem__
+
+    def test_only_a_green_head_is_released(self):
+        self.assertEqual(rel.latest(self.fetch()), C)
+        for runs in ((), ({"name": "unit-tests", "status": "completed", "conclusion": "failure"},), ({"name": "unit-tests", "status": "in_progress", "conclusion": None},),
+                     ({"name": "lane-guard", "status": "completed", "conclusion": "success"},)):
+            with self.assertRaises(rel.Refused):
+                rel.latest(self.fetch(runs=runs))
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(sha="main"))
+
+    def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
+        a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
+        rel.stage(C, a, github(), importer=lambda p: None)
+        rel.stage(C, b, github(), importer=lambda p: None)
+        with open(os.path.join(b, "MANIFEST")) as f:
+            body = f.read().splitlines()[1:]
+        with open(os.path.join(b, "MANIFEST"), "w") as f:
+            f.write("commit " + "b" * 40 + "\n" + "".join(line + "\n" for line in body))
+        self.assertTrue(rel.same(a, b))                                        # another commit, the same files
+        changed = {**FILES, "lifeos/hiring/close.py": b"# changed\n"}
+        c = os.path.join(tempfile.mkdtemp(), "c")
+        rel.stage(C, c, github(changed), importer=lambda p: None)
+        self.assertFalse(rel.same(a, c))
+
+    def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):
+        script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
+        auto = script.split("  auto)", 1)[1].split(";;", 1)[0]
+        self.assertIn('"$0" install "$commit"', auto)
+        self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
+        self.assertNotIn("rollback", auto)
+        units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]
+        self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)        # the timer runs Jim's installed copy, not a file main can change
