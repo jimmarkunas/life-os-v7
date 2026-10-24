@@ -77,9 +77,11 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
         deferred = set()
         for index, (parent_query, round_query) in enumerate(evidence):
             if index >= max(0, limit):
-                if any(not q.refresh_only for _, q in evidence[index:]):     # E05: refresh-only items come last; the ones past the limit simply wait for the next run
+                if any(not q.refresh_only for _, q in evidence[index:]):
                     counts["blocked"] += 1
                     reason("pipeline_incomplete")
+                else:                                                   # E05: refresh-only items come last; the ones past the limit are counted, not an alarm
+                    counts["why"]["refresh_deferred"] = len(evidence) - index
                 break
             if _probe:
                 break

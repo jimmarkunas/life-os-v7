@@ -264,6 +264,7 @@ class LeadRefresh(unittest.TestCase):
         from tests.interview import test_ui3c as U
         quiet = stage.run(1, False, environ=ENV, client=U.Sim(), evidence=[real, lead, lead])
         self.assertNotIn("pipeline_incomplete", quiet["why"])
+        self.assertEqual((quiet["why"].get("refresh_deferred"), quiet["blocked"]), (2, 0))             # counted, never an alarm
         loud = stage.run(1, False, environ=ENV, client=U.Sim(), evidence=[real, real])
         self.assertEqual(loud["why"].get("pipeline_incomplete"), 1)
 
