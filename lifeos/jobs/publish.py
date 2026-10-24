@@ -257,6 +257,7 @@ def run(limit, live, environ=os.environ):
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
     counts["picked"] = len(rows)
+    counts["picked_not_board"] = sum(1 for r in rows if not str(r[5] or "").startswith("web:"))      # D248 read-back: picked jobs not from an employer-board scan (counts only)
     listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
     for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible, location, route) in rows:
         if job_id in known:
