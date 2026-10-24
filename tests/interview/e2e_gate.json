@@ -181,11 +181,15 @@
     "E14": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "the Close screen has authenticated confirmation and read-back; Manage, outreach and material actions are not reachable",
+      "missing": "Manage (a read-only hub on the Close screen, linked from each opportunity page) reaches Close, Mark Complete, Build résumé / I applied with this résumé and Mark as Sent, and Reopen is a signed review and confirm through the S1 rules; none of it has been used live and read back yet; pausing or re-staging (LIFE-111) and editing the next action (LIFE-112) are backlog",
       "tests": [
         "tests.hiring.test_close_app.Post.test_a_missing_expired_forged_or_foreign_confirmation_is_refused_with_no_write",
         "tests.hiring.test_close_app.Post.test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success",
-        "tests.hiring.test_close_app.Post.test_reopen_and_manage_are_not_reachable"
+        "tests.hiring.test_close_app.Post.test_the_close_route_never_reopens_and_manage_is_its_own_route",
+        "tests.interview.test_ui3c.Layout.test_e14_the_page_links_manage_on_the_close_screen_only_once_it_exists",
+        "tests.hiring.test_manage_app.Hub.test_an_open_application_links_its_existing_actions_and_get_writes_nothing",
+        "tests.hiring.test_manage_app.Reopen.test_a_closed_application_is_reopened_on_its_ledger_row_after_review_and_read_back",
+        "tests.hiring.test_manage_app.Reopen.test_a_closed_notes_page_moves_back_to_active_opportunities"
       ]
     },
     "E15": {

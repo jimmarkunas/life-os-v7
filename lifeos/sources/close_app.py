@@ -1,8 +1,9 @@
 """LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the Notes pages and the S1 decision rules. One exact opportunity is resolved by its canonical page id, routed
 by the S1 decision rules, shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
-conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Reopen and Manage are not reachable. Fixed codes only."""
+conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Fixed codes only."""
 import hashlib
 import hmac
+import importlib
 import re
 from html import escape as e
 from datetime import datetime
@@ -16,6 +17,8 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/sources/outreach_app.py", "lifeos/recruiters/__init__.py", "lifeos/recruiters/outreach.py", "lifeos/recruiters/notion.py", "lifeos/recruiters/identity.py",
            "lifeos/network/__init__.py", "lifeos/network/surface.py", "lifeos/network/match.py",
            "lifeos/sources/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py")
+ROUTES = {"/sent": ("outreach_app", "handle"), "/referral": ("outreach_app", "handle_status"), "/recruiter": ("outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
+          "/resume": ("resume_app", "handle"), "/manage": ("manage_app", "handle")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24)
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
 
 
@@ -251,20 +254,11 @@ def handle(req, who, secrets):
             return 200, "text/css; charset=utf-8", S.CSS.encode(), ()
         if req["method"] == "GET" and req["path"] == "/close.js":                             # the buttons' busy spinner; nothing depends on it
             return 200, "text/javascript; charset=utf-8", S.JS.encode(), ()
-        if req["path"] == "/sent" and req["method"] in ("GET", "POST"):                       # D221: Mark as Sent, same gate and signing key
-            from . import outreach_app
-            return outreach_app.handle(req, who, secrets)
-        if req["path"] == "/referral" and req["method"] in ("GET", "POST"):                   # reply / referral status on a recorded conversation, same gate and signing key
-            from . import outreach_app
-            return outreach_app.handle_status(req, who, secrets)
-        if req["path"] == "/recruiter" and req["method"] in ("GET", "POST"):                  # LIFE-20: close one open recruiter row (Completed / Dismissed), same gate and signing key
-            from . import outreach_app
-            return outreach_app.handle_close(req, who, secrets)
+        if req["path"] in ROUTES and req["method"] in ("GET", "POST"):                        # same gate, signing key and fresh read; each module is loaded only for its own path
+            module, name = ROUTES[req["path"]]
+            return getattr(importlib.import_module("lifeos.sources." + module), name)(req, who, secrets)
         if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
             return handle_complete(req, who, secrets)
-        if req["path"] == "/resume" and req["method"] in ("GET", "POST"):                     # D234: Build resume, same gate, signing key and fresh read
-            from . import resume_app
-            return resume_app.handle(req, who, secrets)
         if req["path"] != "/" or req["method"] not in ("GET", "POST"):
             return _stop(404, "Not found", "Nothing here", "This service only closes one opportunity at a time.", "Nothing was changed.")
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)

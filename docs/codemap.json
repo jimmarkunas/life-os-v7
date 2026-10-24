@@ -444,6 +444,7 @@
    "lifeos/sources/job_page_outreach.py": "LIFE-10 \u00a72 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).",
    "lifeos/sources/linkedin_search.py": "D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi",
    "lifeos/sources/m1m2_proof.py": "LIFE-78 bounded synthetic M1/M2 exit: ONE finite case, an acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces. Manual only: in",
+   "lifeos/sources/manage_app.py": "LIFE-88 E14 (Jim, Oct 24 2026; 12a + 12b): Manage on the private Close service, for ONE interview opportunity page. 12a: GET /manage?o=<opportunity page id> is a read-onl",
    "lifeos/sources/megibow.py": "MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.",
    "lifeos/sources/network_leads.py": "NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl",
    "lifeos/sources/network_surface.py": "NET-2.3 (D160): surface network leads as one marker-owned \"Network Leads (n)\" block on the Job Ledger page of each target job. Dry unless live; counts only.",

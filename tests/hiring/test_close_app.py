@@ -347,7 +347,7 @@ class Post(unittest.TestCase):
             self.assertIn("A closure counts as done only after the canonical record is read back.", body)
             self.assertNotIn("Nothing else was changed", body)
 
-    def test_reopen_and_manage_are_not_reachable(self):
+    def test_the_close_route_never_reopens_and_manage_is_its_own_route(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
         self.assertEqual(h.close(TD.TARGET, "Hired")[0], 200)
         _, _, f = h.review(TD.TARGET, "Hired")                                                # a closed record offers no new form
@@ -357,7 +357,7 @@ class Post(unittest.TestCase):
         self.assertEqual(h.world.source.decision(), {"name": "Hired"})
         text = (ROOT / "lifeos/sources/close_app.py").read_text() + (ROOT / "lifeos/hiring/close_screen.py").read_text()
         self.assertFalse(re.search(r"D\.REOPEN|reopen_hired|\"REOPEN\"", text))
-        self.assertEqual(h.call("GET", "/manage")[0], 404)
+        self.assertEqual(h.call("GET", "/manage")[0], 400)                                    # E14 (Jim, Oct 24): Manage and Reopen live in manage_app, with their own signed forms
 
     def test_hostile_text_is_escaped_in_every_page(self):
         evil = "<script>alert(1)</script> & Co"
