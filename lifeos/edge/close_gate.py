@@ -17,7 +17,7 @@ from lifeos.imessage import alerts_endpoint as ep
 from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
-API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/domains.yml"
+API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions"
 REFRESH = {"hiring": {"refresh": "hiring", "live": "true"}}           # the only runs an app may ask for: the Hiring Pipeline region, redrawn by its own hourly writer
 WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
@@ -108,8 +108,8 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=()):
 
 
 def refresh(token, wants, opener=urllib.request.urlopen):
-    """One workflow_dispatch per known refresh the app asked for, unless a domains run is already waiting: that run redraws the region anyway, and a second waiting run would
-    replace it in the shared concurrency group (the Oct 21 stall). Best effort and silent: the response is already sent, and the hourly run still redraws. -> codes, for tests."""
+    """One workflow_dispatch per known refresh the app asked for, unless any run in the repository is already waiting: an after-tick domains run redraws the region anyway,
+    and the manual Recruiters and Amazon runs share the same concurrency group, where a second waiting run replaces the first (the Oct 21 stall). Best effort and silent: the response is already sent, and the hourly run still redraws. -> codes, for tests."""
     def call(method, path, body=None):
         req = urllib.request.Request(API + path, None if body is None else json.dumps(body).encode(), method=method, headers={
             "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
@@ -118,10 +118,10 @@ def refresh(token, wants, opener=urllib.request.urlopen):
     done = []
     for name in dict.fromkeys(w for w in wants if isinstance(w, str) and w in REFRESH):
         try:
-            if any(r.get("status") in WAITING for r in call("GET", "/runs?per_page=10").get("workflow_runs") or []):
+            if any(r.get("status") in WAITING for r in call("GET", "/runs?per_page=20").get("workflow_runs") or []):
                 done.append("waiting")
                 continue
-            call("POST", "/dispatches", {"ref": "main", "inputs": REFRESH[name]})
+            call("POST", "/workflows/domains.yml/dispatches", {"ref": "main", "inputs": REFRESH[name]})
             done.append("dispatched")
         except Exception:                                                  # noqa: BLE001 - nothing is reported to anyone: the close itself is already verified
             done.append("failed")
