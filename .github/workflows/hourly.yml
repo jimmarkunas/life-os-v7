@@ -747,7 +747,7 @@ jobs:
         name: Jobs tick - the whole chain in one process, fast path first, one store tunnel (LIFE-76 PR 4b, D208)
         if: ${{ env.PIPELINE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.quick) }}   # a manual quick run proves exactly this path
         env:
-          BOARDS_BACKFILL: ${{ vars.BOARDS_BACKFILL }}                  # D217: the first-pass board drainer; lifeos/platform/switches.json decides unless this repository variable says "off" (Jim's kill switch) or "on"
+          BOARDS_BACKFILL: ${{ vars.BOARDS_BACKFILL || 'off' }}         # D217: the first-pass board drainer is hibernated unless the repository variable says on
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
           FIT_PROFILE_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_JSON }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_finish.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_finish_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
