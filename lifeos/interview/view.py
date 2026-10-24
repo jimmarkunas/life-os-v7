@@ -23,6 +23,7 @@ class Round:
     date: str | None
     interviewer: str | None
     calendar: str | None = None                  # LIFE-78 E10: "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
+    joining: bool = False                        # E10: that accepted round page records its invite's joining details (link or location, #481)
 
 
 @dataclass(frozen=True)
@@ -103,17 +104,17 @@ def rounds_of(children):
 def with_calendar(client, rounds):
     """E10: each dated machine round with the Calendar state its own Logistics records (E07 writes it with the event reference). A page whose layout
     is not UI 4, or that cannot be read this run, stays not verified; nothing is inferred from a date alone."""
-    from .create import round_calendar
+    from .create import round_logistics
     out = []
     for r in rounds:
-        state = None
+        state, meeting = None, None
         if valid_date(r.date) and r.page_id:
             try:
-                ref, cancelled = round_calendar(client, r.page_id)
+                ref, cancelled, meeting = round_logistics(client, r.page_id)
             except NotionError:
                 ref, cancelled = None, False
             state = ("cancelled" if cancelled else "accepted") if ref else None
-        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state))
+        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state, state == "accepted" and meeting is not None))
     return tuple(out)
 
 

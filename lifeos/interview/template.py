@@ -171,7 +171,10 @@ def _health(view, rounds_label):
               "not_connected": "the Job Ledger has no Submitted Résumé field; other sent materials not connected"}
     contacts = {"linked": f"{len(view.contacts)} Network lead(s) from the job's Ledger page", "none": "no Network leads on the job's Ledger page",
                 "unreadable": "DEGRADED · Network leads unreadable this run"}
-    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
+    joining = sum(r.joining for r in linked)
+    calendar = f"{len(linked)} interview(s) linked to a Calendar invite by reference; " + (
+        f"joining details on {joining} accepted round page(s)" if joining else "joining details not verified")
+    rows += [(name, calendar if name == "Calendar" and linked
               else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
               else resume.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run")
               if name == "Submitted résumé and sent materials"
