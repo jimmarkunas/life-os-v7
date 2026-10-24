@@ -5,7 +5,13 @@ docs/OWNERSHIP.yml (read from the default branch) gives every path exactly one a
 the lane of the section(s) whose regex matches it or its enclosing YAML block, else the rule's lane; sections that disagree, or a block that cannot be read, fail as ambiguous. A section lane may itself be `unresolved`.
 A change to another lane's path passes only if docs/HANDOFFS.yml ON THE DEFAULT BRANCH (a file only Jim's merge can change) names this PR number, the owning lane and a glob covering the path, unexpired, with an https approval link:
 the PR body's own words (`Lane:` is provenance, not authority) never count. Another open PR of a different or undeclared lane that changes the same file and section fails. Any incomplete evidence (a truncated list or
-pagination, a missing file, a non-text file, an API error) is a failure, never a pass. Stdlib only, read only, no secret beyond the read token. python -I lifeos/lane_guard.py"""
+pagination, a missing file, a non-text file, an API error) is a failure, never a pass. Stdlib only, read only, no secret beyond the read token. python -I lifeos/lane_guard.py
+
+LIFE-109 delivery train (Jim, Oct 24 2026). While OWNERSHIP.yml on the default branch names an active train for a lane, every PR of that lane must (a) name one of the train's Jira keys
+(`Jira: LIFE-n`), (b) change at least one of the train's product paths (a Platform- or docs-only change never counts as train delivery), and (c) state its evidence level
+(`Evidence: CODE LANDED`, `SYNTHETIC PASS` or `LIVE READ-BACK`); `JIM ACCEPTED` is Jim's alone and is refused as a self-claim. An approved emergency repair passes only through an
+`exemptions` entry in HANDOFFS.yml on the default branch (PR number, https approval, expiry). The guard cannot read Jira (no credential, by design): it checks the key against the
+train's list, never the issue's live status."""
 import difflib
 import fnmatch
 import json
@@ -104,6 +110,63 @@ def validate_handoffs(doc, lanes):
         if not isinstance(h.get("pr"), int) or h.get("owner") not in lanes or not isinstance(h.get("path"), str) or not link.startswith("https://") or link.split("/")[2] not in HOSTS:
             raise GuardError("HANDOFFS_INVALID")
     return doc["handoffs"]
+
+
+EVIDENCE = ("CODE LANDED", "SYNTHETIC PASS", "LIVE READ-BACK")
+
+
+def validate_trains(doc):
+    """The optional `trains` list of OWNERSHIP.yml: each names a lane, its Jira keys and its product path globs."""
+    trains = doc.get("trains", [])
+    if not isinstance(trains, list):
+        raise GuardError("TRAINS_INVALID")
+    for t in trains:
+        if not isinstance(t, dict):
+            raise GuardError("TRAINS_INVALID")
+        keys, product = t.get("issues"), t.get("product")
+        if (t.get("lane") not in doc["lanes"] or not isinstance(t.get("name"), str) or not isinstance(keys, list) or not keys or not isinstance(product, list) or not product
+                or not all(isinstance(k, str) and re.fullmatch(r"LIFE-\d+", k) for k in keys) or not all(isinstance(g, str) and g for g in product)):
+            raise GuardError("TRAINS_INVALID")
+    if len({t["lane"] for t in trains}) != len(trains):
+        raise GuardError("TRAINS_INVALID")                                       # one active train per lane
+    return trains
+
+
+def validate_exemptions(doc, today=None):
+    out = doc.get("exemptions", [])
+    if not isinstance(out, list):
+        raise GuardError("HANDOFFS_INVALID")
+    for e in out:
+        if not isinstance(e, dict):
+            raise GuardError("HANDOFFS_INVALID")
+        try:
+            date.fromisoformat(str(e["expires"]))
+        except (KeyError, ValueError):
+            raise GuardError("HANDOFFS_INVALID") from None
+        link = str(e.get("approval", ""))
+        if not isinstance(e.get("pr"), int) or not link.startswith("https://") or link.split("/")[2] not in HOSTS:
+            raise GuardError("HANDOFFS_INVALID")
+    return out
+
+
+def train_check(trains, exemptions, pr, files, today=None):
+    """LIFE-109: the active train of the PR's lane, if any. -> violations (fixed strings). PR text supplies only the claims being checked, never authority."""
+    today, body = today or date.today(), re.sub(r"<!--.*?-->", "", pr.get("body") or "", flags=re.S)     # template guidance in an HTML comment is never a claim
+    train = next((t for t in trains if t["lane"] == pr["lane"]), None)
+    if train is None or any(e["pr"] == pr["number"] and date.fromisoformat(str(e["expires"])) >= today for e in exemptions):
+        return []
+    bad = []
+    keys = set(re.findall(r"^Jira:[ \t]*(LIFE-\d+)\b", body, re.M))
+    if not keys & set(train["issues"]):
+        bad.append(f"TRAIN_JIRA_KEY_MISSING: name one of the {train['name']} train's issues as `Jira: LIFE-n` in the PR body")
+    if not any(fnmatch.fnmatchcase(f["path"], g) for f in files for g in train["product"]):
+        bad.append(f"TRAIN_NO_PRODUCT_CHANGE: no {train['name']} product path changed; Platform-, test- or docs-only work is not train delivery (an approved repair needs an exemption in {HANDOFFS})")
+    levels = re.findall(r"^Evidence:[ \t]*(.+?)[ \t\r]*$", body, re.M)
+    if any(re.search(r"\bJIM ACCEPTED\b", level, re.I) for level in levels) or re.search(r"^(?:Status|Acceptance):[ \t]*JIM ACCEPTED\b", body, re.I | re.M):
+        bad.append("TRAIN_SELF_ACCEPTANCE: JIM ACCEPTED is recorded by Jim, never claimed in a PR")
+    if len(levels) != 1 or levels[0].upper() not in EVIDENCE:
+        bad.append("TRAIN_EVIDENCE_MISSING: state exactly one `Evidence: CODE LANDED | SYNTHETIC PASS | LIVE READ-BACK` line")
+    return bad
 
 
 def handoff_ok(handoffs, number, owner, path, today):
@@ -301,10 +364,13 @@ def main(environ=os.environ, api=None, text=None):
         event = json.loads(Path(environ["GITHUB_EVENT_PATH"]).read_text())["pull_request"]
         repo, token, number = environ["GITHUB_REPOSITORY"], environ["GITHUB_TOKEN"], event["number"]
         doc = validate(parse_map(Path(OWNERSHIP).read_text()))                    # the DEFAULT branch's map and handoffs (the workflow checks that branch out): never the PR's
-        handoffs = validate_handoffs(parse_map(Path(HANDOFFS).read_text()), doc["lanes"])
+        handoff_doc = parse_map(Path(HANDOFFS).read_text())
+        handoffs, exemptions = validate_handoffs(handoff_doc, doc["lanes"]), validate_exemptions(handoff_doc)
+        trains = validate_trains(doc)
         files = pr_files(repo, number, event["base"]["sha"], event["head"]["sha"], token, None, api, text)
-        pr = {"number": number, "lane": parse_lane(event.get("body"))}
+        pr = {"number": number, "lane": parse_lane(event.get("body")), "body": event.get("body") or ""}
         bad = check(doc, handoffs, pr, files, others_from_api(repo, number, files, token, api, text))
+        bad += train_check(trains, exemptions, pr, files) if pr["lane"] in doc["lanes"] else []
     except (GuardError, KeyError, ValueError, IndexError, TypeError, OSError) as error:
         print(f"lane-guard: FAILED CLOSED ({type(error).__name__}: {str(error)[:60]})")
         return 1

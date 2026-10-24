@@ -9,6 +9,13 @@
 # Format is a strict YAML subset (see lifeos/lane_guard.py). The concurrent-lane rules stay INACTIVE until their gates are verified.
 version: 1
 lanes: [career-v7, edge-oracle]
+# LIFE-109 (Jim, Oct 24 2026; LIFE-3 comment 11087): the active delivery train of a lane. While it is here, every PR of that lane names one of its issues, changes one of its product paths and states its evidence
+# level (lifeos/lane_guard.py train_check); an approved emergency repair needs an `exemptions` entry in docs/HANDOFFS.yml. Only Jim's merge of this file starts, changes or ends a train.
+trains:
+  - name: jobs-e2e
+    lane: career-v7
+    issues: [LIFE-3, LIFE-10, LIFE-19, LIFE-20, LIFE-25, LIFE-26, LIFE-35, LIFE-42, LIFE-43, LIFE-46, LIFE-48, LIFE-59, LIFE-64, LIFE-76, LIFE-88, LIFE-106, LIFE-107, LIFE-108, LIFE-109]
+    product: [lifeos/jobs/*, lifeos/recruiters/*, lifeos/hiring/*, lifeos/interview/*, lifeos/network/*, lifeos/sources/close_app.py, lifeos/sources/hiring.py, lifeos/sources/interview_*.py, lifeos/sources/job_page_outreach.py, lifeos/sources/m1m2_proof.py, lifeos/sources/network_*.py, lifeos/sources/outreach_app.py, lifeos/sources/resume_app.py, lifeos/sources/linkedin_search.py, lifeos/sources/sponsor_register.py, lifeos/lane_guard.py, .github/workflows/domains.yml, .github/workflows/hourly.yml, .github/workflows/interview-proof.yml, .github/workflows/recruiters.yml]
 rules:
   # --- career-v7: Jobs, Recruiters, Hiring, Interview, Network, sources and the Close/Outreach screens
   - path: lifeos/jobs/**
@@ -272,6 +279,8 @@ rules:
   - path: .github/workflows/diag.yml
     lane: career-v7
   - path: .github/workflows/outlook.yml
+    lane: career-v7
+  - path: .github/pull_request_template.md
     lane: career-v7
   - path: .github/actions/**
     lane: career-v7
