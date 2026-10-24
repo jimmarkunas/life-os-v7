@@ -18,29 +18,26 @@ STUBS = {
     "find": "true",
     "chown": "true",
 }
-REL = r'''import os, sys
-E = os.environ
-open(E["SIM"] + "/log", "a").write("rel " + " ".join(sys.argv[1:]) + "\n")
-c = sys.argv[1]
-body = lambda d: open(os.path.join(d, "MANIFEST")).read().splitlines()[1:]
-if c == "serve-state":
-    print(E.get("SERVE", "ours"))
-elif c == "latest":
-    print(E["HEAD"]) if E.get("HEAD") else sys.exit("REFUSED: NOT_GREEN")
-elif c == "head":
-    print(E["MAIN"]) if E.get("MAIN") else sys.exit("REFUSED: unreadable")
-elif c == "stage":
-    if E.get("STAGE_FAIL") == "1":
-        sys.exit("REFUSED: stage")
-    os.makedirs(sys.argv[3])
-    bodies = dict(x.split("=", 1) for x in E.get("BODIES", "").split(",") if "=" in x)          # each commit's own code, when a test needs it
-    open(sys.argv[3] + "/MANIFEST", "w").write("commit %s\n%s\n" % (sys.argv[2], bodies.get(sys.argv[2][:12], E.get("BODY", "x lifeos/a.py"))))
-elif c == "check":
-    d = os.path.realpath(sys.argv[2])
-    if os.path.basename(d) in E.get("CHECK_FAIL", "").split() or not os.path.isfile(d + "/MANIFEST"):
-        sys.exit("REFUSED: TREE_DIFFERS")
-elif c == "same":
-    sys.exit(0 if body(sys.argv[2]) == body(sys.argv[3]) else 1)
+REL = r'''#!/bin/bash
+# close_release.py's commands, stubbed in bash (the script under test calls it through bash here, so a run costs no Python start-ups)
+echo "rel $*" >> "$SIM/log"
+body() { tail -n +2 "$1/MANIFEST"; }
+case "$1" in
+  serve-state) cat > /dev/null; echo "${SERVE:-ours}" ;;
+  latest) if [ -n "${HEAD:-}" ]; then echo "$HEAD"; else echo "REFUSED: NOT_GREEN" >&2; exit 1; fi ;;
+  head) if [ -n "${MAIN:-}" ]; then echo "$MAIN"; else echo "REFUSED: unreadable" >&2; exit 1; fi ;;
+  stage)
+    [ "${STAGE_FAIL:-}" = 1 ] && { echo "REFUSED: stage" >&2; exit 1; }
+    [ -e "$3" ] && { echo "REFUSED: exists" >&2; exit 1; }
+    b="${BODY:-x lifeos/a.py}"; IFS=, read -ra kv <<< "${BODIES:-}"
+    for x in "${kv[@]}"; do [ "${x%%=*}" = "${2:0:12}" ] && b="${x#*=}"; done
+    mkdir -p "$3"; printf 'commit %s\n%s\n' "$2" "$b" > "$3/MANIFEST" ;;
+  check)
+    d="$(realpath "$2")"
+    for f in ${CHECK_FAIL:-}; do [ "$(basename "$d")" = "$f" ] && exit 1; done
+    [ -f "$d/MANIFEST" ] ;;
+  same) [ "$(body "$2")" = "$(body "$3")" ] ;;
+esac
 '''
 
 
@@ -54,7 +51,7 @@ class AutoReleaseRun(unittest.TestCase):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
         script = script.replace("OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system",
                                 'OPT=$SIM/opt; ETC=$SIM/etc; CREDS=$SIM/creds; UNITS=$SIM/units', 1)
-        script = script.replace('[ "$(id -u)" = 0 ] ||', "true ||", 1)
+        script = script.replace('[ "$(id -u)" = 0 ] ||', "true ||", 1).replace('python3 -I "$REL"', 'bash "$REL"')
         self.assertIn("OPT=$SIM/opt", script)
         self.script = os.path.join(app, "install-close.sh")
         open(self.script, "w").write(script)
