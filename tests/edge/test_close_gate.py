@@ -240,6 +240,17 @@ class Refresh(Gate):
         asked.assert_not_called()
         self.assertNotIn("after", self.calls[1][2])
 
+    def test_the_drive_credential_reaches_a_post_only_and_never_a_get(self):
+        with open(os.path.join(self.creds, "gdrive"), "wb") as f:
+            f.write(b'{"client_id": "synthetic"}\n')
+        self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))
+        self.run_gate(v2(RUNNER) + http(path="/close?l=abc"), app=self.asking())
+        self.assertEqual(self.calls[0][2]["gdrive"], b'{"client_id": "synthetic"}')
+        self.assertNotIn("gdrive", self.calls[1][2])
+        os.remove(os.path.join(self.creds, "gdrive"))
+        self.run_gate(v2(RUNNER) + http("POST", headers=POST_OK, body=b"a=b"), app=self.asking(409))
+        self.assertNotIn("gdrive", self.calls[2][2])                                           # absent: Build resume keeps the Notion upload
+
     def opener(self, runs, fail=False):
         sent = []
 

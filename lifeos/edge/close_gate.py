@@ -131,7 +131,7 @@ def refresh(token, wants, opener=urllib.request.urlopen):
 
 def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
     """app(req, who, secrets) -> (status, content type, body bytes, extra headers).
-    secrets: GET {"link", "reader": ReadOnly client, "config"}; POST {"link", "notion": the token, "config"}; config = canonical ledger/pipeline ids."""
+    secrets: GET {"link", "reader": ReadOnly client, "config"}; POST {"link", "notion": the token, "config", "after", "gdrive"?}; config = canonical ledger/pipeline ids."""
     stdin, stdout = stdin or sys.stdin.buffer, stdout or sys.stdout.buffer
     try:
         if uid() != 0:
@@ -156,6 +156,11 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         token = open(github, "rb").read().strip() if os.path.isfile(github) else b""  # optional: absent or unreadable = no refresh is ever asked
     except OSError:
         token = b""
+    drive = os.path.join(creds, "gdrive")
+    try:
+        gdrive = open(drive, "rb").read().strip() if os.path.isfile(drive) else b""   # optional (Jim, Oct 24): résumés go to Google Drive; absent = the Notion upload
+    except OSError:
+        gdrive = b""
     after = []
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
@@ -165,6 +170,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
             secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))
         else:
             secrets["after"] = after                                       # the app appends refresh names (REFRESH keys) after a verified write
+            if gdrive:
+                secrets["gdrive"] = gdrive                                 # POST only, like the Notion token; GET never gets it
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
