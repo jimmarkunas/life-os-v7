@@ -242,7 +242,7 @@ def _attached(current, filename, pid, drive=False):
     return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
         '<section class="section"><div class="eyebrow">Attached</div><h3 class="step-title">Resume attached</h3>'
         f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
-        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (the Résumés folder LIFE OS keeps; first created at the top of My Drive, move it into LIFE OS once) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
+        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (My Drive / LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
         f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
         PATH, "Build resume"), ()
 
@@ -305,7 +305,11 @@ def _post(req, who, secrets):
     except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only; anything else is the gate's 500
         if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
             raise
-        return _stop(500, "Unavailable", "Could not attach the resume", "Do not assume it is on the job's page.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+        code = str(error)[:60]
+        why = {"GDRIVE_SCOPE_NARROW": "The Drive sign-in predates full access: rerun it (docs/DRIVE_RESUMES.md). Nothing was attached.",
+               "GDRIVE_LIFE_OS_FOLDER_MISSING": "No LIFE OS folder at the top of My Drive. Nothing was attached.",
+               "GDRIVE_LIFE_OS_FOLDER_AMBIGUOUS": "More than one LIFE OS folder at the top of My Drive. Nothing was attached."}.get(code, "Do not assume it is on the job's page.")
+        return _stop(500, "Unavailable", "Could not attach the resume", why, f"Status: DEGRADED · {code}", "danger")
     if not verified:
         return _stop(500, "Unavailable", "Could not verify the attachment", "Do not assume it is on the job's page.", "Status: DEGRADED · not read back", "danger")
     return _attached(current, filename, pid, bool(secrets.get("gdrive")))

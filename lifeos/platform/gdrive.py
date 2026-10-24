@@ -1,11 +1,13 @@
-"""Minimal Google Drive client (stdlib only; platform: no job knowledge). Jim, Oct 24 2026: résumés live in Drive as real .docx files, in
-My Drive / LIFE OS / Résumés. OAuth with the drive.file scope only: this client sees and changes nothing but the files and folder LIFE OS itself
-created, never the rest of Jim's Drive. Files are uploaded as .docx and never converted to Google Docs, so their bytes and checksum stay fixed.
-Every error is a fixed code: never a URL, a token, an id or a response body. The credential is one JSON object
-{"client_id", "client_secret", "refresh_token"} (the Edge stores it encrypted as `gdrive`)."""
+"""Minimal Google Drive client (stdlib only; platform: no job knowledge). Jim, Oct 24 2026: résumés live in Drive as real .docx files, directly in
+My Drive / LIFE OS / Résumés, with no hand moving ("full", Oct 24): the credential is the full `drive` scope, because the narrower drive.file cannot
+see the LIFE OS folder Jim made himself. This client still only ever finds that one folder (exactly one "LIFE OS" folder at the top of My Drive),
+creates or finds Résumés inside it, uploads, reads back and locks its own uploads. Files are uploaded as .docx and never converted to Google Docs,
+so their bytes and checksum stay fixed. Every error is a fixed code: never a URL, a token, an id or a response body. The credential is one JSON
+object {"client_id", "client_secret", "refresh_token"} (the Edge stores it encrypted as `gdrive`)."""
 import hashlib
 import json
 import secrets
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,9 +15,9 @@ import urllib.request
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/drive/v3/files"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
-SCOPE = "https://www.googleapis.com/auth/drive.file"
+SCOPE = "https://www.googleapis.com/auth/drive"                      # Jim, Oct 24: "full" (see the docstring)
 FOLDER_MIME = "application/vnd.google-apps.folder"
-FOLDER_NAME, FOLDER_TAG = "Résumés", "resumes"                      # found by its tag, wherever Jim moves it
+HOME_NAME, FOLDER_NAME, FOLDER_TAG = "LIFE OS", "Résumés", "resumes"   # My Drive / LIFE OS / Résumés
 FIELDS = "id,name,md5Checksum,webViewLink,trashed,mimeType,appProperties,contentRestrictions"
 MAX_FILE = 20 * 1024 * 1024
 
@@ -69,6 +71,8 @@ class Drive:
             token = reply.get("access_token")
             if not isinstance(token, str) or not token:
                 raise DriveError("GDRIVE_TOKEN_REFUSED")
+            if "scope" in reply and SCOPE not in str(reply["scope"]).split():
+                raise DriveError("GDRIVE_SCOPE_NARROW")                   # the stored grant predates "full": rerun the Drive sign-in (docs/DRIVE_RESUMES.md)
             self._token = token
         return self._token
 
@@ -81,12 +85,17 @@ class Drive:
         return files
 
     def folder(self):
-        """The Résumés folder LIFE OS created (the oldest one if a race ever made two); created in My Drive the first time. Jim may move it into
-        My Drive / LIFE OS: it is found by its tag, not its place."""
-        found = self.find(f"mimeType='{FOLDER_MIME}' and appProperties has {{ key='lifeos' and value='{FOLDER_TAG}' }}")
+        """My Drive / LIFE OS / Résumés -> its id. LIFE OS must be exactly one folder at the top of My Drive (never guessed, never created); Résumés is
+        found inside it (the oldest if there are several) or created there once, tagged."""
+        homes = self.find(f"mimeType='{FOLDER_MIME}' and name='{HOME_NAME}' and 'root' in parents")
+        if len(homes) != 1:
+            raise DriveError("GDRIVE_LIFE_OS_FOLDER_" + ("MISSING" if not homes else "AMBIGUOUS"))
+        home = homes[0]["id"]
+        names = " or ".join(f"name='{n}'" for n in dict.fromkeys(unicodedata.normalize(f, FOLDER_NAME) for f in ("NFC", "NFD")))   # a Mac may store the accents decomposed
+        found = self.find(f"mimeType='{FOLDER_MIME}' and ({names}) and '{_quote(home)}' in parents")
         if found:
             return found[0]["id"]
-        made = self._json("POST", API + "?fields=id", {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "appProperties": {"lifeos": FOLDER_TAG}})
+        made = self._json("POST", API + "?fields=id", {"name": FOLDER_NAME, "mimeType": FOLDER_MIME, "parents": [home], "appProperties": {"lifeos": FOLDER_TAG}})
         if not isinstance(made.get("id"), str):
             raise DriveError("GDRIVE_OFF_CONTRACT")
         return made["id"]
