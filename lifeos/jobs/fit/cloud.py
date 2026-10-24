@@ -40,6 +40,7 @@ READ_WAIT = 150                         # LIFE-41 10504 C4: Oracle's real worst 
 CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 s, so one call fits the 240 s stage and a second never could
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
+SIZE_OUTCOMES = {"FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}    # Oct 24 2026 (LIFE-76): a job too big to ask is a fact about that job, not a failed run: counted by code, never DEGRADED
 WRITE_CONFLICT = "CANARY_WRITE_CONFLICT"     # D226: the guarded write stored nothing (the row was no longer unasked): an unpersisted answer is never a success
 PROMOTION_FAILED = "CANARY_PROMOTION_FAILED"   # D226: a canary answer is stored as this until the promotion itself marks it CANARY, so no failure can leave a stuck CANARY
 STOP_AND_RECORD = {"FIT_EDGE_PURGE_FAILED"}   # 10504 C5: a model ran, so its provenance (no score) is kept on the row, and no further request is sent
@@ -252,6 +253,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 fields = counts.setdefault("cloud_receipt_fields", {})
                 fields[field] = fields.get(field, 0) + 1     # LIFE-77: which receipt field, a fixed name
             record(job_id, "DEGRADED", code, {"receipt": error.receipt} if code in STOP_AND_RECORD else None, edge.digest(sent)[:16], fingerprint)
+            if code in SIZE_OUTCOMES:
+                sized = counts.setdefault("cloud_job_too_large", {})        # recorded on the job's row and never re-asked (above), and the batch goes on: nothing here makes the run fail
+                sized[code] = sized.get(code, 0) + 1
+                return
             counts["cloud_failed"] += 1
             _degraded(counts, code)
             if code not in JOB_OUTCOMES:
