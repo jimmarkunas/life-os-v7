@@ -634,7 +634,7 @@ CONSUMER_STEPS = {
         "imessage": {
             'iMessage urgent alerts (metadata only from Oracle; private alert state; counts-only push)': DB | JUMP | {"NTFY_TOPIC", "IMESSAGE_ALERTS_HOST"},
             'Communications card, Messages row (7-day unread count and latest sender; counts only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
-            'Oracle Cloud card (every tick; Codex lines from the same reading as AI Capacity; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
+            'Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},
             'AI Capacity card (readings only, no model run; numbers only in the log; writes only when live)': {"IMESSAGE_ALERTS_HOST", "NOTION_JIRA_TOKEN"},   # LIFE-77 D228: the same two as the Oracle Cloud card
         },
         "jira": {

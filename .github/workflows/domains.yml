@@ -1464,8 +1464,8 @@ jobs:
         continue-on-error: true
         if: ${{ always() }}
         # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
-        # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24: written every tick, Codex 5h/Week from the AI Capacity reading.
-        name: Oracle Cloud card (every tick; Codex lines from the same reading as AI Capacity; numbers only in the log; writes only when live)
+        # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24 (#510): written every tick despite the step name, Codex 5h/Week from the AI Capacity reading.
+        name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
         env:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
