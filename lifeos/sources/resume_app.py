@@ -242,7 +242,7 @@ def _attached(current, filename, pid, drive=False):
     return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
         '<section class="section"><div class="eyebrow">Attached</div><h3 class="step-title">Resume attached</h3>'
         f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
-        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
+        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (the Résumés folder LIFE OS keeps; first created at the top of My Drive, move it into LIFE OS once) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
         f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
         PATH, "Build resume"), ()
 

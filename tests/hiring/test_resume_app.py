@@ -232,7 +232,7 @@ class DriveBuild(unittest.TestCase):
         r = Run(drive=FakeDrive())
         status, body = r.build()
         self.assertEqual(status, 200, body)
-        self.assertIn("saved in Google Drive (LIFE OS / Résumés)", body)
+        self.assertIn("saved in Google Drive (the Résumés folder LIFE OS keeps", body)
         self.assertEqual(r.uploads, [])                                                       # nothing is uploaded to Notion
         self.assertEqual(r.drive.raw, GDRIVE)
         stored = r.drive.files["file-1-0123456789"]
