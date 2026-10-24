@@ -166,8 +166,13 @@ def _health(view, rounds_label):
     linked = [r for r in view.rounds if r.calendar]
     threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
                "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
+    resume = {"recorded": f"{len(view.resume)} submitted résumé file(s) on the exact Job Ledger row; other sent materials not connected",
+              "not_recorded": "no submitted résumé recorded on the Job Ledger row; other sent materials not connected",
+              "not_connected": "the Job Ledger has no Submitted Résumé field; other sent materials not connected"}
     rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
               else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
+              else resume.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run")
+              if name == "Submitted résumé and sent materials"
               else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
@@ -196,6 +201,15 @@ def _recruiters(view):
         rows.append(["DEGRADED · Recruiters source unreadable this run" if view.recruiters_state == "unreadable" else "No verified recruiters or coordinators",
                      "—", "Not verified"])
     return rows
+
+
+def _submitted(view):
+    """E10: the Materials Sent list, submitted résumé first. Only the Job Ledger's Submitted Résumé field counts; an uploaded file is opened
+    from its row (its own URL expires), an external one directly. Every other state says why there is no file."""
+    if view.resume_state == "recorded":
+        return [bullet(("Submitted résumé", True), " — ", (name, False, url or _url(view.ledger_page_id)), " (Job Ledger)") for name, url in view.resume]
+    why = {"not_recorded": "not recorded on the Job Ledger row", "not_connected": "not connected (the Job Ledger has no Submitted Résumé field)"}
+    return [bullet(("Submitted résumé", True), " — ", why.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run"))]
 
 
 def opportunity_page(view, today, source="pending", adopted=None):
@@ -243,7 +257,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Recruiters & Coordinators"), table(_recruiters(view)),
                  note("Email opens the latest verified thread for THIS job only, never composes. Interview participants are "
                       "listed only under Interviews.")], "👥", "gray_background"),
-        callout([h(3, "Materials Sent"), bullet(("Submitted résumé", True), " — File link not yet verified"),
+        callout([h(3, "Materials Sent"), *_submitted(view),
                  note("Other sent forms, correspondence, project plans and articles appear here when linked to verified files "
                       "or outbound messages.")], "📎", "gray_background")]
     machine = [
