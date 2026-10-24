@@ -65,7 +65,7 @@ def resolve(client, config, pid):
     closed = bool(target.get("decision")) if kind == "ledger" else bool(target["retired"])
     if kind == "notes" and not closed and D.unapplied_matches(client, want):
         raise D.fail("LEDGER_UNAPPLIED")                                 # a Ledger row for this role that is not marked Applied may be this application: resolve it first
-    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed), "pages": pages}
+    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed), "pages": pages, "parents": parents}
 
 
 def _fingerprint(kind, pid, company, role, closed):
@@ -128,7 +128,7 @@ def _post(req, who, secrets):
                "op": _mac(secret, "op", pid, st, exp, outcome, notes)[:32]}
     try:
         done = (D.confirm_rejected(client, request, True, _now(), opp["pages"]) if opp["kind"] == "ledger"
-                else D.move_page(client, config["pipeline"], request, True, _now(), lambda: _state(client, config["pipeline"])[1]))
+                else D.move_page(client, config["pipeline"], request, True, _now(), lambda: _state(client, config["pipeline"], pages=[])[1], opp["parents"]))
     except NotionError as error:
         code = str(error)[:60]
         if code in ("DECISION_CONFLICT", "DECISION_PENDING", "DECISION_SCHEMA_MISSING"):

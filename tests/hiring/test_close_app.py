@@ -456,10 +456,19 @@ class Speed(unittest.TestCase):
         queries, walked = self.confirm_reads(lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")])
         self.assertEqual((len(queries), walked), (1, []))
 
-    def test_a_notes_confirm_still_reads_the_notes_pages(self):
+    def test_a_notes_confirm_walks_the_pages_twice_and_reads_the_ledger_only_where_it_decides(self):
         queries, walked = self.confirm_reads(lambda h: h.world.ws.target.replace("-", ""), [])
-        self.assertTrue(walked)
-        self.assertGreaterEqual(len(queries), 1)
+        self.assertEqual((len(queries), len(walked)), (2, 18))                                     # was 4 and 24: the first section check reuses resolve's read, the pre-write one never scans the Ledger
+
+    def test_the_check_right_before_a_notes_move_still_reads_the_pages_fresh(self):
+        h = Harness()
+        pid = h.world.ws.target.replace("-", "")
+        _, _, f = h.review(pid, "Rejected")
+        seen = []
+        real = close_app._state
+        with mock.patch.object(close_app, "_state", lambda *a, **k: seen.append(k.get("pages")) or real(*a, **k)):
+            self.assertEqual(h.call("POST", form={**f, "step": "confirm"})[0], 200)
+        self.assertEqual(seen, [None, []])                                                         # resolve's full read, then the fresh pages-only read immediately before the write
 
 
 if __name__ == "__main__":
