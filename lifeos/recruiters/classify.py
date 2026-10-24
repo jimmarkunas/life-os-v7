@@ -14,7 +14,7 @@ RELAY_DOMAINS = ("linkedin.com", "indeed.com", "ziprecruiter.com", "dice.com", "
 ROLE_ALIASES = {"info", "jobs", "careers", "career", "talent", "hr", "recruiting", "recruitment", "recruiter", "hiring", "apply", "team", "hello", "contact", "support", "admin", "sales", "staffing"}
 TITLE = (r"(?:(?:senior|sr\.?|lead|principal|technical|tech|it|executive|corporate|contract|associate)\s+)*"
          r"(?:recruiter|sourcer|talent\s+acquisition(?:\s+(?:partner|specialist|manager|lead|coordinator))?|talent\s+partner|"
-         r"staffing\s+(?:consultant|specialist|manager)|recruiting\s+(?:manager|coordinator|partner|specialist|lead)|headhunter|search\s+consultant|recruitment\s+consultant)")
+         r"staffing\s+(?:consultant|specialist|manager)|recruiting\s+(?:manager|coordinator|partner|specialist|lead)|headhunter|search\s+consultant|recruitment(?:\s+(?:consultant|specialist|lead|manager|partner|executive|coordinator))?)")
 FIRST_PERSON = re.compile(rf"\bI(?:'m|’m| am)\s+(?:a|an|the|your)?\s*(?:\w+\s+){{0,3}}?{TITLE}\b", re.I)
 SIGNATURE = re.compile(rf"^[\s\-–—|•*]*(?:[\w.'’ \-]{{0,40}}[|,\-–—]\s*)?{TITLE}\b", re.I)
 HIRING_MANAGER = re.compile(r"\b(?:hiring manager|engineering manager|director|vice president|vp\b|head of|team lead|manager of)\b", re.I)

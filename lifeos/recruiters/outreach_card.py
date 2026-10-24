@@ -32,6 +32,7 @@ HEADERS = ("Recruiter · Employer", "Channel · Role", "Original Contact", "Next
 ORDER = (store.NEEDS_ACTION, store.WAITING)
 MAX_ROWS = 50
 NOT_VERIFIED, NO_DUE = "Not verified", "Due date not set"
+REPLY_DAYS = 1                                                   # Jim, Oct 24: a recruiter's message needs a reply by the next business day
 CHANNELS = (("mail.google.com", "Gmail"), ("outlook.office.com", "Outlook"), ("outlook.office365.com", "Outlook"), ("outlook.live.com", "Outlook"), ("linkedin.com", "LinkedIn"))
 SKIP = (router.DCC_REGION,)                                      # as for the Hiring Pipeline: the DCC callout is recorded by id only
 CHICAGO = ZoneInfo("America/Chicago")
@@ -91,6 +92,9 @@ def _channel(row):
 
 def _due(row, today):
     day = _day(row["follow_up"])
+    if day is None and row.get("action") == store.NEEDS_ACTION and _local_day(row.get("first_contact")):
+        day = store.add_business_days(_local_day(row["first_contact"]), REPLY_DAYS)       # an inbound recruiter message: reply within one business day of its first contact
+        return "Reply by " + _shown(day) + (" · overdue" if day < today else " · due today" if day == today else "")
     if day is None:
         return NO_DUE
     return _shown(day) + (" · overdue" if day < today else " · due today" if day == today else "")
