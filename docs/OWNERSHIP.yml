@@ -1,0 +1,277 @@
+# Lane ownership for V7 (LIFE-78; concurrent lane ownership; LIFE-79, Jim-approved Oct 23, 2026, Career Claude is the sole repository-heavy writer). Read by `lifeos/lane_guard.py` in the trusted lane-guard workflow, from the DEFAULT branch.
+# Every path has exactly ONE answer, and an answer that is not a lane never lets either lane through:
+#   lane: career-v7 | edge-oracle   the one accountable owner; the other lane needs a handoff entry merged into docs/HANDOFFS.yml first
+#   kind: generated                 derived files, mechanically verified by an existing test (CODEMAP: tests/contracts/test_codemap.py), so no ownership decision is involved; any lane
+#   kind: append                    additions only (decision numbers are claimed through lifeos.decisions); any lane
+#   kind: protected                 governance and agent-instruction files: the guard FAILS; only Jim's protected review changes them
+#   kind: unresolved                an explicit undecided path: the guard FAILS closed, never warns.
+# A path no rule covers FAILS. Most specific rule wins (longest literal prefix). Notion/Jira schemas are live systems and never repository changes; the schema DEFINITIONS in code are owned below.
+# Format is a strict YAML subset (see lifeos/lane_guard.py). The concurrent-lane rules stay INACTIVE until their gates are verified.
+version: 1
+lanes: [career-v7, edge-oracle]
+rules:
+  # --- career-v7: Jobs, Recruiters, Hiring, Interview, Network, sources and the Close/Outreach screens
+  - path: lifeos/jobs/**
+    lane: career-v7
+  - path: lifeos/recruiters/**
+    lane: career-v7
+  - path: lifeos/interview/**
+    lane: career-v7
+  - path: lifeos/hiring/**
+    lane: career-v7
+  - path: lifeos/network/**
+    lane: career-v7
+  - path: lifeos/sources/**
+    lane: career-v7
+  - path: tests/jobs/**
+    lane: career-v7
+  - path: tests/recruiters/**
+    lane: career-v7
+  - path: tests/interview/**
+    lane: career-v7
+  - path: tests/hiring/**
+    lane: career-v7
+  - path: tests/network/**
+    lane: career-v7
+  - path: tests/sources/**
+    lane: career-v7
+  - path: docs/NETWORK_INTELLIGENCE_SCOPE.md
+    lane: career-v7
+  - path: docs/INTERVIEW_HANDOFF.md
+    lane: career-v7
+  - path: docs/US_REMOTE_WEB.md
+    lane: career-v7
+  - path: docs/FIT_MODEL.md
+    lane: career-v7
+  - path: .github/workflows/recruiters.yml
+    lane: career-v7
+  - path: .github/workflows/network.yml
+    lane: career-v7
+  - path: .github/workflows/interview-proof.yml
+    lane: career-v7
+  # --- Notion schema DEFINITIONS in code (the live Ledger / Recruiters / Hiring Decision schemas are Jim-approved Notion changes, not repository changes): career-v7, named so the boundary is explicit
+  - path: lifeos/jobs/ledger.py
+    lane: career-v7
+  - path: lifeos/jobs/publish.py
+    lane: career-v7
+  - path: lifeos/jobs/meta.py
+    lane: career-v7
+  - path: lifeos/recruiters/notion.py
+    lane: career-v7
+  - path: lifeos/recruiters/outreach.py
+    lane: career-v7
+  - path: lifeos/hiring/decision.py
+    lane: career-v7
+  # --- edge-oracle: Oracle host, Gateway, messaging attention, cloud Fit (LIFE-41), monitoring and alerting (LIFE-72-75)
+  - path: lifeos/edge/**
+    lane: edge-oracle
+  - path: lifeos/imessage/**
+    lane: edge-oracle
+  - path: lifeos/oraclecloud/**
+    lane: edge-oracle
+  - path: lifeos/telegram/**
+    lane: edge-oracle
+  - path: lifeos/whatsapp/**
+    lane: edge-oracle
+  - path: lifeos/attention/**
+    lane: edge-oracle
+  - path: lifeos/jobs/fit/**
+    lane: edge-oracle
+  - path: lifeos/jobs/alerts.py
+    lane: edge-oracle
+  - path: lifeos/jobs/alertstate.py
+    lane: edge-oracle
+  - path: lifeos/platform/alerts.py
+    lane: edge-oracle
+  - path: lifeos/platform/gate.py
+    lane: edge-oracle
+  - path: tests/edge/**
+    lane: edge-oracle
+  - path: tests/imessage/**
+    lane: edge-oracle
+  - path: tests/oraclecloud/**
+    lane: edge-oracle
+  - path: tests/telegram/**
+    lane: edge-oracle
+  - path: tests/whatsapp/**
+    lane: edge-oracle
+  - path: tests/attention/**
+    lane: edge-oracle
+  - path: tests/jobs/fit/**
+    lane: edge-oracle
+  - path: docs/EDGE_GATEWAY_SCOPE.md
+    lane: edge-oracle
+  - path: .github/workflows/safety.yml
+    lane: edge-oracle
+  - path: .github/workflows/watchdog.yml
+    lane: edge-oracle
+  - path: .github/workflows/fit-edge-test.yml
+    lane: edge-oracle
+  - path: .github/workflows/profile-sync.yml
+    lane: edge-oracle
+  # --- shared files, owned by section (a changed line or YAML block belongs to the first matching section, else to the rule's lane)
+  - path: .github/workflows/hourly.yml
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: block
+        item_indent: 6
+        match: '(?i)cloud[-_ ]?fit|fit[-_ ]?cloud|v7-runner|lifeos-fit|ntfy|alerts push'
+  - path: .github/workflows/domains.yml
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: block
+        item_indent: 2
+        match: '^  (imessage|report):'
+      - lane: edge-oracle
+        scope: block
+        item_indent: 6
+        match: '(?i)ntfy|alerts push'
+  - path: lifeos/sources/close_app.py
+    lane: career-v7
+    sections:
+      # the CLOSURE tuple (the Close release bundle list) joins Career code to the Oracle installer; edge-oracle owns this boundary
+      - lane: edge-oracle
+        scope: line
+        match: '"lifeos/[a-z0-9_/]+\.py"|^CLOSURE'
+  - path: lifeos/edge/close_gate.py
+    lane: edge-oracle
+    sections:
+      # policy.json field names and the config keys the application receives are the Career-to-Oracle contract; edge-oracle owns this boundary
+      - lane: edge-oracle
+        scope: line
+        match: 'policy(\.get|\[)|secrets\["config"\]'
+  - path: lifeos/edge/oracle/close_release.py
+    lane: edge-oracle
+    sections:
+      # EDGE (the gate's own file list) and the `policy` subcommand fields: edge-oracle owns this boundary
+      - lane: edge-oracle
+        scope: line
+        match: '"lifeos/[a-z0-9_/]+\.py"|policy|^EDGE'
+  - path: lifeos/jobs/store.py
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: line
+        match: 'cloud_'
+  - path: lifeos/run.py
+    lane: career-v7
+    sections:
+      - lane: edge-oracle
+        scope: line
+        match: '(?i)gateway|alerts|fit_cloud|cloud_fit'
+  # --- generated / append / protected (see the header)
+  - path: docs/DECISIONS.md
+    kind: append
+  - path: docs/DECISIONS_INDEX.md
+    kind: generated
+  - path: docs/CODEMAP.md
+    kind: generated
+  - path: docs/codemap.json
+    kind: generated
+  - path: .claude/settings.json
+    kind: shared
+  - path: docs/OWNERSHIP.yml
+    kind: protected
+  - path: lifeos/lane_guard.py
+    kind: protected
+  - path: lifeos/__init__.py
+    lane: career-v7
+  - path: tests/contracts/test_lane_guard.py
+    kind: protected
+  - path: docs/HANDOFFS.yml
+    kind: protected
+  - path: .github/workflows/lane-guard.yml
+    kind: protected
+  - path: tests/contracts/**
+    lane: career-v7
+  - path: .github/workflows/pr-tests.yml
+    kind: protected
+  - path: AGENTS.md
+    lane: career-v7
+  - path: CLAUDE.md
+    lane: career-v7
+  - path: README.md
+    lane: career-v7
+  - path: .gitignore
+    lane: career-v7
+  # --- Career-owned shared platform, domains, tests, docs, widgets, requirements and workflows (Jim-approved LIFE-79, October 23, 2026)
+  - path: lifeos/platform/**
+    lane: career-v7
+  - path: lifeos/agenda/**
+    lane: career-v7
+  - path: lifeos/amazon/**
+    lane: career-v7
+  - path: lifeos/bills/**
+    lane: career-v7
+  - path: lifeos/calendar_bridge/**
+    lane: career-v7
+  - path: lifeos/dcc/**
+    lane: career-v7
+  - path: lifeos/delivery/**
+    lane: career-v7
+  - path: lifeos/jira/**
+    lane: career-v7
+  - path: lifeos/megibow/**
+    lane: career-v7
+  - path: lifeos/outlook/**
+    lane: career-v7
+  - path: lifeos/physmail/**
+    lane: career-v7
+  - path: lifeos/codemap.py
+    lane: career-v7
+  - path: lifeos/decisions.py
+    lane: career-v7
+  - path: lifeos/probe.py
+    lane: career-v7
+  - path: tests/platform/**
+    lane: career-v7
+  - path: tests/agenda/**
+    lane: career-v7
+  - path: tests/amazon/**
+    lane: career-v7
+  - path: tests/bills/**
+    lane: career-v7
+  - path: tests/calendar_bridge/**
+    lane: career-v7
+  - path: tests/dcc/**
+    lane: career-v7
+  - path: tests/delivery/**
+    lane: career-v7
+  - path: tests/jira/**
+    lane: career-v7
+  - path: tests/megibow/**
+    lane: career-v7
+  - path: tests/outlook/**
+    lane: career-v7
+  - path: tests/physmail/**
+    lane: career-v7
+  - path: tests/kit/**
+    lane: career-v7
+  - path: tests/*.py
+    lane: career-v7
+  - path: tests/__init__.py
+    lane: career-v7
+  - path: docs/**
+    lane: career-v7
+  - path: widgets/**
+    lane: career-v7
+  - path: requirements*.txt
+    lane: career-v7
+  - path: .github/workflows/agenda.yml
+    lane: career-v7
+  - path: .github/workflows/amazon.yml
+    lane: career-v7
+  - path: .github/workflows/bills.yml
+    lane: career-v7
+  - path: .github/workflows/branches.yml
+    lane: career-v7
+  - path: .github/workflows/calendar.yml
+    lane: career-v7
+  - path: .github/workflows/diag.yml
+    lane: career-v7
+  - path: .github/workflows/outlook.yml
+    lane: career-v7
+  - path: .github/actions/**
+    lane: career-v7

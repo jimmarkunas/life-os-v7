@@ -19,6 +19,7 @@ class Round:
     ordinal: int | None
     date: str | None
     interviewer: str | None
+    calendar: str | None = None                  # LIFE-78 E10: "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,11 @@ class Opportunity:
     apply_url: str | None = None
     fit_summary: str | None = None
     rounds: tuple = ()
+    recruiters: tuple = ()                       # LIFE-78 E10: (person, company, thread url) from Recruiters rows linked to this job's exact request message
+    recruiters_state: str | None = None          # None = not connected; "linked" | "none" | "unreadable"
+    done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
+    page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
+    close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
 
 
 def _plain(prop):
@@ -68,12 +74,33 @@ def rounds_of(children):
                  if c.identity_valid is True or c.legacy)
 
 
+def with_calendar(client, rounds):
+    """E10: each dated machine round with the Calendar state its own Logistics records (E07 writes it with the event reference). A page whose layout
+    is not UI 4, or that cannot be read this run, stays not verified; nothing is inferred from a date alone."""
+    from .create import round_calendar
+    out = []
+    for r in rounds:
+        state = None
+        if valid_date(r.date) and r.page_id:
+            try:
+                ref, cancelled = round_calendar(client, r.page_id)
+            except NotionError:
+                ref, cancelled = None, False
+            state = ("cancelled" if cancelled else "accepted") if ref else None
+        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state))
+    return tuple(out)
+
+
+def _live(r):
+    return r.calendar != "cancelled"
+
+
 def sort_rounds(rounds, today):
     """D15: upcoming confirmed interviews first (nearest first), then Scheduling Pending, then past ones (most recent first);
     ties by round number, then page id, so the order is stable."""
     def key(r):
         number = r.ordinal if type(r.ordinal) is int else 10 ** 6
-        if valid_date(r.date) and r.date >= today:
+        if valid_date(r.date) and r.date >= today and _live(r):
             return (0, r.date, number, r.page_id)
         if not valid_date(r.date):
             return (1, "", number, r.page_id)
@@ -87,7 +114,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
     return Opportunity(parent_query.company.strip(), parent_query.role.strip(), query.stable_job_key, query.requisition,
                        query.ledger_page_id if state == "linked" else None, state,
                        request if request.startswith("https://") else None, pipeline_id,
-                       rounds=sort_rounds(rounds_of(children), today), **facts)
+                       rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
+                       recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None), **facts)
 
 
 def primary_action(view, today):
@@ -101,23 +129,30 @@ def primary_action(view, today):
             basis = ("derived from the linked interview request" if view.request_url
                      else "DEGRADED · derived from the interview page; the request message is not connected")
             return "PRIMARY ACTION", f"Confirm a time for {name} with the recruiter.", "No verified deadline", view.request_url, basis
-    upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today]
+    upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today and _live(r)]
     if upcoming:
         r = upcoming[0]
         return ("PRIMARY ACTION", f"Prepare for Interview {r.ordinal or ''} on {r.date}.".replace("  ", " "), r.date, None,
-                "derived from the interview page's date; Calendar not verified")
+                "from the accepted Calendar invite" if r.calendar == "accepted" else "derived from the interview page's date; Calendar not verified")
+    if view.rounds and view.rounds[0].calendar == "cancelled":                        # the latest round's invite was cancelled and nothing is upcoming
+        r = view.rounds[0]
+        name = f"Interview {r.ordinal}" if r.ordinal else "the interview"
+        return ("PRIMARY ACTION", f"Ask the recruiter whether {name} moves to a new time.", "No verified deadline", view.request_url,
+                "derived from the cancelled Calendar invite")
     return ("DEGRADED · NO VERIFIED ACTION", "Verify the latest interview outcome and any recruiter follow-up; those sources are "
             "not connected yet, so no next action is shown as current.", "Unverified", None, "source evidence incomplete")
 
 
 def stage(view, today):
     pending = [r for r in view.rounds if not valid_date(r.date)]
-    upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today]
-    past = [r for r in view.rounds if valid_date(r.date) and r.date < today]
+    upcoming = [r for r in view.rounds if valid_date(r.date) and r.date >= today and _live(r)]
+    past = [r for r in view.rounds if valid_date(r.date) and (r.date < today or not _live(r))]
     if pending:
         current = f"Scheduling Pending · Interview {pending[0].ordinal}" if pending[0].ordinal else "Scheduling Pending"
     elif upcoming:
         current = f"Interview {upcoming[0].ordinal} scheduled" if upcoming[0].ordinal else "Interview scheduled"
+    elif past and not _live(past[0]):
+        current = f"Interview {past[0].ordinal} cancelled in Calendar" if past[0].ordinal else "Interview cancelled in Calendar"
     elif past:
         current = f"Interview {past[0].ordinal} date passed · outcome not verified" if past[0].ordinal else "Interview date passed"
     else:

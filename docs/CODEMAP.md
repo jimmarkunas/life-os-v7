@@ -70,6 +70,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
+- `recruiter-outreach` -> `lifeos.recruiters.outreach_card:run`
 - `recruiters` -> `lifeos.recruiters.stage:run`
 - `resolve-dice` -> `lifeos.jobs.resolve.aggregators.dice:run`
 - `resolve-jobright` -> `lifeos.run:_jobright`
@@ -276,14 +277,18 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/recruiters/intent.py`: 'What they want': one short, fixed phrase built from a fixed request pattern in the sender's own words (D54: no language model, D193).
 - `lifeos/recruiters/notion.py`: The existing Recruiters data source, and nothing else. Natural key: Week Ending + Recruiter / Person + Recruiter Company + Role (normalized, no fuzzy matching).
 - `lifeos/recruiters/outreach.py`: LIFE-21 / LIFE-47 (D221): role-specific outreach on the canonical Recruiters data source, linked to ONE exact Job Ledger job by the additive `Job` relation.
+- `lifeos/recruiters/outreach_card.py`: LIFE-20: the Daily Report's one "🤝 Recruiter Outreach" table, refreshed in place from the Recruiters data source after the Recruiters stage. V7 owns it exclusively (route
 - `lifeos/recruiters/qualify.py`: Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 - `lifeos/recruiters/stage.py`: RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
 ### lifeos/sources/
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/interview_evidence.py`: LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives
+- `lifeos/sources/interview_journey_proof.py`: LIFE-78 synthetic journey proof on real Notion. Manual only: the interview-proof workflow with `confirm = QA` (the Interview token only, its own queue, no mail read), or 
+- `lifeos/sources/interview_sweep.py`: LIFE-88 (Jim, Oct 21 2026): every opportunity page, active or retired, becomes the new UI 3c page.
 - `lifeos/sources/job_page_outreach.py`: LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
+- `lifeos/sources/m1m2_proof.py`: LIFE-78 bounded synthetic M1/M2 exit: ONE finite case, an acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces. Manual only: in
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
 - `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
@@ -328,7 +333,9 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `diag.yml`: jobs diag, trace, sandbox, interview_ui; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
-- `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOUD_FIT_PROFILE_REF
+- `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOSE_BASE_URL, V7_CLOUD_FIT_PROFILE_REF
+- `interview-proof.yml`: jobs proof; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
+- `lane-guard.yml`: jobs lane-guard; manual no; secrets -
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `pr-tests.yml`: jobs unit-tests; manual no; secrets -

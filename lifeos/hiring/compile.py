@@ -108,7 +108,7 @@ def _key(company, role):
     return "|".join(_tokens(company)) + "|" + "|".join(sorted(_tokens(role)))
 
 
-def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
+def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contacts=None):
     reasons, out = set(), {"unsupported": 0, "unmatched_events": 0, "untitled_pages": 0, "closed": 0}
     if not ok["ledger"] or not ok["parents"]:                     # the two sources that decide WHO is in the pipeline: without both, only safe prior state may show
         reasons.add("LEDGER_UNAVAILABLE" if not ok["ledger"] else "OPPORTUNITIES_UNAVAILABLE")
@@ -164,6 +164,8 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None):
             last = row["event_start"] or row["applied_on"]
             if last is None or datetime.fromisoformat(hit["received"]) > _moment(last):
                 row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company")}
+        if (contacts or {}).get(key):                             # LIFE-26: the last direct, non-automated message for this row resets its Stale clock
+            row["contact"] = contacts[key]
         if row["stage"] is None:                                  # a notes page with no round and no event: nothing supports a stage, so nothing is claimed
             out["unsupported"] += 1
             continue

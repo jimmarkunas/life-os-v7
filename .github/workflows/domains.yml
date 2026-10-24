@@ -25,10 +25,18 @@ on:
         description: "Physical Mail FIRST run only: how many items were waiting on October 4, 2026 (Jim's anchor). Ignored once the state row exists"
         type: string
         default: ""
+      physical_mail_tracking:
+        description: "Physical Mail, ONE piece only (temporary until a tracking reader is authorized): mail number | carrier | service | tracking number | bundle. Stored with that piece, not a standing setting"
+        type: string
+        default: ""
       hiring:
         description: "Hiring Pipeline only (HIRE-1.2, no mail): the Job Ledger Applied state, the Hiring Pipeline pages and the Calendar into the private state row and the floating Hiring Pipeline region; dry run unless Actually write is ticked"
         type: boolean
         default: false
+      hiring_outcome_stale_hours:
+        description: "Hiring Pipeline PROOF only (LIFE-19, E13): treat the last outcome-mail scan as stale after this many hours (0 to 17; blank = the real 18). 0 shows the DEGRADED banner with the last accepted rows kept; the next normal run clears it. Never loosens the real limit"
+        type: string
+        default: ""
       imessage:
         description: "iMessage urgent alerts only (COMM-1.4b, LIFE-31): metadata from the private Oracle endpoint over the tailnet; dry run unless Actually write is ticked"
         type: boolean
@@ -45,8 +53,16 @@ on:
         description: "Recruiters only (RECR-1.2): Gmail and Outlook Inbox and Junk, last 14 days, into the Recruiters data source (counts only); dry run unless Actually write is ticked"
         type: boolean
         default: false
+      interview_convert:
+        description: "Interview OS page conversion (Jim, Oct 21): inventory = classify every opportunity page, write nothing; all = convert the legacy ones a few per run (cap INTERVIEW_CONVERT_CAP, default 2) with Jim's content proven unchanged, stopping at the first failure. Blank = the INTERVIEW_CONVERT repository variable"
+        type: string
+        default: ""
       interview_mail_days:
         description: "Interview OS dry run only (LIFE-88): read this many days of mail for scheduling requests, 14 to 90, instead of 14. Ignored when Actually write is ticked. Leave blank for the usual 14"
+        type: string
+        default: ""
+      interview_journey_proof:
+        description: "Synthetic Interview journey proof (LIFE-78): type QA, tick Recruiters, leave Actually write UNticked. Runs the real Interview OS runner on a fresh sandbox under the QA Interview OS page with invented mail, Calendar and Ledger; the real Hiring Pipeline, mailbox, calendar and Ledger are untouched. Blank = the normal Interview step"
         type: string
         default: ""
       calendar_sync:
@@ -740,6 +756,8 @@ jobs:
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           PHYSICAL_MAIL_ANCHOR: ${{ inputs.physical_mail_anchor }}
+          PHYSICAL_MAIL_EXPECT: ${{ vars.PHYSICAL_MAIL_EXPECT }}
+          PHYSICAL_MAIL_TRACKING_ENTRY: ${{ inputs.physical_mail_tracking }}
           GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_mail_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
           GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_mail_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_mail_retry.outputs.LIFEOS_ACQ_DB_NAME }}
@@ -859,6 +877,7 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
+          HIRING_OUTCOME_STALE_HOURS: ${{ inputs.hiring_outcome_stale_hours }}
           HIRING_STATUS_BLOCK_ID: ${{ secrets.HIRING_STATUS_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
@@ -1079,8 +1098,9 @@ jobs:
   dcc:
     # D175: V7 writes the Daily Command Center callout (it was the ChatGPT task's, which could only edit page markdown). It runs after EVERY other Daily Report writer, so no card changes while it reads
     # or writes, reads only the first lines the cards already carry, writes only its own region and proves every other V7 region unchanged around the write. A failure is a warning.
+    # A mail-only manual run (physical_mail) also refreshes this job, so the Command Center never shows the Mail Alerts source it had before the run (LIFE-95).
     needs: [jira, agenda, bills, amazon, attention, mail, hiring, imessage]
-    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.dcc) }}
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.dcc || inputs.physical_mail) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -1156,7 +1176,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
       - id: bws_recruiters
-        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 14; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 17; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
         with:
@@ -1179,6 +1199,7 @@ jobs:
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
         if: ${{ steps.bws_recruiters.outcome == 'failure' }}
         run: sleep $((30 + RANDOM % 45))
@@ -1206,6 +1227,7 @@ jobs:
             092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
             e697c607-f798-4528-9967-b4db015a6940 > GCAL_SERVICE_ACCOUNT_JSON
             53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+            53f47cb9-f6bb-4cde-87f4-b4db015ef928 > NOTION_JIRA_TOKEN
       - name: LIFE-85 - join the tailnet as the ephemeral tag:v7-runner node (the store's Oracle fallback; the policy admits it only to Oracle TCP 22 and 47341; a failed join only means no fallback)
         continue-on-error: true
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd   # v4.2.0
@@ -1284,11 +1306,28 @@ jobs:
           GCAL_SERVICE_ACCOUNT_JSON: ${{ steps.bws_recruiters.outputs.GCAL_SERVICE_ACCOUNT_JSON || steps.bws_recruiters_retry.outputs.GCAL_SERVICE_ACCOUNT_JSON }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_API_TOKEN }}
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}   # LIFE-78 E10: read only, recruiter threads by the exact request message
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
           INTERVIEW_LEADS: ${{ vars.INTERVIEW_LEADS }}
           INTERVIEW_TEST_COMPANIES: ${{ vars.INTERVIEW_TEST_COMPANIES }}
           INTERVIEW_MAIL_DAYS: ${{ inputs.interview_mail_days }}
+          INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
+          INTERVIEW_CONVERT: ${{ inputs.interview_convert || vars.INTERVIEW_CONVERT }}
+          INTERVIEW_CONVERT_CAP: ${{ vars.INTERVIEW_CONVERT_CAP }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
+      - id: routreach
+        continue-on-error: true
+        name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
+        env:
+          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}
+          RECRUITER_OUTREACH: ${{ vars.RECRUITER_OUTREACH }}
+          NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
+          HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
+          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: each row gets its one action link (Close, or Record reply or referral); unset, no link
+          NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_JIRA_TOKEN }}
+        run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
         continue-on-error: true
         name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
@@ -1296,12 +1335,13 @@ jobs:
           NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           JOB_PAGE_OUTREACH: ${{ vars.JOB_PAGE_OUTREACH }}
+          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # the private Close origin: each open conversation gets a "Record reply or referral" link; unset, no link
           NOTION_API_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_API_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_API_TOKEN }}
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run job-page-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Recruiters warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure' || steps.interview.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
-        run: echo "::warning title=Recruiters::the Recruiters stage, the hiring outcome-mail scan, the Interview OS stage (DEGRADED or failed) or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
+        if: ${{ always() && (steps.recruiters.outcome == 'failure' || steps.houtcomes.outcome == 'failure' || steps.interview.outcome == 'failure' || steps.routreach.outcome == 'failure' || steps.jpoutreach.outcome == 'failure') }}
+        run: echo "::warning title=Recruiters::the Recruiters stage, the hiring outcome-mail scan, the Interview OS stage (DEGRADED or failed), the Recruiter Outreach table or the job-page outreach tables failed or a source was unread; the Jobs pipeline is unaffected"
 
   imessage:
     # COMM-1.4b (LIFE-31, Jim's approval in comment 10136): urgent iMessage alerts. The runner joins the tailnet as an ephemeral tag:v7-runner node, which the

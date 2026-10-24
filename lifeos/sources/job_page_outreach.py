@@ -61,6 +61,12 @@ def _next(r, today):
         return _two("Needs action: follow up", f"Overdue since {_day(due)}" if due and due < today.isoformat() else "Due now")
     if r["action"] == store.WAITING and r["follow_up"]:
         return _two("Follow up", f"Due {_day(r['follow_up'])}")
+    if r["action"] == store.CONFIRMED:
+        return _two("No follow-up", "Referral confirmed · applying is still yours to mark")
+    if r["action"] == store.OFFERED:
+        return _two("Confirm the referral", "Offered, not yet confirmed")
+    if r["action"] == store.REPLIED:
+        return _two("Reply received", "Decide the next step")
     return _two("No follow-up scheduled")
 
 
@@ -75,10 +81,33 @@ def _sort_key(r):
     return (rank, r["follow_up"] or "9999-99-99", r["person"].lower())
 
 
-def cells(rows, today):
-    """Recruiters rows for ONE job -> table rows, most urgent first: Needs Action, then by the soonest follow-up, closed conversations last."""
-    return [[_two(r["person"], r["company"]), _two(r["medium"] or "Channel not recorded", r["role"]),
-             _two(f"Initial outreach: {_day(r['last_contact'])}" if r["last_contact"] else "Initial outreach: date not recorded", _conversation(r)), _next(r, today)]
+def action_link(base, job_id):
+    """The private Close screen for this exact job's Record reply or referral action, or None when no https origin is configured. A link, never an action: opening it writes nothing."""
+    base = (base or "").strip().rstrip("/")
+    return f"{base}/referral?j={O._id(job_id)}" if base.startswith("https://") and O._id(job_id) else None
+
+
+def sent_link(base, job_id):
+    """The private Close screen for this exact job's Mark as Sent action (D221), or None when no https origin is configured. Jim asked (Oct 21) for it in the table, under the
+    contact's channel, not in the page properties. A link, never an action: opening it writes nothing."""
+    base = (base or "").strip().rstrip("/")
+    return f"{base}/sent?j={O._id(job_id)}" if base.startswith("https://") and O._id(job_id) else None
+
+
+def _channel_cell(r, sent):
+    cell = _two(r["medium"] or "Channel not recorded", r["role"])
+    return cell + [("\n", None, None), ("Mark as Sent ↗", sent, None)] if sent else cell
+
+
+def _conversation_cell(r, link):
+    cell = _two(f"Initial outreach: {_day(r['last_contact'])}" if r["last_contact"] else "Initial outreach: date not recorded", _conversation(r))
+    return cell + [("\n", None, None), ("Record reply or referral ↗", link, None)] if link and not _closed(r) else cell
+
+
+def cells(rows, today, link=None, sent=None):
+    """Recruiters rows for ONE job -> table rows, most urgent first: Needs Action, then by the soonest follow-up, closed conversations last. `link` (the job's private
+    Record reply or referral screen) is added to each open conversation; `sent` (its Mark as Sent screen) goes under the channel of every row."""
+    return [[_two(r["person"], r["company"]), _channel_cell(r, sent), _conversation_cell(r, link), _next(r, today)]
             for r in sorted(rows, key=_sort_key)]
 
 
@@ -163,14 +192,14 @@ def _verify(client, page_id, heading_id, want, before):
     return region
 
 
-def sync_page(client, ledger, ledger_source, page_id, rows, now, live):
+def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None, sent=None):
     """-> "created" | "updated" | "unchanged" (prefixed "would_" when not writing). Raises a fixed code on anything unsafe; nothing outside the region is ever written."""
     _check_page(ledger.get_page(page_id), ledger_source)
     top = R.children(client, page_id, fail)
     owned = _owned(top)
     if len(owned) > 1:
         raise fail("REGION_NOT_UNIQUE")
-    want = cells(rows, now.date())
+    want = cells(rows, now.date(), link, sent)
     if not owned:
         if not live:
             return "would_create"
@@ -213,7 +242,8 @@ def run(limit, live, environ=os.environ, recruiters=None, ledger=None, client=No
     counts["jobs"], counts["conversations"] = len(jobs), sum(len(v) for v in jobs.values())
     for jid in sorted(jobs)[:limit or None]:
         try:
-            result = sync_page(client, ledger, ledger.source, jid, jobs[jid], now, writing)
+            base = environ.get("V7_CLOSE_BASE_URL")
+            result = sync_page(client, ledger, ledger.source, jid, jobs[jid], now, writing, action_link(base, jid), sent_link(base, jid))
         except NotionError as error:
             code = str(error)[:60]
             result, counts["failed"] = code if code.startswith("JOB_PAGE_OUTREACH_") else "JOB_PAGE_OUTREACH_NOTION_ERROR", counts["failed"] + 1

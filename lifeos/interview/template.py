@@ -10,6 +10,11 @@ view does not have is written as not verified. Deliberate differences, each requ
 is a toggle that says it is unavailable, never a checkbox (D05, LIFE-88 10869); a Full Transcript page is linked from its callout
 because the API creates child pages only at the end of a page. Nested children are written in stages by notion.write_tree."""
 from .notion import FOLD, JIM_NOTES, LIVE_PANE, MARKERS, RAW_HEADING, RAW_TOGGLE, ROUND_FOLD
+import hashlib
+import re
+from datetime import date
+from urllib.parse import urlencode
+
 from .view import UNCONNECTED, primary_action, stage
 
 GRAY, NV = "gray", "Not verified"
@@ -108,12 +113,62 @@ def render_line(job, source, page="pending"):
 
 # ---------- UI 3c opportunity page ----------
 
+# E05 Mark Complete (Jim, Oct 24): the fold names the page's one completable primary action; the private Close screen appends a completion line to the same fold
+# (lifeos/sources/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
+ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
+DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
+DONE_MAX = 20                                                  # completion lines carried per page, newest last
+
+
+def action_key(text, context=""):
+    """The action's identity: its text, plus the opportunity's rounds when it has any, so the same wording for a later round is a new action, never already done."""
+    return hashlib.sha256((text + "\x1f" + context if context else text).encode()).hexdigest()[:16]
+
+
+def action_line(text, context=""):
+    return f"v7-action:1;key={action_key(text, context)};text={text}"
+
+
+def done_line(key, day):
+    return f"v7-done:1;key={key};on={day}"
+
+
+def _rounds(view):
+    return ",".join(sorted(r.page_id for r in view.rounds if r.page_id))
+
+
+def fold_lines(view, label, action):
+    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one) and every recorded completion, in the fold."""
+    return ([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [done_line(k, d) for k, d in view.done]
+
+
+def complete_parts(view, label, action):
+    """E05 Mark Complete (Jim, Oct 24): done when the Close screen recorded this exact action; otherwise its one link to the private Close
+    screen's two-step confirmation; without that screen (or for a degraded action) it says it is unavailable and records nothing."""
+    done = dict(view.done).get(action_key(action, _rounds(view))) if label == "PRIMARY ACTION" else None
+    if done:
+        day = date.fromisoformat(done)
+        return [para(("✅ Done ", True), (f"{day:%b} {day.day}", True), " · marked complete on the Close screen. "
+                     "The next action appears here when new evidence arrives.")]
+    if label == "PRIMARY ACTION" and view.close_base and view.page_id:
+        url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': action_key(action, _rounds(view))})}"
+        return [para(("Mark Complete ↗", False, url), " · opens the private Close screen; nothing is recorded until you confirm there.")]
+    return [toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
+        "Not available here: completion is recorded only through the private Close screen's two-step confirmation, with a canonical "
+        "write and read-back. Nothing here records completion.")])]
+
+
 def _health(view, rounds_label):
     rows = [("Interviews", rounds_label),
             ("Job Ledger", {"linked": "exact row linked by Stable Job Key", "mismatch": "row does not match this job's Stable Job Key",
                             "unreadable": "row unreadable this run"}.get(view.ledger, "no exact row linked")),
-            ("Request message", "linked" if view.request_url else "not recorded")]
-    rows += [(name, "not connected to LIFE OS yet") for name in UNCONNECTED]
+            ("Request message", ("Request message ↗", False, view.request_url) if view.request_url else "not recorded")]     # the page names its request in every state (LIFE-78)
+    linked = [r for r in view.rounds if r.calendar]
+    threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
+               "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
+    rows += [(name, f"{len(linked)} interview(s) linked to a Calendar invite by reference; joining details not verified" if name == "Calendar" and linked
+              else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
+              else "not connected to LIFE OS yet") for name in UNCONNECTED]
     return callout([field(k, v) for k, v in rows] + [field("Overall", "PARTIAL — never read a missing source as all clear")],
                    "⚠️", "yellow_background", (f"Source Health — {view.company}", True))
 
@@ -123,10 +178,23 @@ def _interviews(view):
     for r in view.rounds:
         name = f"Interview {r.ordinal}" if r.ordinal else f"Interview — {r.date}"
         rows.append([r.interviewer or "Interviewer not verified",
-                     f"{r.date} · Calendar event not verified" if r.date else "Scheduling pending · no Calendar event",
+                     (f"{r.date} · " + {"accepted": "accepted Calendar invite", "cancelled": "cancelled in Calendar"}.get(r.calendar, "Calendar event not verified"))
+                     if r.date else "Scheduling pending · no Calendar event",
                      [mention(r.page_id)] if r.page_id else name])
     if len(rows) == 1:
         rows.append(["No interview pages yet", "—", "—"])
+    return rows
+
+
+def _recruiters(view):
+    """E10: one row per Recruiters row linked by the exact request message; the Email cell opens that thread (never composes)."""
+    rows = [["Person", "Role", "Email"]]
+    for person, company, url in view.recruiters:
+        rows.append([[(person or NV, True)], " · ".join(x for x in ("Recruiter", company) if x),
+                     [("Latest thread ↗", False, url)] if url.startswith("https://") else NV])
+    if len(rows) == 1:
+        rows.append(["DEGRADED · Recruiters source unreadable this run" if view.recruiters_state == "unreadable" else "No verified recruiters or coordinators",
+                     "—", "Not verified"])
     return rows
 
 
@@ -141,9 +209,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         para((action, True)),
         para(("Due: ", True), due, " · ", ("Owner: ", True), "Jim · ", ("Source completeness: ", True), "Partial",
              *([" · ", ("Request message ↗", False, link)] if link else [])),
-        toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
-            "Not available yet: completion needs an authenticated two-step confirmation with a canonical write and read-back, "
-            "which is not proven. Nothing here records completion.")])], None, PLAIN,
+        *complete_parts(view, label, action)], None, PLAIN,
         (label, True), " · ", basis)
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),
@@ -174,15 +240,15 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Interviews"), table(_interviews(view)),
                  note("Names link to LinkedIn and dates to the Calendar event only once verified; Interview links open the "
                       "interview page.")], "📅", "gray_background"),
-        callout([h(3, "Recruiters & Coordinators"), table([["Person", "Role", "Email"], ["No verified recruiters or coordinators",
-                                                                                         "—", "Not verified"]]),
+        callout([h(3, "Recruiters & Coordinators"), table(_recruiters(view)),
                  note("Email opens the latest verified thread for THIS job only, never composes. Interview participants are "
                       "listed only under Interviews.")], "👥", "gray_background"),
         callout([h(3, "Materials Sent"), bullet(("Submitted résumé", True), " — File link not yet verified"),
                  note("Other sent forms, correspondence, project plans and articles appear here when linked to verified files "
                       "or outbound messages.")], "📎", "gray_background")]
     machine = [
-        fold(marker, render_line(view.stable_job_key, source), extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
+        fold(marker, render_line(view.stable_job_key, source), *fold_lines(view, label, action),
+             extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
         para(("Stage: ", True), current, " · ", ("Next confirmed interview: ", True), next_date, " · ",
              ("Current opportunity status: ", True), "Not verified (outcome sources not connected)", *([" · "] + ledger if ledger else [])),
         callout([h(3, "Action Center"), columns((0.625, [primary]), (0.375, secondary))], ARROW, "blue_background"),
@@ -251,13 +317,23 @@ def transcript_lines(state="absent", page_id=None):
             field("Full Transcript page", "Exists — not an accepted transcript · ", mention(page_id)))
 
 
+def meeting_parts(join, place):
+    """E10: the Logistics value for the accepted invite's joining details; create.round_meeting reads it back."""
+    return [p for p in (("Join link ↗", False, join) if join else None, " · " if join and place else None, place) if p] or ["Unavailable"]
+
+
 def round_page(view, query, parent_id, identity, prep=None, transcript=("absent", None)):
     pending = not query.interview_date
     who = (query.interviewer or "").strip() or None
     name = f"Interview {query.ordinal}" if query.ordinal else f"Interview — {query.interview_date}"
-    status = "Scheduling Pending" if pending else f"Scheduled {query.interview_date} · Calendar not verified"
+    ref, cancelled = query.calendar_ref, bool(query.calendar_ref and query.cancelled and not pending)
+    join, place = (query.meeting or (None, None)) if ref and not pending and not cancelled else (None, None)
+    status = ("Scheduling Pending" if pending else f"Cancelled {query.interview_date} · Calendar" if cancelled
+              else f"Scheduled {query.interview_date} · " + ("Calendar invite accepted" if ref else "Calendar not verified"))
     health = callout([field("Round identity", f"{name} · {status}"),
-                      field("Calendar / meeting", "No confirmed event, join URL or original invite verified."),
+                      field("Calendar / meeting", "The Calendar invite was cancelled." if cancelled else ("Accepted Calendar invite linked by reference; joining details from the invite."
+                            if join or place else "Accepted Calendar invite linked by reference; join URL not verified.")
+                            if ref and not pending else "No confirmed event, join URL or original invite verified."),
                       field("Request message", "linked" if view.request_url else "not recorded"),
                       field("Preparation", "accepted source-grounded preparation" if prep else "not run"),
                       transcript_lines(*transcript)[0],
@@ -266,8 +342,11 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
     rails = para(("Guardrails: ", True), "Never invent interview dates, contacts, outcome or URLs. The opportunity page owns the "
                  "full JD. Calendar owns logistics; Live Notes and Raw Notes survive every automated refresh unchanged.")
     snapshot = callout([para(("Interviewer: ", True), who or NV, " · ", ("Status: ", True), status),
-                        para(("When: ", True), "No verified Calendar event or meeting time" if pending else f"{query.interview_date} · Calendar event not verified"),
+                        para(("When: ", True), "No verified Calendar event or meeting time" if pending else f"{query.interview_date} · cancelled in Calendar" if cancelled
+                             else f"{query.interview_date} · accepted Calendar invite" if ref else f"{query.interview_date} · Calendar event not verified"),
                         para(("Next action: ", True), "Confirm an interview time with the recruiter." if pending
+                             else "Ask the recruiter whether the interview moves to a new time." if cancelled
+                             else "Prepare; joining details come from the Calendar invite." if ref
                              else "Verify scheduling and interview details before treating this round as confirmed."),
                         para(("Objective (derived): ", True), "Not run." if not prep else "See Prepare.")],
                        "🎯", "blue_background", ("Interview snapshot", True))
@@ -292,8 +371,8 @@ def round_page(view, query, parent_id, identity, prep=None, transcript=("absent"
                  para("Live Notes and Raw Notes are protected from machine edits.")])]
     left = [tabs(("Prepare", prepare_pane(prep, query.ordinal)), (LIVE_PANE, live), ("After Interview", after)),
             h(3, RAW_HEADING), toggle(RAW_TOGGLE, [para(("Write unprocessed notes here. LIFE OS never overwrites them.", False, None, True))])]
-    right = [callout([h(3, "Logistics"), field("Date / time", query.interview_date or NV), field("Calendar event", "Unavailable"),
-                      field("Meeting link / location", "Unavailable"),
+    right = [callout([h(3, "Logistics"), field("Date / time", query.interview_date or NV), field("Calendar event", f"{'Cancelled' if cancelled else 'Accepted invite'} · ref {ref}" if ref and not pending else "Unavailable"),
+                      field("Meeting link / location", *meeting_parts(join, place)),
                       note("Only the exact confirmed invitation and joining information for this round is linked.")], "📅", "gray_background"),
              callout([h(3, "Interviewer"), field("Name", who or NV), field("Role", NV), field("LinkedIn", NV)], "👤", "gray_background"),
              callout([h(3, "Transcript & Recording"), field("Granola", "Not imported / not verified"),

@@ -47,7 +47,7 @@ class CompilerTests(unittest.TestCase):
         got = compile_([applied("Acme Inc", "Senior Program Manager")])
         self.assertEqual([(r["stage"], r["company"]) for r in got["rows"]], [("Submitted", "Acme Inc")])
         self.assertEqual(got["reasons"], [])
-        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted", "Awaiting response · follow up Oct 16"])
+        self.assertEqual(cells(got["rows"][0])[1:3], ["Submitted", "Awaiting response · follow up Oct 9"])
 
     def test_two_ledger_rows_for_one_company_and_role_are_one_opportunity(self):
         got = compile_([applied("Acme", "Senior Program Manager", "2026-10-01"), applied("ACME Inc.", "senior program manager", "2026-10-03")])
@@ -348,20 +348,33 @@ class LifecycleTests(unittest.TestCase):
         got = compile_([], [self.retired("r1", "Walmart", "Senior Manager")], events=[{"id": "e1", "title": "Interview - Walmart", "start": at(-20)}])
         self.assertEqual(got["rows"] or [], [])
 
-    def test_waiting_on_an_outcome_says_so_after_fourteen_days_and_not_before(self):
-        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-13), "parent": None, "parent_state": "none", "rounds": 0}
-        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 23 · follow up Oct 7")
-        row["event_start"] = at(-14)
-        self.assertEqual(cells(row)[2], "No news in 14 days · follow up (due Oct 6)")
+    def test_waiting_on_an_outcome_is_stale_after_seven_days_and_not_before(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-6), "parent": None, "parent_state": "none", "rounds": 0}
+        self.assertEqual(cells(row)[2], "Awaiting outcome of the interview held Sep 30 · follow up Oct 7")
+        row["event_start"] = at(-7)
+        self.assertEqual(cells(row)[2], "Stale · no news in 7 days · follow up (due Oct 6)")         # LIFE-26: 7 calendar days
         row["event_start"] = at(-30)
-        self.assertEqual(cells(row)[2], "No news in 30 days · follow up (due Sep 20)")
-        self.assertEqual(cells(row)[1], "Interviewing")                                         # the stage is unchanged
+        self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
+        self.assertEqual(cells(row)[1], "Interviewing")                                         # Stale is attention, never a stage change or closure
 
-    def test_a_submitted_role_waiting_fourteen_days_asks_for_a_follow_up(self):
-        row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=13)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
+    def test_a_submitted_role_waiting_seven_days_is_stale(self):
+        row = {"stage": "Submitted", "company": "Acme", "role": "PM", "applied_on": (NOW - timedelta(days=6)).date().isoformat(), "event_start": None, "parent": None, "parent_state": "none", "rounds": 0}
         self.assertEqual(cells(row)[2], "Awaiting response · follow up Oct 7")
-        row["applied_on"] = (NOW - timedelta(days=14)).date().isoformat()
-        self.assertEqual(cells(row)[2], "No response in 14 days · follow up (due Oct 6)")
+        row["applied_on"] = (NOW - timedelta(days=7)).date().isoformat()
+        self.assertEqual(cells(row)[2], "Stale · no response in 7 days · follow up (due Oct 6)")
+
+    def test_a_direct_message_resets_the_stale_clock_and_an_older_one_does_not(self):
+        row = {"stage": "Interviewing", "company": "Acme", "role": "PM", "event_kind": "interview", "event_start": at(-30), "parent": None, "parent_state": "none", "rounds": 0}
+        row["contact"] = (NOW - timedelta(days=2)).isoformat()
+        self.assertEqual(cells(row)[2], "Last contact Oct 4 · follow up Oct 11")
+        row["contact"] = (NOW - timedelta(days=9)).isoformat()
+        self.assertEqual(cells(row)[2], "Stale · no contact in 9 days · follow up (due Oct 4)")
+        row["contact"] = (NOW - timedelta(days=40)).isoformat()                                  # before the interview: the interview is the newer evidence
+        self.assertEqual(cells(row)[2], "Stale · no news in 30 days · follow up (due Sep 13)")
+        naive = dict(row, event_start="2026-09-06T10:00:00", contact=(NOW - timedelta(days=2)).isoformat())                    # a time with no offset is Central, never a crash
+        self.assertEqual(cells(naive)[2], "Last contact Oct 4 · follow up Oct 11")
+        future = dict(row, event_start=at(3, 10), contact=None)
+        self.assertTrue(cells(future)[2].startswith("Prepare for the interview"))                # a confirmed future interview protects it
 
 
 class ActiveTableTests(unittest.TestCase):
@@ -374,8 +387,8 @@ class ActiveTableTests(unittest.TestCase):
         _, table, _ = render.render(got, None, NOW)
         self.assertEqual([[t for t, _ in row] for row in table], [
             ["Hooli — Program Manager", "Submitted", "Rejection email received Oct 5 · confirm (Applied stays as history)", "Needs Notes"],      # an outcome email needs attention now; its date is evidence, not a deadline
-            ["Initech — PM", "Submitted", "No response in 16 days · follow up (due Oct 4)", "Needs Notes"],
-            ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 16", "Needs Notes"],
+            ["Initech — PM", "Submitted", "Stale · no response in 16 days · follow up (due Sep 27)", "Needs Notes"],
+            ["Acme — Senior Program Manager", "Submitted", "Awaiting response · follow up Oct 9", "Needs Notes"],
             ["Globex — Director", "Interviewing", "Prepare for the interview · Tomorrow 10:00 AM CT", "Opportunity Page ↗"]])
         self.assertEqual(table[3][3][1], "https://www.notion.so/1234abcd000040008000000000000001")
 
@@ -663,7 +676,8 @@ class ReciprocalProtectionTests(unittest.TestCase):
         self.assertEqual(router.HIRING_REGION, M.TITLE)
         self.assertEqual(len(set(router.OWNERS.values())), len(router.OWNERS))
         self.assertFalse(router.is_callout(router.HIRING_REGION))
-        self.assertTrue(all(router.is_callout(h) for h in router.OWNERS if h != router.HIRING_REGION))
+        self.assertFalse(router.is_callout(router.RECRUITER_OUTREACH_REGION))            # LIFE-20: the second floating region, right under this one
+        self.assertTrue(all(router.is_callout(h) for h in router.OWNERS if h not in (router.HIRING_REGION, router.RECRUITER_OUTREACH_REGION)))
         router.check_write("v7-hiring", [router.HIRING_REGION])
         with self.assertRaises(router.RouterError):
             router.check_write("v7-mail-alerts", [router.HIRING_REGION])
@@ -763,6 +777,12 @@ def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-1
 
 
 class RuntimePathTests(unittest.TestCase):
+    def setUp(self):
+        fresh = (NOW - timedelta(hours=1)).astimezone(timezone.utc).isoformat()     # the outcome-mail scan saved an hour ago: these tests are about the other sources
+        patcher = mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, fresh))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_entry_point_is_a_registered_stage_and_the_region_job_follows_every_other_writer(self):
         from lifeos import run as entry
         self.assertEqual(entry.STAGES["hiring"].target, ("lifeos.sources.hiring", "run"))
@@ -886,6 +906,7 @@ class OutcomeConsumerTests(unittest.TestCase):
     """D190 end of the chain: what the outcome-mail stage stored reaches the Hiring Pipeline region as a tentative line, with every other block, the Applied state and the Ledger untouched."""
     KEY = "acme|manager|program|senior"
     FOUND = {KEY: {"kind": "REJECTED", "received": (NOW - timedelta(days=1)).astimezone(timezone.utc).isoformat(), "match": "role"}}
+    SCANNED = (NOW - timedelta(hours=2)).astimezone(timezone.utc).isoformat()
 
     def go(self, loader, parents=PARENTS):
         t, store = page(extra_rows=0), FakeStore()
@@ -894,7 +915,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         return t, store, counts
 
     def test_stored_outcome_mail_is_shown_as_a_line_to_confirm_and_only_the_pinned_region_blocks_are_written(self):
-        t, store, counts = self.go(lambda conn: (self.FOUND, "2026-10-06T00:00:00+00:00"))
+        t, store, counts = self.go(lambda conn: (self.FOUND, self.SCANNED))
         self.assertEqual((counts["mail_outcomes"], counts["status"]), (1, "fresh"))
         action = table_state(t)[0][2][0]
         self.assertEqual(action, "Rejection email received Oct 5 · confirm, then move the Notes page to Retired")
@@ -903,7 +924,7 @@ class OutcomeConsumerTests(unittest.TestCase):
         self.assertEqual(R.plain(t.blocks["cal-p"]), "9:00 AM standup")                           # the neighbouring card is untouched
 
     def test_a_role_without_a_notes_page_keeps_applied_as_history(self):
-        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, None), parents=[])
+        t, _, _ = self.go(lambda conn: ({self.KEY: {**self.FOUND[self.KEY], "match": "company"}}, self.SCANNED), parents=[])
         action = table_state(t)[0][2][0]
         self.assertEqual(action, "Possible rejection email received Oct 5 · confirm (Applied stays as history)")
 
@@ -912,18 +933,52 @@ class OutcomeConsumerTests(unittest.TestCase):
             def __getattr__(self, name):
                 raise AssertionError(f"ledger write attempted: {name}")
         t, store = page(extra_rows=0), FakeStore()
-        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, None)), mock.patch.object(snapshot, "STORE", store), \
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, self.SCANNED)), mock.patch.object(snapshot, "STORE", store), \
                 mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (list(PARENTS), "ok")):
             stage.run(0, True, RUN_ENV, ledger_client=ReadOnlyLedger([("Acme", "Senior Program Manager", "2026-10-02")]), pipeline_client=object(), calendar=FakeCalendar([]),
                       connection=object(), client=t, now=NOW)
         self.assertEqual([e for e in t.log if "Applied" in json.dumps(e)], [])
 
-    def test_unavailable_outcome_mail_never_stops_the_pipeline_or_invents_an_outcome(self):
+    def seeded(self, loader):
+        """a first fresh run saves the accepted state; the second run is the one under test (a prior snapshot exists, so there is a roster to scan for)."""
+        t, store = page(extra_rows=0), FakeStore()
+        with mock.patch.object(stage.outcome_mail, "load", lambda conn: ({}, self.SCANNED)):
+            run(t, store)
+        with mock.patch.object(stage.outcome_mail, "load", loader):
+            counts = run(t, store)
+        return t, store, counts
+
+    def test_unavailable_outcome_mail_degrades_hiring_keeps_the_last_accepted_rows_and_invents_no_outcome(self):
         def broken(conn):
             raise RuntimeError("store down")
-        t, store, counts = self.go(broken)
-        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "fresh"))
+        t, store, counts = self.seeded(broken)
+        self.assertEqual((counts["mail_outcomes"], counts["status"]), (0, "degraded"))
+        self.assertIn("OUTCOME_MAIL_UNREADABLE", counts["reasons"])
+        self.assertEqual(len(table_state(t)), 1)                                                   # the accepted row stays; the pipeline is not stopped
         self.assertNotIn("email", table_state(t)[0][2][0].lower())
+
+    def test_outcome_mail_not_saved_for_eighteen_hours_or_never_saved_is_degraded_and_a_fresh_save_clears_it(self):
+        stale = (NOW - timedelta(hours=19)).astimezone(timezone.utc).isoformat()
+        for scanned in (stale, None):
+            with self.subTest(scanned=scanned):
+                t, store, counts = self.seeded(lambda conn, scanned=scanned: (self.FOUND, scanned))
+                self.assertEqual((counts["status"], counts["reasons"]), ("degraded", ["OUTCOME_MAIL_STALE"]))
+                self.assertEqual(counts["mail_outcomes"], 1)                                       # the last accepted outcome is still shown, never dropped
+        t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))
+        self.assertEqual((counts["status"], counts["reasons"]), ("fresh", []))
+
+    def test_the_manual_proof_input_can_only_tighten_the_staleness_limit_and_leaves_the_accepted_rows_on_the_card(self):
+        for value, status in (("0", "degraded"), ("1", "degraded"), ("", "fresh"), ("18", "fresh"), ("99", "fresh"), ("-1", "fresh"), ("soon", "fresh")):
+            with self.subTest(value=value):
+                with mock.patch.dict(RUN_ENV, {"HIRING_OUTCOME_STALE_HOURS": value}):
+                    t, store, counts = self.seeded(lambda conn: (self.FOUND, self.SCANNED))               # the scan is 2 hours old
+                self.assertEqual(counts["status"], status)
+                self.assertEqual(counts["reasons"], ["OUTCOME_MAIL_STALE"] if status == "degraded" else [])
+                self.assertEqual((counts["mail_outcomes"], len(table_state(t))), (1, 1))                  # the last accepted outcome and row stay either way
+
+    def test_a_pipeline_with_no_accepted_state_yet_is_not_degraded_by_a_scan_that_has_nothing_to_look_for(self):
+        t, store, counts = self.go(lambda conn: ({}, None))
+        self.assertEqual(counts["status"], "fresh")
 
 
 class GuardrailTests(unittest.TestCase):

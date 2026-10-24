@@ -11,6 +11,9 @@ from urllib.parse import urlsplit
 _AT = chr(64)
 DOMAIN = "anytimemailbox" + ".com"
 SENDER_QUERY = "from:" + DOMAIN
+FEDEX_SENDER = "TrackingUpdates" + _AT + "fedex" + ".com"                       # the update FedEx sends when Jim follows a shipment (built apart so no literal address is in the repository text)
+FEDEX_SUBJECT = re.compile(r"^\s*(?:re\s*:\s*)?online\s+fedex\s+tracking\s*-\s*(\d{10,22})\s*$", re.I)
+FEDEX_ACTIVITY = re.compile(r"^\s*\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*[ap]m\s+(.+?)\s*$", re.I)
 NEW_MAIL = re.compile(r"^\s*(?:re\s*:\s*)?new\s+mail\b", re.I)
 COMPLETED = re.compile(r"^\s*(?:re\s*:\s*)?completed\s+action\s+requests?\b", re.I)
 VERBS = {"scan": "SCAN", "scanned": "SCAN", "shred": "SHRED", "shredded": "SHRED", "recycle": "RECYCLE", "recycled": "RECYCLE", "forward": "FORWARD", "forwarded": "FORWARD"}
@@ -30,6 +33,13 @@ def _vendor(value):
         return False
     local, separator, domain = parsed[0][1].strip().rpartition(_AT)
     return bool(local and separator and domain.lower() == DOMAIN)
+
+
+def _fedex(value):
+    if not isinstance(value, str):
+        return False
+    parsed = getaddresses([value])
+    return len(parsed) == 1 and parsed[0][1].strip().lower() == FEDEX_SENDER.lower()
 
 
 def _received(value):
@@ -60,6 +70,8 @@ def extract(message):
     if not isinstance(message, dict):
         return {"kind": "REVIEW", "id": "", "at": None, "reason": "MESSAGE_INVALID"}
     message_id, body, subject = message.get("id"), message.get("body_text"), message.get("subject")
+    if _fedex(message.get("sender")):
+        return _shipment(message)
     if not _vendor(message.get("sender")):
         return {"kind": "IGNORED", "reason": "SENDER_NOT_VENDOR"}
     at = _received(message.get("received_at"))
@@ -79,6 +91,8 @@ def extract(message):
     if COMPLETED.match(subject):
         actions, bad = [], None
         for line in body.splitlines():
+            if line.strip().lower().startswith("https://"):
+                continue                                                       # a link target the HTML reader appended, never an action line
             verbs = {VERBS[w] for w in re.findall(r"[a-z]+", line.lower()) if w in VERBS}
             numbers = {m for m in MAIL_NO.findall(line)}
             if not numbers and not (verbs and BULLET.match(line)):
@@ -93,5 +107,20 @@ def extract(message):
             return _review(message_id, at, bad)
         if not actions:
             return _review(message_id, at, "NO_LINES")
-        return {"kind": "ACTIONS", "id": message_id, "at": at, "actions": sorted(set(actions))}
+        return {"kind": "ACTIONS", "id": message_id, "at": at, "actions": sorted(set(actions)), "portal": _portal(body)}
     return {"kind": "IGNORED", "reason": "SUBJECT_NOT_SCOPED"}
+
+
+def _shipment(message):
+    """A FedEx follow-the-shipment update -> {"kind": "SHIPMENT", id, at, number, state, delivered}. The tracking number is the subject's; the state is the newest activity row (what FedEx last recorded), and
+    `delivered` is true only when that row says Delivered. Any other FedEx mail is IGNORED."""
+    message_id, body, subject, at = message.get("id"), message.get("body_text"), message.get("subject"), _received(message.get("received_at"))
+    found = FEDEX_SUBJECT.match(subject) if isinstance(subject, str) else None
+    if not found:
+        return {"kind": "IGNORED", "reason": "SUBJECT_NOT_SCOPED"}
+    if not isinstance(message_id, str) or not message_id.strip() or at is None or not isinstance(body, str):
+        return _review(message_id if isinstance(message_id, str) else "", at, "MESSAGE_INCOMPLETE")
+    activity = next((m.group(1) for m in (FEDEX_ACTIVITY.match(line) for line in body.splitlines()) if m), None)
+    if not activity:
+        return _review(message_id.strip(), at, "SHIPMENT_STATE_MISSING")
+    return {"kind": "SHIPMENT", "id": message_id.strip(), "at": at, "number": found.group(1), "state": activity[:80], "delivered": activity.lower().startswith("delivered")}

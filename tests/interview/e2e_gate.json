@@ -17,6 +17,12 @@
         "tests.sources.test_interview_evidence.SchedulingRequests.test_two_applied_rows_the_text_cannot_tell_apart_are_ambiguous_and_nothing_is_written",
         "tests.sources.test_interview_evidence.SchedulingRequests.test_a_requisition_the_apply_url_does_not_carry_blocks_the_link",
         "tests.sources.test_interview_evidence.SchedulingRequests.test_unread_mail_is_degraded_and_never_a_quiet_zero",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_no_requisition_is_review_with_no_row_no_page_and_no_failure",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_an_exact_requisition_is_one_row_and_its_replay_writes_nothing_more",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_two_requisitions_at_one_company_are_two_jobs_and_never_merged",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_an_existing_row_holding_the_requisition_key_is_reused_not_created_again",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_a_row_for_the_same_title_under_another_key_is_an_identity_conflict_and_nothing_is_written",
+        "tests.sources.test_interview_evidence.LeadRequisition.test_an_unreadable_ledger_is_degraded_and_writes_nothing",
         "tests.sources.test_interview_evidence.LeadCorrelation.test_distinct_leads_with_different_ats_links_each_get_exactly_their_own",
         "tests.sources.test_interview_evidence.LeadCorrelation.test_the_newest_message_in_the_mailbox_does_not_lend_its_link_to_an_older_lead",
         "tests.sources.test_interview_evidence.LeadCorrelation.test_the_result_is_counts_only_with_a_ready_page_a_lead_a_conversion_and_a_request_in_one_run",
@@ -42,6 +48,8 @@
       "live": "PENDING",
       "missing": "first parents from an applied-job request, an inbound lead and a named pursuit's adopt/upgrade are unit-proven; no real-source run has been read back yet",
       "tests": [
+        "tests.sources.test_interview_journey.Journey.test_recruiter_lead_to_interview_scheduled_rescheduled_cancelled_on_one_page",
+        "tests.sources.test_interview_journey.Journey.test_a_request_naming_another_requisition_for_the_same_job_creates_nothing",
         "tests.sources.test_interview_evidence.Refresh.test_an_existing_scheduling_pending_page_is_refreshed_from_its_own_facts",
         "tests.interview.test_ui3c.Reconcile.test_replay_writes_nothing_and_a_source_change_updates_the_same_page",
         "tests.interview.test_create.CreationTests.test_parent_round_replay_vertical_slice_and_skeletons",
@@ -76,16 +84,36 @@
         "tests.sources.test_interview_evidence.Ordinal.test_only_an_explicit_single_round_number_counts",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_that_states_its_round_adds_that_round_before_the_refresh",
         "tests.sources.test_interview_evidence.CalendarRounds.test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_two_accepted_times_for_one_pending_round_choose_neither",
         "tests.sources.test_interview_evidence.CalendarRounds.test_events_that_are_not_interviews_or_not_this_job_or_not_accepted_are_ignored",
         "tests.interview.test_create.CreationTests.test_same_run_duplicate_evidence_defers_round"
       ]
     },
     "E07": {
-      "machine": "PENDING",
+      "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "a confirmed Calendar time for a Scheduling Pending round returns round_conflict; promotion, reschedule and cancel of the same child are not built",
+      "missing": "confirm, reschedule and cancel move the same round page in place by its own recorded Calendar event reference (identity line v1, machine blocks only, Live/Raw Notes digest, rollback) and are unit-proven; rounds written before the event reference existed (or under an older template) are never moved or cancelled; no real Calendar event has been read back",
       "tests": [
-        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing"
+        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_round_number_on_another_date_conflicts_and_creates_nothing",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_an_invite_for_the_pending_interview_1_dates_that_same_page",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_two_accepted_times_for_one_pending_round_choose_neither",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_a_confirm_carries_the_events_reference_never_its_id",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_the_same_event_at_a_new_time_reschedules_its_own_round",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_another_event_at_a_new_time_never_moves_a_round",
+        "tests.sources.test_interview_evidence.CalendarRounds.test_a_cancelled_event_cancels_only_the_round_that_recorded_it",
+        "tests.interview.test_confirm.Confirm.test_a_changed_live_note_during_the_write_is_reported",
+        "tests.interview.test_confirm.Confirm.test_a_dry_run_plans_one_write_and_changes_nothing",
+        "tests.interview.test_confirm.Confirm.test_a_failed_write_rolls_the_machine_blocks_back_and_leaves_the_round_pending",
+        "tests.interview.test_confirm.Confirm.test_a_human_edit_in_a_machine_block_stops_with_no_write",
+        "tests.interview.test_confirm.Confirm.test_another_parents_child_or_a_cancel_of_a_pending_round_is_refused",
+        "tests.interview.test_confirm.Confirm.test_replay_of_the_same_event_writes_nothing",
+        "tests.interview.test_confirm.Confirm.test_the_pending_round_is_dated_in_place_with_its_event_reference_and_nothing_else_is_created",
+        "tests.interview.test_confirm.Reschedule.test_another_event_never_moves_a_dated_round",
+        "tests.interview.test_confirm.Reschedule.test_the_same_event_at_a_new_time_re_dates_the_same_page",
+        "tests.interview.test_confirm.Cancel.test_a_cancelled_event_marks_its_round_cancelled_and_keeps_its_date_and_identity",
+        "tests.interview.test_confirm.Cancel.test_a_round_with_no_recorded_event_is_never_cancelled",
+        "tests.interview.test_confirm.Life43.test_every_state_reads_as_the_same_valid_machine_identity"
       ]
     },
     "E08": {
@@ -110,11 +138,18 @@
       ]
     },
     "E10": {
-      "machine": "PENDING",
+      "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Calendar invitation detail, recruiter threads, LinkedIn contacts and the submitted résumé/materials are not connected; the pages say so",
+      "missing": "Calendar is connected per round by its recorded invite reference (accepted / cancelled reach the opportunity page); recruiter threads are linked from the Recruiters database by the exact request message, but the Interview step does not yet receive the Recruiters token (workflow change, Jim's merge), so production still reads not connected; the invite's joining details, LinkedIn contacts and the submitted résumé/materials are not connected; the pages say so",
       "tests": [
-        "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so"
+        "tests.interview.test_ui3c.Layout.test_values_come_from_the_view_and_missing_sources_say_so",
+        "tests.interview.test_ui3c.Layout.test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page",
+        "tests.interview.test_ui3c.Layout.test_e10_only_a_dated_round_page_s_own_logistics_is_read_and_an_unreadable_one_stays_not_verified",
+        "tests.sources.test_interview_journey.Journey.test_recruiter_lead_to_interview_scheduled_rescheduled_cancelled_on_one_page",
+        "tests.interview.test_ui3c.Layout.test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded",
+        "tests.sources.test_interview_journey.Journey.test_e10_the_recruiter_of_the_exact_request_message_is_linked_and_a_same_name_row_elsewhere_is_not",
+        "tests.sources.test_interview_journey.Journey.test_e10_an_unreadable_recruiters_source_is_degraded_never_no_recruiter",
+        "tests.sources.test_interview_journey.Journey.test_e10_without_the_recruiters_token_in_this_step_nothing_is_asked_and_the_page_says_not_connected"
       ]
     },
     "E11": {

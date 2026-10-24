@@ -17,7 +17,7 @@ KIND_LABEL = {"assessment": "assessment", "hiring_manager": "hiring-manager inte
 REASON_TEXT = {"LEDGER_UNAVAILABLE": "Job Ledger unreadable", "OPPORTUNITIES_UNAVAILABLE": "Hiring Pipeline pages unreadable", "CALENDAR_UNAVAILABLE": "Calendar unreadable",
                "IDENTITY_AMBIGUOUS": "an opportunity matches more than one page", "CALENDAR_AMBIGUOUS": "a calendar event matches more than one opportunity",
                "EVENT_NOT_ON_CALENDAR": "a scheduled event is no longer on the Calendar", "PARENT_IDENTITY_UNREADABLE": "an opportunity page title is unreadable",
-               "SNAPSHOT_STALE": "evidence is stale", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
+               "SNAPSHOT_STALE": "evidence is stale", "OUTCOME_MAIL_STALE": "outcome mail not read recently", "OUTCOME_MAIL_UNREADABLE": "outcome mail state unreadable", "DECISION_AMBIGUOUS": "a Hiring Decision sits on one of several applications for one company and role"}
 
 
 def local(value):
@@ -66,9 +66,12 @@ def next_step(row, now):
         start, waiting, quiet = row.get("applied_on"), "Awaiting response", "response"
         if not start:
             return YELLOW, waiting, "9"
+    if row.get("contact") and local(row["contact"]) > local(start if "T" in start else start + "T00:00:00"):
+        start, waiting = row["contact"], f"Last contact {local(row['contact']).strftime('%b %-d')}"       # LIFE-26: a direct message resets the clock
+        quiet = "contact"
     due, days = local(start).date() + timedelta(days=M.AWAIT_DAYS), (local(now).date() - local(start).date()).days
     if days >= M.AWAIT_DAYS:
-        return RED, f"No {quiet} in {days} days · follow up (due {due.strftime('%b %-d')})", due.isoformat()
+        return RED, f"Stale · no {quiet} in {days} days · follow up (due {due.strftime('%b %-d')})", due.isoformat()
     return YELLOW, f"{waiting} · follow up {due.strftime('%b %-d')}", due.isoformat()
 
 

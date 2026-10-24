@@ -143,7 +143,8 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
         if embedded:
             desc, source_kind = jd.describe(embedded, is_html=True), "next_data"
         else:
-            desc, source_kind = jd.describe(body_text, is_html=False), "page_text"
+            region = jd.linkedin_description(html)
+            desc, source_kind = jd.describe(body_text if region is None else region, is_html=False), "page_text"      # a LinkedIn guest page: the description element, not its sign-in chrome
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)

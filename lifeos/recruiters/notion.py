@@ -7,6 +7,9 @@ exactly that page. A different or missing source link is a different message: no
 Every write is read back and checked: owned fields, Done / Active / Needs review preserved, no duplicate. V7 never writes Done, never reopens a Done row and never replaces
 a non-blank What they want.
 
+First Contact (LIFE-20, Jim Oct 23 2026): set once, on create, to the date of the message the row is created from; an update never writes or changes it, and older rows are
+never backfilled.
+
 Action state (RECR-1.4, D220): a new row starts Needs Action; a newer message reopens a Waiting or blank row as Needs Action; a Waiting row with no Follow-up Date gets one two
 business days out, and a Waiting row whose Follow-up Date has come returns to Needs Action. Completed and Dismissed rows, Done rows and inactive rows are history and are
 never changed."""
@@ -18,11 +21,13 @@ from .identity import key, norm
 
 SCHEMA = {"Recruiter / Person": "title", "Recruiter Company": "rich_text", "Client": "rich_text", "Role": "rich_text", "Medium": "rich_text", "What they want": "rich_text",
           "Last Contact": "date", "Week Ending": "date", "Done": "checkbox", "Active": "checkbox", "Needs review": "checkbox", "Source URL": "url",
-          "Action Status": "select", "Follow-up Date": "date"}
+          "Action Status": "select", "Follow-up Date": "date", "First Contact": "date"}
 MAX_PAGES = 20
 NEEDS_ACTION, WAITING = "Needs Action", "Waiting"
 REOPENABLE = ("", WAITING)
-HISTORY = ("Completed", "Dismissed")                                  # history: a later message changes nothing on these rows
+REPLIED, OFFERED, CONFIRMED, DECLINED = "Replied", "Referral Offered", "Referral Confirmed", "Declined"
+CONVERSATION = (REPLIED, OFFERED, CONFIRMED)                          # Jim-recorded progress of a job-linked outreach row, in order (offered is never confirmed)
+HISTORY = ("Completed", "Dismissed", DECLINED)                        # history: a later message changes nothing on these rows
 FOLLOW_UP_DAYS = 2
 FILLABLE = (("Recruiter Company", "company"), ("Role", "role"), ("Client", "client"), ("Medium", "medium"), ("What they want", "what"))
 
@@ -59,8 +64,14 @@ def read(page):
             "week_ending": date("Week Ending")[:10], "done": bool((props.get("Done") or {}).get("checkbox")), "active": bool((props.get("Active") or {}).get("checkbox")),
             "needs_review": bool((props.get("Needs review") or {}).get("checkbox")), "source_url": (props.get("Source URL") or {}).get("url") or "",
             "created_by": _actor(page.get("created_by")), "edited_by": _actor(page.get("last_edited_by")),
-            "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10],
-            "jobs": [str(r.get("id") or "") for r in (props.get("Job") or {}).get("relation") or [] if isinstance(r, dict)]}
+            "action": ((props.get("Action Status") or {}).get("select") or {}).get("name") or "", "follow_up": date("Follow-up Date")[:10], "first_contact": date("First Contact"),
+            "jobs": [str(r.get("id") or "") for r in (props.get("Job") or {}).get("relation") or [] if isinstance(r, dict)], "contact": _formula(props.get("Contact"))}
+
+
+def _formula(prop):
+    """The `Contact` formula's text (a profile or mail link the database itself computes), or "" when it is absent or not text. Read-only: V7 never writes it."""
+    value = (prop or {}).get("formula") if isinstance(prop, dict) else None
+    return (value.get("string") or "").strip() if isinstance(value, dict) and value.get("type") == "string" else ""
 
 
 def week_rows(notion, week):
@@ -151,7 +162,7 @@ def plan(rows, candidate):
 def _create_props(c):
     props = {"Recruiter / Person": {"title": rich_text(c["person"])}, "Medium": {"rich_text": rich_text(c["medium"])}, "Last Contact": {"date": {"start": c["last_contact"]}},
              "Week Ending": {"date": {"start": c["week_ending"]}}, "Done": {"checkbox": False}, "Active": {"checkbox": True}, "Needs review": {"checkbox": bool(c["needs_review"])},
-             "Action Status": {"select": {"name": NEEDS_ACTION}}}
+             "Action Status": {"select": {"name": NEEDS_ACTION}}, "First Contact": {"date": {"start": c["last_contact"]}}}      # LIFE-20: the date of the message this row is created from; set once, never updated
     for name, field in (("Recruiter Company", "company"), ("Client", "client"), ("Role", "role"), ("What they want", "what")):
         if c.get(field):
             props[name] = {"rich_text": rich_text(c[field])}
@@ -171,7 +182,7 @@ def create(notion, candidate):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     row = found[0]
     if (row["done"] or not row["active"] or row["needs_review"] != bool(candidate["needs_review"]) or row["what"] != (candidate.get("what") or "")
-            or row["action"] != NEEDS_ACTION):
+            or row["action"] != NEEDS_ACTION or not _same_instant(row["first_contact"], candidate["last_contact"])):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
 
 
@@ -190,7 +201,8 @@ def update(notion, row, props, candidate):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     if "Last Contact" in props and not _same_instant(after["last_contact"], candidate["last_contact"]):
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
-    if after["action"] != (NEEDS_ACTION if "Action Status" in props else row["action"]) or after["follow_up"] != row["follow_up"]:
+    if (after["action"] != (NEEDS_ACTION if "Action Status" in props else row["action"]) or after["follow_up"] != row["follow_up"]
+            or after["first_contact"] != row["first_contact"]):                                  # a later message never moves the first contact
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
     for name, field in FILLABLE:
         expected = candidate[field] if name in props else row[field]
@@ -236,9 +248,14 @@ def add_business_days(day, n):
 
 def waiting_rows(notion):
     """Every Waiting row, following every page; an incomplete read raises (nothing is changed on a partial view)."""
+    return rows_where(notion, {"property": "Action Status", "select": {"equals": WAITING}})
+
+
+def rows_where(notion, where):
+    """Every row matching the Notion filter `where`, following every page; an incomplete read raises."""
     rows, cursor, seen = [], None, set()
     for _ in range(MAX_PAGES):
-        body = {"page_size": 100, "filter": {"property": "Action Status", "select": {"equals": WAITING}}, **({"start_cursor": cursor} if cursor else {})}
+        body = {"page_size": 100, "filter": where, **({"start_cursor": cursor} if cursor else {})}
         try:
             page = notion.query_data_source(None, body)
         except NotionError:
@@ -284,3 +301,43 @@ def set_follow_up(notion, row, props):
         expected["action"] = props["Action Status"]["select"]["name"]
     if {k: v for k, v in after[0].items() if k != "edited_by"} != {k: v for k, v in expected.items() if k != "edited_by"}:
         raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+
+
+CLOSE_TO = ("Completed", "Dismissed")                                 # LIFE-20 (Jim, Oct 23 2026): the two ways Jim closes an open recruiter row from the Daily Report
+
+
+def own_row(notion, page_id, source=None):
+    """ONE row of this data source (`source`, else the client's own) by its exact page id, read fresh; a page anywhere else is refused."""
+    try:
+        page = notion.get_page(page_id)
+    except NotionError:
+        raise RecruitersError("RECRUITERS_ROW_UNREADABLE") from None
+    flat = lambda value: str(value or "").replace("-", "").lower()      # noqa: E731
+    parent = page.get("parent") if isinstance(page, dict) else None
+    if (not isinstance(parent, dict) or parent.get("type") != "data_source_id" or not flat(parent.get("data_source_id"))
+            or flat(parent.get("data_source_id")) != flat(source or notion.source) or page.get("in_trash") or page.get("archived")):
+        raise RecruitersError("RECRUITERS_ROW_NOT_IN_SOURCE")
+    return read(page)
+
+
+def close_row(notion, page_id, status):
+    """Jim's confirmed close of ONE open row (Needs Action or Waiting, not Done, Active) as Completed or Dismissed. Only Action Status is written, once, then the row is read back:
+    the status as written and every other value unchanged. A row already closed that way is left alone; any other row is not changed.
+    -> {"status": "recorded" | "already_recorded" | "not_changed", "verified": True, "action"}"""
+    if status not in CLOSE_TO:
+        raise RecruitersError("RECRUITERS_CLOSE_INVALID")
+    check_schema(notion)
+    row = own_row(notion, page_id)
+    if row["action"] == status:
+        return {"status": "already_recorded", "verified": True, "action": row["action"]}
+    if row["done"] or not row["active"] or row["action"] not in (NEEDS_ACTION, WAITING):
+        return {"status": "not_changed", "verified": True, "action": row["action"]}
+    try:
+        notion.update_page_properties(row["page_id"], {"Action Status": {"select": {"name": status}}})
+    except NotionError:
+        raise RecruitersError("RECRUITERS_NOTION_WRITE_FAILED") from None
+    after = own_row(notion, page_id)
+    keep = lambda r: {k: v for k, v in r.items() if k not in ("action", "edited_by")}      # noqa: E731
+    if after["action"] != status or keep(after) != keep(row):
+        raise RecruitersError("RECRUITERS_READBACK_MISMATCH")
+    return {"status": "recorded", "verified": True, "action": status}

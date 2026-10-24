@@ -3,6 +3,7 @@ UI 3c opportunity page's machine region is reconciled from its view when the sou
 import hashlib
 import json
 import re
+from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from lifeos.platform.names import core, norm, split_title
@@ -10,8 +11,8 @@ from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
-from .models import Ownership, State
-from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
+from .models import Ownership, RoundQuery, Scan, State
+from .template import DONE_LINE, DONE_MAX, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -65,7 +66,7 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
     if not kids.complete:
         return "child_scan_incomplete"
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
+    current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, adopted=today(), tail=2)[0]
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -77,6 +78,33 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     except NotionError:
         return "write_failed"                                           # the adopt line stays; the next run reports adopt_conflict
     return _sections_readback(client, parent.page_id, before, out, "parent_adopted", current, sections)
+
+
+def begin_adopt(client, page_id, live, out, context=None):
+    """The batch conversion's first step for a hand-made opportunity page (Jim: convert all of them): put the one `LIFE OS: adopt` line Jim would have typed at the very top, then prove every block that was
+    there is still there, in order, unchanged. Nothing is edited, moved or deleted; the normal adopt then converts the page. A page that already has any LIFE OS line, fold or notes heading is never touched."""
+    blocks = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    labels = [notion.text(b) for b in blocks]
+    if not blocks or notion.ADOPT in labels or notion.FOLD in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
+        return "adopt_line_conflict"
+    before = notion.human_tail(client, page_id, [{}] + blocks)          # every block already on the page, child pages left out
+    out["writes_planned"] = 1
+    if not live:
+        return "adopt_line_allowed"
+    if context:
+        context.require_time()
+    try:
+        client.call("PATCH", f"/blocks/{page_id}/children", {"children": [notion.paragraph(notion.ADOPT)], "position": {"type": "start"}})
+    except NotionError:
+        return "write_failed"
+    out["writes"] = out["readback_failed"] = 1
+    after = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    if len(after) != len(blocks) + 1 or notion.text(after[0]) != notion.ADOPT or [b.get("id") for b in after[1:]] != [b.get("id") for b in blocks]:
+        return "readback_layout_mismatch"
+    if notion.human_tail(client, page_id, after) != before:
+        return "readback_protected_changed"
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    return "adopt_line_added"
 
 
 def cause_of(error):
@@ -102,6 +130,28 @@ def rendered(current, adopted=None, tail=0):
 
 
 RENDER = re.compile(r"v7-render:1;job=(.+);source=([0-9a-f]{16});page=([0-9a-f]{16}|pending)")
+ORIGIN = re.compile(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?")
+
+
+def _view(client, environ, *args, **kwargs):
+    """The page's view with the private Close origin, only when it is a bare https origin (E05)."""
+    base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
+    return replace(views.opportunity(client, *args, **kwargs), close_base=base.rstrip("/") if ORIGIN.fullmatch(base) else None)
+
+
+def done_lines(lines):
+    """E05: the completions recorded in a fold, oldest first, one per action key; the newest DONE_MAX are kept."""
+    found = {}
+    for block in lines:
+        m = DONE_LINE.fullmatch(notion.text(block)) if block.get("type") == "paragraph" else None
+        if m and m.group(1) not in found:
+            found[m.group(1)] = m.group(2)
+    return tuple(found.items())[-DONE_MAX:]
+
+
+def _undone(nodes):
+    """The region's nodes without completion lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
+    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes if not DONE_LINE.fullmatch(n.get("text", ""))]   # shape kept: a page without completion lines digests exactly as before
 
 
 def machine_region(client, page_id, context=None):
@@ -111,6 +161,16 @@ def machine_region(client, page_id, context=None):
     if len(heads) != 1 or not notion.is_fold(tops[0]):
         return None, [], tops
     return tops[:heads[0]], notion.children(client, tops[0]["id"], [notion.MAX_CALLS], context), tops
+
+
+def prefold_region(client, page_id, context=None):
+    """(machine blocks, [marker], top blocks) of a page V7 wrote before the marker was folded: its first block is the plain opportunity marker line (D235), everything before the one Jim's Notes heading is V7's.
+    None when the page is not that shape."""
+    tops = notion.children(client, page_id, [notion.MAX_CALLS], context)
+    heads = [i for i, b in enumerate(tops) if b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES]
+    if len(heads) != 1 or not tops or tops[0].get("type") != "paragraph" or not notion.is_marker(notion.text(tops[0]), "opportunity") or notion.is_fold(tops[0]):
+        return None, [], tops
+    return tops[:heads[0]], [tops[0]], tops
 
 
 def _pages(tops):
@@ -138,7 +198,7 @@ def finalize(client, page_id, current, sections, before=None):
     if _fields(nodes) != _fields(want):                                  # every written value too: text, links by target, table cells
         return "readback_content_mismatch"
     job, source, _ = RENDER.fullmatch(notion.text(renders[0])).groups()
-    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(nodes))))
+    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(_undone(nodes)))))
     if before is not None and (notion.human_tail(client, page_id) != before[0] or _pages(tops) != before[1]):
         return "readback_protected_changed"
     return "readback_ok"
@@ -149,8 +209,13 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
     line names this job and still matches a fresh read of the region) is replaced; a human edit there, another job's page or an
     unrecognized layout stops with a code and writes nothing. Jim's Notes and the child pages are digest-checked."""
     machine, lines, tops = machine_region(client, page_id, context)
+    prefold = False
+    if machine is None and migrate:                                     # a page V7 wrote with the plain marker line (no fold, no render line): its region is V7's, replaced once like a UI 3b page
+        machine, lines, tops = prefold_region(client, page_id, context)
+        prefold = machine is not None
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
+    current = replace(current, done=done_lines(lines), page_id=page_id)   # E05: completions recorded on the Close screen are carried into the rewrite
     sections, source = rendered(current)
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     if found:
@@ -158,11 +223,11 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         if len(found) != 1 or job != (current.stable_job_key or "none"):
             return "identity_mismatch"
         skip = {b["id"] for b in lines if RENDER.fullmatch(notion.text(b))}
-        if page != notion.tree_digest(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)):
+        if page != notion.tree_digest(_undone(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip))):
             return "machine_region_edited"
         if previous == source:
             return "parent_unchanged"
-    elif not (migrate and len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")):
+    elif not (migrate and (prefold or (len(machine) > 1 and notion.text(machine[1]).startswith("Canonical opportunity parent")))):
         return "parent_legacy_layout"                                   # UI 3b (D235-D237): migrated only when authorized
     before = (notion.human_tail(client, page_id), _pages(tops))
     out["writes_planned"] = 1
@@ -268,7 +333,7 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
     if not kids.complete:
         return "child_scan_incomplete"
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
+    current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, tail=2)[0][1:]                        # the page keeps its own marker; no second fold
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -276,6 +341,147 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
         return "write_failed"
     out["writes"] = out["readback_failed"] = 1
     return _sections_readback(client, parent.page_id, before, out, "parent_upgraded")
+
+
+CALENDAR_REF = re.compile(r"^Calendar event: (Accepted invite|Cancelled) · ref ([0-9a-f]{12})$")
+MEETING = "Meeting link / location: "
+
+
+def round_calendar(client, page_id, budget=None):
+    """LIFE-46 E07: (ref, cancelled) a UI 4 round page's Logistics records for its Calendar event, (None, False) when it records none.
+    The Logistics callout is the first callout of the right column; an unknown layout raises a fixed code (nothing is guessed)."""
+    return round_logistics(client, page_id, budget)[:2]
+
+
+def round_logistics(client, page_id, budget=None):
+    """(ref, cancelled, meeting): round_calendar plus E10's joining details the Logistics callout records, (join link, location) or None
+    (the meeting_parts line read back; "Unavailable" or no line is None)."""
+    budget = budget or [notion.MAX_CALLS]
+    lists = [b for b in notion.children(client, page_id, budget) if b.get("type") == "column_list"]
+    columns = notion.children(client, lists[0]["id"], budget) if len(lists) == 1 else []
+    right = notion.children(client, columns[1]["id"], budget) if len(columns) == 2 else []
+    calls = [b for b in right if b.get("type") == "callout"]
+    nodes = notion.children(client, calls[0]["id"], budget) if calls else []
+    lines = [notion.text(b) for b in nodes]
+    if not lines or lines[0] != "Logistics":
+        raise NotionError("INTERVIEW_ROUND_LAYOUT")
+    found = [m for m in (CALENDAR_REF.match(line) for line in lines) if m]
+    ref, cancelled = (found[0].group(2), found[0].group(1) == "Cancelled") if len(found) == 1 else (None, False)
+    held = [b for b, line in zip(nodes, lines) if line.startswith(MEETING)]
+    value = notion.text(held[0])[len(MEETING):] if len(held) == 1 else "Unavailable"
+    join = next(iter(_links(held[0])), None) if len(held) == 1 else None
+    place = value.removeprefix("Join link ↗").removeprefix(" · ") if join else value
+    return ref, cancelled, (join, place or None) if join or (place and place != "Unavailable") else None
+
+
+def _links(block):
+    return [((p.get("text") or {}).get("link") or {}).get("url") or p.get("href") for p in (block.get(block.get("type")) or {}).get("rich_text") or []
+            if ((p.get("text") or {}).get("link") or {}).get("url") or p.get("href")]
+
+
+def _changed(old, new, path=()):
+    """[(path, old block, new block)] for every block whose text differs between two renders of one round page; the shapes must match."""
+    if len(old) != len(new):
+        raise NotionError("INTERVIEW_RENDER_SHAPE")
+    out = []
+    for index, (a, b) in enumerate(zip(old, new)):
+        if a["type"] != b["type"]:
+            raise NotionError("INTERVIEW_RENDER_SHAPE")
+        if (notion.text(a), _links(a)) != (notion.text(b), _links(b)):
+            out.append((path + (index,), a, b))
+        out += _changed(notion.kids(a), notion.kids(b), path + (index,))
+    return out
+
+
+def _round_targets(client, page_id, edits, budget):
+    """[(block, old block, new block)] on the live page for each changed render path, or None when any target is not machine-owned or reads as
+    neither render (a human edit or an unknown layout). Top level: the fold, the Interview snapshot callout and the one column list; the left
+    column (tabs, Live Notes, Raw Notes) is never a target."""
+    tops = notion.children(client, page_id, budget)
+    lists = [b for b in tops if b.get("type") == "column_list"]
+    calls = [b for b in tops[1:] if b.get("type") == "callout"]
+    if not tops or not notion.is_fold(tops[0]) or len(lists) != 1 or not calls:
+        return None
+    anchors, found = {0: tops[0], 1: calls[0], 2: lists[0]}, []
+    for path, old, new in edits:
+        if path[:2] == (2, 0) or path[0] not in anchors:
+            return None
+        block = anchors[path[0]]
+        for index in path[1:]:
+            below = notion.children(client, block["id"], budget)
+            if index >= len(below):
+                return None
+            block = below[index]
+        if block.get("type") != old["type"] or notion.text(block) not in (notion.text(old), notion.text(new)):
+            return None
+        found.append((block, old, new))
+    return found
+
+
+def transition(client, parent_id, child_id, current, want, live, out, context=None):
+    """LIFE-46 E07: one round page moved, in place, to the state an accepted or cancelled Calendar event gives it (`want`): Interview 1 in
+    Scheduling Pending dated, a dated round re-dated (rescheduled) or marked cancelled. Re-dating and cancelling need the page's own recorded
+    event reference to equal the event's; nothing is matched by date or title alone. The identity line keeps its v1 format (only the date
+    changes; interviewer and ordinal never do) and is written last, so a page is re-identified only when every machine block already says
+    so; a cancelled round keeps its date and identity. Only the blocks whose text differs between the two renders change, in the fold, the
+    snapshot or the right column, and each must read as either render; the Live and Raw Notes digest must not change. Nothing is created,
+    renamed or moved."""
+    fresh = notion.explicit_child(client, child_id)
+    if (fresh is None or fresh.identity_valid is not True or not notion.same_notion_id(fresh.parent_id, parent_id) or not valid_date(want.interview_date)
+            or (fresh.interviewer, fresh.ordinal) != (want.interviewer, want.ordinal)):
+        return "round_unconfirmable"
+    budget = [notion.MAX_CALLS]
+    ref, cancelled, joining = round_logistics(client, child_id, budget)
+    if fresh.interview_date is None:
+        if fresh.ordinal != 1 or want.cancelled or not want.calendar_ref:
+            return "round_unconfirmable"
+        source, kind = RoundQuery(True, None, fresh.interviewer, 1), "confirm"
+    else:
+        if not ref or ref != want.calendar_ref:
+            return "round_unlinked"                                     # no recorded event, or another one: a move or cancel is never guessed
+        source = RoundQuery(True, fresh.interview_date, fresh.interviewer, fresh.ordinal, calendar_ref=ref, cancelled=cancelled, meeting=joining)
+        if want.cancelled and want.interview_date != fresh.interview_date:
+            return "round_unconfirmable"
+        kind = "cancel" if want.cancelled else "reschedule" if want.interview_date != fresh.interview_date or cancelled else "details"
+    if source == want:
+        return "round_unchanged"
+    edits = _changed(round_page(current, source, parent_id, identity_text(source)), round_page(current, want, parent_id, identity_text(want)))
+    targets = _round_targets(client, child_id, edits, budget)
+    lines = [notion.text(b) for b in notion.machine_lines(client, child_id, 2)[0]]
+    if targets is None or len(lines) < 2 or lines[1] != identity_text(source):
+        return "machine_region_edited"
+    before = notion.protected_snapshot(client, child_id, "round")
+    if before is None:
+        return "readback_protected_missing"
+    out["writes_planned"] = 1
+    if not live:
+        return f"{kind}_allowed"
+    if context:
+        context.require_time()
+    todo = sorted([t for t in targets if (notion.text(t[0]), _links(t[0])) != (notion.text(t[2]), _links(t[2]))], key=lambda t: notion.text(t[1]).startswith(IDENTITY_PREFIX))
+    done = []
+    try:
+        for block, old, new in todo:                                    # the identity line last: it is the commit point
+            notion.set_text(client, block["id"], block["type"], new[new["type"]]["rich_text"])
+            done.append((block, old))
+            out["writes"] = out["readback_failed"] = 1
+    except NotionError:
+        try:
+            for block, old in reversed(done):                           # roll the machine blocks back to the page as it was
+                notion.set_text(client, block["id"], block["type"], old[old["type"]]["rich_text"])
+        except NotionError:
+            return "write_failed_partial"
+        return "write_failed"
+    after = notion.explicit_child(client, child_id)
+    check = _round_targets(client, child_id, edits, [notion.MAX_CALLS])
+    if (after is None or after.identity_valid is not True or (after.interview_date, after.interviewer, after.ordinal) != (want.interview_date, want.interviewer, want.ordinal)
+            or check is None or any(notion.text(b) != notion.text(new) for b, _, new in check)
+            or round_logistics(client, child_id) != (want.calendar_ref, want.cancelled, None if want.cancelled else want.meeting)):
+        return "readback_content_mismatch"
+    if notion.protected_snapshot(client, child_id, "round") != before:
+        return "readback_protected_changed"
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled", "details": "round_details"}[kind]
 
 
 def apply(client, environ, parent_query, query, live, context, deferred):
@@ -306,7 +512,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             if insertion is None:
                 return finish("active_target_incomplete")
             kind, code = "opportunity", "parent_create_allowed"
-            current = views.opportunity(client, parent_query, query, pipeline, today=today())
+            current = _view(client, environ, parent_query, query, pipeline, today=today())
             blocks = rendered(current, tail=None)[0]
         else:
             if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
@@ -335,9 +541,15 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
-            current = views.opportunity(client, parent_query, query, pipeline, children, today())
+            current = _view(client, environ, parent_query, query, pipeline, children, today())
+            held = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True]
+            if code == "child_match" and query.explicit_child_page_id and query.interview_date and query.calendar_ref and held:
+                deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the round moves in place)
+                want = RoundQuery(True, query.interview_date, held[0].interviewer, held[0].ordinal, calendar_ref=query.calendar_ref, cancelled=query.cancelled,
+                                  meeting=query.meeting)
+                return finish(transition(client, parent.page_id, held[0].page_id, current, want, live, out, context))
             if code == "child_match":                                   # LIFE-88: the round exists; bring the page up to date
-                done = refresh(client, parent.page_id, current, live, out, context)
+                done = refresh(client, parent.page_id, current, live, out, context, migrate=notion.is_legacy_company(environ, parent_query.company))     # a UI 3b page migrates only for a pursuit Jim named
                 if done in ("parent_unchanged", "parent_legacy_layout", "parent_unrecognized"):
                     done = link_transcript(client, child.page_id, live, out)           # the round page links its Full Transcript page
                     done = done if done in ("transcript_linked", "transcript_link_allowed", "readback_content_mismatch") else "parent_unchanged"
@@ -375,7 +587,13 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         if kind == "opportunity":
             refreshed = resolve_parent(parent_query, notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context))
         else:
-            refreshed = resolve_child(parent, query, notion.child_scan(client, insertion, context))
+            scan = notion.child_scan(client, insertion, context)
+            if scan.complete and not any(notion.same_notion_id(c.page_id, page_id) for c in scan.items):
+                # LIFE-108: Notion can list a parent's children without a just-created page for a few seconds; the new round is read by its
+                # own id (its parent was proven above) and still checked against every listed sibling for a duplicate identity
+                created = notion.explicit_child(client, page_id)
+                scan = Scan(scan.items + ((created,) if created else ()), True)
+            refreshed = resolve_child(parent, query, scan)
             if notion.protected_snapshot(client, insertion, "opportunity") != before:
                 return finish("readback_protected_changed")
         if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, page_id):

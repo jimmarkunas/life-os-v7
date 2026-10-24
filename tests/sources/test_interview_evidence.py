@@ -22,7 +22,11 @@ class Calendar:
         self.events = list(events)
 
     def list_events(self, start, end):
-        return self.events
+        return [e for e in self.events if e.get("status") != "cancelled"]
+
+    def request(self, method, path, params=None):                          # the deleted-inclusive read (LIFE-46 E07)
+        assert (method, path, params["showDeleted"]) == ("GET", "/events", "true")
+        return {"items": list(self.events)}
 
 
 def event(title, start="2026-10-28T10:00:00-05:00", **extra):
@@ -86,13 +90,18 @@ class Writer:
 class Run:
     """ev.run with the Notion reads replaced by plain data; `stage.run` is captured, never executed."""
 
-    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=()):
-        self.writer, self.owner, self.tops = writer, owner, list(tops)
+    def __init__(self, parents=(("p1", "ExampleCo — Program Manager"),), facts=None, kids=None, rows=(ROW,), calendar=None, environ=ENV, live=True, roster=(), records=(), ledger=None, retired=(), writer=None, owner=Ownership.MACHINE, tops=(), legacy=None, complete=True):
+        self.writer, self.owner, self.tops, self.legacy, self.complete = writer, owner, list(tops), legacy or {}, complete
         self.roster, self.records, self.ledger = roster if isinstance(roster, Exception) else list(roster), None if records is None else list(records), ledger or Ledger()
         self.parents = [Parent(i, t) for i, t in parents] + [Parent("r" + str(n), t, False) for n, t in enumerate(retired)]
         self.facts = facts if facts is not None else {"p1": ("exampleco-r-1", URL)}
         self.kids = kids if kids is not None else {"p1": (child(),)}
         self.rows, self.calendar, self.environ, self.live = rows, calendar if calendar is not None else Calendar(), environ, live
+
+    def ledger_rows(self, company):
+        if isinstance(self.rows, Exception):
+            raise self.rows
+        return list(self.rows)
 
     def __call__(self):
         captured = {}
@@ -105,10 +114,11 @@ class Run:
              patch.object(notion, "ownership", return_value=self.owner), \
              patch.object(notion, "children", return_value=self.tops), \
              patch.object(ev, "facts", side_effect=lambda client, page_id, context: self.facts.get(page_id)), \
-             patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), True)), \
+             patch.object(ev, "legacy_facts", side_effect=lambda client, page_id, context: self.legacy.get(page_id)), \
+             patch.object(notion, "child_scan", side_effect=lambda client, page_id, context=None: Scan(self.kids.get(page_id, ()), self.complete)), \
              patch.object(ev.pipeline, "read_applied", **({"side_effect": self.roster} if isinstance(self.roster, Exception) else {"return_value": self.roster})), \
              patch.object(ev.stage, "run", side_effect=fake_stage):
-            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=lambda company: list(self.rows),
+            counts = ev.run(20, self.live, environ=self.environ, client=object(), calendar=self.calendar, ledger_rows=self.ledger_rows,
                             ledger=self.ledger, records=self.records, writer=self.writer)
         return counts, captured
 
@@ -169,9 +179,61 @@ class CalendarRounds(unittest.TestCase):
         self.assertEqual(counts["failed"], 0)
 
     def test_an_event_without_a_round_number_is_incomplete_and_never_numbered_from_the_pages(self):
-        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        counts, got = Run(kids={"p1": (child("c1", "2026-10-01", "Pat Example", 1),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
         self.assertEqual(len(got["evidence"]), 1)                              # only the refresh of the existing page
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
+        self.assertEqual(counts["where"], {"calendar_event_no_ordinal": 1})        # LIFE-78: the cause names WHICH check raised it, as a fixed word
+
+    def test_an_invite_for_the_pending_interview_1_dates_that_same_page(self):
+        for title in ("ExampleCo Program Manager Interview", "ExampleCo Program Manager Interview 1"):
+            counts, got = Run(calendar=Calendar(event(title)))()
+            (_, confirm), (_, refresh) = got["evidence"]                       # LIFE-46 E07: the pending child itself, named by its page id
+            self.assertEqual((confirm.explicit_child_page_id, confirm.interview_date, confirm.ordinal, confirm.stable_job_key), ("c1", "2026-10-28", 1, "exampleco-r-1"), title)
+            self.assertEqual((refresh.interview_date, counts["failed"]), (None, 0), title)
+
+    def test_a_confirm_carries_the_events_reference_never_its_id(self):
+        _, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        confirm = got["evidence"][0][1]
+        self.assertEqual(confirm.calendar_ref, ev.reference("ExampleCo Program Manager Interview"))
+        self.assertNotIn("ExampleCo", confirm.calendar_ref)
+
+    def moved(self, *events, recorded=None):
+        dated = {"p1": (child("c2", "2026-10-21", None, 1),)}
+        with patch.object(create, "round_calendar", return_value=recorded or (ev.reference("ExampleCo Program Manager Interview"), False)):
+            return Run(kids=dated, calendar=Calendar(*events))()
+
+    def test_the_same_event_at_a_new_time_reschedules_its_own_round(self):
+        counts, got = self.moved(event("ExampleCo Program Manager Interview"))
+        (_, move), _ = got["evidence"]
+        self.assertEqual((move.explicit_child_page_id, move.interview_date, move.ordinal, move.cancelled, counts["failed"]), ("c2", "2026-10-28", 1, False, 0))
+
+    def test_another_event_at_a_new_time_never_moves_a_round(self):
+        counts, got = self.moved(event("ExampleCo Program Manager Interview 1"), recorded=("ffffffffffff", False))
+        self.assertEqual((len(got["evidence"]), counts["why"]), (1, {"round_conflict": 1}))
+
+    def test_a_cancelled_event_cancels_only_the_round_that_recorded_it(self):
+        gone = {**event("ExampleCo Program Manager Interview", start="2026-10-21T10:00:00-05:00"), "status": "cancelled"}
+        counts, got = self.moved(gone)
+        (_, cancel), _ = got["evidence"]
+        self.assertEqual((cancel.explicit_child_page_id, cancel.interview_date, cancel.cancelled, counts["failed"]), ("c2", "2026-10-21", True, 0))
+        counts, got = self.moved(gone, recorded=("ffffffffffff", False))
+        self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))                  # someone else's cancelled event: nothing
+        counts, got = self.moved(gone, recorded=(ev.reference("ExampleCo Program Manager Interview"), True))
+        self.assertEqual(len(got["evidence"]), 1)                                           # already cancelled: no second write queued
+
+    def test_two_accepted_times_for_one_pending_round_choose_neither(self):
+        counts, got = Run(calendar=Calendar(event("ExampleCo Program Manager Interview"), event("ExampleCo Program Manager Interview", start="2026-10-30T10:00:00-05:00")))()
+        self.assertEqual(len(got["evidence"]), 1)                              # only the refresh
+        self.assertEqual((counts["why"], counts["where"], counts["failed"]), ({"calendar_event_ambiguous": 1}, {"calendar_event_pending_round": 1}, 1))
+
+    def test_an_unnumbered_event_for_a_round_page_that_exists_adds_nothing_and_is_not_a_failure(self):
+        counts, got = Run(kids={"p1": (child("c2", "2026-10-28", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        self.assertEqual((len(got["evidence"]), counts["failed"], counts["why"]), (1, 0, {}))
+
+    def test_an_unreadable_round_list_is_reported_before_any_number_is_looked_for(self):
+        counts, _ = Run(complete=False, calendar=Calendar(event("ExampleCo Program Manager Interview")))()
+        self.assertIn("child_scan_incomplete", counts["why"])
+        self.assertNotIn("round_identity_incomplete", counts["why"])
 
     def test_the_same_round_number_on_another_date_conflicts_and_creates_nothing(self):
         counts, got = Run(kids={"p1": (child("c2", "2026-10-01", "Pat Example", 2),)}, calendar=Calendar(event("ExampleCo Program Manager Interview 2")))()
@@ -191,6 +253,9 @@ class CalendarRounds(unittest.TestCase):
     def test_an_unreadable_calendar_is_reported_and_the_refresh_still_runs(self):
         class Broken:
             def list_events(self, *_):
+                raise RuntimeError("down")
+
+            def request(self, *_):
                 raise RuntimeError("down")
         counts, got = Run(calendar=Broken())()
         self.assertEqual((len(got["evidence"]), counts["why"], counts["failed"]), (1, {"calendar_unavailable": 1}, 1))
@@ -246,6 +311,7 @@ class SchedulingRequests(unittest.TestCase):
         self.assertEqual((len(got["evidence"]), counts["failed"]), (1, 0))
         counts, got = Run(roster=[APPLIED], records=[mail()])()               # another message: its round number is unknown, so it is reported, not numbered
         self.assertEqual((counts["why"], counts["failed"]), ({"round_identity_incomplete": 1}, 1))
+        self.assertEqual(counts["where"], {"applied_row_other_request": 1})
         self.assertEqual([q.source for _, q in got["evidence"]], [URL])
 
     def test_a_machine_parent_with_no_round_gets_interview_1(self):
@@ -267,9 +333,9 @@ class SchedulingRequests(unittest.TestCase):
 
 
 class Leads(unittest.TestCase):
-    """E01b: every recruiter outreach that names a role is a lead with a minted Stable Job Key, and its page is created on the first message, with no reply needed."""
+    """E01b: every recruiter outreach that names a role is a lead; with no posting link, only the employer's requisition gives it a Stable Job Key (LIFE-25, Jim 10851)."""
     def test_a_recruiters_first_message_names_a_client_a_role_and_a_minted_key(self):
-        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, "recruiter-exampleco-program-manager", "https://example.test/thread/5"))
+        self.assertEqual(ev.lead_of(outreach()), ("ExampleCo", "Program Manager", None, None, "https://example.test/thread/5"))      # no requisition, no posting: no key, never the role
         company, role, req, key, _ = ev.lead_of(outreach(extra="Requisition 123456."))
         self.assertEqual((req, key), ("123456", "recruiter-exampleco-123456"))
         self.assertEqual(ev.lead_of(outreach(client=""))[0], "Staffing Example Inc")             # no client named: the recruiter's company, as stated
@@ -282,10 +348,10 @@ class Leads(unittest.TestCase):
             self.assertIsNone(ev.lead_of(message), label)
 
     def test_the_first_message_queues_a_parent_with_no_round_and_the_minted_key(self):
-        counts, got = Run(parents=(), kids={}, roster=[], records=[outreach()])()
+        counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=[outreach(extra=REQ_TEXT)])()
         (parent, query), = got["evidence"]
         self.assertEqual((parent.company, parent.role), ("ExampleCo", "Program Manager"))
-        self.assertEqual((query.stable_job_key, query.source, query.ledger_page_id, query.interview_date), ("recruiter-exampleco-program-manager", "https://example.test/thread/5", None, None))
+        self.assertEqual((query.stable_job_key, query.source, query.ledger_page_id, query.interview_date), (REQ_KEY, "https://example.test/thread/5", None, None))
         self.assertEqual((counts["leads"], counts["failed"]), (1, 0))
 
     def test_an_existing_active_or_retired_page_or_an_applied_job_is_never_a_second_lead(self):
@@ -293,14 +359,14 @@ class Leads(unittest.TestCase):
                            ("applied job", Run(parents=(), kids={}, roster=[APPLIED], records=[outreach()]))):
             counts, got = run()
             self.assertEqual(counts["leads"], 0, label)
-            self.assertNotIn("recruiter-exampleco-program-manager", [q.stable_job_key for _, q in got["evidence"]], label)
+            self.assertEqual([q.source for _, q in got["evidence"] if q.source == "https://example.test/thread/5"], [], label)
 
     def test_one_job_from_two_messages_is_one_lead_and_a_burst_is_capped_newest_first(self):
-        twice = [outreach(url="https://example.test/thread/1", received="2026-10-19T10:00:00Z"), outreach(url="https://example.test/thread/2", received="2026-10-20T10:00:00Z")]
-        _, got = Run(parents=(), kids={}, roster=[], records=twice)()
+        twice = [outreach(url="https://example.test/thread/1", received="2026-10-19T10:00:00Z", extra=REQ_TEXT), outreach(url="https://example.test/thread/2", received="2026-10-20T10:00:00Z", extra=REQ_TEXT)]
+        _, got = Run(parents=(), kids={}, roster=[], rows=(), records=twice)()
         self.assertEqual([q.source for _, q in got["evidence"]], ["https://example.test/thread/2"])
-        many = [outreach(role=f"Role Number {n}", client=f"Client{chr(65 + n)} Corp", url=f"https://example.test/m/{n}", received=f"2026-10-{10 + n}T10:00:00Z") for n in range(8)]
-        counts, got = Run(parents=(), kids={}, roster=[], records=many)()
+        many = [outreach(role=f"Role Number {n}", client=f"Client{chr(65 + n)} Corp", url=f"https://example.test/m/{n}", received=f"2026-10-{10 + n}T10:00:00Z", extra=f"Requisition 10000{n}.") for n in range(8)]
+        counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=many)()
         self.assertEqual((counts["leads"], len(got["evidence"])), (8, ev.LEADS_PER_RUN))
         self.assertEqual([q.source for _, q in got["evidence"]][:2], ["https://example.test/m/7", "https://example.test/m/6"])
 
@@ -312,19 +378,20 @@ class Leads(unittest.TestCase):
 
 
 LIVE = {**ENV, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on"}
+REQ_TEXT, REQ_KEY = "Requisition 123456.", "recruiter-exampleco-123456"
 
 
 class LeadRows(unittest.TestCase):
     """E01b: a lead is a Job Ledger row (Visible Lane Recruiter, Admitted, not Applied), written and read back before its page, once per Stable Job Key."""
-    def go(self, writer, live=True):
-        return Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE if live else ENV, writer=writer)()
+    def go(self, writer, live=True, rows=(), extra=None):
+        return Run(parents=(), kids={}, roster=[], rows=rows, records=[outreach(extra=REQ_TEXT if extra is None else extra)], environ=LIVE if live else ENV, writer=writer)()
 
     def test_a_live_run_writes_the_ledger_row_then_queues_the_page(self):
         writer = Writer()
         counts, got = self.go(writer)
         row, = writer.created
         self.assertEqual((row["Visible Lane"]["select"]["name"], row["Admission Status"]["select"]["name"], row["Stable Job Key"]["rich_text"][0]["text"]["content"]),
-                         ("Recruiter", "Admitted", "recruiter-exampleco-program-manager"))
+                         ("Recruiter", "Admitted", REQ_KEY))
         self.assertNotIn("Applied", row)
         self.assertEqual((counts["lead_rows"], len(got["evidence"]), counts["failed"]), (1, 1, 0))
 
@@ -346,6 +413,52 @@ class LeadRows(unittest.TestCase):
     def test_two_rows_for_one_key_are_refused(self):
         counts, got = self.go(Writer(held=2))
         self.assertEqual((got["evidence"], counts["why"].get("lead_row_failed")), ([], 1))
+
+
+class LeadRequisition(unittest.TestCase):
+    """LIFE-25 (Jim, comment 10851): a recruiter lead with no posting link creates a Ledger row only from the employer's requisition; anything less is REVIEW with no write."""
+    def go(self, records, rows=(), writer=None):
+        writer = writer or Writer()
+        counts, got = Run(parents=(), kids={}, roster=[], rows=rows, records=records, environ=LIVE, writer=writer)()
+        return writer, counts, got
+
+    def test_no_requisition_is_review_with_no_row_no_page_and_no_failure(self):
+        writer, counts, got = self.go([outreach()])
+        self.assertEqual((writer.created, got["evidence"], counts["lead_rows"]), ([], [], 0))
+        self.assertEqual((counts["lead_review"], counts["failed"], counts["leads"]), ({"requisition_missing": 1}, 0, 1))
+
+    def test_an_exact_requisition_is_one_row_and_its_replay_writes_nothing_more(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)])
+        self.assertEqual((len(writer.created), counts["lead_rows"], [q.stable_job_key for _, q in got["evidence"]]), (1, 1, [REQ_KEY]))
+        replay, counts, got = self.go([outreach(extra=REQ_TEXT)], writer=Writer(held=1))
+        self.assertEqual((replay.created, counts["lead_rows"], len(got["evidence"]), counts["failed"]), ([], 0, 1, 0))
+
+    def test_two_requisitions_at_one_company_are_two_jobs_and_never_merged(self):
+        a = outreach(role="Alpha Role", url="https://example.test/m/1", received="2026-10-18T10:00:00Z", extra="Requisition 111111.")
+        b = outreach(role="Beta Role", url="https://example.test/m/2", received="2026-10-19T10:00:00Z", extra="Requisition 222222.")
+        writer, counts, got = self.go([a, b])
+        self.assertEqual(sorted(r["Stable Job Key"]["rich_text"][0]["text"]["content"] for r in writer.created), ["recruiter-exampleco-111111", "recruiter-exampleco-222222"])
+        same_title = [a, {**b, "subject": a["subject"], "body": a["body"].replace("111111", "222222")}]
+        writer, counts, got = self.go(same_title)
+        self.assertEqual((writer.created, got["evidence"], counts["lead_review"]), ([], [], {"requisition_ambiguous": 1}))
+
+    def test_an_existing_row_holding_the_requisition_key_is_reused_not_created_again(self):
+        held = {**ROW, "stable_job_key": REQ_KEY}
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=(held,), writer=Writer(held=1))
+        self.assertEqual((writer.created, [q.stable_job_key for _, q in got["evidence"]], counts["failed"]), ([], [REQ_KEY], 0))
+
+    def test_a_row_for_the_same_title_under_another_key_is_an_identity_conflict_and_nothing_is_written(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=(ROW,))
+        self.assertEqual((writer.created, got["evidence"], counts["why"].get("identity_conflict"), counts["where"]), ([], [], 1, {"lead_requisition": 1}))
+
+    def test_an_unreadable_ledger_is_degraded_and_writes_nothing(self):
+        writer, counts, got = self.go([outreach(extra=REQ_TEXT)], rows=RuntimeError("down"))
+        self.assertEqual((writer.created, got["evidence"], counts["why"].get("ledger_unreadable"), counts["failed"] > 0), ([], [], 1, True))
+
+    def test_a_posting_link_still_names_the_job_with_no_requisition(self):
+        with patch.object(ev, "lead_job", return_value=True) as job:
+            writer, counts, got = self.go([outreach(extra=POSTING)])
+        self.assertEqual((job.call_count, writer.created, counts["lead_review"]), (1, [], {}))
 
 
 class Exceptions(unittest.TestCase):
@@ -401,7 +514,7 @@ class LinkLeads(unittest.TestCase):
         for label, links in (("two postings", (POSTING, "https://boards.greenhouse.io/exampleco/jobs/7654321")), ("not an ATS", ("https://www.example.com/jobs/1",)),
                              ("a listing, not one vacancy", ("https://boards.greenhouse.io/exampleco",)), ("no link", ())):
             self.assertIsNone(ev.posting_link(self.message(*links)), label)
-        self.assertEqual(ev.lead_of(self.message())[3], "recruiter-exampleco-program-manager")
+        self.assertIsNone(ev.lead_of(self.message())[3])                                  # no posting and no requisition: no key (LIFE-25)
 
     def test_a_new_lead_job_is_inserted_resolved_in_the_recruiter_lane_at_its_own_link(self):
         cursor = Cursor()
@@ -421,7 +534,7 @@ class LinkLeads(unittest.TestCase):
             counts, got = Run(parents=(), kids={}, roster=[], records=[outreach(extra=POSTING)], environ=LIVE, writer=writer)()
         self.assertEqual((job.call_count, writer.created, counts["lead_jobs"], counts["lead_rows"], len(got["evidence"])), (1, [], 1, 0, 1))
         with patch.object(ev, "lead_job", return_value=True) as job:
-            counts, _ = Run(parents=(), kids={}, roster=[], records=[outreach()], environ=LIVE, writer=writer)()
+            counts, _ = Run(parents=(), kids={}, roster=[], rows=(), records=[outreach(extra=REQ_TEXT)], environ=LIVE, writer=writer)()
         self.assertEqual((job.call_count, len(writer.created), counts["lead_rows"]), (0, 1, 1))
 
     def test_a_job_store_failure_is_degraded_and_creates_no_page(self):
@@ -443,7 +556,7 @@ class Conversion(unittest.TestCase):
         (parent, query), = got["evidence"]
         self.assertEqual((parent.company, parent.role, query.stable_job_key, query.confirmed_round, query.ordinal, query.interview_date),
                          ("SH/FT", "Technical Program Manager", "recruiter-sh-ft-technical-program-manager", True, None, None))
-        self.assertEqual(counts["convert"], {"adopt": 1, "upgrade": 0, "awaiting_adopt_line": 0})
+        self.assertEqual(counts["convert"], {"adopt": 1, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0})
         self.assertEqual(counts["failed"], 0)
 
     def test_a_named_page_without_the_adopt_line_is_counted_and_not_written(self):
@@ -454,7 +567,7 @@ class Conversion(unittest.TestCase):
         counts, got = self.go(Ownership.ADOPT, title="Gamma — Program Manager")
         self.assertEqual((len(got["evidence"]), counts["convert"]["adopt"]), (1, 1))                    # Jim's own line is the opt-in
         counts, got = self.go(Ownership.HUMAN, title="Gamma — Program Manager")
-        self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}))
+        self.assertEqual((got["evidence"], counts["convert"]), ([], {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}))
 
     def test_a_ui3b_page_is_reported_as_waiting_for_its_own_migration_not_upgraded(self):
         counts, got = Run(parents=(("p1", "Gamma — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, rows=(), roster=[], records=[], tops=NOTES_TOP)()
@@ -463,6 +576,56 @@ class Conversion(unittest.TestCase):
     def test_a_machine_skeleton_page_is_upgraded_not_reported_as_a_gap(self):
         counts, got = self.go(Ownership.MACHINE, title="Alpha — Senior Manager")
         self.assertEqual((len(got["evidence"]), counts["convert"]["upgrade"], counts["why"].get("parent_legacy_layout")), (1, 1, None))
+
+
+class UiThreeBMigration(unittest.TestCase):
+    """A named pursuit's UI 3b page is migrated through the page's own refresh (create.refresh(migrate=True)); every other UI 3b page still waits."""
+    KEY = "walmart-r-2612137"
+
+    def go(self, environ={**ENV, "INTERVIEW_TEST_COMPANIES": "Walmart"}, legacy=True, title="Walmart — Senior Manager, Operations and Implementation", rows=None):
+        row = {**ROW, "company": "Walmart", "role": "Senior Manager, Operations and Implementation", "stable_job_key": self.KEY}
+        return Run(parents=(("p1", title),), facts={"p1": None}, legacy={"p1": (self.KEY, URL)} if legacy else {}, kids={"p1": (child(),)},
+                   rows=rows if rows is not None else (row,), roster=[], records=[], environ=environ, tops=NOTES_TOP)()
+
+    def test_a_named_ui3b_page_queues_its_refresh_from_its_own_key_and_request(self):
+        counts, got = self.go()
+        (parent, query), = got["evidence"]
+        self.assertEqual((parent.company, query.stable_job_key, query.source, query.ordinal), ("Walmart", self.KEY, URL, 1))
+        self.assertEqual((counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout"), counts["failed"]), (1, None, 0))
+
+    def test_a_ui3b_page_nobody_named_a_page_without_a_readable_key_or_a_missing_ledger_row_is_not_migrated(self):
+        counts, got = self.go(title="Gamma — Program Manager")
+        self.assertEqual((got["evidence"], counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout")), ([], 0, 1))
+        counts, got = self.go(legacy=False)
+        self.assertEqual((got["evidence"], counts["convert"]["migrate"], counts["why"].get("parent_legacy_layout")), ([], 0, 1))
+        counts, got = self.go(rows=())
+        self.assertEqual(got["evidence"], [])
+        self.assertEqual(counts["failed"], 1)
+
+    def test_the_stage_passes_migrate_only_for_a_named_pursuit(self):
+        import inspect
+        self.assertIn("migrate=notion.is_legacy_company(environ, parent_query.company)", inspect.getsource(create.apply))
+
+    def regions(self, key_texts, layout=True, urls=(URL,)):
+        run = lambda text, link=None: {"plain_text": text, "text": {"content": text, **({"link": {"url": link}} if link else {})}}
+        machine = [{"id": "fold", "type": "toggle", "toggle": {"rich_text": []}}, {"id": "cp", "type": "callout", "has_children": False,
+                   "callout": {"rich_text": [run("Canonical opportunity parent" if layout else "Something else")]}},
+                   {"id": "req", "type": "paragraph", "paragraph": {"rich_text": [run(ev.REQUEST, u) for u in urls]}}]
+        lines = [{"id": "m", "type": "paragraph", "paragraph": {"rich_text": [run(notion.MARKERS["opportunity"])]}}]
+        nodes = [{"text": t, "children": []} for t in key_texts]
+        return machine, lines, nodes
+
+    def read(self, key_texts, **kw):
+        machine, lines, nodes = self.regions(key_texts, **kw)
+        with patch.object(create, "machine_region", return_value=(machine, lines, [])), patch.object(notion, "region_nodes", return_value=nodes):
+            return ev.legacy_facts(object(), "p1", None)
+
+    def test_the_key_is_read_from_the_page_text_and_two_keys_or_another_layout_are_not_guessed(self):
+        self.assertEqual(self.read(["Job Ledger: row · requisition R-2612137 / Stable Job Key walmart-r-2612137"]), (self.KEY, URL))
+        self.assertEqual(self.read(["Stable Job Key a-1", "Stable Job Key b-2"]), (None, URL))
+        self.assertEqual(self.read(["no key here"]), (None, URL))
+        self.assertIsNone(self.read(["Stable Job Key a-1"], layout=False))
+        self.assertEqual(self.read(["Stable Job Key a-1"], urls=(URL, OTHER)), ("a-1", None))
 
 
 class LegacyRounds(unittest.TestCase):
@@ -529,10 +692,10 @@ class LeadCorrelation(unittest.TestCase):
         self.assertEqual(len([c for c in calls if c[0] == "AlphaCo"]), 1)
 
     def test_a_linkless_lead_never_borrows_a_link_from_another_message(self):
-        linkless = outreach(role="Epsilon Role", client="EpsilonCo", url="https://example.test/m/e", received="2026-10-17T10:00:00Z")
+        linkless = outreach(role="Epsilon Role", client="EpsilonCo", url="https://example.test/m/e", received="2026-10-17T10:00:00Z", extra=REQ_TEXT)
         writer = Writer()
         with patch.object(ev, "lead_job", return_value=True) as job:
-            counts, got = Run(parents=(), kids={}, roster=[], records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
+            counts, got = Run(parents=(), kids={}, roster=[], rows=(), records=[linkless, self.messages()[2]], environ=LIVE, writer=writer)()
         self.assertEqual(job.call_count, 1)                                    # only the lead that has its own link
         self.assertEqual((len(writer.created), counts["lead_rows"], counts["lead_jobs"]), (1, 1, 1))
         self.assertEqual(writer.created[0]["Apply URL"]["url"], "https://example.test/m/e")
@@ -595,6 +758,25 @@ class Pursuits(unittest.TestCase):
         self.assertEqual((counts["requests"], counts["pursuit_requests"], counts["failed"]), (0, 1, 0))
         counts_only(counts)
 
+    def test_the_one_request_for_a_lead_page_whose_link_is_the_outreach_becomes_its_interview_1_request(self):
+        lead = {"p1": ("recruiter-exampleco-777777", "https://example.test/thread/5")}            # the page links the recruiter's outreach, not a request
+        rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
+        request = mail(body="Please select a time for a call. Requisition 777777.")
+        counts, got = Run(facts=lead, rows=rows, roster=[], records=[outreach(extra="Requisition 777777."), request])()
+        self.assertEqual((counts["failed"], counts.get("where", {})), (0, {}))
+        self.assertEqual([q.source for _, q in got["evidence"]], [request["url"]])               # the refresh links the request on the opportunity
+        other = mail(subject="Schedule your interview - ExampleCo Program Manager (2)", body="Please select a time for a call.", url="https://example.test/thread/7")
+        counts, _ = Run(facts={"p1": ("recruiter-exampleco-777777", other["url"])}, rows=rows, roster=[], records=[other, request])()
+        self.assertEqual(counts["where"], {"pursuit_other_request": 1})                         # the page already names another request: never guessed
+
+    def test_a_request_naming_another_requisition_than_the_pursuits_key_is_a_conflict(self):
+        keyed = {"p1": ("recruiter-exampleco-777777", URL)}
+        rows = ({**ROW, "stable_job_key": "recruiter-exampleco-777777"},)
+        counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 999999.")])()
+        self.assertEqual((got["evidence"], counts["why"].get("requisition_conflict"), counts["where"]), ([], 1, {"pursuit_requisition": 1}))
+        counts, got = Run(facts=keyed, kids={"p1": ()}, rows=rows, roster=[], records=[mail(body="Please select a time for a call. Requisition 777777.")])()
+        self.assertEqual(len(got["evidence"]), 1)                                   # the same requisition: Interview 1
+
     def test_the_replay_and_a_second_request_for_a_pursuit_that_already_has_its_round_write_nothing(self):
         same = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": ("exampleco-r-1", "https://example.test/thread/9")}, kids={"p1": (child(),)}, roster=[], records=[mail()])
         counts, got = same()
@@ -602,6 +784,7 @@ class Pursuits(unittest.TestCase):
         other = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": (child(),)}, roster=[], records=[mail()])       # the page's request link is another message
         counts, got = other()
         self.assertEqual(([e for e in got["evidence"] if e[1].ordinal is None], counts["why"].get("round_identity_incomplete")), ([], 1))
+        self.assertEqual(counts["where"], {"pursuit_other_request": 1})
 
     def test_a_request_for_a_page_without_a_key_is_counted_and_never_guessed(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), facts={"p1": None}, kids={"p1": ()}, roster=[], records=[mail()], tops=NOTES_TOP)()

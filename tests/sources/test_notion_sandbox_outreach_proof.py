@@ -1,5 +1,6 @@
 """LIFE-10 §2: the synthetic sandbox proof of the job-page outreach writer, against a fake Notion tree. Every name and id is invented; nothing real is reached."""
 import contextlib
+import gc
 import io
 import json
 import unittest
@@ -117,6 +118,7 @@ class OutreachProof(unittest.TestCase):
         self.assertEqual(made, {"environ": {"NOTION_API_TOKEN": "t", "SANDBOX_SOURCE": SANDBOX_SOURCE}, "source_name": "SANDBOX_SOURCE"})
 
     def test_a_failed_expectation_fails_the_step_with_a_fixed_code(self):
+        gc.collect()                                                   # a handle leaked by an earlier test warns when it is collected: not inside this test's stderr check
         out, err = io.StringIO(), io.StringIO()
         counts = {"notion_sandbox_outreach_proof": "live", "steps": [{"created": 1}], "failed": 1}
         with patch.dict(runner.STAGES, {"notion-sandbox-outreach-proof": lambda limit, live: counts}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):

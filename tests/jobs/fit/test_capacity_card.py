@@ -259,6 +259,11 @@ class ProposedUsage(unittest.TestCase):
         self.assertEqual(next(l for l in text.split("\n") if l.startswith("Proposed usage")), "Proposed usage · Cloud Fit backlog (300 jobs): at most 6.82% of the 5-hour window and about 6% of the weekly window"
                                               " (ESTIMATED from 44 metered calls) · fits under the 50% stop")
 
+    def test_an_empty_backlog_shows_no_proposed_usage_line(self):
+        reading = with_estimate(0, {"basis_calls": 1864, "proposed_percent": 0}, {"basis_calls": 1864, "proposed_percent": 0})
+        text, _ = card.render(reading, NOW)
+        self.assertNotIn("Proposed usage", text)
+
     def test_a_backlog_that_would_reach_the_stop_says_how_much_fits(self):
         reading = with_estimate(2692, {"basis_calls": 44, "per_call_below": 0.0227, "proposed_percent_at_most": 61.18, "calls_left_at_least": 2200},
                                 {"basis_calls": 44, "per_call_percent": 0.02, "proposed_percent": 53.84, "calls_left": 2450})

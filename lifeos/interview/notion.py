@@ -187,9 +187,26 @@ def legacy_round(block, child):
     return Child(child.page_id, child.parent_id, date, who, int(number), child.identity_valid, True)
 
 
+NEST_KINDS = ("column_list", "column", "toggle")
+
+
+def _nested_pages(client, blocks, budget, context, depth=1):
+    """(page block, container id) for every child page inside the column / toggle blocks of a page, to MAX_DEPTH levels: where Jim keeps his own Interview Notes list."""
+    out = []
+    for block in blocks:
+        if block.get("type") in NEST_KINDS and block.get("has_children"):
+            if depth > MAX_DEPTH:
+                raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+            kids = children(client, block["id"], budget, context)
+            out.extend((kid, block["id"]) for kid in kids if kid.get("type") == "child_page")
+            out.extend(_nested_pages(client, kids, budget, context, depth + 1))
+    return out
+
+
 def child_scan(client, parent_id, context=None, legacy=False):
     try:
-        blocks = children(client, parent_id, [MAX_CALLS], context)
+        budget = [MAX_CALLS]
+        blocks = children(client, parent_id, budget, context)
         # B1 reads verified identity properties only; never guesses identities from legacy titles.
         found = []
         for block in blocks:
@@ -203,16 +220,28 @@ def child_scan(client, parent_id, context=None, legacy=False):
             if child is None or not same_notion_id(child.parent_id, parent_id):
                 raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
             found.append(legacy_round(block, child) if legacy and child.identity_valid is None else child)
+        if legacy:                                                              # a pursuit Jim named: his hand-made `Interview N: Name (m/d/yy)` pages inside his own columns count too, by title only, never read or changed
+            for block, container in _nested_pages(client, blocks, budget, context):
+                if len(found) >= MAX_CALLS:
+                    raise NotionError("INTERVIEW_SCAN_INCOMPLETE")
+                child = explicit_child(client, block["id"], home=parent_id, via=container)
+                if child is not None and child.identity_valid is None and same_notion_id(child.parent_id, parent_id):
+                    nested = legacy_round(block, child)
+                    if nested.legacy:
+                        found.append(nested)
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return Scan((), False)
 
 
-def explicit_child(client, page_id):
+def explicit_child(client, page_id, home=None, via=None):
+    """The page's identity. `home` and `via` are for a page nested in a column or toggle of its parent page: its API parent is that block (`via`), and it counts as the page's child only then."""
     page = client.call("GET", f"/pages/{page_id}")
     if page.get("archived") or page.get("in_trash"):
         return None
     parent = page.get("parent") or {}
+    if home and via and same_notion_id(parent.get("block_id"), via):
+        parent = {"page_id": home}
     from .create import parse_identity
     blocks, _ = machine_lines(client, page_id, 2)
     first = text(blocks[0]) if blocks else ""
@@ -225,12 +254,25 @@ def explicit_child(client, page_id):
     return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
 
 
+def _protected_children(client, page_id, budget):
+    """children() for a protected read, with its failures told apart by fixed code: the read budget ran out, or the API answer was malformed."""
+    try:
+        return children(client, page_id, budget)
+    except NotionError:
+        raise NotionError("INTERVIEW_PROTECTED_BUDGET" if budget[0] <= 0 else "INTERVIEW_PROTECTED_READ")
+
+
 def _subtree(client, block, budget, depth=0):
     if depth > PROTECTED_MAX_DEPTH:
-        raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+        raise NotionError("INTERVIEW_PROTECTED_DEPTH")
     value = {k: v for k, v in block.items() if k not in ("last_edited_time", "last_edited_by")}
+    if block.get("type") in ("child_page", "child_database"):
+        return {"id": value.get("id"), "type": value.get("type")}                # a page or database nested in Jim's columns (his Interview Notes list) is its own page: never read as part of this one, like a top-level child page
+    body = value.get(value.get("type"))
+    if isinstance(body, dict) and body.get("type") == "file" and isinstance(body.get("file"), dict):
+        value[value["type"]] = {**body, "file": {}}                              # a Notion-hosted file's signed URL and expiry change on every read; the name, caption and the block itself stay in the digest
     if block.get("has_children"):
-        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in children(client, block["id"], budget)]
+        value["protected_children"] = [_subtree(client, b, budget, depth + 1) for b in _protected_children(client, block["id"], budget)]
     return value
 
 
@@ -247,7 +289,7 @@ def protected_snapshot(client, page_id, kind="round"):
     labels = PROTECTED + (NOTES if kind == "opportunity" else ())
     current = None
     order = []
-    tops = children(client, page_id, budget)
+    tops = _protected_children(client, page_id, budget)
     for block in tops:
         label = text(block)
         if current in NOTES:
@@ -256,7 +298,7 @@ def protected_snapshot(client, page_id, kind="round"):
             continue
         if label in labels and (block.get("type", "").startswith("heading") or block.get("type") == "toggle"):
             if label in regions:
-                raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+                raise NotionError("INTERVIEW_PROTECTED_SHAPE")
             current = label
             order.append((label, block.get("id")))
             regions[label] = []
@@ -294,10 +336,10 @@ def human_tail(client, page_id, blocks=None):
     (blocks given), or every block after the Jim's notes heading and its one notes callout after it. Child pages excluded."""
     budget = [PROTECTED_MAX_CALLS]
     if blocks is None:
-        blocks = children(client, page_id, budget)
+        blocks = _protected_children(client, page_id, budget)
         heads = [i for i, b in enumerate(blocks) if text(b) in NOTES and b.get("type", "").startswith("heading")]
         if len(heads) != 1 or len(blocks) <= heads[0] + 1 or blocks[heads[0] + 1].get("type") != "callout":
-            raise NotionError("INTERVIEW_PROTECTED_INCOMPLETE")
+            raise NotionError("INTERVIEW_PROTECTED_SHAPE")
         blocks = blocks[heads[0] + 2:]
     else:
         blocks = blocks[1:]
@@ -356,6 +398,25 @@ def _fill(client, block_id, plan, budget):
         delete_block(client, made[0]["id"])
 
 
+FILLER_MAX = 3
+
+
+def clear_template_filler(client, page_id, budget):
+    """Delete the empty paragraphs a template page leaves at the TOP of a page this writer has just created. Only a leading paragraph with no text, no children and no
+    mention is removed, at most FILLER_MAX of them, and never the last block of the page: nothing a person wrote is ever touched (the page is seconds old and machine made).
+    The first block must be the machine fold or marker, or ownership() reads the page as a human's and it can never be refreshed."""
+    top = children(client, page_id, budget)
+    gone = 0
+    while gone < FILLER_MAX and len(top) - gone > 1:
+        block = top[gone]
+        runs = (block.get("paragraph") or {}).get("rich_text") or []
+        if block.get("type") != "paragraph" or block.get("has_children") or text(block).strip() or any(r.get("type", "text") != "text" for r in runs):
+            break
+        delete_block(client, block["id"])
+        gone += 1
+    return gone
+
+
 def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None):
     """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
     id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
@@ -374,7 +435,10 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         if template:                                                    # a template page takes no children in the same request
             target = client.call("POST", "/pages", {**page, "template": {"type": "template_id", "template_id": template}})["id"]
             time.sleep(TEMPLATE_WAIT)
-            return write_tree(client, target, blocks, budget=budget)
+            clear_template_filler(client, target, budget)               # a template that lands first leaves its empty paragraph above the machine fold: the page would read as not ours
+            written = write_tree(client, target, blocks, budget=budget)
+            clear_template_filler(client, target, budget)               # and one that lands after the write puts it first just the same
+            return written
         target = client.call("POST", "/pages", {**page, **body})["id"]
         made = children(client, target, budget)
     else:
@@ -462,6 +526,11 @@ def set_text(client, block_id, kind, rich):
 
 def append_children(client, page_id, heading_id, blocks):
     return client.call("PATCH", f"/blocks/{page_id}/children", {"children": blocks, "after": heading_id})
+
+
+def paragraph(content):
+    from lifeos.platform.notion_client import rich_text
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(content)}}
 
 
 def delete_block(client, block_id):

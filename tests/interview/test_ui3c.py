@@ -129,6 +129,25 @@ class Sim(WritableFake):
     """The production-shaped writable fake."""
 
 
+class FillerSim(Sim):
+    """A template page that carries one empty paragraph, applied before the write ("before") or after it ("after"), as the Full Width template did."""
+
+    def __init__(self, lands):
+        super().__init__()
+        self.lands, self.template_page = lands, None
+
+    def call(self, method, path, body=None):
+        out = super().call(method, path, body)
+        if method == "POST" and path == "/pages" and body.get("template"):
+            self.template_page = out["id"]
+            if self.lands == "before":
+                self.blocks[out["id"]].insert(0, block(""))
+        if method == "PATCH" and path.endswith("/children") and self.lands == "after" and self.template_page and path.split("/")[2] == self.template_page:
+            self.lands = "done"
+            self.blocks[self.template_page].insert(0, block(""))
+        return out
+
+
 def written(current=None):
     """A UI 3c page written by the staged writer under "active", with Jim's own note and an interview page after it."""
     client = Sim()
@@ -166,6 +185,27 @@ class Layout(unittest.TestCase):
         self.assertEqual(notion.outline(notion.read_tree(client, page_id, [500])), UI3C)
         self.assertEqual(create.finalize(client, page_id, opportunity(), blocks), "readback_ok")
 
+    def test_a_template_that_leaves_an_empty_paragraph_on_top_does_not_break_the_page(self):
+        """The 8 PM run: Notion's Full Width template left an empty first paragraph, so the marker was not the first block and the page read as not ours."""
+        for lands in ("before", "after"):
+            client = FillerSim(lands)
+            blocks = create.rendered(opportunity(), tail=None)[0]
+            page_id = notion.write_tree(client, "active", blocks, title="ExampleCo — Program Manager", template=notion.FULL_WIDTH)
+            top = client.blocks[page_id]
+            self.assertNotEqual((top[0]["type"], notion.text(top[0])), ("paragraph", ""), lands)
+            self.assertEqual(notion.readback(client, page_id, "active", "opportunity"), "readback_ok", lands)
+            self.assertEqual(notion.ownership(client, page_id, "opportunity"), notion.Ownership.MACHINE, lands)
+
+    def test_clearing_filler_never_touches_text_or_a_page_that_would_be_left_empty(self):
+        client = Sim()
+        client.blocks["p"] = [block("", id="e0")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), 0)                      # the only block stays
+        client.blocks["p"] = [block("Jim wrote this", id="t"), block("", id="e")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), 0)                      # text on top stays
+        client.blocks["p"] = [block("", id=f"e{i}") for i in range(4)] + [block("fold", id="fold")]
+        self.assertEqual(notion.clear_template_filler(client, "p", [50]), notion.FILLER_MAX)      # bounded
+        self.assertEqual([notion.text(b) for b in client.blocks["p"]], ["", "fold"])
+
     def test_values_come_from_the_view_and_missing_sources_say_so(self):
         current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),
                               compensation="$90/hr", work_mode="Remote", apply_url="https://jobs.example.com/1", fit_summary="ERP programs")
@@ -195,6 +235,58 @@ class Layout(unittest.TestCase):
         self.assertEqual(view.primary_action(opportunity(), TODAY)[0], "DEGRADED · NO VERIFIED ACTION")
         self.assertEqual(view.primary_action(opportunity((view.Round("p", 1, None, None),)), TODAY)[1:3],
                          ("Confirm a time for Interview 1 with the recruiter.", "No verified deadline"))
+
+    def test_e10_a_round_s_recorded_calendar_state_reaches_the_opportunity_page(self):
+        """LIFE-78 E10: an accepted invite is shown as source-backed; a cancelled one is never "scheduled" or "Prepare" on the opportunity."""
+        accepted = opportunity((view.Round("r1", 1, "2026-11-02", None, "accepted"),))
+        self.assertEqual(view.stage(accepted, TODAY), ("Interview 1 scheduled", "2026-11-02"))
+        self.assertEqual(view.primary_action(accepted, TODAY)[1:], ("Prepare for Interview 1 on 2026-11-02.", "2026-11-02", None, "from the accepted Calendar invite"))
+        shown = "\n".join(texts(*written(accepted)))
+        for value in ("2026-11-02 · accepted Calendar invite", "Calendar: 1 interview(s) linked to a Calendar invite by reference; joining details not verified"):
+            self.assertIn(value, shown)
+        cancelled = opportunity((view.Round("r1", 1, "2026-11-02", None, "cancelled"),))
+        self.assertEqual(view.stage(cancelled, TODAY), ("Interview 1 cancelled in Calendar", "Unavailable"))
+        label, action, due, link, basis = view.primary_action(cancelled, TODAY)
+        self.assertEqual((action, due, link, basis), ("Ask the recruiter whether Interview 1 moves to a new time.", "No verified deadline", REQUEST,
+                                                      "derived from the cancelled Calendar invite"))
+        shown = "\n".join(texts(*written(cancelled)))
+        self.assertIn("2026-11-02 · cancelled in Calendar", shown)
+        self.assertNotIn("Prepare for Interview 1", shown)
+        later = (view.Round("r2", 2, "2026-11-09", None, "accepted"), view.Round("r1", 1, "2026-11-02", None, "cancelled"))
+        self.assertEqual([r.page_id for r in view.sort_rounds(later, TODAY)], ["r2", "r1"])          # a cancelled round never sorts as upcoming
+        self.assertEqual(view.stage(opportunity(view.sort_rounds(later, TODAY)), TODAY), ("Interview 2 scheduled", "2026-11-09"))
+
+    def test_e10_only_a_dated_round_page_s_own_logistics_is_read_and_an_unreadable_one_stays_not_verified(self):
+        calls = []
+        def fake(client, page_id):
+            calls.append(page_id)
+            if page_id == "old-layout":
+                raise NotionError("INTERVIEW_ROUND_LAYOUT")
+            return {"dated": ("abc123def456", False), "gone": ("abc123def456", True), "no-ref": (None, False)}[page_id]
+        rounds = (view.Round("pending", 1, None, None), view.Round("dated", 2, "2026-11-02", None), view.Round("gone", 3, "2026-11-09", None),
+                  view.Round("no-ref", 4, "2026-11-16", None), view.Round("old-layout", 5, "2026-11-23", None))
+        with patch.object(create, "round_calendar", fake):
+            got = view.with_calendar(object(), rounds)
+        self.assertEqual([r.calendar for r in got], [None, "accepted", "cancelled", None, None])
+        self.assertNotIn("pending", calls)                                    # an undated round has no invite to read
+
+    def test_e10_recruiter_threads_linked_by_the_exact_request_show_on_the_opportunity_and_unknown_is_degraded(self):
+        """LIFE-78 E10: Recruiters & Coordinators lists the rows linked by the exact request message; the Email cell opens the thread."""
+        linked = dataclasses.replace(opportunity(), recruiters=(("Pat Example", "Staffing Example Inc", "https://mail.google.com/mail/u/0/#all/abc"),),
+                                     recruiters_state="linked")
+        client, page_id = written(linked)
+        shown = "\n".join(texts(client, page_id))
+        for value in ("Pat Example", "Recruiter · Staffing Example Inc", "Latest thread ↗",
+                      "Recruiter email threads: 1 thread(s) linked from the Recruiters database by this job's exact request message"):
+            self.assertIn(value, shown)
+        self.assertIn("https://mail.google.com/mail/u/0/#all/abc", str(client.blocks))
+        self.assertNotIn("No verified recruiters or coordinators", shown)
+        unreadable = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="unreadable"))))
+        self.assertIn("Recruiter email threads: DEGRADED · Recruiters source unreadable this run", unreadable)
+        self.assertIn("DEGRADED · Recruiters source unreadable this run", unreadable.split("Recruiters & Coordinators")[1])
+        none = "\n".join(texts(*written(dataclasses.replace(opportunity(), recruiters_state="none"))))
+        self.assertIn("Recruiter email threads: no Recruiters row for this job's exact request message", none)
+        self.assertIn("No verified recruiters or coordinators", none)
 
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()

@@ -3,7 +3,8 @@ existing writer's queries; it lives under sources because it reads the Ledger, t
 
 Evidence, never inference. A machine UI 3c opportunity page names its job (Stable Job Key) and its request message in its own machine region;
 the exact Job Ledger row for that key links it (progression); an existing round page supplies the round identity; an accepted Calendar
-interview event adds a round only when its title states the round number and no round page already holds that number. Anything else is a fixed
+interview event adds a round only when its title states the round number and no round page already holds that number, or (LIFE-46 E07)
+dates the one Scheduling Pending Interview 1 page in place. Anything else is a fixed
 code for that item alone: nothing is guessed, no round is numbered from the pages that exist, and one gap never stops the others. Writes need
 INTERVIEW_OS_WRITER=v7 (Jim's activation switch); without it the run is a dry run. Counts and fixed codes only."""
 import os
@@ -23,9 +24,10 @@ from lifeos.platform.gcal import GoogleCalendar
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.recruiters import classify, qualify
+from lifeos.recruiters import notion as recruiters_store
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import RunContext
-from lifeos.sources import hiring as pipeline
+from lifeos.sources import hiring as pipeline, interview_sweep as sweep
 
 TZ = ZoneInfo("America/Chicago")
 ROUND = re.compile(r"\b(?:interview|round)\s+(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+(?:interview|round)\b", re.I)
@@ -64,6 +66,24 @@ def facts(client, page_id, context):
         return None
     urls = set(_links(client, machine, context))
     return (None if renders[0].group(1) == "none" else renders[0].group(1)), (urls.pop() if len(urls) == 1 else None)
+
+
+KEY_TEXT = re.compile(r"Stable Job Key\s+([a-z0-9][a-z0-9-]*)", re.I)
+
+
+def legacy_facts(client, page_id, context):
+    """(Stable Job Key, request URL or None) of a machine page still in the accepted UI 3b layout (marker fold, then the "Canonical opportunity parent" callout), read from the
+    page's own text: exactly one key, else None. Only the pursuits Jim named reach this (migration is authorized for them)."""
+    machine, lines, _ = create.machine_region(client, page_id, context)
+    if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or len(machine) < 2 or not notion.text(machine[1]).startswith("Canonical opportunity parent"):
+        return None
+    stack, keys = list(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], {b.get("id") for b in machine[:1]})), set()
+    while stack:
+        node = stack.pop()
+        keys.update(m.lower() for m in KEY_TEXT.findall(node.get("text") or ""))
+        stack += node.get("children", [])
+    urls = set(_links(client, machine, context))
+    return (keys.pop() if len(keys) == 1 else None), (urls.pop() if len(urls) == 1 else None)
 
 
 def squash(text):
@@ -105,6 +125,11 @@ def posting_link(message):
     return found.pop() if len(found) == 1 else None
 
 
+def reference(event_id):
+    """LIFE-46 E07: the short hash a round page records for its Calendar event (never the event id itself)."""
+    return sha1(str(event_id).encode()).hexdigest()[:12]
+
+
 def mint(company, role, requisition=None):
     """The Stable Job Key of a recruiter lead or a converted pursuit that has no public posting: recruiter-<company>-<requisition or role>."""
     slug = lambda text: "-".join(re.findall(r"[a-z0-9]+", " ".join(tokens(text)).lower()))[:40]
@@ -122,8 +147,9 @@ def lead_of(message):
         return None
     req = REQ.search(f"{message.get('subject', '')}\n{(message.get('body') or '')[:3000]}")
     link = posting_link(message)                                         # a public posting is a real job: its Stable Job Key is the one Jobs OS gives that link, so the Ledger row will match
-    key = identity.url_hash(link) if link else mint(company, found["role"], req.group(1) if req else None)
-    return company, found["role"], req.group(1) if req else None, key, message["url"]
+    requisition = req.group(1) if req else None                          # LIFE-25 (Jim, 10851): with no posting, only the employer's requisition names the job; none -> key None (REVIEW)
+    key = identity.url_hash(link) if link else (mint(company, found["role"], requisition) if requisition else None)
+    return company, found["role"], requisition, key, message["url"]
 
 
 def window(environ, live):
@@ -179,26 +205,55 @@ def read_mail(environ, now, gmail=None, outlook_accounts=None, days=mail.WINDOW_
     return records, down
 
 
-def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None):
+def recruiter_threads(environ, evidence, recruiters=None):
+    """LIFE-78 E10: each request's Recruiters rows, matched only by an exactly equal Source URL (the request message itself; never a name or company).
+    -> (evidence with recruiters on each request, failed?). Not connected (no Recruiters token or data source in this step) leaves the evidence unchanged."""
+    urls = sorted({q.source for _, q in evidence if (q.source or "").startswith("https://")})
+    if not urls:
+        return evidence, False
+    if recruiters is None:
+        if not ((environ.get("NOTION_RECRUITERS_TOKEN") or "").strip() and (environ.get("NOTION_RECRUITERS_DATA_SOURCE_ID") or "").strip()):
+            return evidence, False
+        recruiters = Client(environ, token_name="NOTION_RECRUITERS_TOKEN", source_name="NOTION_RECRUITERS_DATA_SOURCE_ID")
+    found = {}
+    try:
+        for url in urls:
+            page = recruiters.query_data_source(None, {"page_size": 20, "filter": {"property": "Source URL", "url": {"equals": url}}})
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or page.get("has_more") is not False:
+                raise NotionError("RECRUITERS_QUERY_INCOMPLETE")
+            rows = [r for r in map(recruiters_store.read, page["results"]) if r["source_url"] == url]
+            found[url] = tuple(sorted({(r["person"].strip(), r["company"].strip(), r["source_url"]) for r in rows}))
+    except NotionError:                                                      # unknown is never "no recruiter": every linked request reads DEGRADED this run
+        return [(p, replace(q, recruiters_state="unreadable") if (q.source or "").startswith("https://") else q) for p, q in evidence], True
+    return [(p, replace(q, recruiters=found[q.source], recruiters_state="linked" if found[q.source] else "none") if q.source in found else q)
+            for p, q in evidence], False
+
+
+def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, ledger_rows=None, context=None, ledger=None, records=None, gmail=None, outlook_accounts=None, writer=None, recruiters=None):
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip():                 # LIFE-78: the manual synthetic journey proof on a fresh QA sandbox, never the real pipeline
+        from lifeos.sources import interview_journey_proof
+        return interview_journey_proof.run(environ, live, now=now, client=client)
     live = bool(live) and environ.get("INTERVIEW_OS_WRITER") == "v7"
     injected = context
     context, now, client = context or RunContext.start(120), (now or datetime.now(TZ)).astimezone(TZ), client or notion.make_client(environ)
     read_rows = ledger_rows or (lambda company: acceptance.ledger_rows(company, environ))
-    why, evidence, ready = {}, [], {}
+    why, evidence, ready, where = {}, [], {}, {}
 
-    def flag(code):
+    def flag(code, site=None):
         why[code] = why.get(code, 0) + 1
+        if site:                                                          # which check raised it, as a fixed word: counts only, never a title, id or address
+            where[site] = where.get(site, 0) + 1
 
-    def queue(company, role, job, url, rows, date, who, number, requisition=None):
+    def queue(company, role, job, url, rows, date, who, number, requisition=None, ref=None, meeting=None):
         made = progress(Invite(company, role, date, who, number, requisition, job, url), rows)
         if made.code == "ready":                                          # the dated shape drops the job and request: they are the page's own facts
-            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url)))
+            evidence.append((made.parent, replace(made.round, stable_job_key=job, source=url, calendar_ref=ref, meeting=meeting)))
         else:
-            flag(made.code)
+            flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
     scan = notion.parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
-    convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0}
+    convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}
 
     def conversion(company, role, how):                                      # a pursuit Jim named: its existing page becomes the UI 3c page through the page's own adopt / upgrade path
         convert[how] += 1
@@ -222,8 +277,15 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 has_notes = any(b.get("type", "").startswith("heading") and notion.text(b) in notion.NOTES for b in tops)
             except Exception:                                                # noqa: BLE001 - an unread page is a visible gap, never an upgrade
                 has_notes = True
-            if has_notes:
-                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration
+            legacy = legacy_facts(client, parent.page_id, context) if has_notes and named else None
+            if legacy and legacy[0]:
+                try:                                                         # a named UI 3b page: its own key and request, then the existing refresh migrates it (create.refresh(migrate=True))
+                    ready[parent.page_id] = (company, role, *legacy, notion.child_scan(client, parent.page_id, context), read_rows(company))
+                    convert["migrate"] += 1
+                except Exception:                                            # noqa: BLE001 - a fixed code, never the exception text
+                    flag("ledger_unreadable")
+            elif has_notes:
+                flag("parent_legacy_layout")                                 # a UI 3b page waits for its own migration (only the pursuits Jim named are migrated)
             else:
                 conversion(company, role, "upgrade")                         # V7's own skeleton page (LIFE-46 option B): the approved sections go in once, Jim's notes protected
         elif page[0] is None:
@@ -233,27 +295,86 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
                 ready[parent.page_id] = (company, role, *page, notion.child_scan(client, parent.page_id, context), read_rows(company))
             except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
                 flag("ledger_unreadable")
-    events = []
+    events, gone = [], []
     try:
-        for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now):
-            at, _ = hiring.match_event(event["title"], [{"company": c, "role": r} for _, c, r in titles])
+        cancelled = []
+        mapped = lambda title: hiring.match_event(title, [{"company": c, "role": r} for _, c, r in titles])[0]
+        for event in pipeline.read_events(calendar or GoogleCalendar.from_env(environ), now, cancelled):
+            at = mapped(event["title"])
             if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
                 events.append((titles[at][0].page_id, event))
+        for event in cancelled:                                              # LIFE-46 E07: a cancelled invite, matched to its round only by the round's own recorded reference below
+            at = mapped(event["title"])
+            if at is not None and hiring.event_kind(event["title"]) in ("interview", "hiring_manager") and titles[at][0].page_id in ready:
+                gone.append((titles[at][0].page_id, event))
     except Exception:                                                        # noqa: BLE001
         flag("calendar_unavailable")
+    recorded = {}
+
+    def calendar_of(child):                                                  # the event reference a dated round page records, read only when an event needs it
+        if child.page_id not in recorded:
+            try:
+                recorded[child.page_id] = create.round_calendar(client, child.page_id)
+            except Exception:                                                # noqa: BLE001 - an older layout records none: it is never moved or cancelled
+                recorded[child.page_id] = (None, False)
+        return recorded[child.page_id]
+
+    def joined(child, ref, joining):                                         # E10: the dated round linked to this very invite records other joining details (one page read)
+        try:
+            found = create.round_logistics(client, child.page_id)
+        except Exception:                                                    # noqa: BLE001 - an older layout is never rewritten for its details
+            found = (None, False, None)
+        recorded[child.page_id] = found[:2]
+        return found[:2] == (ref, False) and found[2] != joining
+
+    confirms, moves, cancels = {}, {}, {}                                    # LIFE-46 E07: the round pages Calendar moves in place
     for page_id, event in events:                                            # a new round first: the refresh below then waits for the next run
         company, role, job, url, kids, rows = ready[page_id]
-        held, number, day = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10]
-        if number is None:
-            flag("round_identity_incomplete")
-        elif not kids.complete:
+        held, number, day, ref = [c for c in kids.items if c.identity_valid is True], ordinal(event["title"]), event["start"][:10], reference(event["id"])
+        joining = event.get("meeting")
+        if not kids.complete:
             flag("child_scan_incomplete")
-        elif any(c.interview_date == day for c in held):
-            continue                                                         # the round page exists
+        elif same := [c for c in held if c.interview_date == day]:           # the round page exists: no number is needed to add nothing
+            if len(same) == 1 and joined(same[0], ref, joining):
+                moves.setdefault(same[0].page_id, (page_id, same[0], set()))[2].add((day, joining))   # E10: its own invite's joining details changed
+        elif number in (None, 1) and len(held) == 1 and held[0].interview_date is None and held[0].ordinal == 1:
+            confirms.setdefault(page_id, set()).add((day, ref, joining))     # the invite for the pending Interview 1: that page is dated, never a second one
+        elif len(linked := [c for c in held if c.interview_date and calendar_of(c)[0] == ref]) == 1:
+            moves.setdefault(linked[0].page_id, (page_id, linked[0], set()))[2].add((day, joining))     # the same event at a new time: that round is rescheduled
+        elif number is None:                                                 # a new round is never numbered from the pages
+            flag("round_identity_incomplete", "calendar_event_pending_round" if any(c.interview_date is None for c in held) else "calendar_event_no_ordinal")
         elif any(c.ordinal == number for c in held):
             flag("round_conflict")                                           # the same number on another date: never a second page, never a rewrite
         else:
-            queue(company, role, job, url, rows, day, None, number)
+            queue(company, role, job, url, rows, day, None, number, ref=ref, meeting=joining)
+    for page_id, event in gone:
+        kids = ready[page_id][4]
+        for child in [c for c in kids.items if c.identity_valid is True and c.interview_date] if kids.complete else []:
+            if calendar_of(child) == (reference(event["id"]), False):
+                cancels[child.page_id] = (page_id, child)
+    for page_id, found in confirms.items():
+        company, role, job, url, kids, rows = ready[page_id]
+        if len(found) > 1:
+            flag("calendar_event_ambiguous", "calendar_event_pending_round")    # two accepted times for one pending round: neither is chosen
+            continue
+        (day, ref, joining), = found
+        pending = [c for c in kids.items if c.identity_valid is True][0]
+        evidence.append((ParentQuery(company, role), RoundQuery(True, day, pending.interviewer, 1, explicit_child_page_id=pending.page_id, stable_job_key=job,
+                                                                source=url, calendar_ref=ref, meeting=joining)))
+    for child_id, (page_id, child, days) in moves.items():
+        company, role, job, url, kids, rows = ready[page_id]
+        if len(days) > 1 or child_id in cancels:
+            flag("calendar_event_ambiguous", "calendar_event_moved")         # one event, two times (or moved and cancelled): neither is chosen
+            continue
+        day, joining = days.pop()
+        evidence.append((ParentQuery(company, role), RoundQuery(True, day, child.interviewer, child.ordinal, explicit_child_page_id=child_id, stable_job_key=job,
+                                                                source=url, calendar_ref=calendar_of(child)[0], meeting=joining)))
+    for child_id, (page_id, child) in cancels.items():
+        if child_id in moves:
+            continue
+        company, role, job, url, kids, rows = ready[page_id]
+        evidence.append((ParentQuery(company, role), RoundQuery(True, child.interview_date, child.interviewer, child.ordinal, explicit_child_page_id=child_id,
+                                                                stable_job_key=job, source=url, calendar_ref=calendar_of(child)[0], cancelled=True)))
     roster = []
     try:
         ledger = ledger or Client(environ, token_name="NOTION_INTERVIEW_TOKEN", source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID")
@@ -288,20 +409,27 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("identity_conflict")
         elif page and any(c.identity_valid is True for c in page_kids.items):
             if page_url != message["url"]:
-                flag("round_identity_incomplete")                            # another request for a job that already has a round: its round number is unknown
+                flag("round_identity_incomplete", "applied_row_other_request")      # another request for a job that already has a round: its round number is unknown
         elif not page or page_kids.complete:
             queue(row["company"], row["role"], key, message["url"], [{"page_id": row["id"], "company": row["company"], "role": row["role"], "stable_job_key": key, "requisition": None}],
                   None, None, None, req)
     pursuit_requests, handled = 0, set()
+    outreach = {m["url"] for m in records or [] if lead_of(m) and not ASKS.search(f"{m.get('subject', '')}\n{(m.get('body') or '')[:3000]}")}      # recruiter outreach in the mailbox that is provably not a request, by its own link
     for row, message, req in leads:                                          # M1 (LIFE-25): a request for a keyed V7 pursuit page with no Applied row is that page's Interview 1
         page = ready.get(row["id"].split(":", 1)[1])
         if page is None:
             continue                                                         # no key on the page: counted below, never guessed
         company, role, page_job, page_url, page_kids, page_rows = page
         handled.add(row["id"])
-        if any(c.identity_valid is True for c in page_kids.items):
-            if page_url != message["url"]:
-                flag("round_identity_incomplete")                            # the page already has a round and names another message: its number is unknown
+        keyed_by_requisition = (page_job or "").startswith("recruiter-") and page_job != mint(company, role)
+        if req and keyed_by_requisition and page_job != mint(company, role, req):
+            flag("requisition_conflict", "pursuit_requisition")             # LIFE-25: the request names another requisition than the one this job was keyed by
+        elif any(c.identity_valid is True for c in page_kids.items):
+            held = [c for c in page_kids.items if c.identity_valid is True]
+            if page_url != message["url"] and page_url in outreach and len(held) == 1 and held[0].ordinal == 1:
+                ready[row["id"].split(":", 1)[1]] = (company, role, page_job, message["url"], page_kids, page_rows)     # the page still links the recruiter's outreach: this request is its Interview 1's
+            elif page_url != message["url"]:
+                flag("round_identity_incomplete", "pursuit_other_request")          # the page already has a round and names another request: its number is unknown
         elif page_kids.complete:
             queue(company, role, page_job, message["url"], page_rows, None, None, None, req)
             pursuit_requests += 1
@@ -313,21 +441,39 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     for message in sorted(records if scan.complete else [], key=lambda m: m["received"]):     # E01b: recruiter outreach that names a role is the first warning; no reply is needed
         found = lead_of(message)
         if found and not any(same_company(found[0], c) and same_role(found[1], r) for c, r in every):      # a retired page counts: a closed lead never comes back
-            fresh[found[3]] = (found, message)
+            fresh[found[3] or ("review", message["url"])] = (found, message)
     leads_live = live and environ.get("INTERVIEW_LEADS") == "on"              # Jim's second switch: lead rows, jobs and pages stay off until it is "on"
     made_rows = made_jobs = 0
-    chosen, titles_taken = [], set()
+    review = {}                                                              # LIFE-25: a lead held for review is counted by reason, writes nothing and is not a failure (the source message stays in the mailbox)
+    groups = {}
     for lead, source in sorted(fresh.values(), key=lambda v: v[1]["received"], reverse=True):
-        title = (tuple(tokens(lead[0])), tuple(tokens(lead[1])))
-        if title not in titles_taken and len(chosen) < LEADS_PER_RUN:        # two links for one company and role are one pursuit, never two pages
-            titles_taken.add(title)
-            chosen.append((lead, source))
+        groups.setdefault((tuple(tokens(lead[0])), tuple(tokens(lead[1]))), []).append((lead, source))
+    chosen = []
+    for items in groups.values():                                            # newest first within each company and role
+        keyed = [(lead, source) for lead, source in items if lead[3]]
+        if not keyed:
+            review["requisition_missing"] = review.get("requisition_missing", 0) + 1
+        elif len({lead[3] for lead, source in keyed if not posting_link(source)}) > 1:
+            review["requisition_ambiguous"] = review.get("requisition_ambiguous", 0) + 1     # two requisitions under one title: two jobs that one page title cannot tell apart, never merged
+        elif len(chosen) < LEADS_PER_RUN:                                    # two links for one company and role are one pursuit, never two pages
+            chosen.append(keyed[0])
     for (company, role, req, key, url), source in chosen:
         if live and not leads_live:
             continue                                                         # live, but Jim has not turned leads on: nothing is written or queued for a lead
+        link = posting_link(source)                                          # this lead's own message, never another one's
+        if not link:                                                         # LIFE-25: the requisition names the job; an existing row for this title either is it or conflicts
+            try:
+                same = [r for r in read_rows(company) if same_company(r.get("company") or "", company) and same_role(r.get("role") or "", role)]
+            except Exception:                                                # noqa: BLE001 - a fixed code, never the exception text
+                flag("ledger_unreadable")
+                continue
+            held = [r for r in same if r.get("stable_job_key") == key or (r.get("requisition") and squash(r["requisition"]) == squash(req))]
+            if len(held) > 1 or (same and not held):
+                flag("identity_conflict", "lead_requisition")                # another requisition already holds this title, or two rows claim this one: nothing is written
+                continue
+            key = held[0]["stable_job_key"] if held else key                 # the existing row is the job: no second row
         if leads_live:                                                       # the job or Ledger row first: no page for a lead Jobs OS does not hold
             try:
-                link = posting_link(source)                                  # this lead's own message, never another one's
                 if link:
                     made_jobs += bool(lead_job(company, role, link, source, now))
                 else:
@@ -342,14 +488,22 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
+    evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
+    if unreadable:
+        flag("recruiters_unreadable")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
+    if where:
+        counts["where"] = where
     counts["why"], counts["requests"], counts["leads"], counts["lead_rows"], counts["lead_jobs"] = {**counts["why"], **why}, counts_requests, len(fresh), made_rows, made_jobs
     counts["leads_this_run"] = len(chosen)
+    counts["lead_review"] = review
     counts["convert"] = convert
+    if sweep.mode(environ) and scan.complete:                                # Jim, Oct 21: every opportunity page becomes the new page; INTERVIEW_CONVERT=inventory only counts them
+        counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     counts["pursuit_requests"] = pursuit_requests
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
-    counts["failed"] = sum(why.values()) + counts["blocked"]      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
+    counts["failed"] = sum(why.values()) + counts["blocked"] + counts.get("sweep", {}).get("failed", 0)      # a UI 3b page waiting for migration is DEGRADED too: it is not refreshed
     return counts
