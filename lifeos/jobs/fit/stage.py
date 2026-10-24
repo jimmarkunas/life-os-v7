@@ -15,13 +15,12 @@ from lifeos.jobs.fit import GO_THRESHOLD, MODEL_VERSION, UNIVERSAL_FIT_FLOOR, cl
 from lifeos.jobs.fit.judge import Judgment
 from lifeos.jobs.fit.score import evaluate
 
-ORDER = " ORDER BY (SUBSTR(j.source, 1, 4) = 'web:'), j.first_seen"   # Jim, Oct 24 (LIFE-76): mail and other non-board jobs first, then boards, oldest first in each
 PICK = ("SELECT j.id, j.title, j.company, d.full_text, d.fingerprint, j.lane, j.location_text, j.salary_text,"
         " j.posted_date, j.first_seen, j.route_evidence, j.source FROM v7_jobs j"
         " JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN v7_job_fit f ON f.job_id = j.id"
         " WHERE j.status IN (%s) AND (f.cloud_status IS NULL OR f.cloud_status <> 'CANARY')"     # D226: a cloud-Fit canary score is never overwritten by the static scorer
         " AND (f.job_id IS NULL OR f.model_version <> %s OR f.profile_hash <> %s"
-        " OR f.jd_fingerprint <> d.fingerprint)" + ORDER + " LIMIT %s")
+        " OR f.jd_fingerprint <> d.fingerprint) ORDER BY j.first_seen LIMIT %s")
 OPEN = ("'READY'", "'RESOLVED'")
 AUTO = OPEN + ("'PUBLISHED'",)                          # D94: every tick also re-scores published jobs whose score is stale (model, policy, profile or description changed); the audit then clears the ones now excluded
 ALL = AUTO + ("'EXCLUDED_FIT'",)                         # FIT_ALL=true (by hand): also re-score excluded jobs (calibration)
@@ -329,7 +328,7 @@ def run(limit, live, environ=os.environ):
             counts["rejudged"] = rejudge_excluded(cursor) if live and gate else 0
             counts["canary_regated"] = regate_canary(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
-            query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(ORDER, extra_sql + ORDER)
+            query = (PICK % (", ".join(ALL if environ.get("FIT_ALL") == "true" else AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)

@@ -504,20 +504,9 @@ class OnlyClause(unittest.TestCase):
     def test_the_pick_statement_with_the_filter_has_one_placeholder_per_parameter(self):
         from lifeos.jobs.fit import stage
         extra_sql, extra_params = stage.only_clause("revolut")
-        query = (stage.PICK % (", ".join(stage.AUTO), "%s", "%s", "%s")).replace(stage.ORDER, extra_sql + stage.ORDER)
+        query = (stage.PICK % (", ".join(stage.AUTO), "%s", "%s", "%s")).replace(" ORDER BY j.first_seen", extra_sql + " ORDER BY j.first_seen")
         self.assertEqual(query.count("%s"), 3 + len(extra_params))
         self.assertLess(query.index("j.company LIKE"), query.index("ORDER BY"))
-
-    def test_d248_fit_takes_jobs_not_from_a_board_scan_first_then_the_oldest(self):
-        import sqlite3
-        from lifeos.jobs.fit import stage
-        self.assertIn(stage.ORDER + " LIMIT %s", stage.PICK)
-        db = sqlite3.connect(":memory:")
-        db.execute("CREATE TABLE v7_jobs (id INTEGER, source TEXT, first_seen TEXT)")
-        db.executemany("INSERT INTO v7_jobs VALUES (?, ?, ?)", [(1, "web:greenhouse:a", "2026-10-01"), (2, "jobright", "2026-10-20"), (3, None, "2026-10-21"),
-                                                                 (4, "web:titlewatch:b", "2026-09-01"), (5, "linkedin", "2026-10-02")])
-        order = [r[0] for r in db.execute("SELECT j.id FROM v7_jobs j" + stage.ORDER)]
-        self.assertEqual(order, [3, 5, 2, 4, 1])                                   # non-board (unknown source too) oldest first, then boards oldest first
 
 
 class HealthcareNeedsRealWeight(unittest.TestCase):
