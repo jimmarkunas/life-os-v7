@@ -508,7 +508,7 @@ class ProtectedReadCauseTests(unittest.TestCase):
                 def call(self, method, path, body=None):
                     return {"results": blocks[path.split("/")[2]], "has_more": more, "next_cursor": "same" if more else None}
             return Client()
-        blocks = chain(notion.MAX_DEPTH + 3)
+        blocks = chain(notion.PROTECTED_MAX_DEPTH + 3)                                         # LIFE-88 #438: the protected read has its own depth limit
         with self.assertRaises(NotionError) as caught:
             notion.human_tail(client_for(blocks), "page", blocks["page"])
         self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
@@ -541,3 +541,26 @@ class HostedFileTests(unittest.TestCase):
         renamed = notion.human_tail(Client(), "p", [{"id": "x", "type": "paragraph", "paragraph": {"rich_text": []}}, self.file_block("https://s3/a?sig=2", "2026-10-21T19:00:00Z", "other.pdf")])
         self.assertEqual(first, again)
         self.assertNotEqual(first, renamed)
+
+
+class ProtectedDepth(unittest.TestCase):
+    """Run 39627629137 (cause interview_protected_incomplete, writes_planned 0): SH/FT and Smith nest deeper than the 4 levels a page scan allows, and the digest of Jim's content refused them."""
+    def chain(self, levels):
+        class Nested:
+            def call(self, method, path, body=None):
+                level = int(path.split("/")[2].lstrip("n"))
+                kid = {"id": f"n{level + 1}", "type": "callout", "callout": {"rich_text": []}, "has_children": level + 1 < levels}
+                return {"results": [kid], "has_more": False}
+        return Nested(), [{"id": "first", "type": "paragraph", "paragraph": {"rich_text": []}, "has_children": False},
+                          {"id": "n0", "type": "column_list", "column_list": {}, "has_children": True}]
+
+    def test_jims_content_nested_eight_levels_is_digested(self):
+        client, blocks = self.chain(8)
+        self.assertTrue(notion.human_tail(client, "p", blocks))
+
+    def test_a_chain_past_the_limit_still_fails_closed(self):
+        client, blocks = self.chain(notion.PROTECTED_MAX_DEPTH + 3)
+        with self.assertRaises(NotionError) as caught:
+            notion.human_tail(client, "p", blocks)
+        self.assertEqual(str(caught.exception), "INTERVIEW_PROTECTED_DEPTH")
+        self.assertEqual(notion.MAX_DEPTH, 4)                                       # page scans keep their own limit
