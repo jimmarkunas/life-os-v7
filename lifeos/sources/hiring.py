@@ -210,14 +210,15 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         if outcome_reason:                                            # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
             result["reasons"] = sorted({*result["reasons"], outcome_reason})
         auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
-        if ok["ledger"] and ok["parents"] and not outcome_reason and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only from complete, fresh reads
+        if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
             auto = auto_close.run(result["rows"], applied, parents, environ, live, now, ledger_client, pipeline_client, root, lambda: read_parents(pipeline_client, root), _day)
             gone = {e["key"] for e in auto["closed"]}
             result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
-        recent = auto_close.shown(prior, auto["closed"], now)
+        recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
         text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
         if cells is not None:
-            cells = cells + auto_close.cells(recent, _day)               # shown for 24 hours as closed, then dropped
+            extra = auto_close.cells(recent, _day)[:max(0, render.MAX_ROWS - len(cells))]     # shown for 24 hours as closed, then dropped; inside the table's row cap
+            cells, counts["rows"] = cells + extra, counts["rows"] + len(extra)
         counts["auto_close"] = {"due": auto["due"], "closed": len(auto["closed"]), "refused": auto["refused"], "switch": auto["switch"], "shown": len(recent)}
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
