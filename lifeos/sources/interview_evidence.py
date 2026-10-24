@@ -392,6 +392,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         flag(code)
     leads = [v for v in asked.values() if v[0].get("pursuit")]                 # a request for a pursuit with no Applied row: the lead path (E01b), reported here, never written
     asked = {k: v for k, v in asked.items() if not v[0].get("pursuit")}
+    retired_skips = 0
     for row, message, req in asked.values():                                 # E01a: a scheduling request for a job Jim applied to -> Interview 1, Scheduling Pending
         try:
             props = ledger.call("GET", f"/pages/{row['id']}").get("properties") or {}
@@ -401,6 +402,10 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             continue
         page = next((v for v in ready.values() if same_company(v[0], row["company"]) and same_role(v[1], row["role"])), None)
         _, _, page_job, page_url, page_kids, _ = page or (None,) * 6
+        states = {p.active for p, c, r in ((p, *split_title(p.title)) for p in scan.items) if same_company(c, row["company"]) and same_role(r, row["role"])}
+        if states == {False}:                                                # only a Retired page: an Active one (keyed or not) still takes the request as before
+            retired_skips += 1                                               # Jim retired this pursuit: an old request never brings back an Active page (Walmart, Oct 24)
+            continue
         if not key:
             flag("job_key_missing")
         elif req and squash(req) not in squash(apply_url):
@@ -506,6 +511,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         counts["sweep"] = sweep.run(environ, live, client, scan, mint, lambda c, page_id, context: (legacy_facts(c, page_id, context) or (None,))[0], context=RunContext.start(sweep.SWEEP_SECONDS))
     counts["lead_requests"] = {}                                            # per pursuit, by a short hash of its title: logs carry counts only
     counts["pursuit_requests"] = pursuit_requests
+    counts["retired_skipped"] = retired_skips                                # requests for a pursuit Jim retired: expected, never a failure
     for row, *_ in [v for v in leads if v[0]["id"] not in handled]:
         label = sha1(row["title"].encode()).hexdigest()[:6]
         counts["lead_requests"][label] = counts["lead_requests"].get(label, 0) + 1
