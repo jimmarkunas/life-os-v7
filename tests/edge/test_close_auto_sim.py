@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 A, B, C, P = "a" * 12 + "1" * 28, "b" * 12 + "2" * 28, "c" * 12 + "3" * 28, "9" * 12
 
 STUBS = {
+    "systemd-creds": 'echo "systemd-creds $*" >> "$SIM/log"; cat > "$4"',
     "systemctl": 'echo "systemctl $*" >> "$SIM/log"; case "$1" in is-enabled) [ "${SOCK_ENABLED:-1}" = 1 ];; *) true;; esac',
     "tailscale": 'echo "tailscale $*" >> "$SIM/log"; [ "$2" = status ] && echo "{}"; true',
     "ss": 'echo "x x x 127.0.0.1:47344"',
@@ -128,6 +129,28 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertFalse(os.path.exists(os.path.join(self.sim, "creds", "lifeos-close.github")))
         self.assertNotIn("github", open(unit).read())
+
+    def test_the_drive_credential_is_piped_never_typed_loaded_only_while_it_exists_and_gdrive_off_removes_it(self):
+        unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.gdrive")
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        self.assertNotIn("gdrive", open(unit).read())                                          # absent: the unit never names it
+        good = '{"client_id": "c", "client_secret": "s", "refresh_token": "r"}'
+        done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(open(stored).read(), good)
+        for bad in ("", "not json", '{"client_id": "c"}'):                                      # an aborted sign-in never replaces the working credential
+            done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
+            self.assertEqual(done.returncode, 1, bad)
+            self.assertIn("unchanged", done.stdout)
+            self.assertEqual(open(stored).read(), good)
+        self.assertNotIn('"r"', done.stdout + done.stderr)                                     # the value is never shown
+        self.assertIn("systemd-creds encrypt --name=gdrive -", open(os.path.join(self.sim, "log")).read())
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        self.assertIn("LoadCredentialEncrypted=gdrive:" + stored, open(unit).read().splitlines())
+        code, out = self.run_("credential", "gdrive-off")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(os.path.exists(stored))
+        self.assertNotIn("gdrive", open(unit).read())
 
     def test_a_green_changed_commit_is_released_and_a_rerun_or_unchanged_commit_is_not(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
