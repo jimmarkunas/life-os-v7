@@ -117,7 +117,11 @@ case "${1:-}" in
     cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
     [ -n "$cur" ] || { say "auto: no live tree; the first install is Jim's by hand"; exit 0; }
     systemctl is-enabled --quiet lifeos-close.socket && [ "$(serve_state)" = ours ] || { say "auto: the service is not installed and serving; nothing changed"; exit 0; }
+    [ -e "$ETC/auto.pending" ] && [ ! -s "$ETC/auto.pending" ] && rm -f "$ETC/auto.pending"
     if read -r p_commit p_cur p_prev _ 2>/dev/null < "$ETC/auto.pending"; then             # a release this step started and never finished (cut off): finish or undo it first
+      relink() { if [ -n "${2:-}" ] && [ -d "$2" ]; then ln -sfn "$2" "$OPT/$1.new" && mv -T "$OPT/$1.new" "$OPT/$1"; else rm -f "$OPT/$1"; fi; }
+      if [ "$cur" = "$p_cur" ] && [ "$prev" != "${p_prev:-}" ]; then relink previous "${p_prev:-}"; fi      # cut off between the two links: the live tree's own previous is put back
+      if [ "$cur" = "$OPT/${p_commit:0:12}" ] && "$0" verify && [ "$prev" != "$p_cur" ]; then relink previous "$p_cur"; fi
       if [ "$cur" = "$OPT/${p_commit:0:12}" ] && ! "$0" verify; then
         if [ -n "${p_cur:-}" ] && [ -d "$p_cur" ]; then
           ln -sfn "$p_cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
@@ -140,9 +144,12 @@ case "${1:-}" in
     if ! python3 -I "$REL" stage "$commit" "$probe"; then
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
     fi
+    if [ -s "$ETC/auto.rolled" ] && tail -n +2 "$probe/MANIFEST" | cmp -s - "$ETC/auto.rolled"; then
+      echo "$commit" > "$ETC/auto.checked"; say "auto: ${commit:0:12} carries the code Jim rolled back; not released"; exit 0
+    fi
     if ! python3 -I "$REL" same "$probe" "$cur"; then                                     # the commit changes the Close closure
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                   # counted before the switch, so a cut-off run still counts
-      echo "$commit $cur ${prev:-}" > "$ETC/auto.pending"                                   # what a cut-off run is finished against or restored to
+      echo "$commit $cur ${prev:-}" > "$ETC/auto.pending.new" && mv -f "$ETC/auto.pending.new" "$ETC/auto.pending"   # what a cut-off run is settled against (written whole or not at all)
       if LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"; then
         rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
       else
@@ -184,7 +191,9 @@ EOF
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     rolled="$(head -1 "$OPT/current/MANIFEST" 2>/dev/null | cut -d' ' -f2)"
-    if [ -n "$rolled" ]; then install -d -m 755 "$ETC"; echo "$rolled 3" > "$ETC/auto.attempts"; fi   # auto-release never puts back a commit Jim rolled back
+    if [ -n "$rolled" ]; then                                                               # auto-release never puts back the code Jim rolled back, under this commit or any later one
+      install -d -m 755 "$ETC"; echo "$rolled 3" > "$ETC/auto.attempts"; tail -n +2 "$OPT/current/MANIFEST" > "$ETC/auto.rolled"
+    fi
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
   uninstall)

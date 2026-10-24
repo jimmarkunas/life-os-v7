@@ -158,6 +158,25 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual(self.run_("auto", HEAD=B, BODY="y lifeos/a.py")[0], 0)
         self.assertEqual(self.at("current"), A[:12])
 
+    def test_a_later_commit_carrying_the_rolled_back_code_is_not_released(self):
+        self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.run_("rollback")
+        rc, out = self.run_("auto", HEAD=C, BODY="y lifeos/a.py")                                # a docs-only commit on top of B: B's code again
+        self.assertEqual((rc, self.at("current")), (0, A[:12]), out)
+        rc, out = self.run_("auto", HEAD=C[:-1] + "4", BODY="z lifeos/a.py")                    # a real fix changes the code: released
+        self.assertEqual(self.at("current"), C[:12], out)
+
+    def test_a_cut_off_between_the_two_links_puts_previous_back(self):
+        self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
+        self.assertEqual(self.run_("auto", HEAD=B)[0], 0)
+        self.assertEqual((self.at("current"), self.at("previous"), self.etc("auto.pending")), (A[:12], P, None))
+
+    def test_an_empty_pending_file_is_cleared(self):
+        open(os.path.join(self.sim, "etc", "auto.pending"), "w").close()
+        rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.assertEqual((rc, self.at("current"), self.etc("auto.pending")), (0, B[:12], None), out)
+
     def test_a_malformed_attempts_file_reads_as_none(self):
         for junk in ("garbage", f"{B} -5", f"{B} 99999999999999999999", f"{B} 3x", ""):
             open(os.path.join(self.sim, "etc", "auto.attempts"), "w").write(junk)
