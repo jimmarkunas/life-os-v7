@@ -105,8 +105,8 @@ def latest(fetch=get):
         raise Refused("NOT_A_COMMIT")
     runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/{commit}/check-runs?check_name=unit-tests")).get("check_runs") or []
     mine = [r for r in runs if r.get("name") == "unit-tests" and r.get("head_sha") == commit and (r.get("app") or {}).get("slug") == "github-actions"]
-    newest = max(mine, key=lambda r: (str(r.get("started_at") or ""), r.get("id") or 0), default={})       # a later re-run that failed wins over an earlier pass
-    if not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):
+    newest = max(mine, key=lambda r: r.get("id") or 0, default={})       # ids only grow: a later re-run that failed wins over an earlier pass
+    if any(r.get("status") != "completed" for r in mine) or not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):   # a run still queued or running decides nothing yet
         raise Refused("NOT_GREEN")
     return commit
 

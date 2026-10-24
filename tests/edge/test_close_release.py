@@ -137,8 +137,10 @@ class AutoRelease(unittest.TestCase):
                 rel.latest(self.fetch(runs=runs))
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
-        early = {**G, "started_at": "2026-10-24T09:00:00Z", "id": 1}
-        rerun = {**G, "started_at": "2026-10-24T09:10:00Z", "id": 2, "conclusion": "failure"}
+        early = {**G, "id": 1}
+        rerun = {**G, "id": 2, "conclusion": "failure"}
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(runs=(early, {**G, "id": 2, "status": "queued", "conclusion": None, "started_at": None})))   # a queued re-run decides nothing yet
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(runs=(early, rerun)))                        # the newest run decides: a failed re-run beats an earlier pass
         self.assertEqual(rel.latest(self.fetch(runs=({**early, "conclusion": "failure"}, {**rerun, "conclusion": "success"}))), C)

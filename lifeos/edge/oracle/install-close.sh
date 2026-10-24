@@ -144,7 +144,7 @@ case "${1:-}" in
     if ! python3 -I "$REL" stage "$commit" "$probe"; then
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
     fi
-    if [ -s "$ETC/auto.rolled" ] && tail -n +2 "$probe/MANIFEST" | cmp -s - "$ETC/auto.rolled"; then
+    if [ -s "$ETC/auto.rolled" ] && grep -qx "$(tail -n +2 "$probe/MANIFEST" | sha256sum | cut -d' ' -f1)" "$ETC/auto.rolled"; then
       echo "$commit" > "$ETC/auto.checked"; say "auto: ${commit:0:12} carries the code Jim rolled back; not released"; exit 0
     fi
     if ! python3 -I "$REL" same "$probe" "$cur"; then                                     # the commit changes the Close closure
@@ -191,8 +191,9 @@ EOF
     install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     rolled="$(head -1 "$OPT/current/MANIFEST" 2>/dev/null | cut -d' ' -f2)"
-    if [ -n "$rolled" ]; then                                                               # auto-release never puts back the code Jim rolled back, under this commit or any later one
-      install -d -m 755 "$ETC"; echo "$rolled 3" > "$ETC/auto.attempts"; tail -n +2 "$OPT/current/MANIFEST" > "$ETC/auto.rolled"
+    if [ -n "$rolled" ] && [ "$(readlink "$OPT/current")" != "$(readlink "$OPT/previous")" ]; then   # auto-release never puts back code Jim rolled back, under any later commit
+      install -d -m 755 "$ETC"; echo "$rolled 3" > "$ETC/auto.attempts"
+      tail -n +2 "$OPT/current/MANIFEST" | sha256sum | cut -d' ' -f1 >> "$ETC/auto.rolled"          # a set that only grows: every rolled-back code stays out
     fi
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;

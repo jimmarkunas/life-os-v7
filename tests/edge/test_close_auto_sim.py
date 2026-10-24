@@ -166,6 +166,19 @@ class AutoReleaseRun(unittest.TestCase):
         rc, out = self.run_("auto", HEAD=C[:-1] + "4", BODY="z lifeos/a.py")                    # a real fix changes the code: released
         self.assertEqual(self.at("current"), C[:12], out)
 
+    def test_every_rolled_back_code_stays_out_after_more_rollbacks(self):
+        self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.run_("rollback")
+        self.run_("rollback")                                                                     # again, with current and previous the same tree: pins nothing new
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)
+        self.assertEqual(self.at("current"), A[:12])
+        D, E = "d" * 12 + "5" * 28, "e" * 12 + "6" * 28
+        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")                                          # a fix is released, then rolled back too
+        self.assertEqual(self.at("current"), D[:12])
+        self.run_("rollback")
+        self.assertEqual(self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0)                  # reverting the fix brings B's code back: still out
+        self.assertEqual(self.at("current"), A[:12])
+
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")
