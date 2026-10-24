@@ -107,16 +107,33 @@ def attach(client, token, pid, filename, docx, now, upload=None):
     return on_page and column == [filename]
 
 
+def attach_drive(client, drive, pid, filename, docx, now):
+    """Jim, Oct 24 2026: with the Drive credential the .docx lives in Drive (My Drive / LIFE OS / Résumés, as itself, never converted) and Notion
+    holds links: one external file block on the job's page (every build stays there, newest last) and the Ledger's Resume column set to this
+    build. The Drive file is tagged with the job, so a later "applied with this résumé" step can list this job's builds. Then all three are
+    read back. -> True only when Drive holds these exact bytes, the page links this file and the Resume column is exactly this file."""
+    caption = f"Tailored resume · built {now.strftime('%b %-d, %-I:%M %p')} CT · Google Drive · LIFE OS"
+    meta = drive.upload(drive.folder(), filename, docx, DOCX, {"lifeos": "resume", "job": pid.replace("-", "")})
+    link = meta["webViewLink"]
+    client.call_once("PATCH", f"/blocks/{pid}/children", {"children": [{"object": "block", "type": "file", "file": {
+        "type": "external", "external": {"url": link}, "name": filename, "caption": [{"type": "text", "text": {"content": caption}}]}}]})
+    client.call_once("PATCH", f"/pages/{pid}", {"properties": {RESUME_COLUMN: {"files": [{"type": "external", "external": {"url": link}, "name": filename}]}}})
+    stored = drive.get(meta["id"])
+    on_page = any(b.get("type") == "file" and ((b.get("file") or {}).get("external") or {}).get("url") == link for b in _children(client, pid))
+    column = [(f.get("name"), (f.get("external") or {}).get("url")) for f in ((client.get_page(pid).get("properties") or {}).get(RESUME_COLUMN) or {}).get("files") or []]
+    return stored.get("md5Checksum") == meta["md5Checksum"] and not stored.get("trashed") and on_page and column == [(filename, link)]
+
+
 def page_url(pid):
     return "https://www.notion.so/" + pid.replace("-", "")
 
 
-def _attached(current, filename, pid):
+def _attached(current, filename, pid, drive=False):
     """The success screen: what was attached, and a link straight to the job's Ledger page (its Resume column and the file at the bottom of the page)."""
     return 200, HTML, S.page("Resume attached", "A resume counts only after it is attached to the job's Ledger page and read back.", (
         '<section class="section"><div class="eyebrow">Attached</div><h3 class="step-title">Resume attached</h3>'
         f'<p class="lead">{e(current["company"])} · {e(current["role"])}</p>'
-        f'<div class="notice ok">{e(filename)} · in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
+        f'<div class="notice ok">{e(filename)} · {"saved in Google Drive (LIFE OS / Résumés) and linked " if drive else ""}in the job\'s Resume column and at the bottom of its page · read back.</div></section>'
         f'<div class="actions"><a class="btn primary" href="{e(page_url(pid))}" target="_blank" rel="noopener">Open the job in Notion →</a></div>'),
         PATH, "Build resume"), ()
 
@@ -168,12 +185,18 @@ def _post(req, who, secrets):
     if not FILENAME.match(filename) or not docx.startswith(b"PK"):
         return _stop(500, "Unavailable", "The resume came back malformed", "Nothing was attached.", "Status: DEGRADED · WORKER_OFF_CONTRACT", "danger")
     try:
-        verified = attach(client, token, pid, filename, docx, _now())
-    except NotionError as error:
+        if secrets.get("gdrive"):                                          # the Drive credential is installed: the file goes to Drive, Notion links it
+            from lifeos.platform import gdrive                             # imported here, so a release without the Drive client still serves every other route
+            verified = attach_drive(client, gdrive.Drive(secrets["gdrive"]), pid, filename, docx, _now())
+        else:
+            verified = attach(client, token, pid, filename, docx, _now())
+    except RuntimeError as error:                                          # NotionError or gdrive.DriveError: fixed codes only; anything else is the gate's 500
+        if not isinstance(error, NotionError) and type(error).__name__ != "DriveError":
+            raise
         return _stop(500, "Unavailable", "Could not attach the resume", "Do not assume it is on the job's page.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
     if not verified:
         return _stop(500, "Unavailable", "Could not verify the attachment", "Do not assume it is on the job's page.", "Status: DEGRADED · not read back", "danger")
-    return _attached(current, filename, pid)
+    return _attached(current, filename, pid, bool(secrets.get("gdrive")))
 
 
 def handle(req, who, secrets):

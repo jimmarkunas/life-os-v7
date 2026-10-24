@@ -1,6 +1,7 @@
 """LIFE-87 (D234): Build resume on the private Close service, driven the way the Edge gate calls it. One synthetic Ledger job page, a stand-in resume worker and a
 stand-in Notion upload; nothing is live and every name is invented."""
 import base64
+import hashlib
 import html
 import json
 import os
@@ -13,7 +14,7 @@ from datetime import datetime
 from unittest import mock
 
 from lifeos.edge import close_gate
-from lifeos.platform import notion_files
+from lifeos.platform import gdrive, notion_files
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources import close_app, resume_app
 
@@ -23,6 +24,7 @@ WHO = {"login": "jim@example.com", "node": "node-1"}
 NOW = datetime(2026, 10, 20, 1, 40, tzinfo=close_app.TZ)
 DOCX = b"PK\x03\x04" + b"0" * 400
 FILENAME = "Jim_Markunas_Resume_Acme_TPM_V9.docx"
+GDRIVE = b'{"client_id": "cid", "client_secret": "csecret", "refresh_token": "rtoken"}'
 
 
 def rt(text):
@@ -56,17 +58,20 @@ class Page:
         if path.replace("-", "") == f"/pages/{PID.replace('-', '')}":
             assert method == "PATCH" and set(body["properties"]) == {"Resume"}, body                  # the build writes no other property
             if not self.lose_column:
-                self.props["Resume"] = {"type": "files", "files": [{"name": f["name"], "type": "file"} for f in body["properties"]["Resume"]["files"]]}
+                self.props["Resume"] = {"type": "files", "files": [{"name": f["name"], "type": "file"} if f["type"] == "file_upload" else dict(f)
+                                                                   for f in body["properties"]["Resume"]["files"]]}
             return {}
         assert method == "PATCH" and path.replace("-", "") == f"/blocks/{PID.replace('-', '')}/children", (method, path)
         for child in body["children"]:
-            self.appended.append({"type": "file", "file": {"type": "file", "name": child["file"]["name"], "caption": child["file"]["caption"]}})
+            kept = {"external": child["file"]["external"]} if child["file"]["type"] == "external" else {}
+            self.appended.append({"type": "file", "file": {"type": child["file"]["type"].replace("file_upload", "file"), "name": child["file"]["name"],
+                                                           "caption": child["file"]["caption"], **kept}})
         return {"results": body["children"]}
 
 
 class Run:
-    def __init__(self, page=None, reply=None):
-        self.page, self.asked, self.uploads = page or Page(), [], []
+    def __init__(self, page=None, reply=None, drive=None):
+        self.page, self.asked, self.uploads, self.drive = page or Page(), [], [], drive
         self.reply = reply if reply is not None else {"status": "OK", "filename": FILENAME, "docx": base64.b64encode(DOCX).decode()}
 
     def worker(self, payload):
@@ -79,7 +84,7 @@ class Run:
 
     def call(self, method, query=None, form=None):
         req = {"method": method, "path": "/resume", "query": query or {}, "headers": {}, "body": b"", "form": form or {}}
-        secrets = {"link": SECRET, "config": {"ledger": LEDGER}}
+        secrets = {"link": SECRET, "config": {"ledger": LEDGER}, **({"gdrive": GDRIVE} if self.drive is not None and method == "POST" else {})}
         if method == "GET":
             secrets["reader"] = close_gate.ReadOnly(self.page)
         else:
@@ -89,7 +94,8 @@ class Run:
             assert method != "GET", "GET must not build a writing client"
             return self.page
         with mock.patch.object(resume_app, "_now", lambda: NOW), mock.patch.object(close_app, "_now", lambda: NOW), mock.patch.object(resume_app, "Client", factory), \
-                mock.patch.object(resume_app, "ask_worker", self.worker), mock.patch.object(resume_app.notion_files, "upload", self.upload):
+                mock.patch.object(resume_app, "ask_worker", self.worker), mock.patch.object(resume_app.notion_files, "upload", self.upload), \
+                mock.patch.object(gdrive, "Drive", lambda raw: self.drive.bind(raw)):
             status, _, body, _ = close_app.handle(req, WHO, secrets)
         return status, body.decode()
 
@@ -181,6 +187,142 @@ class BuildResume(unittest.TestCase):
     def test_the_route_and_its_modules_are_in_the_release(self):
         for module in ("lifeos/sources/resume_app.py", "lifeos/platform/notion_files.py"):
             self.assertIn(module, close_app.CLOSURE)
+
+
+class FakeDrive:
+    """A stand-in for gdrive.Drive: LIFE OS's own files only, as the drive.file scope sees them."""
+    def __init__(self, lose=False, fail=None):
+        self.files, self.folders, self.lose, self.fail, self.raw = {}, [], lose, fail, None
+
+    def bind(self, raw):
+        self.raw = raw
+        return self
+
+    def folder(self):
+        if self.fail:
+            raise gdrive.DriveError(self.fail)
+        self.folders.append("folder-1")
+        return "folder-1"
+
+    def upload(self, folder_id, name, data, mime, tags):
+        fid = f"file-{len(self.files) + 1}"
+        self.files[fid] = {"id": fid, "name": name, "md5Checksum": hashlib.md5(data).hexdigest(), "webViewLink": f"https://drive.google.com/file/d/{fid}/view",
+                           "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags), "trashed": False, "data": data}
+        return dict(self.files[fid])
+
+    def get(self, fid):
+        return {**self.files[fid], "trashed": self.lose}
+
+
+class DriveBuild(unittest.TestCase):
+    def test_with_the_drive_credential_the_docx_goes_to_drive_and_notion_links_it(self):
+        r = Run(drive=FakeDrive())
+        status, body = r.build()
+        self.assertEqual(status, 200, body)
+        self.assertIn("saved in Google Drive (LIFE OS / Résumés)", body)
+        self.assertEqual(r.uploads, [])                                                       # nothing is uploaded to Notion
+        self.assertEqual(r.drive.raw, GDRIVE)
+        stored = r.drive.files["file-1"]
+        self.assertEqual((stored["name"], stored["data"], stored["mimeType"], stored["parents"]), (FILENAME, DOCX, resume_app.DOCX, ["folder-1"]))
+        self.assertEqual(stored["appProperties"], {"lifeos": "resume", "job": PID.replace("-", "")})
+        link = stored["webViewLink"]
+        self.assertEqual(r.page.props["Resume"]["files"], [{"type": "external", "external": {"url": link}, "name": FILENAME}])
+        self.assertEqual((r.page.appended[0]["file"]["external"]["url"], r.page.appended[0]["file"]["name"]), (link, FILENAME))
+        self.assertIn("Google Drive", r.page.appended[0]["file"]["caption"][0]["text"]["content"])
+
+    def test_drive_success_is_shown_only_after_drive_the_page_and_the_column_read_back(self):
+        for page, drive in ((Page(), FakeDrive(lose=True)), (Page(lose_attachments=True), FakeDrive()), (Page(lose_column=True), FakeDrive())):
+            status, body = Run(page, drive=drive).build()
+            self.assertEqual(status, 500)
+            self.assertIn("not read back", body)
+
+    def test_a_drive_failure_is_a_fixed_code_and_nothing_reaches_notion(self):
+        r = Run(drive=FakeDrive(fail="GDRIVE_HTTP_403"))
+        status, body = r.build()
+        self.assertEqual(status, 500)
+        self.assertIn("DEGRADED · GDRIVE_HTTP_403", body)
+        self.assertEqual((r.page.appended, r.page.props["Resume"]["files"], r.uploads), ([], [], []))
+
+    def test_get_never_sees_the_drive_credential(self):
+        r = Run(drive=FakeDrive())
+        r.call("GET", query={"j": PID})
+        self.assertIsNone(r.drive.raw)
+
+
+class DriveClient(unittest.TestCase):
+    class Opener:
+        def __init__(self, *replies):
+            self.replies, self.sent = list(replies), []
+
+        def __call__(self, request, timeout=None):
+            self.sent.append((request.get_method(), request.full_url, dict(request.header_items()), request.data))
+            reply = self.replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+
+            class R:
+                def __enter__(s):
+                    return s
+
+                def __exit__(s, *a):
+                    return False
+
+                def read(s):
+                    return json.dumps(reply).encode()
+            return R()
+
+    def test_the_credential_must_be_complete_and_is_never_echoed(self):
+        for raw in (b"", b"{}", b'{"client_id": "a", "client_secret": "b"}', b'{"client_id": "a", "client_secret": "b", "refresh_token": ""}', b"[1]"):
+            with self.assertRaises(gdrive.DriveError) as caught:
+                gdrive.Drive(raw)
+            self.assertEqual(str(caught.exception), "GDRIVE_CONFIG_INVALID")
+
+    def test_the_folder_is_found_by_its_tag_and_created_once_in_my_drive(self):
+        opener = self.Opener({"access_token": "at"}, {"files": []}, {"id": "folder-9"}, {"files": [{"id": "folder-9"}]})
+        drive = gdrive.Drive(GDRIVE, opener)
+        self.assertEqual(drive.folder(), "folder-9")
+        self.assertEqual(drive.folder(), "folder-9")
+        token, search, made, again = opener.sent
+        self.assertEqual(token[1], gdrive.TOKEN_URL)
+        self.assertNotIn("Authorization", token[2])
+        self.assertIn(b"refresh_token=rtoken", token[3])
+        self.assertIn("appProperties+has", search[1])
+        self.assertEqual(search[2]["Authorization"], "Bearer at")
+        self.assertEqual(json.loads(made[3]), {"name": "Résumés", "mimeType": gdrive.FOLDER_MIME, "appProperties": {"lifeos": "resumes"}})
+        self.assertEqual(again[0], "GET")
+
+    def test_an_upload_is_the_docx_itself_and_its_checksum_must_match(self):
+        good = {"id": "f1", "md5Checksum": hashlib.md5(DOCX).hexdigest(), "webViewLink": "https://drive.google.com/file/d/f1/view"}
+        opener = self.Opener({"access_token": "at"}, good)
+        meta = gdrive.Drive(GDRIVE, opener).upload("folder-9", FILENAME, DOCX, resume_app.DOCX, {"lifeos": "resume"})
+        self.assertEqual(meta["id"], "f1")
+        method, url, headers, body = opener.sent[1]
+        self.assertTrue(url.startswith(gdrive.UPLOAD + "?uploadType=multipart"))
+        self.assertTrue(headers["Content-type"].startswith("multipart/related; boundary=lifeos-"))
+        self.assertIn(DOCX, body)
+        self.assertIn(b'"parents": ["folder-9"]', body)
+        self.assertNotIn(b"google-apps.document", body)                                       # never converted to a Google Doc
+        for wrong in ({**good, "md5Checksum": "0" * 32}, {**good, "webViewLink": "http://x"}):
+            with self.assertRaises(gdrive.DriveError) as caught:
+                gdrive.Drive(GDRIVE, self.Opener({"access_token": "at"}, wrong)).upload("folder-9", FILENAME, DOCX, resume_app.DOCX, {})
+            self.assertEqual(str(caught.exception), "GDRIVE_UPLOAD_UNVERIFIED")
+
+    def test_http_and_network_failures_are_fixed_codes(self):
+        import urllib.error
+        for reply, code in ((urllib.error.HTTPError("u", 403, "no", {}, None), "GDRIVE_HTTP_403"), (OSError("down"), "GDRIVE_NETWORK")):
+            with self.assertRaises(gdrive.DriveError) as caught:
+                gdrive.Drive(GDRIVE, self.Opener(reply)).get("f1")
+            self.assertEqual(str(caught.exception), code)
+        with self.assertRaises(gdrive.DriveError) as caught:
+            gdrive.Drive(GDRIVE, self.Opener({})).get("f1")
+        self.assertEqual(str(caught.exception), "GDRIVE_TOKEN_REFUSED")
+
+    def test_lock_sets_a_read_only_restriction(self):
+        opener = self.Opener({"access_token": "at"}, {"id": "f1", "contentRestrictions": [{"readOnly": True}]})
+        meta = gdrive.Drive(GDRIVE, opener).lock("f1", "Submitted with an application")
+        self.assertTrue(gdrive.locked(meta))
+        self.assertEqual(json.loads(opener.sent[1][3]), {"contentRestrictions": [{"readOnly": True, "reason": "Submitted with an application"}]})
+        self.assertFalse(gdrive.locked({"contentRestrictions": [{"readOnly": False}]}))
 
 
 class Worker(unittest.TestCase):
