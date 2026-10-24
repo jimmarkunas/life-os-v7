@@ -180,6 +180,7 @@ def release_in_ledger(connection):
     return len(free)
 
 
+MAIL_SHARE = 4          # D248 (Jim, Oct 24): one place in four goes first to the strongest jobs that did not come from an employer-board scan (mail, alerts), so a board backfill cannot crowd them out
 FAIR_SHARE = 4          # D186: one slot in four goes to the oldest waiting jobs, whatever they score, so a valid job is never starved by newer, stronger ones
 
 
@@ -190,7 +191,10 @@ def order(rows, n, hour=0):
     The set of jobs eligible to publish is decided by the caller, not here."""
     ranked = sorted(rows, key=lambda r: ({"ADMIT": 0, "REVIEW": 1}.get(r[1], 2), -(r[2] if r[2] is not None else -1), -(r[3] or r[4].date()).toordinal(), r[4], r[0]))
     fair = n // FAIR_SHARE or int(n > 0 and hour % FAIR_SHARE == 0)
-    first = ranked[:n - fair]
+    mail = [r for r in ranked if not str(r[5] if len(r) > 5 else "").startswith("web:")][:n // MAIL_SHARE]    # D248: rows may carry their source (6th)
+    taken = {r[0] for r in mail}
+    first = mail + [r for r in ranked if r[0] not in taken][:max(n - fair - len(mail), 0)]
+    ranked = mail + [r for r in ranked if r[0] not in taken]
     rest = sorted(ranked[len(first):], key=lambda r: (r[4], r[0]))
     return [r[0] for r in first + rest[:n - len(first)]]
 
@@ -199,7 +203,7 @@ def _pick(connection, limit, gated=False, hour=None):
     base = (" FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else ""))
     with connection.cursor() as cursor:
-        cursor.execute("SELECT j.id, f.admission, f.score, j.posted_date, j.first_seen" + base)          # ordering keys only; the long texts are read for the chosen jobs
+        cursor.execute("SELECT j.id, f.admission, f.score, j.posted_date, j.first_seen, j.source" + base)          # ordering keys only; the long texts are read for the chosen jobs
         ids = order([tuple(r) for r in cursor.fetchall()], min(limit, limits.NOTION_PER_RUN), _now().hour if hour is None else hour)
         if not ids:
             return [], set()
