@@ -202,5 +202,18 @@ class SchedulingPending(unittest.TestCase):
             self.assertNotIn(private, json.dumps(counts))
 
 
+class ListingLag(unittest.TestCase):
+    def test_a_new_round_missing_from_its_parents_listing_is_confirmed_by_its_own_id_and_the_replay_writes_nothing(self):
+        """LIFE-108: real Notion can leave a just-created page out of its parent's child listing for a few seconds."""
+        result = progress(REQUEST, [ROW, TWIN])
+        client = opportunity()
+        client.hide_created = True
+        counts = run(client, result)
+        self.assertEqual((counts["writes"], counts["rounds_created"], counts["readback_ok"], counts["why"]), (1, 1, 1, {"round_created": 1}))
+        client.blocks["opp"].append({"id": "created-1", "type": "child_page", "child_page": {"title": "Interview 1"}})   # the listing catches up
+        again = run(client, result)
+        self.assertEqual((again["writes"], len(client.posts)), (0, 1))
+
+
 if __name__ == "__main__":
     unittest.main()
