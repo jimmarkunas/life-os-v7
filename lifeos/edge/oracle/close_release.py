@@ -74,7 +74,11 @@ def stage(commit, dest, fetch=get, importer=None):
 def imports(dest):
     code = (f"import sys; sys.path = [{dest!r}] + [p for p in sys.path if 'packages' not in p and p]; import lifeos.sources.close_app; "
             "from lifeos.edge import close_gate as g; g.ReadOnly(g.notion_client(b'dry-run', {'ledger': '0' * 32}))")   # the real GET client, built in the staged tree
-    if subprocess.run([sys.executable, "-I", "-B", "-c", code], capture_output=True, timeout=30).returncode != 0:
+    probe = [sys.executable, "-I", "-B", "-c", code]
+    if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):     # on the Edge (root, systemd) a commit's code never runs as root: a throwaway, read-only, offline user imports it
+        probe = ["systemd-run", "--quiet", "--pipe", "--wait", "--collect", "-p", "DynamicUser=yes", "-p", "ProtectSystem=strict", "-p", "ProtectHome=yes",
+                 "-p", "PrivateNetwork=yes", "-p", "PrivateTmp=yes", "-p", "NoNewPrivileges=yes", "-p", "CapabilityBoundingSet=", "-p", "RuntimeMaxSec=30"] + probe
+    if subprocess.run(probe, capture_output=True, timeout=45).returncode != 0:
         raise Refused("CLOSURE_INCOMPLETE")
 
 
@@ -100,8 +104,9 @@ def latest(fetch=get):
     if not SHA.match(commit):
         raise Refused("NOT_A_COMMIT")
     runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/{commit}/check-runs?check_name=unit-tests")).get("check_runs") or []
-    if not any(r.get("name") == "unit-tests" and r.get("status") == "completed" and r.get("conclusion") == "success" and r.get("head_sha") == commit
-               and (r.get("app") or {}).get("slug") == "github-actions" for r in runs):
+    mine = [r for r in runs if r.get("name") == "unit-tests" and r.get("head_sha") == commit and (r.get("app") or {}).get("slug") == "github-actions"]
+    newest = max(mine, key=lambda r: (str(r.get("started_at") or ""), r.get("id") or 0), default={})       # a later re-run that failed wins over an earlier pass
+    if not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):
         raise Refused("NOT_GREEN")
     return commit
 

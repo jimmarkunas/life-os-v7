@@ -137,6 +137,26 @@ class AutoRelease(unittest.TestCase):
                 rel.latest(self.fetch(runs=runs))
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
+        early = {**G, "started_at": "2026-10-24T09:00:00Z", "id": 1}
+        rerun = {**G, "started_at": "2026-10-24T09:10:00Z", "id": 2, "conclusion": "failure"}
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(runs=(early, rerun)))                        # the newest run decides: a failed re-run beats an earlier pass
+        self.assertEqual(rel.latest(self.fetch(runs=({**early, "conclusion": "failure"}, {**rerun, "conclusion": "success"}))), C)
+
+    def test_the_import_probe_never_runs_a_commit_as_root(self):
+        from unittest import mock
+        seen = []
+        class Done:
+            returncode = 0
+        with mock.patch.object(rel.os, "geteuid", return_value=0), mock.patch.object(rel.os.path, "isdir", lambda p: p == "/run/systemd/system"), \
+                mock.patch.object(rel.subprocess, "run", lambda cmd, **kw: seen.append(cmd) or Done()):
+            rel.imports("/tmp/x")
+        self.assertEqual(seen[0][:2], ["systemd-run", "--quiet"])
+        self.assertIn("DynamicUser=yes", seen[0])
+        self.assertIn("PrivateNetwork=yes", seen[0])
+        with mock.patch.object(rel.os, "geteuid", return_value=1000), mock.patch.object(rel.subprocess, "run", lambda cmd, **kw: seen.append(cmd) or Done()):
+            rel.imports("/tmp/x")
+        self.assertEqual(seen[1][0], rel.sys.executable)
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
         a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
@@ -154,12 +174,15 @@ class AutoRelease(unittest.TestCase):
 
     def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):
         script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
-        auto = script.split("  auto)", 1)[1].split(";;", 1)[0]
+        auto = script.split("  auto)", 1)[1].split("  auto-units)", 1)[0]
         self.assertIn('"$0" install "$commit"', auto)
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
         self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
         self.assertNotIn("rollback", auto)
         self.assertIn('auto.failed', auto)                                     # a commit that failed verify is never retried
+        self.assertEqual(auto.count('> "$ETC/auto.failed"'), 2)                 # only a commit refusal or a live failure, never a pre-switch error
+        self.assertIn("RESTORE VERIFY FAILED", auto)
+        self.assertIn("the first install is Jim's by hand", auto)
         self.assertIn("flock -n 9", auto)
         self.assertIn("trap", auto)
         units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]

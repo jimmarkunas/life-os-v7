@@ -116,19 +116,25 @@ case "${1:-}" in
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
     [ "$(cat "$ETC/auto.failed" 2>/dev/null)" = "$commit" ] && exit 0                     # failed verify once: never retried; the next green commit is
     cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
+    [ -n "$cur" ] || { say "auto: no live tree; the first install is Jim's by hand"; exit 0; }
     if [ "$cur" != "$OPT/${commit:0:12}" ]; then
       rm -rf "$probe"
-      python3 -I "$REL" stage "$commit" "$probe" || { say "auto: ${commit:0:12} refused; nothing changed"; exit 1; }
-      if [ -z "$cur" ] || ! python3 -I "$REL" same "$probe" "$cur"; then                  # the commit changes the Close closure
+      if ! why="$(python3 -I "$REL" stage "$commit" "$probe" 2>&1)"; then
+        say "auto: ${commit:0:12} refused; nothing changed"
+        case "$why" in *"REFUSED: "[A-Z]*) echo "$commit" > "$ETC/auto.failed" ;; esac       # a refusal of the commit itself recurs: never downloaded again (a network error is retried)
+        exit 1
+      fi
+      if ! python3 -I "$REL" same "$probe" "$cur"; then                                   # the commit changes the Close closure
         if LIFEOS_CLOSE_LOCKED=1 "$0" install "$commit"; then
           say "auto: released ${commit:0:12}"
         else
-          if [ -n "$cur" ] && [ "$(readlink "$OPT/current")" != "$cur" ]; then              # verify failed after the switch: back to exactly the live tree, and its own previous tree
+          if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                # verify failed after the switch: back to exactly the live tree, and its own previous tree
             ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
             if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; fi
-            "$0" verify && say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"
+            echo "$commit" > "$ETC/auto.failed"                                              # it went live and failed: never retried
+            if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
           fi
-          echo "$commit" > "$ETC/auto.failed"; exit 1
+          exit 1                                                                             # failed before the switch (network, Serve, credentials): nothing went live, retried next tick
         fi
       fi
     fi
@@ -159,6 +165,7 @@ WantedBy=timers.target
 EOF
     systemctl daemon-reload; systemctl enable --now lifeos-close-release.timer >/dev/null; say "auto-release timer enabled (every 15 minutes; journalctl -u lifeos-close-release)" ;;
   rollback)
+    install -d -m 755 "$OPT"; exec 9>"$OPT/.lock"; flock -w 120 9 || { say "STOP: a release is running"; exit 1; }
     [ -L "$OPT/previous" ] || { say "FAIL: no previous tree"; exit 1; }
     python3 -I "$REL" check "$(readlink "$OPT/previous")" || { say "FAIL: previous tree differs from its manifest; not activated"; exit 1; }
     ln -sfn "$(readlink "$OPT/previous")" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"; "$0" verify ;;
