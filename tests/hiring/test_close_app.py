@@ -439,7 +439,7 @@ class Refresh(unittest.TestCase):
         self.assertEqual(text.count("inputs.refresh == 'hiring'"), 2)                             # the group and the hiring job's `if`, nothing else
         self.assertEqual(text.count("if: ${{ inputs.refresh != 'recruiters' }}"), 4)              # recruiters refresh: mail stage, outcome scan, Interview OS and job-page outreach skipped
         self.assertIn("inputs.recruiters || inputs.refresh == 'recruiters' }}", text)               # the Recruiters job runs, so its Recruiter Outreach step does
-        self.assertIn("RECRUITERS_STAGE_OUTCOME: ${{ inputs.refresh == 'recruiters' && 'success' || steps.recruiters.outcome }}", text)
+        self.assertIn("RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}", text)              # 'skipped' on a refresh: the card redraws and says Redrawn
         self.assertEqual(close_gate.REFRESH["hiring"], {"refresh": "hiring", "live": "true"})          # the name the app appends is the gate's, and its input is this workflow's
 
 
