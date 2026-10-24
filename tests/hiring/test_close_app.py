@@ -404,7 +404,7 @@ class Contract(unittest.TestCase):
 
     def test_the_budget_and_the_files(self):
         lines = sum(1 for p in ("lifeos/sources/close_app.py", "lifeos/hiring/close_screen.py") for line in (ROOT / p).read_text().splitlines() if line.strip())
-        self.assertLessEqual(lines, 260)
+        self.assertLessEqual(lines, 330)                               # E05 Mark Complete lives here too (Jim, Oct 23: the 300-line cap is suspended for the Jobs/Interview OS delivery)
 
 
 if __name__ == "__main__":

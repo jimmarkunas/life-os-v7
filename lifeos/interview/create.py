@@ -3,6 +3,7 @@ UI 3c opportunity page's machine region is reconciled from its view when the sou
 import hashlib
 import json
 import re
+from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from lifeos.platform.names import core, norm, split_title
@@ -65,7 +66,7 @@ def adopt(client, environ, parent, parent_query, query, live, context, out):
     kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
     if not kids.complete:
         return "child_scan_incomplete"
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
+    current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, adopted=today(), tail=2)[0]
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -129,6 +130,28 @@ def rendered(current, adopted=None, tail=0):
 
 
 RENDER = re.compile(r"v7-render:1;job=(.+);source=([0-9a-f]{16});page=([0-9a-f]{16}|pending)")
+ORIGIN = re.compile(r"https://[A-Za-z0-9.-]+(:\d{1,5})?/?")
+
+
+def _view(client, environ, *args, **kwargs):
+    """The page's view with the private Close origin, only when it is a bare https origin (E05)."""
+    base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
+    return replace(views.opportunity(client, *args, **kwargs), close_base=base.rstrip("/") if ORIGIN.fullmatch(base) else None)
+
+
+def done_lines(lines):
+    """E05: the completions recorded in a fold, oldest first, one per action key; the newest DONE_MAX are kept."""
+    found = {}
+    for block in lines:
+        m = notion.DONE_LINE.fullmatch(notion.text(block)) if block.get("type") == "paragraph" else None
+        if m and m.group(1) not in found:
+            found[m.group(1)] = m.group(2)
+    return tuple(found.items())[-notion.DONE_MAX:]
+
+
+def _undone(nodes):
+    """The region's nodes without completion lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
+    return [{**n, "children": _undone(n.get("children", []))} for n in nodes if not notion.DONE_LINE.fullmatch(n.get("text", ""))]
 
 
 def machine_region(client, page_id, context=None):
@@ -175,7 +198,7 @@ def finalize(client, page_id, current, sections, before=None):
     if _fields(nodes) != _fields(want):                                  # every written value too: text, links by target, table cells
         return "readback_content_mismatch"
     job, source, _ = RENDER.fullmatch(notion.text(renders[0])).groups()
-    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(nodes))))
+    notion.set_text(client, renders[0]["id"], "paragraph", rich_text(render_line(job, source, notion.tree_digest(_undone(nodes)))))
     if before is not None and (notion.human_tail(client, page_id) != before[0] or _pages(tops) != before[1]):
         return "readback_protected_changed"
     return "readback_ok"
@@ -192,6 +215,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         prefold = machine is not None
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
+    current = replace(current, done=done_lines(lines), page_id=page_id)   # E05: completions recorded on the Close screen are carried into the rewrite
     sections, source = rendered(current)
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     if found:
@@ -199,7 +223,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         if len(found) != 1 or job != (current.stable_job_key or "none"):
             return "identity_mismatch"
         skip = {b["id"] for b in lines if RENDER.fullmatch(notion.text(b))}
-        if page != notion.tree_digest(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)):
+        if page != notion.tree_digest(_undone(notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip))):
             return "machine_region_edited"
         if previous == source:
             return "parent_unchanged"
@@ -309,7 +333,7 @@ def upgrade(client, environ, parent, parent_query, query, live, context, out, bl
     kids = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
     if not kids.complete:
         return "child_scan_incomplete"
-    current = views.opportunity(client, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
+    current = _view(client, environ, parent_query, query, environ["HIRING_PIPELINE_PAGE_ID"].strip(), kids, today())
     sections = rendered(current, tail=2)[0][1:]                        # the page keeps its own marker; no second fold
     try:
         notion.write_tree(client, parent.page_id, sections, after=blocks[0]["id"])
@@ -488,7 +512,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             if insertion is None:
                 return finish("active_target_incomplete")
             kind, code = "opportunity", "parent_create_allowed"
-            current = views.opportunity(client, parent_query, query, pipeline, today=today())
+            current = _view(client, environ, parent_query, query, pipeline, today=today())
             blocks = rendered(current, tail=None)[0]
         else:
             if any(notion.same_notion_id(parent.page_id, key) for key in deferred):
@@ -517,7 +541,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)
-            current = views.opportunity(client, parent_query, query, pipeline, children, today())
+            current = _view(client, environ, parent_query, query, pipeline, children, today())
             held = [c for c in children.items if notion.same_notion_id(c.page_id, child.page_id or "") and c.identity_valid is True]
             if code == "child_match" and query.explicit_child_page_id and query.interview_date and query.calendar_ref and held:
                 deferred.add(parent.page_id)                            # one write per opportunity per run (E07: the round moves in place)
