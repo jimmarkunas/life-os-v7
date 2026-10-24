@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lifeos.hiring import card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
+from lifeos.hiring import auto_close, card, compile as C, decision, models as M, outcomes as outcome_mail, render, snapshot
 from lifeos.jobs import hiring_pipeline, ledger
 from lifeos.platform import db
 from lifeos.platform.gcal import GoogleCalendar
@@ -53,6 +53,10 @@ def read_applied(client, stats=None):
 
 def _pipeline_client(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_INTERVIEW_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
+
+
+def _day(value):
+    return render.local(value).strftime("%b %-d")
 
 
 def decide(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
@@ -173,15 +177,17 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
     now = (now or datetime.now(TZ)).astimezone(TZ)
     ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
     ledger_stats = {}
+    ledger_client = ledger_client or Client(environ)
     try:
-        applied = read_applied(ledger_client or Client(environ), ledger_stats)
+        applied = read_applied(ledger_client, ledger_stats)
     except Exception:
         ok["ledger"] = False
     root = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     try:
         if not root:
             raise NotionError("HIRING_PAGES_UNREADABLE")
-        parents = read_parents(pipeline_client or _pipeline_client(environ), root)
+        pipeline_client = pipeline_client or _pipeline_client(environ)
+        parents = read_parents(pipeline_client, root)
     except Exception:
         ok["parents"] = False
     try:
@@ -203,13 +209,25 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         result = C.compile_rows(applied, parents, events, prior, ok, now, outcomes=heard, contacts=contacts)
         if outcome_reason:                                            # DEGRADED, with the last accepted outcomes (none when the store cannot be read) and rows kept
             result["reasons"] = sorted({*result["reasons"], outcome_reason})
+        auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
+        if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
+            auto = auto_close.run(result["rows"], applied, parents, environ, live, now, ledger_client, pipeline_client, root, lambda: read_parents(pipeline_client, root), _day)
+            gone = {e["key"] for e in auto["closed"]}
+            result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
+        recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
         text, cells, counts = render.render(result, prior, now, ((environ.get("V7_CLOSE_BASE_URL") or "").strip(), close_ids(result["rows"], applied, parents)))
+        if cells is not None:
+            extra = auto_close.cells(recent, _day)[:max(0, render.MAX_ROWS - len(cells))]     # shown for 24 hours as closed, then dropped; inside the table's row cap
+            cells, counts["rows"] = cells + extra, counts["rows"] + len(extra)
+        counts["auto_close"] = {"due": auto["due"], "closed": len(auto["closed"]), "refused": auto["refused"], "switch": auto["switch"], "shown": len(recent)}
         counts.update({"applied": len(applied), "opportunities": sum(1 for p in parents if not p.get("retired")), "mail_outcomes": len(heard), "retired_pages": sum(1 for p in parents if p.get("retired")), "closed": result["closed"], "events": len(events), "unsupported": result["unsupported"],
                        "unmatched_events": result["unmatched_events"], "untitled_pages": result["untitled_pages"], "ledger": ledger_stats, "saved": 0, "blocks_written": 0, "sources": dict(ok)})
         if target:                                                # D194: is the requested pursuit still in the table this run renders? (company and role never leave this function)
             shown = {c[0][0] for c in (cells or [])}                                   # the first cell is "Company — Role"
             counts["target_listed"] = None if cells is None else any(M.label(r["company"], r["role"]) in shown for r in result["rows"] or [] if M.same(r["company"], r["role"], *target))
         new = snapshot.build(result, prior, now)
+        if new is not None:
+            new["auto_closed"] = recent
         if live and new is not None:
             snapshot.save(conn, new)                              # saved with authoritative read-back; a failed save raises before the presentation is touched
             counts["saved"] = 1
