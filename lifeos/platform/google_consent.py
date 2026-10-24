@@ -2,7 +2,7 @@
 creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
 must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
 never to stdout. It runs on Jim's Mac, where the browser is (an SSH -L tunnel to the Edge proved fragile, Oct 24), and pipes over ssh; the client is
-the existing LIFE OS Gmail Web client (docs/SETUP.md, "Google Drive résumés"). Standalone (stdlib only):
+the existing LIFE OS Gmail Web client (docs/DRIVE_RESUMES.md). Standalone (stdlib only):
   python3 google_consent.py --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-close/bin/install-close.sh credential gdrive"
 """
 import base64
