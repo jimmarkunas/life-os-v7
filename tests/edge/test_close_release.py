@@ -118,3 +118,71 @@ class IsolatedTree(unittest.TestCase):
                     open(os.path.join(d, p), "wb").write(data)
             with self.assertRaises(rel.Refused):
                 rel.imports(d)
+
+
+class AutoRelease(unittest.TestCase):
+    """Jim, Oct 24: the Edge releases main's head by itself, only once main's own hourly run tested that commit, and only when the Close closure changed."""
+    RUN = {"head_sha": C, "head_branch": "main", "path": ".github/workflows/hourly.yml", "status": "completed", "id": 1, "run_attempt": 1}
+
+    def fetch(self, sha=C, runs=(RUN,), steps=None):
+        steps = steps or {1: "success"}
+        urls = {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
+                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/hourly.yml/runs?branch=main&head_sha={sha}&per_page=20": json.dumps({"workflow_runs": list(runs)}).encode()}
+        for run_id, conclusion in steps.items():
+            urls[f"https://api.github.com/repos/{rel.REPO}/actions/runs/{run_id}/jobs?per_page=100"] = json.dumps(
+                {"jobs": [{"name": "prep", "steps": [{"name": "Unit tests", "conclusion": conclusion}]}]}).encode()
+        return urls.__getitem__
+
+    def test_only_main_own_tested_head_releases(self):
+        R = self.RUN
+        self.assertEqual(rel.latest(self.fetch()), C)
+        refused = [dict(runs=()), dict(steps={1: "failure"}), dict(steps={1: "skipped"}), dict(runs=({**R, "status": "in_progress"},)),
+                   dict(runs=({**R, "head_branch": "feature"},)), dict(runs=({**R, "head_sha": "b" * 40},)), dict(runs=({**R, "path": ".github/workflows/other.yml"},)),
+                   dict(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "failure"}), dict(runs=(R, {**R, "id": 2, "status": "queued"}))]
+        for kw in refused:
+            with self.assertRaises(rel.Refused, msg=str(kw)):
+                rel.latest(self.fetch(**kw))
+        self.assertEqual(rel.latest(self.fetch(runs=(R, {**R, "id": 2}), steps={1: "success", 2: "skipped"})), C)    # a skipped tick tests nothing: the older test stands
+        with self.assertRaises(rel.Refused):
+            rel.latest(self.fetch(sha="main"))
+
+    def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
+        a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
+        rel.stage(C, a, github(), importer=lambda p: None)
+        rel.stage(C, b, github(), importer=lambda p: None)
+        with open(os.path.join(b, "MANIFEST")) as f:
+            body = f.read().splitlines()[1:]
+        with open(os.path.join(b, "MANIFEST"), "w") as f:
+            f.write("commit " + "b" * 40 + "\n" + "".join(line + "\n" for line in body))
+        self.assertTrue(rel.same(a, b))                                        # another commit, the same files
+        changed = {**FILES, "lifeos/hiring/close.py": b"# changed\n"}
+        c = os.path.join(tempfile.mkdtemp(), "c")
+        rel.stage(C, c, github(changed), importer=lambda p: None)
+        self.assertFalse(rel.same(a, c))
+
+    def test_the_auto_step_restores_the_live_tree_and_never_updates_the_updater(self):
+        script = open(os.path.join(ROOT, "lifeos/edge/oracle/install-close.sh")).read()
+        auto = script.split("  auto)", 1)[1].split("  auto-units)", 1)[0]
+        self.assertIn('LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"', auto)
+        self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
+        self.assertIn('ln -sfn "$prev"', auto)                                  # and its own previous tree is kept
+        self.assertNotIn('"$0" rollback', auto)                               # restores exactly, never through rollback's older target
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # a stage or an install counts (before the switch); at most three per commit
+        self.assertIn("case \"$n\" in ''|*[!0-9]*|???*) n=0", auto)               # a malformed or huge count is never fatal
+        self.assertLess(auto.index("auto.pending\"; then"), auto.index("latest"))  # a cut-off release is settled first, whatever main's head is now
+        self.assertIn("RESTORE VERIFY FAILED", auto)
+        self.assertIn("the first install is Jim's by hand", auto)
+        self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
+        self.assertIn("flock -n 9", auto)
+        self.assertIn("trap", auto)
+        install = script.split("  install)", 1)[1].split("  auto)", 1)[0]
+        self.assertNotIn("export", install)                                     # Jim's own install is never mistaken for an automatic one
+        self.assertIn('"${LIFEOS_CLOSE_AUTO:-}" != 1 ] || [ "$st" = ours ]', install)
+        self.assertIn('remember "$OPT/current"', script.split("  rollback)", 1)[1])   # rolled-back code was live: never brought back
+        self.assertIn('"$0" verify && remember "$dest"', install)               # every install (auto or Jim's) remembers what went live
+        self.assertIn('if seen "$probe"; then', auto)
+        uninstall = script.split("  uninstall)", 1)[1]
+        self.assertIn("disable --now lifeos-close-release.timer", uninstall)
+        self.assertIn("flock -w 120 9", uninstall.split(";;", 1)[0])           # waits out a running release
+        units = script.split("  auto-units)", 1)[1].split(";;", 1)[0]
+        self.assertIn('ExecStart=$OPT/bin/install-close.sh auto', units)        # the timer runs Jim's installed copy, not a file main can change
