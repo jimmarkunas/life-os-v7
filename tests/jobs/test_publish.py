@@ -130,6 +130,9 @@ class SameOpeningTests(unittest.TestCase):
                                      ("San Francisco", "https://x.wd1.myworkdayjobs.com/a/job/San-Francisco-CA/PM_R1", "")):
             self.assertFalse(identity.same_place(location, url, other), location)
         self.assertTrue(identity.same_place("New York, NY", "https://x.wd1.myworkdayjobs.com/a/job/New-York-NY/PM_R1"))
+        for city, other in (("San Francisco, CA", "South San Francisco, CA"), ("Las Vegas, NV", "North Las Vegas, NV"), ("Portland, ME", "South Portland, ME")):
+            self.assertFalse(identity.same_place(city, "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", other), other)      # a neighbouring city is another place
+        self.assertTrue(identity.same_place("San Francisco, CA", "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", "Remote; San Francisco, CA"))
 
     def test_an_aggregator_link_at_the_ats_vacancys_place_is_that_opening(self):        # LIFE-64: Clarus, Oct 24
         ats = self.published("Clarus Technology", "Project Manager - Advanced",
