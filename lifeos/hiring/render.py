@@ -47,7 +47,7 @@ RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actio
 def next_step(row, now):
     """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented."""
     outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
-    if row.get("stage") == M.LEAD and not outcome:                   # E01b: recruiter outreach is the first warning; there is no deadline to invent
+    if row.get("stage") == M.LEAD and not outcome and not row.get("replied"):     # E01b: recruiter outreach is the first warning; there is no deadline to invent
         return RED, "Recruiter outreach · reply, or close it", ""
     if outcome:                                                      # D190: outcome mail is a source-backed action to confirm, never a stage or a deadline; its received date is the evidence
         sure, day = outcome.get("match") == "role", local(outcome["received"]).strftime("%b %-d")
@@ -55,7 +55,9 @@ def next_step(row, now):
             return RED, f"{'Offer' if sure else 'Possible offer'} email received {day} · review and respond", ""
         where = "confirm, then move the Notes page to Retired" if row.get("parent_state") == "one" and row.get("parent") else "confirm (Applied stays as history)"
         return RED, f"{'Rejection' if sure else 'Possible rejection'} email received {day} · {where}", ""
-    if row.get("event_start"):
+    if row.get("stage") == M.LEAD and not outcome:                   # E05: Jim replied (marked done on the page): the reply day starts the follow-up clock
+        start, waiting, quiet = row["replied"], f"Replied {local(row['replied'] + 'T12:00:00').strftime('%b %-d')} · awaiting the recruiter", "reply"
+    elif row.get("event_start"):
         past, label = when(row["event_start"], now)
         if not past:
             return (YELLOW if row.get("carried") else GREEN), f"Prepare for the {kind} · {label}", local(row["event_start"]).date().isoformat()

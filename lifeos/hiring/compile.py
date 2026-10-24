@@ -87,7 +87,7 @@ def _opportunities(applied, parents, reasons, out):
         near = [o for o in opps if M.same(o["company"], o["role"], parent["company"], parent["role"])]
         if not near:
             if parent["company"] and parent["role"]:
-                opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": [], "lead": parent.get("lead", False)})
+                opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": [], "lead": parent.get("lead", False), "replied": parent.get("replied", "")})
             else:
                 out["untitled_pages"] += 1                            # a page whose title is not "Company — Role" has no identity to match: counted, ignored, never a degraded state
         elif len(near) > 1 or near[0]["parent_state"] != "none":
@@ -159,6 +159,8 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
             row["stage"] = M.SUBMITTED
         elif opp.get("lead") and opp["parent_state"] == "one":
             row["stage"] = M.LEAD                                 # E01b: a V7 recruiter-lead page (a minted recruiter key) with no application, round or event
+            if opp.get("replied"):
+                row["replied"] = opp["replied"]                   # E05: Jim marked the reply done on the page
         hit = (outcomes or {}).get(key)
         if hit and row["stage"] is not None:                      # D190: outcome mail seen after this row's last evidence is shown as a line to confirm, never as a stage change
             last = row["event_start"] or row["applied_on"]

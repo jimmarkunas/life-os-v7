@@ -27,6 +27,7 @@ class Opportunity:
     company: str = ""
     role: str = ""
     lead: bool = False            # E01b: a round-less page whose machine render line names a minted recruiter key
+    replied: str = ""             # E05: the day Jim marked the lead's reply action done on the page ("I replied — mark it done"), else ""
 
 
 @dataclass
@@ -39,6 +40,14 @@ class Handoff:
 
 
 LEAD_LINE = re.compile(r"v7-render:1;job=recruiter-")
+LEAD_ACTION = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=Reply to the recruiter's message, or close this lead.*")   # lifeos.interview.template's line formats (contract-tested)
+DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
+
+
+def replied_on(lines):
+    """The latest day the lead's reply action was marked done, else "": a done line counts only for that action's own key."""
+    keys = {m.group(1) for m in map(LEAD_ACTION.fullmatch, lines) if m}
+    return max((m.group(2) for m in map(DONE_LINE.fullmatch, lines) if m and m.group(1) in keys), default="")
 
 
 def _title_of(block):
@@ -92,7 +101,8 @@ def read(client, root_id, rounds=True):
                         opp.rounds = sum(1 for c in kids if c.get("type") == "child_page")
                         if not opp.rounds and kids and kids[0].get("type") == "toggle" and kids[0].get("has_children"):
                             try:
-                                opp.lead = any(LEAD_LINE.match(_title_of(c)) for c in _children(client, kids[0]["id"], budget))
+                                lines = [_title_of(c) for c in _children(client, kids[0]["id"], budget)]
+                                opp.lead, opp.replied = any(LEAD_LINE.match(t) for t in lines), replied_on(lines)
                             except NotionError:
                                 pass                                         # best effort: an unread fold is simply not a lead, as before
                     found.append(opp)

@@ -123,6 +123,14 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual(render.next_step(got["rows"][0], NOW)[1], "Recruiter outreach · reply, or close it")
         self.assertEqual(render.row_cells(got["rows"][0], NOW, "https://close.example.test/?o=x")[3][-1], ("Close ↗", "https://close.example.test/?o=x"))
 
+    def test_a_lead_jim_marked_replied_waits_on_the_recruiter_from_the_reply_day(self):
+        got = compile_([], [dict(parent("p1", "Acme", "Program Manager"), lead=True, replied="2026-10-05")])
+        self.assertEqual((got["rows"][0]["stage"], got["rows"][0]["replied"]), ("Recruiter lead", "2026-10-05"))
+        due = (datetime(2026, 10, 5) + timedelta(days=M.AWAIT_DAYS)).strftime("%b %-d")
+        self.assertEqual(render.next_step(got["rows"][0], NOW)[:2], ("🟡", f"Replied Oct 5 · awaiting the recruiter · follow up {due}"))
+        later = NOW + timedelta(days=M.AWAIT_DAYS + 1)
+        self.assertTrue(render.next_step(got["rows"][0], later)[1].startswith(f"Stale · no reply in {M.AWAIT_DAYS + 2} days"))
+
     def test_a_lead_that_becomes_an_application_or_gets_a_round_is_no_longer_a_lead(self):
         applied_lead = compile_([applied("Acme", "Program Manager")], [dict(parent("p1", "Acme", "Program Manager"), lead=True)])
         self.assertEqual(applied_lead["rows"][0]["stage"], "Submitted")
