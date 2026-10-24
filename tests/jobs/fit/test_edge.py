@@ -313,7 +313,7 @@ class Dormant(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["LIFEOS_BWS_RUNTIME_TOKEN"])
         self.assertIn("inputs.confirm == 'SYNTHETIC'", text)
         importers = [str(p.relative_to(self.ROOT)) for p in (self.ROOT / "lifeos").rglob("*.py") if p.name != "edge.py" and ("fit.edge" in p.read_text() or "fit import edge" in p.read_text())]
-        self.assertEqual(sorted(importers), ["lifeos/jobs/fit/backlog.py", "lifeos/jobs/fit/capacity_card.py", "lifeos/jobs/fit/cloud.py", "lifeos/run.py"])   # the stage table, the D214 shadow (off unless V7_CLOUD_FIT is set), and the D228 card and the backlog batch's count report (only the no-model limits request)
+        self.assertEqual(sorted(importers), ["lifeos/jobs/fit/backlog.py", "lifeos/jobs/fit/capacity_card.py", "lifeos/jobs/fit/cloud.py", "lifeos/run.py", "lifeos/sources/oracle_card.py"])   # the stage table, the Oracle Cloud card (Oct 24: its Codex lines are the AI Capacity `limits` reading; read-only, no model run), the D214 shadow (off unless V7_CLOUD_FIT is set), and the D228 card and the backlog batch's count report (only the no-model limits request)
         workflows = [p.name for p in (self.ROOT / ".github/workflows").glob("*.y*ml") if "V7_CLOUD_FIT" in p.read_text()]
         self.assertEqual(workflows, ["hourly.yml"])                                                        # D214: only the tick reads the switch, from the repository variable
         hourly = (self.ROOT / ".github/workflows/hourly.yml").read_text()

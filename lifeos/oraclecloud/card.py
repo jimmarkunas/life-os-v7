@@ -1,9 +1,10 @@
-"""The Daily Report's Oracle Cloud callout, once a day (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA card where Jim moved it).
+"""The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under the JIRA card where Jim moved it; Oct 24 2026: refreshed every tick so its Codex lines match the AI Capacity card).
 
 hourly tick -> domains.yml `imessage` job (already on the tailnet as tag:v7-runner) -> Oracle's private endpoint, request `oracle1` -> this stage -> Notion.
 Oracle answers numbers only (lifeos/oraclecloud/oracle/stats.mjs): month-to-date cost from OCI billing, CPU from OCI Monitoring, the Always Free A1 core
-headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk, service health and the ChatGPT plan windows. Each tick reads only the heading:
-the card is due once per Chicago day, from 6 AM, and again on the next tick while the last write was DEGRADED. ORACLE_CARD_FORCE=true (a manual run) writes now.
+headroom from OCI Limits, Oracle's idle-reclaim rule, local memory and disk and service health. The two Codex windows are not Oracle's own plan read: the stage
+lifeos.sources.oracle_card passes in the same `limits` reading the AI Capacity card shows (`plan`, left = 100 - used), so the two cards cannot disagree. Every tick
+writes the card; a Codex reading that cannot be had is shown as unavailable and marks the card DEGRADED, as AI Capacity does.
 
 Live, it changes exactly two blocks of the callout Jim made: the heading's stamp (`Oracle Cloud (Updated Oct 15 · 7:05 AM CT)`, with `DEGRADED · ` in front
 when any reading is missing) and the one paragraph under it (one line per reading, text bars for memory, disk and the ChatGPT plan). Both are read back and
@@ -26,7 +27,6 @@ SCHEMA = "lifeos.oracle.stats.v1"
 MAX_REPLY = 4096
 WAIT = 100                                                             # seconds: the endpoint itself stops at 90
 REPLY_TTL_SECONDS = 600
-DUE_HOUR = 6                                                           # Chicago time: the day's card is written on the first tick from 6 AM
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
@@ -138,16 +138,6 @@ def items_of(segments):
     return out
 
 
-def due(heading_text, now, force=False):
-    """Once per Chicago day from DUE_HOUR; again while the day's card is DEGRADED."""
-    if force:
-        return True
-    ct = now.astimezone(TZ)
-    if ct.hour < DUE_HOUR:
-        return False
-    return not (f"Updated {ct.strftime('%b')} {ct.day} · " in heading_text and "DEGRADED" not in heading_text)
-
-
 def _children(client, block_id):
     return report_region.children(client, block_id, _fail)
 
@@ -202,7 +192,7 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
+def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
     if not host or not anchor:
@@ -211,8 +201,6 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
     now = now or datetime.now(timezone.utc)
     client = client or _writer(environ)
     heading, paragraph = locate(client, anchor, (environ.get("JIRA_CARD_BLOCK_ID") or "").strip())
-    if not due(report_region.plain(heading), now, (environ.get("ORACLE_CARD_FORCE") or "").strip() == "true"):
-        return {"due": False, "written": 0}
     try:
         raw = fetcher(host)
     except OSError:
@@ -222,8 +210,10 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None):
     except OracleCardError as e:                                  # a source we cannot trust is shown as unavailable, with this run's time
         print("oracle-card: source refused", json.dumps({"code": str(e)}))
         readings = UNAVAILABLE
+    if plan is not None:                                          # the AI Capacity card's own reading replaces Oracle's plan line (None = unavailable)
+        readings = {**readings, "chatgpt": plan()}
     segments, heading_text = render(readings, now)
-    counts = {"due": True, "missing": missing(readings), "reclaim": (readings["reclaim"] or "unavailable").lower(),
+    counts = {"missing": missing(readings), "reclaim": (readings["reclaim"] or "unavailable").lower(),
               "services_down": sum(v is False for v in readings["services"].values()), "written": 0}
     if not live:
         return counts
