@@ -18,7 +18,8 @@ from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
 API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions"
-REFRESH = {"hiring": {"refresh": "hiring", "live": "true"}}           # the only runs an app may ask for: the Hiring Pipeline region, redrawn by its own hourly writer
+REFRESH = {"hiring": {"refresh": "hiring", "live": "true"},             # the only runs an app may ask for: a Daily Report region, redrawn by its own hourly writer
+           "recruiters": {"refresh": "recruiters", "live": "true"}}     # the Recruiter Outreach table only (no mail read), after a verified recruiter close, status or Mark as Sent
 WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
