@@ -121,6 +121,8 @@ def validate_trains(doc):
     if not isinstance(trains, list):
         raise GuardError("TRAINS_INVALID")
     for t in trains:
+        if not isinstance(t, dict):
+            raise GuardError("TRAINS_INVALID")
         keys, product = t.get("issues"), t.get("product")
         if (t.get("lane") not in doc["lanes"] or not isinstance(t.get("name"), str) or not isinstance(keys, list) or not keys or not isinstance(product, list) or not product
                 or not all(isinstance(k, str) and re.fullmatch(r"LIFE-\d+", k) for k in keys) or not all(isinstance(g, str) and g for g in product)):
@@ -135,6 +137,8 @@ def validate_exemptions(doc, today=None):
     if not isinstance(out, list):
         raise GuardError("HANDOFFS_INVALID")
     for e in out:
+        if not isinstance(e, dict):
+            raise GuardError("HANDOFFS_INVALID")
         try:
             date.fromisoformat(str(e["expires"]))
         except (KeyError, ValueError):
@@ -147,18 +151,18 @@ def validate_exemptions(doc, today=None):
 
 def train_check(trains, exemptions, pr, files, today=None):
     """LIFE-109: the active train of the PR's lane, if any. -> violations (fixed strings). PR text supplies only the claims being checked, never authority."""
-    today, body = today or date.today(), pr.get("body") or ""
+    today, body = today or date.today(), re.sub(r"<!--.*?-->", "", pr.get("body") or "", flags=re.S)     # template guidance in an HTML comment is never a claim
     train = next((t for t in trains if t["lane"] == pr["lane"]), None)
     if train is None or any(e["pr"] == pr["number"] and date.fromisoformat(str(e["expires"])) >= today for e in exemptions):
         return []
     bad = []
-    keys = set(re.findall(r"^Jira:\s*(LIFE-\d+)\b", body, re.M))
+    keys = set(re.findall(r"^Jira:[ \t]*(LIFE-\d+)\b", body, re.M))
     if not keys & set(train["issues"]):
         bad.append(f"TRAIN_JIRA_KEY_MISSING: name one of the {train['name']} train's issues as `Jira: LIFE-n` in the PR body")
     if not any(fnmatch.fnmatchcase(f["path"], g) for f in files for g in train["product"]):
         bad.append(f"TRAIN_NO_PRODUCT_CHANGE: no {train['name']} product path changed; Platform-, test- or docs-only work is not train delivery (an approved repair needs an exemption in {HANDOFFS})")
-    levels = re.findall(r"^Evidence:\s*(.+?)\s*$", body, re.M)
-    if re.search(r"\bJIM ACCEPTED\b", body, re.I):
+    levels = re.findall(r"^Evidence:[ \t]*(.+?)[ \t\r]*$", body, re.M)
+    if any(re.search(r"\bJIM ACCEPTED\b", level, re.I) for level in levels) or re.search(r"^(?:Status|Acceptance):[ \t]*JIM ACCEPTED\b", body, re.I | re.M):
         bad.append("TRAIN_SELF_ACCEPTANCE: JIM ACCEPTED is recorded by Jim, never claimed in a PR")
     if len(levels) != 1 or levels[0].upper() not in EVIDENCE:
         bad.append("TRAIN_EVIDENCE_MISSING: state exactly one `Evidence: CODE LANDED | SYNTHETIC PASS | LIVE READ-BACK` line")

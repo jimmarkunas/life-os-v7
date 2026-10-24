@@ -391,6 +391,12 @@ class Train(unittest.TestCase):
         self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nJira: LIFE-59\nEvidence: DONE", jobs)], ["TRAIN_EVIDENCE_MISSING"])
         self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nJira: LIFE-59\nEvidence: JIM ACCEPTED", jobs)], ["TRAIN_SELF_ACCEPTANCE", "TRAIN_EVIDENCE_MISSING"])
 
+    def test_the_pr_template_filled_in_passes_and_its_guidance_comment_is_never_a_claim(self):
+        body = (ROOT / ".github" / "pull_request_template.md").read_text().replace("Jira: LIFE-\n", "Jira: LIFE-59\n")
+        self.assertEqual(self.judge(body, ["lifeos/jobs/a.py"]), [])
+        self.assertEqual([v.split(":")[0] for v in self.judge(body.replace("Jira: LIFE-59\n", "Jira:\nLIFE-59\n"), ["lifeos/jobs/a.py"])], ["TRAIN_JIRA_KEY_MISSING"])
+        self.assertIn("TRAIN_SELF_ACCEPTANCE", [v.split(":")[0] for v in self.judge(body + "\nStatus: JIM ACCEPTED", ["lifeos/jobs/a.py"])])
+
     def test_another_lane_is_untouched_and_an_approved_repair_passes_only_by_its_exemption(self):
         self.assertEqual(self.judge("Lane: edge-oracle", ["lifeos/edge/close_gate.py"], lane="edge-oracle"), [])     # an edge-oracle hotfix keeps its own path
         repair = {"pr": 7, "approval": APPROVAL, "expires": "2026-12-31"}
@@ -399,12 +405,12 @@ class Train(unittest.TestCase):
         self.assertEqual(len(self.judge("Lane: career-v7", ["lifeos/platform/http.py"], number=7, exemptions=[{**repair, "expires": "2026-10-01"}])), 3)
 
     def test_malformed_trains_or_exemptions_fail_closed(self):
-        for trains in ({"x": 1}, [{"name": "t", "lane": "nope", "issues": ["LIFE-1"], "product": ["a"]}], [{"name": "t", "lane": "career-v7", "issues": ["JFM-1"], "product": ["a"]}],
+        for trains in ({"x": 1}, ["x"], [{"name": "t", "lane": "nope", "issues": ["LIFE-1"], "product": ["a"]}], [{"name": "t", "lane": "career-v7", "issues": ["JFM-1"], "product": ["a"]}],
                        [{"name": "t", "lane": "career-v7", "issues": ["LIFE-1"], "product": []}],
                        [{"name": "a", "lane": "career-v7", "issues": ["LIFE-1"], "product": ["x"]}, {"name": "b", "lane": "career-v7", "issues": ["LIFE-2"], "product": ["y"]}]):
             with self.assertRaises(G.GuardError):
                 G.validate_trains({**DOC, "trains": trains})
-        for bad in ([{"pr": "7", "approval": APPROVAL, "expires": "2026-12-31"}], [{"pr": 7, "approval": "http://evil.example/x", "expires": "2026-12-31"}], [{"pr": 7, "approval": APPROVAL}]):
+        for bad in (["x"], [{"pr": "7", "approval": APPROVAL, "expires": "2026-12-31"}], [{"pr": 7, "approval": "http://evil.example/x", "expires": "2026-12-31"}], [{"pr": 7, "approval": APPROVAL}]):
             with self.assertRaises(G.GuardError):
                 G.validate_exemptions({"exemptions": bad})
         self.assertEqual(G.validate_trains({k: v for k, v in DOC.items() if k != "trains"}), [])           # no train: nothing extra is checked
