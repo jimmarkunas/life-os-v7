@@ -134,10 +134,16 @@ class AutoReleaseRun(unittest.TestCase):
         unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.gdrive")
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertNotIn("gdrive", open(unit).read())                                          # absent: the unit never names it
-        done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input='{"client_id": "c"}', capture_output=True, text=True, timeout=60)
+        good = '{"client_id": "c", "client_secret": "s", "refresh_token": "r"}'
+        done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertEqual(open(stored).read(), '{"client_id": "c"}')
-        self.assertNotIn("client_id", done.stdout + done.stderr)                              # the value is never shown
+        self.assertEqual(open(stored).read(), good)
+        for bad in ("", "not json", '{"client_id": "c"}'):                                      # an aborted sign-in never replaces the working credential
+            done = subprocess.run(["bash", self.script, "credential", "gdrive"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
+            self.assertEqual(done.returncode, 1, bad)
+            self.assertIn("unchanged", done.stdout)
+            self.assertEqual(open(stored).read(), good)
+        self.assertNotIn('"r"', done.stdout + done.stderr)                                     # the value is never shown
         self.assertIn("systemd-creds encrypt --name=gdrive -", open(os.path.join(self.sim, "log")).read())
         self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
         self.assertIn("LoadCredentialEncrypted=gdrive:" + stored, open(unit).read().splitlines())

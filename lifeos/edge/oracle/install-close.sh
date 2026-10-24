@@ -75,7 +75,7 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallFilter=@system-service
 SystemCallArchitectures=native
-RuntimeMaxSec=150
+RuntimeMaxSec=210
 # D229 (Jim, Oct 20 2026: one click, ~90 s): Build resume waits for the Oracle resume worker; only this unit's group may reach its socket
 SupplementaryGroups=lifeos-resume
 MemoryMax=128M
@@ -103,8 +103,11 @@ case "${1:-}" in
       link) python3 -I -c 'import secrets; print(secrets.token_hex(32))' | systemd-creds encrypt --name=link - "$CREDS/lifeos-close.link" ;;
       github) say "paste the fine-grained token (this repository, Actions read and write only), then Ctrl-D"; systemd-creds encrypt --name=github - "$CREDS/lifeos-close.github" ;;
       github-off) rm -f "$CREDS/lifeos-close.github"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "refresh credential removed; the Close screen no longer asks for refreshes"; exit 0 ;;
-      gdrive) [ -t 0 ] && { say "pipe lifeos.platform.google_consent into this; the credential is never typed or shown"; exit 2; }
-              systemd-creds encrypt --name=gdrive - "$CREDS/lifeos-close.gdrive" ;;
+      gdrive) [ -t 0 ] && { say "pipe lifeos/platform/google_consent.py into this; the credential is never typed or shown"; exit 2; }
+              value="$(cat)"                                                    # an aborted sign-in sends nothing: never replace a working credential with that
+              printf '%s' "$value" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); sys.exit(0 if all(isinstance(d.get(k), str) and d[k] for k in ("client_id", "client_secret", "refresh_token")) else 1)' 2>/dev/null \
+                || { say "STOP: no complete Drive credential arrived; the stored one (if any) is unchanged"; exit 1; }
+              printf '%s' "$value" | systemd-creds encrypt --name=gdrive - "$CREDS/lifeos-close.gdrive"; value="" ;;
       gdrive-off) rm -f "$CREDS/lifeos-close.gdrive"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "Drive credential removed; Build resume uploads to Notion again"; exit 0 ;;
       *) say "credential notion|link|github|github-off|gdrive|gdrive-off"; exit 2 ;;
     esac
