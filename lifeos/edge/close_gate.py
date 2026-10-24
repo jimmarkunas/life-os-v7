@@ -3,17 +3,23 @@ Accept=yes) as a DynamicUser isolated from OpenClaw (`ubuntu`, no root); Tailsca
   1. the loopback peer must be root (tailscaled): no local user, OpenClaw included, can present a PROXY header;
   2. PROXY v2 source -> tailscaled whois: the approved login, untagged, StableID on the approved list (iPhone, MacBook; never Oracle or the Mac mini);
   3. ONE bounded HTTP/1.1 request: GET or POST, exact Host, no duplicate header or chunked body; POST same-origin and form-encoded;
-  4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged."""
+  4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged.
+After a POST's response is written, a refresh the app asked for (Jim, Oct 24: closed rows should leave the Daily Report without waiting for the hour) is one GitHub
+workflow_dispatch made with the optional `github` credential, which the app never sees; without that credential nothing is asked."""
 import json
 import os
 import subprocess
 import sys
+import urllib.request
 from urllib.parse import parse_qsl
 
 from lifeos.imessage import alerts_endpoint as ep
 from lifeos.platform.notion_client import Client
 
 POLICY = "/etc/lifeos-close/policy.json"
+API = "https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/domains.yml"
+REFRESH = {"hiring": {"refresh": "hiring", "live": "true"}}           # the only runs an app may ask for: the Hiring Pipeline region, redrawn by its own hourly writer
+WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
 # same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin check below refuses every Review (iPhone Safari, Oct 16 2026)
@@ -101,6 +107,27 @@ def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=()):
     out.flush()
 
 
+def refresh(token, wants, opener=urllib.request.urlopen):
+    """One workflow_dispatch per known refresh the app asked for, unless a domains run is already waiting: that run redraws the region anyway, and a second waiting run would
+    replace it in the shared concurrency group (the Oct 21 stall). Best effort and silent: the response is already sent, and the hourly run still redraws. -> codes, for tests."""
+    def call(method, path, body=None):
+        req = urllib.request.Request(API + path, None if body is None else json.dumps(body).encode(), method=method, headers={
+            "Authorization": "Bearer " + token.decode(), "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "lifeos-close"})
+        with opener(req, timeout=10) as response:
+            return json.loads(response.read() or b"{}")
+    done = []
+    for name in dict.fromkeys(w for w in wants if w in REFRESH):
+        try:
+            if any(r.get("status") in WAITING for r in call("GET", "/runs?per_page=10").get("workflow_runs") or []):
+                done.append("waiting")
+                continue
+            call("POST", "/dispatches", {"ref": "main", "inputs": REFRESH[name]})
+            done.append("dispatched")
+        except Exception:                                                  # noqa: BLE001 - nothing is reported to anyone: the close itself is already verified
+            done.append("failed")
+    return done
+
+
 def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid, policy_path=POLICY, creds=None, client=notion_client):
     """app(req, who, secrets) -> (status, content type, body bytes, extra headers).
     secrets: GET {"link", "reader": ReadOnly client, "config"}; POST {"link", "notion": the token, "config"}; config = canonical ledger/pipeline ids."""
@@ -123,14 +150,21 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         return 0
     creds = creds or os.environ.get("CREDENTIALS_DIRECTORY", "")
     secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
+    github = os.path.join(creds, "github")
+    token = open(github, "rb").read().strip() if os.path.isfile(github) else b""      # optional: absent = no refresh is ever asked
+    after = []
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
         secrets["config"]["recruiters"] = policy["recruiters"]
     try:
         if req["method"] == "GET":
             secrets["reader"] = ReadOnly(client(secrets.pop("notion"), policy))
+        else:
+            secrets["after"] = after                                       # the app appends refresh names (REFRESH keys) after a verified write
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
     respond(stdout, status, body, ctype, extra)
+    if token and after and status == 200:
+        refresh(token, after)
     return 0

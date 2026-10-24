@@ -114,6 +114,21 @@ class AutoReleaseRun(unittest.TestCase):
     def stages(self):
         return open(os.path.join(self.sim, "log")).read().count("rel stage")
 
+    def test_the_refresh_credential_is_loaded_only_while_it_exists_and_github_off_removes_it(self):
+        unit = os.path.join(self.sim, "units", "lifeos-close@.service")
+        line = "LoadCredentialEncrypted=github:" + os.path.join(self.sim, "creds", "lifeos-close.github")
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        self.assertNotIn("github", open(unit).read())                                          # absent: the unit never names it, so it always starts
+        open(os.path.join(self.sim, "creds", "lifeos-close.github"), "w").write("x")
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        text = open(unit).read()
+        self.assertIn(line, text.splitlines())
+        self.assertLess(text.index("LoadCredentialEncrypted=link:"), text.index(line))
+        code, out = self.run_("credential", "github-off")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(os.path.exists(os.path.join(self.sim, "creds", "lifeos-close.github")))
+        self.assertNotIn("github", open(unit).read())
+
     def test_a_green_changed_commit_is_released_and_a_rerun_or_unchanged_commit_is_not(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.checked")), (0, B[:12], A[:12], [B]), out)
