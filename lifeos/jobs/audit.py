@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import guard, hiring_pipeline, lanes, ledger, quality, store
-from lifeos.jobs.identity import norm, url_key, vacancy_id
+from lifeos.jobs.identity import aggregator_twin, norm, url_key, vacancy_id
+from lifeos.jobs.publish import AGGREGATOR
 from lifeos.platform import limits, notion_client
 
 
@@ -32,6 +33,21 @@ def judge(url, full_text, proven=False, title_only=False, thin_ok=False):
     if problem == "thin" and thin_ok:                      # Jim, Oct 21: a thin page on a Scale-Up sponsor's own board is Review, not a reason to demote
         return None
     return "audit_jd_" + problem if problem else None
+
+
+def twins(groups, places, skip):
+    """LIFE-64: [(page row, the ATS page it repeats)] for each aggregator page with no vacancy id whose place is an ATS vacancy's place, in a group of
+    pages with one company and title; the aggregator page goes whichever came first, and a page already going is never the one kept."""
+    out, going = [], set(skip)
+    for group in groups.values():
+        for r in group:
+            if r[0] in going:
+                continue
+            twin = next((p for p in group if p[0] != r[0] and p[0] not in going and aggregator_twin(r[2], places.get(r[0]), p[2], places.get(p[0]), AGGREGATOR)), None)
+            if twin:
+                out.append((r, twin[0]))
+                going.add(r[0])
+    return out
 
 
 def run(limit, live, environ=os.environ):
@@ -61,6 +77,8 @@ def run(limit, live, environ=os.environ):
             cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
                            " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
             pages = cursor.fetchall()
+            cursor.execute("SELECT id, location_text FROM v7_jobs WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL")
+            places = dict(cursor.fetchall())
     counts["checked"], counts["pages"], counts["excluded_waiting"] = len(rows), len(pages), len(excluded)
     bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched, r[0] in thin_ok)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
@@ -77,6 +95,9 @@ def run(limit, live, environ=os.environ):
             bad.append((r, "duplicate_page"))
             dupe_of[r[0]] = earlier[0]
         first_page.setdefault(key, []).append(r)
+    for r, twin in twins(first_page, places, already | set(dupe_of)):
+        bad.append((r, "duplicate_page"))
+        dupe_of[r[0]] = twin
     counts["failed"] = len(bad)
     for _, why in bad:
         counts["by_reason"][why] = counts["by_reason"].get(why, 0) + 1
