@@ -315,4 +315,6 @@ def handle(req, who, secrets):
     try:
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)
     except NotionError as error:
-        return _stop(409, "Not changed", "A resume cannot be built for this job here", "The request was refused before anything was run or written.", f"Refused: {str(error)[:60]}")
+        recording = req["method"] == "POST" and req["form"].get("step") in ("submit", "record")
+        return _stop(409, "Not changed", "A submitted résumé cannot be recorded for this job here" if recording else "A resume cannot be built for this job here",
+                     "The request was refused before anything was run or written.", f"Refused: {str(error)[:60]}")
