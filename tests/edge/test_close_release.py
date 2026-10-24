@@ -179,8 +179,10 @@ class AutoRelease(unittest.TestCase):
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
         self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
         self.assertNotIn("rollback", auto)
-        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 3)               # every attempt counts (before the switch, so a cut-off run counts); at most three per commit
-        self.assertIn("case \"$n\" in ''|*[!0-9]*) n=0", auto)                    # a malformed count is never fatal
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # a stage or an install counts (before the switch, so a cut-off run counts); at most three per commit
+        self.assertIn("case \"$n\" in ''|*[!0-9]*|???*) n=0", auto)               # a malformed or huge count is never fatal
+        self.assertLess(auto.index("unverified after a cut-off run"), auto.index('-ge 3 ]'))   # a cut-off release is verified even after its third attempt
+        self.assertIn('auto.prior', auto)                                      # a cut-off run is restored to the trees live before its switch
         self.assertIn('else rm -f "$OPT/previous"', auto)                       # no previous tree before: none after a restore
         self.assertIn("unverified after a cut-off run", auto)
         self.assertIn('-ge 3 ] && exit 0', auto)

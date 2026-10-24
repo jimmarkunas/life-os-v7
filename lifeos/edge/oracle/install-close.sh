@@ -120,18 +120,22 @@ case "${1:-}" in
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
     tried=""; n=0; read -r tried n _ 2>/dev/null < "$ETC/auto.attempts" || true
-    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    case "$n" in ''|*[!0-9]*|???*) n=0 ;; esac                                              # anything but a small count reads as none
     [ "$tried" = "$commit" ] || n=0
-    [ "$n" -ge 3 ] && exit 0                                                              # three attempts at this commit: wait for the next green commit
-    if [ "$cur" = "$OPT/${commit:0:12}" ]; then                                           # live but never recorded: a run cut off after the switch; prove it before trusting it
+    if [ "$cur" = "$OPT/${commit:0:12}" ]; then                                           # live but never recorded: a run cut off after the switch; prove it before trusting it (not an attempt)
       if ! "$0" verify; then
-        echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"
-        if [ -n "$prev" ] && [ "$prev" != "$cur" ]; then
-          ln -sfn "$prev" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
-          if "$0" verify; then say "auto: ${commit:0:12} unverified after a cut-off run; restored ${prev##*/}"; else say "auto: RESTORE VERIFY FAILED (${prev##*/})"; fi
+        read -r was_cur was_prev _ 2>/dev/null < "$ETC/auto.prior" || true                 # the trees that were live before this commit's switch
+        if [ -n "${was_cur:-}" ] && [ "$was_cur" != "$cur" ] && [ -d "$was_cur" ]; then
+          ln -sfn "$was_cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
+          if [ -n "${was_prev:-}" ] && [ -d "$was_prev" ]; then ln -sfn "$was_prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; else rm -f "$OPT/previous"; fi
+          if "$0" verify; then say "auto: ${commit:0:12} unverified after a cut-off run; restored ${was_cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${was_cur##*/})"; fi
+        else
+          say "auto: ${commit:0:12} is live and fails verify; no earlier tree recorded"
         fi
         exit 1
       fi
+    elif [ "$n" -ge 3 ]; then
+      exit 0                                                                              # three attempts at this commit: wait for the next green commit
     else
       rm -rf "$probe"
       if ! python3 -I "$REL" stage "$commit" "$probe"; then
@@ -139,6 +143,7 @@ case "${1:-}" in
       fi
       if ! python3 -I "$REL" same "$probe" "$cur"; then                                   # the commit changes the Close closure
         echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                 # counted before the switch, so a cut-off run still counts
+        echo "$cur ${prev:-}" > "$ETC/auto.prior"                                           # what a cut-off run is restored to
         if LIFEOS_CLOSE_LOCKED=1 "$0" install "$commit"; then
           say "auto: released ${commit:0:12}"
         else
