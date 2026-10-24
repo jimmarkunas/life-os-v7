@@ -12,7 +12,7 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, RoundQuery, Scan, State
-from .template import PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
+from .template import DONE_LINE, DONE_MAX, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -143,15 +143,15 @@ def done_lines(lines):
     """E05: the completions recorded in a fold, oldest first, one per action key; the newest DONE_MAX are kept."""
     found = {}
     for block in lines:
-        m = notion.DONE_LINE.fullmatch(notion.text(block)) if block.get("type") == "paragraph" else None
+        m = DONE_LINE.fullmatch(notion.text(block)) if block.get("type") == "paragraph" else None
         if m and m.group(1) not in found:
             found[m.group(1)] = m.group(2)
-    return tuple(found.items())[-notion.DONE_MAX:]
+    return tuple(found.items())[-DONE_MAX:]
 
 
 def _undone(nodes):
     """The region's nodes without completion lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
-    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes if not notion.DONE_LINE.fullmatch(n.get("text", ""))]   # shape kept: a page without completion lines digests exactly as before
+    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes if not DONE_LINE.fullmatch(n.get("text", ""))]   # shape kept: a page without completion lines digests exactly as before
 
 
 def machine_region(client, page_id, context=None):

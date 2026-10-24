@@ -12,25 +12,6 @@ from lifeos.platform.runtime import DeadlineExceeded
 from .models import Child, Ownership, Parent, Scan
 
 MARKERS = {kind: f"v7-interview:1;owner=machine;kind={kind}" for kind in ("opportunity", "round")}
-# E05 Mark Complete (Jim, Oct 24): the fold names the page's one completable primary action; the private Close screen appends a completion line to the same fold
-# (lifeos/sources/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
-ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
-DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
-DONE_MAX = 20                                                  # completion lines carried per page, newest last
-
-
-def action_key(text, context=""):
-    """The action's identity: its text, plus the opportunity's rounds when it has any, so the same wording for a later round is a new action, never already done."""
-    return hashlib.sha256((text + "\x1f" + context if context else text).encode()).hexdigest()[:16]
-
-
-def action_line(text, context=""):
-    return f"v7-action:1;key={action_key(text, context)};text={text}"
-
-
-def done_line(key, day):
-    return f"v7-done:1;key={key};on={day}"
-
 PROTECTED = ("Live Notes", "Raw Notes")
 # LIFE-46 (accepted UI 3b): Jim types ADOPT as the exact first line of his own opportunity page; adoption swaps it for the
 # opportunity marker plus ";adopted=<date>". Everything from the JIM_NOTES heading to the end of the page is his.
