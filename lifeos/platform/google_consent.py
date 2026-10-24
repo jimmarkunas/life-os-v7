@@ -1,11 +1,10 @@
 """One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the drive.file scope only (files LIFE OS
 creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
 must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
-never to stdout. It runs on the Edge, inside `ssh -t -L 8765:127.0.0.1:8765`, so the browser on Jim's Mac reaches the loopback port through the
-tunnel and the credential never leaves the Edge. Standalone (stdlib only), so it runs by path in isolated mode; the installer runs from the
-up-to-date repository checkout on the Edge (the release tree carries .py files only, and /opt/lifeos-close/bin keeps the updater frozen):
-  sudo -v
-  sudo python3 -I lifeos/platform/google_consent.py --port 8765 | sudo bash lifeos/edge/oracle/install-close.sh credential gdrive"""
+never to stdout. It runs on Jim's Mac, where the browser is (an SSH -L tunnel to the Edge proved fragile, Oct 24), and pipes over ssh; the client is
+the existing LIFE OS Gmail Web client (docs/SETUP.md, "Google Drive résumés"). Standalone (stdlib only):
+  python3 google_consent.py --port 8765 | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-close/bin/install-close.sh credential gdrive"
+"""
 import base64
 import getpass
 import hashlib
@@ -67,8 +66,8 @@ def main(argv=(), stdout=sys.stdout, tty=None):
     if stdout.isatty():
         tty.write("Refused: pipe this into the Edge credential command; the credential is never printed on screen.\n")
         return 2
-    client_id = input_tty("Google OAuth client ID (Desktop app): ", tty).strip()
-    client_secret = getpass.getpass("Client secret (not shown): ").strip()
+    client_id = input_tty("Client ID of the LIFE OS Gmail Web client (Bitwarden openclaw/gmail/clientId): ", tty).strip()
+    client_secret = getpass.getpass("Its client secret (Bitwarden openclaw/gmail/clientSecret; not shown): ").strip()
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0             # a fixed port for the SSH tunnel; 0 = any free port
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
