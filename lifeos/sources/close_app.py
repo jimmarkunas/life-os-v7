@@ -244,6 +244,8 @@ def handle(req, who, secrets):
     try:
         if req["method"] == "GET" and req["path"] == "/close.css":
             return 200, "text/css; charset=utf-8", S.CSS.encode(), ()
+        if req["method"] == "GET" and req["path"] == "/close.js":                             # the buttons' busy spinner; nothing depends on it
+            return 200, "text/javascript; charset=utf-8", S.JS.encode(), ()
         if req["path"] == "/sent" and req["method"] in ("GET", "POST"):                       # D221: Mark as Sent, same gate and signing key
             from . import outreach_app
             return outreach_app.handle(req, who, secrets)

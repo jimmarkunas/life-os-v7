@@ -1,5 +1,6 @@
 """LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet. Pure: strings in, bytes out; every dynamic value is HTML-escaped.
-The Edge gate's CSP is `default-src 'self'`, so there is no script, no <style> and no style attribute: the stylesheet is served at /close.css and the three panes are three responses (the prototype's own markup and CSS)."""
+The Edge gate's CSP is `default-src 'self'`, so there is no inline script, no <style> and no style attribute: the stylesheet is served at /close.css, the one script at /close.js, and the three panes are three responses (the prototype's own markup and CSS).
+The script only marks the pressed button busy (a spinner) and ignores a second press while the page loads; every page works the same without it."""
 from html import escape as e
 
 from . import models as M
@@ -59,7 +60,15 @@ textarea::placeholder{color:#86909d}
 @media(prefers-color-scheme:dark){:root{color-scheme:dark;--canvas:#11151b;--paper:#1c222b;--ink:#f2f4f7;--muted:#9ba7b6;--border:#343d49;--border-strong:#526071;--light:#222934;--accent:#c4d4ee;--accent-ink:#1e2837;--focus:#7eabf0;--signal:#a2d8b9;--signal-bg:#1c3529;--alert:#f2c99a;--alert-bg:#443125;--danger:#e9a7a7;--danger-bg:#412528}.brandmark{background:#dce6f5;color:#192330}.status{color:#d7dfed}.reason:has(input:checked){border-color:#8499b9;background:#263345}.notice{color:#b2bbca}textarea::placeholder{color:#8995a6}}
 @media(max-width:690px){.wrap{padding:22px 14px 40px}.mast{align-items:flex-start}.pagehead h1{font-size:25px}.section{padding:20px 18px}.actions{padding:17px 18px}.reasons{grid-template-columns:repeat(2,1fr)}.facts{grid-template-columns:1fr 1fr;row-gap:15px}.review{grid-template-columns:100px 1fr}.jobhead{flex-direction:column}.demo{align-items:stretch}select{width:100%}}
 @media(max-width:400px){.reasons{grid-template-columns:1fr}.facts{grid-template-columns:1fr 1fr}.mast{gap:8px}}
-fieldset{border:0;margin:0;padding:0}.inl{display:inline}.btn{text-decoration:none;display:inline-flex;align-items:center}
+fieldset{border:0;margin:0;padding:0}.inl{display:inline}.btn{text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:background-color .12s,border-color .12s,color .12s,transform .06s}
+.btn:not(:disabled):hover{border-color:var(--ink);background:var(--border);box-shadow:0 2px 6px rgba(0,0,0,.14)}.btn.primary:not(:disabled):hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 80%,var(--paper))}.btn.link:not(:disabled):hover{border-color:transparent;background:transparent;box-shadow:none;color:var(--ink);text-decoration:underline}
+.btn:not(:disabled):active{transform:translateY(1px)}.busy .btn{pointer-events:none}.busy .btn:not(.spin){opacity:.43}.btn.spin{pointer-events:none}
+.btn.spin::before{content:"";width:12px;height:12px;flex:none;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.btn.spin::before{animation-duration:2.4s}}
+"""
+JS = """"use strict";function idle(){document.querySelectorAll(".busy,.spin").forEach(function(n){n.classList.remove("busy","spin")})}function busy(n,b){n.classList.add("busy");if(b)b.classList.add("spin");setTimeout(idle,15000)}
+document.addEventListener("submit",function(ev){var f=ev.target;if(f.classList.contains("busy")){ev.preventDefault();return}busy(f,ev.submitter)});
+document.addEventListener("click",function(ev){var a=ev.target.closest&&ev.target.closest("a.btn");if(!a||a.target||a.hasAttribute("download")||ev.defaultPrevented||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;busy(document.body,a)});
+window.addEventListener("pageshow",idle);
 """
 NONE = "Not recorded"
 
@@ -70,7 +79,7 @@ def _hidden(fields):
 
 def page(title, sub, body, path="Daily Report / Active Opportunities / Close", tab="Close opportunity"):
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark">'
-            f'<title>LIFE OS · {e(tab)}</title><link rel="stylesheet" href="/close.css"></head><body><div class="wrap"><header class="mast"><div class="brand"><div class="brandmark" aria-hidden="true">L</div>'
+            f'<title>LIFE OS · {e(tab)}</title><link rel="stylesheet" href="/close.css"><script src="/close.js" defer></script></head><body><div class="wrap"><header class="mast"><div class="brand"><div class="brandmark" aria-hidden="true">L</div>'
             f'<div><strong>LIFE OS</strong><span>Hiring · Opportunity actions</span></div></div></header><div class="pagehead"><div class="path">{e(path)}</div><h1>{e(title)}</h1>'
             f'<p class="subtitle">{e(sub)}</p></div><main class="surface">{body}</main><div class="foot">LIFE OS · Closing a LinkedIn contact is separate from closing a hiring opportunity.</div></div></body></html>').encode()
 
