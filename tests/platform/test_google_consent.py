@@ -27,6 +27,12 @@ class Reply:
 
 
 class Consent(unittest.TestCase):
+    def test_it_is_standalone_and_asks_for_the_same_scope_the_client_uses(self):
+        self.assertEqual((G.SCOPE, G.TOKEN_URL), (gdrive.SCOPE, gdrive.TOKEN_URL))
+        import pathlib
+        imports = [line for line in pathlib.Path(G.__file__).read_text().splitlines() if line.startswith(("import ", "from "))]
+        self.assertFalse([line for line in imports if "lifeos" in line or "webbrowser" in line])          # runs by path under python3 -I, opens no browser
+
     def test_the_sign_in_asks_for_drive_file_only_offline_with_pkce(self):
         url = G.auth_url("cid", "http://127.0.0.1:8765", "st", "verifier")
         q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(url).query).items()}

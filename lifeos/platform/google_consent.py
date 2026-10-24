@@ -1,9 +1,10 @@
-"""One-time Google sign-in for the Drive credential (Jim runs it on his own Mac; platform, no job knowledge). It asks Google for the drive.file
-scope only (files LIFE OS creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret",
-"refresh_token"} to stdout, which must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a
-terminal. Prompts go to the terminal, never to stdout. Run it on the Edge itself inside `ssh -L 8765:127.0.0.1:8765`, so the browser on Jim's Mac
-reaches the loopback port through the tunnel and the credential never leaves the Edge:
-  cd /opt/lifeos-close/current && sudo python3 -I -m lifeos.platform.google_consent --port 8765 | sudo lifeos/edge/oracle/install-close.sh credential gdrive"""
+"""One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the drive.file scope only (files LIFE OS
+creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
+must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
+never to stdout. It runs on the Edge, inside `ssh -t -L 8765:127.0.0.1:8765`, so the browser on Jim's Mac reaches the loopback port through the
+tunnel and the credential never leaves the Edge. Standalone (stdlib only), so it runs by path in isolated mode from the release tree:
+  sudo -v
+  sudo python3 -I /opt/lifeos-close/current/lifeos/platform/google_consent.py --port 8765 | sudo /opt/lifeos-close/current/lifeos/edge/oracle/install-close.sh credential gdrive"""
 import base64
 import getpass
 import hashlib
@@ -13,9 +14,9 @@ import secrets
 import sys
 import urllib.parse
 import urllib.request
-import webbrowser
 
-from lifeos.platform.gdrive import SCOPE, TOKEN_URL
+SCOPE = "https://www.googleapis.com/auth/drive.file"          # the same values as lifeos.platform.gdrive (a test holds them equal)
+TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
@@ -71,9 +72,8 @@ def main(argv=(), stdout=sys.stdout, tty=None):
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     url = auth_url(client_id, redirect, state, verifier)
-    tty.write("Opening Google sign-in in your browser. If it does not open, paste this address:\n" + url + "\n")
+    tty.write("Open this address in the browser on your Mac (the SSH tunnel carries the reply back here):\n" + url + "\n")     # never a browser on the Edge
     tty.flush()
-    webbrowser.open(url)
     code = catch(server, state)
     if not code:
         tty.write("Sign-in refused; nothing was stored.\n")
