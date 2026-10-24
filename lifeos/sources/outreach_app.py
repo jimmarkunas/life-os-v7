@@ -396,3 +396,127 @@ def handle_close(req, who, secrets):
         return (_close_get if req["method"] == "GET" else _close_post)(req, who, secrets)
     except NotionError as error:
         return _close_stop(409, "Not changed", "This record cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+
+
+# ---------- LIFE-35 (RECR-2.2): the recruiter brief, a read-only page built from the records on file when it is opened; nothing is stored or written ----------
+BRIEF_PATH = "Daily Report / Recruiter Outreach / Brief"
+NETWORK_SHOWN = 3
+CHANNELS = (("mail.google.com", "Gmail"), ("outlook.office.com", "Outlook"), ("outlook.office365.com", "Outlook"), ("outlook.live.com", "Outlook"), ("linkedin.com", "LinkedIn"))   # = outreach_card.CHANNELS (a test holds them equal; that module is not in the Close release)
+
+
+def _when(text):
+    """An ISO date or date-time from the row -> 'Oct 24, 2026' (a time, when recorded, in Central Time), or ''."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    if not text:
+        return ""
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if moment.tzinfo is None:
+        from datetime import timezone
+        moment = moment.replace(tzinfo=timezone.utc)                        # Notion's times are UTC; never the host's zone
+    if len(text) <= 10:
+        return f"{moment:%b} {moment.day}, {moment.year}"
+    local = moment.astimezone(ZoneInfo("America/Chicago"))
+    return f"{local:%b} {local.day}, {local.year}, {local:%-I:%M %p} CT"
+
+
+def _https(url):
+    url = (url or "").strip()
+    return url if url.startswith("https://") and " " not in url else None
+
+
+def brief_facts(reader, config, row):
+    """-> the facts a brief shows, each read from its own record. The Ledger job is the row's one `Job` relation (two is a mismatch, none is not linked); the
+    Hiring Pipeline page is the one Active or Retired page for that same job's company and role; Network leads are that job page's own (dismissed ones left out).
+    A source that cannot be read in full is `unreadable`, never `none`."""
+    out = {"ledger": "not_linked", "job": None, "fit": None, "pipeline": "not_linked", "page": None, "network": "not_linked", "leads": []}
+    if len(row["jobs"]) > 1:
+        out.update(ledger="mismatch", pipeline="mismatch", network="mismatch")
+        return out
+    if not row["jobs"]:
+        return out
+    pid = D._page_id(row["jobs"][0])
+    try:
+        page = reader.get_page(pid)
+        props = page.get("properties") or {}
+        parent = D._page_id((page.get("parent") or {}).get("data_source_id"))
+        if not parent or parent != D._page_id(config.get("ledger")) or page.get("in_trash") or page.get("archived"):
+            raise NotionError("NOT_LEDGER")
+        out["job"] = {"id": pid, "company": D._text(props.get("Company"), "rich_text"), "role": D._text(props.get("Job"), "title")}
+        out["fit"] = D._text(props.get("Why It Fits"), "rich_text") or None
+        out["ledger"] = "linked"
+    except NotionError:
+        out.update(ledger="unreadable", pipeline="unreadable", network="unreadable")
+        return out
+    from lifeos.jobs import hiring_pipeline
+    from lifeos.hiring import models as M
+    found, status = hiring_pipeline.snapshot(reader, config["pipeline"], rounds=False)          # one interview count is read below, for the matched page only
+    if status != "ok":
+        out["pipeline"] = "unreadable"
+    else:
+        same = [o for o in found if M.same(o.company, o.role, out["job"]["company"], out["job"]["role"])]
+        out["pipeline"], out["page"] = ("linked", same[0]) if len(same) == 1 else ("mismatch" if same else "none", None)
+        if out["page"]:
+            try:
+                kids = reader.call("GET", f"/blocks/{D._page_id(out['page'].page_id)}/children?page_size=100")
+                if not isinstance(kids, dict) or kids.get("has_more") or not isinstance(kids.get("results"), list):
+                    raise NotionError("PAGE_UNREADABLE")
+                out["rounds"] = sum(1 for b in kids["results"] if b.get("type") == "child_page")
+            except NotionError:
+                out["pipeline"], out["page"] = "unreadable", None
+    try:
+        out["leads"] = [lead["name"] for lead in N.leads_on_page(reader, pid, NETWORK_SHOWN)]
+        out["network"] = "linked" if out["leads"] else "none"
+    except NotionError:
+        out["network"] = "unreadable"
+    return out
+
+
+STATE_TEXT = {"not_linked": "not linked to a Job Ledger job", "mismatch": "more than one match: not shown", "unreadable": "unreadable this time", "none": "none on file"}
+
+
+def brief_lines(row, facts):
+    """-> [(label, text, source link or None)]: seven fixed lines, each from one record, nothing derived beyond dates and counts; no score, status or task is made."""
+    link = _https(row["source_url"])
+    host = link.split("/")[2].lower() if link else ""
+    channel = next((name for domain, name in CHANNELS if host == domain or host.endswith("." + domain)), None) or row["medium"].strip() or "Channel not recorded"
+    first, last = _when(row["first_contact"]), _when(row["last_contact"])
+    job, page = facts["job"], facts["page"]
+    lines = [("Who", " · ".join(x for x in (row["person"] or "Name not recorded", row["company"], channel) if x), _https(row["contact"]) or link),
+             ("Contact", " · ".join(x for x in (f"first {first}" if first else "", f"last {last}" if last else "", row["what"]) if x) or "No contact recorded", link),
+             ("Role", (" · ".join(x for x in (job["company"], job["role"]) if x) + " (Job Ledger)") if job else
+              " · ".join(x for x in (row["client"], row["role"]) if x) + f" · {STATE_TEXT[facts['ledger']]}", f"https://www.notion.so/{job['id']}" if job else None),
+             ("Fit", facts["fit"] or ("Fit not available" if job else STATE_TEXT[facts["ledger"]]), f"https://www.notion.so/{job['id']}" if job and facts["fit"] else None),
+             ("Interview", f"{page.title} · {facts.get('rounds', 0)} interview page(s) · {'Active' if page.section != 'RETIRED' else 'Retired'}" if page else STATE_TEXT[facts["pipeline"]],
+              f"https://www.notion.so/{page.page_id.replace('-', '')}" if page else None),
+             ("Network", ", ".join(facts["leads"]) if facts["leads"] else STATE_TEXT[facts["network"]], f"https://www.notion.so/{job['id']}" if job and facts["leads"] else None),
+             ("Status", " · ".join(x for x in (row["action"] or "No status", f"follow up {_when(row['follow_up'])}" if row["follow_up"] else "") if x),
+              f"https://www.notion.so/{D._page_id(row['page_id'])}" if D._page_id(row["page_id"]) else None)]
+    return lines
+
+
+def _brief_page(row, lines):
+    items = "".join(f'<tr><th>{e(label)}</th><td>{e(text)}</td><td>{f"<a href=\"{e(url)}\" target=\"_blank\" rel=\"noopener\">Source ↗</a>" if url else "—"}</td></tr>'
+                    for label, text, url in lines)
+    return S.page("Recruiter brief", "Built from the records on file as this page opened. Nothing is stored, written or sent.",
+                  f'<section class="section"><div class="eyebrow">Recruiter brief</div><h3 class="step-title">{e(row["person"] or "Recruiter")}</h3>'
+                  f'<table class="brief">{items}</table></section>', BRIEF_PATH, "Recruiter brief")
+
+
+def handle_brief(req, who, secrets):
+    """GET /brief?r=<Recruiters row>: read only, through the gate's read-only client. Anything else is refused; nothing is ever written."""
+    if req["method"] != "GET":
+        return _close_stop(405, "Not allowed", "The brief is read only", "Open it from its link.", "Nothing was changed.")
+    pid = D._page_id(req["query"].get("r"))
+    if not pid:
+        return _close_stop(400, "Invalid link", "No recruiter selected", "Open the brief from the Recruiter Outreach table.", "Nothing was changed.")
+    if not secrets["config"].get("recruiters"):
+        return _close_stop(409, "Not available", "Not configured", "The Recruiters database is not configured for this service.", "Refused: NOTION_CONFIG_MISSING.")
+    try:
+        row = store.own_row(secrets["reader"], pid, secrets["config"]["recruiters"])
+        return 200, HTML, _brief_page(row, brief_lines(row, brief_facts(secrets["reader"], secrets["config"], row))), ()
+    except NotionError as error:
+        return _close_stop(409, "Not available", "This brief cannot be shown", "The record could not be read in full.", f"Refused: {str(error)[:60]}")

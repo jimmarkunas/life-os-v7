@@ -247,3 +247,4 @@ This index is checked by a test: add a line here with every new decision.
 - D246 — The precision audit trashes at most 40 Ledger pages a run, and reports how many rejected pages are still waiting (2026-10-20, Jim; LIFE-41)
 - D247 — Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE-93)
 - D248 — Mail jobs keep moving while a board backfill runs: a reserved quarter in publish, non-board jobs first in Fit (2026-10-24, Jim; LIFE-76)
+- D249 — The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)
