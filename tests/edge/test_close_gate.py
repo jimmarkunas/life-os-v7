@@ -266,8 +266,9 @@ class Refresh(Gate):
     def test_one_dispatch_for_the_hiring_region_and_unknown_names_are_ignored(self):
         sent, open_ = self.opener([{"status": "completed"}, {"status": "in_progress"}])
         self.assertEqual(gate.refresh(b"tok", ["hiring", "hiring", "anything"], open_), ["dispatched"])
-        self.assertEqual(sent[1], ("POST", gate.API + "/dispatches", "Bearer tok", {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}}))
+        self.assertEqual(sent[1], ("POST", gate.API + "/workflows/domains.yml/dispatches", "Bearer tok", {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}}))
         self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[0][1], gate.API + "/runs?per_page=20")                       # every workflow's runs: Recruiters and Amazon share the domains group
 
     def test_a_waiting_domains_run_is_never_replaced_and_a_failure_is_silent(self):
         for status in gate.WAITING:
