@@ -1,6 +1,7 @@
 """LIFE-20: the Daily Report's one Recruiter Outreach table (lifeos/recruiters/outreach_card.py), against the synthetic block tree and a fake Recruiters data source.
 Synthetic names and example.test links only."""
 import unittest
+from datetime import date
 from copy import deepcopy
 from datetime import datetime, timezone
 
@@ -154,6 +155,14 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(due(action="Waiting", follow_up="2026-10-27"), [("Waiting", None, "bold"), ("\nOct 27, 2026", None, "gray")])
         self.assertEqual(due(follow_up=None)[1][0], "\nDue date not set")
         self.assertEqual(due(follow_up="not-a-date")[1][0], "\nDue date not set")
+
+    def test_a_needs_action_row_without_a_follow_up_is_due_one_business_day_after_first_contact(self):
+        """Jim, Oct 24: a recruiter's message is never shown as "Due date not set"; it is due the next business day after its first contact."""
+        row = {"follow_up": "", "action": store.NEEDS_ACTION, "first_contact": "2026-10-23T18:49:00.000Z"}           # a Friday
+        self.assertEqual(card._due(row, date(2026, 10, 24)), "Reply by Oct 26, 2026")                               # the next business day is Monday
+        self.assertEqual(card._due(row, date(2026, 10, 27)), "Reply by Oct 26, 2026 · overdue")
+        self.assertEqual(card._due({**row, "action": store.WAITING}, date(2026, 10, 24)), card.NO_DUE)              # a Waiting row keeps its own follow-up rule
+        self.assertEqual(card._due({**row, "first_contact": ""}, date(2026, 10, 24)), card.NO_DUE)
 
     def test_needs_action_comes_before_waiting_by_due_date_and_nothing_else_is_shown(self):
         t = report()
