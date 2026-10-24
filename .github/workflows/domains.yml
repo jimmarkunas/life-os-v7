@@ -1315,6 +1315,7 @@ jobs:
           INTERVIEW_JOURNEY_PROOF: ${{ inputs.interview_journey_proof }}
           INTERVIEW_CONVERT: ${{ inputs.interview_convert || vars.INTERVIEW_CONVERT }}
           INTERVIEW_CONVERT_CAP: ${{ vars.INTERVIEW_CONVERT_CAP }}
+          V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # E05: the private Close origin: each opportunity page's primary action gets its Mark Complete link; unset, it says unavailable
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: routreach
         continue-on-error: true
