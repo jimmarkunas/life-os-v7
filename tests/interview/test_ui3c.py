@@ -322,15 +322,6 @@ class Layout(unittest.TestCase):
             self.assertIn(says, shown.split("Materials Sent")[1])
             self.assertNotIn("File link not yet verified", shown)
 
-    def test_e14_the_page_links_manage_on_the_close_screen_only_once_it_exists(self):
-        base = "https://close.example.ts.net:47443"
-        with_page = dataclasses.replace(opportunity(compensation="$90/hr"), page_id="a" * 8 + "-" + "b" * 24, close_base=base)
-        client, page_id = written(with_page)
-        self.assertIn(f"{base}/manage?o={'a' * 8}{'b' * 24}", str(client.blocks))
-        self.assertIn("Manage ↗", "\n".join(texts(client, page_id)))
-        for missing in (dataclasses.replace(with_page, close_base=None), dataclasses.replace(with_page, page_id=None)):
-            self.assertNotIn("/manage?", str(written(missing)[0].blocks))
-
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}

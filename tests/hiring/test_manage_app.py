@@ -98,6 +98,33 @@ class Reopen(unittest.TestCase):
         self.assertEqual(ws.where(ws.target), ws.active[0])
         self.assertIn("Hiring decision (V7) · Reopened · ", ws.digest(ws.target)[-1][2])
 
+    def test_a_notes_page_closed_as_hired_can_be_reopened_with_its_tick(self):
+        h = H()
+        ws = h.world.ws
+        self.assertEqual(h.close(D._page_id(ws.target), "Hired")[0], 200)
+        self.assertIn("If it was recorded as Hired: reopen it anyway", h.hub(ws.target)[1])
+        self.assertEqual(h.reopen(ws.target)[0], 409)
+        self.assertEqual(ws.where(ws.target), ws.retired[0])
+        status, body, _ = h.reopen(ws.target, h="1")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(ws.where(ws.target), ws.active[0])
+
+    def test_reopen_is_offered_only_when_the_reopen_routing_reaches_the_same_record(self):
+        h = H([(TD.TARGET, COMPANY, ROLE)])
+        h.close(TD.TARGET, "Rejected")
+        with mock.patch.object(D, "route", side_effect=[("ledger", {"id": TD.TARGET, "decision": "Rejected"}), D.fail("AMBIGUOUS")]):
+            body = h.hub(h.world.ws.target)[1]
+        self.assertIn("Reopen is not available here: DECISION_AMBIGUOUS", body)
+        self.assertNotIn("Reopen this opportunity", body)
+
+    def test_a_screen_the_release_does_not_ship_is_a_named_503_not_a_blank_error(self):
+        h = H()
+        real = close_app.importlib.import_module
+        with mock.patch.object(close_app.importlib, "import_module", side_effect=lambda name: (_ for _ in ()).throw(ImportError()) if name.endswith("manage_app") else real(name)):
+            status, body, _ = h.call("GET", "/manage", query={"o": "a" * 32})
+        self.assertEqual(status, 503)
+        self.assertIn("not on the Close service yet", body)
+
     def test_review_and_cancel_write_nothing_and_a_replay_is_already_recorded(self):
         h = H([(TD.TARGET, COMPANY, ROLE)])
         h.close(TD.TARGET, "Rejected")
@@ -109,7 +136,7 @@ class Reopen(unittest.TestCase):
     def test_a_hired_outcome_needs_its_own_tick(self):
         h = H([(TD.TARGET, COMPANY, ROLE)])
         h.close(TD.TARGET, "Hired")
-        self.assertIn("It was recorded as Hired: reopen it anyway", h.hub(h.world.ws.target)[1])
+        self.assertIn("If it was recorded as Hired: reopen it anyway", h.hub(h.world.ws.target)[1])
         status, body, _ = h.reopen(h.world.ws.target)
         self.assertEqual(status, 409)
         self.assertIn("recorded as Hired", body)

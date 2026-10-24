@@ -218,8 +218,6 @@ def opportunity_page(view, today, source="pending", adopted=None):
     current, next_date = stage(view, today)
     label, action, due, link, basis = primary_action(view, today)
     ledger = [("Job Ledger row ↗", False, _url(view.ledger_page_id))] if view.ledger_page_id else []
-    if view.close_base and view.page_id:                                   # E14 (Jim, Oct 24): every action for this opportunity, each confirmed on its own Close screen
-        ledger += [" · " if ledger else "", ("Manage ↗", False, f"{view.close_base}/manage?{urlencode({'o': view.page_id.replace('-', '')})}")]
     posting = [("Original posting ↗", False, view.apply_url)] if view.apply_url else []
     primary = callout([
         para((action, True)),

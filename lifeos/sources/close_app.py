@@ -256,7 +256,11 @@ def handle(req, who, secrets):
             return 200, "text/javascript; charset=utf-8", S.JS.encode(), ()
         if req["path"] in ROUTES and req["method"] in ("GET", "POST"):                        # same gate, signing key and fresh read; each module is loaded only for its own path
             module, name = ROUTES[req["path"]]
-            return getattr(importlib.import_module("lifeos.sources." + module), name)(req, who, secrets)
+            try:
+                screen = importlib.import_module("lifeos.sources." + module)
+            except ImportError:                                                               # a screen this release does not ship yet (its CLOSURE entry is the edge lane's)
+                return _stop(503, "Unavailable", "This screen is not on the Close service yet", "It arrives with a later release.", "Nothing was changed.")
+            return getattr(screen, name)(req, who, secrets)
         if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
             return handle_complete(req, who, secrets)
         if req["path"] != "/" or req["method"] not in ("GET", "POST"):

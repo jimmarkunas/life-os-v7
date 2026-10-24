@@ -46,7 +46,7 @@ def _link(label, href, note):
 def _fields(secret, login, kind, rec, page, exp):
     st = C._fingerprint(kind, D._page_id(rec["id"]), page["company"], page["role"], True)
     o = D._page_id(rec["id"])
-    return {"o": o, "k": kind, "co": page["company"], "ro": page["role"], "exp": str(exp), "st": st, "t": C._mac(secret, "m", login, o, st, exp)}
+    return {"o": o, "k": kind, "co": page["company"], "ro": page["role"], "exp": str(exp), "st": st, "t": C._mac(secret, "manage-reopen", login, o, st, exp)}
 
 
 def _hub(req, who, secrets):
@@ -66,11 +66,19 @@ def _hub(req, who, secrets):
             f'<span class="status">{"Closed" if closed else "Open"} · {"Job Ledger" if kind == "ledger" else "Notes page"}</span></div></section><section class="section">'
             '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>')
     if closed:
-        fields = _fields(secrets["link"], who["login"], kind, rec, page, int(C._now().timestamp()) + C.TTL)
-        hired = rec.get("decision") == "Hired"
-        body += (f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary" name="step" value="review">Reopen this opportunity</button>'
-                 '<span class="lead">Puts it back among the open opportunities; its history is kept.</span></div>'
-                 + ('<label class="lead"><input type="checkbox" name="h" value="1"> It was recorded as Hired: reopen it anyway</label>' if hired else "") + '</form>')
+        try:                                                               # offered only when the POST's REOPEN routing would reach this same record
+            routed, again = D.route(rows, parents, {"action": D.REOPEN, "id": rid, "company": page["company"], "role": page["role"]})
+            why = None if (routed, D._page_id(again["id"])) == (kind, rid) else "DECISION_STALE_IDENTITY"
+        except D.DecisionError as error:
+            why = str(error)[:60]
+        if why:
+            body += f'<div class="notice alert">Reopen is not available here: {e(why)}. Nothing was changed.</div>'
+        else:
+            fields = _fields(secrets["link"], who["login"], kind, rec, page, int(C._now().timestamp()) + C.TTL)
+            hired = rec.get("decision") == "Hired" or kind == "notes"          # a Notes page's outcome lives in its own record lines; the decision rules check it
+            body += (f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary" name="step" value="review">Reopen this opportunity</button>'
+                     '<span class="lead">Puts it back among the open opportunities; its history is kept.</span></div>'
+                     + ('<label class="lead"><input type="checkbox" name="h" value="1"> If it was recorded as Hired: reopen it anyway</label>' if hired else "") + '</form>')
     else:
         body += _link("Close this opportunity", "/?" + urlencode({"o": rid}), "Record why it ended (rejected, withdrew, filled, ...).")
         key = _open_action(reader, pid)
@@ -89,7 +97,7 @@ def _post(req, who, secrets):
     o, step, exp, st, kind = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", "")
     company, role = form.get("co", ""), form.get("ro", "")
     if (not o or step not in ("cancel", "review", "confirm") or kind not in ("ledger", "notes") or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
-            or not C._same(form.get("t"), C._mac(secret, "m", login, o, st, exp)) or not C._same(C._fingerprint(kind, o, company, role, True), st)):
+            or not C._same(form.get("t"), C._mac(secret, "manage-reopen", login, o, st, exp)) or not C._same(C._fingerprint(kind, o, company, role, True), st)):
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing reopened", "The opportunity stays closed.", "Nothing was written.", "")
@@ -115,7 +123,7 @@ def _post(req, who, secrets):
     except NotionError as error:
         code = str(error)[:60]
         if code == "DECISION_HIRED_REOPEN_UNCONFIRMED":
-            return _stop(409, "Not changed", "It was recorded as Hired", "Tick “It was recorded as Hired: reopen it anyway” on Manage to reopen it.", f"Refused: {code}. Nothing was changed.")
+            return _stop(409, "Not changed", "It was recorded as Hired", "Tick “If it was recorded as Hired: reopen it anyway” on Manage to reopen it.", f"Refused: {code}. Nothing was changed.")
         if code in ("DECISION_NOT_CLOSED", "DECISION_CONFLICT", "DECISION_PENDING"):
             return _stop(409, "Not changed", "This opportunity was not reopened", "It is already open, or its decision changed since Manage was opened.", f"Refused: {code}. Nothing was changed.")
         return _stop(500, "Unavailable", "Could not verify the reopen", "Do not assume it was reopened or left unchanged.", f"Status: DEGRADED · {code}", "danger")
