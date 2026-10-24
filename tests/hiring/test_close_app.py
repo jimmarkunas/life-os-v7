@@ -466,9 +466,27 @@ class Speed(unittest.TestCase):
         _, _, f = h.review(pid, "Rejected")
         seen = []
         real = close_app._state
-        with mock.patch.object(close_app, "_state", lambda *a, **k: seen.append(k.get("pages")) or real(*a, **k)):
+        def spy(client, root, pid=None, pages=None):
+            seen.append((pid, pages))
+            return real(client, root, pid, pages)
+        with mock.patch.object(close_app, "_state", spy):
             self.assertEqual(h.call("POST", form={**f, "step": "confirm"})[0], 200)
-        self.assertEqual(seen, [None, []])                                                         # resolve's full read, then the fresh pages-only read immediately before the write
+        self.assertEqual([(a, b is None) for a, b in seen], [(pid, False), (None, False)])         # resolve's read (by page id, its own Applied read), then the fresh pages-only read before the write
+        self.assertEqual(seen[1][1], [])
+
+    def test_a_page_that_left_its_section_after_the_screen_read_is_refused_by_the_fresh_check(self):
+        h = Harness()
+        pid = h.world.ws.target.replace("-", "")
+        _, _, f = h.review(pid, "Rejected")
+        real = close_app._state
+        def moved(client, root, pid_=None, pages=None):
+            rows, parents = real(client, root, pid_, pages)
+            return rows, [dict(p, retired=True) for p in parents] if pid_ is None else parents  # only the pre-write read (no page id) sees it in Retired
+        with mock.patch.object(close_app, "_state", moved):
+            status, body, _ = h.call("POST", form={**f, "step": "confirm"})
+        self.assertNotEqual(status, 200)
+        self.assertIn("STALE_SOURCE", body)
+        self.assertEqual(h.writes(), (0, 0))                                                       # nothing appended, nothing moved
 
 
 if __name__ == "__main__":
