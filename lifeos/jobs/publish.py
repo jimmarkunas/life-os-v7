@@ -185,7 +185,8 @@ FAIR_SHARE = 4          # D186: one slot in four goes to the oldest waiting jobs
 
 
 def order(rows, n, hour=0):
-    """D186: which READY jobs a run publishes, as ids. rows: (id, admission, fit score, posted date, first surfaced). Strongest first: admitted before Review (Review is
+    """D186: which READY jobs a run publishes, as ids. rows: (id, admission, fit score, posted date, first surfaced[, source]). D248: the first n // MAIL_SHARE places
+    go to the strongest rows whose source is not an employer-board scan (`web:*`); the line below then runs on the rest. Strongest first: admitted before Review (Review is
     never raised by missing evidence: no score or no date sorts last), then the higher Fit, then the newer posting; ties by first surfaced, then id. The last n // FAIR_SHARE
     places are the oldest of the rest by first surfaced, so every valid job is reached in finite time. A run of fewer than four places has no whole quarter, so it reserves its one place for the oldest only when the clock hour is a multiple of four (hourly runs: one in four).
     The set of jobs eligible to publish is decided by the caller, not here."""
