@@ -252,7 +252,7 @@ class FakeGitHub:
 class Run(unittest.TestCase):
     """main() end to end against the fake API, with the trusted maps read from the working directory."""
 
-    def go(self, prs, texts, event=None, page=100, body="Lane: career-v7", cwd=None, env=None):
+    def go(self, prs, texts, event=None, page=100, body="Lane: career-v7\nJira: LIFE-59\nEvidence: SYNTHETIC PASS", cwd=None, env=None):
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp, "event.json")
             event_path.write_text(json.dumps({"pull_request": {"number": 1, "body": body, "base": {"sha": "B1"}, "head": {"sha": "H1"}, **(event or {})}}))
@@ -356,6 +356,65 @@ class Http(unittest.TestCase):
         with mock.patch.object(G, "_request", return_value=b"\xff\xfe"), self.assertRaises(G.Unverifiable):
             G._text("o/r", "p", "sha", "t", True)
 
+
+
+class Train(unittest.TestCase):
+    """LIFE-109: while OWNERSHIP.yml names an active train for a lane, a PR of that lane must name one of its issues, change one of its product paths and state its evidence level.
+    The two self-tests the issue asks for: a Platform-only change dressed as Jobs work fails, a real Jobs change passes."""
+    TRAINS = G.validate_trains(DOC)
+    JOBS = "Lane: career-v7\nJira: LIFE-59\nEvidence: SYNTHETIC PASS"
+
+    def judge(self, body, paths, lane="career-v7", number=1, exemptions=()):
+        return G.train_check(self.TRAINS, list(exemptions), {"number": number, "lane": lane, "body": body}, [{"path": p} for p in paths], TODAY)
+
+    def test_the_trusted_map_names_one_jobs_train_for_career(self):
+        self.assertEqual([(t["name"], t["lane"]) for t in self.TRAINS], [("jobs-e2e", "career-v7")])
+        self.assertIn("LIFE-59", self.TRAINS[0]["issues"])
+        self.assertNotIn("LIFE-23", self.TRAINS[0]["issues"])                           # Platform consolidation is paused (LIFE-3 comment 11087)
+
+    def test_self_test_a_platform_only_change_presented_as_jobs_fails(self):
+        got = self.judge(self.JOBS + "\nJobs OS end-to-end delivery", ["lifeos/platform/notion_client.py", "tests/platform/test_x.py", "docs/MASTER_ROADMAP.md"])
+        self.assertEqual([v.split(":")[0] for v in got], ["TRAIN_NO_PRODUCT_CHANGE"])
+
+    def test_self_test_a_real_jobs_change_passes(self):
+        self.assertEqual(self.judge(self.JOBS, ["lifeos/jobs/hiring_pipeline.py", "tests/jobs/test_x.py"]), [])
+        self.assertEqual(self.judge(self.JOBS.replace("SYNTHETIC PASS", "LIVE READ-BACK"), ["lifeos/interview/create.py"]), [])
+
+    def test_the_issue_must_be_one_of_the_trains(self):
+        for body in ("Lane: career-v7\nEvidence: CODE LANDED", "Lane: career-v7\nJira: LIFE-23\nEvidence: CODE LANDED", "Lane: career-v7\nSee LIFE-59\nEvidence: CODE LANDED"):
+            self.assertEqual([v.split(":")[0] for v in self.judge(body, ["lifeos/jobs/a.py"])], ["TRAIN_JIRA_KEY_MISSING"], body)
+
+    def test_evidence_is_one_stated_level_and_jim_accepted_is_never_self_claimed(self):
+        jobs = ["lifeos/jobs/a.py"]
+        self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nJira: LIFE-59", jobs)], ["TRAIN_EVIDENCE_MISSING"])
+        self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS + "\nEvidence: LIVE READ-BACK", jobs)], ["TRAIN_EVIDENCE_MISSING"])
+        self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nJira: LIFE-59\nEvidence: DONE", jobs)], ["TRAIN_EVIDENCE_MISSING"])
+        self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nJira: LIFE-59\nEvidence: JIM ACCEPTED", jobs)], ["TRAIN_SELF_ACCEPTANCE", "TRAIN_EVIDENCE_MISSING"])
+
+    def test_another_lane_is_untouched_and_an_approved_repair_passes_only_by_its_exemption(self):
+        self.assertEqual(self.judge("Lane: edge-oracle", ["lifeos/edge/close_gate.py"], lane="edge-oracle"), [])     # an edge-oracle hotfix keeps its own path
+        repair = {"pr": 7, "approval": APPROVAL, "expires": "2026-12-31"}
+        self.assertEqual(self.judge("Lane: career-v7", ["lifeos/platform/http.py"], number=7, exemptions=[repair]), [])
+        self.assertEqual(len(self.judge("Lane: career-v7", ["lifeos/platform/http.py"], number=8, exemptions=[repair])), 3)    # it exempts exactly its PR
+        self.assertEqual(len(self.judge("Lane: career-v7", ["lifeos/platform/http.py"], number=7, exemptions=[{**repair, "expires": "2026-10-01"}])), 3)
+
+    def test_malformed_trains_or_exemptions_fail_closed(self):
+        for trains in ({"x": 1}, [{"name": "t", "lane": "nope", "issues": ["LIFE-1"], "product": ["a"]}], [{"name": "t", "lane": "career-v7", "issues": ["JFM-1"], "product": ["a"]}],
+                       [{"name": "t", "lane": "career-v7", "issues": ["LIFE-1"], "product": []}],
+                       [{"name": "a", "lane": "career-v7", "issues": ["LIFE-1"], "product": ["x"]}, {"name": "b", "lane": "career-v7", "issues": ["LIFE-2"], "product": ["y"]}]):
+            with self.assertRaises(G.GuardError):
+                G.validate_trains({**DOC, "trains": trains})
+        for bad in ([{"pr": "7", "approval": APPROVAL, "expires": "2026-12-31"}], [{"pr": 7, "approval": "http://evil.example/x", "expires": "2026-12-31"}], [{"pr": 7, "approval": APPROVAL}]):
+            with self.assertRaises(G.GuardError):
+                G.validate_exemptions({"exemptions": bad})
+        self.assertEqual(G.validate_trains({k: v for k, v in DOC.items() if k != "trains"}), [])           # no train: nothing extra is checked
+
+    def test_main_runs_the_train_check_on_the_pr_body(self):
+        texts = {("lifeos/platform/http.py", "B1"): "a\n", ("lifeos/platform/http.py", "H1"): "b\n", ("lifeos/jobs/lanes.py", "B1"): "a\n", ("lifeos/jobs/lanes.py", "H1"): "b\n"}
+        run = Run()
+        self.assertEqual(run.go(run.mine([("lifeos/platform/http.py", "modified", None)]), texts)[0], 1)            # Platform-only under the Jobs train: refused
+        self.assertEqual(run.go(run.mine([("lifeos/jobs/lanes.py", "modified", None)]), texts)[0], 0)
+        self.assertEqual(run.go(run.mine([("lifeos/jobs/lanes.py", "modified", None)]), texts, body="Lane: career-v7")[0], 1)    # no issue, no evidence
 
 if __name__ == "__main__":
     unittest.main()
