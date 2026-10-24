@@ -258,7 +258,7 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 sized = counts.setdefault("cloud_job_too_large", {})        # recorded on the job's row and never re-asked (above), and the batch goes on: nothing here makes the run fail
                 sized[code] = sized.get(code, 0) + 1
                 if code == "FIT_EDGE_OVERSIZE" and sized[code] >= SIZE_STOP and not counts["cloud_ok"]:
-                    state["stop"] = True                                 # Oracle refusing job after job for size with nothing judged looks like its limit, not the jobs: stop before more rows are marked
+                    state["stop"] = counts["cloud_size_stop"] = True     # Oracle refusing job after job for size with nothing judged looks like its limit, not the jobs: stop before more rows are marked
                 return
             counts["cloud_failed"] += 1
             _degraded(counts, code)
@@ -348,8 +348,8 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     quota = quota_summary(readings)
     if quota:
         counts["cloud_quota"] = quota                                    # LIFE-77: readings and estimates only, never the account
-    sized = sum(counts.get("cloud_job_too_large", {}).values())
-    if sized >= 2 and sized == counts["cloud_calls"]:                    # every call sent was refused for size: a systemic limit, not a few large jobs, so the run degrades
+    oversize = counts.get("cloud_job_too_large", {}).get("FIT_EDGE_OVERSIZE", 0)                  # Oracle's own refusals only: V7's frame limit is about the job
+    if counts.get("cloud_size_stop") or (oversize >= 2 and oversize == counts["cloud_calls"]):    # the size stop fired, or every call was refused by Oracle for size: its limit, so the run degrades
         counts["cloud_failed"] += 1
         _degraded(counts, "FIT_EDGE_ALL_TOO_LARGE")
     if counts["cloud_fit"] in ("shadow", "canary", "backlog"):
