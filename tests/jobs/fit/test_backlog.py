@@ -7,7 +7,7 @@ from unittest import mock
 
 from lifeos.jobs import fit_sync, publish
 from lifeos.jobs.fit import backlog, cloud, edge, stage
-from tests.jobs.fit.test_cloud import Base, PROFILE, T
+from tests.jobs.fit.test_cloud import Base, GOOD, PROFILE, T
 from tests.jobs.fit.test_edge import RECEIPT, Endpoint, refusal, reply
 
 USAGE = {"input_tokens": 1389, "cached_input_tokens": 0, "cache_write_tokens": 0, "output_tokens": 69, "reasoning_tokens": "unavailable", "total_tokens": 1458}
@@ -774,6 +774,25 @@ class ParallelLanes(Batch):
         statuses = [self.status(i) for i in range(1, 4)]
         self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["cloud_promoted"]), ("DEGRADED(FIT_EDGE_TIMEOUT)", 1, 1))
         self.assertEqual(sorted(s or "-" for s in statuses), ["-", "CANARY", "DEGRADED"])
+
+    def test_a_job_too_large_to_ask_is_recorded_and_counted_but_never_fails_the_batch_or_the_run(self):
+        # Oct 24 2026 (LIFE-76): board backfill jobs with very long descriptions overflowed the 16 KB request frame and turned every tick red.
+        long = GOOD + "".join(f"• Own program delivery stream {n} across engineering, data and finance teams\n" for n in range(400))      # a real description, far over the frame
+        self.titled(1, "Program Manager 1", score=90, text=long)                                  # frame() refuses it before anything is sent
+        for i in (2, 3):
+            self.titled(i, f"Program Manager {i}", score=90 - i)
+        endpoint = Endpoint(measured)
+        counts = self.batch(10, endpoint)
+        self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["failed"]), ("OK", 0, 0))      # not DEGRADED, and run.PARTIAL_FAILURE sees no failure
+        self.assertEqual(counts["cloud_job_too_large"], {"FIT_EDGE_REQUEST_TOO_LARGE": 1})                    # still reported, by code
+        self.assertEqual((counts["cloud_promoted"], len(endpoint.sent)), (2, 2))                              # the batch went on with the other two
+        self.assertEqual(self.row(1, ("cloud_status", "cloud_reason"))[:2], ("DEGRADED", "FIT_EDGE_REQUEST_TOO_LARGE"))   # recorded on its row: never re-asked
+        self.assertEqual(self.batch(10, Endpoint(measured))["cloud_calls"], 0)                                 # a second batch asks nobody again
+
+    def test_a_rejected_judgment_still_degrades_the_batch(self):
+        self.titled(1, "Program Manager 1", score=90)
+        counts = self.batch(10, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')))
+        self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["failed"]), ("DEGRADED(FIT_EDGE_JUDGMENT_REJECTED)", 1, 1))   # only the SIZE outcomes were exempted
 
     def test_the_setting_is_one_unless_it_is_a_whole_number_from_1_to_3(self):
         for raw, want in ((None, 1), ("", 1), ("1", 1), ("2", 2), (" 3 ", 3), ("4", 1), ("0", 1), ("-2", 1), ("two", 1), ("2.5", 1)):
