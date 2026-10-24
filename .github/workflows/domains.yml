@@ -881,6 +881,7 @@ jobs:
           HIRING_STATUS_BLOCK_ID: ${{ secrets.HIRING_STATUS_BLOCK_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
           V7_CLOSE_BASE_URL: ${{ secrets.V7_CLOSE_BASE_URL }}          # D198 S3: the private Close origin; unset, the Notes cell has no Close link
+          HIRING_AUTO_CLOSE: ${{ vars.HIRING_AUTO_CLOSE }}              # Jim's switch (Oct 24): "on" lets a role-matched rejection close itself; unset, it is only counted
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}

@@ -194,9 +194,16 @@ class RoutingTests(unittest.TestCase):
 
     def test_duplicates_or_a_page_that_is_both_active_and_retired_are_never_guessed(self):
         for applied, parents in (([self.row("l1"), self.row("l2")], []), ([], [self.parent("p1"), self.parent("p2")]), ([], [self.parent("p1"), self.parent("p2", retired=True)]),
-                                 ([self.row("l1")], [self.parent("p1"), self.parent("p2")]), ([], [self.parent("p1", retired=True), self.parent("p2", retired=True)])):
+                                 ([], [self.parent("p1", retired=True), self.parent("p2", retired=True)])):
             with self.assertRaises(D.DecisionError) as error:
                 D.route(applied, parents, self.WANT)
+            self.assertEqual(str(error.exception), "DECISION_AMBIGUOUS")
+
+    def test_a_confirm_on_the_one_ledger_application_ignores_duplicate_notes_pages_and_a_reopen_does_not(self):
+        for parents in ([self.parent("p1"), self.parent("p2")], [self.parent("p1"), self.parent("p2", retired=True)]):     # Walmart, Oct 24: an Active duplicate of a Retired page
+            self.assertEqual(D.route([self.row("l1")], parents, self.WANT), ("ledger", self.row("l1")))                # the Ledger row carries the decision; no page is moved
+            with self.assertRaises(D.DecisionError) as error:
+                D.route([self.row("l1")], parents, {**self.WANT, "action": "REOPEN"})
             self.assertEqual(str(error.exception), "DECISION_AMBIGUOUS")
 
     def test_reopen_acts_on_a_retired_notes_page_and_never_on_a_pursuit_the_ledger_closed(self):

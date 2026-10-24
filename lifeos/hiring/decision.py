@@ -144,7 +144,11 @@ def route(applied, parents, want):
     Reopen acts only on the record that closed the pursuit: a Ledger-closed application is never reopened (or resurrected) through its Notes page."""
     same = lambda r: M.same(r["company"], r["role"], want["company"], want["role"])
     led, act, ret = [r for r in applied if same(r)], [p for p in parents if not p.get("retired") and same(p)], [p for p in parents if p.get("retired") and same(p)]
-    if len(led) > 1 or len(act) > 1 or len(ret) > 1 or (act and ret):
+    if len(led) > 1:
+        raise fail("AMBIGUOUS")
+    if led and want["action"] != REOPEN:
+        return "ledger", led[0]                                        # a confirm on the one Ledger application never moves a Notes page, so duplicate pages cannot make it ambiguous (Walmart, Oct 24)
+    if len(act) > 1 or len(ret) > 1 or (act and ret):
         raise fail("AMBIGUOUS")
     page = ret or act                                                  # at most one: the page the pursuit lives on, wherever it is now (a retry after a move that landed must still reach move_page's own checks)
     if want["action"] == REOPEN:
