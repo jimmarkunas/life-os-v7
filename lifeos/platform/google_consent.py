@@ -1,5 +1,5 @@
-"""One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the drive.file scope only (files LIFE OS
-creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
+"""One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the full drive scope (Jim, Oct 24: "full", so
+résumés land in My Drive / LIFE OS / Résumés), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
 must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
 never to stdout. It runs on Jim's Mac, where the browser is (an SSH -L tunnel to the Edge proved fragile, Oct 24), and pipes over ssh; the client is
 the existing LIFE OS Gmail Web client (docs/DRIVE_RESUMES.md). Standalone (stdlib only):
@@ -15,7 +15,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-SCOPE = "https://www.googleapis.com/auth/drive.file"          # the same values as lifeos.platform.gdrive (a test holds them equal)
+SCOPE = "https://www.googleapis.com/auth/drive"          # the same values as lifeos.platform.gdrive (a test holds them equal)
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -34,7 +34,7 @@ def exchange(client_id, client_secret, code, redirect, verifier, opener=urllib.r
     with opener(urllib.request.Request(TOKEN_URL, data=body, method="POST"), timeout=30) as response:
         reply = json.loads(response.read())
     if SCOPE not in str(reply.get("scope", "")).split() or not reply.get("refresh_token"):
-        raise SystemExit("Google did not grant the drive.file scope with a refresh token; nothing was stored.")
+        raise SystemExit("Google did not grant the full drive scope with a refresh token; nothing was stored.")
     return json.dumps({"client_id": client_id, "client_secret": client_secret, "refresh_token": reply["refresh_token"]})
 
 

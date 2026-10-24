@@ -232,7 +232,7 @@ class DriveBuild(unittest.TestCase):
         r = Run(drive=FakeDrive())
         status, body = r.build()
         self.assertEqual(status, 200, body)
-        self.assertIn("saved in Google Drive (the Résumés folder LIFE OS keeps", body)
+        self.assertIn("saved in Google Drive (My Drive / LIFE OS / Résumés)", body)
         self.assertEqual(r.uploads, [])                                                       # nothing is uploaded to Notion
         self.assertEqual(r.drive.raw, GDRIVE)
         stored = r.drive.files["file-1-0123456789"]
@@ -255,6 +255,13 @@ class DriveBuild(unittest.TestCase):
         self.assertEqual(status, 500)
         self.assertIn("DEGRADED · GDRIVE_HTTP_403", body)
         self.assertEqual((r.page.appended, r.page.props["Resume"]["files"], r.uploads), ([], [], []))
+
+    def test_a_narrow_grant_says_to_rerun_the_sign_in_and_attaches_nothing(self):
+        r = Run(drive=FakeDrive(fail="GDRIVE_SCOPE_NARROW"))
+        status, body = r.build()
+        self.assertEqual(status, 500)
+        self.assertIn("rerun it (docs/DRIVE_RESUMES.md)", body)
+        self.assertEqual((r.page.appended, r.uploads), ([], []))
 
     def test_get_never_sees_the_drive_credential(self):
         r = Run(drive=FakeDrive())
@@ -446,19 +453,33 @@ class DriveClient(unittest.TestCase):
                 gdrive.Drive(raw)
             self.assertEqual(str(caught.exception), "GDRIVE_CONFIG_INVALID")
 
-    def test_the_folder_is_found_by_its_tag_and_created_once_in_my_drive(self):
-        opener = self.Opener({"access_token": "at"}, {"files": []}, {"id": "folder-9"}, {"files": [{"id": "folder-9"}]})
+    def test_the_folder_is_my_drive_life_os_resumes_found_or_created_inside_it_once(self):
+        opener = self.Opener({"access_token": "at", "scope": gdrive.SCOPE}, {"files": [{"id": "home-1"}]}, {"files": []}, {"id": "folder-9"},
+                             {"files": [{"id": "home-1"}]}, {"files": [{"id": "folder-9"}]})
         drive = gdrive.Drive(GDRIVE, opener)
         self.assertEqual(drive.folder(), "folder-9")
         self.assertEqual(drive.folder(), "folder-9")
-        token, search, made, again = opener.sent
+        token, home, search, made, home2, again = opener.sent
         self.assertEqual(token[1], gdrive.TOKEN_URL)
         self.assertNotIn("Authorization", token[2])
         self.assertIn(b"refresh_token=rtoken", token[3])
-        self.assertIn("appProperties+has", search[1])
-        self.assertEqual(search[2]["Authorization"], "Bearer at")
-        self.assertEqual(json.loads(made[3]), {"name": "Résumés", "mimeType": gdrive.FOLDER_MIME, "appProperties": {"lifeos": "resumes"}})
+        self.assertIn("name%3D%27LIFE+OS%27+and+%27root%27+in+parents", home[1])                          # exactly the LIFE OS folder at the top of My Drive
+        self.assertIn("%27home-1%27+in+parents", search[1])
+        self.assertEqual(home[2]["Authorization"], "Bearer at")
+        self.assertEqual(json.loads(made[3]), {"name": "Résumés", "mimeType": gdrive.FOLDER_MIME, "parents": ["home-1"], "appProperties": {"lifeos": "resumes"}})
         self.assertEqual(again[0], "GET")
+
+    def test_no_or_two_life_os_folders_or_a_narrow_grant_are_refused_before_anything_is_made(self):
+        for homes, code in (([], "GDRIVE_LIFE_OS_FOLDER_MISSING"), ([{"id": "a"}, {"id": "b"}], "GDRIVE_LIFE_OS_FOLDER_AMBIGUOUS")):
+            opener = self.Opener({"access_token": "at"}, {"files": homes})
+            with self.assertRaises(gdrive.DriveError) as caught:
+                gdrive.Drive(GDRIVE, opener).folder()
+            self.assertEqual(str(caught.exception), code)
+            self.assertEqual([m for m, *_ in opener.sent], ["POST", "GET"])                                   # the token, one search, nothing created
+        opener = self.Opener({"access_token": "at", "scope": "https://www.googleapis.com/auth/drive.file"})
+        with self.assertRaises(gdrive.DriveError) as caught:
+            gdrive.Drive(GDRIVE, opener).folder()
+        self.assertEqual(str(caught.exception), "GDRIVE_SCOPE_NARROW")                                         # the pre-"full" grant: rerun the sign-in
 
     def test_an_upload_is_the_docx_itself_and_its_checksum_must_match(self):
         good = {"id": "f1", "md5Checksum": hashlib.md5(DOCX).hexdigest(), "webViewLink": "https://drive.google.com/file/d/f1/view"}
