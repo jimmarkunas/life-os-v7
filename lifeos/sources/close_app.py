@@ -136,6 +136,7 @@ def _post(req, who, secrets):
 
 
 # ---------- E05 Mark Complete (Jim, Oct 24): one opportunity page's one primary action, recorded in that page's own fold after two steps, read back ----------
+LEAD_ACTION = "Reply to the recruiter's message, or close this lead"
 FOLD, OPP_MARKER, COMPLETE_PATH = "⚙️ LIFE OS", "v7-interview:1;owner=machine;kind=opportunity", "Daily Report / Active Opportunities / Mark Complete"
 ACTION_LINE, DONE_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)"), re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")   # lifeos.interview.template's formats (contract-tested)
 
@@ -192,12 +193,17 @@ def _complete_get(req, who, secrets):
         return _complete_stop(200, "Already done", "Already marked complete", f"Marked complete on {a['done']}.", "Nothing was changed.", "")
     exp, st = str(int(_now().timestamp()) + TTL), _complete_fp(a)
     fields = {"o": pid, "a": key, "exp": exp, "st": st, "t": _mac(secrets["link"], "m", who["login"], pid, key, st, exp)}
+    lead = a["text"].startswith(LEAD_ACTION)                                     # "Reply to the recruiter's message, or close this lead.": both outcomes are offered (Jim, Oct 24)
+    ask, cta = ("What happened with this lead?", "I replied \u2014 mark it done") if lead else (f'Mark \u201c{e(a["text"])}\u201d complete?', "Mark complete")
+    close = f'<a class="btn" href="/?o={pid}">Close this lead instead \u2192</a>' if lead else ""
     return 200, HTML, S.page("Mark complete", "Your confirmation is required before anything is recorded.", (
         f'<form method="post" action="/complete">{S._hidden(fields)}<section class="section"><div class="eyebrow">Opportunity</div>'
-        f'<h2>{e(a["company"])} — {e(a["role"])}</h2></section><section class="section"><div class="eyebrow">Mark complete?</div>'
-        f'<h3 class="step-title">Mark \u201c{e(a["text"])}\u201d complete?</h3>'
-        '<div class="notice">Confirming records this one action as done on the opportunity page and reads it back. The page shows it as done after the next hourly run. Nothing else changes and no one is contacted.</div></section>'
-        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'),
+        f'<h2>{e(a["company"])} — {e(a["role"])}</h2></section><section class="section"><div class="eyebrow">{e(a["text"])}</div>'
+        f'<h3 class="step-title">{ask}</h3>'
+        '<div class="notice">' + ('Replied: records this action as done on the opportunity page and reads it back; the page shows it after the next hourly run. Close: opens the Close screen, where you choose why the lead is closed. '
+                                  if lead else 'Confirming records this one action as done on the opportunity page and reads it back. The page shows it as done after the next hourly run. ')
+        + 'Nothing else changes and no one is contacted.</div></section>'
+        f'<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>{close}<button class="btn primary" name="step" value="confirm">{cta}</button></div></form>'),
         COMPLETE_PATH, "Mark complete"), ()
 
 

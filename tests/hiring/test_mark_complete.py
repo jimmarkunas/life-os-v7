@@ -12,6 +12,7 @@ from tests.hiring.test_notes_decision import COMPANY, ROLE
 
 ACTION = "Reply to the recruiter's message, or close this lead."
 KEY = template.action_key(ACTION)
+notion_key = template.action_key
 
 
 def page_with_fold(h, action=ACTION, done=()):
@@ -39,7 +40,9 @@ class EdgeScreen(unittest.TestCase):
         fold = page_with_fold(h)
         status, body, _ = self.open(h)
         self.assertEqual(status, 200)
-        self.assertIn("Mark “" + ACTION.replace("'", "&#x27;") + "” complete?", body)
+        self.assertIn("What happened with this lead?", body)                                  # the lead action offers both of its outcomes (Jim, Oct 24)
+        self.assertIn("I replied — mark it done", body)
+        self.assertIn(f'href="/?o={h.world.ws.target.replace("-", "")}">Close this lead instead', body)
         self.assertEqual(h.world.ws.writes(), [])                                          # the link (step 1) never writes
         status, body, _ = h.call("POST", "/complete", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
@@ -49,6 +52,15 @@ class EdgeScreen(unittest.TestCase):
         status, body, _ = self.open(h)                                                    # the same link again: already done, nothing written
         self.assertIn("Already marked complete", body)
         self.assertEqual(len(h.world.ws.writes()), 1)
+
+    def test_any_other_action_asks_to_mark_it_complete_with_no_close_choice(self):
+        h = Harness()
+        page_with_fold(h, action="Prepare for Interview 1 on 2026-10-28.")
+        status, body, _ = self.open(h, key=notion_key("Prepare for Interview 1 on 2026-10-28."))
+        self.assertEqual(status, 200, body)
+        self.assertIn("Mark “Prepare for Interview 1 on 2026-10-28.” complete?", body)
+        self.assertIn(">Mark complete</button>", body)
+        self.assertNotIn("Close this lead instead", body)
 
     def test_a_replayed_confirm_is_already_recorded_and_writes_nothing(self):
         h = Harness()
