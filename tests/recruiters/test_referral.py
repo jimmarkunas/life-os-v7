@@ -158,6 +158,13 @@ class Screen(unittest.TestCase):
         self.assertEqual(ledger.writes, [])
         self.assertIn(b"Already recorded", record(svc, "0", "Referral Confirmed")[2])
 
+    def test_a_recorded_status_asks_for_the_recruiter_outreach_redraw_once_and_a_replay_never_does(self):
+        ledger, rec = world()
+        svc = Service(ledger, rec)
+        self.assertEqual(record(svc, "0", "Referral Confirmed")[0], 200)
+        self.assertEqual(record(svc, "0", "Referral Confirmed")[0], 200)                       # already recorded
+        self.assertEqual(svc.after, ["recruiters"])
+
     def test_tampered_person_status_or_signature_writes_nothing(self):
         ledger, rec = world()
         svc = Service(ledger, rec)

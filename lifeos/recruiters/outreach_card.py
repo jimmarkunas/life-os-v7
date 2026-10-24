@@ -285,7 +285,8 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
     write = bool(live) and (environ.get("RECRUITER_OUTREACH") or "").strip().lower() == "on"
     counts = {"rows": 0, "needs_action": 0, "waiting": 0, "live": write, "status": "ok"}
     reason = None
-    if (environ.get("RECRUITERS_STAGE_OUTCOME") or "success").strip() != "success":         # the Recruiters stage failed this run: what the source holds is not this run's truth
+    stage = (environ.get("RECRUITERS_STAGE_OUTCOME") or "success").strip()
+    if stage not in ("success", "skipped"):                         # the Recruiters stage failed this run: what the source holds is not this run's truth
         reason = "RECRUITERS_STAGE_FAILED"
     else:
         try:
@@ -308,5 +309,6 @@ def run(limit, live, environ=os.environ, notion=None, client=None, now=None):
         firsts = [first_contact(r, kept) for r in shown]
         counts["first_contact_shown"] = sum(1 for f in firsts if f)
         return [cells(r, today, f, environ.get("V7_CLOSE_BASE_URL")) for r, f in zip(shown, firsts)]
-    counts.update(present(target, environ, build, f"{TITLE} (Updated {clock})", write))
+    stamp = "Redrawn" if stage == "skipped" else "Updated"         # skipped: a Close screen refresh ran no mail stage on purpose, so the heading never claims mail was read (Jim, Oct 24)
+    counts.update(present(target, environ, build, f"{TITLE} ({stamp} {clock})", write))
     return counts

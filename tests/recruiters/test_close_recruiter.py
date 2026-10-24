@@ -96,6 +96,13 @@ class Screen(unittest.TestCase):
         self.assertEqual(st, 409)
         self.assertNotIn(b"<form", body)
 
+    def test_a_recorded_close_asks_for_the_recruiter_outreach_redraw_once_and_a_replay_never_does(self):
+        svc = Svc(Ledger(), world())
+        self.assertEqual(close(svc, "Dismissed")[0], 200)
+        self.assertEqual(svc.after, ["recruiters"])
+        svc("POST", "/recruiter", form={"step": "confirm"})                                   # a refused form asks nothing
+        self.assertEqual(svc.after, ["recruiters"])
+
     def test_tampered_fields_or_signatures_write_nothing(self):
         rec = world()
         svc = Svc(Ledger(), rec)

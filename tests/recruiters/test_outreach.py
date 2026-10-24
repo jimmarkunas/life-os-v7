@@ -65,6 +65,7 @@ class Service:
 
     def __init__(self, ledger, recruiters, config=None):
         self.ledger, self.recruiters, self.clock = ledger, recruiters, NOW
+        self.after = []                                                    # the gate's refresh requests (close_gate.REFRESH), as close_gate.main passes them
         self.config = config or {"ledger": LEDGER, "pipeline": PIPELINE, "recruiters": RECRUITERS}
 
     def _client(self, environ, source_name="NOTION_JOB_LEDGER_DATA_SOURCE_ID", **kw):
@@ -76,7 +77,7 @@ class Service:
 
     def __call__(self, method, path, query=None, form=None):
         secrets = {"link": SECRET, "config": self.config}
-        secrets.update({"reader": self.ledger} if method == "GET" else {"notion": b"token"})
+        secrets.update({"reader": self.ledger} if method == "GET" else {"notion": b"token", "after": self.after})
         with mock.patch.object(outreach_app, "Client", self._client), mock.patch.object(close_app, "_now", lambda: self.clock), \
                 mock.patch.object(outreach_app, "_now", lambda: self.clock):
             return close_app.handle({"method": method, "path": path, "query": query or {}, "form": form or {}}, WHO, secrets)
@@ -108,6 +109,13 @@ class MarkAsSent(unittest.TestCase):
         self.assertEqual((row["person"], row["client"], row["role"], row["medium"], row["action"], row["follow_up"], row["jobs"], row["done"], row["active"]),
                          ("Avery Synthetic", "Northwind Labs", "Senior Technical Program Manager", "LinkedIn", "Waiting", "2026-10-19", [JOB_A], False, True))
         self.assertEqual(ledger.writes, [])
+
+    def test_a_recorded_mark_asks_for_the_recruiter_outreach_redraw_once_and_a_replay_never_does(self):
+        ledger, rec = self.world()
+        svc = Service(ledger, rec)
+        self.assertEqual(mark(svc, JOB_A, "Avery Synthetic")[0], 200)
+        self.assertEqual(mark(svc, JOB_A, "Avery Synthetic")[0], 200)                         # already recorded
+        self.assertEqual(svc.after, ["recruiters"])
 
     def test_replay_is_already_recorded_and_never_a_duplicate(self):
         ledger, rec = self.world()

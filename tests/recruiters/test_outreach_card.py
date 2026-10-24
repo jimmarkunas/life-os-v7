@@ -117,6 +117,13 @@ class RenderTests(unittest.TestCase):
         self.assertEqual([b for b in t.kids["col"] if t.blocks[b]["type"] == "table"], [HIRING_T, "ro-t"])                     # no second table, no view
         self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Updated 9:30 AM CT)")
 
+    def test_a_close_screen_refresh_redraws_the_rows_and_the_heading_says_redrawn_not_updated(self):
+        t = report(heading="🤝 Recruiter Outreach (DEGRADED at 9:05 AM CT)")
+        done = go(t, Source(MIXED), env={**ENV, "RECRUITERS_STAGE_OUTCOME": "skipped"})
+        self.assertTrue(done["verified"])
+        self.assertEqual(R.plain(t.blocks["ro-h"]), "🤝 Recruiter Outreach (Redrawn 9:30 AM CT)")
+        self.assertEqual(len(shown(t)), done["rows"])
+
     def test_each_cell_is_a_bold_first_line_and_a_gray_second_line_with_only_recorded_links(self):
         t = report()
         go(t, Source(MIXED))
