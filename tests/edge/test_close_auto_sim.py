@@ -179,6 +179,16 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertEqual(self.run_("auto", HEAD=E, BODY="y lifeos/a.py")[0], 0)                  # reverting the fix brings B's code back: still out
         self.assertEqual(self.at("current"), A[:12])
 
+    def test_jims_manual_install_is_not_undone_by_the_next_merge(self):
+        self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
+        self.assertEqual(self.run_("install", A, BODY="x lifeos/a.py")[0], 0)                   # Jim goes back to A by hand
+        self.assertEqual(self.at("current"), A[:12])
+        self.assertEqual(self.run_("auto", HEAD=C, BODY="y lifeos/a.py")[0], 0)                  # a docs-only merge still carrying B's code
+        self.assertEqual(self.at("current"), A[:12])
+        D = "d" * 12 + "5" * 28
+        self.run_("auto", HEAD=D, BODY="z lifeos/a.py")                                          # new code is released
+        self.assertEqual(self.at("current"), D[:12])
+
     def test_a_cut_off_between_the_two_links_puts_previous_back(self):
         self.link("previous", A[:12])                                                             # install set previous to the live tree, then the run died
         open(os.path.join(self.sim, "etc", "auto.pending"), "w").write(f"{B} {self.sim}/opt/{A[:12]} {self.sim}/opt/{P}\n")

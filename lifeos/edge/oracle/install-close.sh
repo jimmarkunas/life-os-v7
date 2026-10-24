@@ -136,6 +136,7 @@ case "${1:-}" in
     commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
     [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
     [ "$cur" = "$OPT/${commit:0:12}" ] && { echo "$commit" > "$ETC/auto.checked"; exit 0; }   # live and settled (Jim installed it, or a release finished)
+    code() { tail -n +2 "$1/MANIFEST" | sha256sum | cut -d' ' -f1; }
     tried=""; n=0; read -r tried n _ 2>/dev/null < "$ETC/auto.attempts" || true
     case "$n" in ''|*[!0-9]*|???*) n=0 ;; esac                                              # anything but a small count reads as none
     [ "$tried" = "$commit" ] || n=0
@@ -144,14 +145,17 @@ case "${1:-}" in
     if ! python3 -I "$REL" stage "$commit" "$probe"; then
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
     fi
-    if [ -s "$ETC/auto.rolled" ] && grep -qx "$(tail -n +2 "$probe/MANIFEST" | sha256sum | cut -d' ' -f1)" "$ETC/auto.rolled"; then
+    if [ -s "$ETC/auto.rolled" ] && grep -qx "$(code "$probe")" "$ETC/auto.rolled"; then
       echo "$commit" > "$ETC/auto.checked"; say "auto: ${commit:0:12} carries the code Jim rolled back; not released"; exit 0
+    fi
+    if [ "$(cat "$ETC/auto.released" 2>/dev/null)" = "$(code "$probe")" ]; then              # the code this step last released: Jim has since chosen another tree by hand
+      echo "$commit" > "$ETC/auto.checked"; exit 0
     fi
     if ! python3 -I "$REL" same "$probe" "$cur"; then                                     # the commit changes the Close closure
       echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"                                   # counted before the switch, so a cut-off run still counts
       echo "$commit $cur ${prev:-}" > "$ETC/auto.pending.new" && mv -f "$ETC/auto.pending.new" "$ETC/auto.pending"   # what a cut-off run is settled against (written whole or not at all)
       if LIFEOS_CLOSE_AUTO=1 "$0" install "$commit"; then
-        rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
+        code "$probe" > "$ETC/auto.released"; rm -f "$ETC/auto.pending"; say "auto: released ${commit:0:12}"
       else
         if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                  # verify failed after the switch: back to exactly the live tree, and its own previous tree
           ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"

@@ -99,14 +99,15 @@ def check(dest):
 
 
 def latest(fetch=get):
-    """Edge auto-release (Jim, Oct 24): main's head commit, only once its `unit-tests` check run passed; anything else refuses and nothing is released this tick."""
+    """Edge auto-release (Jim, Oct 24): main's head commit, only once main's own pr-tests run on that exact commit passed. The run is read from the Actions
+    runs of the pr-tests.yml workflow (a push to main), never from a check run, which any branch's workflow could post; its newest attempt decides."""
     commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/main")).get("sha") or ""
     if not SHA.match(commit):
         raise Refused("NOT_A_COMMIT")
-    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/{commit}/check-runs?check_name=unit-tests")).get("check_runs") or []
-    mine = [r for r in runs if r.get("name") == "unit-tests" and r.get("head_sha") == commit and (r.get("app") or {}).get("slug") == "github-actions"]
-    newest = max(mine, key=lambda r: r.get("id") or 0, default={})       # ids only grow: a later re-run that failed wins over an earlier pass
-    if any(r.get("status") != "completed" for r in mine) or not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):   # a run still queued or running decides nothing yet
+    runs = json.loads(fetch(f"https://api.github.com/repos/{REPO}/actions/workflows/pr-tests.yml/runs?branch=main&event=push&head_sha={commit}")).get("workflow_runs") or []
+    mine = [r for r in runs if r.get("head_sha") == commit and r.get("head_branch") == "main" and r.get("event") == "push" and r.get("path") == ".github/workflows/pr-tests.yml"]
+    newest = max(mine, key=lambda r: (r.get("run_attempt") or 0, r.get("id") or 0), default={})
+    if any(r.get("status") != "completed" for r in mine) or not (newest.get("status") == "completed" and newest.get("conclusion") == "success"):   # still queued or running decides nothing
         raise Refused("NOT_GREEN")
     return commit
 

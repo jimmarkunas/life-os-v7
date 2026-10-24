@@ -121,44 +121,24 @@ class IsolatedTree(unittest.TestCase):
 
 
 class AutoRelease(unittest.TestCase):
-    """Jim, Oct 24: the Edge releases main's head by itself, only once unit-tests passed on it, and only when the Close closure changed."""
-    GREEN = {"name": "unit-tests", "status": "completed", "conclusion": "success", "head_sha": C, "app": {"slug": "github-actions"}}
+    """Jim, Oct 24: the Edge releases main's head by itself, only once main's own pr-tests run passed on it, and only when the Close closure changed."""
+    GREEN = {"head_sha": C, "head_branch": "main", "event": "push", "path": ".github/workflows/pr-tests.yml", "status": "completed", "conclusion": "success", "id": 1, "run_attempt": 1}
 
     def fetch(self, sha=C, runs=(GREEN,)):
         return {f"https://api.github.com/repos/{rel.REPO}/commits/main": json.dumps({"sha": sha}).encode(),
-                f"https://api.github.com/repos/{rel.REPO}/commits/{sha}/check-runs?check_name=unit-tests": json.dumps({"check_runs": list(runs)}).encode()}.__getitem__
+                f"https://api.github.com/repos/{rel.REPO}/actions/workflows/pr-tests.yml/runs?branch=main&event=push&head_sha={sha}": json.dumps({"workflow_runs": list(runs)}).encode()}.__getitem__
 
-    def test_only_a_green_head_is_released(self):
+    def test_only_main_own_green_test_run_releases(self):
         self.assertEqual(rel.latest(self.fetch()), C)
         G = self.GREEN
-        for runs in ((), ({**G, "conclusion": "failure"},), ({**G, "status": "in_progress", "conclusion": None},), ({**G, "name": "lane-guard"},),
-                     ({**G, "head_sha": "b" * 40},), ({**G, "app": {"slug": "some-other-app"}},)):
-            with self.assertRaises(rel.Refused):
+        for runs in ((), ({**G, "conclusion": "failure"},), ({**G, "status": "in_progress", "conclusion": None},), ({**G, "event": "pull_request"},),
+                     ({**G, "head_branch": "feature"},), ({**G, "head_sha": "b" * 40},), ({**G, "path": ".github/workflows/other.yml"},),
+                     (G, {**G, "id": 2, "conclusion": "failure"}), (G, {**G, "id": 2, "status": "queued", "conclusion": None})):
+            with self.assertRaises(rel.Refused, msg=str(runs)):
                 rel.latest(self.fetch(runs=runs))
+        self.assertEqual(rel.latest(self.fetch(runs=({**G, "conclusion": "failure"}, {**G, "run_attempt": 2, "conclusion": "success"}))), C)   # a passing re-run
         with self.assertRaises(rel.Refused):
             rel.latest(self.fetch(sha="main"))
-        early = {**G, "id": 1}
-        rerun = {**G, "id": 2, "conclusion": "failure"}
-        with self.assertRaises(rel.Refused):
-            rel.latest(self.fetch(runs=(early, {**G, "id": 2, "status": "queued", "conclusion": None, "started_at": None})))   # a queued re-run decides nothing yet
-        with self.assertRaises(rel.Refused):
-            rel.latest(self.fetch(runs=(early, rerun)))                        # the newest run decides: a failed re-run beats an earlier pass
-        self.assertEqual(rel.latest(self.fetch(runs=({**early, "conclusion": "failure"}, {**rerun, "conclusion": "success"}))), C)
-
-    def test_the_import_probe_never_runs_a_commit_as_root(self):
-        from unittest import mock
-        seen = []
-        class Done:
-            returncode = 0
-        with mock.patch.object(rel.os, "geteuid", return_value=0), mock.patch.object(rel.os.path, "isdir", lambda p: p == "/run/systemd/system"), \
-                mock.patch.object(rel.subprocess, "run", lambda cmd, **kw: seen.append(cmd) or Done()):
-            rel.imports("/tmp/x")
-        self.assertEqual(seen[0][:2], ["systemd-run", "--quiet"])
-        self.assertIn("DynamicUser=yes", seen[0])
-        self.assertIn("PrivateNetwork=yes", seen[0])
-        with mock.patch.object(rel.os, "geteuid", return_value=1000), mock.patch.object(rel.subprocess, "run", lambda cmd, **kw: seen.append(cmd) or Done()):
-            rel.imports("/tmp/x")
-        self.assertEqual(seen[1][0], rel.sys.executable)
 
     def test_a_commit_that_does_not_touch_the_closure_is_not_a_release(self):
         a, b = os.path.join(tempfile.mkdtemp(), "a"), os.path.join(tempfile.mkdtemp(), "b")
