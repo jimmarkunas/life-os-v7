@@ -87,9 +87,9 @@ on:
         options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
         default: "none"
       refresh:
-        description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close. It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a domains run is already waiting"
+        description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
         type: choice
-        options: ["none", "hiring"]
+        options: ["none", "hiring", "recruiters"]
         default: "none"
       live:
         description: "Actually write (saves snapshots, writes Notion, moves mail). Unticked = dry run, counts only. Automatic runs follow the repo variable V7_LIVE."
@@ -105,7 +105,7 @@ concurrency:
   # its own group, which nothing else uses, so it can only wait behind or replace other do-nothing runs. A manual (workflow_dispatch) run has its own group too: a string of manual
   # runs (8-16 minutes each) otherwise kept the one slot busy and replaced the waiting after-tick runs (Oct 21). The manual Amazon and Recruiters workflows queue behind 'life-os-v7-domains'.
   # A Close screen refresh (inputs.refresh) joins the after-tick group instead: it writes the Hiring Pipeline region, which only one Daily Report writer may change at a time.
-  group: ${{ (github.event_name == 'workflow_dispatch' && inputs.refresh == 'hiring') && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
+  group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' || github.event_name != 'workflow_run' && 'life-os-v7-domains-manual' || ((github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.display_title != 'tick') && 'life-os-v7-domains-idle' || 'life-os-v7-domains') }}
   cancel-in-progress: false
 jobs:
   jira:
@@ -1173,7 +1173,7 @@ jobs:
   recruiters:
     # RECR-1.2 runs on every tick (Jim, Oct 12; it had been manual-only and the Recruiters table stopped updating on Oct 7). It only READS Gmail and Outlook and writes the existing
     # Recruiters data source (create only after absence is proven, read back). A failure is a warning and never touches another card or the Jobs run.
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.recruiters }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all || inputs.recruiters || inputs.refresh == 'recruiters' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
@@ -1244,6 +1244,7 @@ jobs:
           tags: tag:v7-runner
           use-cache: "false"
       - id: recruiters
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Recruiters (read-only mail to the Recruiters data source; counts only)
         env:
@@ -1267,6 +1268,7 @@ jobs:
           NOTION_RECRUITERS_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_RECRUITERS_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_RECRUITERS_TOKEN }}
         run: python -m lifeos.run recruiters --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: houtcomes
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Hiring outcome mail (D190; read-only Gmail and Outlook for the companies in the Hiring Pipeline, rejection or offer wording only; due every 12 hours; counts only)
         env:
@@ -1288,6 +1290,7 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_recruiters.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_recruiters_retry.outputs.LIFEOS_ACQ_SSH_USER }}
         run: python -m lifeos.run hiring-outcomes --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: interview
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
         env:
@@ -1328,7 +1331,7 @@ jobs:
         continue-on-error: true
         name: Recruiter Outreach (LIFE-20; the Daily Report's one Recruiter Outreach table from the Recruiters data source, after the Recruiters stage; writes only when live AND the repo variable RECRUITER_OUTREACH is on; read-back and whole-page proof)
         env:
-          RECRUITERS_STAGE_OUTCOME: ${{ steps.recruiters.outcome }}
+          RECRUITERS_STAGE_OUTCOME: ${{ inputs.refresh == 'recruiters' && 'success' || steps.recruiters.outcome }}   # a Close screen refresh skips the mail stage on purpose: the table shows the source as it stands
           RECRUITER_OUTREACH: ${{ vars.RECRUITER_OUTREACH }}
           NOTION_RECRUITERS_DATA_SOURCE_ID: ${{ secrets.NOTION_RECRUITERS_DATA_SOURCE_ID }}
           HIRING_TABLE_BLOCK_ID: ${{ secrets.HIRING_TABLE_BLOCK_ID }}
@@ -1337,6 +1340,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_recruiters.outputs.NOTION_JIRA_TOKEN || steps.bws_recruiters_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run recruiter-outreach --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - id: jpoutreach
+        if: ${{ inputs.refresh != 'recruiters' }}       # a Close screen refresh redraws only the Recruiter Outreach table
         continue-on-error: true
         name: Job-page outreach (LIFE-10; the outreach table on each Job Ledger job page from Mark as Sent; writes only when live AND the repo variable JOB_PAGE_OUTREACH is on; page proof and read-back)
         env:

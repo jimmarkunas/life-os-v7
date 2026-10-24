@@ -434,9 +434,12 @@ class Refresh(unittest.TestCase):
 
     def test_the_refresh_run_queues_with_the_after_tick_writers_and_runs_only_the_hiring_job(self):
         text = (ROOT / ".github/workflows/domains.yml").read_text()
-        self.assertIn('options: ["none", "hiring"]', text)
-        self.assertIn("group: ${{ (github.event_name == 'workflow_dispatch' && inputs.refresh == 'hiring') && 'life-os-v7-domains' ||", text)
+        self.assertIn('options: ["none", "hiring", "recruiters"]', text)
+        self.assertIn("group: ${{ (github.event_name == 'workflow_dispatch' && (inputs.refresh == 'hiring' || inputs.refresh == 'recruiters')) && 'life-os-v7-domains' ||", text)
         self.assertEqual(text.count("inputs.refresh == 'hiring'"), 2)                             # the group and the hiring job's `if`, nothing else
+        self.assertEqual(text.count("if: ${{ inputs.refresh != 'recruiters' }}"), 4)              # recruiters refresh: mail stage, outcome scan, Interview OS and job-page outreach skipped
+        self.assertIn("inputs.recruiters || inputs.refresh == 'recruiters' }}", text)               # the Recruiters job runs, so its Recruiter Outreach step does
+        self.assertIn("RECRUITERS_STAGE_OUTCOME: ${{ inputs.refresh == 'recruiters' && 'success' || steps.recruiters.outcome }}", text)
         self.assertEqual(close_gate.REFRESH["hiring"], {"refresh": "hiring", "live": "true"})          # the name the app appends is the gate's, and its input is this workflow's
 
 

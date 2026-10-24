@@ -160,6 +160,7 @@ def _post(req, who, secrets):
         return _stop(500, "Unavailable", "Could not verify Mark as Sent", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
     head = f"{current['company']} — {current['role']} · {person}" + (f" ({employer})" if employer else "")
     if done["status"] == "recorded":
+        secrets.get("after", []).append("recruiters")                      # Jim, Oct 24: the gate asks for the Recruiter Outreach table to be redrawn now (close_gate.REFRESH)
         return _stop(200, "Recorded", "Marked as sent", "The canonical record was written and read back.", f"{head} · Waiting · follow-up {done['follow_up']}.", "ok")
     if done["state"] == "closed":                                              # never relabel a closed, inactive or finished conversation (D221)
         return _stop(409, "Not changed", "This conversation is already closed", "It was recorded before and is no longer open.",
@@ -275,6 +276,7 @@ def _status_post(req, who, secrets):
         return _status_stop(500, "Unavailable", "Could not verify the status", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
     head = f"{current['company']} — {current['role']} · {person}"
     if done["status"] == "recorded":
+        secrets.get("after", []).append("recruiters")
         return _status_stop(200, "Recorded", f"Recorded: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
     if done["status"] == "already_recorded":
         return _status_stop(200, "Already recorded", "Already recorded", "This status was recorded before; nothing was changed.", f"{head} · {done['action']}.", "")
@@ -382,6 +384,7 @@ def _close_post(req, who, secrets):
     if done.get("verified") is not True:
         return _close_stop(500, "Unavailable", "Could not verify the close", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
     if done["status"] == "recorded":
+        secrets.get("after", []).append("recruiters")
         return _close_stop(200, "Recorded", f"Closed: {status}", "The canonical record was written and read back.", f"{head} · {status}.", "ok")
     if done["status"] == "already_recorded":
         return _close_stop(200, "Already recorded", "Already closed", "This record was closed that way before; nothing was changed.", f"{head} · {done['action']}.", "")
