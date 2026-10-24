@@ -774,7 +774,7 @@ def gcal(event_id, title, start, **extra):
 
 
 PARENTS = [hiring_pipeline.Opportunity("aaaa1111-0000-4000-8000-000000000001", "Acme - Senior Program Manager", hiring_pipeline.ACTIVE, 0, "Acme", "Senior Program Manager")]
-RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root"}
+RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root", "HIRING_AUTO_CLOSE": "off"}   # tests choose the switch; the repo file never decides for them
 
 
 def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-10-02"),), events=(), parents=PARENTS, ledger_broken=False, calendar_broken=False, pages_ok=True, now=NOW):
@@ -1028,7 +1028,7 @@ class AutoCloseTests(unittest.TestCase):
 
     def test_switch_off_dry_run_company_only_or_an_offer_never_writes(self):
         key = OutcomeConsumerTests.KEY
-        for label, kw in (("switch off", {"switch": ""}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
+        for label, kw in (("Jim's kill switch", {"switch": "off"}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
                           ("offer", {"found": {key: {**self.FOUND[key], "kind": "OFFER"}}}), ("words only, not the exact role", {"found": {key: {**self.FOUND[key], "exact": False}}}),
                           ("scan saved before exact existed", {"found": {key: {k: v for k, v in self.FOUND[key].items() if k != "exact"}}}),
                           ("calendar unreadable", {"calendar_broken": True}),
