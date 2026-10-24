@@ -179,9 +179,12 @@ class AutoRelease(unittest.TestCase):
         self.assertIn('ln -sfn "$cur"', auto)                                   # back to exactly the tree that was live, never an older "previous"
         self.assertIn('ln -sfn "$prev"', auto)                                  # and its own rollback target is kept
         self.assertNotIn("rollback", auto)
-        self.assertIn('auto.failed', auto)                                     # a commit that failed verify is never retried
-        self.assertEqual(auto.count('> "$ETC/auto.failed"'), 2)                 # only a commit refusal or a live failure, never a pre-switch error
+        self.assertEqual(auto.count('> "$ETC/auto.attempts"'), 2)               # every failure counts one attempt; a commit gets at most three, whatever the cause
+        self.assertIn('-ge 3 ] && exit 0', auto)
         self.assertIn("RESTORE VERIFY FAILED", auto)
+        self.assertIn('[ "$(serve_state)" = ours ]', auto)                      # never re-adds a service Jim uninstalled
+        uninstall = script.split("  uninstall)", 1)[1]
+        self.assertIn("disable --now lifeos-close-release.timer", uninstall)
         self.assertIn("the first install is Jim's by hand", auto)
         self.assertIn("flock -n 9", auto)
         self.assertIn("trap", auto)

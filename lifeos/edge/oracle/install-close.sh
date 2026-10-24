@@ -1,7 +1,8 @@
 #!/bin/bash
 # LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link | units DIR |
 #   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
-#   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed; verify, else back to the tree that was live) | auto-units (once, by Jim).
+#   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed, only while installed and serving; verify, else back to the tree that
+#   was live; at most 3 attempts per commit) | auto-units (once, by Jim).
 # Only port 47443 and its own units/tree are touched: never the Gateway (443/18789), iMessage (47341/47342), Funnel, or `tailscale serve reset`.
 set -euo pipefail
 OPT=/opt/lifeos-close; ETC=/etc/lifeos-close; CREDS=/etc/credstore.encrypted; UNITS=/etc/systemd/system
@@ -112,29 +113,30 @@ case "${1:-}" in
   auto)
     install -d -m 755 "$OPT" "$ETC"; exec 9>"$OPT/.lock"; flock -n 9 || exit 0           # one run at a time (a manual install takes the same lock)
     probe="$OPT/.probe"; trap 'rm -rf "$probe"' EXIT
-    commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
-    [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
-    [ "$(cat "$ETC/auto.failed" 2>/dev/null)" = "$commit" ] && exit 0                     # failed verify once: never retried; the next green commit is
     cur="$(readlink "$OPT/current" 2>/dev/null || true)"; prev="$(readlink "$OPT/previous" 2>/dev/null || true)"
     [ -n "$cur" ] || { say "auto: no live tree; the first install is Jim's by hand"; exit 0; }
+    systemctl is-enabled --quiet lifeos-close.socket && [ "$(serve_state)" = ours ] || { say "auto: the service is not installed and serving; nothing changed"; exit 0; }
+    commit="$(python3 -I "$REL" latest)" || { say "auto: main not green or unreadable; nothing changed"; exit 0; }
+    [ "$(cat "$ETC/auto.checked" 2>/dev/null)" = "$commit" ] && exit 0                    # already decided for this commit: no re-download
+    read -r tried n < "$ETC/auto.attempts" 2>/dev/null || true
+    [ "${tried:-}" = "$commit" ] || n=0
+    [ "${n:-0}" -ge 3 ] && exit 0                                                         # three failed attempts at this commit: wait for the next green commit
     if [ "$cur" != "$OPT/${commit:0:12}" ]; then
       rm -rf "$probe"
-      if ! why="$(python3 -I "$REL" stage "$commit" "$probe" 2>&1)"; then
-        say "auto: ${commit:0:12} refused; nothing changed"
-        case "$why" in *"REFUSED: "[A-Z]*) echo "$commit" > "$ETC/auto.failed" ;; esac       # a refusal of the commit itself recurs: never downloaded again (a network error is retried)
-        exit 1
+      if ! python3 -I "$REL" stage "$commit" "$probe"; then
+        echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"; say "auto: ${commit:0:12} not staged (attempt $(( n + 1 )) of 3); nothing changed"; exit 1
       fi
       if ! python3 -I "$REL" same "$probe" "$cur"; then                                   # the commit changes the Close closure
         if LIFEOS_CLOSE_LOCKED=1 "$0" install "$commit"; then
           say "auto: released ${commit:0:12}"
         else
+          echo "$commit $(( n + 1 ))" > "$ETC/auto.attempts"
           if [ "$(readlink "$OPT/current")" != "$cur" ]; then                                # verify failed after the switch: back to exactly the live tree, and its own previous tree
             ln -sfn "$cur" "$OPT/current.new" && mv -T "$OPT/current.new" "$OPT/current"
             if [ -n "$prev" ]; then ln -sfn "$prev" "$OPT/previous.new" && mv -T "$OPT/previous.new" "$OPT/previous"; fi
-            echo "$commit" > "$ETC/auto.failed"                                              # it went live and failed: never retried
             if "$0" verify; then say "auto: ${commit:0:12} failed verify; restored ${cur##*/}"; else say "auto: RESTORE VERIFY FAILED (${cur##*/})"; fi
           fi
-          exit 1                                                                             # failed before the switch (network, Serve, credentials): nothing went live, retried next tick
+          exit 1
         fi
       fi
     fi
@@ -176,9 +178,11 @@ EOF
       free) ;;
       *) say "FAIL: Serve $TAILNET is $st; left untouched"; bad=1 ;;
     esac
+    if systemctl list-unit-files lifeos-close-release.timer --no-legend 2>/dev/null | grep -q .; then systemctl disable --now lifeos-close-release.timer >/dev/null || { say "FAIL: auto-release timer not stopped"; bad=1; }; fi
+    rm -f "$UNITS/lifeos-close-release.timer" "$UNITS/lifeos-close-release.service"
     if systemctl list-unit-files lifeos-close.socket --no-legend 2>/dev/null | grep -q .; then systemctl disable --now lifeos-close.socket >/dev/null || { say "FAIL: socket not stopped"; bad=1; }; fi
     rm -f "$UNITS/lifeos-close.socket" "$UNITS/lifeos-close@.service"; systemctl daemon-reload || bad=1
     [ "$(serve_state)" = free ] || { say "FAIL: Serve $TAILNET not verified free"; bad=1; }
-    if [ "$bad" = 0 ]; then say "Removed the socket, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand."; else say "UNINSTALL INCOMPLETE"; exit 1; fi ;;
+    if [ "$bad" = 0 ]; then say "Removed the socket, the auto-release timer, units and Serve port $TAILNET; the tree, policy and credentials stay until removed by hand."; else say "UNINSTALL INCOMPLETE"; exit 1; fi ;;
   *) say "usage: install-close.sh policy|credential|units|install|auto|auto-units|verify|rollback|uninstall"; exit 2 ;;
 esac
