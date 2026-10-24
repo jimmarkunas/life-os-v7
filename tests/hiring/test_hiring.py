@@ -1028,7 +1028,7 @@ class AutoCloseTests(unittest.TestCase):
 
     def test_switch_off_dry_run_company_only_or_an_offer_never_writes(self):
         key = OutcomeConsumerTests.KEY
-        for label, kw in (("switch off", {"switch": ""}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
+        for label, kw in (("Jim's kill switch", {"switch": "off"}), ("not live", {"live": False}), ("company only", {"found": {key: {**self.FOUND[key], "match": "company"}}}),
                           ("offer", {"found": {key: {**self.FOUND[key], "kind": "OFFER"}}}), ("words only, not the exact role", {"found": {key: {**self.FOUND[key], "exact": False}}}),
                           ("scan saved before exact existed", {"found": {key: {k: v for k, v in self.FOUND[key].items() if k != "exact"}}}),
                           ("calendar unreadable", {"calendar_broken": True}),

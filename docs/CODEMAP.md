@@ -269,6 +269,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/router.py`: The hourly router contract for the ChatGPT-native `LIFE OS Daily Runs` task: independent modules with one of three outcomes, and strict ownership of Daily Report regions.
 - `lifeos/platform/runtime.py`: Bounded execution primitives (ported, trimmed, from the V2 runtime kernel). Not a workflow engine: a deadline, a run id and a terminal result shape.
 - `lifeos/platform/snapshot_store.py`: One private snapshot table: a row per key (a project, or the single row 1), replaced each run. The database is private; this repo is not. Used by the Jira, Bills and Agen
+- `lifeos/platform/switches.py`: Production switches in the repository (Jim, Oct 24 2026 standing grant, LIFE-3 comment 11095).
 - `lifeos/platform/tinyfish.py`: TinyFish Fetch API client (real-browser fetch with anti-bot). Key comes from the TINYFISH_API_KEY secret.
 - `lifeos/platform/tinyfish_search.py`: TinyFish Search API client (free; 30 requests/minute). Key from TINYFISH_API_KEY. Fixed codes only in errors.
 - `lifeos/platform/usage.py`: Hard spending/rate guard for TinyFish (Jim's wallet is $35 total and must never be used up).

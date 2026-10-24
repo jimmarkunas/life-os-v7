@@ -1,0 +1,12 @@
+{
+  "HIRING_AUTO_CLOSE": {
+    "state": "on",
+    "bounds": "Closes a Hiring Pipeline row only on a rejection email naming its exact role, from complete fresh reads, through the Close screen's checked write; at most once per row and email; Reopen undoes it.",
+    "turned_on": "Oct 24, 2026, by Claude Code under Jim's switches-in-repo grant (LIFE-3 comment 11095), after Jim asked for auto-close on known rejection"
+  },
+  "BOARDS_BACKFILL": {
+    "state": "off",
+    "bounds": "LIFE-76 first-pass board drainer: at most limits.BOARDS_BACKFILL_PER_RUN (450) never-read boards per tick, last bulk stage, hibernates at zero; no paid service.",
+    "turned_on": ""
+  }
+}

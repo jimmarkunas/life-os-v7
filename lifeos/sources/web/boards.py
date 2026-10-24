@@ -12,6 +12,7 @@ import re
 import threading
 
 from lifeos.jobs import lanes
+from lifeos.platform import switches
 from lifeos.platform import limits
 from lifeos.sources.web import lister, registry, run as web, suppress
 
@@ -140,7 +141,7 @@ def backfill(limit, live, now=None, lister_fn=lister.list_source, repo=None, sou
     last bulk stage of a tick: at most BOARDS_BACKFILL_PER_RUN never-read boards, in id order (the resume cursor is "no v7_sources row yet", so an interrupted
     run resumes where it stopped and nothing is read twice), through the same screen, diff, admission budget and FAILED rule as the hourly pass. A read board
     (COMPLETE or FAILED) gets its state row and joins the hourly pass; once none is left it reports `drained` and reads nothing. Counts only."""
-    if (environ.get("BOARDS_BACKFILL") or "off").strip().lower() != "on":
+    if not switches.state("BOARDS_BACKFILL", environ):                  # lifeos/platform/switches.json; a repository variable "off" is Jim's kill switch
         return {"pass": "employer boards backfill", "backfill": "off"}
     counts = web.run(min(limit, limits.BOARDS_BACKFILL_PER_RUN), live, now, StopOnRateLimit(lister_fn), repo, registry.boards() if sources is None else sources,
                      LANE, cap=limits.BOARDS_BACKFILL_PER_RUN, budget=limits.BOARDS_INGEST_PER_RUN, screen=screen, workers=limits.BOARDS_WORKERS, select="unread")
