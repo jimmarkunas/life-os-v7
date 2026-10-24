@@ -113,15 +113,36 @@ class SameOpeningTests(unittest.TestCase):
         from tests.kit.jobsdb import JobsDB
         self.db, self.now, self.n = JobsDB(), datetime(2026, 10, 18, 12, 0), 0
 
-    def published(self, company, title, url):
+    def published(self, company, title, url, location=None):
         self.n += 1
         self.db.insert("v7_jobs", dedupe_key=identity.url_hash(url + str(self.n)), status="PUBLISHED", title=title, company=company, source="web:x",
-                       source_url=url, final_apply_url=url, first_seen=self.now, last_seen=self.now, updated_at=self.now, lane="US Remote", notion_page_id=f"p{self.n}")
+                       source_url=url, final_apply_url=url, first_seen=self.now, last_seen=self.now, updated_at=self.now, lane="US Remote", notion_page_id=f"p{self.n}",
+                       location_text=location)
         return self.db.raw.execute("SELECT MAX(id) FROM v7_jobs").fetchone()[0]
 
-    def same(self, company, title, url):
+    def same(self, company, title, url, location=None):
         with self.db.cursor() as cursor:
-            return publish.same_opening(cursor, 999, company, title, url)
+            return publish.same_opening(cursor, 999, company, title, url, location)
+
+    def test_a_state_or_a_bare_city_is_never_a_place(self):
+        for location, url, other in (("New York, United States", "https://x.wd1.myworkdayjobs.com/a/job/Albany-New-York/PM_R1", ""),
+                                     ("New Jersey, US", "https://x.wd1.myworkdayjobs.com/a/job/Newark-New-Jersey/PM_R1", ""),
+                                     ("San Francisco", "https://x.wd1.myworkdayjobs.com/a/job/San-Francisco-CA/PM_R1", "")):
+            self.assertFalse(identity.same_place(location, url, other), location)
+        self.assertTrue(identity.same_place("New York, NY", "https://x.wd1.myworkdayjobs.com/a/job/New-York-NY/PM_R1"))
+        for city, other in (("San Francisco, CA", "South San Francisco, CA"), ("Las Vegas, NV", "North Las Vegas, NV"), ("Portland, ME", "South Portland, ME")):
+            self.assertFalse(identity.same_place(city, "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", other), other)      # a neighbouring city is another place
+        self.assertTrue(identity.same_place("San Francisco, CA", "https://x.wd1.myworkdayjobs.com/a/job/x/PM_R1", "Remote; San Francisco, CA"))
+
+    def test_an_aggregator_link_at_the_ats_vacancys_place_is_that_opening(self):        # LIFE-64: Clarus, Oct 24
+        ats = self.published("Clarus Technology", "Project Manager - Advanced",
+                             "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945", "Remote / Enterprise Software")
+        li = "https://www.linkedin.com/jobs/view/4482175447"
+        self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL"), ats)
+        self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL, United States"), ats)
+        for place in ("Austin, TX", "Remote", "Chicago", "", None, "Illinois, United States", "Chicago, Illinois", "IL", "Remote, IL"):   # another place, a state alone, a bare city, Remote or none
+            self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", li, place), place)
+        self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", "https://careers.clarus.example/pm-advanced", "Chicago, IL"))   # not an aggregator
 
     def test_the_same_company_and_title_with_no_vacancy_ids_is_one_opening_and_generic_titles_never_merge(self):
         first = self.published("ServiceNow", "Director, TA Infrastructure", "https://careers.example.com/director-ta")

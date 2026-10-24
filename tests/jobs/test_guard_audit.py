@@ -71,7 +71,21 @@ class DuplicatePageTests(unittest.TestCase):
         self.assertEqual(self.audit([(1, "PUBLISHED", "https://careers.acme.example/a", "p1", None, "Acme", "Senior Technical Program Manager"),
                                      (2, "PUBLISHED", "https://careers.acme.example/b", "p2", None, "Acme", "Senior Technical Program Manager")]), 1)   # no ids: D90 as before
 
-    def audit(self, pages):
+    def test_an_aggregator_page_at_an_ats_vacancys_place_goes_whichever_came_first(self):     # LIFE-64: Clarus, Oct 24
+        wd = "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945"
+        li = "https://www.linkedin.com/jobs/view/4482175447"
+        pages = [(1, "PUBLISHED", li, "p1", None, "Clarus Technology", "Project Manager - Advanced"),         # the LinkedIn page came first
+                 (2, "PUBLISHED", wd, "p2", None, "Clarus Technology", "Project Manager - Advanced")]
+        from lifeos.jobs import audit
+        group = {("clarus technology", "project manager advanced"): pages}
+        self.assertEqual([(r[0], twin) for r, twin in audit.twins(group, {1: "Chicago, IL", 2: "Remote / Enterprise Software"}, set())], [(1, 2)])   # the aggregator page goes
+        self.assertEqual(audit.twins(group, {1: "Austin, TX", 2: "Remote"}, set()), [])
+        self.assertEqual(audit.twins(group, {1: "Remote", 2: "Remote"}, set()), [])
+        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {2}), [])                     # the ATS page is itself going: nothing is kept in its place
+        self.assertEqual(self.audit(pages, {1: "Chicago, IL", 2: "Remote"}), 1)                # and the run counts it
+        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {1}), [])                     # a page already going (e.g. excluded by Fit) is not counted twice
+
+    def audit(self, pages, places=None):
         from unittest import mock
         from lifeos.jobs import audit
 
@@ -86,6 +100,8 @@ class DuplicatePageTests(unittest.TestCase):
 
             def execute(self, sql, args=()):
                 self.rows = pages if "notion_page_id IS NOT NULL ORDER BY id" in sql and "status='PUBLISHED'" in sql and "NULL, company" in sql else []
+                if sql.startswith("SELECT id, location_text"):
+                    self.rows = list((places or {}).items())
 
             def fetchall(self):
                 return self.rows
