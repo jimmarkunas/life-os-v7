@@ -148,6 +148,7 @@
   "D246": "The precision audit trashes at most 40 Ledger pages a run, and reports how many rejected pages are still waiting (2026-10-20, Jim; LIFE-41)",
   "D247": "Jim's confirmed evidence reaches the Fit engine through a Notion page, a store table and the Oracle brief; four Revolut roles are kept (2026-10-21, Jim; LIFE-93)",
   "D248": "Mail jobs keep moving while a board backfill runs: a reserved quarter in publish, non-board jobs first in Fit (2026-10-24, Jim; LIFE-76)",
+  "D249": "The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
   "D27": "What the first live-shaped dry runs taught (run 85, 2026-10-01)",
