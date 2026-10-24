@@ -501,6 +501,8 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         if parent.state == State.BLOCKED:
             return finish(parent.code)
         before, pipeline = None, environ["HIRING_PIPELINE_PAGE_ID"].strip()
+        if query.refresh_only and (parent.state != State.MATCH or notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE):
+            return finish("refresh_not_machine")                        # E05: refresh-only never creates, adopts or upgrades a page
         if parent.state == State.NOT_FOUND:
             company, role = parent_query.company.strip(), parent_query.role.strip()
             title = f"{company} — {role}"
@@ -538,6 +540,13 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                     deferred.add(parent.page_id)
                 return finish(code)
             children = notion.child_scan(client, parent.page_id, context, legacy=notion.is_legacy_company(environ, parent_query.company))
+            if query.refresh_only:                                      # E05: a machine page with no rounds yet (a recruiter lead) is only brought up to date
+                if not children.complete or children.items:
+                    return finish("child_scan_incomplete" if not children.complete else "refresh_has_rounds")
+                done = refresh(client, parent.page_id, _view(client, environ, parent_query, query, pipeline, children, today()), live, out, context)
+                if done in ("parent_refreshed", "refresh_allowed"):
+                    deferred.add(parent.page_id)
+                return finish("parent_exists" if done == "parent_unchanged" else done)
             explicit = notion.explicit_child(client, query.explicit_child_page_id) if query.explicit_child_page_id else None
             child = resolve_child(parent, query, children, explicit)
             code = creation_eligibility(target, parent, owner, child, children, query)

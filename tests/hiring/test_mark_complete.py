@@ -207,5 +207,42 @@ class Writer(unittest.TestCase):
         self.assertIn(template.done_line(key, "2026-10-24"), U.texts(client, page_id))
 
 
+class LeadRefresh(unittest.TestCase):
+    """A recruiter lead's page has no rounds, so no round evidence ever refreshed it: the refresh-only item brings it up to date (its Mark Complete link)
+    and never creates a page or a round."""
+
+    def run_(self, client, query, live=True):
+        from lifeos.interview import stage
+        from lifeos.interview.models import ParentQuery
+        from tests.interview.test_notion import ENV
+        return stage.run(10, live, environ={**ENV, "V7_CLOSE_BASE_URL": "https://edge.example.test"}, client=client, evidence=[(ParentQuery("ExampleCo", "Program Manager"), query)])
+
+    def test_a_lead_page_gains_its_link_and_a_replay_writes_nothing(self):
+        from lifeos.interview.models import RoundQuery
+        from tests.interview import test_ui3c as U
+        current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm")
+        client, page_id = U.written(current)
+        client.blocks[page_id] = [b for b in client.blocks[page_id] if b["type"] != "child_page"]        # a lead: no interview page yet
+        query = RoundQuery(True, source=U.REQUEST, stable_job_key="recruiter-exampleco-pm", refresh_only=True)
+        posts = len(client.posts)
+        first = self.run_(client, query)
+        self.assertEqual((first["writes"], first["readback_ok"], first["why"].get("parent_refreshed"), first["blocked"]), (1, 1, 1, 0))
+        self.assertIn("/complete?o=", str(live(client, page_id)))
+        again = self.run_(client, query)
+        self.assertEqual((again["writes"], again["why"].get("parent_exists"), again["blocked"]), (0, 1, 0))
+        self.assertEqual(len(client.posts), posts)                                                   # no page and no round created
+
+    def test_refresh_only_never_creates_adopts_or_touches_a_page_with_rounds(self):
+        from lifeos.interview.models import RoundQuery
+        from tests.interview import test_ui3c as U
+        query = RoundQuery(True, source=U.REQUEST, stable_job_key="recruiter-exampleco-pm", refresh_only=True)
+        empty = U.Sim()
+        self.assertEqual((self.run_(empty, query)["why"], empty.posts), ({"refresh_not_machine": 1}, []))   # no page: nothing is created
+        client, page_id = U.written(replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm"))    # it has an interview page
+        posts = len(client.posts)
+        out = self.run_(client, query)
+        self.assertEqual((out["writes"], len(client.posts), "parent_refreshed" in out["why"]), (0, posts, False))
+
+
 if __name__ == "__main__":
     unittest.main()

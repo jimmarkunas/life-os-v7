@@ -488,6 +488,8 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
             flag("child_scan_incomplete")
         elif held:
             queue(company, role, job, url, ledger_rows_of, held[0].interview_date, held[0].interviewer, held[0].ordinal)
+        elif not kids.items and (job or "").startswith("recruiter-") and (url or "").startswith("https://") and (company, role) not in {(p.company, p.role) for p, _ in evidence}:       # E05: a recruiter lead's page (no rounds, no Ledger row) is refreshed from its own key and request, never given a round
+            evidence.append((ParentQuery(company, role), RoundQuery(True, None, None, None, source=url, stable_job_key=job, refresh_only=True)))
     evidence, unreadable = recruiter_threads(environ, evidence, recruiters)
     if unreadable:
         flag("recruiters_unreadable")
