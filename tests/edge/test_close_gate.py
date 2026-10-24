@@ -268,7 +268,18 @@ class Refresh(Gate):
         self.assertEqual(gate.refresh(b"tok", ["hiring", "hiring", "anything"], open_), ["dispatched"])
         self.assertEqual(sent[1], ("POST", gate.API + "/workflows/domains.yml/dispatches", "Bearer tok", {"ref": "main", "inputs": {"refresh": "hiring", "live": "true"}}))
         self.assertEqual(len(sent), 2)
+        sent, open_ = self.opener([])
+        self.assertEqual(gate.refresh(b"tok", ["recruiters"], open_), ["dispatched"])
+        self.assertEqual(sent[1][3], {"ref": "main", "inputs": {"refresh": "recruiters", "live": "true"}})
         self.assertEqual(sent[0][1], gate.API + "/runs?per_page=20")                       # every workflow's runs: Recruiters and Amazon share the domains group
+
+    def test_every_refresh_name_is_a_domains_refresh_option_and_always_writes(self):
+        import yaml
+        from pathlib import Path
+        inputs = yaml.safe_load(Path(".github/workflows/domains.yml").read_text())[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual(["none", *gate.REFRESH], inputs["refresh"]["options"])         # an app's name the workflow lacks would dispatch a 422
+        for name, body in gate.REFRESH.items():
+            self.assertEqual(body, {"refresh": name, "live": "true"})                    # a dispatch without live is a dry run that redraws nothing
 
     def test_a_waiting_domains_run_is_never_replaced_and_a_failure_is_silent(self):
         for status in gate.WAITING:
