@@ -153,8 +153,21 @@ class Writer(unittest.TestCase):
         got = create.done_lines([para(notion.MARKERS["opportunity"]), para(notion.done_line("a" * 16, "2026-10-01")), para(notion.done_line("a" * 16, "2026-10-02")),
                                  para(notion.done_line("b" * 16, "2026-10-03")), para("v7-done:1;key=short;on=2026-10-03")])
         self.assertEqual(got, (("a" * 16, "2026-10-01"), ("b" * 16, "2026-10-03")))
-        nodes = [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"], "children": []}, {"text": notion.done_line("a" * 16, "2026-10-01"), "children": []}]}]
-        self.assertEqual(create._undone(nodes), [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"], "children": []}]}])
+        nodes = [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"]}, {"text": notion.done_line("a" * 16, "2026-10-01")}]}, {"text": "leaf"}]
+        self.assertEqual(create._undone(nodes), [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"]}]}, {"text": "leaf"}])
+
+    def test_a_page_written_before_mark_complete_keeps_its_digest_and_still_refreshes(self):
+        """The region digest of a page with no completion lines is exactly the one main stored, so no existing page reads as edited."""
+        from tests.interview import test_ui3c as U
+        client, page_id = U.written()                                                               # written and finalized as main writes it
+        machine, lines, _ = create.machine_region(client, page_id)
+        skip = {b["id"] for b in lines if create.RENDER.fullmatch(notion.text(b))}
+        nodes = notion.region_nodes(client, machine, [notion.TREE_MAX_CALLS], skip)
+        self.assertEqual(notion.tree_digest(create._undone(nodes)), notion.tree_digest(nodes))
+        old = replace(U.opportunity(), stable_job_key="exampleco-pm-1")
+        self.assertEqual(create.refresh(client, page_id, old, True, {"writes": 0}), "parent_unchanged")
+        current = replace(U.opportunity(), stable_job_key="exampleco-pm-1", compensation="$95/hr", ledger_page_id="row", ledger="linked")
+        self.assertEqual(create.refresh(client, page_id, current, True, {"writes": 0}), "parent_refreshed")
 
     def test_a_line_the_close_screen_appended_is_carried_and_the_page_shows_the_action_done(self):
         from tests.interview import test_notion as TN, test_ui3c as U

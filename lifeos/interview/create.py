@@ -151,7 +151,7 @@ def done_lines(lines):
 
 def _undone(nodes):
     """The region's nodes without completion lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
-    return [{**n, "children": _undone(n.get("children", []))} for n in nodes if not notion.DONE_LINE.fullmatch(n.get("text", ""))]
+    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes if not notion.DONE_LINE.fullmatch(n.get("text", ""))]   # shape kept: a page without completion lines digests exactly as before
 
 
 def machine_region(client, page_id, context=None):
