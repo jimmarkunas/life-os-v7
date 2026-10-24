@@ -52,3 +52,21 @@ def fuzzy_key(company, title, location, url=None):
     requisitions with one company, title and place are two openings. A link with no id keeps its stored key."""
     parts = [norm(x) for x in (company, title, location)] + ([vacancy_id(url)] if vacancy_id(url) else [])
     return sha256("|".join(parts).encode()).hexdigest()
+
+
+_COUNTRY = re.compile(r"\s+(united states( of america)?|usa|us)$")
+
+
+def same_place(location, url, other_location=""):
+    """LIFE-64 (D205 refinement): a place named on a link with no vacancy id ("Chicago, IL") is the place of an ATS vacancy when the same words, in
+    order, appear in that vacancy's link path or its own location. Remote, a bare city or an empty place never matches: a place is city and region."""
+    place = _COUNTRY.sub("", norm(location))
+    if len(place.split()) < 2 or "remote" in place.split():
+        return False
+    haystack = f" {norm(urlsplit(url or '').path)} {norm(other_location)} "
+    return f" {place} " in haystack
+
+
+def aggregator_twin(url, location, ats_url, ats_location, aggregator):
+    """True when `url` is an aggregator link with no vacancy id and `ats_url` names a vacancy at the same place: one opening seen twice (LIFE-64)."""
+    return aggregator(url) and vacancy_id(url) is None and vacancy_id(ats_url) is not None and same_place(location, ats_url, ats_location)
