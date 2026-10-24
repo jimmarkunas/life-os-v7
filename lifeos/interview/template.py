@@ -10,6 +10,11 @@ view does not have is written as not verified. Deliberate differences, each requ
 is a toggle that says it is unavailable, never a checkbox (D05, LIFE-88 10869); a Full Transcript page is linked from its callout
 because the API creates child pages only at the end of a page. Nested children are written in stages by notion.write_tree."""
 from .notion import FOLD, JIM_NOTES, LIVE_PANE, MARKERS, RAW_HEADING, RAW_TOGGLE, ROUND_FOLD
+import hashlib
+import re
+from datetime import date
+from urllib.parse import urlencode
+
 from .view import UNCONNECTED, primary_action, stage
 
 GRAY, NV = "gray", "Not verified"
@@ -108,6 +113,51 @@ def render_line(job, source, page="pending"):
 
 # ---------- UI 3c opportunity page ----------
 
+# E05 Mark Complete (Jim, Oct 24): the fold names the page's one completable primary action; the private Close screen appends a completion line to the same fold
+# (lifeos/sources/close_app.py keeps its own copy of these two formats for the Edge; a contract test holds them equal)
+ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
+DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
+DONE_MAX = 20                                                  # completion lines carried per page, newest last
+
+
+def action_key(text, context=""):
+    """The action's identity: its text, plus the opportunity's rounds when it has any, so the same wording for a later round is a new action, never already done."""
+    return hashlib.sha256((text + "\x1f" + context if context else text).encode()).hexdigest()[:16]
+
+
+def action_line(text, context=""):
+    return f"v7-action:1;key={action_key(text, context)};text={text}"
+
+
+def done_line(key, day):
+    return f"v7-done:1;key={key};on={day}"
+
+
+def _rounds(view):
+    return ",".join(sorted(r.page_id for r in view.rounds if r.page_id))
+
+
+def fold_lines(view, label, action):
+    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one) and every recorded completion, in the fold."""
+    return ([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [done_line(k, d) for k, d in view.done]
+
+
+def complete_parts(view, label, action):
+    """E05 Mark Complete (Jim, Oct 24): done when the Close screen recorded this exact action; otherwise its one link to the private Close
+    screen's two-step confirmation; without that screen (or for a degraded action) it says it is unavailable and records nothing."""
+    done = dict(view.done).get(action_key(action, _rounds(view))) if label == "PRIMARY ACTION" else None
+    if done:
+        day = date.fromisoformat(done)
+        return [para(("✅ Done ", True), (f"{day:%b} {day.day}", True), " · marked complete on the Close screen. "
+                     "The next action appears here when new evidence arrives.")]
+    if label == "PRIMARY ACTION" and view.close_base and view.page_id:
+        url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': action_key(action, _rounds(view))})}"
+        return [para(("Mark Complete ↗", False, url), " · opens the private Close screen; nothing is recorded until you confirm there.")]
+    return [toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
+        "Not available here: completion is recorded only through the private Close screen's two-step confirmation, with a canonical "
+        "write and read-back. Nothing here records completion.")])]
+
+
 def _health(view, rounds_label):
     rows = [("Interviews", rounds_label),
             ("Job Ledger", {"linked": "exact row linked by Stable Job Key", "mismatch": "row does not match this job's Stable Job Key",
@@ -159,9 +209,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         para((action, True)),
         para(("Due: ", True), due, " · ", ("Owner: ", True), "Jim · ", ("Source completeness: ", True), "Partial",
              *([" · ", ("Request message ↗", False, link)] if link else [])),
-        toggle("Mark Complete · unavailable", [para(("Action: ", True), action), para(
-            "Not available yet: completion needs an authenticated two-step confirmation with a canonical write and read-back, "
-            "which is not proven. Nothing here records completion.")])], None, PLAIN,
+        *complete_parts(view, label, action)], None, PLAIN,
         (label, True), " · ", basis)
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),
@@ -199,7 +247,8 @@ def opportunity_page(view, today, source="pending", adopted=None):
                  note("Other sent forms, correspondence, project plans and articles appear here when linked to verified files "
                       "or outbound messages.")], "📎", "gray_background")]
     machine = [
-        fold(marker, render_line(view.stable_job_key, source), extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
+        fold(marker, render_line(view.stable_job_key, source), *fold_lines(view, label, action),
+             extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
         para(("Stage: ", True), current, " · ", ("Next confirmed interview: ", True), next_date, " · ",
              ("Current opportunity status: ", True), "Not verified (outcome sources not connected)", *([" · "] + ledger if ledger else [])),
         callout([h(3, "Action Center"), columns((0.625, [primary]), (0.375, secondary))], ARROW, "blue_background"),

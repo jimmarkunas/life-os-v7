@@ -1,13 +1,15 @@
 """LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the Notes pages and the S1 decision rules. One exact opportunity is resolved by its canonical page id, routed
 by the S1 decision rules, shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
-conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Reopen and Manage are not reachable. Fixed codes only."""
+conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Reopen and Manage are not reachable. Fixed codes only."""
 import hashlib
 import hmac
+import re
+from html import escape as e
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from lifeos.jobs import hiring_pipeline
-from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.hiring import close_screen as S, decision as D, models as M
 
 CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos/hiring/models.py", "lifeos/jobs/__init__.py", "lifeos/jobs/hiring_pipeline.py", "lifeos/platform/names.py",
@@ -133,6 +135,104 @@ def _post(req, who, secrets):
     return _stop(200, "Closed", "Opportunity closed", "The canonical record was updated and read back successfully.", f"{opp['company']} — {opp['role']} · Closed — {outcome}{again}.", "ok")
 
 
+# ---------- E05 Mark Complete (Jim, Oct 24): one opportunity page's one primary action, recorded in that page's own fold after two steps, read back ----------
+FOLD, OPP_MARKER, COMPLETE_PATH = "⚙️ LIFE OS", "v7-interview:1;owner=machine;kind=opportunity", "Daily Report / Active Opportunities / Mark Complete"
+ACTION_LINE, DONE_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)"), re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")   # lifeos.interview.template's formats (contract-tested)
+
+
+def _plain(block):
+    body = block.get(block.get("type")) or {}
+    return "".join(p.get("plain_text") or (p.get("text") or {}).get("content", "") for p in body.get("rich_text") or [])
+
+
+def _lines(client, block_id):
+    out = client.call("GET", f"/blocks/{block_id}/children?page_size=100")
+    if not isinstance(out, dict) or out.get("has_more") or not isinstance(out.get("results"), list):
+        raise D.fail("PAGE_UNREADABLE")
+    return out["results"]
+
+
+def action(client, root, pid, key):
+    """The open opportunity page `pid` (exactly one active Notes page in the pipeline) and its fold's one primary action whose key is `key`, or a fixed refusal:
+    not that page, not a LIFE OS page, or the action changed since the link was written. -> {id, company, role, key, text, fold, done}"""
+    pages = [p for p in _state(client, root)[1] if D._page_id(p["id"]) == pid]
+    if len(pages) != 1:
+        raise D.fail("NOT_FOUND" if not pages else "AMBIGUOUS")
+    if pages[0]["retired"]:
+        raise D.fail("RETIRED")
+    tops = _lines(client, pid)
+    if not tops or tops[0].get("type") != "toggle" or _plain(tops[0]) != FOLD:
+        raise D.fail("NOT_A_LIFE_OS_PAGE")
+    lines = [_plain(b) for b in _lines(client, tops[0]["id"]) if b.get("type") == "paragraph"]
+    if not lines or lines[0] != OPP_MARKER:
+        raise D.fail("NOT_A_LIFE_OS_PAGE")
+    found = [m.group(2) for m in map(ACTION_LINE.fullmatch, lines) if m and m.group(1) == key]
+    if len(found) != 1:
+        raise D.fail("ACTION_CHANGED")
+    done = [m.group(2) for m in map(DONE_LINE.fullmatch, lines) if m and m.group(1) == key]
+    return {"id": pid, "company": pages[0]["company"], "role": pages[0]["role"], "key": key, "text": found[0], "fold": tops[0]["id"], "done": done[0] if done else None}
+
+
+def _complete_stop(status, eyebrow, title, text, detail, css="alert"):
+    return status, HTML, S.page(title, "A completion counts only after it is read back from the opportunity page.",
+                                f'<section class="section"><div class="eyebrow">{e(eyebrow)}</div><h3 class="step-title">{e(title)}</h3><p class="lead">{e(text)}</p>'
+                                f'<div class="notice {css}">{e(detail)}</div></section>', COMPLETE_PATH, "Mark complete"), ()
+
+
+def _complete_fp(a):
+    return hashlib.sha256(f"{a['id']}|{a['key']}|{a['company']}|{a['role']}".encode()).hexdigest()[:16]
+
+
+def _complete_get(req, who, secrets):
+    pid, key = D._page_id(req["query"].get("o")), (req["query"].get("a") or "")
+    if not pid or not ACTION_LINE.fullmatch(f"v7-action:1;key={key};text=x"):
+        return _complete_stop(400, "Invalid link", "No action selected", "Open this screen from an opportunity page's Mark Complete link.", "Nothing was changed.")
+    a = action(secrets["reader"], secrets["config"]["pipeline"], pid, key)
+    if a["done"]:
+        return _complete_stop(200, "Already done", "Already marked complete", f"Marked complete on {a['done']}.", "Nothing was changed.", "")
+    exp, st = str(int(_now().timestamp()) + TTL), _complete_fp(a)
+    fields = {"o": pid, "a": key, "exp": exp, "st": st, "t": _mac(secrets["link"], "m", who["login"], pid, key, st, exp)}
+    return 200, HTML, S.page("Mark complete", "Your confirmation is required before anything is recorded.", (
+        f'<form method="post" action="/complete">{S._hidden(fields)}<section class="section"><div class="eyebrow">Opportunity</div>'
+        f'<h2>{e(a["company"])} — {e(a["role"])}</h2></section><section class="section"><div class="eyebrow">Mark complete?</div>'
+        f'<h3 class="step-title">Mark \u201c{e(a["text"])}\u201d complete?</h3>'
+        '<div class="notice">Confirming records this one action as done on the opportunity page and reads it back. The page shows it as done after the next hourly run. Nothing else changes and no one is contacted.</div></section>'
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="confirm">Confirm</button></div></form>'),
+        COMPLETE_PATH, "Mark complete"), ()
+
+
+def _complete_post(req, who, secrets):
+    form, login = req["form"], who["login"]
+    pid, key, step, exp, st = D._page_id(form.get("o")), form.get("a", ""), form.get("step"), form.get("exp", ""), form.get("st", "")
+    if not pid or step not in ("cancel", "confirm") or not (exp.isascii() and exp.isdigit()) or int(exp) < _now().timestamp() or not _same(form.get("t"), _mac(secrets["link"], "m", login, pid, key, st, exp)):
+        return _complete_stop(403, "Not accepted", "This form is no longer valid", "Reload it from the opportunity page.", "Nothing was changed.", "danger")
+    if step == "cancel":
+        return _complete_stop(200, "Cancelled", "No changes made", "Nothing was recorded.", "Nothing was written.", "")
+    client = Client({"NOTION_API_TOKEN": secrets["notion"].decode(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": secrets["config"]["ledger"]})
+    a = action(client, secrets["config"]["pipeline"], pid, key)                 # the write is authorized only by a fresh read of the page and its current action
+    if _complete_fp(a) != st:
+        return _complete_stop(409, "Conflict", "Opportunity changed", "The opportunity changed since this screen was opened.", "No write attempted. Reload it from the page.")
+    head = f"{a['company']} — {a['role']} · {a['text']}"
+    if a["done"]:
+        return _complete_stop(200, "Already recorded", "Already marked complete", f"Marked complete on {a['done']}; nothing was changed.", head, "")
+    day = _now().date().isoformat()
+    try:
+        client.call_once("PATCH", f"/blocks/{a['fold']}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(f"v7-done:1;key={key};on={day}")}}]})
+        back = action(client, secrets["config"]["pipeline"], pid, key)
+    except NotionError as error:
+        return _complete_stop(500, "Unavailable", "Could not verify the completion", "Do not assume it was recorded or left unchanged.", f"Status: DEGRADED · {str(error)[:60]}", "danger")
+    if back["done"] != day:
+        return _complete_stop(500, "Unavailable", "Could not verify the completion", "Do not assume it was recorded or left unchanged.", "Status: DEGRADED · not verified", "danger")
+    return _complete_stop(200, "Recorded", "Marked complete", "Recorded on the opportunity page and read back. The page shows it as done after the next hourly run.", f"{head} · Done {day}.", "ok")
+
+
+def handle_complete(req, who, secrets):
+    try:
+        return (_complete_get if req["method"] == "GET" else _complete_post)(req, who, secrets)
+    except NotionError as error:
+        return _complete_stop(409, "Not changed", "This action cannot be marked complete here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+
+
 def handle(req, who, secrets):
     """The Edge gate's application: (status, content type, body bytes, extra headers). Anything refused before a write says so and writes nothing."""
     try:
@@ -147,6 +247,8 @@ def handle(req, who, secrets):
         if req["path"] == "/recruiter" and req["method"] in ("GET", "POST"):                  # LIFE-20: close one open recruiter row (Completed / Dismissed), same gate and signing key
             from . import outreach_app
             return outreach_app.handle_close(req, who, secrets)
+        if req["path"] == "/complete" and req["method"] in ("GET", "POST"):                   # E05: Mark Complete, same gate, signing key and fresh read
+            return handle_complete(req, who, secrets)
         if req["path"] == "/resume" and req["method"] in ("GET", "POST"):                     # D234: Build resume, same gate, signing key and fresh read
             from . import resume_app
             return resume_app.handle(req, who, secrets)
