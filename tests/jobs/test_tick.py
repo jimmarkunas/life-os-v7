@@ -3,6 +3,7 @@ from unittest import mock
 
 from lifeos.jobs import tick
 from lifeos.jobs.tick import Step
+from lifeos.platform import limits
 
 
 class Clock:
@@ -36,6 +37,12 @@ class TickTests(unittest.TestCase):
         self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors", "boards-backfill"})
         self.assertEqual(names[-1], "boards-backfill")                       # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
+
+    def test_the_backfill_step_limit_is_the_backfill_cap(self):
+        # the stage reads min(step limit, BOARDS_BACKFILL_PER_RUN): a stale step limit would silently hold a raised cap down (Oct 24 2026: 450 -> 900)
+        step = next(s for s in tick.PLAN if s.name == "boards-backfill")
+        self.assertEqual((step.limit, step.bulk), (limits.BOARDS_BACKFILL_PER_RUN, True))
+        self.assertEqual(limits.BOARDS_BACKFILL_PER_RUN, 900)
 
     def test_the_publish_cap_fits_its_budget(self):
         """Tick 39170290502 (Oct 18): 60 pages at about 13 s each overran the 720 s publish budget."""

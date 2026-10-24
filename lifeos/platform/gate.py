@@ -1,5 +1,5 @@
 """Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate
-keeps the effective cadence at about one run per hour. Counts only; no job data. Stdlib only.
+keeps the effective cadence at about one run per 30 minutes (MIN_GAP_MINUTES). Counts only; no job data. Stdlib only.
 
 decide(): run when the newest earlier TICK run (title "tick": scheduled or timer, never a manual run; not cancelled) started at least MIN_GAP_MINUTES ago, else skip.
 stale(): the newest successful run finished more than STALE_MINUTES ago -> the pipeline needs a human.
@@ -13,7 +13,7 @@ import sys
 import urllib.request
 
 TICK_TITLE = "tick"           # the workflow's run-name for scheduled and timer runs; manual runs are "manual" and never block a tick
-MIN_GAP_MINUTES = 50          # three crons (:07 :27 :47) -> at most one run per ~hour; a dropped slot is covered by the next
+MIN_GAP_MINUTES = 25          # Jim, Oct 24 2026: ticks about every 30 minutes (was 50, one an hour). The timer ticks at :00 and :30; of the crons (:07 :27 :47) only :27 can start a run (the others come <25 minutes after a tick); a dropped slot is covered by the next
 STALE_MINUTES = 150           # no successful run for this long -> open (or update) one GitHub issue
 ISSUE_TITLE = "V7 pipeline: no successful run for over 2.5 hours"
 LABEL = "pipeline-stale"

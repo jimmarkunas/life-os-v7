@@ -17,6 +17,13 @@ class Gate(unittest.TestCase):
     def test_old_run_means_run(self):
         self.assertEqual(gate.decide([run(1, "2026-10-01T16:07:00Z")], NOW, 9), "run")
 
+    def test_ticks_every_30_minutes_run_and_the_crons_in_between_skip(self):
+        self.assertEqual(gate.MIN_GAP_MINUTES, 25)                                                       # Jim, Oct 24 2026: about every 30 minutes
+        self.assertEqual(gate.decide([run(1, "2026-10-01T16:37:00Z")], NOW, 9), "run")                   # 30 minutes after the last tick: the timer's slot runs
+        self.assertEqual(gate.decide([run(1, "2026-10-01T16:42:00Z")], NOW, 9), "run")                   # exactly 25: the gap is a minimum, not a wait
+        self.assertEqual(gate.decide([run(1, "2026-10-01T16:47:00Z")], NOW, 9), "skip")                  # a cron 20 minutes after a tick is skipped
+        self.assertEqual(gate.decide([run(1, "2026-10-01T17:00:00Z")], NOW, 9), "skip")                  # the :07 cron right after the :00 timer tick
+
     def test_cancelled_runs_and_itself_do_not_count(self):
         self.assertEqual(gate.decide([run(9, "2026-10-01T17:07:00Z", None), run(2, "2026-10-01T16:57:00Z", "cancelled")], NOW, 9), "run")
 

@@ -250,7 +250,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/db.py`: Hostinger MySQL connection through an SSH tunnel (platform: no job knowledge). Every error is a fixed code. One tunnel per process (LIFE-76 PR 4a, D207): it is opened on 
 - `lifeos/platform/dcc_write.py`: The Daily Command Center write, proven from page markdown alone (D169). The ChatGPT-native router runs outside V7 and its Notion connector gives it the page as markdown a
 - `lifeos/platform/egress.py`: Other ways to reach a page a plain request from the GitHub runner cannot (counts and flags only; URLs never logged). Each returns lifeos.platform.http.Fetched facts. Used
-- `lifeos/platform/gate.py`: Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate keeps the effective cadence at about one run per hou
+- `lifeos/platform/gate.py`: Schedule gate: GitHub drops and delays scheduled triggers, so the workflow carries three crons per hour and this gate keeps the effective cadence at about one run per 30 
 - `lifeos/platform/gcal.py`: Minimal Google Calendar client (stdlib + the system openssl for the JWT signature; platform: no product knowledge). Service-account auth: the account only ever sees the o
 - `lifeos/platform/gdrive.py`: Minimal Google Drive client (stdlib only; platform: no job knowledge). Jim, Oct 24 2026: résumés live in Drive as real .docx files, in My Drive / LIFE OS / Résumés. OAuth
 - `lifeos/platform/gmail.py`: Minimal Gmail REST client (stdlib only): bounded listing, message reads and explicit label changes.

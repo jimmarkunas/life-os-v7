@@ -59,7 +59,7 @@ BOARDS_HOT_HOURS = 6                     # a board that lists a target job is du
 BOARDS_INGEST_PER_RUN = 100              # postings admitted per run; the rest stay PENDING and drain next run
 BOARDS_WORKERS = 4                       # most seed boards share the Greenhouse, Ashby and Lever API hosts
 BOARDS_RATE_LIMIT_STOP = 3               # this many 429 answers from one ATS stops reading that ATS for the run
-BOARDS_BACKFILL_PER_RUN = 450            # D217: never-read seed boards a backfill run reads (only when BOARDS_BACKFILL=on): ~10,500 drain in about a day of ticks
+BOARDS_BACKFILL_PER_RUN = 900            # D217: never-read seed boards a backfill run reads (only when BOARDS_BACKFILL=on); Jim raised it from 450 on Oct 24 2026 (450 took ~2 of its 10 minutes, 0 HTTP 429s in two ticks)
 
 # Gmail (REST, gmail.modify): per-user quota 250 units/s; list/get = 5 units, batchModify = 50
 GMAIL_REQUESTS_PER_SECOND = 10

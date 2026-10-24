@@ -6,7 +6,7 @@
   },
   "BOARDS_BACKFILL": {
     "state": "off",
-    "bounds": "LIFE-76 first-pass board drainer: at most limits.BOARDS_BACKFILL_PER_RUN (450) never-read boards per tick, last bulk stage, hibernates at zero; no paid service. Note: hourly.yml still passes the repository variable with an 'off' default, so this entry takes effect only after an edge-oracle change to that line.",
+    "bounds": "LIFE-76 first-pass board drainer: at most limits.BOARDS_BACKFILL_PER_RUN (900) never-read boards per tick, last bulk stage, hibernates at zero; no paid service. Note: hourly.yml still passes the repository variable with an 'off' default, so this entry takes effect only after an edge-oracle change to that line.",
     "turned_on": ""
   }
 }

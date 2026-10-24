@@ -47,7 +47,7 @@ PLAN = (
     Step("web-titlewatch", 240, bulk=True),
     Step("discover-jobs", 300, 12, bulk=True),
     Step("sponsors", 120, bulk=True),
-    Step("boards-backfill", 600, 450, bulk=True),   # D217: last, so a first pass never takes time from the hourly work; off unless BOARDS_BACKFILL=on
+    Step("boards-backfill", 600, 900, bulk=True),   # D217: last, so a first pass never takes time from the hourly work; off unless BOARDS_BACKFILL=on
 )
 QUICK_LIMITS = {"boards": 50, "publish": 10, "boards-backfill": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
