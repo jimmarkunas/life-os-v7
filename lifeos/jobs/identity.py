@@ -54,17 +54,18 @@ def fuzzy_key(company, title, location, url=None):
     return sha256("|".join(parts).encode()).hexdigest()
 
 
-_COUNTRY = re.compile(r"\s+(united states( of america)?|usa|us)$")
+_COUNTRY = {"united states", "united states of america", "usa", "us"}
 
 
 def same_place(location, url, other_location=""):
-    """LIFE-64 (D205 refinement): a place named on a link with no vacancy id ("Chicago, IL") is the place of an ATS vacancy when the same words, in
-    order, appear in that vacancy's link path or its own location. Remote, a bare city or an empty place never matches: a place is city and region."""
-    place = _COUNTRY.sub("", norm(location))
-    if len(place.split()) < 2 or "remote" in place.split():
+    """LIFE-64 (D205 refinement): a place named on a link with no vacancy id ("Chicago, IL") is the place of an ATS vacancy when its city and its
+    two-letter region, in order, appear in that vacancy's link path or its own location. Only "City, ST" is a place: a state on its own ("New York,
+    United States"), a bare city ("San Francisco"), Remote or nothing never matches."""
+    parts = [norm(x) for x in (location or "").split(",") if norm(x)]
+    parts = parts[:-1] if parts and parts[-1] in _COUNTRY else parts
+    if len(parts) != 2 or not re.fullmatch(r"[a-z]{2}", parts[1]) or "remote" in parts[0].split():
         return False
-    haystack = f" {norm(urlsplit(url or '').path)} {norm(other_location)} "
-    return f" {place} " in haystack
+    return f" {parts[0]} {parts[1]} " in f" {norm(urlsplit(url or '').path)} {norm(other_location)} "
 
 
 def aggregator_twin(url, location, ats_url, ats_location, aggregator):

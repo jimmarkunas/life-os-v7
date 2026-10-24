@@ -95,7 +95,7 @@ def run(limit, live, environ=os.environ):
             bad.append((r, "duplicate_page"))
             dupe_of[r[0]] = earlier[0]
         first_page.setdefault(key, []).append(r)
-    for r, twin in twins(first_page, places, already | set(dupe_of)):
+    for r, twin in twins(first_page, places, already | {r[0] for r in excluded} | set(dupe_of)):     # a page already going is never kept, nor counted twice
         bad.append((r, "duplicate_page"))
         dupe_of[r[0]] = twin
     counts["failed"] = len(bad)

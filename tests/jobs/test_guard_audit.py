@@ -83,6 +83,7 @@ class DuplicatePageTests(unittest.TestCase):
         self.assertEqual(audit.twins(group, {1: "Remote", 2: "Remote"}, set()), [])
         self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {2}), [])                     # the ATS page is itself going: nothing is kept in its place
         self.assertEqual(self.audit(pages, {1: "Chicago, IL", 2: "Remote"}), 1)                # and the run counts it
+        self.assertEqual(audit.twins(group, {1: "Chicago, IL"}, {1}), [])                     # a page already going (e.g. excluded by Fit) is not counted twice
 
     def audit(self, pages, places=None):
         from unittest import mock

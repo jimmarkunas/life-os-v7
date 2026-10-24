@@ -124,13 +124,20 @@ class SameOpeningTests(unittest.TestCase):
         with self.db.cursor() as cursor:
             return publish.same_opening(cursor, 999, company, title, url, location)
 
+    def test_a_state_or_a_bare_city_is_never_a_place(self):
+        for location, url, other in (("New York, United States", "https://x.wd1.myworkdayjobs.com/a/job/Albany-New-York/PM_R1", ""),
+                                     ("New Jersey, US", "https://x.wd1.myworkdayjobs.com/a/job/Newark-New-Jersey/PM_R1", ""),
+                                     ("San Francisco", "https://x.wd1.myworkdayjobs.com/a/job/San-Francisco-CA/PM_R1", "")):
+            self.assertFalse(identity.same_place(location, url, other), location)
+        self.assertTrue(identity.same_place("New York, NY", "https://x.wd1.myworkdayjobs.com/a/job/New-York-NY/PM_R1"))
+
     def test_an_aggregator_link_at_the_ats_vacancys_place_is_that_opening(self):        # LIFE-64: Clarus, Oct 24
         ats = self.published("Clarus Technology", "Project Manager - Advanced",
                              "https://independencepetgroup.wd12.myworkdayjobs.com/clarus/job/Chicago-IL/Project-Manager---Advanced_JR102945", "Remote / Enterprise Software")
         li = "https://www.linkedin.com/jobs/view/4482175447"
         self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL"), ats)
         self.assertEqual(self.same("Clarus Technology", "Project Manager - Advanced", li, "Chicago, IL, United States"), ats)
-        for place in ("Austin, TX", "Remote", "Chicago", "", None):                         # another place, Remote, a bare city or none: two openings
+        for place in ("Austin, TX", "Remote", "Chicago", "", None, "Illinois, United States", "Chicago, Illinois", "IL", "Remote, IL"):   # another place, a state alone, a bare city, Remote or none
             self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", li, place), place)
         self.assertIsNone(self.same("Clarus Technology", "Project Manager - Advanced", "https://careers.clarus.example/pm-advanced", "Chicago, IL"))   # not an aggregator
 
