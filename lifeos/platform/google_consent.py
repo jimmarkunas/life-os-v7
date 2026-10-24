@@ -2,9 +2,10 @@
 creates), catches the reply on a loopback port, and writes the credential JSON {"client_id", "client_secret", "refresh_token"} to stdout, which
 must be a pipe straight into the Edge's encrypted credential store: it refuses to print the credential on a terminal. Prompts go to the terminal,
 never to stdout. It runs on the Edge, inside `ssh -t -L 8765:127.0.0.1:8765`, so the browser on Jim's Mac reaches the loopback port through the
-tunnel and the credential never leaves the Edge. Standalone (stdlib only), so it runs by path in isolated mode from the release tree:
+tunnel and the credential never leaves the Edge. Standalone (stdlib only), so it runs by path in isolated mode; the installer runs from the
+up-to-date repository checkout on the Edge (the release tree carries .py files only, and /opt/lifeos-close/bin keeps the updater frozen):
   sudo -v
-  sudo python3 -I /opt/lifeos-close/current/lifeos/platform/google_consent.py --port 8765 | sudo /opt/lifeos-close/current/lifeos/edge/oracle/install-close.sh credential gdrive"""
+  sudo python3 -I lifeos/platform/google_consent.py --port 8765 | sudo bash lifeos/edge/oracle/install-close.sh credential gdrive"""
 import base64
 import getpass
 import hashlib
