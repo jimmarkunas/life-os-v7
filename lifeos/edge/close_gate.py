@@ -116,7 +116,7 @@ def refresh(token, wants, opener=urllib.request.urlopen):
         with opener(req, timeout=10) as response:
             return json.loads(response.read() or b"{}")
     done = []
-    for name in dict.fromkeys(w for w in wants if w in REFRESH):
+    for name in dict.fromkeys(w for w in wants if isinstance(w, str) and w in REFRESH):
         try:
             if any(r.get("status") in WAITING for r in call("GET", "/runs?per_page=10").get("workflow_runs") or []):
                 done.append("waiting")
@@ -151,7 +151,10 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
     creds = creds or os.environ.get("CREDENTIALS_DIRECTORY", "")
     secrets = {n: open(os.path.join(creds, n), "rb").read().strip() for n in ("link", "notion")}
     github = os.path.join(creds, "github")
-    token = open(github, "rb").read().strip() if os.path.isfile(github) else b""      # optional: absent = no refresh is ever asked
+    try:
+        token = open(github, "rb").read().strip() if os.path.isfile(github) else b""  # optional: absent or unreadable = no refresh is ever asked
+    except OSError:
+        token = b""
     after = []
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written

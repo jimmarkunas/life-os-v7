@@ -98,11 +98,11 @@ case "${1:-}" in
       notion) systemd-creds encrypt --name=notion - "$CREDS/lifeos-close.notion" ;;
       link) python3 -I -c 'import secrets; print(secrets.token_hex(32))' | systemd-creds encrypt --name=link - "$CREDS/lifeos-close.link" ;;
       github) say "paste the fine-grained token (this repository, Actions read and write only), then Ctrl-D"; systemd-creds encrypt --name=github - "$CREDS/lifeos-close.github" ;;
-      github-off) rm -f "$CREDS/lifeos-close.github"; units "$UNITS"; systemctl daemon-reload; say "refresh credential removed; the Close screen no longer asks for refreshes"; exit 0 ;;
+      github-off) rm -f "$CREDS/lifeos-close.github"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "refresh credential removed; the Close screen no longer asks for refreshes"; exit 0 ;;
       *) say "credential notion|link|github|github-off"; exit 2 ;;
     esac
     chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)"
-    if [ "$2" = github ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;
+    if [ "$2" = github ] && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
