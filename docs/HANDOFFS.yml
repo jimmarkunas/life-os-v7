@@ -18,6 +18,37 @@ handoffs:
     path: tests/sources/test_oracle_card.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-77?focusedCommentId=11115
+  - pr: 516
+    owner: career-v7
+    path: docs/SETUP.md
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+  - pr: 516
+    owner: career-v7
+    path: lifeos/jobs/tick.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+  - pr: 516
+    owner: career-v7
+    path: lifeos/platform/limits.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+  - pr: 516
+    owner: career-v7
+    path: lifeos/platform/switches.json
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+  - pr: 516
+    owner: career-v7
+    path: tests/jobs/test_tick.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+  - pr: 516
+    owner: career-v7
+    path: tests/platform/test_gate.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11119
+
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
 exemptions: []
