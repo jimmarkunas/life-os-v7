@@ -3,14 +3,17 @@
 Built only from canonical evidence V7 can read today: the exact Job Ledger row (Interview token, read only, confirmed by its
 Stable Job Key), the exact interview request message, and the machine interview pages under the opportunity (their identity
 lines). Every other source the approved layout names (Calendar, the exact-job Gmail/Outlook threads, the LinkedIn Connections
-sheet, the submitted résumé and sent files, the verbatim job description, interview transcripts) is not connected to this
-writer yet and is carried as `None`, which the template renders as not verified. Nothing here is guessed or defaulted."""
+sheet, the other sent files, the verbatim job description, interview transcripts) is not connected to this writer yet and is
+carried as `None`, which the template renders as not verified. Nothing here is guessed or defaulted. The submitted résumé comes
+only from the exact row's human-owned Submitted Résumé field (Jim, Oct 24), never from the Resume column, which holds the latest
+résumé LIFE OS built, not the one Jim sent."""
 from dataclasses import dataclass
 from lifeos.platform.notion_client import NotionError
 from .identity import valid_date
 
 UNCONNECTED = ("Calendar", "Recruiter email threads", "LinkedIn contacts", "Submitted résumé and sent materials",
                "Original job description", "Interview transcripts")
+SUBMITTED = "Submitted Résumé"                   # the Job Ledger's Files field Jim fills with the file he actually sent (LIFE-88 E10)
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,8 @@ class Opportunity:
     done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
     page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
     close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
+    resume: tuple = ()                           # E10: (file name, stable link or None) from the exact row's Submitted Résumé field
+    resume_state: str | None = None              # None = Job Ledger row not verified; "recorded" | "not_recorded" | "not_connected" (no such field)
 
 
 def _plain(prop):
@@ -64,8 +69,27 @@ def ledger_facts(client, page_id, stable_job_key):
     props = row.get("properties") or {}
     if row.get("archived") or row.get("in_trash") or not stable_job_key or _plain(props.get("Stable Job Key")) != stable_job_key:
         return "mismatch", {}
+    resume, resume_state = submitted_resume(props)
     return "linked", {"compensation": _plain(props.get("Compensation")), "work_mode": _plain(props.get("Location / Work Mode")),
-                      "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits"))}
+                      "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits")),
+                      "resume": resume, "resume_state": resume_state}
+
+
+def submitted_resume(props):
+    """E10: the files Jim recorded as sent. An uploaded file's own URL expires within the hour, so it is named (the page links the row
+    that holds it); an external link is stable and is kept, https only. Anything that is not a files value is not connected."""
+    prop = props.get(SUBMITTED)
+    if not isinstance(prop, dict) or prop.get("type") != "files":
+        return (), "not_connected"
+    out = []
+    for f in prop.get("files") or []:
+        name = f.get("name") if isinstance(f, dict) else None
+        if isinstance(name, str) and name.strip():
+            ext = f.get("external") if f.get("type") == "external" else None
+            url = ext.get("url") if isinstance(ext, dict) else None
+            ok = isinstance(url, str) and url.startswith("https://") and not any(c.isspace() for c in url)      # a hand-typed bad link would fail the whole page write
+            out.append((name.strip(), url if ok else None))
+    return tuple(out), ("recorded" if out else "not_recorded")
 
 
 def rounds_of(children):

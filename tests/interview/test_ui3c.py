@@ -288,6 +288,40 @@ class Layout(unittest.TestCase):
         self.assertIn("Recruiter email threads: no Recruiters row for this job's exact request message", none)
         self.assertIn("No verified recruiters or coordinators", none)
 
+    def test_e10_the_submitted_resume_comes_only_from_the_exact_row_s_submitted_resume_field(self):
+        client = WritableFake()
+        rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
+        files = lambda *f: {"type": "files", "files": list(f)}
+        built = {"name": "Built.pdf", "type": "file", "file": {"url": "https://files.example/built", "expiry_time": "2026-10-24T19:00:00Z"}}
+        sent = {"name": "Jim Resume ExampleCo.pdf", "type": "file", "file": {"url": "https://files.example/sent?sig=1", "expiry_time": "2026-10-24T19:00:00Z"}}
+        drive = {"name": "Résumé (Drive)", "type": "external", "external": {"url": "https://drive.example/r"}}
+        key = {"Stable Job Key": rich("exampleco-pm-1"), "Resume": files(built)}
+        cases = (({}, (), "not_connected"), ({view.SUBMITTED: rich("x")}, (), "not_connected"), ({view.SUBMITTED: files()}, (), "not_recorded"),
+                 ({view.SUBMITTED: files(sent, drive, {"name": " ", "type": "external", "external": {"url": "https://x"}},
+                                         {"name": "Plain", "type": "external", "external": {"url": "http://insecure"}},
+                                         {"name": "Typo", "type": "external", "external": {"url": "https://drive.example/a b"}},
+                                         {"name": "Odd", "type": "external", "external": "https://x"}, "not-a-file", {"name": 7})},
+                  (("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r"), ("Plain", None), ("Typo", None), ("Odd", None)), "recorded"))
+        for extra, resume, state in cases:
+            client.pages["row"] = {"properties": {**key, **extra}}
+            facts = view.ledger_facts(client, "row", "exampleco-pm-1")[1]
+            self.assertEqual((facts["resume"], facts["resume_state"]), (resume, state), extra)          # the built Resume column is never the proof
+        recorded = dataclasses.replace(opportunity(compensation="$90/hr"), resume=(("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r")),
+                                       resume_state="recorded")
+        client, page_id = written(recorded)
+        shown = "\n".join(texts(client, page_id))
+        self.assertIn("Submitted résumé — Jim Resume ExampleCo.pdf (Job Ledger)", shown)
+        self.assertIn("Submitted résumé and sent materials: 2 submitted résumé file(s) on the exact Job Ledger row", shown)
+        self.assertLess(shown.index("Submitted résumé — Jim Resume"), shown.index("Other sent forms"))                # listed first in Materials Sent
+        self.assertIn("https://www.notion.so/row", str(client.blocks))                                     # an uploaded file opens from its row
+        self.assertIn("https://drive.example/r", str(client.blocks))
+        self.assertNotIn("files.example", str(client.blocks))                                             # an expiring file URL is never written
+        for state, says in (("not_recorded", "not recorded on the Job Ledger row"), ("not_connected", "the Job Ledger has no Submitted Résumé field"),
+                            (None, "unavailable · the exact Job Ledger row is not verified this run")):
+            shown = "\n".join(texts(*written(dataclasses.replace(opportunity(compensation="$90/hr"), resume_state=state))))
+            self.assertIn(says, shown.split("Materials Sent")[1])
+            self.assertNotIn("File link not yet verified", shown)
+
     def test_ledger_facts_only_from_the_exact_row(self):
         client = WritableFake()
         rich = lambda v: {"type": "rich_text", "rich_text": [{"plain_text": v}]}
