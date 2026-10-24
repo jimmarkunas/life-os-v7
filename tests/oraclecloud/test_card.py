@@ -62,17 +62,34 @@ class Card(unittest.TestCase):
         self.assertTrue(rep.blocks["ohead"]["heading_3"]["rich_text"][0]["annotations"]["bold"])
         self.assertEqual({b: rep.plain(b) for b in others}, others)                  # the Communications callout and the rest are untouched
 
-    def test_once_a_day_from_6_am_and_again_while_degraded(self):
+    def test_every_tick_writes_the_card_and_asks_oracle(self):
         calls = []
         answer = lambda host: calls.append(host) or json.dumps(stats()).encode()
-        early = dt.datetime(2026, 10, 15, 10, 30, tzinfo=dt.timezone.utc)            # 5:30 AM in Chicago
-        self.assertEqual(self.run_card(report(), answer=answer, now=early)[0], {"due": False, "written": 0})
-        done = report("Oracle Cloud (Updated Oct 15 · 6:07 AM CT)")
-        self.assertFalse(self.run_card(done, answer=answer)[0]["due"])
-        self.assertEqual((calls, done.patches), ([], []))                            # not due: Oracle is not even asked
-        for heading in ("Oracle Cloud (Updated Oct 14 · 6:07 AM CT)", "Oracle Cloud (DEGRADED · Updated Oct 15 · 6:07 AM CT)"):
-            self.assertEqual(self.run_card(report(heading), answer=answer)[0]["written"], 2)
-        self.assertEqual(self.run_card(done, answer=answer, env={**self.ENV, "ORACLE_CARD_FORCE": "true"})[0]["written"], 2)
+        early = dt.datetime(2026, 10, 15, 10, 30, tzinfo=dt.timezone.utc)            # 5:30 AM in Chicago: no 6 AM gate any more
+        for heading in ("Oracle Cloud", "Oracle Cloud (Updated Oct 15 · 6:07 AM CT)", "Oracle Cloud (DEGRADED · Updated Oct 15 · 6:07 AM CT)"):
+            for now in (early, NOW):
+                counts, _ = self.run_card(report(heading), answer=answer, now=now)
+                self.assertEqual((counts["written"], "due" in counts), (2, False))
+        self.assertEqual(len(calls), 6)                                              # Oracle is asked on every tick
+
+    def test_the_codex_lines_are_the_plan_passed_in_not_oracles_own_plan_read(self):
+        rep = report()
+        calls = []
+        plan = lambda: calls.append(1) or {"left_5h": 100, "left_week": 98}           # Oracle's own stats() says 100 and 64
+        out = io.StringIO()
+        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+            counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=plan)
+        self.assertEqual((counts["missing"], counts["written"], len(calls)), (0, 2, 1))
+        self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex 5h ██████████ 100% · Codex week ██████████ 98%")
+
+    def test_a_plan_that_cannot_be_had_is_unavailable_and_degrades_the_card(self):
+        rep = report()
+        out = io.StringIO()
+        with mock.patch.object(report_region, "protected", lambda client, ids, fail: {"Attention": "same"}), contextlib.redirect_stdout(out):
+            counts = card.run(0, True, self.ENV, NOW, lambda host: json.dumps(stats()).encode(), rep, plan=lambda: None)
+        self.assertEqual((counts["missing"], counts["written"]), (1, 2))
+        self.assertEqual(rep.plain("obody").split("\n")[-1], "Codex plan: unavailable")
+        self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
 
     def test_a_missing_reading_says_unavailable_and_marks_the_card_degraded(self):
         rep = report()
