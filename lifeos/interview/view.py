@@ -83,10 +83,12 @@ def submitted_resume(props):
         return (), "not_connected"
     out = []
     for f in prop.get("files") or []:
-        name = (f.get("name") or "").strip() if isinstance(f, dict) else ""
-        if name:
-            url = ((f.get("external") or {}).get("url") or "").strip() if f.get("type") == "external" else ""
-            out.append((name, url if url.startswith("https://") else None))
+        name = f.get("name") if isinstance(f, dict) else None
+        if isinstance(name, str) and name.strip():
+            ext = f.get("external") if f.get("type") == "external" else None
+            url = ext.get("url") if isinstance(ext, dict) else None
+            ok = isinstance(url, str) and url.startswith("https://") and not any(c.isspace() for c in url)      # a hand-typed bad link would fail the whole page write
+            out.append((name.strip(), url if ok else None))
     return tuple(out), ("recorded" if out else "not_recorded")
 
 

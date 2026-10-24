@@ -298,8 +298,10 @@ class Layout(unittest.TestCase):
         key = {"Stable Job Key": rich("exampleco-pm-1"), "Resume": files(built)}
         cases = (({}, (), "not_connected"), ({view.SUBMITTED: rich("x")}, (), "not_connected"), ({view.SUBMITTED: files()}, (), "not_recorded"),
                  ({view.SUBMITTED: files(sent, drive, {"name": " ", "type": "external", "external": {"url": "https://x"}},
-                                         {"name": "Plain", "type": "external", "external": {"url": "http://insecure"}})},
-                  (("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r"), ("Plain", None)), "recorded"))
+                                         {"name": "Plain", "type": "external", "external": {"url": "http://insecure"}},
+                                         {"name": "Typo", "type": "external", "external": {"url": "https://drive.example/a b"}},
+                                         {"name": "Odd", "type": "external", "external": "https://x"}, "not-a-file", {"name": 7})},
+                  (("Jim Resume ExampleCo.pdf", None), ("Résumé (Drive)", "https://drive.example/r"), ("Plain", None), ("Typo", None), ("Odd", None)), "recorded"))
         for extra, resume, state in cases:
             client.pages["row"] = {"properties": {**key, **extra}}
             facts = view.ledger_facts(client, "row", "exampleco-pm-1")[1]
