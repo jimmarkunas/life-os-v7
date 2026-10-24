@@ -33,7 +33,8 @@ class Reader:
     def call(self, method, path, body=None):
         assert method == "GET", (method, path)
         self.calls.append((method, path))
-        return {"results": [], "has_more": False}
+        kids = [{"type": "child_page"}, {"type": "child_page"}, {"type": "paragraph"}] if path.startswith(f"/blocks/{'4' * 32}/children") else []
+        return {"results": kids, "has_more": False}
 
 
 def recruiter(**kw):
@@ -101,6 +102,19 @@ class Lines(unittest.TestCase):
         other = hiring_pipeline.Opportunity(page_id="5" * 32, title="Other Co — Analyst", section="ACTIVE", company="Other Co", role="Analyst")
         self.assertEqual(brief(Reader(recruiter(), ledger_job()), [other])["Interview"], ("none on file", None))
         self.assertEqual(brief(Reader(recruiter(), ledger_job()), [OPP, OPP])["Interview"][0], "more than one match: not shown")
+
+    def test_the_interview_count_is_read_for_the_matched_page_only_and_an_unreadable_one_is_named(self):
+        reader = Reader(recruiter(), ledger_job())
+        brief(reader, [OPP, hiring_pipeline.Opportunity(page_id="5" * 32, title="Other", section="ACTIVE", company="Other Co", role="Analyst")])
+        self.assertEqual([p for m, p in reader.calls if p.startswith("/blocks/")], [f"/blocks/{'4' * 32}/children?page_size=100"])
+        reader.unreadable_children = True
+        with mock.patch.object(reader, "call", side_effect=NotionError("X")):
+            self.assertEqual(brief(reader, [OPP])["Interview"], ("unreadable this time", None))
+
+    def test_a_time_without_a_zone_is_utc_shown_in_central_time(self):
+        self.assertEqual(A._when("2026-10-20T14:05:00"), "Oct 20, 2026, 9:05 AM CT")
+        self.assertEqual(A._when("2026-10-27"), "Oct 27, 2026")
+        self.assertEqual(A._when("not a date"), "")
 
     def test_the_same_records_render_the_same_brief(self):
         args = (Reader(recruiter(), ledger_job()), [OPP])

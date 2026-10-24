@@ -414,6 +414,9 @@ def _when(text):
         moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return ""
+    if moment.tzinfo is None:
+        from datetime import timezone
+        moment = moment.replace(tzinfo=timezone.utc)                        # Notion's times are UTC; never the host's zone
     if len(text) <= 10:
         return f"{moment:%b} {moment.day}, {moment.year}"
     local = moment.astimezone(ZoneInfo("America/Chicago"))
@@ -440,7 +443,7 @@ def brief_facts(reader, config, row):
         page = reader.get_page(pid)
         props = page.get("properties") or {}
         parent = D._page_id((page.get("parent") or {}).get("data_source_id"))
-        if parent != D._page_id(config.get("ledger")) or page.get("in_trash") or page.get("archived"):
+        if not parent or parent != D._page_id(config.get("ledger")) or page.get("in_trash") or page.get("archived"):
             raise NotionError("NOT_LEDGER")
         out["job"] = {"id": pid, "company": D._text(props.get("Company"), "rich_text"), "role": D._text(props.get("Job"), "title")}
         out["fit"] = D._text(props.get("Why It Fits"), "rich_text") or None
@@ -450,12 +453,20 @@ def brief_facts(reader, config, row):
         return out
     from lifeos.jobs import hiring_pipeline
     from lifeos.hiring import models as M
-    found, status = hiring_pipeline.snapshot(reader, config["pipeline"])
+    found, status = hiring_pipeline.snapshot(reader, config["pipeline"], rounds=False)          # one interview count is read below, for the matched page only
     if status != "ok":
         out["pipeline"] = "unreadable"
     else:
         same = [o for o in found if M.same(o.company, o.role, out["job"]["company"], out["job"]["role"])]
         out["pipeline"], out["page"] = ("linked", same[0]) if len(same) == 1 else ("mismatch" if same else "none", None)
+        if out["page"]:
+            try:
+                kids = reader.call("GET", f"/blocks/{D._page_id(out['page'].page_id)}/children?page_size=100")
+                if not isinstance(kids, dict) or kids.get("has_more") or not isinstance(kids.get("results"), list):
+                    raise NotionError("PAGE_UNREADABLE")
+                out["rounds"] = sum(1 for b in kids["results"] if b.get("type") == "child_page")
+            except NotionError:
+                out["pipeline"], out["page"] = "unreadable", None
     try:
         out["leads"] = [lead["name"] for lead in N.leads_on_page(reader, pid, NETWORK_SHOWN)]
         out["network"] = "linked" if out["leads"] else "none"
@@ -479,7 +490,7 @@ def brief_lines(row, facts):
              ("Role", (" · ".join(x for x in (job["company"], job["role"]) if x) + " (Job Ledger)") if job else
               " · ".join(x for x in (row["client"], row["role"]) if x) + f" · {STATE_TEXT[facts['ledger']]}", f"https://www.notion.so/{job['id']}" if job else None),
              ("Fit", facts["fit"] or ("Fit not available" if job else STATE_TEXT[facts["ledger"]]), f"https://www.notion.so/{job['id']}" if job and facts["fit"] else None),
-             ("Interview", f"{page.title} · {page.rounds} interview page(s) · {'Active' if page.section != 'RETIRED' else 'Retired'}" if page else STATE_TEXT[facts["pipeline"]],
+             ("Interview", f"{page.title} · {facts.get('rounds', 0)} interview page(s) · {'Active' if page.section != 'RETIRED' else 'Retired'}" if page else STATE_TEXT[facts["pipeline"]],
               f"https://www.notion.so/{page.page_id.replace('-', '')}" if page else None),
              ("Network", ", ".join(facts["leads"]) if facts["leads"] else STATE_TEXT[facts["network"]], f"https://www.notion.so/{job['id']}" if job and facts["leads"] else None),
              ("Status", " · ".join(x for x in (row["action"] or "No status", f"follow up {_when(row['follow_up'])}" if row["follow_up"] else "") if x),
