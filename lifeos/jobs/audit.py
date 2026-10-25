@@ -50,14 +50,17 @@ def twins(groups, places, skip):
     return out
 
 
-def run(limit, live, environ=os.environ):
+def run(limit, live, environ=os.environ, ready_only=False):
+    """ready_only (LIFE-76): the gate before publish - only the READY rows about to be published, judged with the same guards; no page is read or trashed,
+    so it takes seconds. The full pass (published pages, duplicates, Exclude clean-up) runs after publish."""
     counts = {"checked": 0, "failed": 0, "demoted": 0, "trashed": 0, "trash_errors": 0, "by_reason": {}, "protected": {}}
-    gated = environ.get("V7_FIT_GATE") == "true"
+    gated = environ.get("V7_FIT_GATE") == "true" and not ready_only
+    statuses = "('READY')" if ready_only else "('READY','PUBLISHED')"
     with store.connect() as connection:
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             cursor.execute("SELECT j.id, j.status, j.final_apply_url, j.notion_page_id, d.full_text, j.company, j.title FROM v7_jobs j"
-                           " LEFT JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status IN ('READY','PUBLISHED')"
+                           f" LEFT JOIN v7_job_descriptions d ON d.job_id=j.id WHERE j.status IN {statuses}"
                            " ORDER BY j.id LIMIT %s", (limit,))
             rows = cursor.fetchall()
             excluded = []
@@ -74,11 +77,13 @@ def run(limit, live, environ=os.environ):
             thin_ok = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
             watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)
-            cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
-                           " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
-            pages = cursor.fetchall()
-            cursor.execute("SELECT id, location_text FROM v7_jobs WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL")
-            places = dict(cursor.fetchall())
+            pages, places = [], {}
+            if not ready_only:                                  # duplicates are judged among published pages, so only the full pass reads them
+                cursor.execute("SELECT id, status, final_apply_url, notion_page_id, NULL, company, title FROM v7_jobs"
+                               " WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL ORDER BY id")
+                pages = cursor.fetchall()
+                cursor.execute("SELECT id, location_text FROM v7_jobs WHERE status='PUBLISHED' AND notion_page_id IS NOT NULL")
+                places = dict(cursor.fetchall())
     counts["checked"], counts["pages"], counts["excluded_waiting"] = len(rows), len(pages), len(excluded)
     bad = [(r, judge(r[2], r[4], r[0] in proven, r[0] in watched, r[0] in thin_ok)) for r in rows]
     bad = [(r, why) for r, why in bad if why]
