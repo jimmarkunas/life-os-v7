@@ -3,7 +3,7 @@
     python -m lifeos.jobs.tick [--live] [--quick]
 
 The workflow's prep job has already swept and extracted the mail. The fast path runs first, so jobs already found reach the Ledger before any bulk work: the resolvers -> the US Remote
-boards -> enrich -> fit -> audit -> publish -> hold expiry -> finalize. Bulk discovery runs after it, while the run's time lasts: the employer
+boards -> publish the READY jobs (gated) -> enrich -> fit -> publish the fresh ones (gated) -> audit -> hold expiry -> finalize. Bulk discovery runs after it, while the run's time lasts: the employer
 boards (D202), the Scale-Up lane (its own budget; D206 canon: shared store, Ledger and Fit), title watch, discovery search, the sponsor register.
 Each stage has a wall-clock budget, cut to the run's remaining time (a fast-path stage never below FAST_FLOOR_SECONDS); a stage over it is stopped and counted `timeout`, a failing stage never stops the next one, and a bulk
 stage that cannot start inside the run's remaining time is counted `skipped`. Output: the stages' own counts-only lines (the same `<stage>: {...}`
@@ -36,10 +36,14 @@ PLAN = (
     Step("linkedin-search", 180, 40),
     Step("resolve-dice", 180, 15),
     Step("web", 180, 12),
-    Step("enrich", 480, 150),
-    Step("fit", 240),
+    # LIFE-76 (Jim, Oct 25: publish first): the jobs already read and scored reach the Ledger before this run reads new descriptions (noon tick: 7.5 min to the
+    # first page, 2.3 of them in enrich); the rows this run scores follow in publish-fresh
     Step("audit-ready", 60),                    # LIFE-76: nothing that fails the guards is published; only the READY rows, no page reads, seconds
     Step("publish", 720, 40),                   # ~13 s a page incl. read-back and Fit sync: 40 fit the 12-minute budget (tick 39170290502 timed out at 60)
+    Step("enrich", 480, 150),
+    Step("fit", 240),
+    Step("audit-fresh", 60),                    # the same gate on the rows enrich and fit just made READY
+    Step("publish-fresh", 300, 20),
     Step("audit", 180),                         # the full pass after publish: published pages, duplicates and Exclude clean-up, so it never delays the Ledger
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),     # its own default; the workflow step never passed one
@@ -52,11 +56,11 @@ PLAN = (
     # LIFE-76 drain pass (Jim, Oct 25: "drain this backlog quickly"): the backlog the first pass found, in the run's spare time, never before the hourly
     # work. Publish first (READY rows already scored, gated first), then read and score more for the next run; each step finds nothing once the queue is empty.
     Step("drain-audit-ready", 60, bulk=True),
-    Step("drain-publish", 480, 60, bulk=True),       # limits.NOTION_PER_RUN pages a call; ~2-3 s a page today (Oct 25), so 60 fit 480 s with room for a slow Notion minute
-    Step("drain-enrich", 480, 300, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's
+    Step("drain-publish", 720, 120, bulk=True),      # Jim, Oct 25: publish more per run; ~2.8 s a page at noon (60 in 168 s), so 120 fit 720 s at twice that
+    Step("drain-enrich", 480, 450, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's; 300 took 122 s at noon
     Step("drain-fit", 240, bulk=True),
 )
-QUICK_LIMITS = {"boards": 50, "publish": 10, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
+QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
 
 class StageTimeout(BaseException):
