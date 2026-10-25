@@ -33,8 +33,9 @@ class TickTests(unittest.TestCase):
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
-        self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors", "boards-backfill"})
-        self.assertEqual(names[-1], "boards-backfill")                       # D217: a first pass never takes time from the hourly work
+        self.assertEqual({s.name for s in tick.PLAN if s.bulk}, {"boards", "web-scale-up", "web-titlewatch", "discover-jobs", "sponsors", "boards-backfill",
+                                                                 "drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"})
+        self.assertLess(names.index("finalize"), names.index("boards-backfill"))     # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
     def test_the_gate_runs_just_before_publish_and_the_full_audit_just_after(self):
@@ -43,6 +44,19 @@ class TickTests(unittest.TestCase):
         self.assertEqual(names[names.index("publish") - 1], "audit-ready")
         self.assertEqual(names[names.index("publish") + 1], "audit")
         self.assertFalse(next(s for s in tick.PLAN if s.name == "audit").bulk)      # the full pass is never skipped for lack of time
+
+    def test_the_drain_pass_runs_last_gated_and_inside_the_ledger_caps(self):
+        """LIFE-76 (Jim, Oct 25): the backlog drains in the run's spare time; nothing reaches the Ledger ungated and no call exceeds NOTION_PER_RUN."""
+        from lifeos import run
+        from lifeos.platform import limits
+        names = [s.name for s in tick.PLAN]
+        self.assertEqual(names[-4:], ["drain-audit-ready", "drain-publish", "drain-enrich", "drain-fit"])
+        self.assertTrue(all(s.bulk for s in tick.PLAN[-4:]))                    # never before the hourly work, skipped when the run has no time left
+        step = next(s for s in tick.PLAN if s.name == "drain-publish")
+        self.assertLessEqual(step.limit, limits.NOTION_PER_RUN)
+        self.assertLessEqual(step.limit * 6, step.budget)                         # twice today's ~3 s a page
+        self.assertEqual(run.STAGES["drain-enrich"].target, ("lifeos.jobs.enrich", "run"))
+        self.assertLessEqual(tick.QUICK_LIMITS["drain-publish"], tick.QUICK_LIMITS["publish"])
 
     def test_the_publish_cap_fits_its_budget(self):
         """Tick 39170290502 (Oct 18): 60 pages at about 13 s each overran the 720 s publish budget."""

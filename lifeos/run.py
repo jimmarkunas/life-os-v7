@@ -143,6 +143,11 @@ STAGES = {
     "audit": lazy("lifeos.jobs.audit", floor=2000),
     "audit-ready": lazy("lifeos.jobs.audit", floor=2000, ready_only=True),     # LIFE-76: the seconds-long gate on the rows about to be published
     "publish": lazy("lifeos.jobs.publish"),
+    # LIFE-76 drain pass: the same stages again at the end of a tick, on the backlog, only while the run's time lasts (tick.PLAN bulk steps)
+    "drain-audit-ready": lazy("lifeos.jobs.audit", floor=2000, ready_only=True),
+    "drain-publish": lazy("lifeos.jobs.publish"),
+    "drain-enrich": lazy("lifeos.jobs.enrich", drain=True),
+    "drain-fit": lazy("lifeos.jobs.fit.stage", floor=500),
     "expire-holds": lazy("lifeos.jobs.hold"),
     "funnel": lazy("lifeos.jobs.funnel"),
     "fit-review": lazy("lifeos.jobs.review"),
