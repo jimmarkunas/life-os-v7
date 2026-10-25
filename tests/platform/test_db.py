@@ -69,7 +69,7 @@ class RetryTests(unittest.TestCase):
         with mock.patch.object(db.subprocess, "run", side_effect=fake_run), mock.patch.dict(sys.modules, {"pymysql": fake_pymysql}):
             try:
                 with db.connect() as connection:
-                    return ("connected" if connection is fake_pymysql.connect.return_value else "wrong"), len(starts)
+                    return ("connected" if connection._raw is fake_pymysql.connect.return_value else "wrong"), len(starts)
             except db.StoreError as error:
                 return str(error), len(starts)
 
@@ -362,6 +362,155 @@ sys.exit(0)                # -f: the master goes to the background
             self.assertEqual(self.run_([self.TIMEOUT]), "STORE_SSH_JUMP_DNS")
         self.assertIsNone(db._tunnel["directory"])
 
+
+
+
+class OperationalError(Exception):
+    """Stands in for pymysql.err.OperationalError: the retry matches the driver's class name and its numeric code."""
+
+
+class _FakeCursor:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def execute(self, query, args=None):
+        self.raw.executed.append(query)
+        if self.raw.failures:
+            raise self.raw.failures.pop(0)
+        return 1
+
+    def fetchall(self):
+        return [("row",)]
+
+    def close(self):
+        self.raw.closed_cursors += 1
+
+
+class _FakeRaw:
+    def __init__(self, failures, server_status=2):
+        self.failures, self.server_status, self.executed, self.pings, self.port, self.closed_cursors = list(failures), server_status, [], [], 1, 0
+
+    def cursor(self, *args):
+        return _FakeCursor(self)
+
+    def ping(self, reconnect=False):
+        self.pings.append((reconnect, self.port))
+
+
+class LostSessionTests(unittest.TestCase):
+    """LIFE-76 (Jim, Oct 25): a dropped MySQL session (2013 / 2006) on a read reconnects and reads once more; a write or a read inside a
+    transaction is never repeated, so nothing can be applied twice."""
+
+    def setUp(self):
+        from unittest import mock
+        self.alive = mock.patch.object(db, "_alive", return_value=True)
+        self.alive.start()
+        self.addCleanup(self.alive.stop)
+        port = db._tunnel["port"]
+        db._tunnel["port"] = 4242
+        self.addCleanup(db._tunnel.update, port=port)
+
+    def _execute(self, raw, query):
+        with db._Connection(raw).cursor() as cursor:
+            result = cursor.execute(query, ("k",))
+            return result, cursor.fetchall()
+
+    def test_a_lost_read_reconnects_through_the_tunnel_and_runs_once_more(self):
+        raw = _FakeRaw([OperationalError(2013, "Lost connection to MySQL server during query")])
+        query = "SELECT retired_at FROM v7_tombstones WHERE dedupe_key=%s LIMIT 1"
+        self.assertEqual(self._execute(raw, query), (1, [("row",)]))
+        self.assertEqual(raw.executed, [query, query])
+        self.assertEqual(raw.pings, [(True, 4242)])                     # a fresh session on the tunnel's port
+
+    def test_a_gone_away_read_is_retried_too(self):
+        raw = _FakeRaw([OperationalError(2006, "MySQL server has gone away")])
+        self.assertEqual(self._execute(raw, "  show tables")[0], 1)
+        self.assertEqual(len(raw.executed), 2)
+
+    def test_a_lost_write_is_never_repeated(self):
+        for query in ("INSERT INTO v7_jobs (dedupe_key) VALUES (%s)", "UPDATE v7_jobs SET status='READY' WHERE dedupe_key=%s",
+                      "DELETE FROM v7_tombstones WHERE dedupe_key=%s", "REPLACE INTO v7_state VALUES (%s)"):
+            with self.subTest(query=query):
+                raw = _FakeRaw([OperationalError(2013, "Lost connection")])
+                with self.assertRaises(OperationalError):
+                    self._execute(raw, query)
+                self.assertEqual((raw.executed, raw.pings), ([query], []))
+
+    def test_a_read_inside_an_open_transaction_is_never_repeated(self):
+        for status in (3, None):                                         # IN_TRANS set, or a status the retry cannot read
+            with self.subTest(status=status):
+                raw = _FakeRaw([OperationalError(2013, "Lost connection")], server_status=status)
+                with self.assertRaises(OperationalError):
+                    self._execute(raw, "SELECT 1")
+                self.assertEqual(len(raw.executed), 1)
+
+    def test_a_second_loss_fails_the_stage_as_before(self):
+        raw = _FakeRaw([OperationalError(2013, "Lost connection"), OperationalError(2013, "Lost connection")])
+        with self.assertRaises(OperationalError):
+            self._execute(raw, "SELECT 1")
+        self.assertEqual(len(raw.executed), 2)
+
+    def test_a_slow_read_that_timed_out_is_not_run_twice_and_explain_analyze_never_is(self):
+        raw = _FakeRaw([OperationalError(2013, "Lost connection to MySQL server during query (timed out)")])
+        with self.assertRaises(OperationalError):
+            self._execute(raw, "SELECT 1")
+        raw = _FakeRaw([OperationalError(2013, "Lost connection")])
+        with self.assertRaises(OperationalError):
+            self._execute(raw, "EXPLAIN ANALYZE DELETE FROM v7_jobs WHERE 1=0")
+        self.assertEqual(len(raw.executed), 1)
+
+    def test_with_connection_and_keyword_cursors_pass_through(self):
+        class Raw(_FakeRaw):
+            exits = []
+
+            def __exit__(self, *exc):
+                self.exits.append(exc)
+
+            def cursor(self, *args, **kwargs):
+                self.kinds = (args, kwargs)
+                return _FakeCursor(self)
+
+        raw = Raw([OperationalError(2013, "Lost connection")])
+        with db._Connection(raw) as connection:
+            with connection.cursor(cursor="dict") as cursor:
+                cursor.execute("SELECT 1")
+        self.assertEqual((raw.kinds, len(raw.exits)), (((), {"cursor": "dict"}), 1))   # the retry's fresh cursor is the same kind
+
+    def test_any_other_error_is_not_retried(self):
+        raw = _FakeRaw([OperationalError(1205, "Lock wait timeout exceeded"), ValueError("bad")])
+        with self.assertRaises(OperationalError):
+            self._execute(raw, "SELECT 1")
+        self.assertEqual(len(raw.executed), 1)
+
+    def test_a_dead_tunnel_is_reopened_before_the_retry_and_a_failed_reopen_raises_the_original_loss(self):
+        from unittest import mock
+        loss = OperationalError(2013, "Lost connection")
+        with mock.patch.object(db, "_alive", return_value=False), mock.patch.object(db, "_close_tunnel"), \
+                mock.patch.object(db, "_cfg", return_value={}), mock.patch.object(db, "_jump_cfg", return_value=None), \
+                mock.patch.object(db, "_open_tunnel", side_effect=lambda cfg, jump: db._tunnel.update(port=5151)) as opened:
+            raw = _FakeRaw([OperationalError(2013, "Lost connection")])
+            self.assertEqual(self._execute(raw, "SELECT 1")[0], 1)
+            self.assertEqual((opened.call_count, raw.pings), (1, [(True, 5151)]))
+            with mock.patch.object(db, "_open_tunnel", side_effect=db.StoreError("STORE_SSH_TIMEOUT")):
+                raw = _FakeRaw([loss])
+                with self.assertRaises(OperationalError) as caught:
+                    self._execute(raw, "SELECT 1")
+                self.assertIs(caught.exception, loss)
+
+    def test_the_retry_line_names_only_the_driver_code(self):
+        import contextlib
+        raw, err = _FakeRaw([OperationalError(2013, "Lost connection to MySQL server during query")]), io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self._execute(raw, "SELECT 1")
+        self.assertEqual(err.getvalue(), "store: reconnected after a lost session (2013); the read ran once more\n")
+
+    def test_the_wrapper_passes_everything_else_through_and_closes_its_cursor(self):
+        raw = _FakeRaw([])
+        connection = db._Connection(raw)
+        self.assertIs(connection.server_status, raw.server_status)
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO t VALUES (%s)")
+        self.assertEqual(raw.closed_cursors, 1)
 
 if __name__ == "__main__":
     unittest.main()

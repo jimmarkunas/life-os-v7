@@ -6,6 +6,7 @@ from contextlib import contextmanager, suppress
 import os
 from pathlib import Path
 import random
+import re
 import shutil
 import socket
 import subprocess
@@ -31,6 +32,14 @@ JUMP_FIELDS = ("SSH_JUMP_KEY", "SSH_JUMP_HOST", "SSH_JUMP_KNOWN_HOSTS")
 JUMP_USER = "v7-store-fwd"
 NEVER_RETRIED = ("STORE_SSH_JUMP_AUTH", "STORE_SSH_JUMP_HOSTKEY", "STORE_SSH_JUMP_KEY_INVALID", "STORE_SSH_JUMP_DNS")
 JITTER_SECONDS = 5                 # LIFE-76: up to this much extra before a process's FIRST connect and before every retry, so lanes that start in the same second do not open their tunnels together (D206); later connects in the same stage add nothing (publish opens hundreds)
+
+
+# LIFE-76 (Jim, Oct 25 2026: "do we need retry logic for when something goes red?"): a MySQL session dropped mid-stage (2013 "Lost connection
+# during query", 2006 "server has gone away") failed whole runs twice that day, both times on a read. A read is reconnected and run again once; a
+# write is never repeated (it may already have committed) and nothing inside an open transaction is, so neither can be applied twice.
+LOST_CODES = (2006, 2013)
+IN_TRANSACTION = 1                 # pymysql SERVER_STATUS_IN_TRANS, set on the connection by every server reply
+_READ = re.compile(r"\s*\(?\s*(?:SELECT|SHOW|DESCRIBE|EXPLAIN(?!\s+ANALYZE))\b", re.IGNORECASE)    # EXPLAIN ANALYZE runs its statement: never retried
 
 
 class StoreError(RuntimeError):
@@ -160,6 +169,80 @@ def _open_tunnel(cfg, jump=None):
         raise StoreError(code.replace("STORE_SSH_", "STORE_SSH_JUMP_", 1) if jump else code) from None
 
 
+def _lost(error):
+    """A dropped session, not a slow read: the driver reports its own read timeout as 2013 too ("... (timed out)"), and a slow query is not run twice."""
+    args = getattr(error, "args", ())
+    return (type(error).__name__ == "OperationalError" and bool(args) and args[0] in LOST_CODES
+            and "timed out" not in str(args[1] if len(args) > 1 else "").casefold())
+
+
+class _Cursor:
+    """The driver's cursor, with one reconnect-and-retry for a read whose session was lost."""
+
+    def __init__(self, connection, cursor, args):
+        self._connection, self._cursor, self._args = connection, cursor, args
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._cursor.close()
+
+    def execute(self, query, args=None):
+        try:
+            return self._cursor.execute(query, args)
+        except Exception as error:                                              # noqa: BLE001 - only a lost session on a read outside a transaction is retried
+            if not (_lost(error) and isinstance(query, str) and _READ.match(query) and not self._connection._in_transaction()):
+                raise
+            self._connection._reconnect(error)
+            self._cursor = self._connection._raw.cursor(*self._args[0], **self._args[1])
+            print(f"store: reconnected after a lost session ({error.args[0]}); the read ran once more", file=sys.stderr)
+            return self._cursor.execute(query, args)
+
+
+class _Connection:
+    """The driver's connection for one connect() block; every attribute but cursor() is the driver's own."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return self._raw.__exit__(*exc)
+
+    def cursor(self, *args, **kwargs):
+        return _Cursor(self, self._raw.cursor(*args, **kwargs), (args, kwargs))
+
+    def _in_transaction(self):
+        status = getattr(self._raw, "server_status", None)
+        return not isinstance(status, int) or bool(status & IN_TRANSACTION)    # unknown counts as inside one: no retry
+
+    def _reconnect(self, error):
+        """A fresh MySQL session on the same driver object, through the process's tunnel (reopened if it died). Any failure re-raises the lost-session error."""
+        try:
+            with _lock:
+                if not _alive():
+                    _close_tunnel()
+                    jump = _jump_cfg()
+                    _open_tunnel(_cfg(), jump if jump and _route["jump"] else None)
+                port = _tunnel["port"]
+            self._raw.port = port
+            self._raw.ping(reconnect=True)
+        except Exception:                                                     # noqa: BLE001 - the reconnect failed: the stage sees the original loss
+            raise error from None
+
+
 @contextmanager
 def connect():
     cfg, jump = _cfg(), _jump_cfg()
@@ -199,7 +282,7 @@ def connect():
             if not transient or attempt == len(RETRY_WAITS) - 1:
                 raise
     try:
-        yield connection
+        yield _Connection(connection)
     finally:
         with suppress(Exception):
             connection.close()                                                                          # the session ends; the tunnel stays for the next connect
