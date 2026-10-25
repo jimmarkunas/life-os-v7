@@ -200,12 +200,21 @@ def order(rows, n, hour=0):
     return [r[0] for r in first + rest[:n - len(first)]]
 
 
-def _pick(connection, limit, gated=False, hour=None):
+def _pick(connection, limit, gated=False, hour=None, stats=None):
+    """The jobs this run publishes. `stats`, when given, receives two counts taken before the pick: waiting (publishable now) and ready_unpublished (also those still awaiting a score)."""
     base = (" FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
             " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else ""))
     with connection.cursor() as cursor:
         cursor.execute("SELECT j.id, f.admission, f.score, j.posted_date, j.first_seen, j.source" + base)          # ordering keys only; the long texts are read for the chosen jobs
-        ids = order([tuple(r) for r in cursor.fetchall()], min(limit, limits.NOTION_PER_RUN), _now().hour if hour is None else hour)
+        eligible = [tuple(r) for r in cursor.fetchall()]
+        if stats is not None:
+            stats["waiting"] = len(eligible)
+            if gated:                                                                       # also the READY jobs not yet scored into ADMIT or REVIEW: the whole amount still to publish
+                cursor.execute("SELECT COUNT(*)" + base.replace(" AND f.admission IN ('ADMIT', 'REVIEW')", ""))
+                stats["ready_unpublished"] = int(cursor.fetchone()[0])
+            else:
+                stats["ready_unpublished"] = len(eligible)
+        ids = order(eligible, min(limit, limits.NOTION_PER_RUN), _now().hour if hour is None else hour)
         if not ids:
             return [], set()
         cursor.execute(
@@ -254,9 +263,11 @@ def run(limit, live, environ=os.environ):
     if live:
         with store.connect() as connection:
             counts["kept_released"] = release_kept_in_ledger(connection)
+    stats = {}
     with store.connect() as connection:
-        rows, known = _pick(connection, limit, gated)
+        rows, known = _pick(connection, limit, gated, stats=stats)
     counts["picked"] = len(rows)
+    counts["waiting"], counts["ready_unpublished"] = stats.get("waiting", 0), stats.get("ready_unpublished", 0)     # before this run's picks: the backlog size a capped run hides
     counts["picked_not_board"] = sum(1 for r in rows if not str(r[5] or "").startswith("web:"))      # D248 read-back: picked jobs not from an employer-board scan (counts only)
     listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
     for (job_id, key, title, company, url, source, provider, lane, first_seen, posted, summary, resp, req, qual, full, fit, fit_line, admission, admission_reason, work_mode, salary, apply_kind, fit_lane, eligible, location, route) in rows:
