@@ -1,6 +1,6 @@
 """LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet. Pure: strings in, bytes out; every dynamic value is HTML-escaped.
 The Edge gate's CSP is `default-src 'self'`, so there is no inline script, no <style> and no style attribute: the stylesheet is served at /close.css, the one script at /close.js, and the three panes are three responses (the prototype's own markup and CSS).
-The script only marks the pressed button busy (a spinner) and ignores a second press while the page loads; every page works the same without it."""
+The script marks the pressed button busy (a spinner) and ignores a second press while the page loads; a data-wait button (Build resume) also counts "M:SS of about M:SS" until its reply arrives. Every page works the same without it."""
 from html import escape as e
 
 from . import models as M
@@ -66,7 +66,8 @@ fieldset{border:0;margin:0;padding:0}.inl{display:inline}.btn{text-decoration:no
 .btn.spin::before{content:"";width:12px;height:12px;flex:none;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.btn.spin::before{animation-duration:2.4s}}
 """
 JS = """"use strict";function idle(){document.querySelectorAll(".busy,.spin").forEach(function(n){n.classList.remove("busy","spin")})}function busy(n,b){n.classList.add("busy");if(b)b.classList.add("spin");setTimeout(idle,15000)}
-document.addEventListener("submit",function(ev){var f=ev.target;if(f.classList.contains("busy")){ev.preventDefault();return}busy(f,ev.submitter)});
+function clock(s){return Math.floor(s/60)+":"+("0"+s%60).slice(-2)}function wait(f,b){var w=+b.getAttribute("data-wait"),t0=Date.now(),p=document.createElement("div");p.className="notice";p.setAttribute("role","status");(b.closest(".actions")||f).after(p);function tick(){var s=Math.round((Date.now()-t0)/1000);p.textContent=s<=w+60?b.getAttribute("data-label")+"\u2026 "+clock(s)+" of about "+clock(w)+". Keep this page open.":"Still working ("+clock(s)+"), longer than usual. "+b.getAttribute("data-late")}tick();setInterval(tick,1000)}
+document.addEventListener("submit",function(ev){var f=ev.target,b=ev.submitter;if(f.classList.contains("busy")){ev.preventDefault();return}if(b&&b.hasAttribute("data-wait")){f.classList.add("busy");b.classList.add("spin");wait(f,b);return}busy(f,b)});
 document.addEventListener("click",function(ev){var a=ev.target.closest&&ev.target.closest("a.btn");if(!a||a.target||a.hasAttribute("download")||ev.defaultPrevented||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;busy(document.body,a)});
 window.addEventListener("pageshow",idle);
 """

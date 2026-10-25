@@ -259,7 +259,8 @@ def _get(req, who, secrets):
         f'<form method="post" action="/resume">{S._hidden(fields)}<section class="section"><div class="eyebrow">Action · Build resume</div>'
         '<p class="lead">Luna writes it from this job\'s description and your career evidence; the claims guard checks every title, date and number before it is built.</p>'
         '<div class="notice">This takes about a minute and a half. Keep this page open; the .docx is attached to the job\'s Ledger page and read back before you see it here.</div></section>'
-        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="build">Build resume</button></div></form>'
+        '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button><button class="btn primary" name="step" value="build" data-wait="90" data-label="Building your résumé" '
+        'data-late="If nothing appears by 3:30, look on the job\'s Ledger page (or My Drive / LIFE OS / Résumés) before trying again.">Build resume</button></div></form>'
         + _applied_section(secrets["reader"], secrets["link"], who["login"], j, st, exp)), PATH, "Build resume"), ()
 
 

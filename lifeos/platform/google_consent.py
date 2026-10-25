@@ -72,7 +72,7 @@ def main(argv=(), stdout=sys.stdout, tty=None):
     server = http.server.HTTPServer(("127.0.0.1", port), http.server.BaseHTTPRequestHandler)
     redirect, state, verifier = f"http://127.0.0.1:{server.server_port}", secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     url = auth_url(client_id, redirect, state, verifier)
-    tty.write("Open this address in the browser on your Mac (the SSH tunnel carries the reply back here):\n" + url + "\n")     # never a browser on the Edge
+    tty.write("Open this address in the browser on this Mac and click Allow (Google sends the reply back to this window):\n" + url + "\n")     # never a browser on the Edge
     tty.flush()
     code = catch(server, state)
     if not code:
