@@ -58,7 +58,7 @@ BOARDS_DEAD_AFTER = 5                    # a board that has answered not_found t
 BOARDS_DEAD_IDS_MAX = 600                # the most ids one pass prints
 BOARDS_REFRESH_HOURS = 24                # a COMPLETE board that lists no target job is due again after this (also caps a failing board's retry)
 BOARDS_HOT_HOURS = 6                     # a board that lists a target job is due again after this, like a priority board
-BOARDS_INGEST_PER_RUN = 250              # postings admitted per run; the rest stay PENDING and drain next run. Jim raised it from 100 on Oct 25 2026 (1,294 pending at noon)
+BOARDS_INGEST_PER_RUN = 1000             # postings admitted per run; the rest stay PENDING and drain next run. Jim raised it 100 -> 250 on Oct 25 2026 (1,294 pending at noon), then to 1000 the same day (1,040 pending at 2:30 PM CT, 5 PM drain)
 BOARDS_WORKERS = 4                       # most seed boards share the Greenhouse, Ashby and Lever API hosts
 BOARDS_RATE_LIMIT_STOP = 3               # this many 429 answers from one ATS stops reading that ATS for the run
 BOARDS_BACKFILL_PER_RUN = 450            # D217: never-read seed boards a backfill run reads (only when BOARDS_BACKFILL=on): ~10,500 drain in about a day of ticks
