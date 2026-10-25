@@ -105,6 +105,13 @@ class Workspace:
     def call_once(self, method, path, body=None, version=None):
         bid = self.canon(path.split("/")[2])
         self.log.append((method, path.split("/")[1], bid))
+        if method == "PATCH" and not path.endswith("/children"):                     # one record line set to its plain label, in place
+            if "label" in self.fail:
+                raise NotionError("NOTION_HTTP_500")
+            kind = self.blocks[bid]["type"]
+            self.blocks[bid][kind] = {"rich_text": [{"plain_text": "".join(r["text"]["content"] for r in body[kind]["rich_text"])}]}
+            self.edits += 1
+            return {}
         if method == "PATCH":
             if "append" in self.fail:
                 raise NotionError("NOTION_HTTP_500")
@@ -234,13 +241,14 @@ class NotesOnlyCloseTests(unittest.TestCase):
         self.assertEqual(sorted(world.listed()), sorted([f"{COMPANY} — {SIBLING_ROLE}", "Contoso Freight — Program Manager"]))     # the same company's other role is untouched
         self.assertEqual(ws.where(ws.target), ws.retired[0])
         kids = ws.digest(ws.target)
-        self.assertEqual(kids[:-2], before[ws.target])                                                # the page's top-level blocks, as before, in order (ids, types, plain text; nested content is not compared here)
+        self.assertEqual(kids[:-1], before[ws.target])                                                # the page's top-level blocks, as before, in order (ids, types, plain text; nested content is not compared here)
         tail = f"{NOW.date().isoformat()} · Employer rejection email confirmed · op {OP}"
-        self.assertEqual([k[1:] for k in kids[-2:]], [("callout", f"Hiring decision (V7) · Pending Rejected · {tail}"), ("callout", f"Hiring decision (V7) · Rejected · {tail}")])
+        self.assertEqual(kids[-1][1:], ("callout", f"Hiring decision (V7) · Rejected · {tail}"))       # a page without the fold: one record, written Pending and set to its label in place
         self.assertEqual(ws.digest(interview), round_before)                                          # the fake keeps the interview page's own blocks as they were (a property of the stand-in, not a V7 check)
         for page in (ws.sibling, ws.other):
             self.assertEqual((ws.digest(page), ws.where(page)), (before[page], ws.col_active))
-        self.assertEqual([e[:2] + (e[2],) for e in ws.writes()], [("PATCH", "blocks", ws.target), ("POST", "pages", ws.target), ("PATCH", "blocks", ws.target)])     # intent record, the move, then the completion record
+        record = ws.kids[ws.target][-1]
+        self.assertEqual([e[:2] + (e[2],) for e in ws.writes()], [("PATCH", "blocks", ws.target), ("POST", "pages", ws.target), ("PATCH", "blocks", record)])     # intent record, the move, then that record set to its label
         self.assertEqual(ws.versions, [D.MOVE_VERSION])
         sections = world.sections()
         self.assertEqual(sections[ws.target], (hiring_pipeline.RETIRED, 1))                            # the existing reader sees it as Retired, interview round counted
@@ -254,7 +262,7 @@ class NotesOnlyCloseTests(unittest.TestCase):
         again = world.decide(world.request())
         self.assertEqual((again["status"], again["verified"], again["cleared"]), ("already_recorded", True, True))
         self.assertEqual(len(world.ws.writes()), writes)
-        self.assertEqual(sum(1 for _, _, text in world.ws.digest(world.ws.target) if text.startswith("Hiring decision (V7)")), 2)           # Pending + complete, once
+        self.assertEqual(sum(1 for _, _, text in world.ws.digest(world.ws.target) if text.startswith("Hiring decision (V7)")), 1)           # one record line, once
 
     def test_a_dry_run_validates_and_writes_nothing(self):
         world = World()
@@ -329,8 +337,8 @@ class NotesOnlyFailureTests(unittest.TestCase):
         ws.fail.clear()
         done = world.decide(world.request())
         self.assertEqual((done["status"], done["cleared"], ws.where(ws.target)), ("recorded", True, ws.retired[0]))
-        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected", "Rejected"])
-        self.assertEqual([e[0] for e in ws.writes()].count("PATCH"), 2)                                # one intent, one completion; never a second intent
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Rejected"])
+        self.assertEqual([e[0] for e in ws.writes()].count("PATCH"), 2)                                # one intent, one completion (the same line); never a second intent
 
     def test_a_different_operation_cannot_act_while_an_earlier_one_is_half_applied(self):
         world = self.broken("DECISION_WRITE_FAILED", lambda ws: ws.fail.add("move"))
@@ -354,7 +362,7 @@ class NotesOnlyFailureTests(unittest.TestCase):
         ws.lose_move = False
         done = world.decide(world.request())
         self.assertEqual((done["status"], done["verified"], done["cleared"]), ("recorded", True, True))
-        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Pending Rejected", "Rejected"])
+        self.assertEqual([r.split(" · ")[1] for r in self.records(ws)], ["Rejected"])
         self.assertEqual(world.decide(world.request())["status"], "already_recorded")
         self.assertNotIn(f"{COMPANY} — {ROLE}", world.listed())
 
@@ -488,6 +496,51 @@ class OwnershipAndIdentityTests(unittest.TestCase):
             self.assertEqual(str(error.exception), "DECISION_REQUEST_INVALID")
 
 
+class FoldRecordTests(unittest.TestCase):
+    """Jim, Oct 25 (Smith): a V7 opportunity page's decision record goes in its ⚙️ LIFE OS fold, one line per operation, never below Jim's Notes."""
+    def world(self, legacy=()):
+        world = World()
+        ws = world.ws
+        fold = ws.add("toggle", ws.target, D.FOLD)
+        ws.add("paragraph", fold, "v7-interview:1;owner=machine;kind=opportunity")
+        ws.add("heading_2", ws.target, "Jim's Notes")
+        for text in legacy:                                                                             # a record an earlier version wrote as a callout at the page's end
+            ws.add("callout", ws.target, text)
+        ws.kids[ws.target].remove(fold)
+        ws.kids[ws.target].insert(0, fold)                                                              # the fold is the page's first block
+        return world, fold
+
+    def test_close_and_reopen_each_write_one_line_in_the_fold_and_nothing_at_the_page_level(self):
+        world, fold = self.world()
+        ws = world.ws
+        tops = ws.digest(ws.target)
+        world.decide(world.request())
+        world.decide(world.reopen())
+        self.assertEqual(ws.digest(ws.target), tops)                                                    # Jim's Notes and everything else at the top level: unchanged
+        day = NOW.date().isoformat()
+        self.assertEqual([k[1:] for k in ws.digest(fold)[1:]], [("paragraph", f"Hiring decision (V7) · Rejected · {day} · Employer rejection email confirmed · op {OP}"),
+                                                                ("paragraph", f"Hiring decision (V7) · Reopened · {day} · Rejection was a mistake · op {OP2}")])
+        self.assertEqual(ws.where(ws.target), ws.active[0])
+        self.assertEqual(world.decide(world.reopen())["status"], "already_recorded")
+
+    def test_records_an_earlier_version_left_at_the_page_end_still_count_and_stay(self):
+        old = f"Hiring decision (V7) · Rejected · 2026-10-01 · old · op {OP}"
+        world, fold = self.world(legacy=[old])
+        ws = world.ws
+        ws.relocate(ws.target, ws.retired[0])                                                           # closed by the earlier version
+        tops = ws.digest(ws.target)
+        self.assertEqual(world.decide(world.request())["status"], "already_recorded")                  # the old callout still makes a retry a no-op
+        self.assertEqual(world.decide(world.reopen())["status"], "recorded")
+        self.assertEqual(ws.digest(ws.target), tops)                                                    # the old callout is left exactly as it was
+        self.assertEqual(len(ws.digest(fold)), 2)                                                        # the marker and the one new line
+
+    def test_the_fold_title_and_the_record_line_match_the_page_writer(self):
+        from lifeos.interview import notion as N, template
+        self.assertEqual(D.FOLD, N.FOLD)
+        for text in (f"Hiring decision (V7) · Pending Rejected · 2026-10-25 · a reason · op {OP}", f"Hiring decision (V7) · Reopened · 2026-10-25 · a · b · op {OP2}"):
+            self.assertTrue(D.RECORD.match(text) and template.DECISION_LINE.fullmatch(text), text)
+
+
 class ReopenTests(unittest.TestCase):
     def test_reopen_returns_the_pursuit_to_the_active_container_and_keeps_every_record(self):
         world = World()
@@ -498,9 +551,9 @@ class ReopenTests(unittest.TestCase):
         self.assertEqual((done["status"], done["verified"], done["cleared"]), ("recorded", True, False))      # reopened: the pursuit is listed again, so nothing is "cleared"
         self.assertEqual(ws.where(ws.target), ws.active[0])
         kids = ws.digest(ws.target)
-        self.assertEqual(kids[:-2], closed_kids)                                                      # the earlier records and the page's other top-level blocks are as they were
+        self.assertEqual(kids[:-1], closed_kids)                                                      # the earlier record and the page's other top-level blocks are as they were
         tail = f"{NOW.date().isoformat()} · Rejection was a mistake · op {OP2}"
-        self.assertEqual([k[2] for k in kids[-2:]], [f"Hiring decision (V7) · Pending Reopened · {tail}", f"Hiring decision (V7) · Reopened · {tail}"])
+        self.assertEqual(kids[-1][2], f"Hiring decision (V7) · Reopened · {tail}")
         self.assertIn(f"{COMPANY} — {ROLE}", world.listed())
         self.assertEqual(world.sections()[ws.target], (hiring_pipeline.ACTIVE, 1))
         self.assertEqual(done["projection"]["target_listed"], True)
@@ -633,7 +686,7 @@ class NotesOutcomes(unittest.TestCase):
                 reopen["reopen_hired"] = True
             self.assertEqual(world.decide(reopen)["status"], "recorded")
             self.assertEqual(ws.where(ws.target), ws.active[0])
-            self.assertEqual(len([k for k in ws.digest(ws.target) if "Hiring decision (V7)" in (k[2] or "")]), 4)       # both closing records and both reopening records stay
+            self.assertEqual(len([k for k in ws.digest(ws.target) if "Hiring decision (V7)" in (k[2] or "")]), 2)       # the closing record and the reopening record stay
 
 
 if __name__ == "__main__":
