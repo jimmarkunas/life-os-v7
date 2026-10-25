@@ -118,6 +118,10 @@ def render_line(job, source, page="pending"):
 ACTION_LINE = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=(.+)")
 DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
 DONE_MAX = 20                                                  # completion lines carried per page, newest last
+# Jim, Oct 25: the Close / Manage screens record a Notes-page decision (Close, Reopen) as one line in this fold, never below Jim's Notes (lifeos/hiring/decision.py
+# writes it; this writer carries it forward and never counts it as an edit)
+DECISION_LINE = re.compile(r"Hiring decision \(V7\) · .+ · op [A-Za-z0-9_-]{8,64}")
+DECISION_MAX = 20                                              # decision lines carried per page, newest last
 
 
 def action_key(text, context=""):
@@ -138,8 +142,8 @@ def _rounds(view):
 
 
 def fold_lines(view, label, action):
-    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one) and every recorded completion, in the fold."""
-    return ([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [done_line(k, d) for k, d in view.done]
+    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one), every recorded completion and every recorded decision, in the fold."""
+    return ([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [done_line(k, d) for k, d in view.done] + list(view.decisions)
 
 
 def complete_parts(view, label, action):
