@@ -4,7 +4,8 @@ docs/OWNERSHIP.yml (read from the default branch) gives every path exactly one a
 `protected` (needs Jim's protected review: always fails here); `unresolved` (Jim has not decided: always fails here, never warns). A path no rule covers fails. In a shared file, each changed line (compared as full base/head texts) takes
 the lane of the section(s) whose regex matches it or its enclosing YAML block, else the rule's lane; sections that disagree, or a block that cannot be read, fail as ambiguous. A section lane may itself be `unresolved`.
 A change to another lane's path passes only if docs/HANDOFFS.yml ON THE DEFAULT BRANCH (a file only Jim's merge can change) names this PR number, the owning lane and a glob covering the path, unexpired, with an https approval link:
-the PR body's own words (`Lane:` is provenance, not authority) never count. Another open PR of a different or undeclared lane that changes the same file and section fails. Any incomplete evidence (a truncated list or
+the PR body's own words (`Lane:` is provenance, not authority) never count, except that a ticket entry (Jim, Oct 25 2026: `jira` + `lane` in place of `pr`) covers every PR of that lane naming that
+Jira key, only for the paths, owner and dates the merged entry fixes. The handoffs are read from the default branch's current head through the API, so a re-run sees one merged after the PR event. Another open PR of a different or undeclared lane that changes the same file and section fails. Any incomplete evidence (a truncated list or
 pagination, a missing file, a non-text file, an API error) is a failure, never a pass. Stdlib only, read only, no secret beyond the read token. python -I lifeos/lane_guard.py
 
 LIFE-109 delivery train (Jim, Oct 24 2026). While OWNERSHIP.yml on the default branch names an active train for a lane, every PR of that lane must (a) name one of the train's Jira keys
@@ -99,6 +100,7 @@ def validate(doc):
 
 
 def validate_handoffs(doc, lanes):
+    """Each entry names EITHER one PR number (`pr`) OR, for a multi-PR ticket (Jim, Oct 25 2026), a Jira key and the lane allowed to use it (`jira` + `lane`, never the owning lane)."""
     if doc.get("version") != 1 or not isinstance(doc.get("handoffs"), list):
         raise GuardError("HANDOFFS_INVALID")
     for h in doc["handoffs"]:
@@ -107,7 +109,10 @@ def validate_handoffs(doc, lanes):
         except (KeyError, ValueError):
             raise GuardError("HANDOFFS_INVALID") from None
         link = str(h.get("approval", ""))
-        if not isinstance(h.get("pr"), int) or h.get("owner") not in lanes or not isinstance(h.get("path"), str) or not link.startswith("https://") or link.split("/")[2] not in HOSTS:
+        by_pr = isinstance(h.get("pr"), int) and "jira" not in h and "lane" not in h
+        by_ticket = ("pr" not in h and isinstance(h.get("jira"), str) and re.fullmatch(r"LIFE-\d+", h["jira"]) is not None
+                     and h.get("lane") in lanes and h.get("lane") != h.get("owner"))
+        if not (by_pr or by_ticket) or h.get("owner") not in lanes or not isinstance(h.get("path"), str) or not link.startswith("https://") or link.split("/")[2] not in HOSTS:
             raise GuardError("HANDOFFS_INVALID")
     return doc["handoffs"]
 
@@ -156,7 +161,7 @@ def train_check(trains, exemptions, pr, files, today=None):
     if train is None or any(e["pr"] == pr["number"] and date.fromisoformat(str(e["expires"])) >= today for e in exemptions):
         return []
     bad = []
-    keys = set(re.findall(r"^Jira:[ \t]*(LIFE-\d+)\b", body, re.M))
+    keys = jira_keys(body)
     if not keys & set(train["issues"]):
         bad.append(f"TRAIN_JIRA_KEY_MISSING: name one of the {train['name']} train's issues as `Jira: LIFE-n` in the PR body")
     if not any(fnmatch.fnmatchcase(f["path"], g) for f in files for g in train["product"]):
@@ -169,9 +174,17 @@ def train_check(trains, exemptions, pr, files, today=None):
     return bad
 
 
-def handoff_ok(handoffs, number, owner, path, today):
-    """True only when the DEFAULT branch's HANDOFFS.yml names this PR, the owning lane and a glob covering the path, unexpired. PR text is never consulted."""
-    return any(h["pr"] == number and h["owner"] == owner and fnmatch.fnmatchcase(path, h["path"]) and date.fromisoformat(str(h["expires"])) >= today for h in handoffs)
+def jira_keys(body):
+    """The `Jira: LIFE-n` lines of a PR body (template guidance in an HTML comment is never a claim)."""
+    return set(re.findall(r"^Jira:[ \t]*(LIFE-\d+)\b", re.sub(r"<!--.*?-->", "", body or "", flags=re.S), re.M))
+
+
+def handoff_ok(handoffs, number, owner, path, today, lane=None, keys=frozenset()):
+    """True only when the DEFAULT branch's HANDOFFS.yml covers this path for the owning lane, unexpired, and names this PR, or names a ticket this PR declares
+    (`Jira:`) together with the PR's declared lane. A ticket entry is the one place PR text counts: only for the paths, owner, lane and dates Jim's merged entry already fixes."""
+    def names(h):
+        return h["pr"] == number if "pr" in h else (h["jira"] in keys and h["lane"] == lane)
+    return any(names(h) and h["owner"] == owner and fnmatch.fnmatchcase(path, h["path"]) and date.fromisoformat(str(h["expires"])) >= today for h in handoffs)
 
 
 def rule_for(doc, path):
@@ -267,7 +280,7 @@ def check(doc, handoffs, pr, files, others=(), today=None):
         for owner in sorted(lanes - {pr["lane"]}):
             if owner == "unresolved":
                 bad.append(f"UNRESOLVED_OWNERSHIP {f['path']}: a shared section has no owner decided; blocked until Jim decides")
-            elif not handoff_ok(handoffs, pr["number"], owner, f["path"], today):
+            elif not handoff_ok(handoffs, pr["number"], owner, f["path"], today, pr["lane"], jira_keys(pr.get("body"))):
                 bad.append(f"OUT_OF_LANE {f['path']} owned by {owner}: no approved handoff for PR #{pr['number']} in {HANDOFFS} on the default branch")
     for other in others:
         if other["lane"] == pr["lane"] and pr["lane"] in doc["lanes"]:
@@ -364,7 +377,8 @@ def main(environ=os.environ, api=None, text=None):
         event = json.loads(Path(environ["GITHUB_EVENT_PATH"]).read_text())["pull_request"]
         repo, token, number = environ["GITHUB_REPOSITORY"], environ["GITHUB_TOKEN"], event["number"]
         doc = validate(parse_map(Path(OWNERSHIP).read_text()))                    # the DEFAULT branch's map and handoffs (the workflow checks that branch out): never the PR's
-        handoff_doc = parse_map(Path(HANDOFFS).read_text())
+        default = (event["base"].get("repo") or {}).get("default_branch")
+        handoff_doc = parse_map((text or _text)(repo, HANDOFFS, default, token, False) if default else Path(HANDOFFS).read_text())   # Oct 25 2026: the branch's CURRENT handoffs, so a plain re-run sees one Jim merged after the PR event
         handoffs, exemptions = validate_handoffs(handoff_doc, doc["lanes"]), validate_exemptions(handoff_doc)
         trains = validate_trains(doc)
         files = pr_files(repo, number, event["base"]["sha"], event["head"]["sha"], token, None, api, text)

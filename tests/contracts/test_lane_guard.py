@@ -142,6 +142,22 @@ class Check(unittest.TestCase):
         for bad in (handoff(pr=8), handoff(owner="career-v7"), handoff(path="lifeos/jobs/lanes.py"), handoff(expires="2026-10-21")):
             self.assertTrue(run("career-v7", files, [bad])[0].startswith("OUT_OF_LANE"), bad)
 
+    def test_a_ticket_handoff_covers_that_lanes_prs_naming_the_key_and_nothing_else(self):
+        """Jim, Oct 25 2026: one entry for a multi-PR ticket instead of one handoff PR per batch."""
+        ticket = {"jira": "LIFE-72", "lane": "career-v7", "owner": "edge-oracle", "path": "lifeos/jobs/fit/**", "approval": APPROVAL, "expires": "2026-12-31"}
+        files = [f("lifeos/jobs/fit/stage.py", "a\n", "b\n")]
+        go = lambda lane, body, h=ticket: G.check(DOC, [h], {"number": 9, "lane": lane, "body": body}, files, [], TODAY)
+        self.assertEqual(go("career-v7", "Lane: career-v7\nJira: LIFE-72\n"), [])
+        self.assertEqual(len(go("career-v7", "Lane: career-v7\nJira: LIFE-73\n")), 1)                     # another ticket
+        self.assertEqual(len(go("career-v7", "Lane: career-v7\n<!-- Jira: LIFE-72 -->\n")), 1)          # template guidance is never a claim
+        self.assertEqual(len(go("career-v7", "Lane: career-v7\nJira: LIFE-72\n", {**ticket, "expires": "2026-10-21"})), 1)
+        self.assertEqual(len(G.check(DOC, [ticket], {"number": 9, "lane": "career-v7", "body": "Jira: LIFE-72"}, [f("lifeos/jobs/lanes.py", "a\n", "b\n")], [], TODAY)), 0)
+        self.assertEqual(len(go("career-v7", "Lane: career-v7\nJira: LIFE-72\n", {**ticket, "path": "lifeos/jobs/fit/edge.py"})), 1)   # only its paths
+        self.assertEqual(G.validate_handoffs({"version": 1, "handoffs": [ticket]}, DOC["lanes"]), [ticket])
+        for broken in ({**ticket, "pr": 9}, {**ticket, "lane": "edge-oracle"}, {**ticket, "lane": "nobody"}, {**ticket, "jira": "72"}, {k: v for k, v in ticket.items() if k != "lane"}):
+            with self.assertRaises(G.GuardError):
+                G.validate_handoffs({"version": 1, "handoffs": [broken]}, DOC["lanes"])
+
     def test_handoffs_are_validated_when_read(self):
         ok = {"version": 1, "handoffs": [handoff()]}
         self.assertEqual(G.validate_handoffs(ok, DOC["lanes"]), [handoff()])
@@ -301,6 +317,15 @@ class Run(unittest.TestCase):
             for pr_number, want in ((1, 0), (2, 1)):
                 (Path(tmp) / G.HANDOFFS).write_text(f"version: 1\nhandoffs:\n  - pr: {pr_number}\n    path: lifeos/jobs/fit/**\n    owner: edge-oracle\n    approval: {APPROVAL}\n    expires: 2999-01-01\n")
                 self.assertEqual(self.go(files, texts, cwd=tmp)[0], want, pr_number)
+
+    def test_a_rerun_reads_the_default_branchs_current_handoffs_not_the_checkout(self):
+        """Oct 25 2026: a handoff Jim merges after the PR event clears a plain re-run (no description edit). The PR's own HANDOFFS.yml still counts for nothing."""
+        texts = {("lifeos/jobs/fit/stage.py", "B1"): "a\n", ("lifeos/jobs/fit/stage.py", "H1"): "b\n"}
+        files = self.mine([("lifeos/jobs/fit/stage.py", "modified", None)])
+        merged = f"version: 1\nhandoffs:\n  - pr: 1\n    path: lifeos/jobs/fit/**\n    owner: edge-oracle\n    approval: {APPROVAL}\n    expires: 2999-01-01\n"
+        event = {"base": {"sha": "B1", "repo": {"default_branch": "main"}}}
+        self.assertEqual(self.go(files, {**texts, (G.HANDOFFS, "main"): merged}, event=event)[0], 0)
+        self.assertEqual(self.go(files, {**texts, (G.HANDOFFS, "H1"): merged}, event=event)[0], 1)       # unreadable current handoffs fail closed; the PR's copy is never read
 
     def test_a_rename_judges_both_paths(self):
         texts = {("lifeos/jobs/fit/old.py", "B1"): "a\n", ("lifeos/jobs/lanes2.py", "H1"): "a\n"}
