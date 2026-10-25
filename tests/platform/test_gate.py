@@ -1,8 +1,22 @@
 import datetime as dt
+import os
 import unittest
 from unittest import mock
 
 from lifeos.platform import gate
+
+# Every test here reads the default gap unless it sets GATE_MIN_GAP_MINUTES itself: the hourly run exports Jim's drain-mode variable to its own
+# unit-test step (Oct 25 2026: GATE_MIN_GAP_MINUTES=20 failed test_recent_run_means_skip in every run until the variable was deleted).
+_environ = mock.patch.dict(os.environ)
+
+
+def setUpModule():
+    _environ.start()
+    os.environ.pop("GATE_MIN_GAP_MINUTES", None)
+
+
+def tearDownModule():
+    _environ.stop()
 
 NOW = dt.datetime(2026, 10, 1, 17, 7, tzinfo=dt.timezone.utc)
 
