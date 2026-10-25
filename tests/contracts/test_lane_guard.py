@@ -233,6 +233,9 @@ class OverlappingPullRequests(unittest.TestCase):
     def test_the_prs_own_text_grants_nothing(self):
         self.assertIsNone(G.parse_lane("Handoff: path=lifeos/jobs/fit/** owner=edge-oracle approval=" + APPROVAL))
         self.assertEqual(G.parse_lane("x\nLane: edge-oracle\n"), "edge-oracle")
+        self.assertIsNone(G.parse_lane("<!--\nLane: edge-oracle\n-->\n"))                               # hidden guidance is never a claim
+        self.assertIsNone(G.parse_lane("x\n<!-- unclosed\nLane: edge-oracle\n"))
+        self.assertEqual(G.jira_keys("Jira: LIFE-72\n<!-- unclosed\nJira: LIFE-73\n"), {"LIFE-72"})
 
 
 class FakeGitHub:
