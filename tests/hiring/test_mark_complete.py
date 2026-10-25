@@ -219,6 +219,26 @@ class Writer(unittest.TestCase):
         self.assertIn(template.done_line(key, "2026-10-24"), U.texts(client, page_id))
 
 
+class DecisionLineCarry(unittest.TestCase):
+    def test_a_close_or_reopen_line_in_the_fold_is_carried_by_the_refresh_and_never_counts_as_an_edit(self):
+        """Jim, Oct 25 (Smith): the decision record lives in the fold, so the hourly refresh must keep it, not wipe it or stop as `machine_region_edited`."""
+        from tests.interview import test_notion as TN, test_ui3c as U
+        current = replace(U.opportunity(), stable_job_key="recruiter-exampleco-pm")
+        client, page_id = U.written(current)
+        out = {"writes": 0}
+        line = "Hiring decision (V7) · Reopened · 2026-10-25 · Reopened on the Close screen · op 8ca760e14d5d63d3"
+        fold = client.blocks[page_id][0]["id"]
+        client.blocks[fold].append(TN.block(line, id="decision-1"))                                       # what decision.move_page appends
+        kept = (notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"])
+        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")          # not an edit: carried into the rewrite
+        self.assertIn(line, U.texts(client, page_id))
+        self.assertEqual((notion.human_tail(client, page_id), [b["id"] for b in client.blocks[page_id] if b["type"] == "child_page"]), kept)
+        self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
+        self.assertIn(line, U.texts(client, page_id))
+        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}            # noqa: E731
+        self.assertEqual(create.decision_lines([para(notion.MARKERS["opportunity"]), para(line), para("Hiring decision (V7) · no op")]), (line,))
+
+
 class LeadRefresh(unittest.TestCase):
     """A recruiter lead's page has no rounds, so no round evidence ever refreshed it: the refresh-only item brings it up to date (its Mark Complete link)
     and never creates a page or a round."""
