@@ -1,5 +1,6 @@
 # Approved cross-lane handoffs (LIFE-78). Read by `lifeos/lane_guard.py` from the DEFAULT branch only, so an entry exists only after Jim merges it: a PR's own text never grants one.
-# One entry lets exactly one PR number change paths covered by `path` that the OWNING lane (`owner`) holds, until `expires`. `approval` is the https link to the owning lane's recorded approval (evidence for the reviewer; CI checks only
+# One entry lets exactly one PR number change paths covered by `path` that the OWNING lane (`owner`) holds, until `expires`. A ticket entry (Jim, Oct 25 2026) gives `jira: LIFE-n` and `lane: <the lane using it>` in place
+# of `pr`: it covers every PR of that lane whose body names that Jira key, for the same paths and dates only, so a multi-PR ticket needs one handoff, not one per PR. `approval` is the https link to the owning lane's recorded approval (evidence for the reviewer; CI checks only
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
@@ -59,6 +60,24 @@ handoffs:
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
   - pr: 546
+    owner: career-v7
+    path: docs/codes_unregistered.txt
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
+  - jira: LIFE-72
+    lane: edge-oracle
+    owner: career-v7
+    path: lifeos/platform/codes.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
+  - jira: LIFE-72
+    lane: edge-oracle
+    owner: career-v7
+    path: tests/contracts/test_codes.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
+  - jira: LIFE-72
+    lane: edge-oracle
     owner: career-v7
     path: docs/codes_unregistered.txt
     expires: "2026-10-31"

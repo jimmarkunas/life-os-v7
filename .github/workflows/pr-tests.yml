@@ -1,13 +1,16 @@
 name: pr-tests
 # Secret-free pull request check: the same unit-test command as the `prep` job of hourly.yml, on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
 # the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 45 seconds, a failure at 60 seconds (hang guard: timeout-minutes).
+# Every merge to main runs the same suite too (Jim, Oct 25 2026), so the Edge's Close auto-release has a tested main commit within a minute of a merge instead of waiting for the next hourly run.
 on:
   pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-pr-tests-${{ github.event.pull_request.number }}
-  cancel-in-progress: true                  # a newer push to the same PR replaces its older check; it shares no group with any tick or manual run
+  group: life-os-v7-pr-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true                  # a newer push to the same PR (or to main) replaces its older check; it shares no group with any tick or manual run
 jobs:
   unit-tests:
     runs-on: ubuntu-24.04
