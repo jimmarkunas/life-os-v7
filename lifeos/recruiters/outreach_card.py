@@ -159,12 +159,24 @@ def action_link(base, row):
     return None
 
 
+def brief_link(base, row):
+    """LIFE-35 (Jim, Oct 25: "Approve the Brief link"): the row's read-only recruiter brief on the same Close service, or None without an https origin or a page id.
+    A link, never an action: the brief page reads the records on file and writes nothing."""
+    base = (base or "").strip().rstrip("/")
+    if not base.startswith("https://") or not _id(row["page_id"]):
+        return None
+    return ("Brief ↗", f"{base}/brief?r={_id(row['page_id'])}")
+
+
 def cells(row, today, first=None, base=None):
     """One open row -> the four cells. Line 1 bold, line 2 gray (D222 spans); the name links to the verified contact channel (the database's Contact link, else the original
     message), the channel to the original message only. `first`: the verified first-contact date (first_contact), else "Not verified". Line 2 of Next Step · Due ends with
-    the row's one action link (action_link) when the Close origin is configured."""
-    action = action_link(base, row)
-    due = [("\n" + _due(row, today) + " · ", None, "gray"), (action[0], action[1], "gray")] if action else [("\n" + _due(row, today), None, "gray")]
+    the row's one action link (action_link), then its Brief link (brief_link), when the Close origin is configured."""
+    links = [link for link in (action_link(base, row), brief_link(base, row)) if link]
+    due = [("\n" + _due(row, today) + (" · " if links else ""), None, "gray")]
+    for i, (label, url) in enumerate(links):
+        due += [(" · ", None, "gray")] if i else []
+        due.append((label, url, "gray"))
     contact = _link(row["contact"]) or _link(row["source_url"])
     return [[(row["person"].strip() or "Name not recorded", contact, "bold"), ("\n" + (row["company"].strip() or "Company not recorded"), None, "gray")],
             [_channel(row), ("\n" + (row["role"].strip() or "Role not recorded"), None, "gray")],

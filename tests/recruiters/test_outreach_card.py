@@ -350,15 +350,26 @@ class ActionLinkTests(unittest.TestCase):
     def test_an_inbound_row_links_close_and_a_job_linked_row_links_its_referral_action(self):
         today = NOW.date()
         self.assertEqual(card.cells(self.row(), today, base=self.BASE)[3],
-                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray")])
+                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Close ↗", f"{self.BASE}/recruiter?r={'c' * 32}", "gray"),
+                          (" · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
         self.assertEqual(card.cells(self.row(jobs=["a" * 8 + "-" + "a" * 24]), today, base=self.BASE)[3][2],
                          ("Record reply or referral ↗", f"{self.BASE}/referral?j={'a' * 32}", "gray"))
 
-    def test_no_origin_two_jobs_or_a_bad_id_means_no_link_and_the_cell_is_unchanged(self):
+    def test_no_origin_or_a_bad_id_means_no_link_and_the_cell_is_unchanged(self):
         today = NOW.date()
         plain = [("Needs Action", None, "bold"), ("\nOct 27, 2026", None, "gray")]
-        for row, base in ((self.row(), None), (self.row(), "http://close.example.test"), (self.row(jobs=["a" * 32, "b" * 32]), self.BASE), (self.row(pid="p1"), self.BASE)):
+        for row, base in ((self.row(), None), (self.row(), "http://close.example.test"), (self.row(jobs=["a" * 32, "b" * 32], pid="p1"), self.BASE), (self.row(pid="p1"), self.BASE)):
             self.assertEqual(card.cells(row, today, base=base)[3], plain)
+
+    def test_every_row_links_its_read_only_brief_even_without_an_action(self):
+        """LIFE-35 (Jim, Oct 25): the brief was reachable only by typing its address; each open row now links it, after the row's action link if it has one."""
+        today = NOW.date()
+        self.assertEqual(card.cells(self.row(jobs=["a" * 32, "b" * 32]), today, base=self.BASE)[3],
+                         [("Needs Action", None, "bold"), ("\nOct 27, 2026 · ", None, "gray"), ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
+        self.assertEqual(card.cells(self.row(jobs=["a" * 32]), today, base=self.BASE)[3][2:],
+                         [("Record reply or referral ↗", f"{self.BASE}/referral?j={'a' * 32}", "gray"), (" · ", None, "gray"),
+                          ("Brief ↗", f"{self.BASE}/brief?r={'c' * 32}", "gray")])
+        self.assertIsNone(card.brief_link(self.BASE + "/", {"page_id": "not-an-id"}))
 
     def test_links_are_written_once_and_a_replay_writes_nothing(self):
         pages = [page(1, "Pat", source="https://mail.google.com/mail/u/0/#all/x1")]
