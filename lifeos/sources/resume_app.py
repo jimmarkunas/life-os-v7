@@ -23,7 +23,7 @@ FILENAME = re.compile(r"Jim_Markunas_(Resume|CV)_[A-Za-z0-9_]{1,80}\.docx\Z")
 MARKER = "v7-jd:1"                                              # publish's first body line (lifeos.jobs.publish.body_blocks)
 RESUME_COLUMN = "Resume"                                        # the Ledger's Files column: the latest resume built for this job
 SUBMITTED_COLUMN = "Submitted Résumé"                           # LIFE-88 E10: the file Jim sent (lifeos.interview.view.SUBMITTED; a test holds them equal)
-DRIVE_FILE = re.compile(r"https://drive\.google\.com/file/d/([A-Za-z0-9_-]{10,200})/view")
+DRIVE_FILE = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/document)/d/([A-Za-z0-9_-]{10,200})/(?:view|edit)")   # Drive links a .docx as docs.google.com/document/.../edit (live, Oct 25)
 SHOWN_BUILDS = 5                                               # the newest Drive builds offered as "applied with this one"
 LOCK_REASON = "Submitted with the application for this job (LIFE OS)"
 TEXT = ("heading_2", "paragraph", "bulleted_list_item")
@@ -137,9 +137,10 @@ def drive_builds(client, pid):
     out = []
     for b in _children(client, pid):
         f = b.get("file") or {} if b.get("type") == "file" else {}
-        hit = DRIVE_FILE.match(((f.get("external") or {}).get("url")) or "")
+        url = ((f.get("external") or {}).get("url")) or ""
+        hit = DRIVE_FILE.match(url)
         if hit and f.get("name"):
-            out.append((hit.group(1), f["name"], hit.group(0)))
+            out.append((hit.group(1), f["name"], url))                    # the link exactly as the page holds it
     return out
 
 

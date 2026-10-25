@@ -215,7 +215,7 @@ class FakeDrive:
 
     def upload(self, folder_id, name, data, mime, tags):
         fid = f"file-{len(self.files) + 1}-0123456789"
-        self.files[fid] = {"id": fid, "name": name, "md5Checksum": hashlib.md5(data).hexdigest(), "webViewLink": f"https://drive.google.com/file/d/{fid}/view",
+        self.files[fid] = {"id": fid, "name": name, "md5Checksum": hashlib.md5(data).hexdigest(), "webViewLink": f"https://docs.google.com/document/d/{fid}/edit?usp=drivesdk&rtpof=true&sd=true",   # the shape Drive really returns for a .docx (Oct 25)
                            "parents": [folder_id], "mimeType": mime, "appProperties": dict(tags), "trashed": False, "data": data}
         return dict(self.files[fid])
 
