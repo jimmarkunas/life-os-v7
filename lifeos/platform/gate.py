@@ -14,6 +14,7 @@ import urllib.request
 
 TICK_TITLE = "tick"           # the workflow's run-name for scheduled and timer runs; manual runs are "manual" and never block a tick
 MIN_GAP_MINUTES = 50          # three crons (:07 :27 :47) -> at most one run per ~hour; a dropped slot is covered by the next
+GAP_FLOOR_MINUTES = 10        # the repository variable GATE_MIN_GAP_MINUTES may lower the gap to this (drain mode: about 20); anything else is ignored and the default stands
 STALE_MINUTES = 150           # no successful run for this long -> open (or update) one GitHub issue
 ISSUE_TITLE = "V7 pipeline: no successful run for over 2.5 hours"
 LABEL = "pipeline-stale"
@@ -30,8 +31,15 @@ def _t(value):
     return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc) if value else None
 
 
-def decide(runs, now, current_id, gap=MIN_GAP_MINUTES):
+def min_gap(environ=None):
+    """The gap between ticks: the repository variable GATE_MIN_GAP_MINUTES when it is a whole number from GAP_FLOOR_MINUTES to MIN_GAP_MINUTES, else MIN_GAP_MINUTES."""
+    raw = ((environ if environ is not None else os.environ).get("GATE_MIN_GAP_MINUTES") or "").strip()
+    return int(raw) if raw.isdigit() and GAP_FLOOR_MINUTES <= int(raw) <= MIN_GAP_MINUTES else MIN_GAP_MINUTES
+
+
+def decide(runs, now, current_id, gap=None):
     """-> 'run' | 'skip'. Cancelled (including skipped) runs and manual runs do not count."""
+    gap = min_gap() if gap is None else gap
     for run in runs:
         if run["id"] == current_id or run.get("conclusion") == "cancelled" or run.get("display_title") != TICK_TITLE:
             continue

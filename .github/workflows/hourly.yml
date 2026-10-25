@@ -113,6 +113,7 @@ env:
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
   LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
   V7_FIT_GATE: ${{ vars.V7_FIT_GATE }}
+  GATE_MIN_GAP_MINUTES: ${{ vars.GATE_MIN_GAP_MINUTES }}      # drain mode sets this to about 20 (lifeos.platform.gate.min_gap); empty keeps the 50-minute default
   HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
   LIVE: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}
