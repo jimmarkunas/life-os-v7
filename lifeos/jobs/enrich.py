@@ -315,7 +315,9 @@ def mismatch_report(results, urls, source_of, previous):
     return {"reasons": reasons, "by_source": sources, "families": families, "repeat": repeat}
 
 
-def run(limit, live):
+def run(limit, live, drain=False):
+    """drain (LIFE-76): the backlog pass at the end of a tick. It never spends the TinyFish Fetch day cap (the hourly pass keeps it), and a page that
+    would need that fallback is left exactly as it is (no attempt counted), so the hourly pass reads it later with the fallback."""
     relinked = 0
     with store.connect() as connection:
         store.ensure_schema(connection)
@@ -350,7 +352,12 @@ def run(limit, live):
         counts["outcome"][result["outcome"]] = counts["outcome"].get(result["outcome"], 0) + 1
         if result.get("source_kind"):
             counts["source"][result["source_kind"]] = counts["source"].get(result["source_kind"], 0) + 1
-    _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
+    if drain:
+        left = [job_id for job_id, r in results if r["outcome"] == "blocked"]
+        results = [(job_id, r) for job_id, r in results if r["outcome"] != "blocked"]
+        counts["left_for_hourly"] = len(left)
+    else:
+        _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})

@@ -250,6 +250,39 @@ class OneBadPageTests(unittest.TestCase):
         self.assertEqual(counts["outcome"], {"blocked": 1, "closed": 1})
 
 
+class DrainPassTests(unittest.TestCase):
+    """LIFE-76: the drain pass never spends the TinyFish Fetch day cap and leaves a page that needs that fallback untouched for the hourly pass."""
+    def _run(self, drain):
+        from tests.kit.db import FakeConn
+        rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None),
+                (2, "https://b.example.com/jobs/222222", "Senior Engineer", "ats", None, "US Remote", "web:b", None)]
+
+        def handler(sql, args, cursor):
+            if sql.startswith("SELECT id, final_apply_url"):
+                cursor.fetchall = lambda: rows
+
+        saved, fallback = [], []
+
+        def read(url, *a):
+            return {"outcome": "blocked", "reason": "http_403"} if "a.example" in url else {"outcome": "closed"}
+
+        with mock.patch.object(enrich.store, "connect", return_value=FakeConn(handler=handler)), mock.patch.object(enrich.store, "ensure_schema"), \
+                mock.patch.object(enrich, "relink_first_party", return_value=0), mock.patch.object(enrich, "read_page", side_effect=read), \
+                mock.patch.object(enrich, "_fallback", side_effect=lambda *a, **k: fallback.append(1)), \
+                mock.patch.object(enrich, "save", side_effect=lambda c, job_id, r: saved.append(job_id)):
+            counts = enrich.run(10, True, drain=drain)
+        return counts, saved, fallback
+
+    def test_the_drain_skips_the_fallback_and_saves_only_what_it_read(self):
+        counts, saved, fallback = self._run(True)
+        self.assertEqual((saved, fallback, counts["left_for_hourly"]), ([2], [], 1))      # the blocked page keeps its row as it was: no attempt counted
+
+    def test_the_hourly_pass_still_uses_the_fallback_and_saves_every_row(self):
+        counts, saved, fallback = self._run(False)
+        self.assertEqual((saved, fallback), ([1, 2], [1]))
+        self.assertNotIn("left_for_hourly", counts)
+
+
 class EmployerFromThePageTests(unittest.TestCase):
     HTML = ('<html><title>Senior Program Manager</title><script type="application/ld+json">{"@type":"JobPosting","title":"Senior Program Manager",'
             '"hiringOrganization":{"@type":"Organization","name":"Acme Robotics, Inc."},"datePosted":"%s","description":"%s"}</script></html>')

@@ -48,9 +48,15 @@ PLAN = (
     Step("web-titlewatch", 240, bulk=True),
     Step("discover-jobs", 300, 12, bulk=True),
     Step("sponsors", 120, bulk=True),
-    Step("boards-backfill", 600, 450, bulk=True),   # D217: last, so a first pass never takes time from the hourly work; off unless BOARDS_BACKFILL=on
+    Step("boards-backfill", 600, 450, bulk=True),   # D217: after the hourly work, so a first pass never takes time from it; off unless BOARDS_BACKFILL=on
+    # LIFE-76 drain pass (Jim, Oct 25: "drain this backlog quickly"): the backlog the first pass found, in the run's spare time, never before the hourly
+    # work. Publish first (READY rows already scored, gated first), then read and score more for the next run; each step finds nothing once the queue is empty.
+    Step("drain-audit-ready", 60, bulk=True),
+    Step("drain-publish", 480, 60, bulk=True),       # limits.NOTION_PER_RUN pages a call; ~2-3 s a page today (Oct 25), so 60 fit 480 s with room for a slow Notion minute
+    Step("drain-enrich", 480, 300, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's
+    Step("drain-fit", 240, bulk=True),
 )
-QUICK_LIMITS = {"boards": 50, "publish": 10, "boards-backfill": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
+QUICK_LIMITS = {"boards": 50, "publish": 10, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
 
 
 class StageTimeout(BaseException):
