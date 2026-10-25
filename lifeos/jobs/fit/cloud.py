@@ -41,6 +41,8 @@ CALL_SECONDS = 15 + READ_WAIT           # connect timeout + the reply wait: 165 
 _REF = re.compile(r"^[0-9a-f]{16}$")
 JOB_OUTCOMES = {"FIT_EDGE_JUDGMENT_REJECTED", "FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}      # about this job's request: recorded on its row, never re-asked
 SIZE_STOP = 3                                                        # Oracle's own OVERSIZE refusals in a row, with nothing judged, that stop the batch (a limit fault, not the jobs)
+REJECTED = "FIT_EDGE_JUDGMENT_REJECTED"
+REJECT_MIN, REJECT_SHARE = 3, 0.10                                   # Oct 25 2026 (LIFE-76): a backlog batch fails on refused answers only when MORE than 3 of them are also MORE than 10% of its calls
 SIZE_OUTCOMES = {"FIT_EDGE_REQUEST_TOO_LARGE", "FIT_EDGE_OVERSIZE"}    # Oct 24 2026 (LIFE-76): a job too big to ask is a fact about that job, not a failed run: counted by code, never DEGRADED
 WRITE_CONFLICT = "CANARY_WRITE_CONFLICT"     # D226: the guarded write stored nothing (the row was no longer unasked): an unpersisted answer is never a success
 PROMOTION_FAILED = "CANARY_PROMOTION_FAILED"   # D226: a canary answer is stored as this until the promotion itself marks it CANARY, so no failure can leave a stuck CANARY
@@ -260,6 +262,9 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
                 if code == "FIT_EDGE_OVERSIZE" and sized[code] >= SIZE_STOP and not counts["cloud_ok"]:
                     state["stop"] = counts["cloud_size_stop"] = True     # Oracle refusing job after job for size with nothing judged looks like its limit, not the jobs: stop before more rows are marked
                 return
+            if code == REJECTED and batch:
+                counts["cloud_job_rejected"] = counts.get("cloud_job_rejected", 0) + 1      # recorded on the row and never re-asked (above); counted, and judged against the threshold when the batch ends
+                return
             counts["cloud_failed"] += 1
             _degraded(counts, code)
             if code not in JOB_OUTCOMES:
@@ -352,6 +357,10 @@ def run(environ=os.environ, live=False, started=None, profile=None, send=None, c
     if counts.get("cloud_size_stop") or (oversize >= 2 and oversize == counts["cloud_calls"]):    # the size stop fired, or every call was refused by Oracle for size: its limit, so the run degrades
         counts["cloud_failed"] += 1
         _degraded(counts, "FIT_EDGE_ALL_TOO_LARGE")
+    rejected = counts.get("cloud_job_rejected", 0)
+    if rejected > REJECT_MIN and rejected > REJECT_SHARE * counts["cloud_calls"]:       # a few refused answers are job-level noise; this many is a fault in the model's answers
+        counts["cloud_failed"] += rejected
+        _degraded(counts, REJECTED)
     if counts["cloud_fit"] in ("shadow", "canary", "backlog"):
         counts["cloud_fit"] = "OK"
     return counts

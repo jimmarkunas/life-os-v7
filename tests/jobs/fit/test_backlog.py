@@ -837,10 +837,36 @@ class ParallelLanes(Batch):
         self.assertEqual((counts["cloud_fit"], counts["failed"]), ("DEGRADED(FIT_EDGE_ALL_TOO_LARGE)", 1))
         self.assertLess(len(seen), 8)
 
-    def test_a_rejected_judgment_still_degrades_the_batch(self):
-        self.titled(1, "Program Manager 1", score=90)
-        counts = self.batch(10, Endpoint(lambda data: reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')))
-        self.assertEqual((counts["cloud_fit"], counts["cloud_failed"], counts["failed"]), ("DEGRADED(FIT_EDGE_JUDGMENT_REJECTED)", 1, 1))   # only the SIZE outcomes were exempted
+    def batch_with_rejections(self, total, rejected):
+        """`total` jobs; the model's answer is refused by the judge for the first `rejected` calls and accepted for the rest."""
+        for i in range(1, total + 1):
+            self.titled(i, f"Program Manager {i}", score=90)
+        arrivals = []
+
+        def answer(data):
+            arrivals.append(1)
+            if len(arrivals) <= rejected:
+                return reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw='{"ok": true}')       # not the contracted shape: JUDGMENT_REJECTED
+            return measured(data)
+        return self.batch(total + 5, Endpoint(answer), environ={**ENV, "V7_CLOUD_FIT_BACKLOG_MAX": str(total + 5)})      # the ceiling is Jim's: lift it so every call is asked
+
+    def test_a_few_rejected_judgments_are_counted_but_do_not_fail_the_batch_or_the_run(self):
+        # Oct 25 2026 (LIFE-76): one refused answer in 85 turned an hourly run red. More than 3 AND more than 10% of the calls fails; fewer is noise.
+        for total, rejected in ((10, 1), (10, 3), (50, 4), (80, 7), (100, 10)):         # 1 of 10; 3 of 10 (not MORE than 3); 4 of 50 = 8%; 7 of 80 = 8.75%; 10 of 100 = exactly 10%
+            with self.subTest(total=total, rejected=rejected):
+                self.setUp()
+                counts = self.batch_with_rejections(total, rejected)
+                self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["cloud_failed"], counts["failed"]), ("OK", 0, 0, 0))
+                self.assertEqual((counts["cloud_job_rejected"], counts["cloud_calls"]), (rejected, total))
+                self.assertEqual((counts["cloud_promoted"], self.status(1)), (total - rejected, "DEGRADED"))     # recorded on its row, never re-asked
+
+    def test_many_rejected_judgments_still_fail_the_batch(self):
+        for total, rejected in ((10, 4), (20, 4), (30, 5), (10, 10)):                 # 40%, 20%, 17%, 100%: more than 3 and more than 10%
+            with self.subTest(total=total, rejected=rejected):
+                self.setUp()
+                counts = self.batch_with_rejections(total, rejected)
+                self.assertEqual((counts["cloud_fit"], counts["cloud_degraded"], counts["failed"]), ("DEGRADED(FIT_EDGE_JUDGMENT_REJECTED)", 1, 1))
+                self.assertEqual((counts["cloud_job_rejected"], counts["cloud_failed"]), (rejected, rejected))
 
     def test_the_setting_is_one_unless_it_is_a_whole_number_from_1_to_3(self):
         for raw, want in ((None, 1), ("", 1), ("1", 1), ("2", 2), (" 3 ", 3), ("4", 1), ("0", 1), ("-2", 1), ("two", 1), ("2.5", 1)):
