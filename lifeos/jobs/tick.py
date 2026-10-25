@@ -57,7 +57,7 @@ PLAN = (
     # work. Publish first (READY rows already scored, gated first), then read and score more for the next run; each step finds nothing once the queue is empty.
     Step("drain-audit-ready", 60, bulk=True),
     Step("drain-publish", 720, 120, bulk=True),      # Jim, Oct 25: publish more per run; ~2.8 s a page at noon (60 in 168 s), so 120 fit 720 s at twice that
-    Step("drain-enrich", 480, 450, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's; 300 took 122 s at noon
+    Step("drain-enrich", 480, 600, bulk=True),       # no TinyFish fallback: the Fetch day cap stays the hourly pass's; 300 took 122 s at noon, 450 took 235 s at 2:14 PM CT (600 for Jim's 5 PM CT drain, Oct 25)
     Step("drain-fit", 240, bulk=True),
 )
 QUICK_LIMITS = {"boards": 50, "publish": 10, "publish-fresh": 5, "boards-backfill": 50, "drain-publish": 10, "drain-enrich": 50}   # a manual quick proof run (D206, D208) reads few boards and publishes few pages
