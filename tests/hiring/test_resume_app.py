@@ -123,6 +123,7 @@ class BuildResume(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Build resume", body)
         self.assertIn('action="/resume"', body)
+        self.assertIn('value="build" data-wait="90" data-label="Building your résumé" data-late="If nothing appears by 3:30', body)   # Jim, Oct 25: a counting wait line, not a dead spinner
         self.assertEqual((r.asked, r.page.appended), ([], []))
 
     def test_build_sends_the_published_description_attaches_the_docx_and_reads_it_back(self):
