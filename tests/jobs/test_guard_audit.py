@@ -206,3 +206,60 @@ class AlreadyTrashedPageTests(unittest.TestCase):
         for page in ({"in_trash": False, "archived": False}, "unreadable"):
             counts = self._run(page)
             self.assertEqual((counts["trash_errors"], counts.get("already_trashed"), counts.get("excluded_cleared")), (1, None, None))
+
+
+class ReadyGateTests(unittest.TestCase):
+    """LIFE-76: the gate before publish judges only the READY rows, with the same guards, and never reads or trashes a page; the full pass runs after publish."""
+    def _run(self, ready_only):
+        from unittest import mock
+        from lifeos.jobs import audit
+        text = "Responsibilities: build pipelines and own data quality across the platform. You will need experience with SQL and Python skills. " * 6
+        ready = [(1, "READY", "https://careers-acme.icims.com/", None, text, "Acme", "Program Manager"),
+                 (2, "READY", "https://careers.example.com/jobs/12345", None, text, "Beta", "Program Manager")]
+        published = [(3, "PUBLISHED", "https://careers.example.com/", "p3", text, "Gamma", "Program Manager")]
+        sql = []
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, statement, args=()):
+                sql.append(statement)
+                if "d.full_text" in statement:
+                    self.rows = ready + ([] if "('READY')" in statement else published)
+                elif "notion_page_id IS NOT NULL" in statement and "location_text" not in statement:
+                    self.rows = published
+                else:
+                    self.rows = []
+
+            def fetchall(self):
+                return self.rows
+
+        class Conn(Cur):
+            def cursor(self):
+                return Cur()
+
+        client = mock.Mock()
+        with mock.patch.object(audit.store, "connect", return_value=Conn()), mock.patch.object(audit.store, "ensure_schema"), \
+                mock.patch.object(audit.notion_client, "Client", return_value=client) as made, \
+                mock.patch.object(audit.ledger, "verify", return_value=audit.ledger.OK), mock.patch.object(audit.guard, "protection", return_value=None):
+            counts = audit.run(2000, True, environ={"V7_FIT_GATE": "true"}, ready_only=ready_only)
+        return counts, sql, made, client
+
+    def test_the_gate_demotes_a_bad_ready_row_without_any_page_read(self):
+        counts, sql, made, client = self._run(True)
+        self.assertEqual((counts["checked"], counts["failed"], counts["demoted"], counts["trashed"]), (2, 1, 1, 0))
+        self.assertEqual(counts["by_reason"], {"audit_url_root": 1})
+        self.assertFalse(made.called)
+        self.assertFalse(client.call.called)
+        self.assertFalse(any("notion_page_id IS NOT NULL" in s or "f.admission" in s for s in sql))     # no page list, place list or Exclude pile is read
+        self.assertTrue(any("d.full_text" in s and "IN ('READY')" in s for s in sql))             # and only READY descriptions
+
+    def test_the_full_pass_still_judges_and_trashes_published_pages(self):
+        counts, _sql, made, client = self._run(False)
+        self.assertEqual((counts["checked"], counts["trashed"], counts["demoted"]), (3, 1, 2))
+        self.assertTrue(made.called)
+        client.call.assert_called_once_with("PATCH", "/pages/p3", {"in_trash": True})
