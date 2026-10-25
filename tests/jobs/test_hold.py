@@ -196,7 +196,7 @@ class RecoveryTests(unittest.TestCase):
         self.db.job(3, days_held=1, source="discover", reason="no_match_no_board+no_fit")  # a lead no stage can resolve: left for the seven-day rule
         self.db.job(4, days_held=1, reason="closed_by_employer")                  # closed: never worthwhile
         self.db.job(5, days_held=0.01)                                             # went on HOLD after the release time: the normal rules
-        with mock.patch.object(hold, "RELEASE_AT", NOW - timedelta(hours=1)):
+        with mock.patch.object(hold, "RELEASE_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)):
             before = self.go(NOW - timedelta(hours=2))                             # before the release time nothing is released
             out = self.go()
             again = self.go(NOW + timedelta(minutes=20))
@@ -205,6 +205,15 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.db.row(2)[:3], ("RESOLVED", "recovery_retry", "https://aggregator.example.com/j/2"))
         self.assertEqual(self.db.row(2)[4], limits.RESOLVE_MAX_ATTEMPTS - 1)      # exactly one attempt left, and recovered_at set: a second failure is excluded
         self.assertEqual([self.db.row(i)[0] for i in (3, 4, 5)], ["HOLD", "HOLD", "HOLD"])
+
+    def test_a_hold_that_needs_the_reader_waits_for_the_reset_and_any_other_goes_early(self):
+        self.db.job(1, days_held=1, reason="jd_thin", link=LINK)                 # needs the TinyFish reader: waits for the 7:05 PM CT release
+        self.db.job(2, days_held=1, reason="link_mismatch")                      # a wrong link: no reader helps, released early
+        with mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "RELEASE_AT", NOW + timedelta(hours=1)):
+            early = self.go()
+            late = self.go(NOW + timedelta(hours=1, minutes=1))
+        self.assertEqual((early["released"], late["released"]), (1, 1))
+        self.assertEqual([self.db.row(i)[1] for i in (1, 2)], ["recovery_retry", "recovery_retry"])
 
     def test_a_job_with_a_link_is_recovered_whatever_its_source_and_every_resolved_source_has_a_resolve_stage(self):
         self.db.job(1, source="web:su-example", link=LINK, reason="jd_thin")      # the page was unreadable: Enrich reads every RESOLVED job, whatever its source
