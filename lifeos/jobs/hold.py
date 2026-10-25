@@ -49,17 +49,19 @@ def recover(cursor, now, live):
 
 
 RELEASE_AT = datetime(2026, 10, 26, 0, 5)       # Jim, Oct 25 2026 ~6:00 PM CT: "Fix those 77 jobs on hold immediately". 7:05 PM CT, after the TinyFish Fetch day cap resets (UTC midnight)
+EARLY_AT = datetime(2026, 10, 25, 23, 25)        # Jim, 6:20 PM CT: "solve this in the next 20 minutes": a hold no TinyFish read can help (a wrong link, a refused page) goes at 6:25 PM CT
+NEEDS_READER = ("jd_thin", "description_empty", "description_empty_tf")     # these wait for 7:05 PM CT: retried before the cap resets they would fail again and be excluded
 
 
 def release(cursor, now, live):
     """One-off (Jim, Oct 25): every worthwhile job that went on HOLD before RELEASE_AT gets its D185 retry now instead of on day 6, once each (recovered_at),
     through the normal path, so it reaches an outcome tonight; one that fails again is excluded as `unresolved_after_recovery` by the same rules.
     An employer-board job (web:*) with no final link goes back to RESOLVED on its own page (enrich proves the link again). -> (candidates, released)."""
-    if now < RELEASE_AT:
+    if now < EARLY_AT:
         return 0, 0
     cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
                    "AND source_url IS NOT NULL AND updated_at < %s ORDER BY updated_at, id", (RELEASE_AT,))
-    picked = [(row[0], row[7]) for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now)
+    picked = [(row[0], row[7]) for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now) and (now >= RELEASE_AT or row[4] not in NEEDS_READER)
               and (row[5] or row[6] in RESOLVED_BY or (str(row[6]).startswith("web:") and row[6] != "web:openjobs"))]
     done = []
     for job_id, key in picked if live else ():
