@@ -140,6 +140,7 @@ class Get(unittest.TestCase):
         self.assertEqual((status, ctype), (200, "text/javascript; charset=utf-8"))
         self.assertTrue("busy" in js and "spin" in js and not re.search(r"fetch|XMLHttpRequest|innerHTML|eval|cookie|localStorage|http", js))   # only toggles classes
         self.assertTrue("a.target" in js and '"download"' in js and "setTimeout(idle,15000)" in js)   # a new-tab link never sticks busy; a stopped load clears itself
+        self.assertTrue('hasAttribute("data-wait")' in js and "textContent" in js and "setInterval(tick,1000)" in js)   # a long step (data-wait) counts up until its reply arrives, text only
         pages = [h.open(TD.TARGET)[1], h.review(TD.TARGET, "Hired")[1], h.close(TD.TARGET, "Hired")[1]]
         for body in pages:
             self.assertEqual(re.findall(r"<script[^>]*>", body.lower()), ['<script src="/close.js" defer>'])   # the one same-origin script, never inline
