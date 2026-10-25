@@ -258,67 +258,70 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
         counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
              if skip_allowed(states.get(s["id"])) else s for s in due]          # D216: validators go out only when a skip is allowed
-    with ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS) as pool:     # priority boards are on different hosts; seed boards pass fewer workers
-        listings = list(pool.map(lister_fn, asked))
-    budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
-    if screen:
-        counts["screen"], counts["still_listed"] = {}, 0
-    for source, listing in zip(due, listings):
-        listed = None
-        raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
-        if screen and listing.status == lister.COMPLETE:
-            listed, kept = {j["id"] for j in listing.jobs}, []
-            for job in listing.jobs:
-                why = screen(job)
-                counts["screen"][why] = counts["screen"].get(why, 0) + 1
-                if why.startswith("kept_"):
-                    kept.append(job)
-            listing = lister.Listing(lister.COMPLETE, kept, validators=listing.validators)     # D216: the screen keeps the answer's ETag / Last-Modified
-        state = states.get(source["id"]) or {}
-        failures = state.get("failures", 0)
-        skip = None
-        if listing.status == lister.UNCHANGED:
-            skip = "not_modified"
-        elif listing.status == lister.COMPLETE and skip_allowed(state) and state.get("frontier") and raw == state["frontier"]:
-            skip = "same_frontier"                                       # D216: an identical listing skips the per-posting diff and its writes
-        if skip:
-            outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
-                              unchanged_runs=state.get("unchanged_runs", 0) + 1)
-            outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
-            counts["complete"] += 1
-            counts[skip] += 1
+    pool = ThreadPoolExecutor(max_workers=workers or limits.ATS_WORKERS)          # priority boards are on different hosts; seed boards pass fewer workers
+    try:
+        listings = pool.map(lister_fn, asked)                                     # Oct 25 2026: lazy, in order, so each board is committed as its answer arrives:
+        budget = limits.WEB_INGEST_PER_RUN if budget is None else budget
+        if screen:
+            counts["screen"], counts["still_listed"] = {}, 0
+        for source, listing in zip(due, listings):
+            listed = None
+            raw = diff.frontier({j["id"]: diff.material_hash(j) for j in listing.jobs}) if listing.status == lister.COMPLETE else None   # D216: the WHOLE board, before the screen
+            if screen and listing.status == lister.COMPLETE:
+                listed, kept = {j["id"] for j in listing.jobs}, []
+                for job in listing.jobs:
+                    why = screen(job)
+                    counts["screen"][why] = counts["screen"].get(why, 0) + 1
+                    if why.startswith("kept_"):
+                        kept.append(job)
+                listing = lister.Listing(lister.COMPLETE, kept, validators=listing.validators)     # D216: the screen keeps the answer's ETag / Last-Modified
+            state = states.get(source["id"]) or {}
+            failures = state.get("failures", 0)
+            skip = None
+            if listing.status == lister.UNCHANGED:
+                skip = "not_modified"
+            elif listing.status == lister.COMPLETE and skip_allowed(state) and state.get("frontier") and raw == state["frontier"]:
+                skip = "same_frontier"                                       # D216: an identical listing skips the per-posting diff and its writes
+            if skip:
+                outcome = Outcome(source, now, "UNCHANGED", skip, frontier=state.get("frontier"), validators=listing.validators,
+                                  unchanged_runs=state.get("unchanged_runs", 0) + 1)
+                outcome.due_at = next_due(source["id"], now, True, 0, 0, source.get("hot_hours") or source.get("refresh_hours"), outcome.unchanged_runs)
+                counts["complete"] += 1
+                counts[skip] += 1
+                if live:
+                    repo.commit(outcome, failures, lane)
+                continue
+            previous = repo.items(source["id"])
+            outcome = plan(source, listing, previous, now, budget, lane, listed)
+            if raw:
+                outcome.frontier = raw                                       # D216: stored as the whole-board fingerprint, so a screened-out job leaving the board is never skipped
+            hot = previous or outcome.items                                  # D202: a board that lists a target job is read more often
+            quiet = outcome.status == "COMPLETE" and not any(outcome.counts.get(k) for k in ("added", "changed", "removed", "admit", "pending"))
+            outcome.unchanged_runs = state.get("unchanged_runs", 0) + 1 if quiet else 0
+            outcome.validators = listing.validators
+            outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
+                                      (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
+            if outcome.status == "FAILED":
+                counts["failed"] += 1
+                counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
+                kind = str(source.get("kind") or "unknown")
+                counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1          # the board's ATS family
+                if len(counts["failed_ids"]) < 10:
+                    counts["failed_ids"].append(source["id"])                                 # a public registry id (the source list is committed), never a job
+                if outcome.reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER and len(counts["dead_ids"]) < limits.BOARDS_DEAD_IDS_MAX:
+                    counts["dead_ids"].append(source["id"])                                   # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
+            else:
+                counts["complete"] += 1
+                budget -= len(outcome.admit)
+                for k in ("added", "changed", "unchanged", "removed", "suppressed", "admit", "pending"):
+                    counts[k] += outcome.counts[k]
+                if screen:
+                    counts["still_listed"] += outcome.counts["still_listed"]
+                for why, n in outcome.counts["why"].items():
+                    counts["why"][why] = counts["why"].get(why, 0) + n
             if live:
                 repo.commit(outcome, failures, lane)
-            continue
-        previous = repo.items(source["id"])
-        outcome = plan(source, listing, previous, now, budget, lane, listed)
-        if raw:
-            outcome.frontier = raw                                       # D216: stored as the whole-board fingerprint, so a screened-out job leaving the board is never skipped
-        hot = previous or outcome.items                                  # D202: a board that lists a target job is read more often
-        quiet = outcome.status == "COMPLETE" and not any(outcome.counts.get(k) for k in ("added", "changed", "removed", "admit", "pending"))
-        outcome.unchanged_runs = state.get("unchanged_runs", 0) + 1 if quiet else 0
-        outcome.validators = listing.validators
-        outcome.due_at = next_due(source["id"], now, outcome.status == "COMPLETE", failures, outcome.pending,
-                                  (source.get("hot_hours") if hot else None) or source.get("refresh_hours"), outcome.unchanged_runs)
-        if outcome.status == "FAILED":
-            counts["failed"] += 1
-            counts["failed_why"][outcome.reason] = counts["failed_why"].get(outcome.reason, 0) + 1
-            kind = str(source.get("kind") or "unknown")
-            counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1          # the board's ATS family
-            if len(counts["failed_ids"]) < 10:
-                counts["failed_ids"].append(source["id"])                                 # a public registry id (the source list is committed), never a job
-            if outcome.reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER and len(counts["dead_ids"]) < limits.BOARDS_DEAD_IDS_MAX:
-                counts["dead_ids"].append(source["id"])                                   # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
-        else:
-            counts["complete"] += 1
-            budget -= len(outcome.admit)
-            for k in ("added", "changed", "unchanged", "removed", "suppressed", "admit", "pending"):
-                counts[k] += outcome.counts[k]
-            if screen:
-                counts["still_listed"] += outcome.counts["still_listed"]
-            for why, n in outcome.counts["why"].items():
-                counts["why"][why] = counts["why"].get(why, 0) + n
-        if live:
-            repo.commit(outcome, failures, lane)
+    finally:                                                                      # a pass stopped at its tick budget keeps every board it committed, and the boards
+        pool.shutdown(wait=False, cancel_futures=True)                            # not yet asked are cancelled, never read after the stage has stopped
     counts["saved"] = bool(live)
     return counts

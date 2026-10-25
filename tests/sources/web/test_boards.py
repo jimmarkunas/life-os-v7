@@ -131,6 +131,29 @@ class DeadBoards(unittest.TestCase):
         self.assertEqual((step.limit, limits.BOARDS_PER_RUN), (900, 900))                            # the stage reads min(step limit, cap): both must say 900
 
 
+class StoppedPass(unittest.TestCase):
+    """Oct 25 2026 (#537 review): a pass stopped at its tick budget keeps every board it already read, and reads nothing after it is stopped."""
+    def test_boards_read_before_the_stop_are_committed_and_the_rest_stay_due(self):
+        from lifeos.jobs import tick
+        repo = MemRepo()
+
+        def stop_at_third(pool, fn, items):                                        # the pool answers two boards, then the tick's alarm fires in the main thread
+            for n, item in enumerate(items):
+                if n == 2:
+                    raise tick.StageTimeout()
+                yield fn(item)
+
+        with mock.patch.object(run.ThreadPoolExecutor, "map", stop_at_third):
+            with self.assertRaises(tick.StageTimeout):
+                boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
+        self.assertEqual(sorted(repo.state), ["gh-s0", "gh-s1"])                    # committed as they arrived, not lost with the stop
+
+    def test_the_boards_step_has_time_for_its_cap_at_a_slow_hours_pace(self):
+        from lifeos.jobs import tick
+        step = next(s for s in tick.PLAN if s.name == "boards")
+        self.assertLessEqual(min(step.limit, limits.BOARDS_PER_RUN) * 1.0, step.budget)     # Oct 25 2026: 600 boards took up to 588 s, about 1 s a board
+
+
 class Backfill(unittest.TestCase):
     """D217: a seed board's first read belongs to the hibernatable backfill; the hourly pass only re-reads boards read before."""
     ON = {"BOARDS_BACKFILL": "on"}
