@@ -95,6 +95,65 @@ SOURCES = [{"id": f"gh-b{i}", "company": f"B{i}", "tier": "employer", "kind": "g
 SEED = [{**SOURCES[0], "id": f"gh-s{i}", "slug": f"s{i}", "extra": False} for i in range(5)]
 
 
+class DeadBoards(unittest.TestCase):
+    """Oct 25 2026: a board that keeps answering not_found is listed by id (counts only) for a skip-list review; nothing is skipped by the pass itself."""
+
+    def pass_at(self, repo, hours, reason, sources):
+        def lister_fn(source):
+            return lister.Listing(lister.FAILED, reason=reason) if source["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, [])
+        return boards.run(900, True, NOW + timedelta(hours=hours), lister_fn, repo, sources)
+
+    def test_a_board_is_listed_only_after_repeated_not_found(self):
+        repo, sources = MemRepo(), SEED
+        listed = []
+        for n in range(1, 8):                                                   # one read a day: the retry timer is capped at the 24 h refresh
+            out = self.pass_at(repo, 24 * n * 3, "not_found", sources) if n > 1 else None
+            if n == 1:
+                boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.FAILED, reason="not_found") if s["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, []),
+                                repo, sources, {"BOARDS_BACKFILL": "on"})
+                continue
+            listed.append((repo.state["gh-s1"]["failures"], out["dead_ids"]))
+        self.assertEqual([ids for _, ids in listed if ids], [["gh-s1"]] * len([1 for f, _ in listed if f >= limits.BOARDS_DEAD_AFTER]))
+        self.assertTrue(all(ids == [] for f, ids in listed if f < limits.BOARDS_DEAD_AFTER))        # not before BOARDS_DEAD_AFTER failures in a row
+        self.assertEqual(sum(1 for _, ids in listed if ids), 3)                                       # failures 5, 6 and 7 of the 7 reads
+
+    def test_other_failures_and_healthy_boards_are_never_listed(self):
+        repo = MemRepo()
+        boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
+        repo.state["gh-s1"]["failures"] = 9
+        out = self.pass_at(repo, 24 * 3, "http_500", SEED)                                           # a long run of 500s, not not_found
+        self.assertEqual((out["failed"], out["dead_ids"]), (1, []))
+
+    def test_the_list_is_capped_and_the_hourly_cap_matches_the_tick_step(self):
+        from lifeos.jobs import tick
+        self.assertEqual(limits.BOARDS_DEAD_IDS_MAX, 600)
+        step = next(s for s in tick.PLAN if s.name == "boards")
+        self.assertEqual((step.limit, limits.BOARDS_PER_RUN), (900, 900))                            # the stage reads min(step limit, cap): both must say 900
+
+
+class StoppedPass(unittest.TestCase):
+    """Oct 25 2026 (#537 review): a pass stopped at its tick budget keeps every board it already read, and reads nothing after it is stopped."""
+    def test_boards_read_before_the_stop_are_committed_and_the_rest_stay_due(self):
+        from lifeos.jobs import tick
+        repo = MemRepo()
+
+        def stop_at_third(pool, fn, items):                                        # the pool answers two boards, then the tick's alarm fires in the main thread
+            for n, item in enumerate(items):
+                if n == 2:
+                    raise tick.StageTimeout()
+                yield fn(item)
+
+        with mock.patch.object(run.ThreadPoolExecutor, "map", stop_at_third):
+            with self.assertRaises(tick.StageTimeout):
+                boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
+        self.assertEqual(sorted(repo.state), ["gh-s0", "gh-s1"])                    # committed as they arrived, not lost with the stop
+
+    def test_the_boards_step_has_time_for_its_cap_at_a_slow_hours_pace(self):
+        from lifeos.jobs import tick
+        step = next(s for s in tick.PLAN if s.name == "boards")
+        self.assertLessEqual(min(step.limit, limits.BOARDS_PER_RUN) * 1.0, step.budget)     # Oct 25 2026: 600 boards took up to 588 s, about 1 s a board
+
+
 class Backfill(unittest.TestCase):
     """D217: a seed board's first read belongs to the hibernatable backfill; the hourly pass only re-reads boards read before."""
     ON = {"BOARDS_BACKFILL": "on"}
