@@ -141,6 +141,7 @@ STAGES = {
     "fit": lazy("lifeos.jobs.fit.stage", floor=500),
     "fit-cloud-backlog": lazy("lifeos.jobs.fit.backlog"),           # D219: Jim's separately approved bounded Cloud Fit batch (manual only)
     "audit": lazy("lifeos.jobs.audit", floor=2000),
+    "audit-ready": lazy("lifeos.jobs.audit", floor=2000, ready_only=True),     # LIFE-76: the seconds-long gate on the rows about to be published
     "publish": lazy("lifeos.jobs.publish"),
     "expire-holds": lazy("lifeos.jobs.hold"),
     "funnel": lazy("lifeos.jobs.funnel"),

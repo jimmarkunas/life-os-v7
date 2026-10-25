@@ -37,6 +37,13 @@ class TickTests(unittest.TestCase):
         self.assertEqual(names[-1], "boards-backfill")                       # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
+    def test_the_gate_runs_just_before_publish_and_the_full_audit_just_after(self):
+        """LIFE-76: nothing failing the guards reaches the Ledger, and the full pass (page reads and trashes) never delays it."""
+        names = [s.name for s in tick.PLAN]
+        self.assertEqual(names[names.index("publish") - 1], "audit-ready")
+        self.assertEqual(names[names.index("publish") + 1], "audit")
+        self.assertFalse(next(s for s in tick.PLAN if s.name == "audit").bulk)      # the full pass is never skipped for lack of time
+
     def test_the_publish_cap_fits_its_budget(self):
         """Tick 39170290502 (Oct 18): 60 pages at about 13 s each overran the 720 s publish budget."""
         step = next(s for s in tick.PLAN if s.name == "publish")

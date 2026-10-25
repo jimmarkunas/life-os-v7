@@ -38,8 +38,9 @@ PLAN = (
     Step("web", 180, 12),
     Step("enrich", 480, 150),
     Step("fit", 240),
-    Step("audit", 180),
+    Step("audit-ready", 60),                    # LIFE-76: nothing that fails the guards is published; only the READY rows, no page reads, seconds
     Step("publish", 720, 40),                   # ~13 s a page incl. read-back and Fit sync: 40 fit the 12-minute budget (tick 39170290502 timed out at 60)
+    Step("audit", 180),                         # the full pass after publish: published pages, duplicates and Exclude clean-up, so it never delays the Ledger
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),     # its own default; the workflow step never passed one
     Step("boards", 720, 600, bulk=True),

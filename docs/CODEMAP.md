@@ -16,6 +16,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `attention` -> `lifeos.attention.stage:run`
 - `attention-card` -> `lifeos.attention.card:run`
 - `audit` -> `lifeos.jobs.audit:run`
+- `audit-ready` -> `lifeos.jobs.audit:run`
 - `bills-card` -> `lifeos.bills.card:run`
 - `bills-paid` -> `lifeos.bills.paid:run`
 - `bills-snapshot` -> `lifeos.bills.snapshot:run`
