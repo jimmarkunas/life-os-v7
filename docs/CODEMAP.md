@@ -28,6 +28,10 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `capacity-card` -> `lifeos.jobs.fit.capacity_card:run`
 - `dcc-card` -> `lifeos.dcc.card:run`
 - `discover-jobs` -> `lifeos.sources.web.discover_jobs:run`
+- `drain-audit-ready` -> `lifeos.jobs.audit:run`
+- `drain-enrich` -> `lifeos.jobs.enrich:run`
+- `drain-fit` -> `lifeos.jobs.fit.stage:run`
+- `drain-publish` -> `lifeos.jobs.publish:run`
 - `enrich` -> `lifeos.jobs.enrich:run`
 - `expire-holds` -> `lifeos.jobs.hold:run`
 - `explain` -> `lifeos.jobs.explain:run`
