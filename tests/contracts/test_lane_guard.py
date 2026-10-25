@@ -415,6 +415,7 @@ class Train(unittest.TestCase):
         self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nEvidence: CODE LANDED", [G.HANDOFFS])], ["TRAIN_JIRA_KEY_MISSING"])
         self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [G.HANDOFFS, "docs/MASTER_ROADMAP.md"])], ["TRAIN_NO_PRODUCT_CHANGE"])
         self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [G.OWNERSHIP])], ["TRAIN_NO_PRODUCT_CHANGE"])     # only the handoffs file
+        self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [])], ["TRAIN_NO_PRODUCT_CHANGE"])                 # no files is not governance-only
 
     def test_the_issue_must_be_one_of_the_trains(self):
         for body in ("Lane: career-v7\nEvidence: CODE LANDED", "Lane: career-v7\nJira: LIFE-23\nEvidence: CODE LANDED", "Lane: career-v7\nSee LIFE-59\nEvidence: CODE LANDED"):

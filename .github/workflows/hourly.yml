@@ -805,6 +805,7 @@ jobs:
       - id: enrich
         continue-on-error: true
         name: "Step 6 - enrich RESOLVED jobs (final page - JD, date, liveness)"
+        timeout-minutes: 15                 # LIFE-76: 450 reads took about 5 minutes on Oct 25; a slow batch must not take the boards step's 25 minutes
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.enrich }}
         env:
           FIT_PROFILE_EXTRA_JSON: ${{ steps.bws_finish.outputs.FIT_PROFILE_EXTRA_JSON || steps.bws_finish_retry.outputs.FIT_PROFILE_EXTRA_JSON }}
