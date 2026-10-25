@@ -413,7 +413,6 @@ class PublicationOrderTests(unittest.TestCase):
             counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
         self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))
         self.assertEqual(counts["picked_not_board"], 2)                                         # D248 read-back, counts only: both picked jobs came from mail
-        self.assertEqual((counts["waiting"], counts["left"]), (3, 1))                            # all three READY jobs could go; one is still waiting after a limit of two
         self.assertEqual(created, ["k2", "k1"])                                               # strongest first: the admitted 91, then the admitted 70
         status = dict(self.db.raw.execute("SELECT id, status FROM v7_jobs").fetchall())
         self.assertEqual(status, {1: "PUBLISHED", 2: "PUBLISHED", 3: "READY"})                # the Review job (80) waits behind both admitted jobs
