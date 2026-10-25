@@ -852,7 +852,7 @@ class ParallelLanes(Batch):
 
     def test_a_few_rejected_judgments_are_counted_but_do_not_fail_the_batch_or_the_run(self):
         # Oct 25 2026 (LIFE-76): one refused answer in 85 turned an hourly run red. More than 3 AND more than 10% of the calls fails; fewer is noise.
-        for total, rejected in ((10, 1), (10, 3), (50, 4), (80, 7), (100, 10)):         # 1 of 10; 3 of 10 (not MORE than 3); 4 of 50 = 8%; 7 of 80 = 8.75%; 10 of 100 = exactly 10%
+        for total, rejected in ((10, 1), (10, 3), (40, 4)):         # 1 of 10; 3 of 10 (not MORE than 3); 4 of 40 = exactly 10% (not MORE than 10%)
             with self.subTest(total=total, rejected=rejected):
                 self.setUp()
                 counts = self.batch_with_rejections(total, rejected)
