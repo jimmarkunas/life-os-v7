@@ -805,7 +805,8 @@ class Pursuits(unittest.TestCase):
     def test_a_request_naming_another_company_never_lands_on_this_page(self):
         other = mail(subject="Schedule your interview - OtherCo Program Manager", body="Please select a time for a call.", sender_name="Talent Team")
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[], records=[other])()
-        self.assertEqual((got["evidence"], counts["pursuit_requests"]), ([], 0))
+        self.assertEqual(([e for e in got["evidence"] if not e[1].refresh_only], counts["pursuit_requests"]), ([], 0))
+        self.assertEqual([(e[0].company, e[1].refresh_only) for e in got["evidence"]], [("ExampleCo", True)])   # E14 (Oct 25): its own page is still brought up to date, never given a round
 
     def test_a_pursuit_that_is_also_an_applied_row_is_one_job_not_two(self):
         counts, got = Run(parents=(("p1", "ExampleCo — Program Manager"),), kids={"p1": ()}, roster=[APPLIED], records=[mail()])()
