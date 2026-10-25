@@ -273,7 +273,7 @@ class WorkflowTests(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class PullRequestTestsWorkflow(unittest.TestCase):
-    """pr-tests.yml is the secret-free pull request check (and, since Oct 25 2026, the check of every merge to main): read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 60 s suite limits."""
+    """pr-tests.yml is the secret-free pull request check (and, since Oct 25 2026, the check of every merge to main): read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 75 s suite limits (75 since Jim, Oct 25 2026)."""
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
 
     def test_it_runs_on_pull_requests_and_main_only_read_only_and_holds_no_secret(self):
@@ -291,7 +291,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@v5", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
         self.assertIn("python -m unittest discover -s tests -t .", run)
-        self.assertRegex(run, r'-ge 60 \]; then .*exit 1')
+        self.assertRegex(run, r'-ge 75 \]; then .*exit 1')
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
 
