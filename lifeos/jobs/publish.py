@@ -222,6 +222,14 @@ def _pick(connection, limit, gated=False, hour=None):
     return rows, known
 
 
+def waiting(connection, gated=False):
+    """Jim, Oct 25: every READY job this run could publish (the same filter as _pick), so the log says how many are left, not only how many were taken."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM v7_jobs j JOIN v7_job_descriptions d ON d.job_id=j.id LEFT JOIN v7_job_fit f ON f.job_id=j.id WHERE j.status='READY'"
+                       " AND j.notion_page_id IS NULL" + (" AND f.admission IN ('ADMIT', 'REVIEW')" if gated else ""))
+        return int(cursor.fetchone()[0] or 0)
+
+
 def release_kept_in_ledger(connection):
     """A keep-list role set aside as `in_ledger` only because its remembered URL outlived a page the precision audit trashed (the audit keeps the hash so the role is never
     published again) goes back to READY: Jim put it on the list. A page that still exists is found by the Ledger listing at publish time, so no duplicate is made. -> count."""
@@ -256,6 +264,7 @@ def run(limit, live, environ=os.environ):
             counts["kept_released"] = release_kept_in_ledger(connection)
     with store.connect() as connection:
         rows, known = _pick(connection, limit, gated)
+        counts["waiting"] = waiting(connection, gated)
     counts["picked"] = len(rows)
     counts["picked_not_board"] = sum(1 for r in rows if not str(r[5] or "").startswith("web:"))      # D248 read-back: picked jobs not from an employer-board scan (counts only)
     listed = _listed(client, [r[1] for r in rows if r[0] not in known], counts) if live else None
@@ -316,4 +325,5 @@ def run(limit, live, environ=os.environ):
         counts["readback"] = readback.run(client, live)
         counts["failed"] += counts["readback"].get("failed", 0)                       # D212: a page that does not read back fails the stage (PUBLISH_RECORDS_FAILED), never a green run
     counts["calls"] = client.calls
+    counts["left"] = max(counts.get("waiting", 0) - counts["created"] - counts["duplicate"], 0)      # READY jobs still waiting for a page after this run
     return counts
