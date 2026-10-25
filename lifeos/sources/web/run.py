@@ -253,7 +253,7 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
     unread = sum(s["id"] not in states for s in sources)
     states = {k: v for k, v in states.items() if k not in forced}           # a forced read is a full read: no validators, no skip
     counts = {"lane": lane, "sources": len(sources), "due": len(due), "complete": 0, "failed": 0, "added": 0, "changed": 0, "unchanged": 0,
-              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "not_modified": 0, "same_frontier": 0}
+              "removed": 0, "suppressed": 0, "admit": 0, "pending": 0, "why": {}, "failed_why": {}, "failed_kind": {}, "failed_ids": [], "dead_ids": [], "not_modified": 0, "same_frontier": 0}
     if select:
         counts["unread"] = unread                                               # D217: boards never read (before this run)
     asked = [{**s, "if_etag": states[s["id"]].get("etag"), "if_modified": states[s["id"]].get("last_modified")}
@@ -307,6 +307,8 @@ def run(limit, live, now=None, lister_fn=lister.list_source, repo=None, sources=
             counts["failed_kind"][kind] = counts["failed_kind"].get(kind, 0) + 1          # the board's ATS family
             if len(counts["failed_ids"]) < 10:
                 counts["failed_ids"].append(source["id"])                                 # a public registry id (the source list is committed), never a job
+            if outcome.reason == "not_found" and failures + 1 >= limits.BOARDS_DEAD_AFTER and len(counts["dead_ids"]) < limits.BOARDS_DEAD_IDS_MAX:
+                counts["dead_ids"].append(source["id"])                                   # Oct 25 2026: the boards that keep answering not_found, for the skip-list review (ids only)
         else:
             counts["complete"] += 1
             budget -= len(outcome.admit)

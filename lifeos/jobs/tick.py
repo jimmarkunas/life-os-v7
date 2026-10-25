@@ -43,7 +43,7 @@ PLAN = (
     Step("audit", 180),                         # the full pass after publish: published pages, duplicates and Exclude clean-up, so it never delays the Ledger
     Step("expire-holds", 120),
     Step("finalize", 180, 300, module="lifeos.sources.newsletters.finalize"),     # its own default; the workflow step never passed one
-    Step("boards", 720, 600, bulk=True),
+    Step("boards", 720, 900, bulk=True),
     Step("web-scale-up", 300, 12, bulk=True),
     Step("web-titlewatch", 240, bulk=True),
     Step("discover-jobs", 300, 12, bulk=True),

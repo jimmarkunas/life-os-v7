@@ -95,6 +95,42 @@ SOURCES = [{"id": f"gh-b{i}", "company": f"B{i}", "tier": "employer", "kind": "g
 SEED = [{**SOURCES[0], "id": f"gh-s{i}", "slug": f"s{i}", "extra": False} for i in range(5)]
 
 
+class DeadBoards(unittest.TestCase):
+    """Oct 25 2026: a board that keeps answering not_found is listed by id (counts only) for a skip-list review; nothing is skipped by the pass itself."""
+
+    def pass_at(self, repo, hours, reason, sources):
+        def lister_fn(source):
+            return lister.Listing(lister.FAILED, reason=reason) if source["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, [])
+        return boards.run(900, True, NOW + timedelta(hours=hours), lister_fn, repo, sources)
+
+    def test_a_board_is_listed_only_after_repeated_not_found(self):
+        repo, sources = MemRepo(), SEED
+        listed = []
+        for n in range(1, 8):                                                   # one read a day: the retry timer is capped at the 24 h refresh
+            out = self.pass_at(repo, 24 * n * 3, "not_found", sources) if n > 1 else None
+            if n == 1:
+                boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.FAILED, reason="not_found") if s["id"] == "gh-s1" else lister.Listing(lister.COMPLETE, []),
+                                repo, sources, {"BOARDS_BACKFILL": "on"})
+                continue
+            listed.append((repo.state["gh-s1"]["failures"], out["dead_ids"]))
+        self.assertEqual([ids for _, ids in listed if ids], [["gh-s1"]] * len([1 for f, _ in listed if f >= limits.BOARDS_DEAD_AFTER]))
+        self.assertTrue(all(ids == [] for f, ids in listed if f < limits.BOARDS_DEAD_AFTER))        # not before BOARDS_DEAD_AFTER failures in a row
+        self.assertEqual(sum(1 for _, ids in listed if ids), 3)                                       # failures 5, 6 and 7 of the 7 reads
+
+    def test_other_failures_and_healthy_boards_are_never_listed(self):
+        repo = MemRepo()
+        boards.backfill(450, True, NOW, lambda s: lister.Listing(lister.COMPLETE, []), repo, SEED, {"BOARDS_BACKFILL": "on"})
+        repo.state["gh-s1"]["failures"] = 9
+        out = self.pass_at(repo, 24 * 3, "http_500", SEED)                                           # a long run of 500s, not not_found
+        self.assertEqual((out["failed"], out["dead_ids"]), (1, []))
+
+    def test_the_list_is_capped_and_the_hourly_cap_matches_the_tick_step(self):
+        from lifeos.jobs import tick
+        self.assertEqual(limits.BOARDS_DEAD_IDS_MAX, 600)
+        step = next(s for s in tick.PLAN if s.name == "boards")
+        self.assertEqual((step.limit, limits.BOARDS_PER_RUN), (900, 900))                            # the stage reads min(step limit, cap): both must say 900
+
+
 class Backfill(unittest.TestCase):
     """D217: a seed board's first read belongs to the hibernatable backfill; the hourly pass only re-reads boards read before."""
     ON = {"BOARDS_BACKFILL": "on"}
