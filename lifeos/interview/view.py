@@ -46,6 +46,7 @@ class Opportunity:
     contacts: tuple = ()                         # E10: (name, why) from the job page's own Network Leads, read by the source adapter
     contacts_state: str | None = None            # None = no Ledger row linked; "linked" | "none" | "unreadable"
     done: tuple = ()                             # E05: (action key, YYYY-MM-DD) completion lines the Close screen recorded in this page's fold, carried forward
+    decisions: tuple = ()                        # Jim, Oct 25: the Close / Reopen record lines in this page's fold (template.DECISION_LINE), carried forward as written
     page_id: str | None = None                   # E05: this opportunity page's own id, once it exists (the Mark Complete link names it)
     close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
     resume: tuple = ()                           # E10: (file name, stable link or None) from the exact row's Submitted Résumé field

@@ -500,7 +500,10 @@ class BoundaryTests(unittest.TestCase):
         text = (self.ROOT / "lifeos/hiring/decision.py").read_text()
         self.assertEqual(len(re.findall(r"update_page_properties\(", text)), 1)
         self.assertEqual(re.findall(r"update_page_properties\(row\[\"id\"\], \{(\w+): .*?, (\w+): ", text), [("DECISION", "HISTORY")])
-        self.assertEqual(re.findall(r"client\.call_once\(\"(\w+)\", f\"(/[a-z]+/\{want\['id'\]\}/[a-z]+)\"", text), [("PATCH", "/blocks/{want['id']}/children"), ("POST", "/pages/{want['id']}/move")])
+        self.assertEqual(re.findall(r"client\.call_once\(\"(\w+)\", f\"([^\"]+)\"", text),                     # Jim, Oct 25: the record line goes in the page's own fold, then is set to its label in place
+                         [("PATCH", "/blocks/{fold or want['id']}/children"), ("POST", "/pages/{want['id']}/move"), ("PATCH", "/blocks/{pending[0]}")])
+        self.assertIn('pending = (bid, kind)', text)                                                # the line set in place is only ever this operation's own Pending record
+        self.assertIn('if m.group(1) and m.group(4) == want["op"]', text)
         for banned in ("tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira", '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": "):
             self.assertNotIn(banned.lower(), text.lower(), banned)
         self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/hiring.py").read_text())

@@ -14,6 +14,7 @@ from . import models as M
 
 ACTION, REOPEN, REJECTED, PASSED = "CONFIRM_REJECTED", "REOPEN", "Rejected", "Passed"
 ACTIVE_TITLE, RETIRED_TITLE = "Active Opportunities", "Retired Opportunities"      # the container pages under the Hiring Pipeline page that the page reader already understands (D189)
+FOLD = "⚙️ LIFE OS"                                                                    # the opportunity page writer's fold title (a contract test holds them equal; this module imports no page writer)
 MOVE_VERSION = "2026-03-11"                                                          # the Move page API's documented Notion-Version; the pinned version is not assumed to carry it
 RECORD = re.compile(r"Hiring decision \(V7\) · (Pending )?(" + "|".join(map(re.escape, M.OUTCOMES + ("Reopened",))) + r") · (\d{4}-\d{2}-\d{2}) · .+ · op ([A-Za-z0-9_-]{8,64})\Z")
 DECISION, HISTORY, DISMISSED = "Hiring Decision", "Hiring Decision History", "Dismissed Outcome Ref"
@@ -187,12 +188,18 @@ def _digest(block):
     return block.get("id"), kind, text
 
 
+def _fold(tops):
+    """The id of the page's ⚙️ LIFE OS fold (its first block, a toggle with that exact title), or None for a page V7 did not write."""
+    return tops[0][0] if tops and tops[0][1] == "toggle" and tops[0][2] == FOLD else None
+
+
 def move_page(client, root_id, request, live, now, parents, known=None):
     """Notes-only: the ONE exact opportunity page moves into the existing Retired Opportunities container (Confirm Rejected), or back into the Active one (Reopen). Placement is the D189 closure signal and the only
-    status: the compiler and renderer read the section a page is in, never any text on it. Two append-only RECORD callouts (annotations, read only here for idempotency, never as status) keep the confirmed reason and
-    date: `Pending` (intent) before the move and the plain label after the move is verified. States, from what is on the page: no record = nothing written; Pending only = partially applied; Pending + plain label = complete.
+    status: the compiler and renderer read the section a page is in, never any text on it. One RECORD line per operation (an annotation, read only here for idempotency, never as status) keeps the confirmed reason and
+    date: written `Pending` (intent) before the move and set to the plain label after the move is verified. It goes inside the page's ⚙️ LIFE OS fold, never below Jim's Notes (Jim, Oct 25); a page without
+    the fold keeps it as a callout at its end, and records an older version wrote as callouts still count. States, from what is on the page: no record = nothing written; Pending only = partially applied; the plain label = complete.
     A different operation while any Pending is open is `DECISION_PENDING`; the same operation reconciles (only the missing steps run, no record twice). A move is attempted only while the page is still in the expected
-    section (checked on both fetches against `parents()`, the page reader: column or container) and its read-back is checked before the plain label is written. Read-back covers the page's parent, title and its TOP-LEVEL
+    section (checked on both fetches against `parents()`, the page reader: column or container) and its read-back is checked before the plain label is written. Read-back covers the page's parent, title, its fold's lines and its TOP-LEVEL
     blocks (ids, types, plain text) before and after; nested content is not compared (Notion's move carries the page with its content). `known`: the caller's own complete page read in this
     same request (the Close screen's), used for the first section check only; the check immediately before the write always reads `parents()` again (Jim, Oct 24: confirm too slow)."""
     want = parse(request)
@@ -211,7 +218,9 @@ def move_page(client, root_id, request, live, now, parents, known=None):
         company, role = names.split_title("".join(r.get("plain_text", "") for r in ((page.get("properties") or {}).get("title") or {}).get("title") or []))
         if page.get("archived") or page.get("in_trash") or _page_id(page.get("id")) != want["id"] or not M.same(company, role, want["company"], want["role"]):
             raise fail("STALE_IDENTITY")
-        return page, [_digest(b) for b in listing(client, want["id"])]
+        tops = [_digest(b) for b in listing(client, want["id"])]
+        fold = _fold(tops)
+        return page, tops, fold, ([_digest(b) for b in listing(client, fold)] if fold else [])
 
     def parent(page):
         return _page_id((page.get("parent") or {}).get("page_id")) if (page.get("parent") or {}).get("type") == "page_id" else None
@@ -220,13 +229,15 @@ def move_page(client, root_id, request, live, now, parents, known=None):
         here = [p for p in (parents() if listed is None else listed) if _page_id(p["id"]) == want["id"]]
         if len(here) != 1 or bool(here[0].get("retired")) != reopen:
             raise fail("STALE_SOURCE")                                                                  # moved out of the section it was routed from (a column under its heading, or its container)
-    page, kids = fetch()
-    marks, closed_as = {}, None
-    for _, _, text in kids:
+    page, kids, fold, inner = fetch()
+    marks, closed_as, pending = {}, None, None
+    for bid, kind, text in kids + inner:                                                                 # older pages keep their records as top-level callouts: they still count
         m = RECORD.match(text or "")
         if m:
             marks.setdefault(m.group(4), set()).add(("pending" if m.group(1) else "done", m.group(2)))
             closed_as = m.group(2) if not m.group(1) and m.group(2) != "Reopened" else closed_as
+            if m.group(1) and m.group(4) == want["op"]:
+                pending = (bid, kind)
     mine = marks.get(want["op"], set())
     if any(lab != label for _, lab in mine):
         raise fail("CONFLICT")
@@ -244,40 +255,47 @@ def move_page(client, root_id, request, live, now, parents, known=None):
         in_source(known)
     if not live:
         return {"status": "dry_run", "verified": False, "route": "notes", "entries": len(marks)}
-    again, kids_again = fetch()
-    if again.get("last_edited_time") != page.get("last_edited_time") or kids_again != kids or parent(again) != parent(page):
+    again, kids_again, fold_again, inner_again = fetch()
+    if again.get("last_edited_time") != page.get("last_edited_time") or (kids_again, fold_again, inner_again) != (kids, fold, inner) or parent(again) != parent(page):
         raise fail("CONCURRENT_CHANGE")
     if parent(again) != dest:
         in_source()                                                                                      # still in the expected section immediately before the write
-    new = []
-
-    def append(text):
-        client.call_once("PATCH", f"/blocks/{want['id']}/children", {"children": [{"type": "callout", "callout": {"rich_text": rich_text(text), "icon": {"type": "emoji", "emoji": "📌"}, "color": "gray_background"}}]})
-        new.append(("callout", text))
+    # Jim, Oct 25: a V7 page's records go in its ⚙️ LIFE OS fold, never below Jim's Notes; a page without the fold (a person's own page) keeps them as callouts at its end.
+    # One line per operation: `Pending` (intent) before the move, the same line set to the plain label once the move is verified.
+    kind = "paragraph" if fold else "callout"
     tail = f"{now.date().isoformat()} · {want['reason']} · op {want['op']}"
+    pending_text, done_text = f"Hiring decision (V7) · Pending {label} · {tail}", f"Hiring decision (V7) · {label} · {tail}"
+    body = (lambda text: {"rich_text": rich_text(text)}) if fold else (lambda text: {"rich_text": rich_text(text), "icon": {"type": "emoji", "emoji": "📌"}, "color": "gray_background"})
     try:
         if not mine:
-            append(f"Hiring decision (V7) · Pending {label} · {tail}")
+            client.call_once("PATCH", f"/blocks/{fold or want['id']}/children", {"children": [{"type": kind, kind: body(pending_text)}]})
         if parent(page) != dest:
             client.call_once("POST", f"/pages/{want['id']}/move", {"parent": {"type": "page_id", "page_id": dest}}, version=MOVE_VERSION)
     except NotionError:
         raise fail("WRITE_FAILED") from None
     try:
-        moved, _ = fetch()
+        moved, kids_moved, _, inner_moved = fetch()
     except NotionError:
         raise fail("READBACK_FAILED") from None
     if parent(moved) != dest:
         raise fail("READBACK_MISMATCH")                                                                  # the move did not happen: no completion record is written, the page stays Pending
+    if not pending:
+        lines = [d for d in (inner_moved if fold else kids_moved) if d[2] == pending_text]
+        if len(lines) != 1:
+            raise fail("READBACK_MISMATCH")
+        pending = (lines[0][0], lines[0][1])
     try:
-        append(f"Hiring decision (V7) · {label} · {tail}")
+        client.call_once("PATCH", f"/blocks/{pending[0]}", {pending[1]: {"rich_text": rich_text(done_text)}})
     except NotionError:
         raise fail("WRITE_FAILED") from None
     try:
-        back, kids_back = fetch()
+        back, kids_back, _, inner_back = fetch()
         landed = [m for m in listing(client, root_id) if m.get("type") == "child_page" and (m.get("child_page") or {}).get("title") == dest_title]
     except NotionError:
         raise fail("READBACK_FAILED") from None
-    if parent(back) != dest or len(landed) != 1 or kids_back[:len(kids)] != kids or [(k, t) for _, k, t in kids_back[len(kids):]] != new:
+    def expect(region, written):
+        return [(k, done_text if b == pending[0] else t) for b, k, t in region] + ([(kind, done_text)] if written and not mine else [])
+    if parent(back) != dest or len(landed) != 1 or [(k, t) for _, k, t in inner_back] != expect(inner, bool(fold)) or [(k, t) for _, k, t in kids_back] != expect(kids, not fold):
         raise fail("READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "route": "notes", "entries": len(marks | {want["op"]: 1})}
 

@@ -12,7 +12,7 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, RoundQuery, Scan, State
-from .template import DONE_LINE, DONE_MAX, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
+from .template import DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -149,9 +149,15 @@ def done_lines(lines):
     return tuple(found.items())[-DONE_MAX:]
 
 
+def decision_lines(lines):
+    """Jim, Oct 25: the decision records (Close, Reopen) in a fold, as written, oldest first; the newest DECISION_MAX are kept."""
+    return tuple(t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if DECISION_LINE.fullmatch(t))[-DECISION_MAX:]
+
+
 def _undone(nodes):
-    """The region's nodes without completion lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
-    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes if not DONE_LINE.fullmatch(n.get("text", ""))]   # shape kept: a page without completion lines digests exactly as before
+    """The region's nodes without completion or decision lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
+    return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes
+            if not (DONE_LINE.fullmatch(n.get("text", "")) or DECISION_LINE.fullmatch(n.get("text", "")))]   # shape kept: a page without these lines digests exactly as before
 
 
 def machine_region(client, page_id, context=None):
@@ -215,7 +221,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         prefold = machine is not None
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
-    current = replace(current, done=done_lines(lines), page_id=page_id)   # E05: completions recorded on the Close screen are carried into the rewrite
+    current = replace(current, done=done_lines(lines), decisions=decision_lines(lines), page_id=page_id)   # E05: completions and decisions recorded on the Close screen are carried into the rewrite
     sections, source = rendered(current)
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     if found:
