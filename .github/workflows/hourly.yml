@@ -826,7 +826,7 @@ jobs:
           NOTION_API_TOKEN: ${{ steps.bws_finish.outputs.NOTION_API_TOKEN || steps.bws_finish_retry.outputs.NOTION_API_TOKEN }}
           OPEN_JOBS_CONTACT: ${{ steps.bws_finish.outputs.OPEN_JOBS_CONTACT || steps.bws_finish_retry.outputs.OPEN_JOBS_CONTACT }}
           TINYFISH_API_KEY: ${{ steps.bws_finish.outputs.TINYFISH_API_KEY || steps.bws_finish_retry.outputs.TINYFISH_API_KEY }}
-        run: python -m lifeos.run enrich --limit 150 $([ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run enrich --limit 450 $([ "$LIVE" = "true" ] && echo --live)
       - id: fit
         continue-on-error: true
         name: Step 6a - fit scoring (deterministic, private profile)
