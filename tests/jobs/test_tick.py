@@ -29,7 +29,7 @@ class TickTests(unittest.TestCase):
 
     def test_the_plan_runs_the_fast_path_before_any_bulk_discovery(self):
         names = [s.name for s in tick.PLAN]
-        fast = [names.index(n) for n in ("resolve-jobright", "resolve-linkedin", "enrich", "fit", "publish", "finalize")]
+        fast = [names.index(n) for n in ("resolve-jobright", "resolve-linkedin", "publish", "enrich", "fit", "publish-fresh", "finalize")]
         bulk = [i for i, s in enumerate(tick.PLAN) if s.bulk]
         self.assertEqual(fast, sorted(fast))
         self.assertLess(max(fast), min(bulk))
@@ -38,11 +38,25 @@ class TickTests(unittest.TestCase):
         self.assertLess(names.index("finalize"), names.index("boards-backfill"))     # D217: a first pass never takes time from the hourly work
         self.assertFalse({"sweep", "extract"} & set(names))                 # the prep job sweeps and extracts on every run
 
-    def test_the_gate_runs_just_before_publish_and_the_full_audit_just_after(self):
+    def test_the_gate_runs_just_before_each_publish_and_the_full_audit_just_after(self):
         """LIFE-76: nothing failing the guards reaches the Ledger, and the full pass (page reads and trashes) never delays it."""
         names = [s.name for s in tick.PLAN]
         self.assertEqual(names[names.index("publish") - 1], "audit-ready")
-        self.assertEqual(names[names.index("publish") + 1], "audit")
+        self.assertEqual(names[names.index("publish-fresh") - 1], "audit-fresh")
+        self.assertEqual(names[names.index("publish-fresh") + 1], "audit")
+        from lifeos import run
+        from lifeos.jobs import audit
+        with mock.patch.object(audit, "run", return_value={}) as gate:
+            run.STAGES["audit-fresh"](60, True)
+        gate.assert_called_once_with(2000, True, ready_only=True)                   # the seconds-long READY gate, never the full pass
+        self.assertEqual(run.STAGES["publish-fresh"].target, run.STAGES["publish"].target)
+
+    def test_jobs_already_scored_are_published_before_new_descriptions_are_read(self):
+        """LIFE-76 (Jim, Oct 25: publish first): the noon tick spent 2.3 of its 7.5 minutes to the first page in enrich."""
+        names = [s.name for s in tick.PLAN]
+        self.assertLess(names.index("publish"), names.index("enrich"))
+        self.assertLess(names.index("fit"), names.index("publish-fresh"))
+        self.assertFalse(any(s.bulk for s in tick.PLAN if s.name in ("audit-fresh", "publish-fresh")))
         self.assertFalse(next(s for s in tick.PLAN if s.name == "audit").bulk)      # the full pass is never skipped for lack of time
 
     def test_the_drain_pass_runs_last_gated_and_inside_the_ledger_caps(self):

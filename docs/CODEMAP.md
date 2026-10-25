@@ -16,6 +16,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `attention` -> `lifeos.attention.stage:run`
 - `attention-card` -> `lifeos.attention.card:run`
 - `audit` -> `lifeos.jobs.audit:run`
+- `audit-fresh` -> `lifeos.jobs.audit:run`
 - `audit-ready` -> `lifeos.jobs.audit:run`
 - `bills-card` -> `lifeos.bills.card:run`
 - `bills-paid` -> `lifeos.bills.paid:run`
@@ -74,6 +75,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `outlook-probe` -> `lifeos.outlook.stage:probe`
 - `probe` -> `lifeos.probe:run`
 - `publish` -> `lifeos.jobs.publish:run`
+- `publish-fresh` -> `lifeos.jobs.publish:run`
 - `purge` -> `lifeos.run:_purge`
 - `recruiter-outreach` -> `lifeos.recruiters.outreach_card:run`
 - `recruiters` -> `lifeos.recruiters.stage:run`

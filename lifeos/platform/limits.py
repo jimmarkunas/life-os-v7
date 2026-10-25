@@ -21,7 +21,7 @@ NOTION_GAP_SECONDS = 0.4                 # ours: 2.5/s
 NOTION_MAX_CHILD_BLOCKS = 100            # per create/append call
 NOTION_MAX_RICH_TEXT_CHARS = 2000        # per rich_text item
 NOTION_PAGE_SIZE = 100                   # query page size
-NOTION_PER_RUN = 60                      # ours: pages created per run
+NOTION_PER_RUN = 120                     # ours: pages created per call; Jim raised it from 60 on Oct 25 2026 so the drain pass outpaces new READY jobs
 AUDIT_PAGES_PER_RUN = 40                 # ours: pages the precision audit reads and trashes per run (two calls each), so it ends inside its 180 s tick budget (D246)
 BILLS_PAID_PER_RUN = 20                  # paid commands are individually read back and verified
 
@@ -58,7 +58,7 @@ BOARDS_DEAD_AFTER = 5                    # a board that has answered not_found t
 BOARDS_DEAD_IDS_MAX = 600                # the most ids one pass prints
 BOARDS_REFRESH_HOURS = 24                # a COMPLETE board that lists no target job is due again after this (also caps a failing board's retry)
 BOARDS_HOT_HOURS = 6                     # a board that lists a target job is due again after this, like a priority board
-BOARDS_INGEST_PER_RUN = 100              # postings admitted per run; the rest stay PENDING and drain next run
+BOARDS_INGEST_PER_RUN = 250              # postings admitted per run; the rest stay PENDING and drain next run. Jim raised it from 100 on Oct 25 2026 (1,294 pending at noon)
 BOARDS_WORKERS = 4                       # most seed boards share the Greenhouse, Ashby and Lever API hosts
 BOARDS_RATE_LIMIT_STOP = 3               # this many 429 answers from one ATS stops reading that ATS for the run
 BOARDS_BACKFILL_PER_RUN = 450            # D217: never-read seed boards a backfill run reads (only when BOARDS_BACKFILL=on): ~10,500 drain in about a day of ticks
