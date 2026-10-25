@@ -409,6 +409,14 @@ class Train(unittest.TestCase):
         self.assertEqual(self.judge(self.JOBS, ["lifeos/jobs/hiring_pipeline.py", "tests/jobs/test_x.py"]), [])
         self.assertEqual(self.judge(self.JOBS.replace("SYNTHETIC PASS", "LIVE READ-BACK"), ["lifeos/interview/create.py"]), [])
 
+    def test_a_handoffs_only_pr_needs_no_product_path_but_still_its_key_and_evidence(self):
+        """Oct 25 2026 (#552): an exemption-only PR could never pass the product rule its exemption lifts; it stays a protected path."""
+        self.assertEqual(self.judge(self.JOBS, [G.HANDOFFS]), [])
+        self.assertEqual([v.split(":")[0] for v in self.judge("Lane: career-v7\nEvidence: CODE LANDED", [G.HANDOFFS])], ["TRAIN_JIRA_KEY_MISSING"])
+        self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [G.HANDOFFS, "docs/MASTER_ROADMAP.md"])], ["TRAIN_NO_PRODUCT_CHANGE"])
+        self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [G.OWNERSHIP])], ["TRAIN_NO_PRODUCT_CHANGE"])     # only the handoffs file
+        self.assertEqual([v.split(":")[0] for v in self.judge(self.JOBS, [])], ["TRAIN_NO_PRODUCT_CHANGE"])                 # no files is not governance-only
+
     def test_the_issue_must_be_one_of_the_trains(self):
         for body in ("Lane: career-v7\nEvidence: CODE LANDED", "Lane: career-v7\nJira: LIFE-23\nEvidence: CODE LANDED", "Lane: career-v7\nSee LIFE-59\nEvidence: CODE LANDED"):
             self.assertEqual([v.split(":")[0] for v in self.judge(body, ["lifeos/jobs/a.py"])], ["TRAIN_JIRA_KEY_MISSING"], body)

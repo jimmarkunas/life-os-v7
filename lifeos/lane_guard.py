@@ -164,7 +164,8 @@ def train_check(trains, exemptions, pr, files, today=None):
     keys = jira_keys(body)
     if not keys & set(train["issues"]):
         bad.append(f"TRAIN_JIRA_KEY_MISSING: name one of the {train['name']} train's issues as `Jira: LIFE-n` in the PR body")
-    if not any(fnmatch.fnmatchcase(f["path"], g) for f in files for g in train["product"]):
+    governance_only = bool(files) and all(f["path"] == HANDOFFS for f in files)     # Oct 25 2026: an exemption-only PR could never pass the rule its exemption lifts; it is still a protected path
+    if not governance_only and not any(fnmatch.fnmatchcase(f["path"], g) for f in files for g in train["product"]):
         bad.append(f"TRAIN_NO_PRODUCT_CHANGE: no {train['name']} product path changed; Platform-, test- or docs-only work is not train delivery (an approved repair needs an exemption in {HANDOFFS})")
     levels = re.findall(r"^Evidence:[ \t]*(.+?)[ \t\r]*$", body, re.M)
     if any(re.search(r"\bJIM ACCEPTED\b", level, re.I) for level in levels) or re.search(r"^(?:Status|Acceptance):[ \t]*JIM ACCEPTED\b", body, re.I | re.M):
