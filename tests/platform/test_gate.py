@@ -1,5 +1,6 @@
 import datetime as dt
 import unittest
+from unittest import mock
 
 from lifeos.platform import gate
 
@@ -80,6 +81,32 @@ class Gate(unittest.TestCase):
         self.assertTrue(gate.stale([run(1, "2026-10-01T13:00:00Z", updated="2026-10-01T13:50:00Z")], NOW, 9))
         self.assertFalse(gate.stale([run(1, "2026-10-01T16:00:00Z", updated="2026-10-01T16:10:00Z")], NOW, 9))
         self.assertTrue(gate.stale([run(1, "2026-10-01T16:00:00Z", "failure")], NOW, 9))
+
+
+class GapVariable(unittest.TestCase):
+    """Drain mode lowers the gap between ticks with the repository variable GATE_MIN_GAP_MINUTES; anything unusable leaves the 50-minute default."""
+
+    def test_the_default_is_fifty_minutes(self):
+        self.assertEqual(gate.min_gap({}), 50)
+        self.assertEqual(gate.min_gap({"GATE_MIN_GAP_MINUTES": ""}), 50)
+
+    def test_a_whole_number_from_10_to_50_is_used(self):
+        for value, expected in (("20", 20), (" 20 ", 20), ("10", 10), ("50", 50)):
+            with self.subTest(value=value):
+                self.assertEqual(gate.min_gap({"GATE_MIN_GAP_MINUTES": value}), expected)
+
+    def test_anything_else_keeps_the_default(self):
+        for value in ("9", "0", "-5", "51", "120", "20.5", "abc", "20m"):
+            with self.subTest(value=value):
+                self.assertEqual(gate.min_gap({"GATE_MIN_GAP_MINUTES": value}), 50)
+
+    def test_decide_follows_the_variable(self):
+        newest = [run(1, "2026-10-01T16:37:00Z")]                                  # 30 minutes before NOW
+        with mock.patch.dict("os.environ", {"GATE_MIN_GAP_MINUTES": ""}):
+            self.assertEqual(gate.decide(newest, NOW, 9), "skip")
+        with mock.patch.dict("os.environ", {"GATE_MIN_GAP_MINUTES": "20"}):
+            self.assertEqual(gate.decide(newest, NOW, 9), "run")
+            self.assertEqual(gate.decide([run(1, "2026-10-01T16:52:00Z")], NOW, 9), "skip")      # 15 minutes: still too soon
 
 
 class Tick(unittest.TestCase):
