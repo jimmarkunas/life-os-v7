@@ -112,6 +112,22 @@ class Bridge(unittest.TestCase):
         self.assertEqual(out["code"], "MATCH_NONE")
         self.assertEqual(seen, ["sync", "list"])
 
+    def test_a_stop_at_the_match_carries_diagnostic_counts_not_text(self):
+        out = go_run(oracle([MEETING]), FakeNotion(), rounds=(granola_match.Round("other", DAY, "Elsewhere Inc", "Unrelated Role", ""),))
+        self.assertEqual(out["code"], "MATCH_NONE")
+        self.assertEqual({k: out["counts"][k] for k in ("rounds_on_day", "signal_company", "signal_role", "signal_interviewer", "signal_domain")},
+                         {"rounds_on_day": 1, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+        self.assertNotIn("Elsewhere", json.dumps(out))
+
+    def test_rounds_counts_what_it_scanned_including_undated_rounds(self):
+        from lifeos.interview.models import Child, Parent, Scan
+        parent = Parent("pp", "Acme Corp — Program Manager", True)
+        kids = Scan((Child("c1", "pp", "2026-10-13", None, 1, True), Child("c2", "pp", None, None, 2, True)), True)
+        counts = {}
+        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((parent,), True)), mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+            found = gb.rounds(None, {"HIRING_PIPELINE_PAGE_ID": "x"}, None, counts)
+        self.assertEqual((len(found), counts), (1, {"opportunities": 1, "rounds_undated": 1}))
+
     def test_a_contract_failure_writes_and_purges_nothing(self):
         seen, notion = [], FakeNotion()
         out = go_run(oracle([MEETING], transcript=json.dumps({"transcript": []}), sink=seen), notion)
