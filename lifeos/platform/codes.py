@@ -19,10 +19,11 @@ class Code(NamedTuple):
     meaning: str
     action: str
     severity: str = "none"
+    public: bool = False   # reasons only: may be printed in a public log as itself (alertstate.REASONS is built from these); every other stored reason prints as "other"
 
 
-def _r(stage, klass, attempt, meaning, action, severity="none"):
-    return Code(stage, klass, attempt, meaning, action, severity)
+def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
+    return Code(stage, klass, attempt, meaning, action, severity, public)
 
 
 CODES = {
@@ -722,6 +723,109 @@ NOT_CODES = frozenset((            # upper-case names that are configuration, no
     "V7_ARCHIVE_TOKEN", "V7_CLOSE_BASE_URL", "V7_CLOUD_FIT", "V7_CLOUD_FIT_BACKLOG_BUDGET", "V7_CLOUD_FIT_BACKLOG_MAX", "V7_CLOUD_FIT_BACKLOG_PAGE",
     "V7_CLOUD_FIT_PARALLEL", "V7_CLOUD_FIT_PER_RUN", "V7_CLOUD_FIT_PROFILE_REF", "V7_FIT_GATE", "WEB_FORCE", "WEEKLY_REVIEW_PAGE_ID",
 ))
+
+
+# --- Stored reasons (lowercase): the words written to a job's `unresolved_reason` and `admission_reason`. Not outcome codes: they say why a job sits where it sits.
+# `public` marks the ones a counts-only public log may print as themselves; N stands for a number ("http_N" is http_403, http_429 ...).
+def _p(stage, klass, attempt, meaning, action):
+    return _r(stage, klass, attempt, meaning, action, public=True)
+
+
+REASONS = {
+    "none": _p("jobs", "state", False, "The job has no reason stored.", "None."),
+    "unknown": _p("jobs", "state", False, "The stored reason is not one of the known words.", "None."),
+    "http_N": _p("enrich", "retry", True, "The job's page answered with an HTTP error (the number replaces N).", "Retried by the daily slot; 403 and 429 back off."),
+    "link_mismatch": _p("enrich", "retry", True, "The page at the link is not this job.", "Retried once with the ATS reader, then held."),
+    "no_job_id": _p("enrich", "retry", True, "The link names no job id, so the vacancy cannot be proven.", "Retried; held if it stays unproven."),
+    "listing_url": _p("enrich", "retry", True, "The link is a list of jobs, not one job.", "Retried; held if it stays a list."),
+    "jd_thin": _p("enrich", "blocked", True, "The description is too short to judge.", "Waits for the daily reset; a better page would clear it."),
+    "jd_template": _p("enrich", "blocked", True, "The description is only the site's boilerplate.", "Waits for the daily reset."),
+    "jd_listing": _p("enrich", "blocked", True, "The description is a list of other jobs.", "Waits for the daily reset."),
+    "description_empty": _p("enrich", "blocked", True, "The page has no description.", "Waits for the daily reset."),
+    "description_empty_tf": _p("enrich", "blocked", True, "The page and the TinyFish read both gave no description.", "Waits for the daily reset."),
+    "closed": _p("enrich", "terminal", False, "The posting is closed.", "None."),
+    "hold_expired": _p("jobs", "terminal", False, "The job sat on hold past the limit and was excluded.", "None."),
+    "recovery_retry": _p("jobs", "retry", False, "The job was released from hold for another try.", "None."),
+    "unresolved_after_recovery": _p("jobs", "terminal", False, "The link stayed unresolved after the recovery try.", "None."),
+    "lane_exclude": _p("fit", "terminal", False, "The lane policy excluded the job.", "None; a policy change can requeue it."),
+    "screen_pay": _p("screen", "terminal", False, "The posted pay is below the floor.", "None."),
+    "in_ledger": _p("publish", "terminal", False, "A page for this job already exists in the Ledger.", "None."),
+    "same_opening": _p("publish", "terminal", False, "Another job is the same opening.", "None."),
+    "repost": _p("jobs", "terminal", False, "The job is a repost of an earlier one.", "None."),
+    "repost_ambiguous": _p("jobs", "blocked", False, "Two earlier jobs could be the original.", "Resolve by hand if it matters."),
+    "dup_other_source": _p("jobs", "terminal", False, "Another source already has this job.", "None."),
+    "dup_of_final_url": _p("jobs", "terminal", False, "Another job has the same final link.", "None."),
+    "Fit_N_below_N": _p("fit", "terminal", False, "Fit scored the job below a floor (the numbers replace N).", "None."),
+    "audit_jd_thin": _p("audit", "blocked", False, "The precision audit found the description too thin.", "Waits for a better page."),
+    "audit_jd_template": _p("audit", "blocked", False, "The precision audit found only boilerplate.", "Waits for a better page."),
+    "audit_jd_listing": _p("audit", "blocked", False, "The precision audit found a list of jobs.", "Waits for a better page."),
+    "audit_url_listing_url": _p("audit", "blocked", False, "The precision audit found the link is a list of jobs.", "Waits for a real link."),
+    "audit_url_no_job_id": _p("audit", "blocked", False, "The precision audit found no job id in the link.", "Waits for a real link."),
+    "audit_url_root": _p("audit", "blocked", False, "The precision audit found the link is only a site root.", "Waits for a real link."),
+    "audit_url_workable_no_account": _p("audit", "blocked", False, "A Workable link without the account name.", "Waits for a real link."),
+    "no_match_ambiguous+no_fit": _p("resolve", "blocked", True, "More than one board matched and Fit could not decide.", "Held."),
+    "no_match_ambiguous+no_result": _p("resolve", "blocked", True, "More than one board matched and the search found nothing.", "Held."),
+    "no_match_no_board+no_fit": _p("resolve", "blocked", True, "No board matched and Fit could not decide.", "Held."),
+    "no_match_no_board+no_result": _p("resolve", "blocked", True, "No board matched and the search found nothing.", "Held."),
+    "no_match_no_title+no_fit": _p("resolve", "blocked", True, "No title matched and Fit could not decide.", "Held."),
+    "no_match_no_title+no_result": _p("resolve", "blocked", True, "No title matched and the search found nothing.", "Held."),
+    # --- written by the code but not on the public allowlist until now (alertstate.REASONS never listed them, so a public log printed them as "other")
+    "excluded_fit": _r("fit", "terminal", False, "The precision audit excluded the job on Fit.", "None; the audit can revive it."),
+    "released_keep_list": _r("publish", "retry", False, "A keep-list role was released back to READY.", "None."),
+    "released_ledger": _r("publish", "retry", False, "A job was released because its Ledger page is gone.", "None."),
+    "requeued_age": _r("enrich", "retry", False, "A stale job was requeued after its age rule changed.", "None."),
+    "requeued_direct": _r("resolve", "retry", False, "A job was requeued for a direct-link read.", "None."),
+    "requeued_fit": _r("fit", "retry", False, "A job was requeued after Fit changed.", "None."),
+    "requeued_floor": _r("fit", "retry", False, "A job was requeued after the Fit floor changed.", "None."),
+    "requeued_linkedin": _r("resolve", "retry", False, "A LinkedIn job was requeued for another read.", "None."),
+    "retired_by_jim": _r("fit", "terminal", False, "Retired by hand on Jim's instruction.", "None."),
+    "title_watch_unseen": _r("titlewatch", "terminal", False, "The title watch no longer sees the role on the company's site.", "None."),
+    # --- lane and Fit admission reasons (lifeos/jobs/lanes.py PUBLIC_REASONS): the enumerated codes a public log prints for a stored admission reason
+    "route_negative": _r("lanes", "terminal", False, "The route for this role is negative.", "None."),
+    "route_unresolved": _r("lanes", "state", False, "The route for this role is unresolved.", "None."),
+    "fit_below_review_floor": _r("fit", "terminal", False, "Fit is below the Review floor.", "None."),
+    "fit_below_near_miss_with_open_question": _r("fit", "state", False, "Fit is a near miss with an open question.", "None."),
+    "fit_below_admit_floor": _r("fit", "state", False, "Fit is below the Admit floor, so the job is Review at best.", "None."),
+    "fit_below_admit_floor_keep_list": _r("fit", "state", False, "Fit is below the Admit floor, on the keep list.", "None."),
+    "fit_below_floor": _r("fit", "terminal", False, "Fit is below a floor.", "None."),
+    "fit_unscorable": _r("fit", "state", False, "Fit could not score the job.", "None."),
+    "thin_description": _r("fit", "state", False, "The description is too short to judge; Review from the apply link.", "None."),
+    "excluded_private_rule": _r("lanes", "terminal", False, "A private rule excluded the job (the rule's text is never printed).", "None."),
+    "pay_below_floor": _r("lanes", "terminal", False, "Explicit pay is below the floor.", "None."),
+    "title_only": _r("fit", "state", False, "Found by title search; the description was not read.", "None."),
+    "geography_not_qualifying": _r("lanes", "terminal", False, "The geography does not qualify.", "None."),
+    "geography_unresolved": _r("lanes", "state", False, "The geography is unresolved.", "None."),
+    "lane_disabled": _r("lanes", "terminal", False, "The lane is disabled.", "None."),
+    "market_mismatch": _r("lanes", "terminal", False, "The market is not the lane's market.", "None."),
+    "market_not_shown": _r("lanes", "state", False, "The market is not shown to be the lane's market.", "None."),
+    "market_unresolved": _r("lanes", "state", False, "The market is unresolved.", "None."),
+    "not_a_vacancy": _r("lanes", "terminal", False, "Not a vacancy: an open application.", "None."),
+    "not_in_london": _r("lanes", "terminal", False, "The role is not in London.", "None."),
+    "not_remote_hybrid_required": _r("lanes", "terminal", False, "Not remote: hybrid is required.", "None."),
+    "not_remote_onsite_required": _r("lanes", "terminal", False, "Not remote: onsite is required.", "None."),
+    "older_than_max_age": _r("lanes", "terminal", False, "The posting is older than the maximum age.", "None."),
+    "posting_date_future": _r("lanes", "state", False, "The posting date is in the future.", "None."),
+    "posting_date_unresolved": _r("lanes", "state", False, "The posting date is unresolved.", "None."),
+    "remote_assumed": _r("lanes", "state", False, "Remote is assumed.", "None."),
+    "vacancy_closed": _r("lanes", "terminal", False, "The vacancy is closed.", "None."),
+}
+
+
+def public_reasons():
+    """The reasons a counts-only public log may print as themselves, as the allowlist alertstate.REASONS uses."""
+    return frozenset(code for code, entry in REASONS.items() if entry.public)
+
+
+_SQL_REASON = re.compile(r"unresolved_reason\s*=\s*'([^'%]+)'")
+_SQL_REASON_IN = re.compile(r"unresolved_reason\s+(?:NOT\s+)?IN\s*\(([^)]*)\)")
+
+
+def sql_reasons(source):
+    """The literal reasons one module's SQL writes or tests on unresolved_reason: {reason}. A LIKE pattern is not a reason."""
+    found = set(_SQL_REASON.findall(source))
+    for group in _SQL_REASON_IN.findall(source):
+        found.update(re.findall(r"'([^'%]+)'", group))
+    return found
 
 
 def candidates(source):
