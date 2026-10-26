@@ -101,7 +101,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         for name, key in literal:
             with self.subTest(file=name, key=key):
                 self.assertIsNotNone(registry.lookup(key), f"{key} is not in lifeos/platform/alert_registry.py")
-        self.assertEqual(sorted(name for name, key in push_calls if key is None), ["lifeos/imessage/stage.py", "lifeos/platform/gate.py"])      # the two with a computed key: checked by their own tests below
+        self.assertEqual(sorted(name for name, key in push_calls if key is None), ["lifeos/platform/gate.py"])      # the one with a computed key: checked by its own test below
 
     def test_no_module_but_the_gateway_references_alerts_ntfy(self):
         self.assertEqual(sorted(set(findings(sources())[2])), [])
