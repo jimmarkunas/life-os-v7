@@ -165,6 +165,72 @@ def discover(search=None, sources=None):
     return out
 
 
+EMPTY_PHRASES = ("no open", "no current", "no vacanc", "no positions", "not currently hiring", "no jobs", "no roles")
+PUBLIC_BOARDS = {"workable": "https://apply.workable.com/{slug}/", "greenhouse": "https://boards.greenhouse.io/{slug}", "lever": "https://jobs.lever.co/{slug}",
+                 "ashby": "https://jobs.ashbyhq.com/{slug}", "teamtailor": "https://{slug}.teamtailor.com/jobs"}
+
+
+def zero_role_boards(fetcher=fetch, ids=None):
+    """Live check of the ready Scale-Up boards the lister read cleanly with ZERO roles: the lister's own count next to the sponsor's public page
+    (status, size, anchors, job markup, whether an 'no open positions' phrase is on it). Counts and flags only, no text. A zero is only proven empty
+    when the page loads, shows no job markup and (for a JS board) the API list agrees; anything else stays unproven."""
+    from lifeos.sources.web import lister                                                    # noqa: PLC0415
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["status"] != "ready" or (ids is not None and source["id"] not in ids):
+            continue
+        listing = lister.list_source(source, fetcher)
+        if ids is None and not (listing.status == lister.COMPLETE and not listing.jobs):
+            continue
+        url = source.get("url") or PUBLIC_BOARDS.get(source["kind"], "").format(slug=source.get("slug", ""))
+        facts = {"kind": source["kind"], "lister": f"{listing.status}:{listing.reason or ''}:{len(listing.jobs)}", "page": None}
+        if url:
+            got = fetcher(url, timeout=20, max_hops=3, max_bytes=3_000_000)
+            text = got.html or ""
+            low = text.lower()
+            facts["page"] = {"status": got.status, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)),
+                             "job_markup": len(re.findall(r"JobPosting|data-ui=\"job|jobPosting", text)), "empty_phrase": any(p in low for p in EMPTY_PHRASES)}
+        out[source["id"]] = facts
+    return out
+
+
+def no_board_sponsors(search=None):
+    """The enabled Scale-Up sponsors with no board: two web searches each, reporting only the non-aggregator HOSTS (and a listable ATS kind:slug) whose
+    result names the company. Hosts are candidates to verify by title, never registered from here."""
+    from lifeos.platform import tinyfish_search                                                # noqa: PLC0415
+    from lifeos.platform.tinyfish import TinyFishError                                         # noqa: PLC0415
+    from lifeos.jobs.resolve import ats_match                                                  # noqa: PLC0415
+    search = search or tinyfish_search.search
+    skip = ("linkedin.", "indeed.", "glassdoor.", "reed.", "totaljobs.", "cv-library.", "jooble.", "adzuna.", "ziprecruiter.", "simplyhired.", "startup.jobs",
+            "facebook.", "twitter.", "instagram.", "companieshouse.", "gov.uk", "crunchbase.", "wikipedia.")
+    out = {}
+    for source in registry.load(registry.PATHS["Scale-Up"]):
+        if source["status"] != "fallback" or not source["enabled"]:
+            continue
+        tokens = [w for w in ats_match.norm(source["company"]).split() if w not in ats_match.SUFFIX and len(w) > 2][:2]
+        hosts, boards, error = [], [], ""
+        for query in (f"{source['company']} careers", f"{source['company']} jobs London"):
+            try:
+                results = search(query)[:8]
+            except TinyFishError as exc:
+                error = str(exc).lower()[:40]
+                continue
+            for result in results:
+                url = result.get("url") or ""
+                hay = ats_match.norm(url + " " + (result.get("title") or "") + " " + (result.get("snippet") or ""))
+                if not tokens or not all(t in hay for t in tokens):
+                    continue
+                for kind, pattern in ATS_PATTERNS:
+                    match = re.match(pattern, url, re.I)
+                    if match and f"{kind}:{match.group(1)}" not in boards:
+                        boards.append(f"{kind}:{match.group(1)}")
+                host = (urlsplit(url).hostname or "").removeprefix("www.")
+                if host and host not in hosts and not any(x in host for x in skip):
+                    hosts.append(host)
+        out[source["id"]] = {"boards": boards[:3], "hosts": hosts[:4], "error": error}
+    return out
+
+
 def lane_funnel():
     """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
     from lifeos.jobs import store                                                            # noqa: PLC0415
@@ -464,4 +530,4 @@ def held_first_party(fetcher=fetch, rows=None):
 
 
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}

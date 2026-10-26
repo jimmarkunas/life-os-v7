@@ -89,3 +89,32 @@ class GlassdoorProbeTests(unittest.TestCase):
         self.assertEqual(first["reader_proxy"], {"error": "OSError"})
         self.assertEqual((first["tinyfish_fetch"]["job_links"], first["tinyfish_fetch"]["links"], first["tinyfish_fetch"]["blocked"]), (1, 2, []))
         self.assertNotIn("glassdoor.co.uk", repr(out))                                    # no url, title or company in the output
+
+
+class ScaleUpLiveCheck(unittest.TestCase):
+    def test_zero_role_boards_reports_only_the_empty_complete_ones_with_page_facts(self):
+        from lifeos.sources.web import lister
+        real = lister.list_source
+
+        def fake(source, fetcher):
+            class L:
+                status, reason = lister.COMPLETE, ""
+                jobs = [] if source["id"] == "su-a-y-j-solicitors" else [1]
+            return L()
+        lister.list_source = fake
+        try:
+            page = Fetched("https://apply.workable.com/ayjsolicitors/", 200, "<a>x</a> There are no open positions")
+            out = probe.zero_role_boards(lambda url, **kw: page)
+        finally:
+            lister.list_source = real
+        self.assertEqual(list(out), ["su-a-y-j-solicitors"])
+        self.assertEqual(out["su-a-y-j-solicitors"]["lister"], "COMPLETE::0")
+        self.assertEqual(out["su-a-y-j-solicitors"]["page"], {"status": 200, "bytes": len(page.html), "anchors": 1, "job_markup": 0, "empty_phrase": True})
+
+    def test_no_board_sponsors_keeps_only_company_hosts_and_never_urls(self):
+        results = [{"url": "https://www.taipec.com/careers", "title": "Taipec careers", "snippet": ""},
+                   {"url": "https://uk.indeed.com/cmp/taipec", "title": "Taipec", "snippet": ""},
+                   {"url": "https://jobs.lever.co/taipec", "title": "Taipec jobs", "snippet": ""}]
+        out = probe.no_board_sponsors(lambda query: results)
+        self.assertEqual(out["su-taipec-ltd"], {"boards": ["lever:taipec"], "hosts": ["taipec.com", "jobs.lever.co"], "error": ""})
+        self.assertNotIn("su-otto-car-limited", out)                                           # disabled sponsors are not searched
