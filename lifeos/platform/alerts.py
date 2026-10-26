@@ -19,7 +19,7 @@ import sys
 import urllib.request
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import redact
+from lifeos.platform import alert_registry, redact
 
 PAGE, INFO = "page", "info"
 REMIND_HOURS = {PAGE: 6, INFO: 24}
@@ -72,7 +72,7 @@ def render(kind, item):
         return redact.redact(f"Resolved: {item}"), "", INFO
     prefix = {"open": "", "remind": "Still open: "}[kind]
     body = " ".join(part for part in (item.detail, f"Next: {item.action}" if item.action else "") if part)
-    return redact.redact(prefix + item.title), redact.redact(body), item.severity
+    return redact.redact(prefix + item.title), redact.redact(body), alert_registry.severity(item.key, item.severity)         # LIFE-75: how loud an alert is lives in the registry
 
 
 HIBERNATED = True        # LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended, with no expiry. Only a reviewed commit made on Jim's explicit instruction turns it back on.
@@ -127,8 +127,18 @@ def ntfy(topic, title, body, severity, post=None):
     return _post(topic, title, body, severity, post)
 
 
-def deliver(plan, topic, send=ntfy):
-    """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound)."""
+def push(key, title, body, topic=None, post=None):
+    """Send one registered alert (LIFE-75): the severity comes from the registry (lifeos/platform/alert_registry.py), and a key that is not listed is refused (False, nothing sent).
+    The mute, the flood cap and HIBERNATED apply exactly as for `ntfy`, which this wraps. `topic` defaults to NTFY_TOPIC."""
+    spec = alert_registry.lookup(key)
+    if spec is None:
+        return False
+    return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post)
+
+
+def deliver(plan, topic, send=None):
+    """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound). `send` is a test fake; the default is the gateway."""
+    send = send or ntfy
     sent = failed = 0
     for kind, item in plan.notify:
         title, body, severity = render(kind, item)
@@ -142,17 +152,23 @@ def deliver(plan, topic, send=ntfy):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["push"])
-    parser.add_argument("--severity", choices=[PAGE, INFO], default=PAGE)
+    parser.add_argument("--key", required=True, help="the registered alert this push is (lifeos/platform/alert_registry.py); its severity comes from there")
+    parser.add_argument("--severity", choices=[PAGE, INFO], default=None, help="only for --key test_push")
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")
     args = parser.parse_args(argv)
+    spec = alert_registry.lookup(args.key)
+    if spec is None:
+        print(json.dumps({"push": "unregistered_key"}))
+        return 2                                              # a push no one listed is a defect in the caller, never a silent success (checked first: a typo shows even while alerts are off)
     if HIBERNATED:
         print(json.dumps({"push": "hibernated"}))
         return 0                                              # LIFE-71: a suspended push is not a failed step
     if muted():
         print(json.dumps({"push": "muted"}))
         return 0                                              # LIFE-73: a muted push is not a failed step either
-    ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), args.severity)
+    severity = args.severity if args.key == "test_push" and args.severity else spec.severity
+    ok = ntfy(os.environ.get("NTFY_TOPIC", ""), redact.redact(args.title), redact.redact(args.body), severity)
     print(json.dumps({"push": "sent" if ok else "not_sent"}))
     return 0 if ok else 1                                     # a push the provider did not accept turns the step red, never a silent success
 

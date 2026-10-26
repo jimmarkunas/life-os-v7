@@ -142,7 +142,15 @@ def _mark(cursor):
     return row[0] if row else None
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.connect, send=alerts.ntfy):
+KEYS = {alerts.PAGE: "imessage_time_critical", alerts.INFO: "imessage_action_required"}       # LIFE-75: the registered alert each push is
+
+
+def _gateway(topic, title, body, severity):
+    return alerts.push(KEYS[severity], title, body, topic)
+
+
+def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.connect, send=None):
+    send = send or _gateway
     now = now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     host = environ.get("IMESSAGE_ALERTS_HOST", "")
     with connect() as connection:

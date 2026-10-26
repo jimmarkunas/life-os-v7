@@ -222,4 +222,4 @@ def _alert(environ, now, live, counts):
         return
     from lifeos.platform import alerts                                    # noqa: PLC0415
     body = f"{counts['sources_failed']} source(s) unread; the table shows DEGRADED"
-    counts["notified"] = alerts.ntfy((environ.get("NTFY_TOPIC") or "").strip(), "MegIBOW is not fresh for the 3 PM meeting", body, alerts.PAGE)
+    counts["notified"] = alerts.push("megibow_stale", "MegIBOW is not fresh for the 3 PM meeting", body, (environ.get("NTFY_TOPIC") or "").strip())
