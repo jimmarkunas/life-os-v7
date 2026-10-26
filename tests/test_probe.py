@@ -132,3 +132,13 @@ class CandidateSiteChecks(unittest.TestCase):
         out = probe.ashby_board(lambda url, **kw: Fetched(url, 200, html))
         self.assertEqual((out["has_list"], out["listed_entries"]), (True, 2))
         self.assertNotIn("One", str(out))
+
+
+class CareersTitles(unittest.TestCase):
+    def test_reports_job_looking_titles_boards_and_a_count_not_body_text(self):
+        html = ("<h2>Open roles</h2><a href='/x'>Senior Data Engineer</a><h3>Head of Finance</h3><p>We love puppies and long essays about our culture.</p>"
+                "<a href='https://jobs.lever.co/acme'>Apply</a>")
+        out = probe.careers_titles(lambda url, **kw: Fetched(url, 200, html), pages={"su-x": ("https://acme.example.com/careers",)})
+        facts = out["su-x"]["acme.example.com/careers"]
+        self.assertEqual((facts["status"], facts["titles"], facts["title_count"], facts["boards"]), (200, ["Senior Data Engineer", "Head of Finance"], 2, ["lever:acme"]))
+        self.assertNotIn("puppies", str(out))
