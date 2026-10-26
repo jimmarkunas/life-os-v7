@@ -27,14 +27,12 @@ class Post:
 
 class GatewayCase(unittest.TestCase):
     def setUp(self):
-        self._hibernated, alerts.HIBERNATED = alerts.HIBERNATED, False
+        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         alerts.reset_flood()
-        self.addCleanup(self.restore)
+        self.addCleanup(alerts.reset_flood)
         self.post = Post()
-
-    def restore(self):
-        alerts.HIBERNATED = self._hibernated
-        alerts.reset_flood()
 
     def send(self, n=1, severity=alerts.PAGE):
         return [alerts.ntfy("topic", f"T{i}", f"B{i}", severity, post=self.post) for i in range(n)]
@@ -60,30 +58,30 @@ class Mute(GatewayCase):
         self.assertFalse(alerts.muted(env, dt.datetime(2026, 10, 26, 13, 0, 0, tzinfo=UTC)))
 
     def test_a_muted_push_posts_nothing(self):
-        with mock.patch.dict("os.environ", {"ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
             self.assertEqual(self.send(3), [False, False, False])
         self.assertEqual(self.post.pushes, [])
 
     def test_a_muted_command_line_push_is_not_a_failed_step(self):
         out = io.StringIO()
-        with mock.patch.dict("os.environ", {"ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z", "NTFY_TOPIC": "t"}), contextlib.redirect_stdout(out):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z", "NTFY_TOPIC": "t"}), contextlib.redirect_stdout(out):
             self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "x"]), 0)
         self.assertEqual(json.loads(out.getvalue()), {"push": "muted"})
 
     def test_an_unset_mute_lets_pushes_through(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertEqual(self.send(2), [True, True])
         self.assertEqual(len(self.post.pushes), 2)
 
 
 class FloodBreaker(GatewayCase):
     def test_up_to_the_cap_every_push_goes_through(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertEqual(self.send(alerts.SEND_CAP), [True] * alerts.SEND_CAP)
         self.assertEqual(len(self.post.pushes), alerts.SEND_CAP)
 
     def test_a_flood_sends_exactly_one_pause_message_and_holds_the_rest(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             results = self.send(50)
         self.assertEqual(results, [True] * alerts.SEND_CAP + [False] * (50 - alerts.SEND_CAP))
         titles = [title for title, _ in self.post.pushes]
@@ -92,30 +90,28 @@ class FloodBreaker(GatewayCase):
         self.assertEqual(titles[-1], "Alerts paused: flood")
 
     def test_the_pause_notice_names_no_alert_text(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.send(alerts.SEND_CAP + 1)
         _, body = self.post.pushes[-1]
         self.assertNotRegex(body, r"T\d|B\d")
 
     def test_a_new_process_starts_at_zero(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.send(20)
             alerts.reset_flood()
             self.assertEqual(self.send(2), [True, True])
 
-    def test_hibernated_still_sends_nothing_and_counts_nothing(self):
-        alerts.HIBERNATED = True
-        with mock.patch.dict("os.environ", {}, clear=True):
+    def test_alerts_off_sends_nothing_and_counts_nothing(self):
+        with mock.patch.dict("os.environ", {}, clear=True):                                    # no ALERTS_ENABLED: off
             self.assertEqual(self.send(20), [False] * 20)
         self.assertEqual(self.post.pushes, [])
-        alerts.HIBERNATED = False
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertEqual(self.send(1), [True])
 
     def test_a_muted_push_does_not_use_up_the_cap(self):
-        with mock.patch.dict("os.environ", {"ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
             self.send(20)
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertEqual(self.send(alerts.SEND_CAP), [True] * alerts.SEND_CAP)
 
 

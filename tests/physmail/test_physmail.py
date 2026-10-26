@@ -203,7 +203,7 @@ class StageTests(unittest.TestCase):
 
     def test_a_new_arrival_notice_pushes_to_the_phone_once_with_counts_only(self):
         pushed = []
-        with mock.patch("lifeos.platform.alerts.ntfy", lambda topic, title, body, severity, post=None: (pushed.append((topic, title, body)) or True)):
+        with mock.patch("lifeos.platform.alerts.ntfy", lambda topic, title, body, severity, post=None, channels=None: (pushed.append((topic, title, body)) or True)):
             env = {"PHYSICAL_MAIL_ANCHOR": "11", "NTFY_TOPIC": "t"}
             counts, _ = self.run_stage([mail("n1", "New Mail (3)")], env=env)
             self.assertEqual((counts["notified"], pushed), (True, [("t", "LIFE OS Physical Mail", "3 new mail items received")]))
