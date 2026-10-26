@@ -81,6 +81,7 @@ STAGES = {
     "interview-probe": lazy("lifeos.interview.stage", "probe"),
     "interview": lazy("lifeos.sources.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
+    "granola": lazy("lifeos.interview.granola_bridge", "stage"),     # LIFE-37 Step 2: carry ONE pinned Granola meeting (GRAN_PIN_DAY) from Oracle into its round; manual only, no schedule
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
     "bills-paid": lazy("lifeos.bills.paid"),

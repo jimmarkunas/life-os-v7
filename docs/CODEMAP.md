@@ -42,6 +42,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `fit-profile-sync` -> `lifeos.jobs.fit.profile_sync:run`
 - `fit-review` -> `lifeos.jobs.review:run`
 - `funnel` -> `lifeos.jobs.funnel:run`
+- `granola` -> `lifeos.interview.granola_bridge:stage`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
@@ -147,7 +148,9 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/interview/advisor_queue.py`: Immutable Request/Response handoff for the private Interview Advisor queue.
 - `lifeos/interview/advisor_store.py`: Bounded private Notion store and immutable Advisor preview pages.
 - `lifeos/interview/create.py`: B2 vertical slice; one page per evidence pass, no write retries. LIFE-88: pages are the approved UI 3c / UI 4 trees, and a UI 3c opportunity page's machine region is reco
+- `lifeos/interview/granola_bridge.py`: LIFE-37 Step 2, part 2: one manual run that carries ONE Granola meeting from Oracle into its round's Full Transcript page, and stops.
 - `lifeos/interview/granola_match.py`: LIFE-37 Step 2: which Interview OS round does a Granola meeting belong to? Pure, in memory, no I/O.
+- `lifeos/interview/granola_oracle.py`: LIFE-37 Step 2: the V7 side of Oracle's `gran1` request (contract posted in LIFE-37 comment 11235).
 - `lifeos/interview/granola_write.py`: LIFE-37 Step 2: write ONE verified Granola transcript as the round's "Full Transcript" child page, read it back, and report counts and fixed codes only.
 - `lifeos/interview/identity.py`: Fail-closed identity decisions with platform-owned normalization.
 - `lifeos/interview/models.py`: Internal identity evidence; never serialize these records into public logs.

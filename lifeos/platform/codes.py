@@ -319,6 +319,26 @@ CODES = {
     "NOTION_SANDBOX_ACCESS_READ_ONLY": _r("sources", "blocked", False, "The sandbox access is read-only.", "None; by design."),
     "NOTION_SANDBOX_PROOF_FAILED": _r("sources", "degraded", False, "The Notion sandbox proof failed.", "Check the proof log."),
     # --- Interview (lifeos/interview/*, lifeos/sources/interview_*.py)
+    "GRAN_BAD_FRAME": _r("interview", "terminal", False, "Oracle refused the Granola request as badly framed.", "Bug in the V7 caller; nothing was written."),
+    "GRAN_BAD_OP": _r("interview", "terminal", False, "Oracle does not know that Granola operation.", "Bug in the V7 caller or Oracle is out of date."),
+    "GRAN_NOT_FOUND": _r("interview", "terminal", False, "Oracle has no such Granola meeting.", "Sync again or check the pinned day."),
+    "GRAN_SYNC_FAILED": _r("interview", "degraded", False, "Oracle's Granola sync failed.", "Oracle Claude checks grans on the host."),
+    "GRAN_AUTH_EXPIRED": _r("interview", "blocked", False, "Oracle's Granola session expired (a Mac refresh can sign it out).", "Jim signs in again for Oracle; Oracle Claude re-seeds the session."),
+    "GRAN_TIMEOUT": _r("interview", "degraded", False, "Oracle did not answer the Granola request in time.", "Repeat the run."),
+    "GRAN_OVERSIZE": _r("interview", "terminal", False, "The Granola reply was larger than the contract allows.", "None; the transcript is not written."),
+    "GRAN_HASH_MISMATCH": _r("interview", "terminal", False, "Oracle refused to purge: the hash did not match its copy.", "Look before any retry; nothing was purged."),
+    "GRAN_NO_HOST": _r("interview", "blocked", False, "No Oracle host is configured for the Granola run.", "Set the Oracle host variable."),
+    "GRAN_CONNECT_FAILED": _r("interview", "degraded", False, "The Oracle endpoint could not be reached for the Granola run.", "Check the tailnet node; repeat the run."),
+    "GRAN_NO_REPLY": _r("interview", "degraded", False, "Oracle closed the Granola connection with no reply.", "Oracle Claude checks the entry point."),
+    "GRAN_REPLY_INVALID": _r("interview", "bug", False, "Oracle's Granola reply was not as contracted.", "Oracle Claude and Career Claude compare against LIFE-37 comment 11235."),
+    "GRAN_NONCE_MISMATCH": _r("interview", "bug", False, "Oracle's Granola reply did not echo the request nonce.", "Do not trust the reply; check the entry point."),
+    "GRAN_PIPELINE_INCOMPLETE": _r("interview", "degraded", False, "The Interview OS pipeline could not be read completely.", "Repeat the run; nothing was written."),
+    "GRAN_PIN_INVALID": _r("interview", "terminal", False, "The Granola run needs one real YYYY-MM-DD day to pin the meeting.", "Pass the day."),
+    "GRAN_TARGET_CONFIG_MISSING": _r("interview", "blocked", False, "The Interview OS Notion token or pipeline page is not configured for the Granola run.", "Set the interview variables."),
+    "GRAN_TARGET_NOT_OK": _r("interview", "blocked", False, "The Interview OS target did not pass its check.", "Run the interview probe."),
+    "GRAN_PIN_NOT_ONE_MEETING": _r("interview", "terminal", False, "Zero or several synced Granola meetings fall on the pinned day.", "Jim names the meeting; nothing was written."),
+    "GRAN_ROUND_NOT_MACHINE": _r("interview", "terminal", False, "The matched round page is not a machine-owned page.", "None; Jim's pages are never written."),
+    "GRAN_NOTION_FAILED": _r("interview", "degraded", False, "A Notion call failed during the Granola run.", "Repeat the run; look at the page before any Oracle purge."),
     "MATCH_NONE": _r("interview", "terminal", False, "No Interview OS round matches this Granola meeting (same Central day plus a company, role, interviewer or domain signal).", "None; nothing is written. Check the round's date, company and interviewer."),
     "MATCH_MANY_ROUNDS": _r("interview", "terminal", False, "More than one Interview OS round matches this Granola meeting.", "None; nothing is written. Jim picks the round."),
     "MATCH_MANY_MEETINGS": _r("interview", "terminal", False, "More than one Granola meeting matches the same Interview OS round.", "None; nothing is written. Jim picks the meeting."),
@@ -735,6 +755,7 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+    "GRAN_PIN_DAY",                # LIFE-37: the day the manual Granola run is pinned to
     "ALERTS_ENABLED", "ALERTS_MESSAGE_REF", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "AMAZON_CARD_BLOCK_ID", "AMAZON_SINCE", "AMAZON_SYNC_OUTCOME",
     "ATTENTION_CARD_BLOCK_ID", "ATTENTION_SYNC_OUTCOME", "BILLS_CARD_BLOCK_ID", "BOARDS_BACKFILL", "BOARD_COMPANY", "CALENDAR_ACCOUNTS",
     "CALENDAR_ALLOW_MASS_DELETE", "CALENDAR_CARD_BLOCK_ID", "CREDENTIALS_DIRECTORY", "DB_NAME", "DB_PASSWORD", "DB_USER", "DCC_CARD_BLOCK_ID",
