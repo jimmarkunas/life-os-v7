@@ -98,7 +98,9 @@ STAGES = {
     "scale-up-holds": lazy("lifeos.jobs.holds"),
     "scale-up-boards": lazy("lifeos.sources.web.boardstate"),          # read-only per-board view of the Scale-Up registry: last read, vacancies listed, what became of them (diag.yml)
     "scale-up-links": lazy("lifeos.jobs.linkcheck"),
-    "scale-up-exclusions": lazy("lifeos.jobs.exclusions"),          # LIFE-121: read-only report of why Scale-Up jobs are EXCLUDED_FIT (reason, Fit band, source; counts only) (diag.yml)
+    "scale-up-exclusions": lazy("lifeos.jobs.exclusions"),
+    "scale-up-exclusion-review": lazy("lifeos.jobs.exclusions", "review"),          # LIFE-121: the high-scoring Scale-Up jobs Jim's own Fit rules removed, as one SEALED block (diag.yml); counts in the clear
+    "scale-up-register": lazy("lifeos.sources.scale_up_register"),          # LIFE-121 London coverage step 1: current register vs the Scale-Up registry; London sponsors not held, SEALED (diag.yml)          # LIFE-121: read-only report of why Scale-Up jobs are EXCLUDED_FIT (reason, Fit band, source; counts only) (diag.yml)
     "alerts-open": lazy("lifeos.jobs.alertstate"),
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
     "notion-sandbox-access": lazy("lifeos.sources.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick

@@ -61,3 +61,27 @@ class Exclusions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Review(unittest.TestCase):
+    ROWS = [("ExampleCo", "Head of Sales", "London", "https://example.com/j/1", 80, "excluded: sales_role", "sales_role", "lane_exclude"),
+            ("ExampleCo", "Programme Manager", "London", "https://example.com/j/2", 90, "market us is not uk", None, "lane_exclude"),
+            ("OtherCo", "Risk Lead", "Leeds", "https://example.com/j/3", 75, "excluded: finance_risk_domain", "finance_risk_domain", "excluded_fit"),
+            ("OtherCo", "Analyst", "Leeds", "https://example.com/j/4", 60, "excluded: finance_risk_domain", "finance_risk_domain", "lane_exclude")]
+
+    def test_only_high_scoring_jobs_removed_by_the_private_rules_are_listed_with_their_rule(self):
+        lines = ex.review_rows(self.ROWS)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0].split("\t")[:2], ["OtherCo", "Risk Lead"])
+        self.assertIn("\tsales_role\t", lines[1])
+
+    def test_the_log_gets_the_count_and_a_sealed_block_never_the_text(self):
+        import contextlib
+        import io
+        cursor = Cursor(self.ROWS)
+        sealed = []
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            report = ex.review(0, False, connect=lambda: cursor, seal=lambda text: sealed.append(text) or "SEALED")
+        self.assertEqual((report, out.getvalue().strip(), set(cursor.sql)), ({"rows": 2, "sealed": True}, "SEALED", {"SELECT"}))
+        self.assertIn("ExampleCo", sealed[0])          # the plaintext only ever went to the sealer
