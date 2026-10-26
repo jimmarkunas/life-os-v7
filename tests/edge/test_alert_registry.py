@@ -12,7 +12,7 @@ from lifeos.platform import alert_registry as registry, alerts
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATEWAY = "lifeos/platform/alerts.py"
-APPROVED_PAGE = {"source_stopped_*", "expiry_*", "jira_rollover_stuck", "calendar_sync_stuck", "imessage_time_critical", "pipeline_stalled", "pipeline_failing", "megibow_stale",
+APPROVED_PAGE = {"source_stopped_*", "expiry_*", "jira_rollover_stuck", "calendar_sync_stuck", "imessage_action", "pipeline_stalled", "pipeline_failing", "megibow_stale",
                  "run_failed", "domain_jobs_failed", "purge_failed", "safety_failed", "test_push"}          # Jim, Oct 25 2026 (LIFE-75 comment 11182); everything else is INFO
 
 
@@ -117,8 +117,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
 
     def test_the_imessage_pushes_use_registered_keys(self):
         from lifeos.imessage import stage
-        for severity, key in stage.KEYS.items():
-            self.assertEqual(registry.severity(key), severity)
+        self.assertEqual(registry.severity(stage.KEY), "page")
 
     def test_every_workflow_push_names_a_registered_key(self):
         found = []

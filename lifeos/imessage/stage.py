@@ -125,7 +125,7 @@ def plan(payload, rows, now):
         n = len(deliver)
         push = (("Urgent text message" if tc else "Text needs a reply"),
                 ("%d text%s may need you now" % (tc, "" if tc == 1 else "s") if tc else "%d text%s need%s a reply" % (n, "" if n == 1 else "s", "s" if n == 1 else ""))
-                + ". Open Messages.", alerts.PAGE if tc else alerts.INFO)
+                + ". Open Messages.", alerts.PAGE)
     ambiguous = sorted(k for k, r in rows.items() if r["status"] == PENDING)
     return {"new": new, "seen": seen, "deliver": deliver, "expire": expire, "purge": purge, "push": push, "ambiguous": ambiguous,
             "attention": sum(1 for e in events if e["severity"] == "ATTENTION"), "queued_quiet": len(queued) - len(deliver)}
@@ -142,11 +142,11 @@ def _mark(cursor):
     return row[0] if row else None
 
 
-KEYS = {alerts.PAGE: "imessage_time_critical", alerts.INFO: "imessage_action_required"}       # LIFE-75: the registered alert each push is
+KEY = "imessage_action"                       # LIFE-75: the registered alert every iMessage push is (PAGE since Jim's word on Oct 25 2026; quiet hours still hold action-required ones)
 
 
 def _gateway(topic, title, body, severity):
-    return alerts.push(KEYS[severity], title, body, topic)
+    return alerts.push(KEY, title, body, topic)
 
 
 def run(limit, live, environ=os.environ, now=None, fetcher=fetch, connect=db.connect, send=None):
