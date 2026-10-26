@@ -80,12 +80,19 @@ def title_watch_source(source):
 
 
 THIN_REVIEW_PREFIXES = ("web:su-", "web:gh-", "web:lv-", "web:ab-")
+THIN_ADMIT_PREFIXES = THIN_REVIEW_PREFIXES        # Jim, Oct 25: a Scale-Up sponsor's, Greenhouse, Lever or Ashby board lists only open roles, and its own text is the posting
 
 
 def thin_review_source(source):
     """A Scale-Up sponsor's own board (`web:su-<id>`, Jim, Oct 21) or a Greenhouse, Lever or Ashby board (`web:gh-`/`lv-`/`ab-`, Jim, Oct 25: the board's own
     feed is the posting, so a short one is as written): its roles with a description too thin to judge are reviewed from their apply link, never held."""
     return bool(source) and source.startswith(THIN_REVIEW_PREFIXES)
+
+
+def thin_admit_source(source):
+    """A Scale-Up sponsor's own board or a Greenhouse, Lever or Ashby board (`web:su-`/`gh-`/`lv-`/`ab-`): an open role there whose title fits (Fit 60 or more from its short
+    text, no private title rule) is admitted even though its description is thin (Jim, Oct 25: "as long as it's an open job and it's the right title, admit it", Scale-Up included)."""
+    return bool(source) and source.startswith(THIN_ADMIT_PREFIXES)
 
 
 def on_keep_list(company, title):
@@ -110,7 +117,8 @@ class Facts:
     geography: str = UNRESOLVED
     located: bool = False                # the job states a place at all
     kept: bool = False                   # D115: on Jim's keep list (or found by a title watch: Jim chose the title)
-    thin: bool = False                   # Jim, Oct 21: a Scale-Up sponsor's own board whose page text is too thin to judge: a score from it is never a Go; Jim decides from the link
+    thin_admit: bool = False             # Jim, Oct 25: thin, but from a Scale-Up, Greenhouse, Lever or Ashby board's own text (thin_admit_source): it can be admitted
+    thin: bool = False                   # Jim, Oct 21 (Oct 25: a fitting one is admitted, see thin_admit): a Scale-Up sponsor's own board whose page text is too thin to judge: a score from it is never a Go; Jim decides from the link
     title_only: bool = False             # D123: found by a title search; the page text could not be read, so the Fit rests on the title alone
     first_party: bool = False            # D111: listed on the employer's own board, so it is open: its posting age is not judged
     open_application: bool = False       # D213: an unsolicited / general application ("Initiativbewerbung", "Talent Pool"): not a vacancy
@@ -130,7 +138,7 @@ def qualify(policy, facts, today):
         return Decision(EXCLUDE, f"Fit {facts.fit} below {NEAR_MISS_FLOOR} and {decision.reason}")
     if facts.title_only and decision.status == ADMIT:                  # D123: a score from a title alone is never a Go; Jim decides from the link
         return Decision(REVIEW, TITLE_ONLY_REASON)
-    if facts.thin and decision.status == ADMIT:
+    if facts.thin and not facts.thin_admit and decision.status == ADMIT:
         return Decision(REVIEW, THIN_REASON)
     return decision
 
@@ -177,7 +185,7 @@ def _qualify(policy, facts, today):
             return Decision(REVIEW, "geography unresolved")
     if facts.fit is None:
         return Decision(REVIEW, "Fit unscorable")
-    if facts.fit < FIT_FLOOR:
+    if facts.fit < FIT_FLOOR and not (facts.thin_admit and facts.fit >= REVIEW_FLOOR):          # Jim, Oct 25: a thin board-feed role is judged on its title (Fit 60+), not held to 72 on a few lines of text
         return Decision(REVIEW, f"Fit {facts.fit} below {FIT_FLOOR}" + (" (on Jim's keep list)" if facts.kept else ""))
     return Decision(ADMIT, "remote assumed" if policy.work_mode == "remote_only" and facts.work_mode == "unknown" else None)     # D204: kept apart from stated remote
 
@@ -283,7 +291,7 @@ def detect_work_mode(location, title="", text="", window=1500):
 
 LANE_ALIAS = {"Newsletter": "US Remote"}        # a newsletter is a source family; its jobs are judged by the US Remote policy
 ADMISSION_LABEL = {ADMIT: "Admitted", REVIEW: "Passed / Review", EXCLUDE: "Excluded"}   # the Ledger's Admission Status options
-POLICY_VERSION = "l15"                            # bump when a policy changes so stored decisions are re-evaluated (l15: the Revolut keep-list additions and the Credit Manager (Product) exemption)
+POLICY_VERSION = "l16"                            # bump when a policy changes so stored decisions are re-evaluated (l16: a thin Scale-Up, Greenhouse, Lever or Ashby board role with a fitting title is admitted; l15: the Revolut keep-list additions and the Credit Manager (Product) exemption)
 
 
 def lane_for(row_lane):
@@ -382,7 +390,7 @@ def open_application(title):
     return bool(_OPEN_APPLICATION.search(title or ""))
 
 
-def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False, thin=False):
+def facts_for(fit, title, location, text, salary_text, posted, first_seen, market=None, route=None, first_party=False, kept=False, title_only=False, thin=False, thin_admit=False):
     """Facts for one stored job. Age uses the employer Posting Date, else First Surfaced (never a crawl time invented as a
     posting date). Pay comes only from the posted pay field."""
     pay_min, currency = parse_pay(salary_text)
@@ -392,7 +400,7 @@ def facts_for(fit, title, location, text, salary_text, posted, first_seen, marke
     if first_party and not market and (US_PLACES.search(location or "") or _US_ELIGIBLE.search(text or "")):
         market = "US"
     return Facts(fit=fit, market=market, work_mode=mode, work_evidence=evidence, pay_min=pay_min,
-                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only, thin=thin,
+                 pay_currency=currency, posted=when, route=route_dict(route), geography=geography_status(location), located=bool((location or "").strip()), first_party=first_party, kept=kept, title_only=title_only, thin=thin, thin_admit=thin and thin_admit,
                  open_application=open_application(title))
 
 
