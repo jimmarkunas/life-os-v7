@@ -296,6 +296,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/sources/
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
+- `lifeos/sources/interview_contacts_proof.py`: LIFE-88 E10 synthetic QA: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces. Manual only: interview-proof with `confi
 - `lifeos/sources/interview_evidence.py`: LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives
 - `lifeos/sources/interview_journey_proof.py`: LIFE-78 synthetic journey proof on real Notion. Manual only: the interview-proof workflow with `confirm = QA` (the Interview token only, its own queue, no mail read), or 
 - `lifeos/sources/interview_sweep.py`: LIFE-88 (Jim, Oct 21 2026): every opportunity page, active or retired, becomes the new UI 3c page.
