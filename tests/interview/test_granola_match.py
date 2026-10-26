@@ -68,3 +68,16 @@ class Match(unittest.TestCase):
 
     def test_an_unreadable_time_is_a_fixed_code(self):
         self.assertEqual(gm.match([meeting(start="soon")], [ROW])["m1"], ("MEETING_TIME_INVALID", None))
+
+
+class Explain(unittest.TestCase):
+    def test_counts_rounds_on_the_day_and_which_signals_tie_them(self):
+        near = gm.Round("p2", "2026-10-13", "Other Co", "Chief Whatever", addr("pat", "x.test"), "", "", "")
+        far = gm.Round("p3", "2026-10-14", "Becton Dickinson", "Senior Technical Program Manager", "", "", "", "")
+        out = gm.explain(meeting(title="Becton Dickinson follow-up"), [ROW, near, far])
+        self.assertEqual(out, {"rounds_on_day": 2, "signal_company": 1, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+
+    def test_no_rounds_on_the_day_is_all_zero_and_carries_no_text(self):
+        out = gm.explain(meeting(title="Becton Dickinson"), [])
+        self.assertEqual(out, {"rounds_on_day": 0, "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0})
+        self.assertNotIn("Becton", str(out))
