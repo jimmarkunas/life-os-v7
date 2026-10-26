@@ -107,6 +107,16 @@ handoffs:
     path: tests/jobs/test_funnel.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11158
+  - pr: 556
+    owner: career-v7
+    path: lifeos/jobs/publish.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11157
+  - pr: 556
+    owner: career-v7
+    path: tests/jobs/test_publish.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11157
   - pr: 563
     owner: career-v7
     path: lifeos/platform/codes.py
