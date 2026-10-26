@@ -1,5 +1,5 @@
 name: pr-tests
-# Secret-free pull request check: the same unit-test command as the `prep` job of hourly.yml, on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
+# Secret-free pull request check: the same unit tests as the `prep` job of hourly.yml (here run as two parallel shards of whole test modules, tests/shard.py; hourly.yml runs them in one process), on the PR head merged with its base. Read-only, no secrets, no database, no network beyond installing
 # the pinned requirements, nothing dispatched or scheduled. Runtime contract of the deterministic suite: a warning at 45 seconds, a failure at 75 seconds (Jim, Oct 25 2026: raised from 60; hang guard: timeout-minutes).
 # Every merge to main runs the same suite too (Jim, Oct 25 2026), so the Edge's Close auto-release has a tested main commit within a minute of a merge instead of waiting for the next hourly run.
 on:
@@ -22,11 +22,17 @@ jobs:
       - uses: ./.github/actions/python
       - name: Test-only dependency (PyYAML, for the workflow contract tests)
         run: pip install pyyaml
-      - name: Unit tests (warn at 45 s, fail at 75 s)
+      - name: Unit tests (two parallel shards; warn at 45 s, fail at 75 s)
         run: |
           start=$(date +%s)
+          python -m tests.shard 1 2 > shard-1.log 2>&1 &
+          first=$!
+          python -m tests.shard 2 2 > shard-2.log 2>&1 &
+          second=$!
           status=0
-          python -m unittest discover -s tests -t . || status=$?
+          wait "$first" || status=$?
+          wait "$second" || status=$?
+          cat shard-1.log shard-2.log
           elapsed=$(( $(date +%s) - start ))
           echo "unit tests: exit ${status}, ${elapsed} s" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then exit "$status"; fi
