@@ -104,8 +104,8 @@ def run(limit, live, environ=os.environ, gmail=None, connection=None, now=None):
             if new_ids and not rebuild:                                                        # only after the state is saved, so a failed save never pushes twice; counts only, no mail content
                 from lifeos.platform import alerts                             # noqa: PLC0415
                 items = sum(int(merged["arrivals"][i].get("count") or 0) for i in new_ids)
-                counts["notified"] = alerts.ntfy((environ.get("NTFY_TOPIC") or "").strip(), "LIFE OS Physical Mail",
-                                                 f"{items} new mail item{'s' if items != 1 else ''} received" if items else "New mail received", alerts.PAGE)
+                counts["notified"] = alerts.push("physmail_new", "LIFE OS Physical Mail",
+                                                 f"{items} new mail item{'s' if items != 1 else ''} received" if items else "New mail received", (environ.get("NTFY_TOPIC") or "").strip())
         return counts
     finally:
         if owns and manager is not None:

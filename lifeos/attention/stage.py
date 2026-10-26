@@ -267,8 +267,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     new_items = counts["created"] - counts["carried"]
     if live and new_items > 0:                                          # counts only: no sender, subject or link ever leaves the private database
         from lifeos.platform import alerts                              # noqa: PLC0415
-        counts["notified"] = alerts.ntfy((environ.get("NTFY_TOPIC") or "").strip(), "LIFE OS Attention",
-                                         f"{new_items} new item{'s' if new_items != 1 else ''} need{'' if new_items != 1 else 's'} your attention", alerts.PAGE)
+        counts["notified"] = alerts.push("attention_new", "LIFE OS Attention",
+                                         f"{new_items} new item{'s' if new_items != 1 else ''} need{'' if new_items != 1 else 's'} your attention", (environ.get("NTFY_TOPIC") or "").strip())
     if failed:
         raise AttentionError(f"ATTENTION_DEGRADED:{failed}_source(s)_unread:" + ";".join(counts["why"]))
     return counts

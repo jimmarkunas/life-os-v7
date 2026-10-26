@@ -1343,10 +1343,10 @@ jobs:
           if [ "$status" = "0" ]; then
             case "$last" in
               *not_due*|*skipped_dry_run*) ;;
-              *) python3 -m lifeos.platform.alerts push --severity info --title "V7 weekly purge done" --body "$last" || true ;;
+              *) python3 -m lifeos.platform.alerts push --key purge_done --title "V7 weekly purge done" --body "$last" || true ;;
             esac
           else
-            python3 -m lifeos.platform.alerts push --severity page --title "V7 weekly purge FAILED" --body "$last" || true
+            python3 -m lifeos.platform.alerts push --key purge_failed --title "V7 weekly purge FAILED" --body "$last" || true
             exit 1
           fi
       - id: alerts
@@ -1519,7 +1519,7 @@ jobs:
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
-            python3 -m lifeos.platform.alerts push --severity page --title "V7 run failed" --body "Failed lanes:$failed${STAGES:+; stages: $STAGES}${CODES:+; codes: $CODES}. Open the Actions tab."
+            python3 -m lifeos.platform.alerts push --key run_failed --title "V7 run failed" --body "Failed lanes:$failed${STAGES:+; stages: $STAGES}${CODES:+; codes: $CODES}. Open the Actions tab."
             echo "FAILED LANES:$failed"; exit 1
           fi
 
