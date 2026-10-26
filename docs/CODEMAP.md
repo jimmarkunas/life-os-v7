@@ -213,6 +213,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/linkcheck.py`: Counts-only diagnostic: why do parked Scale-Up roles keep failing their link check? Reads v7_jobs and each parked role's own public job page, writes nothing, prints no ti
 - `lifeos/jobs/meta.py`: Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route, Compensation. Pure: no I/O. Only populated fields are re
 - `lifeos/jobs/names.py`: Employer-name comparison for Jobs: the hiring-pipeline handoff and the sponsor register. The normalizer and the token rules live in `lifeos.platform.names` (shared with I
+- `lifeos/jobs/private_report.py`: LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of the page that hold
 - `lifeos/jobs/progression.py`: Does a protected human pursuit exist for this job? Retention asks here and never reads a Notion stage field.
 - `lifeos/jobs/publish.py`: Publish READY jobs to the Notion Job Ledger (free official API, <= 2.5 req/s, counts-only logs).
 - `lifeos/jobs/quality.py`: Precision guards: is this URL a single job page, and is this text a real job description? Pure functions. Found by the first live Notion batch (2 of 3 pages were wrong: a
@@ -228,7 +229,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/retention.py`: Retention (weekly), per the Jobs canon plus Jim's rules (docs/LANES.md).
 - `lifeos/jobs/review.py`: Fit review (D97): one private Notion page that lists what happened to every job of one company or source, and why.
 - `lifeos/jobs/safety.py`: SAFE-1.1: two fixed weekly checks that need the real database, plus the saved representative Fit set. Counts and fixed codes only.
-- `lifeos/jobs/sealed_report.py`: LIFE-121: a private report that is safe to leave in a PUBLIC workflow log. The text (company, title, link) is encrypted on the runner with a random AES-256 key, that key 
 - `lifeos/jobs/sponsors.py`: UK Skilled Worker route evidence: is the ACTUAL employer on the Home Office register of licensed sponsors (Skilled Worker route)?
 - `lifeos/jobs/store.py`: Jobs OS tables and persistence (Hostinger). The connection itself lives in lifeos.platform.db.
 - `lifeos/jobs/tick.py`: LIFE-76 PR 4b (D208): one process runs a whole Jobs tick, in a fixed order, through ONE store tunnel (D207).
@@ -365,7 +365,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `bills.yml`: jobs bills; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_BILLS_DATA_SOURCE_ID
 - `branches.yml`: jobs archive, report; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN, V7_ARCHIVE_TOKEN, WEEKLY_REVIEW_PAGE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
-- `diag.yml`: jobs diag, trace, sandbox, interview_ui; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
+- `diag.yml`: jobs diag, trace, sandbox, interview_ui, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, granola, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `granola-auto.yml`: jobs auto; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN

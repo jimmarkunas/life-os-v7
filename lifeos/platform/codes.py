@@ -346,6 +346,11 @@ CODES = {
     "GRAN_CATALOG_FAILED": _r("interview", "degraded", False, "The meeting catalog could not be saved or read back, so the meeting was not purged.", "Repeat the run; the meeting is still on Oracle."),
     "GRAN_PURGE_ALL_UNSUPPORTED": _r("interview", "state", False, "Oracle has not announced the whole-meeting purge, so the meeting was carried but not purged.", "Oracle Claude ships the purge_all capability; the next run purges it."),
     "GRAN_PURGE_SCOPE_NOT_CONFIRMED": _r("interview", "degraded", False, "Oracle's purge reply did not confirm the whole-meeting scope.", "Oracle Claude checks the purge; the meeting is carried and catalogued."),
+    "PRIVATE_REPORT_FAILED": _r("jobs", "degraded", False, "A private Notion report could not be written (counts say which fixed code).", "Read the counts and repeat the run."),
+    "PRIVATE_REPORT_NO_PARENT": _r("jobs", "terminal", False, "The Job Ledger is not inside a page, so the private report has nowhere to go.", "Share the report page with the Jobs integration or name its parent."),
+    "PRIVATE_REPORT_NOTION_FAILED": _r("jobs", "degraded", False, "Notion refused or did not answer the private report request.", "Repeat the run."),
+    "PRIVATE_REPORT_READBACK_MISMATCH": _r("jobs", "degraded", False, "The private report page was written but its row count did not read back.", "Open the page, delete it, and repeat the run."),
+    "PRIVATE_REPORT_TOO_LARGE": _r("jobs", "terminal", False, "The private report has more rows than one page holds.", "Split the report."),
     "MANUAL_JOB_FAILED": _r("interview", "degraded", False, "The manual job run stopped on a fixed code (counts say which).", "Read the counts, fix the input or the cause, and repeat the run."),
     "MANUAL_JOB_IDENTITY_MISSING": _r("interview", "terminal", False, "The manual job run was given no company or no title.", "Give both."),
     "MANUAL_JOB_LINK_INVALID": _r("interview", "terminal", False, "The manual job link is not a single-vacancy https link.", "Give the employer's own posting link."),
@@ -770,7 +775,6 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs
-    "SEAL_KEY",                    # LIFE-121: the environment variable that carries a one-time AES key to openssl in sealed_report
     "GRAN_PIN_DAY",                # LIFE-37: the day the manual Granola run is pinned to
     "ALERTS_ENABLED", "ALERTS_MESSAGE_REF", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "AMAZON_CARD_BLOCK_ID", "AMAZON_SINCE", "AMAZON_SYNC_OUTCOME",
     "ATTENTION_CARD_BLOCK_ID", "ATTENTION_SYNC_OUTCOME", "BILLS_CARD_BLOCK_ID", "BOARDS_BACKFILL", "BOARD_COMPANY", "CALENDAR_ACCOUNTS",
