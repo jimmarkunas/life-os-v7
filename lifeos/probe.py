@@ -274,6 +274,33 @@ def ashby_board(fetcher=fetch, slug="safi"):
     return {"status": got.status, "bytes": len(text), "has_list": start >= 0, "listed_entries": count, "jobposting_hits": len(re.findall(r"JobPosting|jobPosting", text))}
 
 
+JOB_WORDS = re.compile(r"\b(manager|engineer|developer|analyst|director|lead|designer|officer|consultant|coordinator|executive|scientist|specialist|technician|assistant|head of|architect|administrator|associate|intern)\b", re.I)
+TITLE_PAGES = {"su-i-f-concept-ltd": ("https://conceptltd.com/careers", "https://ifconcept.co.uk/"), "su-sa3-group-ltd": ("https://sa3power.com/careers",),
+               "su-sixfold-bioscience-limited": ("https://sixfold.bio/", "https://sixfold.bio/careers", "https://sixfold.bio/team")}
+
+
+def careers_titles(fetcher=fetch, pages=None):
+    """The job-title-looking headings and links on a sponsor's own careers pages (public titles only, each cut to 70 characters, at most 15 per page; no
+    descriptions, no body text), the ATS boards they link to, and whether a 'no vacancies' phrase is on the page. Decides if a custom parser is worth building."""
+    out = {}
+    for source_id, urls in (pages if pages is not None else TITLE_PAGES).items():
+        found = {}
+        for url in urls:
+            got = fetcher(url, timeout=20, max_hops=3, max_bytes=2_000_000)
+            text = got.html or ""
+            pieces = re.findall(r"<(?:h[1-4]|a)\b[^>]*>(.*?)</(?:h[1-4]|a)>", text, re.I | re.S)
+            titles = []
+            for piece in pieces:
+                clean = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", piece)).strip()
+                if 5 <= len(clean) <= 70 and JOB_WORDS.search(clean) and clean not in titles:
+                    titles.append(clean)
+            boards = sorted({f"{kind}:{m.group(1)}" for kind, pattern in ATS_PATTERNS for m in re.finditer(pattern.lstrip("^"), text, re.I)})[:4]
+            found[urlsplit(url).netloc + (urlsplit(url).path or "/")] = {"status": got.status, "bytes": len(text), "titles": titles[:15], "title_count": len(titles), "boards": boards,
+                                                                          "no_vacancies_phrase": any(p in text.lower() for p in EMPTY_PHRASES)}
+        out[source_id] = found
+    return out
+
+
 def lane_funnel():
     """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
     from lifeos.jobs import store                                                            # noqa: PLC0415
@@ -573,4 +600,4 @@ def held_first_party(fetcher=fetch, rows=None):
 
 
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "candidate_sites": candidate_sites(), "ashby_board": ashby_board(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "candidate_sites": candidate_sites(), "careers_titles": careers_titles(), "ashby_board": ashby_board(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
