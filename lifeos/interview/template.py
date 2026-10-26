@@ -15,7 +15,7 @@ import re
 from datetime import date
 from urllib.parse import urlencode
 
-from .view import UNCONNECTED, primary_action, stage
+from .view import HOLD_LINE, NEXT_LINE, UNCONNECTED, hand_action, primary_action, stage      # noqa: F401 - HOLD_LINE / NEXT_LINE are this writer's carried line formats
 
 GRAY, NV = "gray", "Not verified"
 ARROW, INFO = "https://www.notion.so/icons/arrow-right_gray.svg", "https://www.notion.so/icons/info-alternate_gray.svg"
@@ -122,6 +122,7 @@ DONE_MAX = 20                                                  # completion line
 # writes it; this writer carries it forward and never counts it as an edit)
 DECISION_LINE = re.compile(r"Hiring decision \(V7\) · .+ · op [A-Za-z0-9_-]{8,64}")
 DECISION_MAX = 20                                              # decision lines carried per page, newest last
+HAND_MAX = 10                                                  # LIFE-111/112: hand-set hold and next-action lines (Manage) carried per page, newest last
 
 
 def action_key(text, context=""):
@@ -142,8 +143,24 @@ def _rounds(view):
 
 
 def fold_lines(view, label, action):
-    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one), every recorded completion and every recorded decision, in the fold."""
-    return ([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + [done_line(k, d) for k, d in view.done] + list(view.decisions)
+    """E05: the one completable primary action (a source-backed PRIMARY ACTION, never a degraded one), Jim's hand-set next action (LIFE-112, completable by its own key),
+    every recorded completion, every recorded decision and Jim's hand-set lines, in the fold."""
+    hand = hand_action(view)
+    return (([action_line(action, _rounds(view))] if label == "PRIMARY ACTION" else []) + ([f"v7-action:1;key={hand[0]};text={hand[1]}"] if hand else [])
+            + [done_line(k, d) for k, d in view.done] + list(view.decisions) + list(view.hand))
+
+
+def hand_parts(view):
+    """LIFE-112: Jim's own next action and/or due date, beside the derived one and labelled as his; its Mark Complete link (which clears it) once the Close screen is configured."""
+    hand = hand_action(view)
+    if not hand:
+        return []
+    key, text, due = hand
+    out = [para(("SET BY JIM", True), " · ", (text, True)), para(("Due: ", True), due or "No date set", " · set by Jim on the Manage screen; new evidence never changes it")]
+    if view.close_base and view.page_id:
+        url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': key})}"
+        out.append(para(("Mark Complete ↗", False, url), " · clears this action; nothing is recorded until you confirm there."))
+    return out
 
 
 def complete_parts(view, label, action):
@@ -244,7 +261,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         para((action, True)),
         para(("Due: ", True), due, " · ", ("Owner: ", True), "Jim · ", ("Source completeness: ", True), "Partial",
              *([" · ", ("Request message ↗", False, link)] if link else [])),
-        *complete_parts(view, label, action)], None, PLAIN,
+        *complete_parts(view, label, action), *hand_parts(view)], None, PLAIN,
         (label, True), " · ", basis)
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),

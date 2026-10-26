@@ -2,6 +2,7 @@
 
 A stage appears only when deterministic evidence supports it: nothing here is a default. `rank` orders the stages the first slice can establish, so a missing source can never roll a row backward."""
 import re
+from datetime import datetime
 
 from lifeos.platform import names
 
@@ -21,6 +22,48 @@ APPLIED_DAYS = 30                                              # a submitted rol
 OUTCOMES = ("Rejected", "Withdrew", "Position filled", "Declined offer", "Hired", "Other")      # the six distinct closure outcomes: each is its own value, none stands in for another
 CLOSED_DECISIONS = OUTCOMES + ("Passed",)                      # D194: a Job Ledger Hiring Decision a person confirmed; it closes the pursuit whatever Notes pages say (Applied stays as history)
 KINDS = ("assessment", "hiring_manager", "recruiter_screen", "interview")         # calendar evidence kinds, most specific first
+
+
+# LIFE-111 / LIFE-112 (Jim, Oct 25 2026): what Jim sets by hand on an opportunity's own record, one line each: in its Notes page's ⚙️ LIFE OS fold, or in the Job Ledger row's
+# decision.HAND_SET property. Evidence stages are never hand-set. The latest line of each kind (by its `at`) is the state; `active`, or an empty next action, clears it.
+PAUSED, WAITING, ACTIVE = "paused", "waiting", "active"
+HOLD_LABEL = {PAUSED: "Paused", WAITING: "Waiting on employer"}
+_AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
+HOLD_LINE = re.compile(rf"v7-hold:1;state=({PAUSED}|{WAITING}|{ACTIVE});at=({_AT});op=([0-9a-f]{{16}})")          # the Interview writer keeps its own copies (contract-tested)
+NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
+NEXT_MAX = 200                                                 # a hand-entered next action longer than this is refused, never cut
+
+
+def hold_line(state, at, op):
+    return f"v7-hold:1;state={state};at={at};op={op}"
+
+
+def next_line(text, due, at, op):
+    return f"v7-next:1;due={due or 'none'};at={at};op={op};text={text}"
+
+
+def hand_lines(text):
+    """The hand-set lines in a record's text, in order."""
+    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t))
+
+
+def _latest(lines, pattern):
+    found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(pattern.fullmatch, lines)) if m]
+    return max(found, key=lambda f: f[:2])[2] if found else None
+
+
+def hold_of(lines):
+    """-> {"state", "at", "op"} of the latest hold line, or None when there is none or it says Active."""
+    m = _latest(lines, HOLD_LINE)
+    return {"state": m.group(1), "at": m.group(2), "op": m.group(3)} if m and m.group(1) != ACTIVE else None
+
+
+def next_of(lines):
+    """-> {"text", "due", "at", "op"} of the latest next-action line, or None when there is none or it is empty. `due` is exactly the date Jim typed, or None."""
+    m = _latest(lines, NEXT_LINE)
+    if not m or not (m.group(4).strip() or m.group(1) != "none"):
+        return None
+    return {"text": m.group(4).strip(), "due": None if m.group(1) == "none" else m.group(1), "at": m.group(2), "op": m.group(3)}
 
 
 _DEGRADED = re.compile(r"^DEGRADED · (?P<what>.*?) at (?P<clock>\d{1,2}:\d{2} [AP]M CT)(?P<rest> · .*)?$")

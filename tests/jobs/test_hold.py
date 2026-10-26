@@ -41,7 +41,7 @@ class HoldExpiryTests(unittest.TestCase):
     def test_dry_run_counts_what_is_due_and_writes_nothing(self):
         out, seen = self.go(False)
         self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"jobright": 9}, "by_source_reason": {"jobright": {"jd_thin": 9}}, "saved": False,
-                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0}})
+                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0}, "release_candidates": 0, "released": 0})
         self.assertFalse([s for s, _ in seen if s.startswith("UPDATE")])
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):
@@ -188,6 +188,32 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual([self.db.row(i)[0] for i in (1, 2, 3, 4, 5, 7)], ["HOLD", "HOLD", "HOLD", "EXCLUDED_UNRESOLVED", "HOLD", "HOLD"])
         self.assertEqual(self.db.row(4)[1], "hold_expired")
         self.assertIsNone(self.db.row(1)[5])
+
+    def test_the_one_off_release_retries_every_worthwhile_hold_once_from_its_time_and_never_a_later_hold(self):
+        """Jim, Oct 25: the jobs on HOLD get their one retry now, not on day 6; an employer-board job goes back on its own page; a later hold waits as before."""
+        self.db.job(1, days_held=1)                                                # a Jobright job, one day on HOLD: back to the resolver
+        self.db.job(2, days_held=1, source="web:gh-example", reason="link_mismatch")   # an employer-board job with no final link: RESOLVED on its own page
+        self.db.job(3, days_held=1, source="discover", reason="no_match_no_board+no_fit")  # a lead no stage can resolve: left for the seven-day rule
+        self.db.job(4, days_held=1, reason="closed_by_employer")                  # closed: never worthwhile
+        self.db.job(5, days_held=0.01)                                             # went on HOLD after the release time: the normal rules
+        with mock.patch.object(hold, "RELEASE_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)):
+            before = self.go(NOW - timedelta(hours=2))                             # before the release time nothing is released
+            out = self.go()
+            again = self.go(NOW + timedelta(minutes=20))
+        self.assertEqual((before["released"], out["release_candidates"], out["released"], again["released"]), (0, 2, 2, 0))
+        self.assertEqual(self.db.row(1)[:3], ("NEW", "recovery_retry", None))
+        self.assertEqual(self.db.row(2)[:3], ("RESOLVED", "recovery_retry", "https://aggregator.example.com/j/2"))
+        self.assertEqual(self.db.row(2)[4], limits.RESOLVE_MAX_ATTEMPTS - 1)      # exactly one attempt left, and recovered_at set: a second failure is excluded
+        self.assertEqual([self.db.row(i)[0] for i in (3, 4, 5)], ["HOLD", "HOLD", "HOLD"])
+
+    def test_a_hold_that_needs_the_reader_waits_for_the_reset_and_any_other_goes_early(self):
+        self.db.job(1, days_held=1, reason="jd_thin", link=LINK)                 # needs the TinyFish reader: waits for the 7:05 PM CT release
+        self.db.job(2, days_held=1, reason="link_mismatch")                      # a wrong link: no reader helps, released early
+        with mock.patch.object(hold, "EARLY_AT", NOW - timedelta(hours=1)), mock.patch.object(hold, "RELEASE_AT", NOW + timedelta(hours=1)):
+            early = self.go()
+            late = self.go(NOW + timedelta(hours=1, minutes=1))
+        self.assertEqual((early["released"], late["released"]), (1, 1))
+        self.assertEqual([self.db.row(i)[1] for i in (1, 2)], ["recovery_retry", "recovery_retry"])
 
     def test_a_job_with_a_link_is_recovered_whatever_its_source_and_every_resolved_source_has_a_resolve_stage(self):
         self.db.job(1, source="web:su-example", link=LINK, reason="jd_thin")      # the page was unreadable: Enrich reads every RESOLVED job, whatever its source

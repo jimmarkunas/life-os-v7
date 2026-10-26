@@ -5,7 +5,7 @@ becomes EXCLUDED_UNRESOLVED: terminal, never published, never retried. Counts on
 
 D185 recovery (docs/DECISIONS.md): a worthwhile HOLD job gets ONE more try through the normal path, from day 6; one still HOLD, NEW or RESOLVED
 RECOVERY_HOURS after its try is excluded as `unresolved_after_recovery`, so the latest exclusion is day 7 and the seven-day rule is unchanged."""
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from lifeos.jobs import lanes, store
 from lifeos.platform import limits
@@ -48,6 +48,37 @@ def recover(cursor, now, live):
     return len(picked), len(done)
 
 
+RELEASE_AT = datetime(2026, 10, 26, 0, 5)       # Jim, Oct 25 2026 ~6:00 PM CT: "Fix those 77 jobs on hold immediately". 7:05 PM CT, after the TinyFish Fetch day cap resets (UTC midnight)
+EARLY_AT = datetime(2026, 10, 25, 23, 25)        # Jim, 6:20 PM CT: "solve this in the next 20 minutes": a hold no TinyFish read can help (a wrong link, a refused page) goes at 6:25 PM CT
+NEEDS_READER = ("jd_thin", "description_empty", "description_empty_tf")     # these wait for 7:05 PM CT: retried before the cap resets they would fail again and be excluded
+
+
+def release(cursor, now, live):
+    """One-off (Jim, Oct 25): every worthwhile job that went on HOLD before RELEASE_AT gets its D185 retry now instead of on day 6, once each (recovered_at),
+    through the normal path, so it reaches an outcome tonight; one that fails again is excluded as `unresolved_after_recovery` by the same rules.
+    An employer-board job (web:*) with no final link goes back to RESOLVED on its own page (enrich proves the link again). -> (candidates, released)."""
+    if now < EARLY_AT:
+        return 0, 0
+    cursor.execute("SELECT id, lane, posted_date, first_seen, unresolved_reason, final_apply_url IS NOT NULL, source, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
+                   "AND source_url IS NOT NULL AND updated_at < %s ORDER BY updated_at, id", (RELEASE_AT,))
+    picked = [(row[0], row[7]) for row in cursor.fetchall() if worthwhile(row[1], row[2], row[3], row[4], now) and (now >= RELEASE_AT or row[4] not in NEEDS_READER)
+              and (row[5] or row[6] in RESOLVED_BY or (str(row[6]).startswith("web:") and row[6] != "web:openjobs"))]
+    done = []
+    for job_id, key in picked if live else ():
+        cursor.execute("UPDATE v7_jobs SET status=CASE WHEN final_apply_url IS NOT NULL OR source LIKE 'web:%%' THEN 'RESOLVED' ELSE 'NEW' END, "
+                       "final_apply_url=CASE WHEN final_apply_url IS NULL AND source LIKE 'web:%%' THEN source_url ELSE final_apply_url END, unresolved_reason='recovery_retry', recovered_at=%s, updated_at=%s, "
+                       "resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",
+                       (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
+        if cursor.rowcount:
+            done.append((job_id, key))
+    if done:                                                                  # read-back: the same jobs, out of HOLD, with the reason, time and counters written
+        cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status IN ('NEW', 'RESOLVED') AND unresolved_reason='recovery_retry' "
+                       "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
+        if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
+            raise store.StoreError("HOLD_READBACK_MISMATCH")
+    return len(picked), len(done)
+
+
 DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (status IN ('NEW', 'RESOLVED') AND recovered_at < %s))"       # (hold cutoff, recovery deadline)
 
 
@@ -59,6 +90,7 @@ def run(limit, live, now=None):
         store.ensure_schema(connection)
         with connection.cursor() as cursor:
             candidates, requeued = recover(cursor, now, live)
+            release_candidates, released = release(cursor, now, live)
             cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason IS NULL), 0), COALESCE(SUM(recovered_at IS NOT NULL), 0) FROM v7_jobs WHERE " + DUE, due_at)
             due, no_reason, failed_due = (int(x or 0) for x in cursor.fetchone())
             cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='HOLD'")
@@ -88,4 +120,4 @@ def run(limit, live, now=None):
                 if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:         # read-back: every due job is now terminal with its reason, as many as were counted
                     raise store.StoreError("HOLD_READBACK_MISMATCH")
     return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "by_source_reason": matrix, "saved": bool(live),
-            "recovery_candidates": candidates, "recovered": requeued, "retired": retired}
+            "recovery_candidates": candidates, "recovered": requeued, "retired": retired, "release_candidates": release_candidates, "released": released}
