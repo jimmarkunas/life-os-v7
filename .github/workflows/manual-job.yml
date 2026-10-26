@@ -1,0 +1,98 @@
+name: manual-job
+# LIFE-37 (Jim, Oct 26 2026). Manual only, no schedule: ONE job Jim names by hand goes into Jobs OS (like a recruiter's posting link) and into the Interview OS writer (its machine
+# opportunity page and Interview 1 round), so a meeting can be matched to it (lifeos/sources/manual_job.py). Dry run unless `live` is ticked: a dry run reads the store and the
+# Hiring Pipeline and PLANS the writes. It holds the store credentials and the Interview token; no mail, Calendar, Gmail or Jobs/Recruiters token. Counts and fixed codes only.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "The employer's own single-vacancy posting link (https)"
+        type: string
+        default: ""
+      company:
+        description: "Company, as it should read on the opportunity page"
+        type: string
+        default: ""
+      title:
+        description: "Job title, as it should read on the opportunity page"
+        type: string
+        default: ""
+      round_day:
+        description: "Central day (YYYY-MM-DD) of the call, to date Interview 1. Leave blank when a request message link is given"
+        type: string
+        default: ""
+      request_url:
+        description: "https link to the request message, for a Scheduling Pending Interview 1. Leave blank when a round day is given"
+        type: string
+        default: ""
+      live:
+        description: "Actually add the job and write the Interview OS pages (false = dry run: nothing written)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-interview-writer     # the one writer of the opportunity pages: this run, the after-tick Interview step and the Granola run take turns
+  cancel-in-progress: false
+jobs:
+  manual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_manual
+        name: Load the migrated credentials from Bitwarden (EDGE-1.3, exactly these 8; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_manual.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_manual_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_manual.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN
+      - name: Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)
+        env:
+          MANUAL_JOB_URL: ${{ inputs.url }}
+          MANUAL_JOB_COMPANY: ${{ inputs.company }}
+          MANUAL_JOB_TITLE: ${{ inputs.title }}
+          MANUAL_JOB_ROUND_DAY: ${{ inputs.round_day }}
+          MANUAL_JOB_REQUEST_URL: ${{ inputs.request_url }}
+          HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
+          INTERVIEW_OS_WRITER: ${{ vars.INTERVIEW_OS_WRITER }}
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_DB_USER || steps.bws_manual_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NOTION_INTERVIEW_TOKEN: ${{ steps.bws_manual.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_manual_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          LIVE: ${{ inputs.live }}
+        run: python -m lifeos.run manual-job --limit 5 $([ "$LIVE" = "true" ] && echo --live)

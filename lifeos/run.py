@@ -82,6 +82,7 @@ STAGES = {
     "interview": lazy("lifeos.sources.interview_evidence"),      # LIFE-88: the normal path (accepted evidence to the Interview OS writer); writes need INTERVIEW_OS_WRITER=v7
     "interview-acceptance": lazy("lifeos.interview.acceptance"),
     "granola": lazy("lifeos.interview.granola_bridge", "stage"),     # LIFE-37 Step 2: carry ONE pinned Granola meeting (GRAN_PIN_DAY) from Oracle into its round; manual only, no schedule
+    "manual-job": lazy("lifeos.sources.manual_job"),     # LIFE-37: ONE job Jim names by hand (MANUAL_JOB_*) into Jobs OS and the Interview OS writer; manual only (manual-job.yml), dry run unless live
     "jira-snapshot": lazy("lifeos.jira.snapshot"),
     "bills-snapshot": lazy("lifeos.bills.snapshot"),
     "bills-paid": lazy("lifeos.bills.paid"),
@@ -163,7 +164,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def _step_code(counts):
