@@ -339,6 +339,107 @@ class Corrections(unittest.TestCase):
         store.save_decisions(conn, [], [("meta platforms", "somethingelse")])                                  # an identical confirmation is idempotent
 
 
+class StoredState(unittest.TestCase):
+    """LIFE-116: a page is read only when it is dirty; the stored state is what a page was last PROVEN to show."""
+
+    def settled(self, jobs=None):
+        jobs = jobs or [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Nowhere Ltd", "Engineer", "ADMIT")]
+        conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
+        first = go(conn, ledger, live=True)
+        return conn, ledger, first
+
+    def test_the_first_live_run_reads_every_page_once_and_records_what_each_was_proven_to_show(self):
+        conn, ledger, first = self.settled()
+        self.assertEqual((first["pages_read"], first["pages_dirty"], first["state_saved"], first["blocks"]), (2, 2, 2, {"created": 1, "none": 1}))
+        rows = dict(conn.raw.execute("SELECT job_key, written_hash FROM v7_network_page_state").fetchall())
+        self.assertEqual((len(rows[KEY1]), rows[KEY2]), (12, ""))                            # a hash for the block, empty for no block: nothing else is stored
+        self.assertEqual([c[1] for c in conn.raw.execute("PRAGMA table_info(v7_network_page_state)").fetchall()], ["job_key", "page_id", "written_hash", "checked_at"])
+
+    def test_a_page_with_no_leads_and_no_block_is_not_read_again_and_the_block_page_is(self):
+        conn, ledger, _ = self.settled()
+        counts = go(conn, ledger, live=True, limit=1)
+        self.assertEqual((counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 0, {"unchanged": 1}))        # only the page that holds a block (Jim's ticks live there)
+        counts = go(conn, ledger, live=True, limit=2)
+        self.assertEqual((counts["pages_read"], counts["blocks"]), (2, {"unchanged": 1, "none": 1}))                       # a spare budget also sweeps one settled page (drift)
+
+    def test_a_new_job_is_dirty_and_is_read_first_even_with_a_budget_of_one(self):
+        conn, ledger, _ = self.settled()
+        conn.raw.execute("INSERT INTO v7_jobs VALUES (3,?,?,?,?,?)", (KEY3, "PUBLISHED", "Acme Corp", "Product Manager", "page-3"))
+        conn.raw.execute("INSERT INTO v7_job_fit VALUES (3,'ADMIT')")
+        ledger.add_page("page-3", KEY3)
+        counts = go(conn, ledger, live=True, limit=1)
+        self.assertEqual((counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 1, {"created": 1}))
+        self.assertEqual((owned_count(ledger, "page-3"), go(conn, ledger, live=True, limit=1)["pages_dirty"]), (1, 0))
+
+    def test_a_roster_change_makes_only_the_pages_of_that_company_dirty(self):
+        conn, ledger, _ = self.settled()
+        conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (9,'k9','person-00009','Invented Person9',"
+                         "'2026-09-07 00:00:00','2026-09-07','ACTIVE','SEED_ONLY')")
+        conn.raw.execute("INSERT INTO v7_network_positions (person_id, company_key, company_name, title, position_state, first_observed, last_observed, last_verified, source_kind, source_ref,"
+                         " source_observed_at, material_hash) VALUES (9,'acme','Acme Corp','Product Lead','CURRENT','2026-10-01','2026-10-01','2026-10-01','X','r','2026-10-01','h9')")
+        counts = go(conn, ledger, live=True, limit=1)
+        self.assertEqual((counts["pages_read"], counts["pages_dirty"], counts["blocks"]), (1, 1, {"replaced": 1}))
+        self.assertEqual(go(conn, ledger, live=True, limit=1)["pages_dirty"], 0)
+
+    def test_a_block_page_is_still_rotated_so_a_dismiss_tick_is_read_and_persisted(self):
+        conn, ledger, _ = self.settled()
+        ledger.tick("page-1", "Dismiss")
+        counts = go(conn, ledger, live=True, limit=1)
+        self.assertEqual((counts["pages_read"], counts["ticks_dismiss"], counts["blocks"]), (1, 1, {"replaced": 1}))
+        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
+
+    def test_a_failed_read_records_no_state_and_the_page_stays_dirty(self):
+        conn, ledger = build(), ledger_for()
+        ledger.fail_get = True
+        degraded(conn, ledger, live=True)
+        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_page_state").fetchone()[0], 0)
+        ledger.fail_get = False
+        counts = go(conn, ledger, live=True)
+        self.assertEqual((counts["pages_dirty"], counts["blocks"]), (1, {"created": 1}))
+
+    def test_a_dry_run_records_nothing_and_without_the_table_the_plain_rotation_applies(self):
+        conn, ledger = build(), ledger_for()
+        counts = go(conn, ledger)
+        self.assertEqual((counts["state_table"], counts["pages_read"], "pages_dirty" in counts), (False, 1, False))
+        self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='v7_network_page_state'").fetchone()[0], 0)
+
+    def test_a_failed_state_save_degrades_the_run_but_loses_only_the_shortcut(self):
+        conn, ledger = build(), ledger_for()
+        saved, store.save_page_state = store.save_page_state, lambda *a, **k: (_ for _ in ()).throw(NetworkError("NETWORK_STORE_FAILED"))
+        try:
+            self.assertEqual(degraded(conn, ledger, live=True), "NETWORK_SURFACE_DEGRADED")
+        finally:
+            store.save_page_state = saved
+        self.assertEqual(owned_count(ledger, "page-1"), 1)                                   # the block itself was written and proven
+        self.assertEqual(go(conn, ledger, live=True)["blocks"], {"unchanged": 1})            # the next run just reads the page again and finds nothing to change
+
+    def test_a_production_sized_ledger_converges_within_the_bound_then_reads_only_what_changed(self):
+        from datetime import timedelta
+        n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41
+        surfaced = {f"t{i:04d}": (f"p{i}", "Co", "Role", set()) for i in range(n_leads + n_other)}
+        others = [(f"n{i:04d}", f"q{i}", "Co", "Role") for i in range(n_nontarget)]
+        wanted = {f"t{i:04d}": f"h{i:010d}" for i in range(n_leads)}
+        total = n_leads + n_other + n_nontarget
+        state, stuck = {}, "t0900"
+        bound = -(-total // (budget - budget // 5))                                          # the block pages keep one slot in five (Jim's ticks), so the dirty pages get 33 of 41
+        for hour in range(bound + 3):                                                        # bootstrap: every page unknown, one page that never succeeds
+            picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, budget, NOW + timedelta(hours=hour))
+            self.assertLessEqual(len(picked), budget)
+            for key, page, *_ in picked:
+                if key != stuck:
+                    state[key] = (page, wanted.get(key, ""))
+        self.assertEqual(len(state), total - 1)                                              # all but the page that failed are recorded: the failure starves nobody
+        picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, budget, NOW + timedelta(hours=99))
+        self.assertEqual(dirty, 1)                                                           # steady state: only the failed page is dirty
+        self.assertIn(stuck, [k for k, *_ in picked])
+        reads = [k for k, *_ in picked if k != stuck]
+        self.assertEqual(len(reads), budget - 1)
+        self.assertEqual(bound, 49)                                                          # hourly ticks alone would take 49 hours; one large manual pass does it at once
+        surfaced["t0010"] = ("p-moved", "Co", "Role", set())                                 # a page id that changed is dirty at once
+        picked, _, dirty = network_surface._queue_state(surfaced, others, wanted, state, 1, NOW + timedelta(hours=100))
+        self.assertEqual((dirty, [k for k, *_ in picked]), (2, ["t0010"]))                   # leads-bearing dirty pages come first
+
+
 class Contract(unittest.TestCase):
     ROOT = pathlib.Path(__file__).resolve().parents[2]
 

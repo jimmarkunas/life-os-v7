@@ -383,6 +383,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_events`: `lifeos/network/store.py`
 - `v7_network_dismissals`: `lifeos/network/store.py`
 - `v7_network_aliases`: `lifeos/network/store.py`
+- `v7_network_page_state`: `lifeos/network/store.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 
