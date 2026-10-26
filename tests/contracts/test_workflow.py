@@ -222,13 +222,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("--live", text.split("\n  # LIFE-10:")[0])                                         # the database and Gmail diagnostics never write
         confirm = diag[True]["workflow_dispatch"]["inputs"]["confirm"]                                      # LIFE-10: the proof's typed confirmation, an env value, never inlined in the command
         self.assertEqual((confirm["type"], confirm["default"]), ("string", ""))
-        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN"])      # the Client ID is the trace job's only Gmail GitHub secret
+        self.assertEqual(sorted(set(re.findall(r"secrets\.(\w+)", text))), ["GMAIL_OAUTH_CLIENT_ID", "LIFEOS_ACQ_SSH_PORT", "LIFEOS_BWS_RUNTIME_TOKEN", "NOTION_JOB_LEDGER_DATA_SOURCE_ID"])      # LIFE-121: the report job reads the Ledger's data source id to find its page; the Client ID is the trace job's only Gmail GitHub secret
         for name in moved:
             self.assertNotIn(f"secrets.{name}", text)                                                      # no direct copy, so no fallback
-        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 8)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
+        self.assertEqual(re.findall(r"uses:\s*(bitwarden/\S+)", text), ["bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793"] * 10)   # the reviewed v3.0.1 commit, once per job plus its one retry (D209)
         head, rest = text.split("\n  # LIFE-64:")                                                           # the database-only diagnostics, then the one job that reads Gmail,
         trace_text, sandbox_text = rest.split("\n  # LIFE-10:")                                              # then the one job that reads Notion
         sandbox_text, ui_text = sandbox_text.split("\n  # LIFE-88:")                                        # then LIFE-88's UI 3c probe, the one job with the Interview token
+        ui_text, report_text = ui_text.split("\n  # LIFE-121:")                                            # then LIFE-121's private reports: the database values and the Jobs Notion token, the one job that writes the report page
         uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         gmail = {"GMAIL_OAUTH_CLIENT_SECRET": "08245c07-728f-438e-940b-b4db015a6967", "GMAIL_OAUTH_REFRESH_TOKEN": "672a44e9-235f-4121-a99d-b4db015a6987"}
         self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", head, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in moved.items()] * 2))
@@ -244,7 +245,7 @@ class WorkflowTests(unittest.TestCase):
         trace = diag["jobs"]["trace"]
         sandbox = diag["jobs"]["sandbox"]
         self.assertEqual((job["if"], trace["if"], sandbox["if"]),
-                         ("${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}",
+                         ("${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}",
                           "${{ inputs.stage == 'newsletter-trace' }}",
                           "${{ inputs.stage == 'notion-sandbox-access' || inputs.stage == 'notion-sandbox-outreach-proof' }}"))   # exactly one of the three jobs runs
         self.assertEqual(sandbox["timeout-minutes"], 5)
@@ -255,6 +256,14 @@ class WorkflowTests(unittest.TestCase):
                                                                     {"NOTION_API_TOKEN": token, "PROOF_CONFIRM": "${{ inputs.confirm }}"}))   # the only write step; the stage itself refuses without SYNTHETIC
         self.assertEqual([s.get("env") for s in sandbox["steps"][:-2]], [None] * (len(sandbox["steps"]) - 2))   # only the two stage steps receive the token
         self.assertIs(sandbox["steps"][2]["with"]["set_env"], False)                                       # a masked step output, never exported job-wide
+        report = diag["jobs"]["report"]                                                                    # LIFE-121: private reports to one Notion page; a dry run unless confirm = REPORT
+        self.assertEqual((report["if"], report["timeout-minutes"]), ("${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' }}", 10))
+        self.assertEqual(sorted(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", report_text, re.M)), sorted([f"{uuid_} > {name}" for name, uuid_ in {**moved, "NOTION_API_TOKEN": "53dc3d04-dbb2-45fe-8185-b4db015eedcb"}.items()] * 2))
+        self.assertEqual(report["steps"][-1]["env"], {"LIFEOS_ACQ_SSH_PORT": "${{ secrets.LIFEOS_ACQ_SSH_PORT }}", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}",
+                                                      "STAGE": "${{ inputs.stage }}", "REPORT_CONFIRM": "${{ inputs.confirm }}"})
+        self.assertEqual(report["steps"][-1]["run"].count("--live"), 1)                                    # the only write path, behind the typed REPORT confirmation
+        self.assertIn('[ "$REPORT_CONFIRM" = "REPORT" ]', report["steps"][-1]["run"])
+        self.assertNotIn("GMAIL", report_text)
         ui = diag["jobs"]["interview_ui"]                                                                  # LIFE-88: the one job that holds the Interview token
         self.assertEqual((ui["if"], ui["timeout-minutes"]), ("${{ inputs.stage == 'interview-ui-probe' }}", 5))
         self.assertEqual(re.findall(rf"^\s*({uuid}\s*>\s*\w+)\s*$", ui_text, re.M), ["092b44ae-32cb-453b-8cc2-b4db015ef571 > NOTION_INTERVIEW_TOKEN"] * 2)
@@ -620,10 +629,10 @@ CONSUMERS = {
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-fit-edge', 'cancel-in-progress': False},
         timeouts={'fit_edge': 5}, digest="62c235d80f490685"),
     "diag": dict(
-        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}},   # LIFE-88: the UI 3c probe alone holds the Interview token; LIFE-64: the trace job alone reads Gmail (list and read only); LIFE-10: the sandbox job alone reads Notion (three fixed reads)
-        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
+        jobs={"diag": DB, "trace": DB | {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN"}, "sandbox": {"NOTION_API_TOKEN"}, "interview_ui": {"NOTION_INTERVIEW_TOKEN"}, "report": DB | {"NOTION_API_TOKEN"}},   # LIFE-121: the private-report job holds the database values and the Jobs Notion token; LIFE-88: the UI 3c probe alone holds the Interview token; LIFE-64: the trace job alone reads Gmail (list and read only); LIFE-10: the sandbox job alone reads Notion (three fixed reads)
+        direct=['GMAIL_OAUTH_CLIENT_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-diag', 'cancel-in-progress': False},
-        timeouts={"diag": 10, "trace": 10, "sandbox": 5, "interview_ui": 5}, digest="19bbed28cb553299"),   # LIFE-88: + the interview-ui-probe command
+        timeouts={"diag": 10, "trace": 10, "sandbox": 5, "interview_ui": 5, "report": 10}, digest="8c8832322a0880c9"),   # LIFE-88: + the interview-ui-probe command
 }
 # The eight workflows cut over after the pilots: the loader is exported to nothing (set_env: false) and each CONSUMER step receives, as a masked step output, exactly the migrated values it
 # effectively received on main 659de1e (workflow-, job- and step-level env merged), except hourly `report`, which only pushes an alert and needs just the topic. Every step not listed
