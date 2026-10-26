@@ -59,6 +59,8 @@ PUBLIC_BEFORE_LIFE_72 = frozenset((
     "repost_ambiguous recovery_retry screen_pay listing_url no_job_id dup_other_source dup_of_final_url closed unknown Fit_N_below_N audit_url_listing_url audit_url_root "
     "audit_url_workable_no_account audit_jd_template audit_jd_listing audit_jd_thin no_match_no_board+no_result no_match_no_title+no_result no_match_ambiguous+no_result "
     "no_match_no_board+no_fit no_match_no_title+no_fit no_match_ambiguous+no_fit in_ledger same_opening audit_url_no_job_id").split())
+MADE_PUBLIC_OCT_25 = frozenset("excluded_fit released_keep_list released_ledger requeued_age requeued_direct requeued_fit requeued_floor requeued_linkedin "
+                               "retired_by_jim title_watch_unseen".split())     # Jim, Oct 25 2026: these fixed words print as themselves, not "other"
 
 
 def emitted_reasons(root=ROOT / "lifeos"):
@@ -88,7 +90,7 @@ class StoredReasons(unittest.TestCase):
                 self.assertTrue(entry.stage and entry.meaning.strip() and entry.action.strip())
 
     def test_the_public_allowlist_is_built_from_the_registry_and_is_exactly_what_it_was(self):
-        self.assertEqual(set(alertstate.REASONS), set(PUBLIC_BEFORE_LIFE_72))
+        self.assertEqual(set(alertstate.REASONS), set(PUBLIC_BEFORE_LIFE_72 | MADE_PUBLIC_OCT_25))
         self.assertEqual(alertstate.REASONS, codes.public_reasons())
 
     def test_the_reason_check_turns_red_for_an_unregistered_reason(self):
