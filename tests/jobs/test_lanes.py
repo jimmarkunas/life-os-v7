@@ -336,15 +336,15 @@ class ThinBoardAdmitTests(unittest.TestCase):
         self.assertEqual(lanes.decide("Scale-Up", closed, self.TODAY)[0].status, lanes.EXCLUDE)
         self.assertEqual(lanes.decide("Scale-Up", self.facts(90), self.TODAY, exclusion="a private title rule")[0].status, lanes.EXCLUDE)
 
-    def test_a_scale_up_sponsors_own_board_and_a_real_description_are_unchanged(self):
+    def test_a_thin_page_not_from_a_board_source_and_a_real_description_are_unchanged(self):
         self.assertEqual(lanes.decide("Scale-Up", self.facts(90, thin_admit=False), self.TODAY)[0].reason, lanes.THIN_REASON)
         self.assertEqual(lanes.decide("Scale-Up", self.facts(65, thin=False), self.TODAY)[0].status, lanes.REVIEW)       # a full description still needs Fit 72
         self.assertFalse(lanes.facts_for(90, "Delivery Lead", "London", "x", None, None, self.TODAY, thin=False, thin_admit=True).thin_admit)
 
-    def test_only_the_three_ats_boards_count(self):
-        for source in ("web:gh-acme", "web:lv-acme", "web:ab-acme"):
+    def test_only_a_scale_up_or_ats_board_source_counts(self):
+        for source in ("web:su-acme", "web:gh-acme", "web:lv-acme", "web:ab-acme"):
             self.assertTrue(lanes.thin_admit_source(source), source)
-        for source in ("web:su-acme", "web:openjobs", "web:titlewatch:su-acme", "jobright", "", None):
+        for source in ("web:openjobs", "web:titlewatch:su-acme", "jobright", "", None):
             self.assertFalse(lanes.thin_admit_source(source), source)
 
 

@@ -194,15 +194,15 @@ class Stage(unittest.TestCase):
             other = stage.score_rows([(2, title, company, GOOD, "fp") + london], PROFILE, TODAY)[0]
             self.assertEqual(other[3].status, "EXCLUDE", (title, company))
 
-    def test_a_thin_page_on_a_scale_up_boards_own_source_is_review_and_never_excluded_for_fit(self):
-        """Jim, Oct 21: Review from the apply link. The same page from any other source is judged as before."""
+    def test_a_thin_page_on_a_scale_up_boards_own_source_is_admitted_when_the_title_fits_and_never_excluded_for_fit(self):
+        """Jim, Oct 21: never excluded for Fit alone. Jim, Oct 25: a fitting title (Fit 60+) is admitted, not Review. The same page from any other source is judged as before."""
         from lifeos.jobs.fit import stage
         thin = "We are hiring a delivery lead to join our team in London. " * 4
         row = lambda source: (7, "Delivery Lead", "Example Ltd", thin, "fp", "Scale-Up", "London \u00b7 office \u00b7 United Kingdom", None, None, date(2026, 9, 30), "Scale-up:POSITIVE", source)
-        for score, want in ((40, "REVIEW"), (90, "REVIEW")):                       # a poor and a good score from thin text: neither excludes, neither admits
+        for score, want in ((40, "REVIEW"), (90, "ADMIT")):                         # a poor score from thin text stays Review, never excluded; a good one is admitted
             kept = stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: score})[0]
             self.assertEqual(kept[3].status, want, score)
-        self.assertEqual(kept[3].reason, "description too short to judge; Review from its apply link")
+        self.assertEqual(stage.score_rows([row("web:su-example-ltd")], PROFILE, TODAY, fit={7: 40})[0][3].reason, "Fit 40 below 72 (on Jim's keep list)")
         other = stage.score_rows([row("web:greenhouse-example")], PROFILE, TODAY, fit={7: 40})[0]
         self.assertEqual(other[3].status, "EXCLUDE")                                 # the same poor score from any other source is excluded as before
 
