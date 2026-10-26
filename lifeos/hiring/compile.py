@@ -74,11 +74,12 @@ def _opportunities(applied, parents, reasons, out):
         for opp in opps:
             if M.same(opp["company"], opp["role"], row["company"], row["role"]):
                 opp["applied_on"] = max(filter(None, (opp["applied_on"], row["applied_on"])), default=None)
-                opp["ledger_id"], opp["dup"] = None, True         # two ledger rows are not one stable application: no decision can be aimed at either
+                opp["ledger_id"], opp["dup"], opp["hand"] = None, True, ()         # two ledger rows are not one stable application: no decision (and no hand-set hold) can be aimed at either
                 opp["decision"] = opp["decision"] if opp["decision"] in M.CLOSED_DECISIONS else row.get("decision")
                 break
         else:
-            opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "ledger_id": row.get("id"), "decision": row.get("decision"), "parent": None, "parent_state": "none", "rounds": 0, "events": []})
+            opps.append({"company": row["company"], "role": row["role"], "applied_on": row["applied_on"], "ledger": True, "ledger_id": row.get("id"), "decision": row.get("decision"), "parent": None, "parent_state": "none", "rounds": 0, "events": [],
+                         "hand": tuple(row.get("hand") or ())})
     for opp in opps:
         if opp.get("dup") and opp["decision"] in M.CLOSED_DECISIONS:   # D194: a closing decision on one of several applications for this company and role is never read as closing the others: the pursuit stays listed and the presentation says why
             opp["decision"] = None
@@ -87,15 +88,17 @@ def _opportunities(applied, parents, reasons, out):
         near = [o for o in opps if M.same(o["company"], o["role"], parent["company"], parent["role"])]
         if not near:
             if parent["company"] and parent["role"]:
-                opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": [], "lead": parent.get("lead", False), "replied": parent.get("replied", "")})
+                opps.append({"company": parent["company"], "role": parent["role"], "applied_on": None, "ledger": False, "parent": parent["id"], "parent_state": "one", "rounds": parent["rounds"], "events": [], "lead": parent.get("lead", False), "replied": parent.get("replied", ""),
+                             "hand": (), "page_holds": tuple(parent.get("holds") or ())})
             else:
                 out["untitled_pages"] += 1                            # a page whose title is not "Company — Role" has no identity to match: counted, ignored, never a degraded state
         elif len(near) > 1 or near[0]["parent_state"] != "none":
             for o in near:
-                o["parent"], o["parent_state"] = None, "ambiguous"
+                o["parent"], o["parent_state"], o["page_holds"] = None, "ambiguous", ()
             reasons.add("IDENTITY_AMBIGUOUS")
         else:
             near[0]["parent"], near[0]["parent_state"], near[0]["rounds"], near[0]["lead"] = parent["id"], "one", parent["rounds"], parent.get("lead", False)
+            near[0]["page_holds"] = tuple(parent.get("holds") or ())
     return opps
 
 
@@ -106,6 +109,24 @@ def _moment(value):
 
 def _key(company, role):
     return "|".join(_tokens(company)) + "|" + "|".join(sorted(_tokens(role)))
+
+
+def _hold(row, opp, hit, before):
+    """LIFE-111: Jim's hand-set hold (the latest line on the Ledger row or the one Notes page) is row["hold"] until mail (outcome mail, a direct message) or a Calendar invite for this
+    opportunity changes after it was set: then it is cleared, row["hold_cleared"] says by what and when, and the prior state keeps it cleared once that evidence leaves the window."""
+    hold = M.hold_of(opp.get("hand", ()) + opp.get("page_holds", ()))
+    if not hold:
+        return
+    set_at = _moment(hold["at"])
+    cleared = before.get("hold_cleared") if (before.get("hold_cleared") or {}).get("op") == hold["op"] else None
+    newer = sorted((_moment(when), by) for by, when in [("Calendar", e.get("updated")) for e in opp["events"]] + [("mail", (hit or {}).get("received")), ("mail", row.get("contact"))]
+                   if when and _moment(when) > set_at)
+    if not cleared and newer:
+        cleared = {"op": hold["op"], "state": hold["state"], "by": newer[0][1], "on": newer[0][0].isoformat()}
+    if cleared:
+        row["hold_cleared"] = cleared
+    else:
+        row["hold"] = {"state": hold["state"], "at": hold["at"]}
 
 
 def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contacts=None):
@@ -127,7 +148,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
                 continue
             at, why = match_event(event["title"], opps)
             if at is not None:
-                opps[at]["events"].append({"kind": kind, "start": event["start"]})
+                opps[at]["events"].append({"kind": kind, "start": event["start"], **({"updated": event["updated"]} if event.get("updated") else {})})
             elif why == "ambiguous":
                 reasons.add("CALENDAR_AMBIGUOUS")
             else:
@@ -168,6 +189,7 @@ def compile_rows(applied, parents, events, prior, ok, now, outcomes=None, contac
                 row["outcome"] = {"kind": hit["kind"], "received": hit["received"], "match": hit.get("match", "company"), "exact": hit.get("exact") is True}
         if (contacts or {}).get(key):                             # LIFE-26: the last direct, non-automated message for this row resets its Stale clock
             row["contact"] = contacts[key]
+        _hold(row, opp, hit, before)
         if row["stage"] is None:                                  # a notes page with no round and no event: nothing supports a stage, so nothing is claimed
             out["unsupported"] += 1
             continue

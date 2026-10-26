@@ -7,13 +7,21 @@ sheet, the other sent files, the verbatim job description, interview transcripts
 carried as `None`, which the template renders as not verified. Nothing here is guessed or defaulted. The submitted résumé comes
 only from the exact row's human-owned Submitted Résumé field (Jim, Oct 24), never from the Resume column, which holds the latest
 résumé LIFE OS built, not the one Jim sent."""
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from lifeos.platform.notion_client import NotionError
 from .identity import valid_date
 
 UNCONNECTED = ("Calendar", "Recruiter email threads", "LinkedIn contacts", "Submitted résumé and sent materials",
                "Original job description", "Interview transcripts")
 SUBMITTED = "Submitted Résumé"                   # the Job Ledger's Files field Jim fills with the file he actually sent (LIFE-88 E10)
+# LIFE-111 / LIFE-112 (Jim, Oct 25): the lines Manage writes for a hand-set hold or next action, in this page's fold or in the Job Ledger row's HAND_SET property
+# (lifeos.hiring.models and lifeos.hiring.decision keep the formats and the property name for the Close service; a contract test holds them equal)
+HAND_SET = "LIFE OS Hand-Set"
+_AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
+HOLD_LINE = re.compile(rf"v7-hold:1;state=(paused|waiting|active);at=({_AT});op=([0-9a-f]{{16}})")
+NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
 
 
 @dataclass(frozen=True)
@@ -51,6 +59,8 @@ class Opportunity:
     close_base: str | None = None                # E05: the private Close origin (V7_CLOSE_BASE_URL); unset, Mark Complete stays unavailable
     resume: tuple = ()                           # E10: (file name, stable link or None) from the exact row's Submitted Résumé field
     resume_state: str | None = None              # None = Job Ledger row not verified; "recorded" | "not_recorded" | "not_connected" (no such field)
+    hand: tuple = ()                             # LIFE-111/112: the hand-set lines Manage wrote in this page's fold, carried forward as written
+    hand_ledger: tuple = ()                      # LIFE-111/112: the hand-set lines on the exact Job Ledger row (read only here)
 
 
 def _plain(prop):
@@ -74,9 +84,10 @@ def ledger_facts(client, page_id, stable_job_key):
     if row.get("archived") or row.get("in_trash") or not stable_job_key or _plain(props.get("Stable Job Key")) != stable_job_key:
         return "mismatch", {}
     resume, resume_state = submitted_resume(props)
+    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t))
     return "linked", {"compensation": _plain(props.get("Compensation")), "work_mode": _plain(props.get("Location / Work Mode")),
                       "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits")),
-                      "resume": resume, "resume_state": resume_state}
+                      "resume": resume, "resume_state": resume_state, "hand_ledger": hand}
 
 
 def submitted_resume(props):
@@ -170,6 +181,19 @@ def primary_action(view, today):
                 "derived from the cancelled Calendar invite")
     return ("DEGRADED · NO VERIFIED ACTION", "Verify the latest interview outcome and any recruiter follow-up; those sources are "
             "not connected yet, so no next action is shown as current.", "Unverified", None, "source evidence incomplete")
+
+
+def hand_action(view):
+    """LIFE-112: the next action and/or due date Jim set by hand -> (key, text, due or None), or None. The latest line on either record (this page's fold, the exact Ledger
+    row) wins; it is never derived, never overwritten by evidence, and Mark Complete clears it (a completion line for its key, the op that set it)."""
+    found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(NEXT_LINE.fullmatch, view.hand_ledger + view.hand)) if m]
+    if not found:
+        return None
+    m = max(found, key=lambda f: f[:2])[2]
+    text, due = m.group(4).strip(), None if m.group(1) == "none" else m.group(1)
+    if not (text or due) or m.group(3) in dict(view.done):
+        return None
+    return m.group(3), text or "Next step set by Jim", due
 
 
 def stage(view, today):

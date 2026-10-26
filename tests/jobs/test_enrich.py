@@ -277,6 +277,26 @@ class DrainPassTests(unittest.TestCase):
         counts, saved, fallback = self._run(True)
         self.assertEqual((saved, fallback, counts["left_for_hourly"]), ([2], [], 1))      # the blocked page keeps its row as it was: no attempt counted
 
+    def test_a_page_the_fallback_reads_keeps_the_link_it_was_read_from(self):
+        from tests.kit.db import FakeConn
+        rows = [(1, "https://a.example.com/jobs/111111", "Senior Engineer", "ats", None, "US Remote", "web:a", None)]
+
+        def handler(sql, args, cursor):
+            if sql.startswith("SELECT id, final_apply_url"):
+                cursor.fetchall = lambda: rows
+
+        def fallback(results, *a, **k):                              # the rendered read replaces the result, as the real fallback does
+            results[0] = (1, {"outcome": "ready", "posted": None, "description": {"full_text": "x"}, "source_kind": "page_text"})
+
+        saved = {}
+        with mock.patch.object(enrich.store, "connect", return_value=FakeConn(handler=handler)), mock.patch.object(enrich.store, "ensure_schema"), \
+                mock.patch.object(enrich, "relink_first_party", return_value=0), \
+                mock.patch.object(enrich, "read_page", return_value={"outcome": "blocked", "reason": "jd_thin"}), \
+                mock.patch.object(enrich, "_fallback", side_effect=fallback), \
+                mock.patch.object(enrich, "save", side_effect=lambda c, job_id, r: saved.update({job_id: r})):
+            enrich.run(10, True)
+        self.assertEqual(saved[1]["final_url"], "https://a.example.com/jobs/111111")      # never None: save() would clear final_apply_url and the audit demote it as a root
+
     def test_the_hourly_pass_still_uses_the_fallback_and_saves_every_row(self):
         counts, saved, fallback = self._run(False)
         self.assertEqual((saved, fallback), ([1, 2], [1]))
