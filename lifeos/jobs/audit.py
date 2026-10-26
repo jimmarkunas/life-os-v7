@@ -30,7 +30,7 @@ def judge(url, full_text, proven=False, title_only=False, thin_ok=False):
     if title_only:
         return None
     problem = quality.jd_problem(full_text)
-    if problem == "thin" and thin_ok:                      # Jim, Oct 21: a thin page on a Scale-Up sponsor's own board is Review, not a reason to demote
+    if problem == "thin" and thin_ok:                      # Jim, Oct 21 / Oct 25: a thin page on a Scale-Up sponsor's own board or an ATS board's feed is Review, not a reason to demote
         return None
     return "audit_jd_" + problem if problem else None
 
@@ -73,7 +73,8 @@ def run(limit, live, environ=os.environ, ready_only=False):
             proven = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:titlewatch:%",))
             watched = {r[0] for r in cursor.fetchall()}
-            cursor.execute("SELECT id FROM v7_jobs WHERE source LIKE %s AND status IN ('READY','PUBLISHED')", ("web:su-%",))
+            cursor.execute("SELECT id FROM v7_jobs WHERE (" + " OR ".join(["source LIKE %s"] * len(lanes.THIN_REVIEW_PREFIXES)) + ") AND status IN ('READY','PUBLISHED')",
+                           tuple(p + "%" for p in lanes.THIN_REVIEW_PREFIXES))
             thin_ok = {r[0] for r in cursor.fetchall()}
             cursor.execute("SELECT id, company, title FROM v7_jobs WHERE status IN ('READY','PUBLISHED')")
             watched |= {r[0] for r in cursor.fetchall() if lanes.on_keep_list(r[1], r[2])}          # D124: Jim's keep list is judged on title and link too (its pages answer 403, so no description may be stored)

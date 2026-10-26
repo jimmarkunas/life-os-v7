@@ -150,12 +150,13 @@ def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
             api = _api_job(embedded)
             if api and not api.get("closed"):                         # a 404 here may only mean the embed names a different board: never closes a role, the page path decides
                 desc = jd.describe(api["html"], is_html=True)
-                return finish(title, desc, api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api", None, lane, strict, first_party)
+                return finish(title, desc, api.get("title") or desc["full_text"][:300], _parse_date(api.get("posted")), "ats_api", None, lane, strict, first_party,
+                              thin_ok=bool(board))
         result = parse_html(url, title, page.html, lane, strict, first_party)
         if (urlsplit(url).hostname or "").lower().endswith("dice.com") and "easy apply" in page.html.lower():
             result["apply_kind"] = "easy_apply"            # a Dice job page (JSON-LD description, probe run 85) that is applied to on Dice itself: flag it
         return result
-    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
+    return finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party, thin_ok=bool(board))     # Jim, Oct 25: a board's own feed text is the posting
 
 
 def parse_html(url, title, html, lane=None, strict=False, first_party=False):
@@ -191,13 +192,13 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
     return result
 
 
-def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False, first_party=False):
+def finish(title, desc, found_title, posted, source_kind, valid_through, lane=None, strict=False, first_party=False, thin_ok=False):
     if len(desc["full_text"]) < 200:
         return {"outcome": "blocked", "reason": "description_empty", "source_kind": source_kind}
     problem = quality.jd_problem(desc["full_text"])
     if problem in ("template", "listing"):
         return {"outcome": "mismatch", "reason": "jd_" + problem}       # a form or a list, not this job: wrong link
-    if problem == "thin" and not (first_party and lanes.lane_for(lane) == "Scale-Up"):          # Jim, Oct 21: a Scale-Up sponsor's own thin page is reviewed from its link (Fit marks it THIN), not held
+    if problem == "thin" and not (thin_ok or (first_party and lanes.lane_for(lane) == "Scale-Up")):     # Jim, Oct 21: a Scale-Up sponsor's own thin page is reviewed from its link (Fit marks it THIN), not held; Oct 25: so is a board feed's own short text (thin_ok)
         return {"outcome": "blocked", "reason": "jd_thin", "source_kind": source_kind}
     if not _title_ok(title, found_title, desc["full_text"][:1500] if source_kind in ("page_text", "next_data") else "", strict=strict):
         return {"outcome": "mismatch"}
