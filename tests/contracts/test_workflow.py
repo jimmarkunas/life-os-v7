@@ -290,7 +290,9 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         steps = doc["jobs"]["unit-tests"]["steps"]
         self.assertEqual([s.get("uses") for s in steps[:2]], ["actions/checkout@v5", "./.github/actions/python"])
         run = [s["run"] for s in steps if "Unit tests" in s.get("name", "")][0]
-        self.assertIn("python -m unittest discover -s tests -t .", run)
+        self.assertIn("python -m tests.shard 1 2", run)                      # Jim, Oct 26 2026: two parallel shards of whole test modules; tests/contracts/test_shards.py proves every test runs in exactly one
+        self.assertIn("python -m tests.shard 2 2", run)
+        self.assertNotIn("unittest discover", run)
         self.assertRegex(run, r'-ge 75 \]; then .*exit 1')
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 

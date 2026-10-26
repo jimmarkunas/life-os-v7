@@ -20,6 +20,16 @@ def sources():
     return {str(path.relative_to(ROOT)): path.read_text() for path in sorted((ROOT / "lifeos").rglob("*.py"))}
 
 
+_REPO_FINDINGS = []
+
+
+def repo_findings():
+    """findings() of the whole lifeos tree, computed once per process: three tests ask the same question of the same files (about 1 s each to parse)."""
+    if not _REPO_FINDINGS:
+        _REPO_FINDINGS.append(findings(sources()))
+    return _REPO_FINDINGS[0]
+
+
 def constants(tree):
     return {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
             for t in n.targets if isinstance(t, ast.Name)}
@@ -85,7 +95,7 @@ class Registry(unittest.TestCase):
 
 class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
     def test_every_alert_built_in_the_code_is_registered_with_the_registrys_severity(self):
-        alert_calls, _, _ = findings(sources())
+        alert_calls, _, _ = repo_findings()
         self.assertGreaterEqual(len(alert_calls), 14)
         for name, key, severity in alert_calls:
             with self.subTest(file=name, key=key):
@@ -95,7 +105,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
                 self.assertEqual(severity, spec.severity)
 
     def test_every_push_in_the_code_names_a_registered_alert(self):
-        _, push_calls, _ = findings(sources())
+        _, push_calls, _ = repo_findings()
         literal = [(name, key) for name, key in push_calls if key is not None]
         self.assertGreaterEqual(len(literal), 3)
         for name, key in literal:
@@ -104,7 +114,7 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
         self.assertEqual(sorted(name for name, key in push_calls if key is None), ["lifeos/platform/gate.py"])      # the one with a computed key: checked by its own test below
 
     def test_no_module_but_the_gateway_references_alerts_ntfy(self):
-        self.assertEqual(sorted(set(findings(sources())[2])), [])
+        self.assertEqual(sorted(set(repo_findings()[2])), [])
 
     def test_the_incident_pushes_in_the_gate_carry_registered_keys_and_agree_on_severity(self):
         tree = ast.parse(sources()["lifeos/platform/gate.py"])
