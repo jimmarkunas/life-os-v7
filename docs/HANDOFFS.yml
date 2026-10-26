@@ -282,6 +282,11 @@ handoffs:
     path: lifeos/sources/alerts_app.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11220
+  - pr: 604
+    owner: career-v7
+    path: lifeos/platform/codes.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-37?focusedCommentId=11231
 
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
@@ -296,5 +301,8 @@ exemptions:
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-37?focusedCommentId=11198
   - pr: 599
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-37?focusedCommentId=11231
+  - pr: 602
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-37?focusedCommentId=11231
