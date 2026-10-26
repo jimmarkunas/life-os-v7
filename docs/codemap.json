@@ -748,6 +748,16 @@
     "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
+  "granola.yml": {
+   "jobs": [
+    "granola"
+   ],
+   "manual": true,
+   "secrets": [
+    "HIRING_PIPELINE_PAGE_ID",
+    "LIFEOS_BWS_RUNTIME_TOKEN"
+   ]
+  },
   "hourly.yml": {
    "jobs": [
     "prep",

@@ -56,6 +56,8 @@ rules:
     lane: career-v7
   - path: .github/workflows/interview-proof.yml
     lane: career-v7
+  - path: .github/workflows/granola.yml
+    lane: career-v7
   # --- Notion schema DEFINITIONS in code (the live Ledger / Recruiters / Hiring Decision schemas are Jim-approved Notion changes, not repository changes): career-v7, named so the boundary is explicit
   - path: lifeos/jobs/ledger.py
     lane: career-v7
