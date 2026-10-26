@@ -202,7 +202,7 @@ def save(connection, plan, notified, now):
     connection.commit()
 
 
-def run(limit, live, environ=os.environ, now=None, send=alerts.ntfy):
+def run(limit, live, environ=os.environ, now=None, send=None):
     now = now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     expiries = json.loads(EXPIRIES.read_text())
     with store.connect() as connection:

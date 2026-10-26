@@ -53,4 +53,4 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_push }}
         env:
           TEST_SEVERITY: ${{ inputs.test_severity }}
-        run: python3 -m lifeos.platform.alerts push --severity "$TEST_SEVERITY" --title "V7 test push ($TEST_SEVERITY)" --body "If this appeared on your lock screen, alerts work. If it is only in the ntfy app, check the phone's notification settings."
+        run: python3 -m lifeos.platform.alerts push --key test_push --severity "$TEST_SEVERITY" --title "V7 test push ($TEST_SEVERITY)" --body "If this appeared on your lock screen, alerts work. If it is only in the ntfy app, check the phone's notification settings."

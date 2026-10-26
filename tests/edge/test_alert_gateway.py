@@ -67,7 +67,7 @@ class Mute(GatewayCase):
     def test_a_muted_command_line_push_is_not_a_failed_step(self):
         out = io.StringIO()
         with mock.patch.dict("os.environ", {"ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z", "NTFY_TOPIC": "t"}), contextlib.redirect_stdout(out):
-            self.assertEqual(alerts.main(["push", "--title", "x"]), 0)
+            self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "x"]), 0)
         self.assertEqual(json.loads(out.getvalue()), {"push": "muted"})
 
     def test_an_unset_mute_lets_pushes_through(self):

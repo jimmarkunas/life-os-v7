@@ -253,6 +253,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/physmail/stage.py`: Gmail Physical Mail evidence -> deterministic parse -> private derivative state (MAIL-1.2). Counts only; fixed error codes.
 - `lifeos/physmail/state.py`: The Physical Mail derivative state (MAIL-1.2): one private snapshot row, rebuilt by replay from the anchor, merged idempotently on every run.
 ### lifeos/platform/
+- `lifeos/platform/alert_registry.py`: The alert registry (LIFE-75): every alert LIFE OS can send, in one list. Each entry says who owns it, how loud it is (severity), what it means, and which channels carry i
 - `lifeos/platform/alerts.py`: Platform alerts: one place that decides what is worth telling a person, once, and how (D53). Pure logic plus two sinks; no OS knowledge.
 - `lifeos/platform/branches.py`: LIFE-81 (Jim, Oct 20 2026; D244): branch archiving on merge, and the weekly stale-branch report.
 - `lifeos/platform/codes.py`: The outcome-code registry (LIFE-72): one checked-in definition of every fixed code the pipeline can emit. A code is a fixed UPPER_SNAKE word that names a result: a refusa

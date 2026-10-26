@@ -228,7 +228,7 @@ class Stage(unittest.TestCase):
         db = StageDB()
         counts, pushes = self.runs(db, DAY, payload([ev("a"), ev("b", "ATTENTION")]))
         self.assertEqual((counts["new"], counts["pushed"], counts["failed"], counts["attention"]), (1, 1, 0, 1))
-        self.assertEqual(pushes, [("topic", "Text needs a reply", "1 text needs a reply. Open Messages.", "info")])
+        self.assertEqual(pushes, [("topic", "Text needs a reply", "1 text needs a reply. Open Messages.", "page")])
         again, pushes = self.runs(db, DAY + dt.timedelta(minutes=60), payload([ev("a")], observed="2026-10-14T16:00:00Z"))
         self.assertEqual((again["new"], again["deliver"], pushes), (0, 0, []))                  # same event, next hour: silent
         self.assertNotIn("OPEN", {st for _, st in db.rows().values()})                         # never in the Jobs alert stage's OPEN set

@@ -166,7 +166,7 @@ class TheCodeReachesThePush(unittest.TestCase):
         self.assertEqual((code, out["failed"], out["codes"]), (1, "fit_cloud_backlog", "USAGE_UNAVAILABLE"))
         rc, pushed = report_run("failure", out["failed"], out["codes"])
         self.assertEqual(rc, 1)
-        self.assertEqual(pushed[:4], ["-m", "lifeos.platform.alerts", "push", "--severity"])        # the existing path, one call
+        self.assertEqual(pushed[:5], ["-m", "lifeos.platform.alerts", "push", "--key", "run_failed"])        # the existing path, one call
         body = pushed[pushed.index("--body") + 1]
         self.assertIn("stages: fit_cloud_backlog; codes: USAGE_UNAVAILABLE", body)
         code, out = lanes_run("success", "")

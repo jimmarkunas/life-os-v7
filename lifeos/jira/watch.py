@@ -45,7 +45,7 @@ def _save(connection, state):
                        ("roll", state["last_ok"], 1 if state["alert_open"] else 0, state["last_notified"]))
 
 
-def run(limit, live, environ=os.environ, now=None, send=alerts.ntfy, connect=None):
+def run(limit, live, environ=os.environ, now=None, send=None, connect=None):
     """JIRA_ROLLOVER_OUTCOME is the rollover step's outcome (success | failure); anything else (the step was skipped) records nothing. A dry run records nothing and pushes nothing."""
     outcome = environ.get("JIRA_ROLLOVER_OUTCOME", "")
     if not live or outcome not in ("success", "failure"):

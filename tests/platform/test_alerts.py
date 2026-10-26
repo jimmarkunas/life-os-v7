@@ -84,9 +84,9 @@ class Delivery(unittest.TestCase):
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 alerts.ntfy = lambda *a: False
-                self.assertEqual(alerts.main(["push", "--title", "T"]), 1)
+                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 1)
                 alerts.ntfy = lambda *a: True
-                self.assertEqual(alerts.main(["push", "--title", "T"]), 0)
+                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 0)
         finally:
             alerts.ntfy = old
 
@@ -110,7 +110,7 @@ class Hibernated(unittest.TestCase):
         try:
             alerts.ntfy = lambda *a: (_ for _ in ()).throw(AssertionError("ntfy called"))
             with contextlib.redirect_stdout(out):
-                self.assertEqual(alerts.main(["push", "--title", "T"]), 0)
+                self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 0)
         finally:
             alerts.ntfy = old
         self.assertEqual(out.getvalue().strip(), '{"push": "hibernated"}')

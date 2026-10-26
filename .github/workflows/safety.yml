@@ -85,7 +85,7 @@ jobs:
       - name: Phone alert
         if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
         run: |
-          python3 -m lifeos.platform.alerts push --severity page --title "V7 safety check failed" --body "SQL smoke ${{ steps.smoke.outcome }}, Fit re-check ${{ steps.golden.outcome }}. Open the safety run in Actions."
+          python3 -m lifeos.platform.alerts push --key safety_failed --title "V7 safety check failed" --body "SQL smoke ${{ steps.smoke.outcome }}, Fit re-check ${{ steps.golden.outcome }}. Open the safety run in Actions."
       - name: Fail the run when a check failed
         if: ${{ steps.smoke.outcome == 'failure' || steps.golden.outcome == 'failure' }}
         run: exit 1

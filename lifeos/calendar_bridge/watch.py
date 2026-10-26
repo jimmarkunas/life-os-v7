@@ -63,7 +63,7 @@ def _record(connect, environ, now, ok, code, send):
         print("calendar-watch: state_unavailable")
 
 
-def run(limit, live, environ=os.environ, now=None, send=alerts.ntfy, connect=None, **kwargs):
+def run(limit, live, environ=os.environ, now=None, send=None, connect=None, **kwargs):
     connect = connect or db.connect
     clock = (now.astimezone(timezone.utc) if now else datetime.now(timezone.utc)).replace(tzinfo=None)
     try:

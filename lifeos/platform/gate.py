@@ -123,9 +123,10 @@ def _api(path, method="GET", body=None):
         return json.loads(raw) if raw else {}
 
 
-def _push(title, body, severity):
+def _push(title, body, severity, key):
+    """LIFE-75: the incident's push goes through the alert registry by key; its severity is the registry's, the `severity` here is only what the call site meant (a test checks they agree)."""
     from lifeos.platform import alerts                              # noqa: PLC0415
-    return alerts.ntfy(os.environ.get("NTFY_TOPIC", ""), title, body, severity)
+    return alerts.push(key, title, body)
 
 
 def sync_incident(label, title, body, signal, open_push, close_push, push=None):
@@ -169,12 +170,12 @@ def watch(now=None, push=None):
     changes = [
         sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
                       "or a stage is failing. Open the Actions tab. This issue closes itself when a run succeeds.", is_stale,
-                      ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page"),
-                      ("V7 pipeline recovered", "A run succeeded.", "info")),
+                      ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page", "pipeline_stalled"),
+                      ("V7 pipeline recovered", "A run succeeded.", "info", "pipeline_stalled_recovered")),
         sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
                       "This issue closes itself after 24 hours with no failed run.", fail_signal,
-                      ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page"),
-                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info")),
+                      ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
+                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered")),
     ]
     sent = None
     if digest_due(now):
