@@ -651,3 +651,30 @@ class BoardApiTests(unittest.TestCase):
                 mock.patch.object(enrich, "read_page", side_effect=lambda *a: seen.append(a[-1]) or {"outcome": "closed"}):
             enrich.run(10, live=False, drain=True)
         self.assertEqual(seen, [("greenhouse", "digitalocean98")])
+
+
+class ThinBoardFeedTests(unittest.TestCase):
+    """Jim, Oct 25: a Greenhouse, Lever or Ashby board's own feed text is the posting; a short one is reviewed from its link, never held."""
+    SHORT = "<p>" + "Senior Data Engineer on the platform team in New York, building our data stack. " * 3 + "</p>"     # 200-400 characters: thin, not empty
+
+    def test_a_thin_board_feed_is_not_held(self):
+        api = {"title": "Senior Data Engineer", "html": self.SHORT, "posted": "2026-10-20"}
+        with mock.patch.object(enrich, "_api_job", return_value=api):
+            on_board = enrich.read_page("https://boards.greenhouse.io/acme/jobs/7654321", "Senior Data Engineer", board=("greenhouse", "acme"))
+            elsewhere = enrich.read_page("https://boards.greenhouse.io/acme/jobs/7654321", "Senior Data Engineer")
+        self.assertEqual(on_board["outcome"], "ready")
+        self.assertEqual(elsewhere, {"outcome": "blocked", "reason": "jd_thin", "source_kind": "ats_api"})        # found by a resolver, not listed on the board: held as before
+
+    def test_a_thin_employer_page_stays_held_even_for_a_board_job(self):
+        html = "<html><title>Senior Data Engineer</title><body>" + "<p>" + "Loading careers. " * 30 + "</p></body></html>"
+        with mock.patch.object(enrich, "_api_job", return_value=None), mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
+            got = enrich.read_page("https://acme.example/careers/jobs/12345678", "Senior Data Engineer", board=("greenhouse", "acme"))
+        self.assertEqual(got["reason"], "jd_thin")                                    # a JavaScript shell is not the posting: only the board's own text counts
+
+    def test_the_lane_rule_and_the_audit_know_the_board_sources(self):
+        from lifeos.jobs import audit, lanes
+        for source in ("web:su-acme", "web:gh-acme", "web:lv-acme", "web:ab-acme"):
+            self.assertTrue(lanes.thin_review_source(source))
+        for source in ("web:adobe", "linkedin-search", None):
+            self.assertFalse(lanes.thin_review_source(source))
+        self.assertIsNone(audit.judge("https://boards.greenhouse.io/acme/jobs/7654321", "Senior Data Engineer, New York.", thin_ok=True))

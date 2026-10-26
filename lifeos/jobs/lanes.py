@@ -79,9 +79,13 @@ def title_watch_source(source):
     return bool(source) and source.startswith(TITLE_WATCH_PREFIX)
 
 
+THIN_REVIEW_PREFIXES = ("web:su-", "web:gh-", "web:lv-", "web:ab-")
+
+
 def thin_review_source(source):
-    """A Scale-Up sponsor's own board (`web:su-<id>`): its roles with a page too thin to judge are reviewed from their apply link, never held (Jim, Oct 21)."""
-    return bool(source) and source.startswith("web:su-")
+    """A Scale-Up sponsor's own board (`web:su-<id>`, Jim, Oct 21) or a Greenhouse, Lever or Ashby board (`web:gh-`/`lv-`/`ab-`, Jim, Oct 25: the board's own
+    feed is the posting, so a short one is as written): its roles with a description too thin to judge are reviewed from their apply link, never held."""
+    return bool(source) and source.startswith(THIN_REVIEW_PREFIXES)
 
 
 def on_keep_list(company, title):
