@@ -1,11 +1,12 @@
 """LIFE-121 (Jim, Oct 26: "Approved, make the PR"): counts-only report of WHY Scale-Up jobs are EXCLUDED_FIT. Reads v7_jobs and v7_job_fit, writes nothing, prints no title, link, company or text.
 
 EXCLUDED_FIT is one status for several causes (a Fit score under the floor, a lane rule such as pay or age, the precision audit). This splits it by stored reason, by Fit band and by
-source, so Jim can see how many roles sit just under the floor before anyone changes the Fit model or a gate."""
+source, so Jim can see how many roles sit just under the floor before anyone changes the Fit model or a gate. Lane reasons are printed only as the fixed codes of
+lanes.public_reason; `high_score` lists the jobs scored at or over the floor that are still excluded, by stored reason, lane reason code and Fit exclusion rule."""
 import re
 
 from lifeos.jobs import store
-from lifeos.jobs.lanes import FIT_FLOOR, NEAR_MISS_FLOOR, REVIEW_FLOOR
+from lifeos.jobs.lanes import FIT_FLOOR, NEAR_MISS_FLOOR, REVIEW_FLOOR, public_reason
 
 FIXED = re.compile(r"[a-z][a-z_ ]{0,39}")
 TOP_SOURCES = 8
@@ -32,14 +33,17 @@ def word(text):
 
 def tally(rows):
     """rows: (source, unresolved_reason, score, admission, admission_reason, exclusion). -> the counts-only report."""
-    out = {"total": 0, "by_reason": {}, "by_band": {}, "by_admission": {}, "by_exclusion": {}, "by_band_and_reason": {}, "by_source": {}}
+    out = {"total": 0, "by_reason": {}, "by_band": {}, "by_admission": {}, "by_exclusion": {}, "by_band_and_reason": {}, "by_source": {}, "high_score": {}}
     for source, reason, score, admission, admission_reason, exclusion in rows:
         out["total"] += 1
         b, r = band(score), word(reason)
-        for table, key in ((out["by_reason"], r), (out["by_band"], b), (out["by_admission"], f"{word(admission)}/{word(admission_reason)}"),
+        for table, key in ((out["by_reason"], r), (out["by_band"], b), (out["by_admission"], f"{word(admission)}/{public_reason(admission_reason)}"),
                            (out["by_exclusion"], word(exclusion)), (out["by_band_and_reason"], f"{b}/{r}")):
             table[key] = table.get(key, 0) + 1
         out["by_source"][source] = out["by_source"].get(source, 0) + 1
+        if score is not None and score >= FIT_FLOOR:                    # scored at or over the floor and still excluded: the ones worth a second look, by stored reason, lane reason code and Fit rule
+            key = f"{r}/{public_reason(admission_reason)}/{word(exclusion)}"
+            out["high_score"][key] = out["high_score"].get(key, 0) + 1
     out["by_source"] = dict(sorted(out["by_source"].items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_SOURCES])
     out["near_floor"] = sum(n for k, n in out["by_band"].items() if k == f"{NEAR_MISS_FLOOR}_to_{FIT_FLOOR - 1}")
     return out
