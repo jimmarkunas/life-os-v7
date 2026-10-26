@@ -1,0 +1,17 @@
+# LIFE-37 Step 2: one process per connection, as the grans user (no sudo, locked password). The connection is stdin/stdout. No log output (stderr discarded),
+# a hard deadline shorter than the endpoint's 90 s, no new privileges, and the only writable place is grans's own Granola data directory.
+[Unit]
+Description=LIFE OS Granola helper (one connection)
+
+[Service]
+User=grans
+ExecStart=/usr/bin/python3 -I /opt/lifeos-gran/gran_helper.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=null
+RuntimeMaxSec=85
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/grans/.local/share/grans
+PrivateTmp=yes
+MemoryMax=1G

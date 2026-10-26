@@ -1,0 +1,17 @@
+# LIFE-37 Step 2: the Granola helper's local listener. A Unix socket only (no TCP, nothing on a tailnet or public address): the private endpoint, which runs as ubuntu,
+# is the one client. The socket belongs to grans and is group ubuntu, mode 0660; no process runs between connections.
+[Unit]
+Description=LIFE OS Granola helper (local socket for the private endpoint only)
+
+[Socket]
+ListenStream=/run/lifeos-gran/gran.sock
+SocketUser=grans
+SocketGroup=ubuntu
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=2
+MaxConnectionsPerSource=2
+
+[Install]
+WantedBy=sockets.target

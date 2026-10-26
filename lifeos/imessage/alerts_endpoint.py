@@ -20,6 +20,9 @@ tailnet TCP port to it with a PROXY protocol v2 header carrying the WireGuard-au
      proves the end, classifies them in memory with the wrapper's deterministic rules and answers ONE JSON line of metadata: keyed event ids (HMAC of the
      source reference under a key that never leaves Oracle), severity, reason codes, review flag, observation time, pages and completeness. Never text,
      names, handles, chat or message references.
+  gran1 (LIFE-37 Step 2, Jim's approval Oct 26 2026, Jira 11235/11242): `gran1 <1..4096>\\n` + that many bytes of JSON. This process (user ubuntu, no sudo) does not run Granola: it forwards the frame
+     unchanged over the root-installed Unix socket /run/lifeos-gran/gran.sock to lifeos/edge/granola/gran_helper.py, which runs as the `grans` user, and passes the one reply back
+     (at most 25,004,096 bytes). It never reads the frame or the reply; the same caller checks above apply.
 Anything else closes with no output. It writes nothing, logs nothing and never runs inside a Luna/OpenClaw session. A scan that reached the reader's 50-message
 or time cap (or any page failure) cannot prove it saw everything, so it says so (complete false, health DEGRADED) instead of passing as complete."""
 import hashlib
@@ -41,6 +44,10 @@ TAILSCALE = "/usr/bin/tailscale"
 SIG = b"\r\n\r\n\x00\r\nQUIT\n"
 MAX_PROXY_TAIL = 216
 MAX_REQUEST = 72
+GRAN_SOCKET = "/run/lifeos-gran/gran.sock"
+GRAN_MAX_FRAME = 4096
+GRAN_MAX_REPLY = 25_004_096
+GRAN_WAIT = 82
 SCHEMA = "lifeos.imessage.alerts.v2"
 COMMS_SCHEMA = "lifeos.imessage.comms.v1"
 COMMS2_SCHEMA = "lifeos.imessage.comms.v2"
@@ -128,7 +135,7 @@ def authorized(ip, lookup=whois):
 
 
 def request(stream):
-    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | None."""
+    """-> ("alerts", hours) | ("comms", 32-byte key) | ("oracle1", None) | ("gran1", the whole frame) | None."""
     raw = b""
     while len(raw) < MAX_REQUEST:
         c = stream.read(1)
@@ -141,6 +148,12 @@ def request(stream):
         return None
     if raw == b"oracle1":
         return "oracle1", None
+    if raw.startswith(b"gran1 "):
+        size = raw[6:]
+        if not size.isdigit() or size[:1] == b"0" or not 1 <= int(size) <= GRAN_MAX_FRAME:
+            return None
+        body = read_exact(stream, int(size))
+        return ("gran1", raw + b"\n" + body) if body is not None else None
     parts = raw.split(b" ")
     if len(parts) != 2:
         return None
@@ -297,7 +310,25 @@ def oracle_stats(run=subprocess.run):
     return got
 
 
-def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats):
+def gran1(frame, path=GRAN_SOCKET, wait=GRAN_WAIT):
+    """One round trip to the Granola helper: the frame goes in unchanged, the helper's whole reply comes back (or an exception, and the caller answers nothing)."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(wait)
+        s.connect(path)
+        s.sendall(frame)
+        s.shutdown(socket.SHUT_WR)
+        data = b""
+        while len(data) <= GRAN_MAX_REPLY:
+            chunk = s.recv(1 << 20)
+            if not chunk:
+                break
+            data += chunk
+    if len(data) > GRAN_MAX_REPLY or not data.startswith(b"gran1 "):
+        raise ValueError("reply is not a gran1 frame")
+    return data
+
+
+def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=EVENT_KEY, now=None, uid=loopback_peer_uid, stats=oracle_stats, gran=gran1):
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
     try:
@@ -312,6 +343,14 @@ def main(stdin=None, stdout=None, lookup=whois, wrapper_path=WRAPPER, key_path=E
     if asked is None:
         return 1
     kind, arg = asked
+    if kind == "gran1":
+        try:
+            reply = gran(arg)
+        except Exception:
+            return 1                                               # no partial answer and no exception text
+        stdout.write(reply)
+        stdout.flush()
+        return 0
     try:
         if kind == "oracle1":
             payload = stats()
