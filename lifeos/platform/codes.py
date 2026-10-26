@@ -339,6 +339,13 @@ CODES = {
     "GRAN_PIN_NOT_ONE_MEETING": _r("interview", "terminal", False, "Zero or several synced Granola meetings fall on the pinned day.", "Jim names the meeting; nothing was written."),
     "GRAN_ROUND_NOT_MACHINE": _r("interview", "terminal", False, "The matched round page is not a machine-owned page.", "None; Jim's pages are never written."),
     "GRAN_NOTION_FAILED": _r("interview", "degraded", False, "A Notion call failed during the Granola run.", "Repeat the run; look at the page before any Oracle purge."),
+    "MANUAL_JOB_FAILED": _r("interview", "degraded", False, "The manual job run stopped on a fixed code (counts say which).", "Read the counts, fix the input or the cause, and repeat the run."),
+    "MANUAL_JOB_IDENTITY_MISSING": _r("interview", "terminal", False, "The manual job run was given no company or no title.", "Give both."),
+    "MANUAL_JOB_LINK_INVALID": _r("interview", "terminal", False, "The manual job link is not a single-vacancy https link.", "Give the employer's own posting link."),
+    "MANUAL_JOB_DAY_INVALID": _r("interview", "terminal", False, "The manual job round day is not a YYYY-MM-DD date.", "Give the Central day as YYYY-MM-DD."),
+    "MANUAL_JOB_REQUEST_INVALID": _r("interview", "terminal", False, "The manual job request link is not an https link.", "Give the request message's https link or leave it blank."),
+    "MANUAL_JOB_ROUND_EVIDENCE_MISSING": _r("interview", "terminal", False, "The manual job run has neither a round day nor a request message link.", "Give the Central day of the call, or the request message link."),
+    "MANUAL_JOB_STORE_FAILED": _r("interview", "degraded", False, "The manual job could not be added to or read from the Jobs store.", "Repeat the run; nothing was written to Interview OS."),
     "MATCH_NONE": _r("interview", "terminal", False, "No Interview OS round matches this Granola meeting (same Central day plus a company, role, interviewer or domain signal).", "None; nothing is written. Check the round's date, company and interviewer."),
     "MATCH_MANY_ROUNDS": _r("interview", "terminal", False, "More than one Interview OS round matches this Granola meeting.", "None; nothing is written. Jim picks the round."),
     "MATCH_MANY_MEETINGS": _r("interview", "terminal", False, "More than one Granola meeting matches the same Interview OS round.", "None; nothing is written. Jim picks the meeting."),
@@ -755,6 +762,7 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+    "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs
     "GRAN_PIN_DAY",                # LIFE-37: the day the manual Granola run is pinned to
     "ALERTS_ENABLED", "ALERTS_MESSAGE_REF", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "AMAZON_CARD_BLOCK_ID", "AMAZON_SINCE", "AMAZON_SYNC_OUTCOME",
     "ATTENTION_CARD_BLOCK_ID", "ATTENTION_SYNC_OUTCOME", "BILLS_CARD_BLOCK_ID", "BOARDS_BACKFILL", "BOARD_COMPANY", "CALENDAR_ACCOUNTS",

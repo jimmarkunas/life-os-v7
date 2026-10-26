@@ -61,6 +61,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `linkedin-search` -> `lifeos.sources.linkedin_search:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
+- `manual-job` -> `lifeos.sources.manual_job:run`
 - `megibow` -> `lifeos.sources.megibow:run`
 - `network-audit` -> `lifeos.network.importer:audit`
 - `network-import` -> `lifeos.network.importer:run`
@@ -313,6 +314,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/m1m2_proof.py`: LIFE-78 bounded synthetic M1/M2 exit: ONE finite case, an acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces. Manual only: in
 - `lifeos/sources/manage_app.py`: LIFE-88 E14 (Jim, Oct 24 2026; 12a + 12b): Manage on the private Close service, for ONE interview opportunity page. 12a: GET /manage?o=<opportunity page id> is a read-onl
+- `lifeos/sources/manual_job.py`: LIFE-37 (Jim, Oct 26): one job Jim names by hand. Manual only (manual-job.yml); a dry run unless live.
 - `lifeos/sources/megibow.py`: MegIBOW stage (D134): Gmail + Outlook sent mail, Google + Outlook calendars, Jim's review decisions -> the 8-week table, warnings and the review list in Notion.
 - `lifeos/sources/network_leads.py`: NET-2.2: how many job and pursuit targets have network leads, and how many each? Read-only, counts only, writes nothing, creates no table, prints no name, company or titl
 - `lifeos/sources/network_surface.py`: NET-2.3 (D160): surface network leads as one marker-owned "Network Leads (n)" block on the Job Ledger page of each target job. Dry unless live; counts only.
@@ -362,6 +364,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOSE_BASE_URL, V7_CLOUD_FIT_PROFILE_REF
 - `interview-proof.yml`: jobs proof; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `lane-guard.yml`: jobs lane-guard; manual no; secrets -
+- `manual-job.yml`: jobs manual; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `pr-tests.yml`: jobs unit-tests; manual no; secrets -
