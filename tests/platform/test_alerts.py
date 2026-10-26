@@ -45,7 +45,7 @@ class Delivery(unittest.TestCase):
         self.assertEqual(severity, alerts.PAGE)
 
     def setUp(self):                                          # the send path itself, as it behaves when Jim turns alerts on (the ALERTS_ENABLED switch)
-        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"})
+        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": ""})     # a mute set on the repository must not decide these tests (it failed the tick gate, Oct 26)
         patcher.start()
         self.addCleanup(patcher.stop)
         alerts.reset_flood()
