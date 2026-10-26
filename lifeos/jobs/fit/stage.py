@@ -53,8 +53,34 @@ def only_clause(raw):
     return sql, tuple(p for like in likes for p in (like, like))
 
 
+CHUNK = 10                       # rows scored and written together
+
+
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def progress(phase, started, **fields):
+    """One short line per phase to the run log (counts and seconds only), so a stage that hits its timeout shows where it was."""
+    print("fit-progress:", json.dumps({"phase": phase, "seconds": int(time.monotonic() - started), **fields}, sort_keys=True), flush=True)
+
+
+def tally(counts, scored):
+    """Add one scored batch to the stage's counts."""
+    for _, _, result, decision, _, _, _ in scored:
+        counts["lane_" + decision.status.lower()] += 1
+        key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
+        counts[key] += 1
+        counts["excluded"] += bool(result.exclusion)
+        if result.score is not None and result.pre_functional is not None and result.pre_functional > result.score:          # D103 calibration: what the Functional cap moved
+            counts["fcap_moved"] += 1
+            counts["fcap_go_lost"] += result.pre_functional >= GO_THRESHOLD > result.score
+        counts["low_confidence"] += result.confidence == "low" and result.decision != "Unscorable"
+        counts["shadow_jobs_changed"] += result.shadow_changes > 0
+        counts["shadow_flips"] += result.shadow_flip
+        counts["shadow_reclassified"] += result.shadow_changes
+        for sim in result.shadow_sims:
+            counts["sim_82_up" if sim >= 0.82 else "sim_77_82" if sim >= 0.77 else "sim_72_77"] += 1
 
 
 def score_rows(rows, profile, today, semantic=None, register=None, fit=None):
@@ -317,7 +343,9 @@ def run(limit, live, environ=os.environ):
         counts["profile"] = "missing"
         return counts
     gate = environ.get("V7_FIT_GATE") == "true"
+    progress("profile", started)
     embed = fit_semantic.load_embedder(environ)
+    progress("embedder", started, semantic=bool(embed))
     matcher = fit_semantic.Matcher(profile, embed) if embed else None      # shadow only: never changes a score
     counts["semantic"] = "on" if matcher else "off"
     tag = fit_tag(profile.hash, bool(matcher))         # a profile, lane-policy or semantic change re-scores
@@ -326,6 +354,7 @@ def run(limit, live, environ=os.environ):
         with connection.cursor() as cursor:
             counts["requeued"] = requeue_floor(cursor) if live else 0
             counts.update(promote_kept(cursor) if live and gate else {"promoted": 0})
+            progress("prepared", started)
             counts["rejudged"] = rejudge_excluded(cursor) if live and gate else 0
             counts["canary_regated"] = regate_canary(cursor) if live and gate else 0
             extra_sql, extra_params = only_clause(environ.get("FIT_ONLY"))
@@ -333,6 +362,7 @@ def run(limit, live, environ=os.environ):
             cursor.execute(query, (MODEL_VERSION, tag, *extra_params, limit))
             rows = cursor.fetchall()
     counts["picked"] = len(rows)
+    progress("picked", started, picked=len(rows))
     register = sponsors.load()
     if live and gate:
         with store.connect() as connection, connection.cursor() as cursor:
@@ -341,29 +371,20 @@ def run(limit, live, environ=os.environ):
             counts["kept_reasked"] = reask_kept(cursor)
             counts["scale_up_reopened"] = reopen_scale_up(cursor)
             counts["jim_retired"] = retire_stuck(cursor)
-    scored = score_rows(rows, profile, _now().date(), matcher, register)      # slow work: no connection is open here
-    for _, _, result, decision, _, _, _ in scored:
-        counts["lane_" + decision.status.lower()] += 1
-        key = {"Go": "go", "No-Go": "no_go", "Unscorable": "unscorable"}[result.decision]
-        counts[key] += 1
-        counts["excluded"] += bool(result.exclusion)
-        if result.score is not None and result.pre_functional is not None and result.pre_functional > result.score:          # D103 calibration: what the Functional cap moved
-            counts["fcap_moved"] += 1
-            counts["fcap_go_lost"] += result.pre_functional >= GO_THRESHOLD > result.score
-        counts["low_confidence"] += result.confidence == "low" and result.decision != "Unscorable"
-        counts["shadow_jobs_changed"] += result.shadow_changes > 0
-        counts["shadow_flips"] += result.shadow_flip
-        counts["shadow_reclassified"] += result.shadow_changes
-        for sim in result.shadow_sims:
-            counts["sim_82_up" if sim >= 0.82 else "sim_77_82" if sim >= 0.77 else "sim_72_77"] += 1
-    if live and scored:
-        with store.connect() as connection, connection.cursor() as cursor:
-            for job_id, fingerprint, r, decision, lane_name, work_mode, eligible in scored:
-                cursor.execute(WRITE,
-                    (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
-                     json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
-                     decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
-                _gate(cursor, job_id, decision, gate, counts)
+    progress("maintained", started)
+    progress("scoring", started, picked=len(rows))
+    for start in range(0, len(rows), CHUNK):                                        # LIFE-76 (Oct 25): score and WRITE a few rows at a time. All-or-nothing meant a slow run lost everything at the stage timeout and retried the same rows forever
+        scored = score_rows(rows[start:start + CHUNK], profile, _now().date(), matcher, register)      # slow work: no connection is open here
+        tally(counts, scored)
+        if live and scored:
+            with store.connect() as connection, connection.cursor() as cursor:
+                for job_id, fingerprint, r, decision, lane_name, work_mode, eligible in scored:
+                    cursor.execute(WRITE,
+                        (job_id, r.score, r.decision, r.line[:600], r.why[:300], r.exclusion, r.confidence,
+                         json.dumps(r.buckets), json.dumps(r.items), MODEL_VERSION, tag, fingerprint, _now(), r.shadow_score, r.shadow_changes,
+                         decision.status, (decision.reason or "")[:80], work_mode, lane_name, ",".join(eligible)))
+                    _gate(cursor, job_id, decision, gate, counts)
+        progress("scored", started, done=min(start + CHUNK, len(rows)), of=len(rows))
     promote = cloud_promoter(profile, gate, counts, register)          # D226: canary only
     counts.update(fit_cloud.run(environ, live, started, profile, promote=promote))   # D214: after the static write; off by default, shadow never changes it
     counts["failed"] = counts["cloud_degraded"] + counts.get("cloud_held_failed", 0)     # D214: only an enabled shadow can degrade; run.PARTIAL_FAILURE makes the stage exit 1 (FIT_CLOUD_DEGRADED)
