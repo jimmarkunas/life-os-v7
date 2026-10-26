@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from lifeos.jobs import hold, store
+from lifeos.jobs import daily, hold, store
 from lifeos.platform import alerts
 
 EXPIRIES = Path(__file__).with_name("expiries.json")
@@ -18,6 +18,10 @@ STOP_BASELINE_DAYS = 14      # ... (measured over the 14 days before the window)
 STOP_PER_DAY = 3.0           # ... at least this many a day, and delivered none in the window, has stopped
 STUCK_WINDOW_HOURS, STUCK_MIN_JOBS, STUCK_SHARE = 72, 20, 0.5      # LIFE-74 M1: a source with at least 20 jobs first seen in 72 h, half or more still NEW or HOLD, has a stage that is not moving them (Lensa, Oct 6-17: 2 resolved of 109)
 YIELD_WINDOW_DAYS, YIELD_MIN_JOBS, YIELD_FLOOR = 7, 30, 0.05       # LIFE-74 M2: at least 30 jobs in 7 days with under 5% published has stopped yielding (Scale-Up discovery, Oct 17: 1 job in 5 runs)
+BOARD_FAIL_MIN_READS, BOARD_FAIL_SHARE = 100, 0.20                  # LIFE-74 M3: of the last two days' board reads, a fifth or more failed for a reason other than not_found
+SEARCH_MIN_CALLS, SEARCH_FAIL_SHARE = 20, 0.20                    # LIFE-74 M6: of the last two days' search calls (discover, title watch), a fifth or more failed
+HOLD_MIN, HOLD_GROWTH, HOLD_DAYS = 25, 1.2, 3                     # LIFE-74 M4: the HOLD pile grew every day for three days, by a fifth or more, and holds at least 25 jobs; M5: it holds 25+ and nothing in it was touched in 24 h while it grew
+KEEP_DAILY_DAYS = 8
 BOARD_GROUPS = re.compile(r"web:(gh|ab|lv|su)-")                    # employer boards are watched by ATS family, never one by one (2,449 boards); every other web:* source is "web:other"
 RETIRED_SOURCES = {"lensa": "Lensa retired (D201): Cloudflare blocks it from the runners", "web:openjobs": "Open Jobs ended: the project shut down on 10 Oct 2026 (D201)"}   # never "stopped"
 
@@ -59,6 +63,42 @@ def yield_monitors(by_72h, by_7d):
     return {"stuck": dict(sorted(stuck.items())), "low_yield": dict(sorted(low.items()))}
 
 
+def daily_monitors(rows, today):
+    """rows: {name: {iso day: value}} from the daily counts. -> {monitor: value} for the monitors that tripped. Pure.
+    M3 board_reads_failing, M6 search_failing: share failed over today and yesterday. M4 hold_rising: the HOLD snapshot rose on each of the last three days.
+    M5 hold_not_retried: the HOLD pile is large and grew, yet no HOLD job was touched in the last 24 hours."""
+    def total(name):
+        return sum(rows.get(name, {}).get((today - dt.timedelta(days=back)).isoformat(), 0) for back in (0, 1))
+
+    def snap(name, back):
+        return rows.get(name, {}).get((today - dt.timedelta(days=back)).isoformat())
+    out = {}
+    reads, failed = total("board_reads"), total("board_failed")
+    if reads >= BOARD_FAIL_MIN_READS and failed / reads >= BOARD_FAIL_SHARE:
+        out["board_reads_failing"] = round(failed / reads, 3)
+    calls, bad = total("search_calls"), total("search_failed")
+    if calls >= SEARCH_MIN_CALLS and bad / calls >= SEARCH_FAIL_SHARE:
+        out["search_failing"] = round(bad / calls, 3)
+    pile = [snap("hold_total", back) for back in (HOLD_DAYS - 1, 1, 0)]
+    if None not in pile and pile[0] < pile[1] < pile[2] and pile[2] >= HOLD_MIN and pile[2] >= HOLD_GROWTH * pile[0]:
+        out["hold_rising"] = pile
+    touched, now_pile, then = snap("hold_touched_24h", 0), snap("hold_total", 0), snap("hold_total", HOLD_DAYS - 1)
+    if None not in (touched, now_pile, then) and now_pile >= HOLD_MIN and touched == 0 and now_pile > then:
+        out["hold_not_retried"] = now_pile
+    return out
+
+
+def snapshot_hold(connection, now):
+    """Today's HOLD pile and how much of it was touched in the last 24 hours, kept for the trend monitors (counts only); also drops rows older than the keep window."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*), SUM(updated_at > %s) FROM v7_jobs WHERE status='HOLD'", (now - dt.timedelta(hours=24),))
+        total, touched = cursor.fetchone()
+        daily.put(cursor, now.date(), "hold_total", int(total or 0))
+        daily.put(cursor, now.date(), "hold_touched_24h", int(touched or 0))
+        daily.prune(cursor, now.date())
+    connection.commit()
+
+
 def _key(group):
     return re.sub(r"[^a-z0-9]+", "_", group.lower()).strip("_")
 
@@ -89,6 +129,19 @@ def detect(counts, now, expiries=None):
     for group, share in found["low_yield"].items():
         out.append(alerts.Alert(f"source_yield_{_key(group)}", alerts.INFO, f"Low yield: {group}", f"Only {share:.0%} of its jobs from the last {YIELD_WINDOW_DAYS} days reached Notion.",
                                 "open the funnel report (report=funnel) to see where its jobs end"))
+    flagged = daily_monitors(counts.get("daily") or {}, now.date())
+    if "board_reads_failing" in flagged:
+        out.append(alerts.Alert("board_reads_failing", alerts.INFO, "Board reads failing", f"{flagged['board_reads_failing']:.0%} of board reads in the last two days failed (not counting boards that answer not found).",
+                                "check the boards line of the latest run: failed_why shows the reasons"))
+    if "search_failing" in flagged:
+        out.append(alerts.Alert("search_failing", alerts.INFO, "Search calls failing", f"{flagged['search_failing']:.0%} of search calls in the last two days failed.",
+                                "check the TinyFish key and the 429 count in the discover and title-watch lines"))
+    if "hold_rising" in flagged:
+        out.append(alerts.Alert("hold_rising", alerts.INFO, "HOLD pile growing", f"HOLD held {flagged['hold_rising'][0]}, then {flagged['hold_rising'][1]}, then {flagged['hold_rising'][2]} job(s) on the last three days.",
+                                "open the funnel report to see which sources and reasons feed it"))
+    if "hold_not_retried" in flagged:
+        out.append(alerts.Alert("hold_not_retried", alerts.INFO, "HOLD jobs not being retried", f"{flagged['hold_not_retried']} job(s) on HOLD and none touched in 24 hours while the pile grew.",
+                                "check the daily retry slot in enrich and the HOLD reasons"))
     for key, item in (expiries or {}).items():
         days = (dt.date.fromisoformat(item["expires"]) - now.date()).days
         if days <= 7:
@@ -123,8 +176,9 @@ def gather(connection, now):
         by_72h = group_status_counts(cursor.fetchall())
         cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source, status", (now - dt.timedelta(days=YIELD_WINDOW_DAYS),))
         by_7d = group_status_counts(cursor.fetchall())
+        daily_rows = daily.read(cursor, (now - dt.timedelta(days=KEEP_DAILY_DAYS)).date())
     return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped),
-            "yield_72h": by_72h, "yield_7d": by_7d}
+            "yield_72h": by_72h, "yield_7d": by_7d, "daily": daily_rows}
 
 
 def load_state(connection):
@@ -153,13 +207,15 @@ def run(limit, live, environ=os.environ, now=None, send=alerts.ntfy):
     expiries = json.loads(EXPIRIES.read_text())
     with store.connect() as connection:
         store.ensure_schema(connection)
+        if live:
+            snapshot_hold(connection, now)                                                 # before the read, so today's HOLD pile is part of what the monitors see
         counts = gather(connection, now)
         active = detect(counts, now, expiries)
         monitors = yield_monitors(counts["yield_72h"], counts["yield_7d"])             # LIFE-74: printed in the log line, so the monitors are readable while pushes are suspended
         plan = alerts.reconcile(active, load_state(connection), now)
         if not live:
-            return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": monitors}
+            return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}}
         sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
         delivered = {item.key for kind, item in plan.notify if kind != "resolved"} if sent["failed"] == 0 else set()
         save(connection, plan, delivered, now)
-    return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": monitors, **sent}
+    return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": {**monitors, **daily_monitors(counts["daily"], now.date())}, **sent}

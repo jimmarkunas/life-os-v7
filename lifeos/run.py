@@ -187,6 +187,9 @@ def main(argv=None):
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
+    if args.live:
+        from lifeos.jobs import daily                                                  # noqa: PLC0415 - LIFE-74: the monitors' daily evidence; best effort, never fails a stage
+        daily.record(args.stage, counts)
     failed = counts.get("failed") if isinstance(counts, dict) else None
     if args.stage in PARTIAL_FAILURE and isinstance(failed, int) and failed > 0:
         print(f"{args.stage.upper()} FAILED: {PARTIAL_FAILURE[args.stage]}", file=sys.stderr)

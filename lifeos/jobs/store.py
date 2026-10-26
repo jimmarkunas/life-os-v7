@@ -101,6 +101,10 @@ SCHEMA = (
         fetch_urls INT NOT NULL DEFAULT 0,
         browser_seconds INT NOT NULL DEFAULT 0
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS v7_daily_counts (
+        day DATE NOT NULL, name VARCHAR(40) NOT NULL, value BIGINT NOT NULL DEFAULT 0,
+        PRIMARY KEY (day, name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS v7_fit_profile_sync (
         id TINYINT NOT NULL PRIMARY KEY,
         content_hash CHAR(16) NOT NULL,
@@ -108,7 +112,7 @@ SCHEMA = (
         synced_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 )
-TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_fit_profile_sync")
+TABLES = ("v7_jobs", "v7_job_sources", "v7_job_descriptions", "v7_job_fit", "v7_sources", "v7_source_items", "v7_source_runs", "v7_alerts", "v7_feed", "v7_sponsors", "v7_tombstones", "v7_ledger_urls", "v7_spend", "v7_daily_counts", "v7_fit_profile_sync")
 # Columns added after the first release (checked via information_schema; portable across MySQL/MariaDB).
 COLUMNS = (
     ("v7_jobs", "fit_synced_at", "DATETIME NULL", None),
