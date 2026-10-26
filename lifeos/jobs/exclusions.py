@@ -58,3 +58,28 @@ def run(limit, live, connect=store.connect):
         report["status_totals"] = {s: n for s, n in cursor.fetchall()}
     report["floor"], report["near_miss_floor"], report["review_floor"] = FIT_FLOOR, NEAR_MISS_FLOOR, REVIEW_FLOOR
     return report
+
+
+REVIEW_RULE = "excluded_private_rule"
+
+
+def review_rows(rows):
+    """rows: (company, title, location, link, score, admission_reason, exclusion, reason). -> the high-scoring jobs excluded by Jim's own Fit rules, as tab-separated lines (PRIVATE text:
+    only ever printed through sealed_report.seal)."""
+    keep = [r for r in rows if r[4] is not None and r[4] >= FIT_FLOOR and public_reason(r[5]) == REVIEW_RULE]
+    keep.sort(key=lambda r: (str(r[7] or ""), str(r[6] or ""), str(r[0] or ""), str(r[1] or "")))
+    clean = lambda v: " ".join(str(v if v is not None else "").split())
+    return ["\t".join(clean(v) for v in (r[0], r[1], r[2], r[3], r[4], r[6], r[7])) for r in keep]
+
+
+def review(limit, live, connect=store.connect, seal=None):
+    """LIFE-121 (Jim, Oct 26: "Yes, list the 59 in Notion"): the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed, sealed for Jim. Read-only. The log carries the count and one
+    sealed block (ciphertext); the text itself is never printed."""
+    from lifeos.jobs import sealed_report
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT j.company, j.title, j.location_text, COALESCE(j.final_apply_url, j.source_url), f.score, f.admission_reason, f.exclusion, j.unresolved_reason FROM v7_jobs j "
+                       "JOIN v7_job_fit f ON f.job_id = j.id WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT' AND f.score >= %s", (FIT_FLOOR,))
+        lines = review_rows(cursor.fetchall())
+    header = "company\ttitle\tlocation\tlink\tfit\trule\tstored_reason"
+    print((seal or sealed_report.seal)("\n".join([header, *lines])))
+    return {"rows": len(lines), "sealed": True}
