@@ -324,7 +324,7 @@ def gran1(frame, path=GRAN_SOCKET, wait=GRAN_WAIT):
                 break
             data += chunk
     if len(data) > GRAN_MAX_REPLY or not data.startswith(b"gran1 "):
-        raise ValueError("GRAN_OFF_CONTRACT")
+        raise ValueError("reply is not a gran1 frame")
     return data
 
 

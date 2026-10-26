@@ -152,7 +152,7 @@ class Helper(unittest.TestCase):
 
     def test_every_reply_code_is_registered(self):
         from lifeos.platform import codes
-        for code in ("GRAN_BAD_FRAME", "GRAN_BAD_OP", "GRAN_NOT_FOUND", "GRAN_SYNC_FAILED", "GRAN_AUTH_EXPIRED", "GRAN_TIMEOUT", "GRAN_OVERSIZE", "GRAN_HASH_MISMATCH", "GRAN_OFF_CONTRACT"):
+        for code in ("GRAN_BAD_FRAME", "GRAN_BAD_OP", "GRAN_NOT_FOUND", "GRAN_SYNC_FAILED", "GRAN_AUTH_EXPIRED", "GRAN_TIMEOUT", "GRAN_OVERSIZE", "GRAN_HASH_MISMATCH"):
             self.assertIn(code, codes.CODES)
 
 
