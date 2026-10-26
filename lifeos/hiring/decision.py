@@ -345,3 +345,95 @@ def confirm_rejected(client, request, live, now, pages=None):
     if snapshot(back) != (kept, after, new):
         raise fail("READBACK_MISMATCH")
     return {"status": "recorded", "verified": True, "entries": len(ops) + 1}
+
+
+# ---------- LIFE-111 / LIFE-112 (Jim, Oct 25 2026): a hand-set hold (Paused, Waiting on employer, back to Active) or next action, on the opportunity's own record ----------
+HAND_SET = "LIFE OS Hand-Set"            # the Job Ledger rich_text property that carries them for a Ledger application. NOT in the live schema yet: until it is added, a Ledger set is DECISION_SCHEMA_MISSING
+
+
+def _op(line):
+    m = M.HOLD_LINE.fullmatch(line) or M.NEXT_LINE.fullmatch(line)
+    return m.group(3) if m else None
+
+
+def set_hand(client, kind, want, line, live, pages=None, parents=None):
+    """-> {"status": dry_run | recorded | already_recorded, "verified": bool} or a DecisionError: ONE hand-set line (models.hold_line / next_line) on the ONE open record
+    decision.route chose. Ledger: the HAND_SET property becomes the latest line of the other kind plus this one, on the exact Applied row while it has no decision (`pages`:
+    the caller's fresh Applied read). Notes: the line is appended to the page's ⚙️ LIFE OS fold while the page is still Active (`parents()`, the page reader); a page without
+    the fold is refused. The record is read, re-read just before the write (any change refuses it) and read back; the line's op makes a retry a no-op. Nothing else changes."""
+    op = _op(line)
+    if kind not in ("ledger", "notes") or not op or not _page_id(want.get("id")):
+        raise fail("REQUEST_INVALID")
+    want = {**want, "id": _page_id(want["id"])}
+    hold = line.startswith("v7-hold:")
+    if kind == "ledger":
+        props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
+        if (props.get(HAND_SET) or {}).get("type") != "rich_text":
+            raise fail("SCHEMA_MISSING")
+        row = target(applied_pages(client) if pages is None else pages, want)
+
+        def read():
+            page = client.get_page(row["id"])
+            current(page, want, client.source)
+            text = _text((page.get("properties") or {}).get(HAND_SET), "rich_text")
+            if snapshot(page)[1] is not None:
+                raise fail("CLOSED")                                                     # a decided application is never paused or given a next action
+            if text and list(M.hand_lines(text)) != text.splitlines():
+                raise fail("HISTORY_UNREADABLE")                                          # text in the property that is not ours is never replaced
+            return page, text
+        page, text = read()
+        if any(_op(t) == op for t in text.splitlines()):
+            return {"status": "already_recorded", "verified": True}
+        new = "\n".join([t for t in M.hand_lines(text) if t.startswith("v7-hold:") != hold][-1:] + [line])
+        if not live:
+            return {"status": "dry_run", "verified": False}
+        again, text_again = read()
+        if again.get("last_edited_time") != page.get("last_edited_time") or (snapshot(again), text_again) != (snapshot(page), text):
+            raise fail("CONCURRENT_CHANGE")
+        try:
+            client.update_page_properties(row["id"], {HAND_SET: {"rich_text": rich_text(new)}})
+        except NotionError:
+            raise fail("WRITE_FAILED") from None
+        try:
+            back = client.get_page(row["id"])
+        except NotionError:
+            raise fail("READBACK_FAILED") from None
+        if snapshot(back) != snapshot(page) or _text((back.get("properties") or {}).get(HAND_SET), "rich_text") != new:
+            raise fail("READBACK_MISMATCH")
+        return {"status": "recorded", "verified": True}
+
+    def fetch():
+        page = client.call("GET", f"/pages/{want['id']}")
+        company, role = names.split_title("".join(r.get("plain_text", "") for r in ((page.get("properties") or {}).get("title") or {}).get("title") or []))
+        if page.get("archived") or page.get("in_trash") or _page_id(page.get("id")) != want["id"] or not M.same(company, role, want["company"], want["role"]):
+            raise fail("STALE_IDENTITY")
+        fold = _fold([_digest(b) for b in listing(client, want["id"])])
+        if not fold:
+            raise fail("NOT_A_LIFE_OS_PAGE")                                              # a person's own page: the page writer carries these lines only in its fold
+        return page, fold, [(k, t) for _, k, t in (_digest(b) for b in listing(client, fold))]
+
+    def active():
+        here = [p for p in parents() if _page_id(p["id"]) == want["id"]]
+        if len(here) != 1 or here[0].get("retired"):
+            raise fail("CLOSED")
+    active()
+    page, fold, inner = fetch()
+    if any(k == "paragraph" and _op(t) == op for k, t in inner):
+        return {"status": "already_recorded", "verified": True}
+    if not live:
+        return {"status": "dry_run", "verified": False}
+    again, fold_again, inner_again = fetch()
+    if again.get("last_edited_time") != page.get("last_edited_time") or (fold_again, inner_again) != (fold, inner):
+        raise fail("CONCURRENT_CHANGE")
+    active()                                                                                  # still Active immediately before the write
+    try:
+        client.call_once("PATCH", f"/blocks/{fold}/children", {"children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(line)}}]})
+    except NotionError:
+        raise fail("WRITE_FAILED") from None
+    try:
+        _, fold_back, inner_back = fetch()
+    except NotionError:
+        raise fail("READBACK_FAILED") from None
+    if fold_back != fold or inner_back != inner + [("paragraph", line)]:
+        raise fail("READBACK_MISMATCH")
+    return {"status": "recorded", "verified": True}

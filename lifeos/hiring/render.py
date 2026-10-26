@@ -42,11 +42,23 @@ def when(start, now):
 
 
 RED, YELLOW, GREEN = "🔴", "🟡", "🟢"                              # actionable or due · waiting · verified upcoming activity (LIFE-47); a dot is a cue, the words say the same
+HELD = "⏸"                                                      # LIFE-111: Jim paused it, or it waits on the employer: no to-do, listed after every other row
 
 
 def next_step(row, now):
-    """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented."""
+    """-> (dot, next step · due, sort date). Due dates come only from supported evidence: a Calendar event, or evidence + AWAIT_DAYS (D189); none is ever invented.
+    A hand-set hold (LIFE-111) has no to-do and no due date until Jim sets it back to Active or new evidence clears it."""
     outcome, kind = row.get("outcome"), KIND_LABEL.get(row.get("event_kind"), "interview")
+    if row.get("hold"):
+        return HELD, f"No to-do · {M.HOLD_LABEL[row['hold']['state']].lower()} (set by Jim {local(row['hold']['at']).strftime('%b %-d')})", ""
+    dot, step, due = _step(row, now, outcome, kind)
+    gone = row.get("hold_cleared")
+    if gone and (local(now).date() - local(gone["on"]).date()).days < M.AWAIT_DAYS:     # the row says why it is back on the to-do list, for a week
+        step += f" · {M.HOLD_LABEL[gone['state']]} cleared by new {gone['by']} {local(gone['on']).strftime('%b %-d')}"
+    return dot, step, due
+
+
+def _step(row, now, outcome, kind):
     if row.get("stage") == M.LEAD and not outcome and not row.get("replied"):     # E01b: recruiter outreach is the first warning; there is no deadline to invent
         return RED, "Recruiter outreach · reply, or close it", ""
     if outcome:                                                      # D190: outcome mail is a source-backed action to confirm, never a stage or a deadline; its received date is the evidence
@@ -87,7 +99,8 @@ def row_cells(row, now, close=None):
     _, step, _ = next_step(row, now)                                 # the dot classifies and sorts the row (render below); it is never printed beside the name
     source = (M.NOTES_LABEL, NOTES_URL + row["parent"].replace("-", "")) if row.get("parent_state") == "one" and row.get("parent") else (M.NO_NOTES, None)
     source = [source, (" · ", None), ("Close ↗", close)] if close else source
-    return [(M.label(row['company'], row['role']), None), (row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
+    held = M.HOLD_LABEL[row["hold"]["state"]] + " · " if row.get("hold") else ""        # LIFE-111: the hand-set state first; the evidence stage stays as evidence says
+    return [(M.label(row['company'], row['role']), None), (held + row["stage"] + (" (last accepted)" if row.get("carried") else ""), None), (step, None), source]
 
 
 def _older(row, now):
@@ -113,7 +126,7 @@ def render(result, stored, now, close=(None, {})):
                 None, {"status": "unavailable", "rows": 0, "reasons": reasons})
     hidden_older = sum(1 for r in rows if _older(r, now))
     rows = [r for r in rows if not _older(r, now)]
-    rows.sort(key=lambda r: ((n := next_step(r, now))[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))     # attention first, then by due date
+    rows.sort(key=lambda r: ((n := next_step(r, now))[0] == HELD, n[0] != RED, n[0] != YELLOW, n[2], r["company"].lower(), r["role"].lower()))     # attention first, then by due date; held rows last
     shown = rows[:MAX_ROWS]
     cells = [row_cells(r, now, close_url(close[0], close[1].get(r["key"]))) for r in shown]
     extra = []
@@ -121,10 +134,12 @@ def render(result, stored, now, close=(None, {})):
         extra.append(f"{len(rows) - len(shown)} more not shown")
     if hidden_older:
         extra.append(f"{hidden_older} older submitted not shown")
+    held = sum(1 for r in rows if r.get("hold"))
+    extra = ([f"{held} paused or waiting"] if held else []) + extra   # LIFE-111: listed, but not counted as active to-dos
     tail = (" · " + " · ".join(extra)) if extra else ""
     if reasons:
         when_text = local(accepted).strftime("%b %-d, ") + clock(local(accepted)) if accepted else "never"
-        text = f"DEGRADED · Hiring Pipeline {note} at {clock(now)} · showing last accepted state ({when_text}) · {len(rows)} active{tail}"
+        text = f"DEGRADED · Hiring Pipeline {note} at {clock(now)} · showing last accepted state ({when_text}) · {len(rows) - held} active{tail}"
     else:
-        text = f"Updated {clock(now)} · {len(rows)} active{tail}" if rows else f"Updated {clock(now)} · no submitted or interviewing opportunities{tail}"
+        text = f"Updated {clock(now)} · {len(rows) - held} active{tail}" if rows else f"Updated {clock(now)} · no submitted or interviewing opportunities{tail}"
     return text, cells, {"status": "degraded" if reasons else "fresh", "rows": len(shown), "reasons": reasons}

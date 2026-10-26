@@ -28,6 +28,7 @@ class Opportunity:
     role: str = ""
     lead: bool = False            # E01b: a round-less page whose machine render line names a minted recruiter key
     replied: str = ""             # E05: the day Jim marked the lead's reply action done on the page ("I replied — mark it done"), else ""
+    holds: tuple = ()             # LIFE-111: the hand-set hold lines (Paused, Waiting on employer, Active) Manage wrote in the page's fold, as written
 
 
 @dataclass
@@ -42,6 +43,7 @@ class Handoff:
 LEAD_LINE = re.compile(r"v7-render:1;job=recruiter-")
 LEAD_ACTION = re.compile(r"v7-action:1;key=([0-9a-f]{16});text=Reply to the recruiter's message, or close this lead.*")   # lifeos.interview.template's line formats (contract-tested)
 DONE_LINE = re.compile(r"v7-done:1;key=([0-9a-f]{16});on=(\d{4}-\d{2}-\d{2})")
+HOLD_PREFIX = "v7-hold:1;"                    # lifeos.hiring.models.HOLD_LINE (contract-tested); parsed by the Hiring Pipeline stage, not here
 
 
 def replied_on(lines):
@@ -99,12 +101,14 @@ def read(client, root_id, rounds=True):
                     if rounds:
                         kids = _children(client, block["id"], budget)
                         opp.rounds = sum(1 for c in kids if c.get("type") == "child_page")
-                        if not opp.rounds and kids and kids[0].get("type") == "toggle" and kids[0].get("has_children"):
+                        if kids and kids[0].get("type") == "toggle" and kids[0].get("has_children"):
                             try:
                                 lines = [_title_of(c) for c in _children(client, kids[0]["id"], budget)]
-                                opp.lead, opp.replied = any(LEAD_LINE.match(t) for t in lines), replied_on(lines)
+                                if not opp.rounds:
+                                    opp.lead, opp.replied = any(LEAD_LINE.match(t) for t in lines), replied_on(lines)
+                                opp.holds = tuple(t for t in lines if t.startswith(HOLD_PREFIX))
                             except NotionError:
-                                pass                                         # best effort: an unread fold is simply not a lead, as before
+                                pass                                         # best effort: an unread fold is simply not a lead and not on hold (it stays listed as active), as before
                     found.append(opp)
             elif block.get("has_children") and depth < MAX_DEPTH and (kind in ("toggle", "column_list", "column") or kind.startswith("heading")):
                 walk(block["id"], context, depth + 1)

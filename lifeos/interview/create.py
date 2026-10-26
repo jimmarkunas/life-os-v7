@@ -12,7 +12,8 @@ from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
 from .identity import creation_eligibility, resolve_child, resolve_parent, valid_date
 from .models import Ownership, RoundQuery, Scan, State
-from .template import DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page, transcript_lines
+from .template import (DECISION_LINE, DECISION_MAX, DONE_LINE, DONE_MAX, HAND_MAX, HOLD_LINE, NEXT_LINE, PAGE_ICONS, machine_part, opportunity_page, render_line, round_page,
+                       transcript_lines)
 
 IDENTITY_PREFIX = "v7-interview-identity:1;"
 
@@ -154,10 +155,15 @@ def decision_lines(lines):
     return tuple(t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if DECISION_LINE.fullmatch(t))[-DECISION_MAX:]
 
 
+def hand_lines(lines):
+    """LIFE-111/112: the hand-set hold and next-action lines Manage appended to a fold, as written, oldest first; the newest HAND_MAX are kept."""
+    return tuple(t for t in (notion.text(b) for b in lines if b.get("type") == "paragraph") if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t))[-HAND_MAX:]
+
+
 def _undone(nodes):
-    """The region's nodes without completion or decision lines: the Close screen appends those to the fold, so they never count as an edit of what this writer wrote."""
+    """The region's nodes without completion, decision or hand-set lines: the Close and Manage screens append those to the fold, so they never count as an edit of what this writer wrote."""
     return [{**n, "children": _undone(n["children"])} if "children" in n else n for n in nodes
-            if not (DONE_LINE.fullmatch(n.get("text", "")) or DECISION_LINE.fullmatch(n.get("text", "")))]   # shape kept: a page without these lines digests exactly as before
+            if not any(p.fullmatch(n.get("text", "")) for p in (DONE_LINE, DECISION_LINE, HOLD_LINE, NEXT_LINE))]   # shape kept: a page without these lines digests exactly as before
 
 
 def machine_region(client, page_id, context=None):
@@ -221,7 +227,7 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
         prefold = machine is not None
     if machine is None or not lines or not notion.is_marker(notion.text(lines[0]), "opportunity") or "child_page" in [b.get("type") for b in machine]:
         return "parent_unrecognized"
-    current = replace(current, done=done_lines(lines), decisions=decision_lines(lines), page_id=page_id)   # E05: completions and decisions recorded on the Close screen are carried into the rewrite
+    current = replace(current, done=done_lines(lines), decisions=decision_lines(lines), hand=hand_lines(lines), page_id=page_id)   # E05: completions, decisions and hand-set lines recorded on the Close / Manage screens are carried into the rewrite
     sections, source = rendered(current)
     found = [m for m in (RENDER.fullmatch(notion.text(b)) for b in lines) if m]
     if found:
