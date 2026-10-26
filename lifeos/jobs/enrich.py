@@ -6,6 +6,7 @@ job: a wrong link is never published) | pending with a fixed reason when the pag
 Plain HTTP only. Logs: counts only.
 """
 from datetime import date, datetime, timedelta, timezone
+import html as htmllib
 import json
 import re
 from urllib.parse import urlsplit
@@ -43,7 +44,7 @@ def _api_job(url):
                 except ValueError:
                     return None
                 posted = str(data.get("first_published") or data.get("updated_at") or "")[:10]
-                return {"title": data.get("title"), "html": data.get("content") or "", "posted": posted}
+                return {"title": data.get("title"), "html": htmllib.unescape(data.get("content") or ""), "posted": posted}     # the API escapes its HTML (&lt;p&gt;), as the board lister unescapes it
     if host == "jobs.lever.co" and len(segs) >= 2:
         page = fetch(f"https://api.lever.co/v0/postings/{segs[0]}/{segs[1]}", timeout=limits.ATS_TIMEOUT_SECONDS, max_hops=2)
         if page.status in (404, 410):
@@ -55,8 +56,9 @@ def _api_job(url):
                 return None
             created = data.get("createdAt")
             posted = datetime.fromtimestamp(created / 1000, timezone.utc).date().isoformat() if created else ""
-            return {"title": data.get("text"), "html": data.get("description") or "", "plain": data.get("descriptionPlain"),
-                    "posted": posted}
+            lists = "".join(f"<h3>{x.get('text') or ''}</h3><ul>{x.get('content') or ''}</ul>" for x in (data.get("lists") or []))
+            return {"title": data.get("text"), "html": (data.get("description") or "") + lists + (data.get("additional") or ""),
+                    "posted": posted}         # Lever keeps the duties and requirements in `lists` and the closing in `additional`: the opening alone read as jd_thin
     return None
 
 
@@ -83,6 +85,29 @@ def _greenhouse_embed(url, html):
     return f"https://boards.greenhouse.io/embed/job_app?for={board.group(1)}&token={job.group(1)}" if job and board else None
 
 
+UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+BOARD_PREFIX = {"gh": "greenhouse", "lv": "lever", "ab": "ashby"}       # the id prefixes of the seeded employer boards (lifeos.sources.web.registry.BOARD_KINDS, D202)
+
+
+def board_of(source):
+    """'web:gh-acme' -> ('greenhouse', 'acme'), likewise lv- (Lever) and ab- (Ashby); any other source -> None."""
+    match = re.fullmatch(r"web:(gh|lv|ab)-([a-z0-9][a-z0-9._-]*)", source or "")
+    return (BOARD_PREFIX[match.group(1)], match.group(2)) if match else None
+
+
+def board_job_url(board, url):
+    """The board's own job URL for a job listed on that board but linked to the employer's site (a Greenhouse board's absolute_url is
+    often the employer's careers page, a JavaScript shell that reads as jd_thin or empty). The board's API then gives the full text."""
+    kind, slug = board
+    if kind == "greenhouse":
+        ident = re.search(r"[?&](?:gh_jid|token)=(\d+)", url or "") or re.search(r"/(\d{6,})(?:[/?#]|$)", urlsplit(url or "").path + "/")
+        return f"https://boards.greenhouse.io/{slug}/jobs/{ident.group(1)}" if ident else None
+    ident = UUID.search(url or "")
+    if not ident:
+        return None
+    return f"https://jobs.lever.co/{slug}/{ident.group(0)}" if kind == "lever" else f"https://jobs.ashbyhq.com/{slug}/{ident.group(0)}"
+
+
 def _title_words_in(want, html):
     """Share of the job-title words found anywhere on the page, markup removed (script data such as JSON-LD counts)."""
     tokens = [t for t in ats_match.norm(want).split() if len(t) > 2]
@@ -90,14 +115,19 @@ def _title_words_in(want, html):
     return sum(t in hay for t in tokens) / len(tokens) if tokens else 0
 
 
-def read_page(url, title, lane=None, proof=None, first_party=False):
+def read_page(url, title, lane=None, proof=None, first_party=False, board=None):
     """Facts for one final URL. Never raises; fixed outcome codes. proof='unproven': the resolver accepted an ambiguous link shape on its
-    provenance, so the page must prove identity by title (strict)."""
+    provenance, so the page must prove identity by title (strict). board: (kind, slug) of the ATS board the job was listed on."""
     problem = quality.link_problem(url)
     strict = bool(problem) and proof == "unproven" and problem in quality.AMBIGUOUS
     if problem and not strict:
         return {"outcome": "mismatch", "reason": problem}                    # workable_no_account: re-resolve, the matcher now keeps the account
     api = ats_detail.read(url) or _api_job(url)
+    if api is None and board:
+        own = board_job_url(board, url)
+        api = (ats_detail.read(own) or _api_job(own)) if own and own != url else None
+        if api and api.get("closed"):
+            api = None                                   # the board's API not knowing the id proves nothing about the employer's page: read that page
     if api and api.get("closed"):
         return {"outcome": "closed"}
     if api:
@@ -342,7 +372,8 @@ def run(limit, live, drain=False):
             jid = li_apply.job_id(url)
             target = (li_apply.GUEST_API + jid) if jid else url
         try:
-            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id), lanes.first_party_source(source_of.get(job_id)))
+            result = read_page(target, title, lane_of.get(job_id), proof_of.get(job_id), lanes.first_party_source(source_of.get(job_id)),
+                               board_of(source_of.get(job_id)))
         except Exception as error:                                   # noqa: BLE001 - one unreadable page must never stop the rest of the batch (D83)
             result = {"outcome": "blocked", "reason": "read_" + type(error).__name__.lower()[:30]}
         if result.get("reason") == "description_empty" and _prev == TRIED_REASON:

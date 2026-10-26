@@ -588,3 +588,66 @@ class PostedDateAuthority(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class BoardApiTests(unittest.TestCase):
+    """Oct 25 7:40 PM CT drain: 154 pages stayed blocked (jd_thin 80, empty 49); Lever and Greenhouse-listed jobs among them were read short."""
+
+    def test_a_lever_job_is_read_whole_not_just_its_opening(self):
+        data = {"text": "Senior Data Engineer", "createdAt": 1792454400000, "description": "<p>We build data tools.</p>",
+                "descriptionPlain": "We build data tools.", "additional": "<p>Benefits: health cover.</p>",
+                "lists": [{"text": "What you will do", "content": "<li>" + "Own the pipelines and the warehouse. " * 12 + "</li>"},
+                          {"text": "Requirements", "content": "<li>Five years of experience with SQL and Python.</li>"}]}
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, json.dumps(data))):
+            api = enrich._api_job("https://jobs.lever.co/acme/0f3a1b2c-1111-2222-3333-444455556666")
+            got = enrich.read_page("https://jobs.lever.co/acme/0f3a1b2c-1111-2222-3333-444455556666", "Senior Data Engineer")
+        self.assertNotIn("plain", api)
+        for part in ("We build data tools", "What you will do", "Own the pipelines", "Requirements", "Five years", "Benefits"):
+            self.assertIn(part, got["description"]["full_text"])
+        self.assertEqual(got["outcome"], "ready")
+
+    def test_greenhouse_content_is_unescaped_before_it_is_read(self):
+        data = {"title": "Senior Data Engineer", "first_published": "2026-10-20", "content": "&lt;p&gt;About the role&lt;/p&gt;"}
+        with mock.patch.object(enrich, "fetch", return_value=Page(200, json.dumps(data))):
+            api = enrich._api_job("https://boards.greenhouse.io/acme/jobs/4567")
+        self.assertEqual(api["html"], "<p>About the role</p>")
+
+    def test_a_board_job_linked_to_the_employers_site_is_read_from_the_boards_api(self):
+        api = {"title": "Senior Data Engineer", "html": LONG, "posted": "2026-10-20"}
+        with mock.patch.object(enrich, "_api_job", side_effect=lambda u: api if "boards.greenhouse.io/acme/jobs/7654321" in u else None) as read, \
+                mock.patch.object(enrich, "fetch") as page:
+            got = enrich.read_page("https://acme.example/careers/?gh_jid=7654321", "Senior Data Engineer", first_party=True, board=("greenhouse", "acme"))
+        page.assert_not_called()                                                     # no JavaScript shell read at all
+        read.assert_called_with("https://boards.greenhouse.io/acme/jobs/7654321")
+        self.assertEqual(got["outcome"], "ready")
+
+    def test_a_board_api_that_does_not_know_the_id_falls_back_to_the_page(self):
+        html = JOB % ("2026-10-20", LONG.replace('"', "'"))
+        with mock.patch.object(enrich, "_api_job", side_effect=lambda u: {"closed": True} if "greenhouse" in u else None), \
+                mock.patch.object(enrich, "fetch", return_value=Page(200, html)):
+            got = enrich.read_page("https://acme.example/careers/position/7654321", "Senior Data Engineer", first_party=True, board=("greenhouse", "acme"))
+        self.assertEqual(got["outcome"], "ready")                                   # never closed on the board's word about another address
+
+    def test_board_urls_by_kind(self):
+        self.assertEqual(enrich.board_job_url(("greenhouse", "acme"), "https://acme.example/jobs?gh_jid=4567123"), "https://boards.greenhouse.io/acme/jobs/4567123")
+        self.assertEqual(enrich.board_job_url(("greenhouse", "acme"), "https://acme.example/careers/position/7654321/"), "https://boards.greenhouse.io/acme/jobs/7654321")
+        self.assertIsNone(enrich.board_job_url(("greenhouse", "acme"), "https://acme.example/careers/data-engineer"))
+        uid = "0f3a1b2c-1111-2222-3333-444455556666"
+        self.assertEqual(enrich.board_job_url(("lever", "acme"), f"https://acme.example/jobs/{uid}/apply"), f"https://jobs.lever.co/acme/{uid}")
+        self.assertEqual(enrich.board_job_url(("ashby", "acme"), f"https://acme.example/careers?ashby_jid={uid}"), f"https://jobs.ashbyhq.com/acme/{uid}")
+
+    def test_the_source_names_its_board(self):
+        self.assertEqual(enrich.board_of("web:gh-digitalocean98"), ("greenhouse", "digitalocean98"))
+        self.assertIsNone(enrich.board_of("linkedin-search"))
+        self.assertIsNone(enrich.board_of("web:no-such-board-here"))
+
+    def test_the_run_passes_each_jobs_board(self):
+        seen = []
+        rows = [(1, "https://acme.example/careers/?gh_jid=7654321", "Senior Data Engineer", "ats", None, "US Remote", "web:gh-digitalocean98", None)]
+        conn = mock.MagicMock()
+        conn.__enter__.return_value = conn
+        conn.cursor.return_value.__enter__.return_value.fetchall.return_value = rows
+        with mock.patch.object(enrich.store, "connect", return_value=conn), mock.patch.object(enrich.store, "ensure_schema"), \
+                mock.patch.object(enrich, "read_page", side_effect=lambda *a: seen.append(a[-1]) or {"outcome": "closed"}):
+            enrich.run(10, live=False, drain=True)
+        self.assertEqual(seen, [("greenhouse", "digitalocean98")])
