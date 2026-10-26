@@ -255,6 +255,20 @@ class PublicationOrderTests(unittest.TestCase):
         for job_id in ids:
             self.db.raw.execute("UPDATE v7_jobs SET status='PUBLISHED', notion_page_id=? WHERE id=?", (f"page-{job_id}", job_id))
 
+    def test_the_waiting_counts_show_the_whole_backlog_not_the_run_limit(self):
+        for job_id in range(1, 8):
+            self.ready(job_id, 80)
+        self.ready(8, 70, admission=None)                      # READY but not yet scored into ADMIT or REVIEW
+        self.ready(9, 85, page="page-9")                       # already published
+        from lifeos.jobs import publish
+        stats = {}
+        rows, _ = publish._pick(self.db, 3, True, 1, stats=stats)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(stats, {"waiting": 7, "ready_unpublished": 8})
+        stats = {}
+        publish._pick(self.db, 3, False, 1, stats=stats)       # not gated: every READY unpublished job is publishable
+        self.assertEqual(stats, {"waiting": 8, "ready_unpublished": 8})
+
     def test_a_high_value_new_job_is_served_ahead_of_a_lower_value_older_one(self):
         self.ready(1, 70, age_days=9)                          # older, lower value
         self.ready(2, 91, age_days=0)                          # new, high value
