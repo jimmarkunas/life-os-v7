@@ -304,7 +304,7 @@
    "company": "Zero Gravity Tech Ltd",
    "tier": "employer",
    "kind": "wttj_html",
-   "enabled": false,
+   "enabled": true,
    "completeness": "job_list_full",
    "status": "ready",
    "url": "https://app.welcometothejungle.com/companies/Zero-Gravity"

@@ -118,3 +118,17 @@ class ScaleUpLiveCheck(unittest.TestCase):
         out = probe.no_board_sponsors(lambda query: results)
         self.assertEqual(out["su-taipec-ltd"], {"boards": ["lever:taipec"], "hosts": ["taipec.com", "jobs.lever.co"], "error": ""})
         self.assertNotIn("su-otto-car-limited", out)                                           # disabled sponsors are not searched
+
+
+class CandidateSiteChecks(unittest.TestCase):
+    def test_candidate_sites_reports_title_match_and_linked_boards_not_text(self):
+        page = Fetched("https://taipec.com/careers", 200, "<title>Careers at Taipec</title><a href='https://jobs.lever.co/taipec'>x</a> JobPosting")
+        out = probe.candidate_sites(lambda url, **kw: page, sites={"su-taipec-ltd": ("taipec.com",)})
+        facts = out["su-taipec-ltd"]["taipec.com/careers"]
+        self.assertEqual((facts["status"], facts["jobposting"], facts["title_names_company"], facts["boards"]), (200, 1, True, ["lever:taipec"]))
+
+    def test_ashby_board_counts_listed_entries_only(self):
+        html = '{"jobPostings":[{"id":"a","title":"One"},{"id":"b","title":"Two"}],"x":1}'
+        out = probe.ashby_board(lambda url, **kw: Fetched(url, 200, html))
+        self.assertEqual((out["has_list"], out["listed_entries"]), (True, 2))
+        self.assertNotIn("One", str(out))
