@@ -313,6 +313,41 @@ class ThinPageTests(unittest.TestCase):
             self.assertFalse(lanes.thin_review_source(source), source)
 
 
+class ThinBoardAdmitTests(unittest.TestCase):
+    """Jim, Oct 25: an open role on a Greenhouse, Lever or Ashby board with a fitting title is admitted even though the board's own text is short."""
+    TODAY = date(2026, 10, 4)
+
+    def facts(self, fit, thin=True, thin_admit=True):
+        return lanes.facts_for(fit, "Delivery Lead", "London \u00b7 office \u00b7 United Kingdom", "x", None, None, self.TODAY,
+                               route="Scale-up:POSITIVE", first_party=True, kept=thin, thin=thin, thin_admit=thin_admit)
+
+    def test_a_fitting_thin_board_feed_role_is_admitted(self):
+        for fit in (60, 65, 72, 90):
+            self.assertEqual(lanes.decide("Scale-Up", self.facts(fit), self.TODAY)[0].status, lanes.ADMIT, fit)
+
+    def test_a_title_that_does_not_fit_stays_review_never_admit(self):
+        for fit in (40, 59):
+            self.assertEqual(lanes.decide("Scale-Up", self.facts(fit), self.TODAY)[0].status, lanes.REVIEW, fit)
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(None), self.TODAY)[0].reason, "Fit unscorable")
+
+    def test_the_other_lane_rules_still_apply(self):
+        closed = self.facts(90)
+        closed.closed = True
+        self.assertEqual(lanes.decide("Scale-Up", closed, self.TODAY)[0].status, lanes.EXCLUDE)
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(90), self.TODAY, exclusion="a private title rule")[0].status, lanes.EXCLUDE)
+
+    def test_a_scale_up_sponsors_own_board_and_a_real_description_are_unchanged(self):
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(90, thin_admit=False), self.TODAY)[0].reason, lanes.THIN_REASON)
+        self.assertEqual(lanes.decide("Scale-Up", self.facts(65, thin=False), self.TODAY)[0].status, lanes.REVIEW)       # a full description still needs Fit 72
+        self.assertFalse(lanes.facts_for(90, "Delivery Lead", "London", "x", None, None, self.TODAY, thin=False, thin_admit=True).thin_admit)
+
+    def test_only_the_three_ats_boards_count(self):
+        for source in ("web:gh-acme", "web:lv-acme", "web:ab-acme"):
+            self.assertTrue(lanes.thin_admit_source(source), source)
+        for source in ("web:su-acme", "web:openjobs", "web:titlewatch:su-acme", "jobright", "", None):
+            self.assertFalse(lanes.thin_admit_source(source), source)
+
+
 class KeepListTests(unittest.TestCase):
     """D115: a role on Jim's keep list is never excluded for Fit alone; it goes to Review."""
 

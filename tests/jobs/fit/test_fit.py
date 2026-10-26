@@ -693,4 +693,4 @@ class NoHistoricalRescore(unittest.TestCase):
         """D213: no version bump for that change (l15 is the later keep-list change, which does bump), so stage.PICK finds no stored score stale for this change and no PUBLISHED job is re-scored by it (D94 unchanged)."""
         from lifeos.jobs import lanes
         from lifeos.jobs.fit import MODEL_VERSION
-        self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l15"))
+        self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l16"))
