@@ -358,6 +358,9 @@ def run(limit, live, drain=False):
         counts["left_for_hourly"] = len(left)
     else:
         _fallback(results, rows, counts, lane_of, {i for i, p in proof_of.items() if p == "unproven"}, {i for i, src in source_of.items() if lanes.first_party_source(src)})
+        url_of = {job_id: quality.canonical_job_url(url) for job_id, url, _, _, _ in rows}
+        for job_id, result in results:                               # a page the fallback read is a new result: it keeps the link it was read from (without it save() cleared
+            result.setdefault("final_url", url_of[job_id])            # final_apply_url and the precision audit sent the READY job back as audit_url_root, Oct 25 7:25 PM CT: 63 of 69)
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
