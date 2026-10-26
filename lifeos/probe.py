@@ -231,6 +231,49 @@ def no_board_sponsors(search=None):
     return out
 
 
+CANDIDATE_SITES = {"su-fomtech-ltd-floww": ("floww.io",), "su-taipec-ltd": ("taipec.com",), "su-sa3-group-ltd": ("sa3ltd.com", "sa3power.com"),
+                   "su-i-f-concept-ltd": ("ifconcept.co.uk", "conceptltd.com")}
+CAREER_PATHS = ("/careers", "/jobs", "/")
+
+
+def candidate_sites(fetcher=fetch, sites=None):
+    """For each no-board sponsor's candidate company site (hosts the search named): do its careers pages load, does the <title> name the company, which
+    job-board hosts do they link to, and is there JobPosting markup. Counts and flags only; nothing is registered from here."""
+    from lifeos.jobs.resolve import ats_match                                                # noqa: PLC0415
+    companies = {r["id"]: r["company"] for r in registry.load(registry.PATHS["Scale-Up"])}
+    out = {}
+    for source_id, hosts in (sites if sites is not None else CANDIDATE_SITES).items():
+        tokens = [w for w in ats_match.norm(companies.get(source_id, "")).split() if w not in ats_match.SUFFIX and len(w) > 2][:2]
+        found = {}
+        for host in hosts:
+            for path in CAREER_PATHS:
+                got = fetcher(f"https://{host}{path}", timeout=20, max_hops=3, max_bytes=2_000_000)
+                text = got.html or ""
+                title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+                boards = sorted({f"{kind}:{m.group(1)}" for kind, pattern in ATS_PATTERNS
+                                 for m in re.finditer(pattern.lstrip("^").replace("https?://", "https?://"), text, re.I)})[:4]
+                found[f"{host}{path}"] = {"status": got.status, "bytes": len(text), "anchors": len(re.findall(r"<a\b", text, re.I)), "jobposting": len(re.findall(r"JobPosting", text)),
+                                          "title_names_company": bool(tokens) and all(t in ats_match.norm(title.group(1) if title else "") for t in tokens), "boards": boards}
+        out[source_id] = found
+    return out
+
+
+def ashby_board(fetcher=fetch, slug="safi"):
+    """The public Ashby board page next to the lister's count: how many entries sit in its embedded jobPostings list (a count; no titles)."""
+    got = fetcher(f"https://jobs.ashbyhq.com/{slug}", timeout=20, max_hops=3, max_bytes=3_000_000)
+    text = got.html or ""
+    start = text.find('"jobPostings":[')
+    count = None
+    if start >= 0:
+        depth, i = 0, start + len('"jobPostings":')
+        for j in range(i, len(text)):
+            depth += (text[j] == "[") - (text[j] == "]")
+            if depth == 0:
+                count = len(re.findall(r'"title"', text[i:j]))
+                break
+    return {"status": got.status, "bytes": len(text), "has_list": start >= 0, "listed_entries": count, "jobposting_hits": len(re.findall(r"JobPosting|jobPosting", text))}
+
+
 def lane_funnel():
     """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
     from lifeos.jobs import store                                                            # noqa: PLC0415
@@ -530,4 +573,4 @@ def held_first_party(fetcher=fetch, rows=None):
 
 
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "candidate_sites": candidate_sites(), "ashby_board": ashby_board(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
