@@ -763,6 +763,7 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs
+    "SEAL_KEY",                    # LIFE-121: the environment variable that carries a one-time AES key to openssl in sealed_report
     "GRAN_PIN_DAY",                # LIFE-37: the day the manual Granola run is pinned to
     "ALERTS_ENABLED", "ALERTS_MESSAGE_REF", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS", "AMAZON_CARD_BLOCK_ID", "AMAZON_SINCE", "AMAZON_SYNC_OUTCOME",
     "ATTENTION_CARD_BLOCK_ID", "ATTENTION_SYNC_OUTCOME", "BILLS_CARD_BLOCK_ID", "BOARDS_BACKFILL", "BOARD_COMPANY", "CALENDAR_ACCOUNTS",
