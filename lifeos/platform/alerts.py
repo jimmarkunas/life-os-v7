@@ -19,7 +19,7 @@ import sys
 import urllib.request
 from zoneinfo import ZoneInfo
 
-from lifeos.platform import alert_registry, redact
+from lifeos.platform import alert_registry, alert_settings, redact
 
 PAGE, INFO = "page", "info"
 REMIND_HOURS = {PAGE: 6, INFO: 24}
@@ -75,7 +75,9 @@ def render(kind, item):
     return redact.redact(prefix + item.title), redact.redact(body), alert_registry.severity(item.key, item.severity)         # LIFE-75: how loud an alert is lives in the registry
 
 
-HIBERNATED = True        # LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended, with no expiry. Only a reviewed commit made on Jim's explicit instruction turns it back on.
+def hibernated():
+    """LIFE-71 / LIFE-75: alerts are OFF unless the master switch (ALERTS_ENABLED, set on the Alert settings page) says "on". Missing or unreadable means OFF."""
+    return not alert_settings.enabled()
 
 
 MUTE_VARIABLE = "ALERTS_MUTED_UNTIL"       # LIFE-73: the repository variable that silences every channel until a time (ISO 8601; a time with no zone is Central)
@@ -102,9 +104,16 @@ def reset_flood():
     _flood.update(sent=0, paused=False)
 
 
-def _post(topic, title, body, severity, post=None):
+COPY_TAGS = {"telegram": "ch-telegram", "whatsapp": "ch-whatsapp"}        # LIFE-75: a push carries the copies it is meant for; the Oracle relay forwards a copy only when its tag is here
+
+
+def _post(topic, title, body, severity, post=None, channels=None):
+    """`channels` (None = the old behaviour): which of ntfy / telegram / whatsapp this push is for. Without the phone the push goes out at the lowest priority, which ntfy
+    delivers without a sound or a banner, so a Telegram-only alert still reaches the relay but never wakes the phone."""
+    tags = [t for t in (TAGS.get(severity, ""),) if t] + [COPY_TAGS[c] for c in (channels or ()) if c in COPY_TAGS]
+    priority = "min" if channels is not None and "ntfy" not in channels else PRIORITY.get(severity, "default")
     request = urllib.request.Request(f"https://ntfy.sh/{topic}", data=(body or title).encode(), method="POST", headers={
-        "Title": title.encode("ascii", "replace").decode(), "Priority": PRIORITY.get(severity, "default"), "Tags": TAGS.get(severity, "")})
+        "Title": title.encode("ascii", "replace").decode(), "Priority": priority, "Tags": ",".join(tags)})
     try:
         with (post or urllib.request.urlopen)(request, timeout=15) as response:
             return 200 <= response.status < 300
@@ -112,11 +121,11 @@ def _post(topic, title, body, severity, post=None):
         return False
 
 
-def ntfy(topic, title, body, severity, post=None):
+def ntfy(topic, title, body, severity, post=None, channels=None):
     """The one gateway to the phone (LIFE-73): every LIFE OS push goes through here, and the Telegram and WhatsApp copies follow ntfy, so a rule here covers all three.
-    Phone push through ntfy (https://ntfy.sh): the topic name is the secret. Returns True when accepted. Never raises. Not sent, and False, while HIBERNATED (LIFE-71),
-    while muted (ALERTS_MUTED_UNTIL), or past SEND_CAP in this process; the first push past the cap sends ONE "alerts paused: flood" notice instead."""
-    if HIBERNATED or not topic or muted():
+    Phone push through ntfy (https://ntfy.sh): the topic name is the secret. Returns True when accepted. Never raises. Not sent, and False, while alerts are off (the master
+    switch ALERTS_ENABLED, LIFE-71), while muted (ALERTS_MUTED_UNTIL), or past SEND_CAP in this process; the first push past the cap sends ONE "alerts paused: flood" notice instead."""
+    if hibernated() or not topic or muted():
         return False
     if _flood["sent"] >= SEND_CAP:
         if not _flood["paused"]:
@@ -124,29 +133,37 @@ def ntfy(topic, title, body, severity, post=None):
             _post(topic, "Alerts paused: flood", f"More than {SEND_CAP} alerts in one run. The rest were held back; the run's log has the counts.", INFO, post)
         return False
     _flood["sent"] += 1
-    return _post(topic, title, body, severity, post)
+    return _post(topic, title, body, severity, post, channels)
 
 
 def push(key, title, body, topic=None, post=None):
     """Send one registered alert (LIFE-75): the severity comes from the registry (lifeos/platform/alert_registry.py), and a key that is not listed is refused (False, nothing sent).
-    The mute, the flood cap and HIBERNATED apply exactly as for `ntfy`, which this wraps. `topic` defaults to NTFY_TOPIC."""
+    The master switch, the mute, the flood cap and the channels Jim set apply exactly as for `ntfy`, which this wraps. `topic` defaults to NTFY_TOPIC."""
     spec = alert_registry.lookup(key)
-    if spec is None:
-        return False
-    return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post)
+    chosen = alert_settings.channels(key)
+    if spec is None or not chosen:
+        return False                                                                            # unlisted, or Jim turned every channel off for it
+    return ntfy((topic if topic is not None else os.environ.get("NTFY_TOPIC", "")).strip(), redact.redact(title), redact.redact(body), spec.severity, post, chosen)
 
 
 def deliver(plan, topic, send=None):
     """Send the plan's notifications; -> counts. INFO opens and reminders still push (low priority, no sound). `send` is a test fake; the default is the gateway."""
-    send = send or ntfy
-    sent = failed = 0
+    sent = failed = skipped = 0
     for kind, item in plan.notify:
         title, body, severity = render(kind, item)
-        if send(topic, title, body, severity):
+        key = item if isinstance(item, str) else item.key                                     # a resolved notification carries only its key
+        chosen = alert_settings.channels(key)
+        if send is None and alert_registry.lookup(key) is None:
+            failed += 1                                                                       # an alert nobody listed is refused (the registry test catches it before it ships)
+            continue
+        if send is None and not chosen:
+            skipped += 1                                                                      # Jim turned every channel off for this alert: it is handled, not failed, so it is not retried
+            continue
+        if (send(topic, title, body, severity) if send else ntfy(topic, title, body, severity, channels=chosen)):
             sent += 1
         else:
             failed += 1
-    return {"sent": sent, "failed": failed}
+    return {"sent": sent, "failed": failed, **({"skipped": skipped} if skipped else {})}
 
 
 def main(argv=None):
@@ -161,7 +178,7 @@ def main(argv=None):
     if spec is None:
         print(json.dumps({"push": "unregistered_key"}))
         return 2                                              # a push no one listed is a defect in the caller, never a silent success (checked first: a typo shows even while alerts are off)
-    if HIBERNATED:
+    if hibernated():
         print(json.dumps({"push": "hibernated"}))
         return 0                                              # LIFE-71: a suspended push is not a failed step
     if muted():

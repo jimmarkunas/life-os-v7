@@ -115,6 +115,8 @@ env:
   V7_FIT_GATE: ${{ vars.V7_FIT_GATE }}
   GATE_MIN_GAP_MINUTES: ${{ vars.GATE_MIN_GAP_MINUTES }}      # drain mode sets this to about 20 (lifeos.platform.gate.min_gap); empty keeps the 50-minute default
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
+  ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
+  ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
   HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
   # Manual runs obey the 'live' input ONLY. Scheduled runs are live only when repo variable V7_LIVE=true.
   LIVE: ${{ github.event_name == 'workflow_dispatch' && !inputs.tick && (inputs.live && 'true' || 'false') || (vars.V7_LIVE == 'true' && 'true' || 'false') }}

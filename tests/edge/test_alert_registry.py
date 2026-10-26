@@ -145,35 +145,32 @@ class TheCodeUsesOnlyRegisteredAlerts(unittest.TestCase):
 
 class Push(unittest.TestCase):
     def setUp(self):
-        self._hibernated, alerts.HIBERNATED = alerts.HIBERNATED, False
+        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         alerts.reset_flood()
-        self.addCleanup(self.restore)
+        self.addCleanup(alerts.reset_flood)
         self.sent = []
-
-    def restore(self):
-        alerts.HIBERNATED = self._hibernated
-        alerts.reset_flood()
 
     def post(self, request, timeout=None):
         self.sent.append((request.get_header("Title"), request.get_header("Priority")))
         return mock.MagicMock(__enter__=lambda s: mock.Mock(status=200), __exit__=lambda *a: False)
 
     def test_a_registered_key_is_sent_with_the_registrys_severity(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertTrue(alerts.push("run_failed", "V7 run failed", "lane x", "topic", self.post))
             self.assertTrue(alerts.push("attention_new", "LIFE OS Attention", "2 new items", "topic", self.post))
         self.assertEqual(self.sent, [("V7 run failed", "high"), ("LIFE OS Attention", "low")])          # PAGE is high priority, INFO low
 
     def test_an_unlisted_key_is_refused_and_nothing_is_sent(self):
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"}, clear=True):
             self.assertFalse(alerts.push("not_listed", "t", "b", "topic", self.post))
         self.assertEqual(self.sent, [])
 
-    def test_the_mute_and_hibernation_still_apply(self):
-        with mock.patch.dict("os.environ", {"ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
+    def test_the_mute_and_the_master_switch_still_apply(self):
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on", "ALERTS_MUTED_UNTIL": "2999-01-01T00:00:00Z"}):
             self.assertFalse(alerts.push("run_failed", "t", "b", "topic", self.post))
-        alerts.HIBERNATED = True
-        with mock.patch.dict("os.environ", {}, clear=True):
+        with mock.patch.dict("os.environ", {}, clear=True):                                   # the master switch unset: alerts are off
             self.assertFalse(alerts.push("run_failed", "t", "b", "topic", self.post))
         self.assertEqual(self.sent, [])
 

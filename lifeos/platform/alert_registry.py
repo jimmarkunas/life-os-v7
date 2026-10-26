@@ -74,6 +74,17 @@ def lookup(key):
     return best[1] if best else None
 
 
+def pattern_of(key):
+    """-> the registry key that covers `key`: itself, or the `prefix*` family; None when it is not registered."""
+    if key in REGISTRY:
+        return key
+    best = None
+    for pattern in REGISTRY:
+        if pattern.endswith("*") and key.startswith(pattern[:-1]) and (best is None or len(pattern) > len(best)):
+            best = pattern
+    return best
+
+
 def severity(key, fallback=None):
     spec = lookup(key)
     return spec.severity if spec else fallback

@@ -1,5 +1,6 @@
 import datetime as dt
 import unittest
+from unittest import mock
 
 from lifeos.platform import alerts
 
@@ -43,11 +44,12 @@ class Delivery(unittest.TestCase):
         self.assertIn("Next: renew it", body)
         self.assertEqual(severity, alerts.PAGE)
 
-    def setUp(self):                                          # the send path itself, as it behaves when Jim turns alerts back on
-        self._hibernated, alerts.HIBERNATED = alerts.HIBERNATED, False
-
-    def tearDown(self):
-        alerts.HIBERNATED = self._hibernated
+    def setUp(self):                                          # the send path itself, as it behaves when Jim turns alerts on (the ALERTS_ENABLED switch)
+        patcher = mock.patch.dict("os.environ", {"ALERTS_ENABLED": "on"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        alerts.reset_flood()
+        self.addCleanup(alerts.reset_flood)
 
     def test_ntfy_needs_a_topic_and_never_raises(self):
         self.assertFalse(alerts.ntfy("", "t", "b", alerts.PAGE))
@@ -95,21 +97,27 @@ class Delivery(unittest.TestCase):
 class Hibernated(unittest.TestCase):
     """LIFE-71 (Jim, Oct 18 2026): every LIFE OS phone push is suspended until Jim explicitly approves reactivation."""
 
-    def test_alerts_are_hibernated_on_this_commit(self):
-        self.assertIs(alerts.HIBERNATED, True)                  # turning alerts back on must change this test too, in a reviewed commit
+    def test_alerts_are_off_unless_the_master_switch_says_on(self):
+        for value in (None, "", "off", "true", "1", "ON please"):
+            env = {} if value is None else {"ALERTS_ENABLED": value}
+            with self.subTest(value=value), mock.patch.dict("os.environ", env, clear=True):
+                self.assertTrue(alerts.hibernated())              # the safe default is OFF: only exactly "on" turns alerts on (LIFE-75: Jim's switch, not a commit)
+        with mock.patch.dict("os.environ", {"ALERTS_ENABLED": " On "}, clear=True):
+            self.assertFalse(alerts.hibernated())
 
     def test_nothing_is_posted_and_the_push_counts_as_not_sent(self):
         def post(request, timeout):
-            raise AssertionError("no push may leave while hibernated")
-        self.assertFalse(alerts.ntfy("topic", "Title", "Body", alerts.PAGE, post=post))
-        self.assertEqual(alerts.deliver(alerts.reconcile([A, I], {}, NOW), "topic"), {"sent": 0, "failed": 2})
+            raise AssertionError("no push may leave while alerts are off")
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(alerts.ntfy("topic", "Title", "Body", alerts.PAGE, post=post))
+            self.assertEqual(alerts.deliver(alerts.reconcile([A, I], {}, NOW), "topic"), {"sent": 0, "failed": 2})
 
     def test_the_push_cli_sends_nothing_and_keeps_the_step_green(self):
         import contextlib, io
         out, old = io.StringIO(), alerts.ntfy
         try:
-            alerts.ntfy = lambda *a: (_ for _ in ()).throw(AssertionError("ntfy called"))
-            with contextlib.redirect_stdout(out):
+            alerts.ntfy = lambda *a, **k: (_ for _ in ()).throw(AssertionError("ntfy called"))
+            with mock.patch.dict("os.environ", {}, clear=True), contextlib.redirect_stdout(out):
                 self.assertEqual(alerts.main(["push", "--key", "run_failed", "--title", "T"]), 0)
         finally:
             alerts.ntfy = old
