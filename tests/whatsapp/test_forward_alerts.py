@@ -13,8 +13,11 @@ fa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fa)
 
 
+COPIES = ["ch-whatsapp", "ch-telegram"]                      # LIFE-75: a push is tagged for the copies it is meant for; most tests send to both
+
+
 def stream(*events):
-    return io.BytesIO(b"".join(json.dumps(e).encode() + b"\n" for e in events))
+    return io.BytesIO(b"".join(json.dumps({"tags": COPIES, **e} if e.get("event") == "message" else e).encode() + b"\n" for e in events))
 
 
 class Stream:
@@ -304,6 +307,38 @@ class CorruptStateFailsClosedTests(unittest.TestCase):
         relay = Relay(OK)
         self.poll(relay)
         self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
+
+
+class ChannelTagTests(unittest.TestCase):
+    """LIFE-75: a copy goes to a channel only when the push carries that channel's tag (what Jim ticks on the Alert settings page)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.patches = [mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))]
+        for p in self.patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def follow(self, tags, channel):
+        sent = []
+        events = [{"event": "message", "id": "m0001", "title": "One", "tags": tags}, {"event": "message", "id": "m0002", "title": "Two", "tags": tags}]
+        fa.follow("topic", "x", Stream(stream(*events)), lambda to, body: sent.append(body) or True, channel=channel)
+        return sent
+
+    def test_a_channel_gets_only_the_pushes_tagged_for_it(self):
+        self.assertEqual(self.follow(["ch-telegram"], "telegram"), ["🔔 One", "🔔 Two"])
+        self.assertEqual(self.follow(["ch-telegram"], "whatsapp"), [])
+        self.assertEqual(self.follow(["rotating_light", "ch-whatsapp"], "whatsapp"), ["🔔 One", "🔔 Two"])
+
+    def test_an_untagged_push_is_copied_nowhere_and_the_position_moves_on(self):
+        self.assertEqual(self.follow([], "telegram"), [])
+        self.assertEqual(fa.last_id("telegram"), "m0002")                       # skipped, not retried
+        self.assertFalse(os.path.exists(os.path.join(self.dir, fa.DIAGNOSTICS)))      # silent: no diagnostics line per skipped push
+
+    def test_a_missing_tags_field_counts_as_untagged(self):
+        sent = []
+        fa.follow("topic", "x", Stream(io.BytesIO(json.dumps({"event": "message", "id": "m0001", "title": "One"}).encode() + b"\n")), lambda to, body: sent.append(body) or True, channel="whatsapp")
+        self.assertEqual(sent, [])
 
 
 class HourlyCapTests(unittest.TestCase):

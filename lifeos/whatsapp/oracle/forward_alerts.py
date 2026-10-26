@@ -22,6 +22,9 @@ on restart and treats it as AMBIGUOUS instead of replaying. Saved state fails cl
 that channel (no poll, no send; one HELD diagnostic) until a person repairs it; only an absent file is a fresh start. Every outcome is appended to a
 size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text.
 
+LIFE-75 (the Alert settings page): the V7 gateway tags each push with the copies it is meant for (`ch-telegram`, `ch-whatsapp`); this relay forwards a copy to a channel only when
+that tag is present, so what Jim ticks per alert on the page decides it. An untagged message is skipped silently and the position moves on.
+
 LIFE-73 (the flood cap): each channel forwards at most RELAY_CAP copies per clock hour. The next one sends ONE "paused" notice and the rest of that hour's copies are dropped
 (ntfy keeps every original). The count is persisted (rate-<channel>, 0600) and written before the send; an unreadable count file holds the channel instead of lifting the cap."""
 import json
@@ -295,6 +298,9 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
     with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since or '10m'}", timeout=30) as stream:
         lines = [line.decode("utf-8", "replace") for line in stream]
         for e in events(lines):
+            if "ch-" + channel not in (e.get("tags") or []):                  # LIFE-75: a copy goes to this channel only when the push was tagged for it (the Alert settings page)
+                remember(e["id"], channel)
+                continue
             state = attempts(channel)
             mine = state if state.get("id") == e["id"] else {}
             if mine.get("pending"):
