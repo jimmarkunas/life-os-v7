@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-boards: for each Scale-Up board in the registry, its last read, how many vacancies it lists and what became of them, and the jobs created from it by status (counts and source ids only; writes nothing). scale-up-exclusions: why Scale-Up jobs are EXCLUDED_FIT, split by stored reason, Fit band and source (counts only; writes nothing). scale-up-exclusion-review: the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed (count in the clear; the list is one sealed block only Jim can open). scale-up-register: the current official sponsor register against the Scale-Up registry, London Scale-up sponsors not held (counts in the clear; names sealed). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only). interview-ui-probe (needs confirm = QA): LIFE-88's first gate, whether the V7 Notion REST transport can build the accepted UI 3c tree (tabs, tables in callouts, 63/37 columns, in-place updates); reads the UI 3c QA preview and writes only one probe page under the QA Interview OS parent (block types, check codes and counts only)"
+        description: "scale-up-holds: why parked Scale-Up roles do not move (counts from the Jobs store; writes nothing). scale-up-boards: for each Scale-Up board in the registry, its last read, how many vacancies it lists and what became of them, and the jobs created from it by status (counts and source ids only; writes nothing). scale-up-exclusions: why Scale-Up jobs are EXCLUDED_FIT, split by stored reason, Fit band and source (counts only; writes nothing). scale-up-exclusion-review: the Scale-Up jobs scored at or over the Fit floor that Jim's own exclusion rules removed (count in the clear; the list goes to one private Notion page, written only with confirm = REPORT; a dry run writes nothing). scale-up-register: the current official sponsor register against the Scale-Up registry, London Scale-up sponsors not held (counts in the clear; names go to one private Notion page, only with confirm = REPORT). scale-up-links: re-reads each parked role's own public page and counts why its link check fails (counts only; writes nothing). alerts-open: which alerts are open and the new jobs per source in the last 24 hours (source names and counts only; writes nothing). newsletter-trace (needs message_ref): reads ONE Newsletter message from Gmail (list and read only) and classifies each parsed card against the Jobs store: owned, collision, orphan, suppressed or missing (counts and fixed codes only; writes nothing). notion-sandbox-access: whether the existing Jobs Notion integration can read the synthetic sandbox Job Ledger (three fixed reads; HTTP and error codes only; writes nothing). notion-sandbox-outreach-proof (needs confirm = SYNTHETIC): the one-time LIFE-10 proof of the job-page outreach writer on ONE synthetic page in the sandbox Job Ledger, with fictional in-memory conversations (writes only that page; codes and counts only). interview-ui-probe (needs confirm = QA): LIFE-88's first gate, whether the V7 Notion REST transport can build the accepted UI 3c tree (tabs, tables in callouts, 63/37 columns, in-place updates); reads the UI 3c QA preview and writes only one probe page under the QA Interview OS parent (block types, check codes and counts only)"
         type: choice
         options: ["scale-up-holds", "scale-up-links", "scale-up-boards", "scale-up-exclusions", "scale-up-exclusion-review", "scale-up-register", "alerts-open", "newsletter-trace", "notion-sandbox-access", "notion-sandbox-outreach-proof", "interview-ui-probe"]
         default: "scale-up-holds"
@@ -13,7 +13,7 @@ on:
         type: string
         default: ""
       confirm:
-        description: "notion-sandbox-outreach-proof: type SYNTHETIC; interview-ui-probe: type QA (confirms that only the one sandbox or QA probe page is written)"
+        description: "notion-sandbox-outreach-proof: type SYNTHETIC; scale-up-exclusion-review and scale-up-register: type REPORT (writes the one private report page; blank is a dry run); interview-ui-probe: type QA (confirms that only the one sandbox or QA probe page is written)"
         type: string
         default: ""
 permissions:
@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diag:
-    if: ${{ inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}
+    if: ${{ inputs.stage != 'scale-up-exclusion-review' && inputs.stage != 'scale-up-register' && inputs.stage != 'newsletter-trace' && inputs.stage != 'notion-sandbox-access' && inputs.stage != 'notion-sandbox-outreach-proof' && inputs.stage != 'interview-ui-probe' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -193,3 +193,53 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
         run: python -m lifeos.run interview-ui-probe --limit 0 --live
+  # LIFE-121: the two private reports. Their own job: the Jobs Notion token reaches only these stages (and the sandbox job above), the database values only the review. The text is written straight to ONE private Notion page
+  # (a child of the page that holds the Job Ledger) and never reaches a log; the log has counts and fixed codes. A dry run unless confirm = REPORT (Jim, Oct 26: "list the 59 in Notion").
+  report:
+    if: ${{ inputs.stage == 'scale-up-exclusion-review' || inputs.stage == 'scale-up-register' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_report
+        name: Load the database, SSH and Jobs Notion values from Bitwarden (the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_report.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_report_retry
+        name: Load the same values from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_report.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          secrets: |
+            d71bbaed-6a6c-49b5-8a1f-b4db015ecfda > LIFEOS_ACQ_DB_NAME
+            00d82e0d-be10-4c8c-bdbe-b4db015ed389 > LIFEOS_ACQ_DB_PASSWORD
+            9422b842-3bb0-4153-bb8d-b4db015ed746 > LIFEOS_ACQ_DB_USER
+            6f1c86f6-c48f-4e77-b65d-b4db015edb15 > LIFEOS_ACQ_SSH_HOST
+            b65dd2fc-2573-4bda-9e80-b4db015edec6 > LIFEOS_ACQ_SSH_KNOWN_HOSTS
+            7ada9cea-8711-4b37-bef9-b4db015ee298 > LIFEOS_ACQ_SSH_PRIVATE_KEY
+            6b3e12b9-1987-4073-bda2-b4db015ee653 > LIFEOS_ACQ_SSH_USER
+            53dc3d04-dbb2-45fe-8185-b4db015eedcb > NOTION_API_TOKEN
+      - name: Private report (counts and fixed codes only; writes the one Notion page only with confirm = REPORT)
+        env:
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
+          STAGE: ${{ inputs.stage }}
+          REPORT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$REPORT_CONFIRM" = "REPORT" ]; then python -m lifeos.run "$STAGE" --live; else python -m lifeos.run "$STAGE"; fi

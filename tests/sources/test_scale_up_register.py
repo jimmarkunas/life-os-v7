@@ -27,19 +27,17 @@ class Register(unittest.TestCase):
         self.assertEqual(counts, {"register_scale_up": 3, "london": 2, "london_held": 1, "london_missing": 1, "held_total": 2, "held_in_register": 1})
         self.assertEqual([m[0] for m in missing], ["ExampleCo Limited"])
 
-    def test_the_registry_file_loads_and_the_log_gets_counts_and_a_sealed_block_only(self):
+    def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
         self.assertGreaterEqual(len(reg.held_keys()), 40)
-        import contextlib
-        import io
+        from tests.jobs.test_private_report import FakeClient
         pages = {reg.sponsor_register.PAGE: Page('{"x": "https://assets.publishing.service.gov.uk/media/a.csv"}'), "https://assets.publishing.service.gov.uk/media/a.csv": Page(CSV * 5)}
-        sealed, out = [], io.StringIO()
+        client = FakeClient()
         entries = ["ExampleCo Limited"] + [f"Filler{i} Ltd" for i in range(12)]
         text = "Organisation Name,Town/City,County,Type & Rating,Route\n" + "".join(f"{n},London,Greater London,Worker (A rating),Scale-up\n" for n in entries)
         pages["https://assets.publishing.service.gov.uk/media/a.csv"] = Page(text)
-        with contextlib.redirect_stdout(out):
-            counts = reg.run(0, False, fetcher=lambda url, **kw: pages[url], seal=lambda t: sealed.append(t) or "SEALED")
-        self.assertEqual((counts["status"], counts["london"], counts["sealed"], out.getvalue().strip()), ("OK", 13, True, "SEALED"))
-        self.assertIn("ExampleCo Limited", sealed[0])
+        counts = reg.run(0, True, fetcher=lambda url, **kw: pages[url], client=client)
+        self.assertEqual((counts["status"], counts["london"], counts["page"], counts["failed"]), ("OK", 13, "new", 0))
+        self.assertIn("ExampleCo Limited", str(client.writes[0][2]))
         self.assertEqual(reg.run(0, False, fetcher=lambda url, **kw: Page("{}", 503))["status"], "FAILED:http_503")
 
 

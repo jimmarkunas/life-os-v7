@@ -75,13 +75,11 @@ class Review(unittest.TestCase):
         self.assertEqual(lines[0].split("\t")[:2], ["OtherCo", "Risk Lead"])
         self.assertIn("\tsales_role\t", lines[1])
 
-    def test_the_log_gets_the_count_and_a_sealed_block_never_the_text(self):
-        import contextlib
-        import io
-        cursor = Cursor(self.ROWS)
-        sealed = []
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            report = ex.review(0, False, connect=lambda: cursor, seal=lambda text: sealed.append(text) or "SEALED")
-        self.assertEqual((report, out.getvalue().strip(), set(cursor.sql)), ({"rows": 2, "sealed": True}, "SEALED", {"SELECT"}))
-        self.assertIn("ExampleCo", sealed[0])          # the plaintext only ever went to the sealer
+    def test_the_text_goes_to_the_private_page_and_the_log_gets_counts_only(self):
+        from tests.jobs.test_private_report import FakeClient
+        cursor, client = Cursor(self.ROWS), FakeClient()
+        self.assertEqual(ex.review(0, False, connect=lambda: cursor, client=client), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
+        self.assertEqual((set(cursor.sql), client.writes), ({"SELECT"}, []))                       # a dry run reads only
+        report = ex.review(0, True, connect=lambda: Cursor(self.ROWS), client=client)
+        self.assertEqual((report["rows"], report["page"]), (2, "new"))
+        self.assertIn("ExampleCo", str(client.writes[0][2]))                                       # the plaintext only ever went to Notion

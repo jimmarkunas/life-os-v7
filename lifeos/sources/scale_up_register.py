@@ -1,11 +1,11 @@
 """LIFE-121 London coverage, step 1 (Jim, Oct 26: "Do them!"): read-only comparison of the CURRENT official sponsor register against V7's Scale-Up registry. Counts in the clear; the names of
-London Scale-up-route sponsors V7 does not hold are printed only as a sealed block (lifeos.jobs.sealed_report). Writes nothing."""
+London Scale-up-route sponsors V7 does not hold go to ONE private Notion page (lifeos.jobs.private_report), only when live; a dry run writes nothing."""
 import csv
 import io
 import json
 import pathlib
 
-from lifeos.jobs import names, sealed_report
+from lifeos.jobs import names, private_report
 from lifeos.platform.http import fetch
 from lifeos.sources import sponsor_register
 
@@ -44,7 +44,7 @@ def compare(entries, held):
     return counts, missing
 
 
-def run(limit, live, fetcher=fetch, seal=None):
+def run(limit, live, fetcher=fetch, client=None):
     url, why = sponsor_register.csv_url(fetcher)
     if not url:
         return {"status": f"FAILED:{why}"}
@@ -55,6 +55,7 @@ def run(limit, live, fetcher=fetch, seal=None):
     if why or len(entries) < 10:
         return {"status": f"FAILED:{why or 'too_few'}", "register_scale_up": len(entries)}
     counts, missing = compare(entries, held_keys())
-    text = "\n".join(["name\ttown\tcounty", *("\t".join(" ".join(v.split()) for v in e) for e in sorted(missing))])
-    print((seal or sealed_report.seal)(text))
-    return {"status": "OK", **counts, "sealed": True}
+    from lifeos.platform.notion_client import Client
+    rows = [[" ".join(v.split()) for v in e] for e in sorted(missing)]
+    report = private_report.publish(client or Client(), "LIFE-121: London Scale-up sponsors not in the registry", ["name", "town", "county"], rows, live)
+    return {"status": "OK" if not report["failed"] else "FAILED", **counts, "page": report["page"], "failed": report["failed"], "why": report["why"]}
