@@ -797,7 +797,7 @@ class RuntimePathTests(unittest.TestCase):
         import yaml
         doc = yaml.safe_load((ROOT / ".github/workflows/domains.yml").read_text())
         needs = set(doc["jobs"]["hiring"]["needs"])
-        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "recruiters", "dcc", "report"})   # imessage writes the Communications and Oracle Cloud callouts (LIFE-34), so Hiring follows it too            # after every Daily Report writer, mail included (the failure-push job and the Recruiters ingest write nothing on the page)
+        self.assertEqual(needs, set(doc["jobs"]) - {"hiring", "outlook", "megibow", "recruiters", "dcc", "report", "granola"})   # imessage writes the Communications and Oracle Cloud callouts (LIFE-34), so Hiring follows it too            # after every Daily Report writer, mail included (the failure-push job and the Recruiters ingest write nothing on the page)
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail"} <= needs)
         self.assertTrue({"jira", "agenda", "bills", "amazon", "attention", "mail", "hiring"} <= set(doc["jobs"]["dcc"]["needs"]))      # the Command Center runs after every writer, Hiring Pipeline included
         for name in ("outlook", "megibow", "recruiters"):                                          # the three that never write the Daily Report page
