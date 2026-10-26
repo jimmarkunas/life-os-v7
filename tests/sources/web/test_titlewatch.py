@@ -66,7 +66,7 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual({s["id"] for s, _ in got}, {"su-revolut-ltd"})
         revolut_titles = len(next(x for x in registry.load(registry.PATHS["Scale-Up"]) if x["id"] == "su-revolut-ltd")["title_watch"]["titles"])
         self.assertEqual(len(got), revolut_titles)
-        self.assertEqual(tw.forced(pairs, "board:Revolut, truvi").__len__(), revolut_titles + len(tw.DEFAULT_TITLES))
+        self.assertEqual(tw.forced(pairs, "board:Revolut, tambo").__len__(), revolut_titles + len(tw.DEFAULT_TITLES))
         self.assertEqual(tw.forced(pairs, ""), [])
         self.assertEqual(tw.forced(pairs, "funnel"), [])
         self.assertEqual(tw.forced(pairs, "ab"), [])                                            # names need 3 letters
