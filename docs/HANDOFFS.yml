@@ -227,6 +227,51 @@ handoffs:
     path: tests/platform/test_alerts.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11182
+  - pr: 587
+    owner: career-v7
+    path: .github/workflows/domains.yml
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: .github/workflows/hourly.yml
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: lifeos/platform/alert_registry.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: lifeos/platform/alert_settings.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: lifeos/platform/codes.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: lifeos/sources/alerts_app.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: lifeos/sources/close_app.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: tests/physmail/test_physmail.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
+  - pr: 587
+    owner: career-v7
+    path: tests/platform/test_alerts.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-75?focusedCommentId=11189
 
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
