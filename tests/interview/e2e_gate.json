@@ -196,7 +196,7 @@
     "E14": {
       "machine": "PARTIAL",
       "live": "PENDING",
-      "missing": "Manage (a read-only hub on the Close screen, linked from each opportunity page) reaches Close, Mark Complete, Build résumé / I applied with this résumé and Mark as Sent, and Reopen is a signed review and confirm through the S1 rules; none of it has been used live and read back yet; pausing or re-staging (LIFE-111) and editing the next action (LIFE-112) are backlog",
+      "missing": "Manage (a read-only hub on the Close screen, linked from each opportunity page) reaches Close, Mark Complete, Build résumé / I applied with this résumé and Mark as Sent, and Reopen is a signed review and confirm through the S1 rules; Paused / Waiting on employer / Active (LIFE-111) and a hand-set next action and due date (LIFE-112) are signed reviews and confirms with read-back on the Notes page path; the Job Ledger path waits for the `LIFE OS Hand-Set` text property; none of it has been used live and read back yet",
       "tests": [
         "tests.hiring.test_close_app.Post.test_a_missing_expired_forged_or_foreign_confirmation_is_refused_with_no_write",
         "tests.hiring.test_close_app.Post.test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success",
@@ -204,6 +204,9 @@
         "tests.hiring.test_manage_app.Hub.test_an_open_application_links_its_existing_actions_and_get_writes_nothing",
         "tests.hiring.test_manage_app.Reopen.test_a_closed_application_is_reopened_on_its_ledger_row_after_review_and_read_back",
         "tests.hiring.test_manage_app.Reopen.test_a_closed_notes_page_moves_back_to_active_opportunities",
+        "tests.hiring.test_hand_set.ManageNotesPage.test_confirm_appends_one_line_to_the_fold_reads_it_back_and_asks_for_the_pipeline_redraw",
+        "tests.hiring.test_hand_set.Pipeline.test_newer_calendar_or_mail_evidence_clears_the_hold_and_the_row_says_why",
+        "tests.hiring.test_hand_set.OpportunityPage.test_mark_complete_on_its_key_clears_it_on_the_page_and_on_manage",
         "tests.interview.test_ui3c.Layout.test_e14_the_page_links_manage_on_the_close_screen_only_once_it_exists"
       ]
     },
