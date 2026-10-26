@@ -16,6 +16,8 @@ on:
         default: "all"
 env:
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
+  ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
+  ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
 permissions:
   contents: read
 concurrency:
