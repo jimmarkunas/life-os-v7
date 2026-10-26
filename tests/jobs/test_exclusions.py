@@ -34,7 +34,7 @@ class Exclusions(unittest.TestCase):
                          ["fit below", "lane_exclude", "none", "none", "none", "other", "other"])
 
     def test_the_report_splits_by_reason_band_and_source_with_counts_only(self):
-        rows = [("web:su-a", "lane_exclude", 80, "EXCLUDE", "pay below floor", None), ("web:su-a", "fit_exclude", 70, "EXCLUDE", "Fit 70 below 72", "title"),
+        rows = [("web:su-a", "lane_exclude", 80, "EXCLUDE", "explicit pay below £40,000", None), ("web:su-a", "fit_exclude", 70, "EXCLUDE", "Fit 70 below 72", "title"),
                 ("web:su-b", "fit_exclude", 40, None, None, None), ("web:su-b", "fit_exclude", None, None, None, None)]
         report = ex.tally(rows)
         self.assertEqual((report["total"], report["near_floor"]), (4, 1))
@@ -42,6 +42,15 @@ class Exclusions(unittest.TestCase):
         self.assertEqual(report["by_band"], {"72_plus": 1, "68_to_71": 1, "under_60": 1, "unscored": 1})
         self.assertEqual(report["by_band_and_reason"]["72_plus/lane_exclude"], 1)
         self.assertEqual(report["by_source"], {"web:su-a": 2, "web:su-b": 2})
+        self.assertEqual(report["by_admission"]["exclude/pay_below_floor"], 1)                    # lane reasons are printed as lanes.public_reason's fixed codes, never as text
+        self.assertEqual(report["high_score"], {"lane_exclude/pay_below_floor/none": 1})            # only the job scored at or over 72 is listed here
+
+    def test_a_lane_reason_never_reaches_the_report_as_text_and_the_high_scorers_are_listed_by_rule(self):
+        rows = [("web:su-a", "lane_exclude", 90, "EXCLUDE", "excluded: finance_risk_domain", "finance_risk_domain"), ("web:su-a", "lane_exclude", 85, "EXCLUDE", "market us is not uk", None),
+                ("web:su-a", "excluded_fit", 80, "EXCLUDE", "Fit 55 below 72 at ExampleCo", None)]
+        report = ex.tally(rows)
+        self.assertEqual(report["high_score"], {"lane_exclude/excluded_private_rule/finance_risk_domain": 1, "lane_exclude/market_mismatch/none": 1, "excluded_fit/other/none": 1})
+        self.assertNotIn("ExampleCo", str(report))
 
     def test_run_only_selects_and_adds_the_floors_and_status_totals(self):
         cursor = Cursor([("web:su-a", "fit_exclude", 70, "EXCLUDE", "x", None)])
