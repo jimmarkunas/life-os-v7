@@ -170,6 +170,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/ats_detail.py`: Direct job readers for ATS pages that are JavaScript shells. The job URL already names the tenant and the job, so each reader asks the ATS's public JSON (or the JSON embe
 - `lifeos/jobs/audit.py`: Precision audit: no-network pass over READY and PUBLISHED rows with the quality guards.
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
+- `lifeos/jobs/daily.py`: Daily counts (LIFE-74): a few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store k
 - `lifeos/jobs/enrich.py`: Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
 - `lifeos/jobs/explain.py`: Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.
 - `lifeos/jobs/fit/backlog.py`: D219 (LIFE-41, Jim): the Cloud Fit backlog batch. One manual, bounded run of the ONE Oracle fit1 path over the jobs the tick's single canary call never reaches.
@@ -374,6 +375,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_tombstones`: `lifeos/jobs/store.py`
 - `v7_ledger_urls`: `lifeos/jobs/store.py`
 - `v7_spend`: `lifeos/jobs/store.py`
+- `v7_daily_counts`: `lifeos/jobs/store.py`
 - `v7_fit_profile_sync`: `lifeos/jobs/store.py`
 - `v7_network_people`: `lifeos/network/store.py`
 - `v7_network_positions`: `lifeos/network/store.py`
