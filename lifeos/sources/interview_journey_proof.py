@@ -153,6 +153,9 @@ def run(environ, live, now=None, client=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "M1M2":            # LIFE-78: the bounded synthetic M1/M2 exit case, same switch and sandbox rules
         from lifeos.sources import m1m2_proof
         return m1m2_proof.run(environ, live, now=now, client=client)
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":              # LIFE-88: the synthetic Network Leads / LinkedIn Contacts QA, same switch and sandbox rules
+        from lifeos.sources import interview_contacts_proof
+        return interview_contacts_proof.run(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
