@@ -43,6 +43,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `fit-review` -> `lifeos.jobs.review:run`
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `granola` -> `lifeos.interview.granola_bridge:stage`
+- `granola-auto` -> `lifeos.sources.granola_auto:stage`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
@@ -310,6 +311,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 ### lifeos/sources/
 - `lifeos/sources/alerts_app.py`: LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone and MBP are admitted by the Edge gate). GET /alerts shows th
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
+- `lifeos/sources/granola_auto.py`: LIFE-122 (Jim, Oct 26: "Approved, go"): the Granola bridge, automatic. Every synced meeting that has not been carried before is matched to its Interview OS round; one tha
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/interview_contacts_proof.py`: LIFE-88 E10 synthetic QA: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces. Manual only: interview-proof with `confi
 - `lifeos/sources/interview_evidence.py`: LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives
@@ -364,8 +366,9 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `branches.yml`: jobs archive, report; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN, V7_ARCHIVE_TOKEN, WEEKLY_REVIEW_PAGE_ID
 - `calendar.yml`: jobs calendar; manual yes; secrets GCAL_CALENDAR_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `diag.yml`: jobs diag, trace, sandbox, interview_ui; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
-- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
+- `domains.yml`: jobs jira, outlook, bills, agenda, amazon, mail, hiring, attention, megibow, dcc, recruiters, imessage, granola, report; manual yes; secrets AMAZON_CARD_BLOCK_ID, ATTENTION_CARD_BLOCK_ID, BILLS_CARD_BLOCK_ID, CALENDAR_CARD_BLOCK_ID, GCAL_CALENDAR_ID, GMAIL_OAUTH_CLIENT_ID, HIRING_CARD_BLOCK_ID, HIRING_PIPELINE_PAGE_ID, HIRING_STATUS_BLOCK_ID, HIRING_TABLE_BLOCK_ID, JIRA_BASE_URL, JIRA_BOARDS, JIRA_CARD_BLOCK_ID, JIRA_CARD_PROJECTS, JIRA_GTV_CONTEXT_URL, JIRA_GTV_EPIC, JIRA_SITE_URL, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, MAIL_ALERTS_CARD_BLOCK_ID, MEGIBOW_BLOCK_ID, MEGIBOW_EXCLUDED_DOMAINS, MEGIBOW_REVIEW_DB_ID, NOTION_AMAZON_DATA_SOURCE_ID, NOTION_BILLS_DATA_SOURCE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID, V7_CLOSE_BASE_URL
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
+- `granola-auto.yml`: jobs auto; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `granola.yml`: jobs granola; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOSE_BASE_URL, V7_CLOUD_FIT_PROFILE_REF
 - `interview-proof.yml`: jobs proof; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
@@ -391,6 +394,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_source_runs`: `lifeos/jobs/store.py`
 - `v7_alerts`: `lifeos/jobs/store.py`
 - `v7_feed`: `lifeos/jobs/store.py`
+- `v7_meeting_catalog`: `lifeos/jobs/store.py`
 - `v7_sponsors`: `lifeos/jobs/store.py`
 - `v7_tombstones`: `lifeos/jobs/store.py`
 - `v7_ledger_urls`: `lifeos/jobs/store.py`
