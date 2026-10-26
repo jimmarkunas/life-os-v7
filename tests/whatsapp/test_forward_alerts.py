@@ -306,5 +306,77 @@ class CorruptStateFailsClosedTests(unittest.TestCase):
         self.assertEqual((len(relay.runs), fa.last_id("telegram"), fa.attempts("telegram")), (2, "a2", {}))
 
 
+class HourlyCapTests(unittest.TestCase):
+    """LIFE-73: at most RELAY_CAP copies per channel per clock hour, then ONE paused notice and the rest dropped (ntfy keeps the originals)."""
+
+    HOUR = 1_800_000_000 // 3600 * 3600                                    # a clock hour start
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.patches = [mock.patch.object(fa, "STATE", self.dir), mock.patch.object(fa, "LAST", os.path.join(self.dir, "last-id"))]
+        for p in self.patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.sent = []
+
+    def sender(self, to, body):
+        self.sent.append(body)
+        return (fa.DELIVERED, "message_id", 0)
+
+    def flood(self, n, start=0, now=None):
+        events = [{"event": "message", "id": f"m{start + i:04d}", "title": f"A{start + i}"} for i in range(n)]
+        fa.follow("topic", "+15550100001", Stream(stream(*events)), self.sender, now=lambda: now or self.HOUR + 60)
+
+    def test_up_to_the_cap_every_copy_is_forwarded(self):
+        self.flood(fa.RELAY_CAP)
+        self.assertEqual(len(self.sent), fa.RELAY_CAP)
+        self.assertNotIn(fa.PAUSE_TEXT, self.sent)
+
+    def test_a_flood_sends_the_cap_then_one_paused_notice_and_drops_the_rest(self):
+        self.flood(40)
+        self.assertEqual(len(self.sent), fa.RELAY_CAP + 1)
+        self.assertEqual(self.sent.count(fa.PAUSE_TEXT), 1)
+        self.assertEqual(self.sent[-1], fa.PAUSE_TEXT)
+        self.assertEqual(fa.last_id(), "m0039")                                # the position moved past every dropped copy: nothing replays
+
+    def test_the_diagnostics_record_the_cap_without_alert_text(self):
+        self.flood(10)
+        lines = [json.loads(x) for x in open(os.path.join(self.dir, fa.DIAGNOSTICS)).read().splitlines()]
+        self.assertEqual([x["outcome"] for x in lines].count(fa.CAPPED), 10 - fa.RELAY_CAP)
+        self.assertEqual([x["outcome"] for x in lines].count(fa.PAUSED), 1)
+        self.assertNotIn("A9", json.dumps(lines))
+
+    def test_the_next_clock_hour_starts_at_zero(self):
+        self.flood(20)
+        self.sent.clear()
+        self.flood(3, start=100, now=self.HOUR + 3600 + 5)
+        self.assertEqual(len(self.sent), 3)
+        self.assertNotIn(fa.PAUSE_TEXT, self.sent)
+
+    def test_each_channel_has_its_own_count(self):
+        sent = {"whatsapp": [], "telegram": []}
+        for channel in sent:
+            events = [{"event": "message", "id": f"m{i:04d}", "title": f"A{i}"} for i in range(fa.RELAY_CAP)]
+            fa.follow("topic", "x", Stream(stream(*events)), lambda to, body, c=channel: sent[c].append(body) or True, channel=channel, now=lambda: self.HOUR + 1)
+        self.assertEqual([len(sent["whatsapp"]), len(sent["telegram"])], [fa.RELAY_CAP, fa.RELAY_CAP])
+
+    def test_an_unreadable_rate_file_holds_the_channel_instead_of_lifting_the_cap(self):
+        os.makedirs(self.dir, exist_ok=True)
+        with open(os.path.join(self.dir, "rate-whatsapp"), "w") as f:
+            f.write("not json")
+        self.flood(3)
+        self.assertEqual(self.sent, [])
+        self.assertEqual(json.loads(open(os.path.join(self.dir, fa.DIAGNOSTICS)).read().splitlines()[-1])["class"], "invalid_rate")
+
+    def test_the_count_is_written_before_the_send(self):
+        seen = []
+
+        def sender(to, body):
+            seen.append(json.load(open(os.path.join(self.dir, "rate-whatsapp")))["count"])
+            return (fa.DELIVERED, "message_id", 0)
+        fa.follow("topic", "x", Stream(stream({"event": "message", "id": "m0001", "title": "A"})), sender, now=lambda: self.HOUR + 1)
+        self.assertEqual(seen, [1])
+
+
 if __name__ == "__main__":
     unittest.main()

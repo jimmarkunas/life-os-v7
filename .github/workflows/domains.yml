@@ -96,6 +96,7 @@ on:
         type: boolean
         default: false
 env:
+  ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   LIVE: ${{ ((github.event_name == 'workflow_run' && vars.V7_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.live)) && 'true' || 'false' }}
 permissions:
   contents: read
