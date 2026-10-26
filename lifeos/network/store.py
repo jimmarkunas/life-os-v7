@@ -60,8 +60,13 @@ SURFACE_SCHEMA = (                                                    # NET-2.3 
         alias_key VARCHAR(300) NOT NULL, company_key VARCHAR(300) NOT NULL, confirmed_at DATETIME NOT NULL,
         UNIQUE KEY uq_net_alias (alias_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-)
-SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash,dismissed_at", "v7_network_aliases": "id,alias_key,company_key,confirmed_at"}
+    """CREATE TABLE IF NOT EXISTS v7_network_page_state (
+        job_key CHAR(64) NOT NULL PRIMARY KEY,
+        page_id VARCHAR(64) NOT NULL, written_hash VARCHAR(16) NOT NULL, checked_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+)          # LIFE-116: what each Ledger page was last proven to show (the hash of its Network Leads block, empty for none): hashes and ids only
+SURFACE_EXPECTED = {"v7_network_dismissals": "id,job_key,person_id,evidence_hash,dismissed_at", "v7_network_aliases": "id,alias_key,company_key,confirmed_at",
+                    "v7_network_page_state": "job_key,page_id,written_hash,checked_at"}
 
 
 def ensure_surface_schema(connection):
@@ -107,6 +112,32 @@ def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(t
     dismissed, known, _ = load_decisions(connection)
     if any((k, p, e) not in dismissed for k, p, e in dismissals) or any(known.get(a) != c for a, c in aliases):
         raise NetworkError("NETWORK_READBACK_MISMATCH")
+
+
+def load_page_state(connection):
+    """-> ({job_key: (page_id, written_hash)}, present). A missing table reads as no state (a dry run before the first live run): the caller then keeps the plain rotation."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT job_key, page_id, written_hash FROM v7_network_page_state")
+            return {k: (p, h) for k, p, h in cursor.fetchall()}, True
+    except Exception:                                                  # noqa: BLE001
+        return {}, False
+
+
+def save_page_state(connection, rows, clock=lambda: datetime.now(timezone.utc).replace(tzinfo=None)):
+    """LIFE-116: record what pages were just proven to show (job_key -> (page_id, written_hash)). Called only after a page's own read-back passed; a failure here loses nothing but a
+    shortcut (the page is simply read again next run)."""
+    if not rows:
+        return
+    now = clock().isoformat(sep=" ", timespec="seconds")
+    try:
+        connection.begin()
+        with connection.cursor() as cursor:
+            cursor.executemany("REPLACE INTO v7_network_page_state (job_key, page_id, written_hash, checked_at) VALUES (%s,%s,%s,%s)", [(k, p, h, now) for k, (p, h) in rows.items()])
+        connection.commit()
+    except Exception:                                                  # noqa: BLE001
+        connection.rollback()
+        raise NetworkError("NETWORK_STORE_FAILED") from None
 
 
 def _marks(n):

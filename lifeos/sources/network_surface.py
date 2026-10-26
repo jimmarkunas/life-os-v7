@@ -8,7 +8,12 @@ Per page, in this order: read the Ledger page and prove it is the canonical page
 marker still opens the body); read Jim's Dismiss and Same company ticks from the owned block and persist them (live) before anything is replaced; recompute the leads (dismissals and learned
 aliases applied, five at most); then create, replace, leave or REMOVE the owned block (no leads removes an existing block, never an empty placeholder) and read it back, proving nothing
 outside it changed. Any failed read, guard, write or read-back is counted and the run ends DEGRADED (NETWORK_SURFACE_DEGRADED): it is never turned into zero leads or a silent success.
-The tables v7_network_dismissals and v7_network_aliases are created only by a live run. A page budget (`limit`) bounds one run; pages with leads come first and the rest rotate daily."""
+The tables v7_network_dismissals and v7_network_aliases are created only by a live run. A page budget (`limit`) bounds one run.
+
+LIFE-116: with the stored page state (v7_network_page_state: the hash of the block each page was last PROVEN to show, empty for none) a page is read only when it is dirty (no state, a
+different page, or a different wanted hash: a new job, a roster change, an alias or a dismissal), pages with leads first. The pages that hold a block are still re-read on a rotation
+(Jim's Dismiss and Same company ticks live in the block) and a small sweep of the settled no-block pages catches drift. Without the table (a dry run before the first live run) the
+plain hourly rotation applies, exactly as before."""
 import json
 import os
 from datetime import date, datetime, timezone
@@ -118,6 +123,41 @@ def _window(items, size, hour):
     return (items[start:] + items[:start])[:size]
 
 
+SWEEP_SHARE = 4                                                         # LIFE-116: one page in four of the spare budget goes to the settled no-block pages (drift), the rest to the block pages (ticks)
+
+
+def _queue_state(surfaced, others, wanted, state, budget, now):
+    """LIFE-116 -> (pages to read this run, number of candidate pages, dirty pages). Dirty pages first (leads before the rest); then, with what is left, a rotation of the pages that hold a
+    block (Jim's ticks) and a small sweep of the settled no-block pages. Some of the budget is kept for the block pages while any exist, so a long dirty list cannot starve the ticks."""
+    pages = {k: (v[0], v[1], v[2], True) for k, v in surfaced.items()}
+    pages.update({o[0]: (o[1], o[2], o[3], False) for o in others})
+    total = len(pages)
+    if not budget or not total:
+        return [], total, 0
+    hour = int(now.timestamp() // 3600)
+    dirty, blocks, settled = [], [], []
+    for key in sorted(pages):
+        known, want = state.get(key), wanted.get(key, "")
+        if known is None or known[0] != pages[key][0] or known[1] != want:
+            dirty.append(key)
+        elif want:
+            blocks.append(key)
+        else:
+            settled.append(key)
+    reserve = min(len(blocks), budget // 5)             # none for a tiny budget: a new job is never starved by it
+    take = budget - reserve
+    lead_dirty = [k for k in dirty if wanted.get(k)]
+    other_dirty = [k for k in dirty if not wanted.get(k)]
+    picks = lead_dirty[:take]
+    picks += _window(other_dirty, take - len(picks), hour) if len(picks) < take else []
+    spare = budget - len(picks)
+    sweep = min(len(settled), spare // SWEEP_SHARE if blocks else spare)
+    block_n = min(len(blocks), spare - sweep)
+    sweep = min(len(settled), spare - block_n)
+    picks += _window(blocks, block_n, hour) + _window(settled, sweep, hour)
+    return [(k,) + pages[k] for k in picks], total, len(dirty)
+
+
 def _queue(surfaced, others, with_leads, budget, now):
     """-> (pages to read this run, number of candidate pages). Two pools rotate by the hour: targets that have leads to show, and every other page (targets with nothing to show and pages that
     stopped being targets, whose old blocks must still be found and removed). The budget is split in proportion to the pool sizes (at least one page each while a pool is not empty), so both pools
@@ -181,21 +221,48 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["degraded"] = True
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
-    with_leads = {k for k, (page, company, title, classes) in surfaced.items() if _leads(company, title, index, details, today, aliases, dismissed, k)[0]}
-    queue, candidates = _queue(surfaced, others, with_leads, budget, now)
+    close_base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
+    wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0], surface.sent_url(close_base, page))
+              for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
+    state, counts["state_table"] = store.load_page_state(connection)
+    if counts["state_table"]:
+        queue, candidates, counts["pages_dirty"] = _queue_state(surfaced, others, wanted, state, budget, now)
+    else:
+        queue, candidates = _queue(surfaced, others, {k for k, h in wanted.items() if h}, budget, now)
+    recorded = {}
     for key, page, company, title, target in queue:
         try:
-            _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, (environ.get("V7_CLOSE_BASE_URL") or "").strip())
+            _page(notion, connection, key, page, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base, recorded)
         except (NotionError, NetworkError) as error:
             counts["failed"] += 1
             counts["degraded"] = True
             code = str(error)[:48]
             counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
+        if live and len(recorded) >= FLUSH_EVERY:
+            _flush(connection, recorded, counts)
+    if live:
+        _flush(connection, recorded, counts)
     counts["pages_deferred"] = max(candidates - len(queue), 0)
     return _finish(counts)
 
 
-def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base=""):
+FLUSH_EVERY = 25                                                         # a long run saves its proven pages as it goes: a timeout loses at most this many
+
+
+def _flush(connection, recorded, counts):
+    if not recorded:
+        return
+    try:
+        store.save_page_state(connection, dict(recorded))
+        counts["state_saved"] = counts.get("state_saved", 0) + len(recorded)
+    except NetworkError as error:                                       # only a shortcut is lost: the pages are read again next run
+        counts["degraded"] = True
+        code = str(error)[:48]
+        counts["guard_failed"][code] = counts["guard_failed"].get(code, 0) + 1
+    recorded.clear()
+
+
+def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base="", recorded=None):
     page = notion.call("GET", f"/pages/{page_id}")
     top, owned = surface.read_page(notion, page_id)
     counts["pages_read"] += 1
@@ -207,6 +274,8 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     if not target:                                                      # not an admitted job or active pursuit: it shows nothing, so a block left from before is removed
         action = surface.apply(notion, page_id, top, owned, [], live)
         counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
+        if recorded is not None and live and not action.startswith("would_"):
+            recorded[key] = (page_id, "")                                  # proven by apply's own read-back: no owned block remains
         return
     full, ckey = _leads(company, title, index, details, today, aliases, dismissed, key, honour_dismissals=False, shortlist=False)       # decisions are validated against every candidate, not only the shown five
     new_dismissals, new_aliases, stale = _decisions(owned, full, key, ckey)
@@ -220,8 +289,11 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         aliases.update(dict(new_aliases))
     shown, _ = _leads(company, title, index, details, today, local_aliases, local_dismissed, key)
     counts["with_leads"] += bool(shown)
-    action = surface.apply(notion, page_id, top, owned, shown, live, surface.sent_url(close_base, page_id))
+    link = surface.sent_url(close_base, page_id)
+    action = surface.apply(notion, page_id, top, owned, shown, live, link)
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
+    if recorded is not None and live and not action.startswith("would_"):
+        recorded[key] = (page_id, surface.set_hash(shown, link))           # the block (or its absence) that apply just proved on the page
 
 
 def _finish(counts):
