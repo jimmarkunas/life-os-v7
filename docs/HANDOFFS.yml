@@ -152,6 +152,21 @@ handoffs:
     path: tests/contracts/test_codes.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
+  - pr: 571
+    owner: career-v7
+    path: .github/workflows/hourly.yml
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-73?focusedCommentId=11167
+  - pr: 571
+    owner: career-v7
+    path: .github/workflows/domains.yml
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-73?focusedCommentId=11167
+  - pr: 571
+    owner: career-v7
+    path: lifeos/platform/codes.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-73?focusedCommentId=11167
   - pr: 573
     owner: career-v7
     path: tests/jobs/test_alerts.py
