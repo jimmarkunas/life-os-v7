@@ -278,6 +278,9 @@ def save(connection, job_id, result):
 
 
 DAILY_SLOT = "MOD(CRC32(id), 24) = HOUR(UTC_TIMESTAMP())"          # stateless "once a day": every row has one hour of the day, and the pipeline ticks hourly
+THIN_BOARD_REQUEUE_UNTIL = datetime(2026, 10, 26, 7, 30)           # Jim, Oct 25 2026 ("figure it out and rerun"): the roles held as jd_thin on a board's own feed (web:gh-, web:lv-, web:ab-) before the thin-board rule (#570, #575)
+                                                                   # are read again NOW, all of them, on the ticks before this UTC time (1:00 and 2:00 AM CT), not one hour slot a day over 24 ticks; one failure parks a role again
+THIN_BOARD_NOW = "(unresolved_reason='jd_thin' AND (source LIKE 'web:gh-%%' OR source LIKE 'web:lv-%%' OR source LIKE 'web:ab-%%'))"
 
 
 def relink_first_party(cursor, now=None):
@@ -285,6 +288,7 @@ def relink_first_party(cursor, now=None):
     (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
     Bounded: a mismatch counts resolve_attempts, and a HOLD is retried at most once a day. Returns the number requeued."""
     now = now or _now()
+    slot = DAILY_SLOT if now >= THIN_BOARD_REQUEUE_UNTIL else "(" + DAILY_SLOT + " OR " + THIN_BOARD_NOW + ")"
     cursor.execute("SELECT id, source_url FROM v7_jobs WHERE source LIKE 'web:%%' AND source<>'web:openjobs' AND final_apply_url IS NULL AND source_url IS NOT NULL AND (resolve_attempts < %s OR status='HOLD') AND "
                    "((status='NEW' AND resolve_attempts < %s AND (unresolved_reason LIKE 'audit_%%' OR unresolved_reason IN ('link_mismatch', 'no_job_id', 'listing_url') OR unresolved_reason LIKE 'Fit %% below 72')) OR "
                    "(status='HOLD' AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('link_mismatch', 'jd_listing', 'jd_template')) AND " + DAILY_SLOT + ")) LIMIT 500",   # a hold is read again once a day, each row in its own hour: the reader improves, the hold never did (updated_at cannot say "a day ago": the daily listing refresh touches it)
@@ -299,7 +303,7 @@ def relink_first_party(cursor, now=None):
                        (url, proof, limits.RESOLVE_MAX_ATTEMPTS - 1, now, job_id))
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason=NULL, enrich_attempts=LEAST(enrich_attempts, %s), updated_at=%s WHERE status='HOLD' AND final_apply_url IS NOT NULL"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
-                   " AND " + DAILY_SLOT, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
+                   " AND " + slot, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
     reread = int(cursor.rowcount or 0)
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL", (now,))

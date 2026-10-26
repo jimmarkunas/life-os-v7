@@ -411,6 +411,20 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", other, "Scale-Up", True, True)["outcome"], "mismatch")
         self.assertEqual(enrich.parse_html("https://x.example/careers", "Senior Data Engineer", page, "Scale-Up", True, False)["outcome"], "mismatch")   # no provenance, no heading proof
 
+    def test_every_thin_board_hold_is_read_again_now_inside_the_one_off_window_and_once_a_day_after_it(self):
+        from datetime import timedelta
+        inside = enrich.THIN_BOARD_REQUEUE_UNTIL - timedelta(minutes=1)
+        cur = self.Cur([])
+        enrich.relink_first_party(cur, now=inside)
+        hold = [s for s, _ in cur.sql if s.startswith("UPDATE") and "status='HOLD' AND final_apply_url IS NOT NULL" in s][0]
+        self.assertIn("unresolved_reason='jd_thin' AND (source LIKE 'web:gh-%%' OR source LIKE 'web:lv-%%' OR source LIKE 'web:ab-%%')", hold)
+        self.assertIn(enrich.DAILY_SLOT, hold)                                           # every other hold keeps its own hour
+        cur = self.Cur([])
+        enrich.relink_first_party(cur, now=enrich.THIN_BOARD_REQUEUE_UNTIL)
+        hold = [s for s, _ in cur.sql if s.startswith("UPDATE") and "status='HOLD' AND final_apply_url IS NOT NULL" in s][0]
+        self.assertNotIn("web:gh-", hold)                                                # the window is over: back to one slot a day
+        self.assertTrue(hold.endswith(enrich.DAILY_SLOT))
+
     def test_a_mismatch_hold_is_read_again_once_a_day(self):
         cur = self.Cur([(11, "https://careers.example.com/careers/product-manager")])
         enrich.relink_first_party(cur)
