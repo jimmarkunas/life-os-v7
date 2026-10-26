@@ -4,6 +4,16 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 575
+    owner: edge-oracle
+    path: lifeos/jobs/fit/stage.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11172
+  - pr: 575
+    owner: edge-oracle
+    path: tests/jobs/fit/test_fit.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11172
   - pr: 510
     owner: career-v7
     path: lifeos/run.py
@@ -142,16 +152,6 @@ handoffs:
     path: tests/contracts/test_codes.py
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-72?focusedCommentId=11153
-  - pr: 575
-    owner: edge-oracle
-    path: lifeos/jobs/fit/stage.py
-    expires: "2026-10-31"
-    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11172
-  - pr: 575
-    owner: edge-oracle
-    path: tests/jobs/fit/test_fit.py
-    expires: "2026-10-31"
-    approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11172
 
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
