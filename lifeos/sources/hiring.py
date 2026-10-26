@@ -39,7 +39,8 @@ def read_applied(client, stats=None):
             props = row.get("properties") or {}
             when = ((props.get("Applied On") or {}).get("date") or {}).get("start")
             out.append({"company": _text(props.get("Company"), "rich_text"), "role": _text(props.get("Job"), "title"), "applied_on": when[:10] if when else None,
-                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name")})            # D194: the stable row id and a confirmed Hiring Decision, read only
+                        "id": row.get("id"), "decision": ((props.get(decision.DECISION) or {}).get("select") or {}).get("name"),            # D194: the stable row id and a confirmed Hiring Decision, read only
+                        "hand": M.hand_lines(_text(props.get(decision.HAND_SET), "rich_text"))})                                       # LIFE-111: a hand-set hold, once the Ledger has the property
         if not page["has_more"]:
             if stats is not None:
                 stats.update(raw=len(out), unnamed=sum(1 for r in out if not (r["company"] and r["role"])), undated=sum(1 for r in out if not r["applied_on"]))
@@ -95,7 +96,7 @@ def read_parents(client, root_id):
     found, status = hiring_pipeline.snapshot(client, root_id)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
-    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied} for o in found]
+    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied, "holds": o.holds} for o in found]
 
 
 def _with_deleted(calendar, time_min, time_max):
@@ -140,6 +141,10 @@ def read_events(calendar, now, cancelled=None):
         if not isinstance(start, str) or not isinstance(event.get("id"), str):
             continue
         events.append({"id": event["id"], "title": (event.get("summary") or "").strip(), "start": datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(TZ).isoformat()})
+        try:                                                          # LIFE-111: when the invite last changed, the evidence time a hand-set hold is compared with
+            events[-1]["updated"] = datetime.fromisoformat(event["updated"].replace("Z", "+00:00")).astimezone(TZ).isoformat()
+        except (KeyError, AttributeError, TypeError, ValueError):
+            pass                                                      # no readable time: never evidence newer than a hold
         if joining := meeting(event):
             events[-1]["meeting"] = joining
     return events
