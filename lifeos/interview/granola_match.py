@@ -92,3 +92,14 @@ def match(meetings, rounds):
         else:
             out[m.id] = ("MATCH", hits[m.id][0].page_id)
     return out
+
+
+def explain(meeting, rounds):
+    """Counts only, for a stop: how many rounds fall on the meeting's Central day, and how many of those each approved signal ties to the meeting. Never a title, name or address."""
+    day = central_day(meeting.start)
+    on_day = [r for r in rounds if day and r.interview_date == day]
+    out = {"rounds_on_day": len(on_day), "signal_company": 0, "signal_role": 0, "signal_interviewer": 0, "signal_domain": 0}
+    for r in on_day:
+        for name in reasons(meeting, r):
+            out["signal_" + name] += 1
+    return out

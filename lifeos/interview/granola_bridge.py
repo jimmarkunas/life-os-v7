@@ -21,10 +21,14 @@ class Stop(Exception):
         self.code = code
 
 
-def rounds(client, environ, context):
+def rounds(client, environ, context, counts=None):
+    """The dated rounds under the Hiring Pipeline. With `counts`, also tallies what was scanned (opportunities, rounds with no interview date) so a stop can be diagnosed."""
     scan = notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
     if not scan.complete:
         raise Stop("GRAN_PIPELINE_INCOMPLETE")
+    counts = counts if counts is not None else {}
+    counts["opportunities"] = len(scan.items)
+    counts["rounds_undated"] = 0
     found = []
     for parent in scan.items:
         company, role = split_title(parent.title)
@@ -34,6 +38,7 @@ def rounds(client, environ, context):
         if not kids.complete:
             raise Stop("GRAN_PIPELINE_INCOMPLETE")
         found += [granola_match.Round(c.page_id, c.interview_date, company, role, c.interviewer or "") for c in kids.items if c.interview_date]
+        counts["rounds_undated"] += sum(1 for c in kids.items if not c.interview_date)
     return found
 
 
@@ -46,7 +51,7 @@ def meetings(reply):
 
 def run(live, only_day, environ=os.environ, send=granola_oracle.exchange, client=None, context=None):
     """-> {"code": the final fixed code, "counts": {...}}. `only_day` (YYYY-MM-DD, Central) is required: the first write is pinned to one day, and exactly one synced meeting must fall on it."""
-    counts = {"sync_documents": 0, "sync_transcripts": 0, "meetings": 0, "on_day": 0, "rounds": 0, "segments": 0, "writes": 0, "readback_ok": 0, "purged": 0, "linked": 0}
+    counts = {"opportunities": 0, "rounds_undated": 0, "sync_documents": 0, "sync_transcripts": 0, "meetings": 0, "on_day": 0, "rounds": 0, "segments": 0, "writes": 0, "readback_ok": 0, "purged": 0, "linked": 0}
     context = context or RunContext.start(600)
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
 
@@ -73,10 +78,11 @@ def run(live, only_day, environ=os.environ, send=granola_oracle.exchange, client
         if len(pinned) != 1:
             raise Stop("GRAN_PIN_NOT_ONE_MEETING")
         context.require_time()
-        have = rounds(client, environ, context)
+        have = rounds(client, environ, context, counts)
         counts["rounds"] = len(have)
         code, round_id = granola_match.match(listed, have)[pinned[0].id]
         if code != "MATCH":
+            counts.update(granola_match.explain(pinned[0], have))
             raise Stop(code)
         if notion.ownership(client, round_id, "round") != Ownership.MACHINE:
             raise Stop("GRAN_ROUND_NOT_MACHINE")
