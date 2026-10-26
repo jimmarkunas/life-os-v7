@@ -19,9 +19,24 @@ def measured(data, score=90, **kw):
     return reply(data, receipt={**RECEIPT, "usage": USAGE}, judgment_raw=json.dumps({"score": score, "rationale": "Aligned on delivery ownership.", "confidence": "high"}), **kw)
 
 
+_EVALUATED = {}
+
+
+def _memo_evaluate(real):
+    """`score.evaluate` is a pure function of its arguments and a batch run scores every job (about 30 ms each): the tests that run the same jobs through many batches
+    score them once. Keyed on the arguments, so a different job, profile or day is still scored for real."""
+    def evaluate(title, company, text, profile, today, semantic=None):
+        key = (title, company, text, id(profile), today, id(semantic))
+        if key not in _EVALUATED:
+            _EVALUATED[key] = real(title, company, text, profile, today, semantic)
+        return _EVALUATED[key]
+    return evaluate
+
+
 class Batch(Base):
     def batch(self, limit, endpoint, environ=ENV, ledger=None, live=True):
-        with mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), \
+        with mock.patch.object(cloud, "evaluate", _memo_evaluate(cloud.evaluate)), \
+                mock.patch.object(stage.store, "connect", return_value=self.db), mock.patch.object(stage.fit_profile, "load", return_value=PROFILE), \
                 mock.patch.object(stage.sponsors, "load", return_value=None), mock.patch.object(edge, "exchange", endpoint), \
                 mock.patch.object(backlog.ledger, "verify", return_value=backlog.ledger.OK), \
                 mock.patch.object(backlog.edge, "limits", side_effect=self.report), \
