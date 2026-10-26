@@ -296,6 +296,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/recruiters/qualify.py`: Turn a classified message into a Recruiters candidate: only source-backed fields, never a guess. -> ("CANDIDATE", fields) | ("UNRESOLVED", code) | ("EXCLUDED", code).
 - `lifeos/recruiters/stage.py`: RECR-1.2: configured Gmail and Outlook mail (Inbox and Junk, last 14 days, read in memory) -> deterministic classification -> the existing Recruiters data source.
 ### lifeos/sources/
+- `lifeos/sources/alerts_app.py`: LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone and MBP are admitted by the Edge gate). GET /alerts shows th
 - `lifeos/sources/close_app.py`: LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the
 - `lifeos/sources/hiring.py`: Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e
 - `lifeos/sources/interview_contacts_proof.py`: LIFE-88 E10 synthetic QA: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces. Manual only: interview-proof with `confi

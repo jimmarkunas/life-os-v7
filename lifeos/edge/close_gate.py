@@ -4,6 +4,7 @@ Accept=yes) as a DynamicUser isolated from OpenClaw (`ubuntu`, no root); Tailsca
   2. PROXY v2 source -> tailscaled whois: the approved login, untagged, StableID on the approved list (iPhone, MacBook; never Oracle or the Mac mini);
   3. ONE bounded HTTP/1.1 request: GET or POST, exact Host, no duplicate header or chunked body; POST same-origin and form-encoded;
   4. GET never gets the Notion token, only a read-only client; POST gets the token. Refusals are fixed statuses; nothing is logged.
+  5. The optional `ghvars` credential (a GitHub token that can edit this repository's variables, nothing else) reaches the app only for the path /alerts (the Alert settings screen), on GET and POST.
 After a POST's response is written, a refresh the app asked for (Jim, Oct 24: closed rows should leave the Daily Report without waiting for the hour) is one GitHub
 workflow_dispatch made with the optional `github` credential, which the app never sees; without that credential nothing is asked."""
 import json
@@ -161,6 +162,11 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         gdrive = open(drive, "rb").read().strip() if os.path.isfile(drive) else b""   # optional (Jim, Oct 24): résumés go to Google Drive; absent = the Notion upload
     except OSError:
         gdrive = b""
+    ghvars_path = os.path.join(creds, "ghvars")
+    try:
+        ghvars = open(ghvars_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(ghvars_path) else b""      # optional (Jim, Oct 26): the Alert settings screen edits repository variables; ONLY /alerts ever gets it, GET and POST
+    except OSError:
+        ghvars = b""
     after = []
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
@@ -172,6 +178,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
             secrets["after"] = after                                       # the app appends refresh names (REFRESH keys) after a verified write
             if gdrive:
                 secrets["gdrive"] = gdrive                                 # POST only, like the Notion token; GET never gets it
+        if ghvars:
+            secrets["ghvars"] = ghvars
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
