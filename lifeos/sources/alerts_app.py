@@ -205,6 +205,8 @@ def _post(req, who, secrets, opener):
     if not token:
         return _stop(503, "Not set up", "The settings credential is not installed", "This screen cannot save settings yet.", "Nothing was changed.")
     state = from_form(form)
+    if form.get("step") == "cancel" and state is not None:                         # Cancel goes back to the settings, keeping what was typed; nothing is written
+        return _page(state, secret, login, now)
     if state is None or not (exp.isascii() and exp.isdigit()) or int(exp) < now.timestamp():
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload Alert settings.", "Nothing was changed.", "danger")
     step = form.get("step")
@@ -223,8 +225,6 @@ def _post(req, who, secrets, opener):
             '<div class="notice alert">Confirming saves these as repository variables; the next run uses them. The change is shown as done only after GitHub reports the same values back.</div></section>'
             '<div class="actions"><button class="btn link" name="step" value="cancel" formnovalidate>Cancel</button>'
             f'<button class="btn primary" name="step" value="confirm"{" disabled" if not lines else ""}>Save</button></div></form>'), PATH, TAB)), ()
-    if step == "cancel":
-        return _stop(200, "Cancelled", "Nothing saved", "The settings stay as they were.", "Nothing was written.", "")
     if step != "confirm" or not C._same(form.get("t"), C._mac(secret, "alerts-confirm", login, exp, digest(state))):
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload Alert settings.", "Nothing was changed.", "danger")
     want = values_for(state)

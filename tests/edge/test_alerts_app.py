@@ -187,7 +187,9 @@ class Screen(unittest.TestCase):
 
     def test_cancel_writes_nothing(self):
         result = self.post({**self.propose(enabled=True), "step": "cancel"})
-        self.assertIn("Nothing saved", page_text(result))
+        self.assertEqual(result[0], 200)
+        self.assertIn("Master switches", page_text(result))                                     # back on the settings screen, not an end page
+        self.assertNotIn("Cancelled", page_text(result))
         self.assertEqual([m for m, *_ in self.gh.log if m != "GET"], [])
 
     def test_a_save_that_does_not_read_back_is_reported_as_degraded(self):
