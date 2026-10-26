@@ -56,7 +56,7 @@ class Helper(unittest.TestCase):
         db.execute("insert into documents values (?,?,?,?,?)", (DOC, "2026-10-13T17:31:00Z", None, json.dumps({"start": {"dateTime": "2026-10-13T12:30:00-05:00"}}), "Follow up sync"))
         db.execute("insert into documents values (?,?,?,?,?)", (OTHER, "2026-10-20T15:00:00Z", None, None, None))
         db.execute("insert into documents values (?,?,?,?,?)", ("deleted-doc-0001", "2026-10-01T15:00:00Z", "2026-10-02T00:00:00Z", None, "gone"))
-        db.executemany("insert into document_people values (?,?,?)", [(DOC, "a@x.test", "A"), (DOC, None, "Named Only"), (DOC, None, None)])
+        db.executemany("insert into document_people values (?,?,?)", [(DOC, "attendee@example.com", "A"), (DOC, None, "Named Only"), (DOC, None, None)])
         for doc in (DOC, OTHER):
             db.executemany("insert into transcript_utterances values (?,?,?)", [("%s-%d" % (doc[:4], i), doc, "t") for i in range(3)])
         db.commit()
@@ -98,7 +98,7 @@ class Helper(unittest.TestCase):
         ids = [m["id"] for m in reply["meetings"]]
         self.assertEqual(ids, [DOC, OTHER])                                 # oldest first; the deleted meeting is absent
         self.assertEqual(reply["meetings"][0]["start"], "2026-10-13T12:30:00-05:00")        # the calendar start wins over created_at
-        self.assertEqual(reply["meetings"][0]["attendees"], ["a@x.test", "Named Only"])
+        self.assertEqual(reply["meetings"][0]["attendees"], ["attendee@example.com", "Named Only"])
         self.assertEqual(reply["meetings"][1]["start"], "2026-10-20T15:00:00Z")             # no calendar event: created_at
 
     def test_show_returns_the_cli_json_verbatim(self):
