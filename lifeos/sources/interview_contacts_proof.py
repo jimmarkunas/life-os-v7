@@ -19,7 +19,8 @@ from lifeos.sources import interview_evidence as ev, m1m2_proof as base
 
 CONFIRM = "E10"
 SYN = "(SYNTHETIC)"
-SMITH_PAGE = "3d53c5a0592681f4a8ffda29dc374cb0"          # the production Smith opportunity page: read only (its recovered job description)
+WALMART_PAGE = "3d53c5a0592681feaa5cc61c9e6b0efe"        # the production Walmart opportunity page: read only (its source-grounded job description; the Ledger row has no body)
+SMITH_PAGE = "3d53c5a0592681f4a8ffda29dc374cb0"        # the production Smith opportunity page: read only (its recovered job description)
 SMITH_COMPANY, SMITH_ROLE = "Smith", "Senior Project Manager — Commerce"
 SMITH_URL = "https://www.indeed.com/viewjob?jk=31a46a8ea6620375"
 WALMART_URL = "https://careers.walmart.com/us/en/jobs/R-2612137"
@@ -122,7 +123,7 @@ def drive(client, reader, box, now, results, counts):
     today, container = now.date(), box["container"]
     props = client.call("GET", f"/pages/{LEDGER_ROW}").get("properties") or {}                                # production Walmart row: READ ONLY
     company, role, key = view._plain(props.get("Company")), view._plain(props.get("Job")), view._plain(props.get("Stable Job Key"))
-    walmart_jd, smith_jd = description_lines(client, LEDGER_ROW), description_lines(client, SMITH_PAGE, after="Job Description — Recovered")
+    walmart_jd, smith_jd = description_lines(client, WALMART_PAGE, after="Job Description — Source-Grounded"), description_lines(client, SMITH_PAGE, after="Job Description — Recovered")
     check("0a the Walmart and Smith job descriptions are read (read only) from their production pages", company and role and key and walmart_jd and smith_jd)
     smith_key = identity.url_key(SMITH_URL)
     positive = fictional_leads(today, "Walmart")

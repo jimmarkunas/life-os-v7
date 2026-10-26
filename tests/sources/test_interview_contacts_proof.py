@@ -36,7 +36,10 @@ class E10Workspace(QAWorkspace):
         if with_production:
             self.pages[LEDGER_ROW] = {"id": LEDGER_ROW, "properties": {"Company": rich("ExampleMart"), "Job": {"type": "title", "title": [{"plain_text": "Senior Manager, Operations"}]},
                                                                      "Stable Job Key": rich("examplemart-ops-1")}}
-            self.blocks[LEDGER_ROW] = [para("v7-jd:1 | key=examplemart-ops-1", "w0"), para("Lead the operations and implementation teams.", "w1"), para("Own delivery across stores.", "w2")]
+            self.blocks[LEDGER_ROW] = []                                                                                 # as production: the Ledger row has no body
+            self.pages[proof.WALMART_PAGE] = {"id": proof.WALMART_PAGE, "properties": {}}
+            self.blocks[proof.WALMART_PAGE] = [heading("Job Description — Source-Grounded Summary", "w0"), bullet("Lead the operations and implementation teams.", "w1"),
+                                               bullet("Own delivery across stores.", "w2"), heading("Interview Brief", "w3"), para("Not job description.", "w4")]
             self.pages[SMITH] = {"id": SMITH, "properties": {}}
             self.blocks[SMITH] = [heading("Job Description — Original Posting", "s0"), para("Not connected.", "s1"), heading("Job Description — Recovered Source-Grounded Summary", "s2"),
                                   bullet("Own the entire project lifecycle.", "s3"), bullet("Manage the SOW and schedule.", "s4"), heading("Interview Brief", "s5"), para("Not job description.", "s6")]
@@ -52,7 +55,7 @@ class E10Workspace(QAWorkspace):
 
 def run_case(**kwargs):
     client = E10Workspace(**kwargs)
-    production = copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH])) if LEDGER_ROW in client.pages else None
+    production = copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH], client.blocks[proof.WALMART_PAGE])) if LEDGER_ROW in client.pages else None
     counts = proof.run(E10, False, now=NOW, client=client, reader=client)
     return counts, client, production
 
@@ -64,7 +67,7 @@ class E10Proof(unittest.TestCase):
         self.assertEqual(counts["failed"], 0, json.dumps(counts["assertions"], indent=1))
         self.assertEqual(counts["passed"], 19)
         self.assertEqual(counts["pages"], 5)
-        self.assertEqual(production, copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH])))        # read only
+        self.assertEqual(production, copy.deepcopy((client.pages[LEDGER_ROW], client.blocks[LEDGER_ROW], client.pages[SMITH], client.blocks[SMITH], client.blocks[proof.WALMART_PAGE])))   # read only
         (container,) = [b for b in client.blocks[QA_PARENT] if b.get("type") == "child_page"]
         self.assertTrue(container["child_page"]["title"].endswith("(SYNTHETIC, QA-only)"))                                                            # one fresh sandbox, labelled
         outside = {p["parent"].get("page_id") for p in client.posts} - {QA_PARENT}
@@ -90,7 +93,7 @@ class E10Proof(unittest.TestCase):
 
     def test_a_missing_production_description_is_a_failed_assertion_never_a_silent_pass(self):
         client = E10Workspace()
-        client.blocks[SMITH] = [heading("Something else", "x")]
+        client.blocks[proof.WALMART_PAGE] = [heading("Something else", "x")]
         counts = proof.run(E10, False, now=NOW, client=client, reader=client)
         self.assertEqual(counts["assertions"]["0a the Walmart and Smith job descriptions are read (read only) from their production pages"], "FAIL")
         self.assertGreater(counts["failed"], 0)
@@ -118,7 +121,7 @@ class Reader(unittest.TestCase):
         fault = proof.Unreadable(client, "page-x")
         with self.assertRaises(NotionError):
             fault.call("GET", "/blocks/page-x/children?page_size=100")
-        self.assertEqual(fault.call("GET", f"/blocks/{LEDGER_ROW}/children?page_size=100")["results"][0]["id"], "w0")
+        self.assertEqual(fault.call("GET", f"/blocks/{proof.WALMART_PAGE}/children?page_size=100")["results"][0]["id"], "w0")
 
 
 if __name__ == "__main__":
