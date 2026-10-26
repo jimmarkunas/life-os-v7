@@ -14,6 +14,8 @@ on:
         type: choice
         options: [page, info]
         default: page
+env:
+  ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
 permissions:
   contents: read
   actions: read
