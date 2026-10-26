@@ -88,6 +88,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `safety-fit-golden` -> `lifeos.jobs.safety:run_fit_golden`
 - `safety-sql-smoke` -> `lifeos.jobs.safety:run_sql_smoke`
 - `scale-up-boards` -> `lifeos.sources.web.boardstate:run`
+- `scale-up-exclusions` -> `lifeos.jobs.exclusions:run`
 - `scale-up-holds` -> `lifeos.jobs.holds:run`
 - `scale-up-links` -> `lifeos.jobs.linkcheck:run`
 - `sponsors` -> `lifeos.sources.sponsor_register:run`
@@ -179,6 +180,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
 - `lifeos/jobs/daily.py`: Daily counts (LIFE-74): a few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store k
 - `lifeos/jobs/enrich.py`: Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
+- `lifeos/jobs/exclusions.py`: LIFE-121 (Jim, Oct 26: "Approved, make the PR"): counts-only report of WHY Scale-Up jobs are EXCLUDED_FIT. Reads v7_jobs and v7_job_fit, writes nothing, prints no title, 
 - `lifeos/jobs/explain.py`: Explain (D125): where is every job of one company or source, and why? Counts and fixed codes only, in the public log, so most questions need no private Notion page.
 - `lifeos/jobs/fit/backlog.py`: D219 (LIFE-41, Jim): the Cloud Fit backlog batch. One manual, bounded run of the ONE Oracle fit1 path over the jobs the tick's single canary call never reaches.
 - `lifeos/jobs/fit/capacity_card.py`: AI Capacity card (LIFE-77, D228; Jim approved the design Oct 20 2026): for each account allowance Oracle can read, what is left, what is used, the window and its reset, o
