@@ -133,6 +133,99 @@ REF_A, REF_B = (hashlib.sha256(m.encode()).hexdigest() for m in (MSG_A, MSG_B))
 SEEN = dt.datetime(2026, 10, 13, 15, 30)
 
 
+# Measured Oct 25 2026, ~6:30 PM CT, funnel report run 40244628597 (jobs first seen in 7 days / in 24 hours), grouped as the monitors group them.
+MEASURED_7D = {'dice': {'CLOSED': 1, 'EXCLUDED_FIT': 4, 'PUBLISHED': 15}, 'discover': {'DUPLICATE': 18, 'EXCLUDED_FIT': 5, 'HOLD': 25, 'PUBLISHED': 1},
+               'jobright': {'CLOSED': 6, 'DUPLICATE': 9, 'EXCLUDED_FIT': 24, 'EXCLUDED_STALE': 19, 'HOLD': 15, 'NEW': 1, 'PUBLISHED': 39, 'RESOLVED': 11},
+               'linkedin-alerts': {'CLOSED': 2, 'DUPLICATE': 12, 'EXCLUDED_FIT': 29, 'EXCLUDED_STALE': 4, 'NEW': 2, 'PUBLISHED': 32, 'RESOLVED': 3},
+               'linkedin-search': {'DUPLICATE': 60, 'EXCLUDED_FIT': 65, 'EXCLUDED_STALE': 6, 'HOLD': 19, 'NEW': 9, 'PUBLISHED': 106, 'READY': 1, 'RESOLVED': 1},
+               'web:ab': {'CLOSED': 2, 'DUPLICATE': 3, 'EXCLUDED_FIT': 1160, 'PUBLISHED': 355, 'PURGED': 9, 'READY': 9, 'RESOLVED': 3},
+               'web:gh': {'CLOSED': 2, 'DUPLICATE': 9, 'EXCLUDED_FIT': 2977, 'HOLD': 14, 'NEW': 13, 'PUBLISHED': 989, 'RESOLVED': 202},
+               'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241},
+               'web:other': {'CLOSED': 1, 'DUPLICATE': 7, 'EXCLUDED_FIT': 269, 'PUBLISHED': 20, 'PURGED': 1}, 'web:su': {'EXCLUDED_FIT': 47, 'HOLD': 1}}
+MEASURED_24H = {'discover': {'DUPLICATE': 3, 'EXCLUDED_FIT': 1, 'HOLD': 2}, 'jobright': {'DUPLICATE': 1, 'EXCLUDED_STALE': 5, 'HOLD': 1, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 5},
+                'linkedin-alerts': {'EXCLUDED_FIT': 2, 'NEW': 1, 'PUBLISHED': 4, 'RESOLVED': 2},
+                'linkedin-search': {'DUPLICATE': 6, 'EXCLUDED_FIT': 9, 'EXCLUDED_STALE': 1, 'HOLD': 5, 'NEW': 1, 'PUBLISHED': 8}, 'web:ab': {'PUBLISHED': 2},
+                'web:gh': {'CLOSED': 2, 'DUPLICATE': 7, 'EXCLUDED_FIT': 2418, 'HOLD': 14, 'NEW': 4, 'PUBLISHED': 848, 'RESOLVED': 148},
+                'web:lv': {'CLOSED': 2, 'DUPLICATE': 1, 'EXCLUDED_FIT': 653, 'HOLD': 5, 'PUBLISHED': 557, 'RESOLVED': 241}}
+
+
+class YieldMonitors(unittest.TestCase):
+    """LIFE-74 M1 (stuck early) and M2 (low yield): pure functions of status counts per source, boards grouped by ATS family."""
+
+    def test_sources_are_grouped_boards_by_family_and_retired_sources_are_skipped(self):
+        rows = [("web:gh-zoox", "PUBLISHED", 2), ("web:gh-wachter", "PUBLISHED", 3), ("web:lv-way", "HOLD", 1), ("web:servicenow", "NEW", 4), ("web:okta", "NEW", 1),
+                ("web:su-acme", "HOLD", 1), ("lensa", "HOLD", 99), ("web:openjobs", "HOLD", 99), ("dice", "PUBLISHED", 7), ("jobright", "NEW", None)]
+        self.assertEqual(jobs_alerts.group_status_counts(rows), {"web:gh": {"PUBLISHED": 5}, "web:lv": {"HOLD": 1}, "web:other": {"NEW": 5}, "web:su": {"HOLD": 1},
+                                                                 "dice": {"PUBLISHED": 7}, "jobright": {"NEW": 0}})
+
+    def test_stuck_needs_20_jobs_and_half_still_new_or_hold(self):
+        def stuck(total, stuck_n):
+            return jobs_alerts.yield_monitors({"s": {"HOLD": stuck_n, "PUBLISHED": total - stuck_n}}, {})["stuck"]
+        self.assertEqual(stuck(19, 19), {})                                   # too few jobs
+        self.assertEqual(stuck(20, 9), {})
+        self.assertEqual(stuck(20, 10), {"s": 0.5})
+        self.assertEqual(stuck(109, 107), {"s": 0.982})                         # Lensa, Oct 6-17: 2 resolved of 109
+
+    def test_low_yield_needs_30_jobs_in_7_days_and_under_5_percent_published(self):
+        def low(total, published):
+            return jobs_alerts.yield_monitors({}, {"s": {"PUBLISHED": published, "EXCLUDED_FIT": total - published}})["low_yield"]
+        self.assertEqual(low(29, 0), {})
+        self.assertEqual(low(30, 1), {"s": 0.033})
+        self.assertEqual(low(100, 5), {})                                     # exactly 5% is not under 5%
+        self.assertEqual(low(100, 4), {"s": 0.04})
+
+    def test_the_measured_tables_trip_exactly_scale_up_discovery_and_the_scale_up_boards(self):
+        found = jobs_alerts.yield_monitors(MEASURED_24H, MEASURED_7D)         # the 24 h table stands in for the 72 h one: no source there has 20 stuck jobs either
+        self.assertEqual(found["stuck"], {})
+        self.assertEqual(found["low_yield"], {"discover": 0.02, "web:su": 0.0})    # web:su: 47 of 48 jobs excluded by Fit, a Fit-policy fact worth seeing
+
+    def test_detect_raises_info_alerts_with_stable_keys(self):
+        counts = {**QUIET, "yield_72h": {"web:gh": {"HOLD": 30}}, "yield_7d": {"discover": {"HOLD": 40, "PUBLISHED": 1}}}
+        got = {a.key: a for a in jobs_alerts.detect(counts, NOW)}
+        self.assertEqual(sorted(got), ["source_stuck_web_gh", "source_yield_discover"])
+        self.assertTrue(all(a.severity == alerts.INFO for a in got.values()))
+
+    def test_healthy_measured_sources_raise_nothing(self):
+        healthy = {k: v for k, v in MEASURED_7D.items() if k not in ("discover", "web:su")}
+        self.assertEqual(jobs_alerts.detect({**QUIET, "yield_72h": MEASURED_24H, "yield_7d": healthy}, NOW), [])
+
+    def replay(self, resolved_per_day):
+        """Twelve daily evaluations (Oct 6-17) of one source that finds 9 jobs a day; `resolved_per_day` of them leave NEW. Returns the notification kinds, with the alert state carried like save()."""
+        state, kinds = {}, []
+        window = []                                                           # (resolved, stuck) per day
+        for day, resolved in enumerate(resolved_per_day):
+            window = (window + [(resolved, 9 - resolved)])[-3:]
+            counts = {**QUIET, "yield_72h": {"lensa": {"RESOLVED": sum(r for r, _ in window), "HOLD": sum(s for _, s in window)}}, "yield_7d": {}}
+            now = dt.datetime(2026, 10, 6, 12, 0) + dt.timedelta(days=day)
+            plan = alerts.reconcile(jobs_alerts.detect(counts, now), state, now)
+            kinds.extend(kind for kind, _ in plan.notify)
+            for alert in plan.opened:
+                state[alert.key] = {"severity": alert.severity, "last_notified": now}
+            for alert in plan.kept:
+                if any(k == "remind" and item.key == alert.key for k, item in plan.notify):
+                    state[alert.key]["last_notified"] = now
+            for key in plan.resolved:
+                state.pop(key, None)
+        return kinds
+
+    def test_replaying_the_lensa_counts_opens_the_stuck_alert_exactly_once(self):
+        with mock.patch.object(jobs_alerts, "RETIRED_SOURCES", {}):            # Lensa was still live on Oct 17
+            kinds = self.replay([0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0])         # 2 resolved of 108 over the twelve days
+        self.assertEqual(kinds.count("open"), 1)
+        self.assertEqual(kinds.count("resolved"), 0)
+
+    def test_a_healthy_replay_raises_nothing(self):
+        with mock.patch.object(jobs_alerts, "RETIRED_SOURCES", {}):
+            self.assertEqual(self.replay([5, 6, 4, 5, 7, 5, 6, 4, 5, 6, 5, 5]), [])
+
+    def test_the_stage_log_line_carries_the_monitor_values(self):
+        db = JobsDB()
+        self.addCleanup(db.raw.close)
+        with mock.patch.object(jobs_alerts.store, "connect", return_value=db), mock.patch.object(jobs_alerts.store, "ensure_schema"):
+            out = jobs_alerts.run(0, False, now=NOW)
+        self.assertEqual(out["monitors"], {"stuck": {}, "low_yield": {}})
+
+
 class MessageTraceTests(unittest.TestCase):
     """LIFE-59: ALERTS_MESSAGE_REF (the SHA-256 of one Gmail message id) turns alerts-open into a read-only, allowlisted, per-vacancy trace of that message, over the real v7_job_sources / v7_jobs SQL."""
 

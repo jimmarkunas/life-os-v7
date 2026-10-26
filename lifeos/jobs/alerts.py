@@ -3,6 +3,7 @@ state (which alerts are open, when last notified) lives in v7_alerts so a remind
 import datetime as dt
 import json
 import os
+import re
 from pathlib import Path
 
 from lifeos.jobs import hold, store
@@ -15,7 +16,51 @@ QUIET_HOURS = 24             # no job published for this long
 STOP_WINDOW_HOURS = 24       # SAFE-1.1: a source that normally delivers new jobs ...
 STOP_BASELINE_DAYS = 14      # ... (measured over the 14 days before the window) ...
 STOP_PER_DAY = 3.0           # ... at least this many a day, and delivered none in the window, has stopped
+STUCK_WINDOW_HOURS, STUCK_MIN_JOBS, STUCK_SHARE = 72, 20, 0.5      # LIFE-74 M1: a source with at least 20 jobs first seen in 72 h, half or more still NEW or HOLD, has a stage that is not moving them (Lensa, Oct 6-17: 2 resolved of 109)
+YIELD_WINDOW_DAYS, YIELD_MIN_JOBS, YIELD_FLOOR = 7, 30, 0.05       # LIFE-74 M2: at least 30 jobs in 7 days with under 5% published has stopped yielding (Scale-Up discovery, Oct 17: 1 job in 5 runs)
+BOARD_GROUPS = re.compile(r"web:(gh|ab|lv|su)-")                    # employer boards are watched by ATS family, never one by one (2,449 boards); every other web:* source is "web:other"
 RETIRED_SOURCES = {"lensa": "Lensa retired (D201): Cloudflare blocks it from the runners", "web:openjobs": "Open Jobs ended: the project shut down on 10 Oct 2026 (D201)"}   # never "stopped"
+
+
+def source_group(source):
+    """The name a source is monitored under: its own for mail and search sources, its ATS family for employer boards; None for a retired source."""
+    if source in RETIRED_SOURCES:
+        return None
+    if str(source).startswith("web:"):
+        match = BOARD_GROUPS.match(source)
+        return f"web:{match.group(1)}" if match else "web:other"
+    return str(source)
+
+
+def group_status_counts(rows):
+    """rows: (source, status, n) -> {group: {status: n}}. Pure."""
+    out = {}
+    for source, status, n in rows:
+        group = source_group(source)
+        if group is not None:
+            table = out.setdefault(group, {})
+            table[status] = table.get(status, 0) + int(n or 0)
+    return out
+
+
+def yield_monitors(by_72h, by_7d):
+    """-> {"stuck": {group: share}, "low_yield": {group: share}}: the groups past a threshold, with the share that tripped it. Pure functions of counts."""
+    stuck, low = {}, {}
+    for group, table in by_72h.items():
+        total = sum(table.values())
+        share = (table.get("NEW", 0) + table.get("HOLD", 0)) / total if total else 0
+        if total >= STUCK_MIN_JOBS and share >= STUCK_SHARE:
+            stuck[group] = round(share, 3)
+    for group, table in by_7d.items():
+        total = sum(table.values())
+        share = table.get("PUBLISHED", 0) / total if total else 0
+        if total >= YIELD_MIN_JOBS and share < YIELD_FLOOR:
+            low[group] = round(share, 3)
+    return {"stuck": dict(sorted(stuck.items())), "low_yield": dict(sorted(low.items()))}
+
+
+def _key(group):
+    return re.sub(r"[^a-z0-9]+", "_", group.lower()).strip("_")
 
 
 def detect(counts, now, expiries=None):
@@ -37,6 +82,13 @@ def detect(counts, now, expiries=None):
         out.append(alerts.Alert(f"source_stopped_{name}", alerts.PAGE, f"Job source stopped: {name}",
                                 f"No new jobs in {STOP_WINDOW_HOURS} hours; it normally brings about {per_day:g} a day.",
                                 "open the source's last run (and its Gmail label or site) to see why"))
+    found = yield_monitors(counts.get("yield_72h") or {}, counts.get("yield_7d") or {})
+    for group, share in found["stuck"].items():
+        out.append(alerts.Alert(f"source_stuck_{_key(group)}", alerts.INFO, f"Jobs stuck early: {group}", f"{share:.0%} of its jobs from the last {STUCK_WINDOW_HOURS} hours are still NEW or HOLD.",
+                                "open the funnel report (report=funnel) and the source's resolver counts"))
+    for group, share in found["low_yield"].items():
+        out.append(alerts.Alert(f"source_yield_{_key(group)}", alerts.INFO, f"Low yield: {group}", f"Only {share:.0%} of its jobs from the last {YIELD_WINDOW_DAYS} days reached Notion.",
+                                "open the funnel report (report=funnel) to see where its jobs end"))
     for key, item in (expiries or {}).items():
         days = (dt.date.fromisoformat(item["expires"]) - now.date()).days
         if days <= 7:
@@ -67,7 +119,12 @@ def gather(connection, now):
         healthy |= {f"web:{row[0]}" for row in cursor.fetchall()}    # D178: the Open Jobs feed whose last run read it without error is idle, not stopped (a failed read stores DEGRADED, and that still pages)
         stopped = [(source, round(int(base) / STOP_BASELINE_DAYS, 1)) for source, recent, base in rows
                    if int(recent or 0) == 0 and int(base or 0) / STOP_BASELINE_DAYS >= STOP_PER_DAY and source not in healthy and source not in RETIRED_SOURCES]
-    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped)}
+        cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source, status", (now - dt.timedelta(hours=STUCK_WINDOW_HOURS),))
+        by_72h = group_status_counts(cursor.fetchall())
+        cursor.execute("SELECT source, status, COUNT(*) FROM v7_jobs WHERE source IS NOT NULL AND first_seen > %s GROUP BY source, status", (now - dt.timedelta(days=YIELD_WINDOW_DAYS),))
+        by_7d = group_status_counts(cursor.fetchall())
+    return {"published_24h": published, "sources_failing": failing, "stuck_jobs": stuck, "unresolved_terminal": unresolved, "stopped_sources": sorted(stopped),
+            "yield_72h": by_72h, "yield_7d": by_7d}
 
 
 def load_state(connection):
@@ -96,11 +153,13 @@ def run(limit, live, environ=os.environ, now=None, send=alerts.ntfy):
     expiries = json.loads(EXPIRIES.read_text())
     with store.connect() as connection:
         store.ensure_schema(connection)
-        active = detect(gather(connection, now), now, expiries)
+        counts = gather(connection, now)
+        active = detect(counts, now, expiries)
+        monitors = yield_monitors(counts["yield_72h"], counts["yield_7d"])             # LIFE-74: printed in the log line, so the monitors are readable while pushes are suspended
         plan = alerts.reconcile(active, load_state(connection), now)
         if not live:
-            return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved)}
+            return {"active": len(active), "would_notify": len(plan.notify), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": monitors}
         sent = alerts.deliver(plan, environ.get("NTFY_TOPIC", ""), send)
         delivered = {item.key for kind, item in plan.notify if kind != "resolved"} if sent["failed"] == 0 else set()
         save(connection, plan, delivered, now)
-    return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), **sent}
+    return {"active": len(active), "opened": len(plan.opened), "resolved": len(plan.resolved), "monitors": monitors, **sent}
