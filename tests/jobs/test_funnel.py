@@ -63,6 +63,25 @@ class FunnelTests(unittest.TestCase):
         self.assertEqual(set(out["windows"]), {"24h", "168h"})
         self.assertEqual(out["freshness_hours"], {"jobright": {"since_found": 3, "since_published": 5}, "lensa": {"since_found": 30, "since_published": None}})
 
+    def test_a_short_summary_line_is_printed_first_with_board_and_other_apart(self):
+        import io
+        import json
+        from contextlib import redirect_stdout
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            out, _ = self.go()
+        line = next(l for l in buffer.getvalue().splitlines() if l.startswith("funnel-summary: "))
+        parsed = json.loads(line.split(": ", 1)[1])
+        self.assertEqual(set(parsed), {"24h", "168h"})
+        self.assertEqual(parsed["24h"]["other"], {"HOLD": 7, "NEW": 1, "PUBLISHED": 2})
+        self.assertEqual(parsed["24h"]["board"], {})
+        self.assertEqual(parsed["24h"]["total"], 10)
+        self.assertLess(len(line), 2000)
+
+    def test_summary_splits_board_sources_from_the_rest(self):
+        windows = {"24h": {"status": {"web:lv-a": {"EXCLUDED_FIT": 2, "PUBLISHED": 1}, "web:lv-b": {"PUBLISHED": 3, "RESOLVED": 1}, "dice": {"PUBLISHED": 4}}}}
+        self.assertEqual(funnel.summary(windows), {"24h": {"board": {"EXCLUDED_FIT": 2, "PUBLISHED": 4, "RESOLVED": 1}, "other": {"PUBLISHED": 4}, "total": 11}})
+
     def test_the_canary_gives_each_source_a_verdict_and_the_trace_of_its_newest_jobs(self):
         out, _ = self.go()
         canary = out["canary"]

@@ -2,6 +2,7 @@
 For jobs first seen in the last 24 hours and the last 7 days: per source the count by job status (found -> resolved -> ready -> published, or the
 terminal reason), per source the Fit admission by score band and lane reason, and per source how long since a job was last found and last published
 (a provider that stops finding or publishing shows up as a growing number). Sources, statuses and reasons are fixed codes; no title, company or link."""
+import json
 import re
 from datetime import timedelta
 
@@ -71,6 +72,20 @@ def canary(rows, status_24h):
     return {src: {"verdict": verdict(status_24h.get(src, {})), "newest": per.get(src, [])} for src in sorted(sources)}
 
 
+def summary(windows):
+    """The short line: per window, the job count at each status, board-sourced (`web:*`) and every other source apart. The full report is over a megabyte and the Actions log viewer drops a line that long, so this line is
+    printed first and alone: a missing or dropped full report must never read as zero."""
+    out = {}
+    for name, window in windows.items():
+        board, other = {}, {}
+        for source, statuses in window["status"].items():
+            into = board if str(source).startswith("web:") else other
+            for st, n in statuses.items():
+                into[st] = into.get(st, 0) + n
+        out[name] = {"board": dict(sorted(board.items())), "other": dict(sorted(other.items())), "total": sum(board.values()) + sum(other.values())}
+    return out
+
+
 def run(limit, live, now=None):
     from lifeos.jobs.retention import _now                                  # noqa: PLC0415 - one clock for the jobs stages
     now = now or _now()
@@ -101,4 +116,5 @@ def run(limit, live, now=None):
                            " FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id WHERE j.first_seen >= %s ORDER BY j.first_seen DESC LIMIT 3000",
                            (now, now - timedelta(hours=48)))
             out["canary"] = canary(cursor.fetchall(), out["windows"]["24h"]["status"])
+    print("funnel-summary:", json.dumps(summary(out["windows"]), sort_keys=True))            # before the long report line; see summary()
     return out
