@@ -46,12 +46,32 @@ def _chunks(text):
     return [text[i:i + MAX_RUN] for i in range(0, len(text), MAX_RUN)] or [""]
 
 
-def blocks(envelope):
-    """[marker, source line, transcript paragraphs...]; a long utterance is one paragraph with several runs, so one line is always one block."""
+def _heading(text):
+    return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich_text(text)}}
+
+
+def _paragraph(line):
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [r for part in _chunks(line) for r in rich_text(part)]}}
+
+
+def header_lines(header):
+    """The notes and summary above the transcript (LIFE-122, Jim Oct 26): `header` is ((label, text), ...). -> the paragraph lines in order, each non-empty source line one paragraph."""
+    return [line.strip() for _, text in header for line in str(text or "").splitlines() if line.strip()]
+
+
+def blocks(envelope, header=()):
+    """[marker, source line, (a heading and paragraphs per header section), "Transcript" heading when there is a header, transcript paragraphs...]; the marker stays the FIRST block. A long
+    utterance is one paragraph with several runs, so one line is always one block. Headings are blocks but not paragraphs: the read-back compares paragraphs only."""
     marker = f"{create.ACCEPTED}{envelope.source_content_sha256}"
     out = [notion.paragraph(marker), notion.paragraph(FOOT)]
+    for label, text in header:
+        body = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+        if body:
+            out += [_heading(label), *[_paragraph(line) for line in body]]
+    if header_lines(header):
+        out.append(_heading("Transcript"))
     for line in lines(envelope):
-        out.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [r for part in _chunks(line) for r in rich_text(part)]}})
+        out.append(_paragraph(line))
     return out
 
 
@@ -62,7 +82,7 @@ def _page_lines(client, page_id):
     return (texts[0] if texts else ""), texts[2:], len(found)
 
 
-def write(client, round_id, envelope, live):
+def write(client, round_id, envelope, live, header=()):
     """-> (code, counts). Codes: TRANSCRIPT_WRITTEN, TRANSCRIPT_NOOP, TRANSCRIPT_PLANNED (not live), TRANSCRIPT_CHANGED_NOT_REWRITTEN,
     TRANSCRIPT_PAGE_UNVERIFIED, TRANSCRIPT_PAGE_AMBIGUOUS, TRANSCRIPT_WRITE_FAILED, TRANSCRIPT_READBACK_MISMATCH."""
     counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
@@ -75,8 +95,9 @@ def write(client, round_id, envelope, live):
     if state == "accepted":
         marker, _, _ = _page_lines(client, page)
         return ("TRANSCRIPT_NOOP", counts) if marker == f"{create.ACCEPTED}{envelope.source_content_sha256}" else ("TRANSCRIPT_CHANGED_NOT_REWRITTEN", counts)
-    body = blocks(envelope)
+    body = blocks(envelope, header)
     counts["blocks_planned"] = len(body)
+    want = header_lines(header) + want                       # the read-back must find the header paragraphs, then the transcript lines
     if not live:
         return "TRANSCRIPT_PLANNED", counts
     try:
