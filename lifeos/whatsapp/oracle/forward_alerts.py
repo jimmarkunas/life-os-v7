@@ -20,7 +20,10 @@ gateway-queued delivery, no or contradictory result, a timeout). Only NOT_DELIVE
 never re-sent (at most once: a possible loss is recorded, a flood is impossible). The attempt is written before the send, so a relay killed mid-send finds it
 on restart and treats it as AMBIGUOUS instead of replaying. Saved state fails closed: an attempt or cursor file that exists but is unreadable or invalid holds
 that channel (no poll, no send; one HELD diagnostic) until a person repairs it; only an absent file is a fresh start. Every outcome is appended to a
-size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text."""
+size-capped 0600 diagnostics file (deliveries.jsonl: time, channel, ntfy id, outcome, exit code, a fixed class), never the alert text.
+
+LIFE-73 (the flood cap): each channel forwards at most RELAY_CAP copies per clock hour. The next one sends ONE "paused" notice and the rest of that hour's copies are dropped
+(ntfy keeps every original). The count is persisted (rate-<channel>, 0600) and written before the send; an unreadable count file holds the channel instead of lifting the cap."""
 import json
 import os
 import re
@@ -45,6 +48,9 @@ ICON = {5: "🚨", 4: "🔔"}
 MAX_ATTEMPTS = 3                                                        # LIFE-71: explicit non-delivery is retried at most this often per alert per channel
 DIAGNOSTICS, DIAGNOSTICS_KEEP = "deliveries.jsonl", 500
 DELIVERED, NOT_DELIVERED, AMBIGUOUS, GAVE_UP, HELD = "DELIVERED", "NOT_DELIVERED", "AMBIGUOUS", "GAVE_UP", "HELD"
+CAPPED, PAUSED = "CAPPED", "PAUSED"
+RELAY_CAP = 6                                                           # LIFE-73: forwards per channel per clock hour; the next alert sends ONE "paused" notice and the rest of the hour's copies are dropped (ntfy keeps the originals)
+PAUSE_TEXT = f"⏸ LIFE OS alerts paused: more than {RELAY_CAP} in an hour. Copies resume next hour; ntfy has them all."
 ID = re.compile(r"[A-Za-z0-9]{1,32}")                                  # an ntfy message id, or a Unix time written as a fresh-start cursor
 
 
@@ -224,6 +230,37 @@ def diagnose(channel, message_id, outcome, cls, code=None, now=time.time):
         pass
 
 
+def _rate_path(channel):
+    return os.path.join(STATE, f"rate-{channel}")
+
+
+def rate_state(channel, now=time.time):
+    """-> ("ok", {"hour", "count", "paused"}) for this clock hour (a missing file or an older hour starts at zero), or ("invalid", {}) for a file that exists but is not
+    exactly that shape: the channel is held, never reset, because a reset would lift the cap."""
+    hour = int(now() // 3600)
+    try:
+        with open(_rate_path(channel)) as f:
+            value = json.load(f)
+    except FileNotFoundError:
+        return "ok", {"hour": hour, "count": 0, "paused": False}
+    except (OSError, ValueError):
+        return "invalid", {}
+    good = (isinstance(value, dict) and set(value) == {"hour", "count", "paused"} and type(value["hour"]) is int and type(value["count"]) is int
+            and value["count"] >= 0 and type(value["paused"]) is bool)
+    if not good:
+        return "invalid", {}
+    return ("ok", value) if value["hour"] == hour else ("ok", {"hour": hour, "count": 0, "paused": False})
+
+
+def _write_rate(channel, value):
+    os.makedirs(STATE, mode=0o700, exist_ok=True)
+    tmp = _rate_path(channel) + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(value, f)
+    os.replace(tmp, _rate_path(channel))
+
+
 def _done(channel, message_id):
     remember(message_id, channel)
     try:
@@ -244,7 +281,7 @@ def _held(channel, cls):
         diagnose(channel, None, HELD, cls)
 
 
-def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsapp"):
+def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsapp", now=time.time):
     """One poll for one channel: every message after its last forwarded one, oldest first. Only a proven non-delivery stops here (the next poll retries
     it, at most MAX_ATTEMPTS in all); a delivery, an ambiguous outcome or an exhausted alert moves the position on, so no alert can be sent forever. A cursor
     or attempt file that exists but is unreadable or invalid holds this channel (fail closed); the other channel is unaffected."""
@@ -253,6 +290,8 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
         return _held(channel, "invalid_cursor")
     if attempt_state(channel)[0] == "invalid":
         return _held(channel, "invalid_attempts")
+    if rate_state(channel, now)[0] == "invalid":
+        return _held(channel, "invalid_rate")
     with opener(f"https://ntfy.sh/{name}/json?poll=1&since={since or '10m'}", timeout=30) as stream:
         lines = [line.decode("utf-8", "replace") for line in stream]
         for e in events(lines):
@@ -267,6 +306,16 @@ def follow(name, to, opener=urllib.request.urlopen, sender=send, channel="whatsa
                 _done(channel, e["id"])
                 continue
             count = mine.get("count", 0) + 1
+            rate = rate_state(channel, now)[1]
+            if rate["count"] >= RELAY_CAP:                                  # LIFE-73: past the hour's cap this copy is dropped (ntfy keeps it), after ONE notice
+                if not rate["paused"]:
+                    _write_rate(channel, {**rate, "paused": True})
+                    got = sender(to, PAUSE_TEXT)
+                    diagnose(channel, e["id"], PAUSED, "rate_cap", got[2] if isinstance(got, tuple) else None)
+                diagnose(channel, e["id"], CAPPED, "rate_cap")
+                _done(channel, e["id"])
+                continue
+            _write_rate(channel, {**rate, "count": rate["count"] + 1})     # counted BEFORE the send, like the attempt
             _write_attempts(channel, {"id": e["id"], "count": count, "pending": True})     # written BEFORE the send
             got = sender(to, text(e))
             outcome, cls, code = got if isinstance(got, tuple) else ((DELIVERED, "sender_true", 0) if got else (NOT_DELIVERED, "sender_false", 1))
