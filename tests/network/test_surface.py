@@ -413,6 +413,25 @@ class StoredState(unittest.TestCase):
         self.assertEqual(owned_count(ledger, "page-1"), 1)                                   # the block itself was written and proven
         self.assertEqual(go(conn, ledger, live=True)["blocks"], {"unchanged": 1})            # the next run just reads the page again and finds nothing to change
 
+    def test_a_connection_the_server_dropped_fails_the_save_as_a_network_error_never_a_crash(self):
+        """Live run 40267069554 (Oct 25 11:03 PM CT): the store dropped the connection ('Lost connection to MySQL server during query'), then ROLLBACK raised InterfaceError and the whole run crashed."""
+        class Dropped:
+            pings = []
+
+            def ping(self, reconnect=False):
+                self.pings.append(reconnect)
+
+            def begin(self):
+                raise RuntimeError("Lost connection to MySQL server during query")
+
+            def rollback(self):
+                raise RuntimeError("InterfaceError (0, '')")
+        conn = Dropped()
+        with self.assertRaises(NetworkError) as ctx:
+            store.save_page_state(conn, {"k": ("page", "hash")})
+        self.assertEqual(str(ctx.exception), "NETWORK_STORE_FAILED")
+        self.assertEqual(conn.pings, [True])                                                 # it tried to reconnect first
+
     def test_a_production_sized_ledger_converges_within_the_bound_then_reads_only_what_changed(self):
         from datetime import timedelta
         n_leads, n_other, n_nontarget, budget = 154, 921, 525, 41

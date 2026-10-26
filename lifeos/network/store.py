@@ -107,11 +107,29 @@ def save_decisions(connection, dismissals, aliases, clock=lambda: datetime.now(t
             cursor.executemany("INSERT IGNORE INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES (%s,%s,%s)", [(a, c, now) for a, c in aliases])
         connection.commit()
     except Exception:                                                  # noqa: BLE001
-        connection.rollback()
+        _rollback(connection)
         raise NetworkError("NETWORK_STORE_FAILED") from None
     dismissed, known, _ = load_decisions(connection)
     if any((k, p, e) not in dismissed for k, p, e in dismissals) or any(known.get(a) != c for a, c in aliases):
         raise NetworkError("NETWORK_READBACK_MISMATCH")
+
+
+def _rollback(connection):
+    """A rollback on a connection the server already dropped raises its own error (pymysql InterfaceError); that must never replace the NetworkError the caller is about to raise."""
+    try:
+        connection.rollback()
+    except Exception:                                                  # noqa: BLE001
+        pass
+
+
+def _revive(connection):
+    """The page-state save comes after a long stretch of Notion reads; the store may have dropped an idle connection meanwhile. Reconnect if the driver can; otherwise carry on and fail normally."""
+    ping = getattr(connection, "ping", None)
+    if ping is not None:
+        try:
+            ping(reconnect=True)
+        except Exception:                                              # noqa: BLE001
+            pass
 
 
 def load_page_state(connection):
@@ -130,13 +148,14 @@ def save_page_state(connection, rows, clock=lambda: datetime.now(timezone.utc).r
     if not rows:
         return
     now = clock().isoformat(sep=" ", timespec="seconds")
+    _revive(connection)
     try:
         connection.begin()
         with connection.cursor() as cursor:
             cursor.executemany("REPLACE INTO v7_network_page_state (job_key, page_id, written_hash, checked_at) VALUES (%s,%s,%s,%s)", [(k, p, h, now) for k, (p, h) in rows.items()])
         connection.commit()
     except Exception:                                                  # noqa: BLE001
-        connection.rollback()
+        _rollback(connection)
         raise NetworkError("NETWORK_STORE_FAILED") from None
 
 
