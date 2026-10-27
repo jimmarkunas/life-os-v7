@@ -548,6 +548,7 @@ CODES = {
     "GDRIVE_UPLOAD_UNVERIFIED": _r("gdrive", "degraded", False, "An uploaded file was not confirmed on read-back.", "Retried."),
     "GITHUB_UNREACHABLE": _r("branches", "retry", False, "GitHub could not be reached.", "None; retried."),
     "GMAIL_FILE_LABEL_INVALID": _r("gmail", "blocked", False, "The label for filing mail is not valid.", "Fix the label."),
+    "PACKAGES_GMAIL_FAILED": _r("amazon", "degraded", False, "The other-store packages could not be read from Gmail; the Amazon section is unaffected.", "None; retried next run."),
     "GMAIL_AMAZON_LABEL_INVALID": _r("gmail", "blocked", False, "The Amazon Gmail label is not valid.", "Fix the label."),
     "GMAIL_BODY_DECODE_FAILED": _r("gmail", "terminal", False, "A message body could not be decoded.", "None; the message is skipped."),
     "GMAIL_ERROR": _r("gmail", "bug", False, "An unnamed Gmail error.", "Check the log."),

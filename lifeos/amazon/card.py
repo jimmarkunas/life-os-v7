@@ -9,8 +9,9 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from lifeos.platform import report_region, router
+from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
-from . import stage
+from . import packages as packages_mod, stage
 
 TZ = ZoneInfo("America/Chicago")
 TITLE = router.AMAZON_REGION
@@ -126,7 +127,27 @@ def sections(rows, now):
             sorted(returning, key=key, reverse=True), sorted(refunded, key=key, reverse=True))
 
 
-def render(rows, now, degraded=False, url=None):
+def _package_bullet(pkg, label):
+    carrier = " ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part)
+    link = packages_mod.tracking_url(pkg.get("carrier"), pkg["number"])
+    text = rich_text(pkg["store"])
+    if link and text:
+        text[0]["text"]["link"] = {"url": link}
+    when = pkg["delivered_at"] if label == "Delivered" else pkg["shipped_at"]
+    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": text + rich_text(f" · {label} · {carrier} · {_day(when)}")}}
+
+
+def package_blocks(packages, now, error=False):
+    """-> (blocks, counts) for the other-store packages. None with error=True means the read failed: shown as unavailable, never as 'no packages'."""
+    if packages is None:
+        return ([_paragraph("Other packages · unavailable (mail read failed this run)")] if error else []), {"packages_in_transit": 0, "packages_delivered": 0, "packages_status": "unavailable" if error else "off"}
+    transit, delivered = packages_mod.split(packages, now)
+    blocks = [_paragraph(f"Other packages · {len(transit)} in transit · {len(delivered)} delivered (last {packages_mod.DELIVERED_DAYS} days)")]
+    blocks += [_package_bullet(p, "In transit") for p in transit[:MAX_LISTED]] + [_package_bullet(p, "Delivered") for p in delivered[:MAX_LISTED]]
+    return blocks, {"packages_in_transit": len(transit), "packages_delivered": len(delivered), "packages_status": "ok"}
+
+
+def render(rows, now, degraded=False, url=None, packages=None, packages_error=False):
     """-> (blocks, counts). Pure."""
     open_, delivered, review, older, returning, refunded = sections(rows, now)
     head = (f"DEGRADED · Amazon sync failed at {now.strftime('%-I:%M %p')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%-I:%M %p')} CT")
@@ -144,7 +165,9 @@ def render(rows, now, degraded=False, url=None):
                 blocks.append(_paragraph(f"…and {len(items) - MAX_LISTED} more"))
     if not (open_ or delivered or review or returning or refunded):
         blocks.append(_paragraph(f"No open orders and nothing delivered in the last {DELIVERED_DAYS} days"))
-    counts = {"in_transit": len(open_), "delivered": len(delivered), "review": len(review), "returning": len(returning), "refunded": len(refunded), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
+    extra, package_counts = package_blocks(packages, now, packages_error)
+    blocks += extra
+    counts = {**package_counts, "in_transit": len(open_), "delivered": len(delivered), "review": len(review), "returning": len(returning), "refunded": len(refunded), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
     return blocks, counts
 
 
@@ -152,7 +175,18 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, reader=None, client=None, now=None):
+def _gmail(environ, gmail):
+    if gmail is not None:
+        return gmail
+    if not all((environ.get(name) or "").strip() for name in ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN")):
+        return None                                           # no mail access in this run: the packages part is off, the Amazon part is unchanged
+    try:
+        return Gmail.from_env()
+    except GmailError:
+        return False
+
+
+def run(limit, live, environ=os.environ, reader=None, client=None, now=None, gmail=None):
     block_id = (environ.get("AMAZON_CARD_BLOCK_ID") or "").strip()
     if not block_id:
         return {"in_transit": 0, "delivered": 0, "review": 0, "status": "not_configured", "blocks_written": 0}
@@ -165,7 +199,9 @@ def run(limit, live, environ=os.environ, reader=None, client=None, now=None):
     stage._schema(reader, source_id)
     rows = read_rows(reader, source_id, (now - timedelta(days=DELIVERED_DAYS + 1)).date().isoformat())
     degraded = (environ.get("AMAZON_SYNC_OUTCOME") or "").strip().lower() in ("failure", "cancelled")
-    blocks, counts = render(rows, now, degraded, _orders_url(reader, source_id))
+    mail = _gmail(environ, gmail)
+    packages = packages_mod.safe_read(mail, now)[0] if mail else None
+    blocks, counts = render(rows, now, degraded, _orders_url(reader, source_id), packages, packages_error=mail is False or (bool(mail) and packages is None))
     client = client or _writer(environ)
     protected_ids = {region: (environ.get(name) or "").strip() for name, region in PROTECTED}
     _, removed = report_region.replace_text(client, block_id, TITLE, MODULE, blocks, protected_ids, _fail, "amazon", live)
