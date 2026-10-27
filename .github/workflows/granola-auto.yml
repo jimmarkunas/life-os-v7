@@ -11,6 +11,10 @@ on:
         description: "Actually write pages, save the catalog and purge Oracle (false = dry run: nothing written, nothing purged)"
         type: boolean
         default: false
+      unmatched_to:
+        description: "One-off, optional: file every meeting that matches no round and no client rule as client work. Type client (TGP Project page) or internal (Bytalos page); blank leaves them on Oracle. Dry run first and check the count"
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -85,4 +89,5 @@ jobs:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_auto.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_auto_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_auto.outputs.IMESSAGE_ALERTS_HOST || steps.bws_auto_retry.outputs.IMESSAGE_ALERTS_HOST }}
           LIVE: ${{ inputs.live }}
+          GRAN_UNMATCHED_TO: ${{ inputs.unmatched_to }}
         run: python -m lifeos.run granola-auto $([ "$LIVE" = "true" ] && echo --live)

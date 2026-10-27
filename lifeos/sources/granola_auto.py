@@ -82,7 +82,7 @@ def header_of(shown):
 
 
 def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=None, context=None, connect=store.connect, now=None):
-    counts = {"meetings": 0, "already": 0, "unmatched": 0, "client_routed": 0, "client_listed": 0, "carried": 0, "purged": 0, "left_on_oracle": 0, "header": 0, "segments": 0, "failed": 0, "purge_capable": 0, "why": {}}
+    counts = {"meetings": 0, "already": 0, "unmatched": 0, "client_routed": 0, "client_by_instruction": 0, "client_listed": 0, "carried": 0, "purged": 0, "left_on_oracle": 0, "header": 0, "segments": 0, "failed": 0, "purge_capable": 0, "why": {}}
     context = context or RunContext.start(840)
     now = (now or datetime.now(TZ)).astimezone(TZ).replace(tzinfo=None)
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
@@ -129,6 +129,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         order = sorted(todo, key=lambda m: m.start, reverse=True)
         carried_now = 0
         targets = {}                                                 # client target key -> "target_ok" | the failure, checked once per run
+        filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get((environ.get("GRAN_UNMATCHED_TO") or "").strip().lower())
 
         def finish(meeting, envelope, header, result, round_key, job_key, after=None):
             """The shared tail of a carried meeting: catalog row saved and read back, then (only then) the whole-meeting purge. -> True when the meeting counts as carried."""
@@ -177,6 +178,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         def carry_client(meeting):
             """LIFE-164: a meeting that matches no round but belongs to client work. -> False when it is not client work (the caller counts it unmatched)."""
             target, route_code = granola_clients.route(meeting)
+            if target is None and route_code == "ROUTE_NONE" and filed_as is not None:
+                target = filed_as                                    # Jim's one-off instruction for this run: whatever matches nothing is filed there
+                counts["client_by_instruction"] += 1
             if target is None:
                 if route_code in ("ROUTE_OTHER_ATTENDEES", "ROUTE_TITLE_AMBIGUOUS"):
                     why(route_code)
