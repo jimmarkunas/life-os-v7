@@ -128,13 +128,13 @@ def sections(rows, now):
 
 
 def _package_bullet(pkg, label):
-    carrier = " ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part)
+    """One line: store, state, then the carrier and tracking number as the link to the carrier's own tracking page, then the day."""
     link = packages_mod.tracking_url(pkg.get("carrier"), pkg["number"])
-    text = rich_text(pkg["store"])
-    if link and text:
-        text[0]["text"]["link"] = {"url": link}
+    track = rich_text(" ".join(part for part in (pkg.get("carrier"), pkg["number"]) if part))
+    if track:
+        track[0]["text"]["link"] = {"url": link}
     when = pkg["delivered_at"] if label == "Delivered" else pkg["shipped_at"]
-    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": text + rich_text(f" · {label} · {carrier} · {_day(when)}")}}
+    return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich_text(f"{pkg['store']} · {label} · ") + track + rich_text(f" · {_day(when)}")}}
 
 
 def package_blocks(packages, now, error=False):

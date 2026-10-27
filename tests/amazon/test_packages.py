@@ -43,7 +43,7 @@ class FakeGmail:
 class ExtractTests(unittest.TestCase):
     def test_a_provider_and_number_table_gives_the_carrier_and_number(self):
         event = packages.extract(record("Your order from Ejuice Store is on its way!", body_of(TABLE_HTML), 6))
-        self.assertEqual((event["kind"], event["store"], event["numbers"]), ("SHIPPED", "Ejuice Store", [("DHL", "6100000000000001")]))
+        self.assertEqual((event["kind"], event["store"], event["numbers"]), ("SHIPPED", "Ejuice Store", [("DHL eCommerce", "6100000000000001")]))
 
     def test_carrier_shapes_and_inline_tracking_numbers_are_found(self):
         self.assertEqual(packages.numbers("Your tracking number: 9400111899223344556677 thanks"), [("", "9400111899223344556677")])
@@ -96,15 +96,25 @@ class FoldTests(unittest.TestCase):
 
 
 class CardSectionTests(unittest.TestCase):
-    def test_section_lists_in_transit_and_delivered_with_a_tracking_link(self):
+    def test_the_tracking_number_is_the_link_to_the_carriers_own_page(self):
         pkgs = packages.fold([packages.extract(record("Your order is on its way", body_of(TABLE_HTML), 6))])
         blocks, counts = card.render([], NOW, packages=pkgs)
         texts = [("".join(t["text"]["content"] for t in b[b["type"]]["rich_text"])) for b in blocks]
         self.assertTrue(any(t.startswith("Other packages · 1 in transit · 0 delivered") for t in texts))
-        self.assertTrue(any("Ejuice Store" in t and "DHL 6100000000000001" in t for t in texts))
+        self.assertTrue(any(t.startswith("Ejuice Store · In transit · DHL eCommerce 6100000000000001 · ") for t in texts))
         self.assertEqual((counts["packages_in_transit"], counts["packages_status"]), (1, "ok"))
-        link = next(b for b in blocks if b["type"] == "bulleted_list_item")["bulleted_list_item"]["rich_text"][0]["text"]["link"]["url"]
-        self.assertTrue(link.startswith("https://www.dhl.com/") and link.endswith("6100000000000001"))
+        parts = next(b for b in blocks if b["type"] == "bulleted_list_item")["bulleted_list_item"]["rich_text"]
+        linked = [p["text"] for p in parts if p["text"].get("link")]
+        self.assertEqual([p["content"] for p in linked], ["DHL eCommerce 6100000000000001"])
+        self.assertEqual(linked[0]["link"]["url"], "https://www.dhl.com/us-en/home/tracking/tracking-ecommerce.html?submit=1&tracking-id=6100000000000001")
+
+    def test_each_carrier_links_to_its_own_site_and_an_unnamed_carrier_to_the_any_carrier_page(self):
+        self.assertTrue(packages.tracking_url("DHL", "1234567890").startswith("https://www.dhl.com/us-en/home/tracking.html"))
+        self.assertTrue(packages.tracking_url("UPS", "1Z999AA10123456784").startswith("https://www.ups.com/track"))
+        self.assertTrue(packages.tracking_url("USPS", "9400111899223344556677").startswith("https://tools.usps.com/"))
+        self.assertTrue(packages.tracking_url("FedEx", "123456789012").startswith("https://www.fedex.com/"))
+        self.assertEqual(packages.tracking_url("", "ABC123456789"), "https://t.17track.net/en#nums=ABC123456789")
+        self.assertEqual(packages.carrier_name("DHLECOMMERCE"), "DHL eCommerce")
 
     def test_a_failed_read_says_unavailable_and_no_read_says_nothing(self):
         blocks, counts = card.render([], NOW, packages=None, packages_error=True)
