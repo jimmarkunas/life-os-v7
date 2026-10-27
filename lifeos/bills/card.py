@@ -182,7 +182,8 @@ def _status(saved, stale):
 
 def _summary(saved, stale, overdue, due):
     known = [amount for amount in (_amount(row) for row in due) if amount is not None]
-    parts = [_status(saved, stale), f"{len(due)} due through one week from now"]
+    total = len(overdue) + len(due)                                       # the Daily Command Center's "Bills due" tile reads this: due this week, plus unpaid and already past due
+    parts = [_status(saved, stale), f"{total} bill{'s' if total != 1 else ''} due", f"{len(due)} due through one week from now"]
     if due:
         parts.append(f"{_money(sum(known))} known")
         if len(known) < len(due):
