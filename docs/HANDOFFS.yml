@@ -4,6 +4,11 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 654
+    owner: edge-oracle
+    path: lifeos/sources/close_app.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-118?focusedCommentId=11326
   - pr: 650
     owner: edge-oracle
     path: lifeos/attention/stage.py
