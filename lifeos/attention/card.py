@@ -46,15 +46,8 @@ def _status(count, now, degraded=False):
 
 
 def render(count, now, decisions=(), hiring="Hiring Pipeline unset", degraded=False):
-    line = _status(count, now, degraded)
-    rich = rich_text(line + "\n\nSuggested next decisions")
-    for index, (title, detail, url) in enumerate(decisions, 1):
-        rich.extend([{"type": "text", "text": {"content": f"\n{index}. "}},
-                     {"type": "text", "text": {"content": title, **({"link": {"url": url}} if url else {})}, "annotations": {"bold": True}},
-                     {"type": "text", "text": {"content": " — " + detail}}])
-    rich.extend([{"type": "text", "text": {"content": "\n\n"}}, {"type": "text", "text": {"content": hiring}, "annotations": {"bold": True}},
-                 {"type": "text", "text": {"content": " · See Hiring Pipeline below."}}])
-    return [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich}}]
+    """The callout holds ONE status line and then the table: no generated advice (Jim, Oct 26: the text above the table is not attention). `decisions` and `hiring` are accepted and ignored."""
+    return [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text(_status(count, now, degraded))}}]
 
 
 def _link(block):
