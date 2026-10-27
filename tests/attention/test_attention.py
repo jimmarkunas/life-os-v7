@@ -84,6 +84,13 @@ class Reconcile(unittest.TestCase):
         after = reconcile.plan([], rows + [row("n", "Open item", week=WEEK)], TODAY, {})
         self.assertEqual(after["create"], [])
 
+    def test_an_item_jim_finished_in_an_earlier_week_is_not_recreated_while_its_mark_is_still_on_the_message(self):
+        """The Monday bug: Done belongs to one week's row, and the new week made a fresh unchecked copy of everything still marked."""
+        p = reconcile.plan([cand("Card added", medium="Gmail:9")], [], TODAY, {"Gmail:9": "present"}, done_media={"Gmail:9"})
+        self.assertEqual((p["create"], p["skipped_done_before"]), ([], 1))
+        again = reconcile.plan([cand("Card added", medium="Gmail:9")], [], TODAY, {"Gmail:9": "present"})
+        self.assertEqual(len(again["create"]), 1)                                                   # not finished before: still created
+
     def test_older_weeks_do_not_carry(self):
         self.assertEqual(reconcile.plan([], [row("a", "Old", week="2026-09-13")], TODAY, {})["create"], [])
 
@@ -100,6 +107,8 @@ class FakeNotion:
 
     def query_data_source(self, source, body):
         self.paths.append(("POST", "data_sources"))
+        if body["filter"].get("property") == "Done":
+            return {"results": [p for p in self.pages.values() if p["properties"]["Done"]["checkbox"]], "has_more": False}
         week = body["filter"]["date"]["equals"]
         return {"results": [p for p in self.pages.values() if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
 
@@ -194,6 +203,14 @@ class Stage(unittest.TestCase):
         notion = FakeNotion()
         self.go(notion, FakeGmail({"g1": ("a@example.com", "Security alert")}))
         self.assertTrue({path for _, path in notion.paths} <= {"data_sources", "pages"})
+
+    def test_a_new_week_does_not_bring_back_what_jim_already_checked_off(self):
+        """Monday bug: the mark was still on the message, so the new week created a fresh unchecked copy of an item Jim had finished the week before."""
+        notion = FakeNotion([page("done1", "Card added", done=True, active=True, week=PRIOR, medium="Gmail:g1")])
+        out = self.go(notion, FakeGmail({"g1": ("no-reply@example.com", "Card added")}))
+        self.assertEqual((out["created"], out["skipped_done_before"], len(notion.pages)), (0, 1, 1))
+        fresh = self.go(FakeNotion(), FakeGmail({"g1": ("no-reply@example.com", "Card added")}))
+        self.assertEqual((fresh["created"], fresh["skipped_done_before"]), (1, 0))                          # never finished: still created
 
     def test_dry_run_writes_nothing(self):
         notion = FakeNotion()

@@ -55,7 +55,7 @@ class RenderTests(unittest.TestCase):
     def test_the_summary_never_says_a_number_of_days_and_counts_overdue_once(self):
         rows = STALE_FOUR + [row("Oct 11 Bill", "2026-10-11", "2026-10-11")]
         head = lines(card.render(saved(rows), now=NOW)[0])[0]
-        self.assertEqual(head, "Updated 12:10 PM CT · 1 due through one week from now · $30 known · 4 overdue")
+        self.assertEqual(head, "Updated 12:10 PM CT · 5 bills due · 1 due through one week from now · $30 known · 4 overdue")
         self.assertNotRegex(head, r"next \d+ days")
 
     def test_the_four_unpaid_september_rows_stay_overdue_and_are_not_advanced(self):

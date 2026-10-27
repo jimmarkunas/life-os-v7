@@ -16,13 +16,14 @@ def key(week, category, item):
     return (str(week), category or "", normalize(item))
 
 
-def plan(candidates, rows, today, proofs):
+def plan(candidates, rows, today, proofs, done_media=frozenset()):
     """candidates: [{category, item, url, medium}] admitted from sources that were read completely.
     rows: [{id, item, category, done, active, medium, url, week}] of the current and the immediately prior week, read completely.
     proofs: {medium: "present" | "absent" | "unknown"} for sources V7 could check (label still on the message, or proved off it).
-    -> {"create": [props], "deactivate": [row id], "reactivate": [row id], "ambiguous": n, "carried": n, "reused": n, "skipped_done": n}"""
+    done_media: the Medium of every row Jim has EVER checked Done, in any week. A candidate in it is never created again: the mark is still on the message, but Jim already finished it.
+    -> {"create": [props], "deactivate": [row id], "reactivate": [row id], "ambiguous": n, "carried": n, "reused": n, "skipped_done": n, "skipped_done_before": n}"""
     this_week, prior = week_ending(today), week_ending(today) - timedelta(days=7)
-    out = {"create": [], "deactivate": [], "reactivate": [], "ambiguous": 0, "carried": 0, "reused": 0, "skipped_done": 0}
+    out = {"create": [], "deactivate": [], "reactivate": [], "ambiguous": 0, "carried": 0, "reused": 0, "skipped_done": 0, "skipped_done_before": 0}
     by_key = {}
     for row in rows:
         by_key.setdefault(key(row["week"], row["category"], row["item"]), []).append(row)
@@ -46,6 +47,9 @@ def plan(candidates, rows, today, proofs):
                 out["reactivate"].append(row["id"])
             else:
                 out["reused"] += 1
+            return
+        if medium in done_media and not carried:                         # finished in an earlier week: a new week must not bring it back
+            out["skipped_done_before"] += 1
             return
         out["create"].append({"week": str(this_week), "category": category, "item": item, "url": url, "medium": medium, "received": received})
         out["carried"] += carried
