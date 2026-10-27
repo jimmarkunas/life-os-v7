@@ -84,6 +84,10 @@ class Meetings:
         if method == "PATCH" and path.startswith("/pages/"):
             self.rows[path.split("/")[2]]["properties"].update(_typed(body["properties"]))
             return {}
+        if method == "PATCH" and path.startswith("/blocks/") and not path.endswith("/children"):
+            block = next(b for r in self.rows.values() for b in r["children"] if b["id"] == path.split("/")[2])
+            block.update(body)
+            return {}
         if method == "PATCH" and path.endswith("/children"):
             if self.fail_append:
                 raise NotionError("NOTION_NETWORK")
@@ -121,6 +125,25 @@ class Write(unittest.TestCase):
         p = row["properties"]
         self.assertEqual((gc._plain(p[gc.TITLE]), gc._plain(p[gc.STATUS]), gc._plain(p[gc.FILED_TO]), gc._plain(p[gc.KEY]), p[gc.DATE]["date"]["start"], p[gc.LINES]["number"]),
                          ("2026-10-13 · TGP kickoff", "Filed", "TGP", "k1", "2026-10-13", 3))
+
+    def test_no_marker_line_shows_on_the_page_and_the_marker_is_read_back_from_its_hidden_link(self):
+        notion = Meetings()
+        gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)
+        first = notion.rows["row-0"]["children"][0]
+        self.assertEqual(gc.notion.text(first), "\u2060")
+        self.assertTrue(gc.hidden.refs(first)[0].startswith("v7-transcript:1;accepted="))
+        self.assertNotIn("v7-transcript", " ".join(gc.notion.text(b) for b in notion.rows["row-0"]["children"]))
+
+    def test_a_page_written_with_the_visible_marker_is_upgraded_once_in_place_and_stays_filed(self):
+        notion = Meetings()
+        gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)
+        marker = gc.hidden.refs(notion.rows["row-0"]["children"][0])[0]
+        notion.rows["row-0"]["children"][0]["paragraph"] = {"rich_text": [{"type": "text", "text": {"content": marker}, "plain_text": marker}]}      # the page as it was written before
+        self.assertEqual(gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)[0], "TRANSCRIPT_NOOP")
+        self.assertTrue(gc.hidden.refs(notion.rows["row-0"]["children"][0]))
+        before = len([c for c in notion.calls if c[0] == "PATCH"])
+        self.assertEqual(gc.write(notion, gc.CLIENT, M(), "k1", envelope(), True)[0], "TRANSCRIPT_NOOP")
+        self.assertEqual(len([c for c in notion.calls if c[0] == "PATCH"]), before)
 
     def test_a_replay_changes_nothing(self):
         notion = Meetings()

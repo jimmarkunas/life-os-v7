@@ -10,6 +10,7 @@ import re
 
 from lifeos.interview import create, granola_write, notion
 from lifeos.interview.granola_match import central_day
+from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 
 DATA_SOURCE = "15df6ed1-58d8-47f4-9c6c-a336f04b8e7a"        # the Meetings database (an id is not a secret)
@@ -135,10 +136,18 @@ def set_status(client, page_id, status, filed_to=None, lines=None):
     client.call_once("PATCH", f"/pages/{page_id}", {"properties": props})
 
 
+def _marker_block(marker):
+    """The marker paragraph, hidden: a zero-width character whose link carries the marker, so no `v7-transcript:1;accepted=...` line shows on the page."""
+    return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [hidden.run(marker)]}}
+
+
 def _read_back(client, page_id):
+    """-> (marker, transcript lines, number of blocks, the first paragraph's block). The marker is the hidden ref, or the older visible line on a page written before the marker was hidden."""
     found = notion.children(client, page_id, [400])
-    texts = [notion.text(b) for b in found if b.get("type") == "paragraph"]
-    return (texts[0] if texts else ""), texts[2:], len(found)
+    paras = [b for b in found if b.get("type") == "paragraph"]
+    texts = [notion.text(b) for b in paras]
+    first = (hidden.refs(paras[0]) or [texts[0] if texts else ""])[0] if paras else ""
+    return first, texts[2:], len(found), (paras[0] if paras else None)
 
 
 def write(client, filed_to, meeting, key, envelope, live, header=()):
@@ -148,16 +157,22 @@ def write(client, filed_to, meeting, key, envelope, live, header=()):
     counts = {"segments": len(envelope.segments), "blocks_planned": 0, "blocks_written": 0, "readback_ok": 0, "readback_failed": 0}
     marker = f"{create.ACCEPTED}{envelope.source_content_sha256}"
     body = granola_write.blocks(envelope, header)
+    body[0] = _marker_block(marker)
     want = granola_write.header_lines(header) + granola_write.lines(envelope)
     counts["blocks_planned"] = len(body)
     row = find(client, key)
     page = row["id"] if row else None
     if page:
-        first, got, total = _read_back(client, page)
+        first, got, total, head = _read_back(client, page)
         if first == marker:                                         # a page of ours: it counts as filed only if it reads back whole, never on the marker alone
             if granola_write.digest(got) != granola_write.digest(want) or total != len(body):
                 counts["readback_failed"] = 1
                 return "TRANSCRIPT_READBACK_MISMATCH", counts
+            if live and head is not None and not hidden.refs(head):             # a page written before the marker was hidden: its visible marker line is replaced once, in place
+                try:
+                    client.call_once("PATCH", f"/blocks/{head['id']}", {"paragraph": _marker_block(marker)["paragraph"]})
+                except NotionError:
+                    pass                                            # the transcript is intact; the next run tries again
             if live and _plain(row["properties"].get(STATUS)) != FILED:
                 set_status(client, page, FILED, filed_to, len(envelope.segments))
             return "TRANSCRIPT_NOOP", counts
@@ -179,7 +194,7 @@ def write(client, filed_to, meeting, key, envelope, live, header=()):
     except NotionError:
         return "TRANSCRIPT_WRITE_FAILED", counts
     try:
-        first, got, total = _read_back(client, page)
+        first, got, total, _ = _read_back(client, page)
     except NotionError:
         return "TRANSCRIPT_READBACK_MISMATCH", counts
     if first == marker and granola_write.digest(got) == granola_write.digest(want) and total == len(body):
