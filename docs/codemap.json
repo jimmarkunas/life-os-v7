@@ -230,6 +230,7 @@
    "lifeos/amazon/card.py": "Render the canonical Amazon Orders rows into V7's one \"Amazon Orders\" callout on the Daily Report (D118).",
    "lifeos/amazon/events.py": "Pure extraction of the accepted Amazon order mail events: ordered, shipped, delivered, returning and refunded (LIFE-124).",
    "lifeos/amazon/orders.py": "Pure monotone reconciliation of Amazon order events.",
+   "lifeos/amazon/packages.py": "Packages from stores other than Amazon, for the Daily Report (Jim, Oct 27 2026: an Ejuice Store order shipped by DHL was nowhere on it).",
    "lifeos/amazon/projection.py": "Region-local Amazon status for the Daily Command Center (consumer is ChatGPT-owned): a pure function of one run's counts, fail closed.",
    "lifeos/amazon/reset.py": "D146/D152: clear the Amazon Orders rows that never got a Grand Total. Jim's rule (D152): an order without a total is not worth keeping, so every row whose Grand Total is ",
    "lifeos/amazon/retention.py": "D139: Amazon order mail older than 30 days goes to the Gmail Trash, once its order is safely recorded in the canonical Amazon Orders data source.",

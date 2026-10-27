@@ -692,7 +692,7 @@ CONSUMER_STEPS = {
         },
         "amazon": {
             'Amazon Orders (Gmail to Notion; archive only after read-back)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
-            'Amazon card (reads the canonical orders; writes only when live; a failed sync is shown as DEGRADED)': {"NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
+            'Amazon card (reads the canonical orders and, read-only, other stores\' shipping mail; writes only when live; a failed sync is shown as DEGRADED)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN", "NOTION_JIRA_TOKEN"},
             'Amazon retention (D139; mail older than 30 days to the Trash once its order is recorded; dry run unless live; counts only)': {"GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN", "NOTION_AMAZON_TOKEN"},
         },
         "mail": {
