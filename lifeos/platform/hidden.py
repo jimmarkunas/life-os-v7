@@ -3,7 +3,7 @@ path segment: nothing is drawn, and the ref is read back from the link. Pure; th
 from urllib.parse import quote, unquote
 
 BASE = "https://example.com/lifeos/"
-ZW = "​"
+ZW = "\u2060"
 
 
 def run(ref):
