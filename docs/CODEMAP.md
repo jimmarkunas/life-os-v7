@@ -281,6 +281,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/gdrive.py`: Minimal Google Drive client (stdlib only; platform: no job knowledge). Jim, Oct 24 2026: résumés live in Drive as real .docx files, directly in My Drive / LIFE OS / Résum
 - `lifeos/platform/gmail.py`: Minimal Gmail REST client (stdlib only): bounded listing, message reads and explicit label changes.
 - `lifeos/platform/google_consent.py`: One-time Google sign-in for the Drive credential (platform, no job knowledge). It asks Google for the full drive scope (Jim, Oct 24: "full", so résumés land in My Drive /
+- `lifeos/platform/hidden.py`: Machine ids that ride in a page without showing on it (Jim, Oct 27: no marker, hash or id may show). A hidden ref is a zero-width character linked to a fixed address with
 - `lifeos/platform/http.py`: Polite HTTP fetch with manual redirect following. Returns facts only; URLs are never logged (public repo).
 - `lifeos/platform/impersonate.py`: Fetch a page the way a real Chrome does (TLS fingerprint and headers) for the few first-party sites that refuse plain scripted requests. Used only for registry sources th
 - `lifeos/platform/jira.py`: Minimal Jira Cloud REST client (stdlib only, platform: no product knowledge). Every error is a fixed code: never a URL, a response body or an issue field. Reads retry tra

@@ -9,6 +9,7 @@ from unittest import mock
 from zoneinfo import ZoneInfo
 
 from lifeos.network import match, surface
+from lifeos.platform import hidden
 from lifeos.recruiters import notion as store, outreach as O, stage
 from lifeos.sources import close_app, outreach_app
 from tests.kit.recruiters import FakeRecruiters, mail, page
@@ -49,14 +50,14 @@ def lead(person_id, name, title="Program Manager"):
 
 
 def network_blocks(page_id, leads, dismissed=()):
-    """The page's blocks exactly as lifeos.network.surface writes them: the description marker, then the owned Network Leads toggle."""
-    toggle = surface.build_block(leads)
-    kids = [{**k, "id": f"k{i}", "has_children": False} for i, k in enumerate(toggle["toggle"].pop("children"))]
+    """The page's blocks exactly as lifeos.network.surface writes them: the description marker, then the owned Network Leads callout."""
+    callout = surface.build_block(leads)
+    kids = [{**k, "id": f"k{i}", "has_children": False} for i, k in enumerate(callout["callout"].pop("children"))]
     for k in kids:
-        if k["type"] == "to_do" and int(k["to_do"]["rich_text"][0]["text"]["content"].split(" · ")[1].split(":")[0]) in dismissed:
+        if k["type"] == "to_do" and int(hidden.refs(k)[0].split(" ")[-1].split(":")[0]) in dismissed:
             k["to_do"]["checked"] = True
     top = [{"id": "p0", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "v7-jd:1 | key=invented"}]}, "has_children": False},
-           {"id": "net", "type": "toggle", "toggle": toggle["toggle"], "has_children": True}]
+           {"id": "net", "type": "callout", "callout": callout["callout"], "has_children": True}]
     return {page_id: top, "net": kids}
 
 
@@ -340,7 +341,7 @@ class ChooseThePerson(unittest.TestCase):
 
     def test_an_unreadable_leads_block_is_refused_not_shown_empty(self):
         ledger, rec = self.world()
-        ledger.blocks["net"] = [k for k in ledger.blocks["net"] if not (k["type"] == "to_do" and "· 8:" in k["to_do"]["rich_text"][0]["text"]["content"])]
+        ledger.blocks["net"] = [k for k in ledger.blocks["net"] if not (k["type"] == "to_do" and any(" 8:" in r for r in hidden.refs(k)))]
         status, _, body, _ = Service(ledger, rec)("GET", "/sent", {"j": JOB_A})
         self.assertEqual((status, rec.writes), (409, []))
         self.assertIn(b"NETWORK_SURFACE_PAGE_INCOMPLETE", body)

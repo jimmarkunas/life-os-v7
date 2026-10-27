@@ -14,14 +14,16 @@ class FakeLedger:
         self.pages, self.blocks, self.kids, self.n, self.writes, self.fail_get = {}, {}, {}, 0, [], False
         self.drop_appends, self.fail_delete = False, False
 
-    def _new(self, kind, text, checked=None, children=()):
+    def _new(self, kind, runs, checked=None, children=()):
+        """`runs` is a plain string or the rich_text a writer sent; the stored runs carry plain_text and href like Notion's reply."""
         self.n += 1
         bid = f"blk{self.n}"
-        inner = {"rich_text": [{"plain_text": text}]}
+        runs = [{"plain_text": runs}] if isinstance(runs, str) else [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in runs]
+        inner = {"rich_text": runs}
         if checked is not None:
             inner["checked"] = checked
         self.blocks[bid] = {"id": bid, "type": kind, kind: inner, "has_children": bool(children)}
-        self.kids[bid] = [self._new(c["type"], "".join(r["text"]["content"] for r in c[c["type"]]["rich_text"]), (c[c["type"]].get("checked")), c[c["type"]].get("children", ())) for c in children]
+        self.kids[bid] = [self._new(c["type"], c[c["type"]]["rich_text"], (c[c["type"]].get("checked")), c[c["type"]].get("children", ())) for c in children]
         return bid
 
     def add_page(self, page_id, job_key, description=True, **flags):
@@ -40,13 +42,15 @@ class FakeLedger:
 
     def owned(self, page_id):
         for b in self.top(page_id):
-            if b["type"] == "toggle":
+            if b["type"] in ("toggle", "callout"):
                 return [self.blocks[k] for k in self.kids[b["id"]]]
         return None
 
     def tick(self, page_id, prefix):
+        """Tick the first to_do whose text or hidden ref starts with `prefix` (the ref is the link target after the ZW character)."""
         for child in self.owned(page_id) or []:
-            if child["type"] == "to_do" and child["to_do"]["rich_text"][0]["plain_text"].startswith(prefix):
+            runs = child["type"] == "to_do" and child["to_do"]["rich_text"]
+            if runs and (runs[0]["plain_text"].startswith(prefix) or unquote((runs[0].get("href") or "").rsplit("/lifeos/", 1)[-1]).startswith(prefix)):
                 child["to_do"]["checked"] = True
                 return
         raise AssertionError("no such tick")
@@ -81,5 +85,5 @@ class FakeLedger:
         page_id = unquote(path.split("/blocks/")[1].split("/children")[0])
         for child in body["children"]:
             kind = child["type"]
-            self.kids[page_id].append(self._new(kind, "".join(r["text"]["content"] for r in child[kind]["rich_text"]), child[kind].get("checked"), child[kind].get("children", ())))
+            self.kids[page_id].append(self._new(kind, child[kind]["rich_text"], child[kind].get("checked"), child[kind].get("children", ())))
         return {}
