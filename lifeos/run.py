@@ -117,6 +117,7 @@ STAGES = {
     "amazon-review-reset": lazy("lifeos.amazon.reset"),
     "mail-alerts": lazy("lifeos.physmail.stage", floor=1000),
     "mail-card": lazy("lifeos.physmail.card"),
+    "mail-filing": lazy("lifeos.sources.mail_filing", floor=200),          # LIFE-149: the Physical Mail vendor's notices marked read and moved to the "Physical Mail" label; dry run unless live (domains.yml mail job)
     "amazon-backfill": lazy("lifeos.amazon.backfill", floor=2000),
     "amazon-census": lazy("lifeos.delivery.census", floor=2000),
     "recruiters": lazy("lifeos.recruiters.stage"),
@@ -168,7 +169,7 @@ STAGES = {
 
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
-PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "mail-filing": "PHYSMAIL_FILING_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed
 
 
 def _step_code(counts):

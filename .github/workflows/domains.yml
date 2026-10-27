@@ -782,6 +782,15 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_mail.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_mail_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           NTFY_TOPIC: ${{ steps.bws_mail.outputs.NTFY_TOPIC || steps.bws_mail_retry.outputs.NTFY_TOPIC }}
         run: python -m lifeos.run mail-alerts $([ "$LIVE" = "true" ] && echo --live)
+      - id: mfile
+        continue-on-error: true
+        name: Physical Mail filing (LIFE-149; the vendor's no-reply notices marked read and moved to the Physical Mail label; nothing deleted; read-back; dry run unless live)
+        if: ${{ always() }}
+        env:
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_mail_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_mail.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_mail_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
+        run: python -m lifeos.run mail-filing $([ "$LIVE" = "true" ] && echo --live)
       - id: mcard
         continue-on-error: true
         name: Mail Alerts card (reads the stored state; writes only the Mail Alerts callout, with read-back; a failed ingest is shown as DEGRADED)
@@ -810,7 +819,7 @@ jobs:
           NOTION_JIRA_TOKEN: ${{ steps.bws_mail.outputs.NOTION_JIRA_TOKEN || steps.bws_mail_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run mail-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
       - name: Mail Alerts warning (does not fail the Jobs run)
-        if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure') }}
+        if: ${{ always() && (steps.mail.outcome == 'failure' || steps.mcard.outcome == 'failure' || steps.mfile.outcome == 'failure') }}
         run: echo "::warning title=Mail Alerts::the Physical Mail stage failed; the Jobs pipeline is unaffected"
 
   hiring:
