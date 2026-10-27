@@ -152,11 +152,11 @@ class ScaleUp(unittest.TestCase):
     def test_the_universe_is_harvested_and_route_is_the_curated_membership(self):
         from lifeos.sources.web import registry
         rows = registry.load(registry.PATHS["Scale-Up"])
-        self.assertEqual(len(rows), 48)
+        self.assertEqual(len(rows), 50)
         ready = registry.for_lane("Scale-Up")
         self.assertEqual(sorted({r["kind"] for r in ready if "_html" not in r["kind"] and r["kind"] != "doubleword_bundle"}),
                          ["ashby", "greenhouse", "lever", "pinpoint", "teamtailor", "workable", "workday"])
-        self.assertEqual(len(ready), 36)                                          # 19 public ATS boards + 17 first-party careers pages (Futuristic via the announced-bot header); Otto Car and Truvi are fallback (D51); Zero Gravity was retired in #592 and re-enabled Oct 26 2026 (it read COMPLETE with 5 roles on the next probe: intermittent, not dead, LIFE-76); Otto Car and Truvi retired in #593 (404; no job markup)
+        self.assertEqual(len(ready), 38)                                          # 19 public ATS boards + 19 first-party careers pages (Futuristic via the announced-bot header); Luzern (join.com) and Connectd (Welcome to the Jungle) added Oct 27 2026 with runner proof (5 roles each, title names the company, LIFE-121); Otto Car and Truvi are fallback (D51); Zero Gravity was retired in #592 and re-enabled Oct 26 2026 (it read COMPLETE with 5 roles on the next probe: intermittent, not dead, LIFE-76); Otto Car and Truvi retired in #593 (404; no job markup)
         self.assertEqual(sum(r["status"] == "fallback" for r in rows), 12)        # no discoverable ATS: stays DEGRADED, never zero
 
     def test_scale_up_suppression_is_not_us_remote_suppression(self):

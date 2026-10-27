@@ -1,6 +1,6 @@
 {
  "version": 1,
- "source": "harvested from life-os-v2 contracts/scale_up_sources.json (2026-10-01): 48 curated UK Scale-up sponsors; public names and ATS identities only",
+ "source": "harvested from life-os-v2 contracts/scale_up_sources.json (2026-10-01): 50 curated UK Scale-up sponsors; public names and ATS identities only",
  "route": "Scale-up",
  "statuses": {
   "ready": "listed by lifeos.sources.web.lister today",
@@ -533,6 +533,26 @@
      "truvi.com"
     ]
    }
+  },
+  {
+   "id": "su-luzern-ecommerce-solutions-limited",
+   "company": "Luzern eCommerce Solutions Limited",
+   "tier": "employer",
+   "kind": "join_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "ready",
+   "url": "https://join.com/companies/luzernecommerce"
+  },
+  {
+   "id": "su-linkexec-ltd-connectd",
+   "company": "LinkExec Ltd T/A Connectd",
+   "tier": "employer",
+   "kind": "wttj_html",
+   "enabled": true,
+   "completeness": "job_list_full",
+   "status": "ready",
+   "url": "https://app.welcometothejungle.com/companies/connectd"
   }
  ]
 }
