@@ -76,3 +76,38 @@ class Migrate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StateSave(unittest.TestCase):
+    """A page's Notion work takes a while; the store may drop the idle connection (live run, Oct 27: 'Lost connection to MySQL server'). The page is already moved, so the stage must carry on."""
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, args=None):
+            raise RuntimeError("Lost connection to MySQL server during query")
+
+    class Connection:
+        pings = 0
+
+        def cursor(self):
+            return StateSave.Cursor()
+
+        def ping(self, reconnect=False):
+            StateSave.Connection.pings += 1
+
+        def commit(self):
+            pass
+
+    def test_a_dropped_store_connection_is_reconnected_and_a_failed_save_is_counted_not_fatal(self):
+        ledger = flat()
+        conn = self.Connection()
+        with mock.patch.object(layout, "read", return_value=[(KEY, "page-1", DESC)]), mock.patch.object(layout, "SCHEMA", "SELECT 1"):
+            counts = layout._run(1, False, {}, conn, ledger)
+        self.assertEqual(counts["would_migrate"], 1)                                                # dry run: nothing saved, nothing failed
+        counts = {"state_not_saved": 0}
+        layout._remember(conn, KEY, "page-1", layout.DONE, True, counts)
+        self.assertEqual((counts["state_not_saved"], self.Connection.pings > 0), (1, True))

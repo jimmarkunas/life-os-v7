@@ -106,6 +106,32 @@ def run(limit, live, environ=os.environ, connection=None, client=None):
         return _run(limit, live, environ, opened, client)
 
 
+def _revive(connection):
+    """A page's Notion work takes a while and the store may have dropped the idle connection: reconnect if the driver can, else carry on and fail normally (the same shortcut as lifeos.network.store)."""
+    ping = getattr(connection, "ping", None)
+    if ping is not None:
+        try:
+            ping(reconnect=True)
+        except Exception:                                              # noqa: BLE001
+            pass
+
+
+def _remember(connection, key, page, state, cleared, counts):
+    """Record a page as done (or left) so a later run does not read it again. Only a shortcut: a failed save loses nothing (the page reads back as done next run) and never fails the stage."""
+    _revive(connection)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)", (key, page, state, _now()))
+            if cleared:
+                try:
+                    cursor.execute("DELETE FROM v7_network_page_state WHERE job_key=%s", (key,))      # the surface reads the page again and moves its leads block into the right column
+                except Exception:                                      # noqa: BLE001 - that table exists only after the first live surface run
+                    pass
+        connection.commit()
+    except Exception:                                                  # noqa: BLE001 - a driver message may carry names; only a count leaves
+        counts["state_not_saved"] = counts.get("state_not_saved", 0) + 1
+
+
 def _run(limit, live, environ, connection, client):
     budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES
     counts = {"live": bool(live), "read": 0, "done": 0, "migrated": 0, "would_migrate": 0, "left": 0, "failed": 0, "why": {}}
@@ -123,14 +149,7 @@ def _run(limit, live, environ, connection, client):
             continue
         counts[outcome] += 1
         if live and outcome in ("done", "migrated", "left"):
-            with connection.cursor() as cursor:
-                cursor.execute(f"REPLACE INTO {STATE} (job_key, page_id, state, checked_at) VALUES (%s,%s,%s,%s)", (key, page, LEFT if outcome == "left" else DONE, _now()))
-                if outcome == "migrated":
-                    try:
-                        cursor.execute("DELETE FROM v7_network_page_state WHERE job_key=%s", (key,))      # the surface reads the page again and moves its leads block into the right column
-                    except Exception:                                  # noqa: BLE001 - that table exists only after the first live surface run
-                        pass
-            connection.commit()
+            _remember(connection, key, page, LEFT if outcome == "left" else DONE, outcome == "migrated", counts)
     print("ledger-layout:", json.dumps(counts, sort_keys=True))          # counts only
     if counts["failed"]:
         raise LayoutError("LAYOUT_PAGES_FAILED")
