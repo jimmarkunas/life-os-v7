@@ -163,7 +163,7 @@ class FakeGmail:
 
     def message_record(self, mid):
         sender, subject = self.messages[mid]
-        return {"sender": sender, "subject": subject, "label_ids": ["L1"], "thread": "t-" + mid, "received_at": getattr(self, "received", {}).get(mid, "2026-10-05T03:30:00+00:00")}
+        return {"sender": sender, "subject": subject, "label_ids": ["L1"], "thread": getattr(self, "threads", {}).get(mid, "t-" + mid), "received_at": getattr(self, "received", {}).get(mid, "2026-10-05T03:30:00+00:00")}
 
     def thread_replied_since(self, thread, since):
         return thread in getattr(self, "replied", set())
@@ -227,6 +227,19 @@ class Stage(unittest.TestCase):
         self.assertEqual((out["replied"], out["created"], out["deactivated"]), (1, 1, 1))
         self.assertFalse(notion.pages["old"]["properties"]["Active"]["checkbox"])                  # the stored row for the answered message is closed (never Done)
         self.assertFalse(notion.pages["old"]["properties"]["Done"]["checkbox"])
+
+    def test_one_conversation_is_one_row_the_newest_message(self):
+        """Jim, Oct 27: six mails in one thread gave the same task six times. The newest keeps the row; older rows of the thread are closed, never Done."""
+        gm = FakeGmail({f"g{n}": ("ted@example.com", "Can you confirm the plan?") for n in (1, 2, 3)} | {"g4": ("ann@example.com", "Can you send the numbers?")})
+        gm.threads = {"g1": "T", "g2": "T", "g3": "T"}
+        gm.received = {"g1": "2026-10-03T15:00:00+00:00", "g2": "2026-10-05T15:00:00+00:00", "g3": "2026-10-04T15:00:00+00:00"}
+        notion = FakeNotion([page("old", "Can you confirm the plan?", category="Reply needed", medium="Gmail:g1", week=WEEK)])
+        out = self.go(notion, gm)
+        self.assertEqual((out["thread_folded"], out["admitted"], out["created"], out["deactivated"]), (2, 2, 2, 1))
+        self.assertEqual(sorted(p["properties"]["Medium"]["rich_text"][0]["plain_text"] for p in notion.pages.values() if p["properties"]["Active"]["checkbox"]), ["Gmail:g2", "Gmail:g4"])
+        self.assertFalse(notion.pages["old"]["properties"]["Done"]["checkbox"])
+        again = self.go(notion, gm)
+        self.assertEqual((again["created"], again["deactivated"]), (0, 0))
 
     def test_a_reply_check_that_fails_keeps_the_item(self):
         gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan?")})

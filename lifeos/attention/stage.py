@@ -214,9 +214,31 @@ def _replied(candidate, repliers):
     return False
 
 
+def fold_threads(admitted, candidates):
+    """One row per conversation (Jim, Oct 27: the same task nine times). Of the admitted messages that share a thread, only the newest keeps its row; the others are folded away.
+    -> (admitted without the folded ones, set of the folded Medium tags). A message with no thread id stands alone."""
+    by_medium = {c["medium"]: c for c in candidates}
+    newest = {}
+    for item in admitted:
+        c = by_medium[item["medium"]]
+        if not c.get("thread"):
+            continue
+        key = (item["medium"].split(":", 1)[0], c["thread"])
+        if key not in newest or (c.get("received_iso") or "", item["medium"]) > (by_medium[newest[key]["medium"]].get("received_iso") or "", newest[key]["medium"]):
+            newest[key] = item
+    keep, folded = [], set()
+    for item in admitted:
+        c = by_medium[item["medium"]]
+        if c.get("thread") and newest[(item["medium"].split(":", 1)[0], c["thread"])] is not item:
+            folded.add(item["medium"])
+        else:
+            keep.append(item)
+    return keep, folded
+
+
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
     counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "sources_failed": 0, "verified": False, "why": []}
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "thread_folded": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
         notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
@@ -269,6 +291,9 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             counts["owned_elsewhere"] += 1
         else:
             counts["fyi_skipped"] += 1
+    admitted, folded = fold_threads(admitted, candidates)
+    counts["thread_folded"] = len(folded)
+    answered |= folded                                               # an older message of a thread whose newest message is already a row: its own row is retired, never carried
     counts["admitted"] = len(admitted)
     for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
         medium = row["medium"]
