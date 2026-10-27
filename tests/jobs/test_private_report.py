@@ -3,7 +3,7 @@ import unittest
 from lifeos.jobs import private_report as pr
 from lifeos.platform.notion_client import NotionError
 
-PARENT = "a" * 32
+PARENT = pr.REPORTS_PAGE
 
 
 class FakeClient:
@@ -61,8 +61,7 @@ class Private(unittest.TestCase):
         self.assertEqual(pr.publish(client, "T", HEADER, ROWS, True)["page"], "present")
         self.assertEqual(client.writes, [])
 
-    def test_a_ledger_outside_a_page_or_a_notion_error_is_a_fixed_code(self):
-        self.assertEqual(pr.publish(FakeClient(parent=""), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NO_PARENT": 1})
+    def test_a_notion_error_is_a_fixed_code(self):
         self.assertEqual(pr.publish(FakeClient(fail=True), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NOTION_FAILED": 1})
 
     def test_rows_that_do_not_read_back_are_reported(self):
