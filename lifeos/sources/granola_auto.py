@@ -122,6 +122,9 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         todo = [m for m in listed if keys[m.id] not in done]
         counts["already"] = len(listed) - len(todo)
         if not todo:
+            if granola_clients.check(client) == "target_ok":              # LIFE-166: nothing new, but the Meetings table is still kept honest
+                counts["triage_gone"] += granola_clients.close_gone(client, set(keys.values()), live)
+                counts["unfiled_waiting"] = len(granola_clients.rows_where(client, granola_clients.UNFILED, False)) - (0 if live else counts["triage_gone"])
             return {"code": "GRAN_AUTO_NOTHING_NEW", "counts": counts}
         context.require_time()
         have, parent_of = rounds_with_parents(client, environ, context)

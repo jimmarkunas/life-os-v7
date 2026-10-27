@@ -116,6 +116,15 @@ def rows_where(client, status, with_choice):
     raise NotionError("MEETINGS_READ_INCOMPLETE")
 
 
+def close_gone(client, present_keys, live):
+    """Close every Unfiled row whose meeting is no longer on Oracle (nothing is left to file or delete). -> how many rows (closed, or would be closed in a dry run)."""
+    gone = [page for page, key, _ in rows_where(client, UNFILED, False) if key not in present_keys]
+    if live:
+        for page in gone:
+            set_status(client, page, DELETED)
+    return len(gone)
+
+
 def unfiled_row(client, meeting, key, live):
     """Make sure an Unfiled row exists for a meeting nothing could place. -> "created" | "exists" | "planned"."""
     if find(client, key):

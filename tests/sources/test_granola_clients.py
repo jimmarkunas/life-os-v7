@@ -310,3 +310,19 @@ class Auto(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Sweep(unittest.TestCase):
+    def test_with_nothing_new_a_row_whose_meeting_is_gone_is_still_closed_and_the_waiting_count_is_honest(self):
+        notion = Meetings()
+        run([meeting(title="Lunch")], notion)                                # an Unfiled row exists for UUID
+        gc.unfiled_row(notion, M(title="Orphan", mid=SECOND), "orphankey00000000", True)
+        out, _, _ = run([], notion, catalog=Catalog(done=[]))                # Oracle now lists nothing: both rows are orphans, nothing is new
+        self.assertEqual((out["code"], out["counts"]["triage_gone"], out["counts"]["unfiled_waiting"]), ("GRAN_AUTO_NOTHING_NEW", 2, 0))
+        self.assertEqual(len(notion.by_status("Deleted")), 2)
+
+    def test_in_a_dry_run_nothing_is_closed_but_the_count_says_what_would_be(self):
+        notion = Meetings()
+        run([meeting(title="Lunch")], notion)
+        out, _, _ = run([], notion, live=False)
+        self.assertEqual((out["counts"]["triage_gone"], out["counts"]["unfiled_waiting"], len(notion.by_status("Unfiled"))), (1, 0, 1))
