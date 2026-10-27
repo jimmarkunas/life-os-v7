@@ -664,7 +664,7 @@ jobs:
         run: python -m lifeos.run amazon-orders $([ "$LIVE" = "true" ] && echo --live)
       - id: acard
         continue-on-error: true
-        name: Amazon card (reads the canonical orders; writes only when live; a failed sync is shown as DEGRADED)
+        name: Amazon card (reads the canonical orders and, read-only, other stores' shipping mail; writes only when live; a failed sync is shown as DEGRADED)
         if: ${{ always() }}
         env:
           NOTION_AMAZON_DATA_SOURCE_ID: ${{ secrets.NOTION_AMAZON_DATA_SOURCE_ID }}
@@ -674,6 +674,9 @@ jobs:
           JIRA_CARD_BLOCK_ID: ${{ secrets.JIRA_CARD_BLOCK_ID }}
           HIRING_CARD_BLOCK_ID: ${{ secrets.HIRING_CARD_BLOCK_ID }}
           AMAZON_SYNC_OUTCOME: ${{ steps.amazon.outcome }}
+          GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
+          GMAIL_OAUTH_CLIENT_SECRET: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_CLIENT_SECRET || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_CLIENT_SECRET }}
+          GMAIL_OAUTH_REFRESH_TOKEN: ${{ steps.bws_amazon.outputs.GMAIL_OAUTH_REFRESH_TOKEN || steps.bws_amazon_retry.outputs.GMAIL_OAUTH_REFRESH_TOKEN }}
           NOTION_AMAZON_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_AMAZON_TOKEN || steps.bws_amazon_retry.outputs.NOTION_AMAZON_TOKEN }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_amazon.outputs.NOTION_JIRA_TOKEN || steps.bws_amazon_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run amazon-card --limit 0 $([ "$LIVE" = "true" ] && echo --live)
