@@ -67,6 +67,13 @@ class ReturnRenderTests(unittest.TestCase):
         self.assertIn("RETURNING", text)
         self.assertIn("REFUNDED", text)
 
+    def test_the_filter_never_nests_deeper_than_notion_allows(self):
+        """Notion accepts a compound filter inside a compound filter, and no deeper: three levels is a 400 and the card never redraws (LIFE-124 regression)."""
+        def depth(node):
+            kids = [v for key in ("or", "and") for v in node.get(key, [])]
+            return 1 + max((depth(k) for k in kids), default=0) if kids else 0
+        self.assertLessEqual(depth(card._query_body("2026-09-27")["filter"]), 2)
+
 
 class RenderTests(unittest.TestCase):
     def test_summary_sections_and_the_seven_day_delivered_window(self):
