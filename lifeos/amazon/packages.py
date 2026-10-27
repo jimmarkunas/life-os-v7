@@ -23,8 +23,8 @@ DELIVERED_SUBJECT = re.compile(r"\b(?:has been |was |is )?delivered\b", re.I)
 NOT_DELIVERED = re.compile(r"\b(?:will be|to be|not|undeliver\w*|attempt\w*|delayed?|exception)\b", re.I)
 TABLE = re.compile(r"Provider\s+Tracking\s+Number(?:\s+(?:Date|Status|Shipped))?\s+((?:[A-Za-z][A-Za-z0-9&.]*\s+){0,2}[A-Za-z][A-Za-z0-9&.]*)\s+(\d[A-Za-z0-9-]{7,33})\b")
 INLINE = re.compile(r"(?i)\btracking\s*(?:number|no\.?|#|id)\s*[:#]?\s*(\d[A-Za-z0-9-]{7,33})\b")
-CARRIERS = (("DHL", "DHL"), ("UPS", "UPS"), ("USPS", "USPS"), ("FEDEX", "FedEx"), ("ONTRAC", "OnTrac"), ("LASERSHIP", "LaserShip"), ("ROYALMAIL", "Royal Mail"))
-URLS = {"DHL": "https://www.dhl.com/us-en/home/tracking.html?tracking-id=", "UPS": "https://www.ups.com/track?tracknum=", "USPS": "https://tools.usps.com/go/TrackConfirmAction?tLabels=",
+CARRIERS = (("DHLECOMMERCE", "DHL eCommerce"), ("DHLGLOBALMAIL", "DHL eCommerce"), ("DHL", "DHL"), ("UPS", "UPS"), ("USPS", "USPS"), ("FEDEX", "FedEx"), ("ONTRAC", "OnTrac"), ("LASERSHIP", "LaserShip"), ("ROYALMAIL", "Royal Mail"))
+URLS = {"DHL": "https://www.dhl.com/us-en/home/tracking.html?tracking-id=", "DHL eCommerce": "https://www.dhl.com/us-en/home/tracking/tracking-ecommerce.html?submit=1&tracking-id=", "UPS": "https://www.ups.com/track?tracknum=", "USPS": "https://tools.usps.com/go/TrackConfirmAction?tLabels=",
         "FedEx": "https://www.fedex.com/fedextrack/?trknbr="}
 
 
@@ -44,9 +44,12 @@ def carrier_name(raw):
     return (raw or "").strip().title()[:24] or "Carrier"
 
 
+ANY_CARRIER = "https://t.17track.net/en#nums="             # a carrier the mail did not name: one public page that recognises most tracking numbers
+
+
 def tracking_url(carrier, number):
-    base = URLS.get(carrier)
-    return base + quote(number, safe="") if base else None
+    """The carrier's own public tracking page for this number; a number with no recognised carrier opens the any-carrier page instead of nothing."""
+    return (URLS.get(carrier) or ANY_CARRIER) + quote(number, safe="")
 
 
 def store_name(sender):
