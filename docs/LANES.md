@@ -44,7 +44,7 @@ Only our own pages are touched (matched by stored page id). Hostinger: descripti
 **Schedule (D168):** the purge is about weekly, not tied to Sunday: it runs when the last success is 6.5 days old, and a failed attempt is retried every 6 hours until it succeeds. The last success and attempt are kept as two rows in `v7_alerts` (`purge_ok`, `purge_try`).
 
 ## Scale-Up on the shared web substrate
-`lifeos/sources/web/scale_up.json` holds the 48 curated sponsors (36 listable: 19 public ATS boards, 17 first-party careers pages read by `html_readers`, D33; 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
+`lifeos/sources/web/scale_up.json` holds the 50 curated sponsors (38 listable: 19 public ATS boards, 19 first-party careers pages read by `html_readers`, D33; 12 have no discoverable ATS and stay DEGRADED). Membership of this universe is the route evidence (`Scale-up:POSITIVE` on the job);
 geography comes from the location (London positive, named non-target places negative, else Review). Run with `python -m lifeos.run web-scale-up`
 (workflow input `web_scale_up`; also part of every scheduled run, 12 due boards per run).
 

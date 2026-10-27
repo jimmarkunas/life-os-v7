@@ -142,18 +142,3 @@ class CareersTitles(unittest.TestCase):
         facts = out["su-x"]["acme.example.com/careers"]
         self.assertEqual((facts["status"], facts["titles"], facts["title_count"], facts["boards"]), (200, ["Senior Data Engineer", "Head of Finance"], 2, ["lever:acme"]))
         self.assertNotIn("puppies", str(out))
-
-
-class LondonBoardChecks(unittest.TestCase):
-    def test_london_boards_reports_counts_and_flags_not_titles(self):
-        page = Fetched("https://join.com/companies/luzernecommerce", 200,
-                       "<title>Luzern eCommerce Group jobs</title><a href='/companies/luzernecommerce/1-senior-account-manager'>Senior Account Manager</a>")
-        out = probe.london_boards(lambda url, **kw: page, candidates=(("luzern", "Luzern eCommerce", "join_html", ("https://join.com/companies/luzernecommerce",)),), seeds=())
-        facts = out["luzern"]["/companies/luzernecommerce"]
-        self.assertEqual((facts["status"], facts["title_names_company"], facts["reader"], facts["rows"], facts["job_titles"]), (200, True, "ok", 1, 1))
-        self.assertNotIn("Senior Account Manager", str(out))
-
-    def test_slug_discovery_returns_public_company_slugs(self):
-        page = Fetched("https://app.welcometothejungle.com/jobs/x/company", 200, '<a href="/companies/connectd-1">c</a><a href="/companies/connectd-1">c</a>')
-        out = probe.london_boards(lambda url, **kw: page, candidates=(), seeds=("https://app.welcometothejungle.com/jobs/x/company",))
-        self.assertEqual(out["slugs"], ["connectd-1"])
