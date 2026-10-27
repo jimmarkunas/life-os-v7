@@ -301,6 +301,36 @@ def careers_titles(fetcher=fetch, pages=None):
     return out
 
 
+LONDON_CANDIDATES = (("luzern", "Luzern eCommerce", "join_html", ("https://join.com/companies/luzernecommerce",)),
+                     ("connectd", "Connectd", "wttj_html", ("https://app.welcometothejungle.com/companies/connectd", "https://app.welcometothejungle.com/companies/Connectd")))
+SLUG_SEEDS = ("https://app.welcometothejungle.com/jobs/4RQzT9Ip/company", "https://app.welcometothejungle.com/jobs/r6nX80yR/company")       # public Connectd vacancy pages a search returned (LIFE-121)
+
+
+def london_boards(fetcher=fetch, candidates=None, seeds=None):
+    """LIFE-121: do two named London sponsors' join.com / Welcome to the Jungle pages load, does the <title> name the company, and how many vacancies does
+    the registry's own reader find. Counts and flags only; the company slugs in a vacancy page's links are public names. Nothing is registered from here."""
+    from lifeos.sources.web import html_readers                                              # noqa: PLC0415
+    out = {"slugs": sorted({m for url in (seeds if seeds is not None else SLUG_SEEDS)
+                            for m in re.findall(r"/companies/([A-Za-z0-9_-]+)", fetcher(url, timeout=20, max_hops=3, max_bytes=2_000_000).html or "")})[:12]}
+    for key, company, kind, urls in (candidates if candidates is not None else LONDON_CANDIDATES):
+        token = re.sub(r"[^a-z0-9]", "", company.split()[0].lower())
+        found = {}
+        for url in urls:
+            got = fetcher(url, timeout=20, max_hops=3, max_bytes=3_000_000)
+            text = got.html or ""
+            title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+            source = {"id": f"su-{key}", "company": company, "kind": kind, "url": url}
+            try:
+                titles = [r["title"] for r in html_readers.READERS[kind](text, source, None)] if text else []
+                reader = "ok"
+            except (ValueError, KeyError, TypeError, AttributeError) as error:
+                titles, reader = [], type(error).__name__
+            found[urlsplit(url).path[:40]] = {"status": got.status, "bytes": len(text), "title_names_company": token in re.sub(r"[^a-z0-9]", "", (title.group(1) if title else "").lower()),
+                                              "reader": reader, "rows": len(titles), "job_titles": sum(1 for t in titles if JOB_WORDS.search(t))}
+        out[key] = found
+    return out
+
+
 def lane_funnel():
     """Where do Scale-Up jobs stop? Counts only: v7_jobs by lane and status, then the fit decision, admission and (digit-free) reason."""
     from lifeos.jobs import store                                                            # noqa: PLC0415
@@ -600,4 +630,4 @@ def held_first_party(fetcher=fetch, rows=None):
 
 
 def run(limit, live):
-    return {"revolut": revolut(), "revolut_titles": revolut_titles(), "glassdoor": glassdoor(), "egress_options": egress_options(), "source_pages": source_pages(), "scale_up_listing": scale_up_listing(), "zero_role_boards": zero_role_boards(), "candidate_sites": candidate_sites(), "careers_titles": careers_titles(), "ashby_board": ashby_board(), "no_board_sponsors": no_board_sponsors(), "lane_funnel": lane_funnel(), "held_first_party": held_first_party(), "discover_scale_up": discover(), "open_jobs": open_jobs(), "teamtailor": teamtailor(), "dice": dice(), "hiring_pipeline": hiring(), "ledger_target": ledger_target()}
+    return {"london_boards": london_boards()}
