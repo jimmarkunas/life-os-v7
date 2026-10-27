@@ -10,6 +10,7 @@ from datetime import date
 from urllib.parse import quote, unquote
 
 from lifeos.network import match
+from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 
 MARK = "v7-net:1"                                                       # the older block (a toggle that showed its marker and ids); still read, and retired once, so a replaced page loses nothing
@@ -18,8 +19,6 @@ DESCRIPTION_MARK = "v7-jd:1"
 TICK = re.compile(r"^(Dismiss|Same company) · (\d+):([0-9a-f]{12})$")
 TICK2 = re.compile(r"^(Dismiss|Same company) (\d+):([0-9a-f]{12})$")
 BASE_URL = "https://www.linkedin.com/in/"
-HIDDEN = "https://example.com/lifeos/"                                  # an invisible zero-width character linked here carries the ids (Jim, Oct 27: no marker, hash or id may show on a page)
-ZW = "\u200b"
 TITLE = "LinkedIn connections"
 REACH = "Reach Out ↗"
 DISMISS_TEXT, SAME_TEXT = "Not relevant · dismiss", "Same company"
@@ -69,13 +68,8 @@ def _para(runs):
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": runs}}
 
 
-def _hidden(ref):
-    """A zero-width character that links to the ref: invisible on the page, read back from the link."""
-    return {"type": "text", "text": {"content": ZW, "link": {"url": HIDDEN + quote(ref, safe="")}}}
-
-
 def _todo(ref, text):
-    return {"object": "block", "type": "to_do", "to_do": {"rich_text": [_hidden(ref)] + rich_text(text), "checked": False}}
+    return {"object": "block", "type": "to_do", "to_do": {"rich_text": [hidden.run(ref)] + rich_text(text), "checked": False}}
 
 
 def _bold(text):
@@ -101,19 +95,8 @@ def build_block(leads, link=None):
         kids.append(_todo(f"Dismiss {ref}", DISMISS_TEXT))
         if lead["tier"] == match.POSSIBLE:
             kids.append(_todo(f"Same company {ref}", SAME_TEXT))
-    title = [_hidden(f"{MARK2} {set_hash(leads, link)}")] + _bold(TITLE)
+    title = [hidden.run(f"{MARK2} {set_hash(leads, link)}")] + _bold(TITLE)
     return {"object": "block", "type": "callout", "callout": {"rich_text": title, "icon": {"type": "emoji", "emoji": "🔗"}, "color": "gray_background", "children": kids}}
-
-
-def _refs(block):
-    """The hidden refs carried by a block's own text (a zero-width character linked under HIDDEN)."""
-    inner = block.get(block.get("type")) or {}
-    out = []
-    for part in inner.get("rich_text") or []:
-        url = (part.get("href") if isinstance(part, dict) else None) or (((part.get("text") or {}).get("link") or {}).get("url") if isinstance(part, dict) else None) or ""
-        if url.startswith(HIDDEN):
-            out.append(unquote(url[len(HIDDEN):]))
-    return out
 
 
 def _plain(block):
@@ -144,7 +127,7 @@ def _tick(child):
     if child.get("type") != "to_do":
         return None
     checked = bool((child.get("to_do") or {}).get("checked"))
-    for ref in _refs(child):
+    for ref in hidden.refs(child):
         found = TICK2.match(ref)
         if found:
             return found.group(1), int(found.group(2)), found.group(3), checked
@@ -156,7 +139,7 @@ def _owned_head(client, block):
     """(hash, inner children) when the block is a Network Leads block of either generation, else None. A callout or toggle is only opened when its own title (new) or, for a toggle, its first child (old) says so."""
     kind = block.get("type")
     if kind == "callout":
-        for ref in _refs(block):
+        for ref in hidden.refs(block):
             if ref.startswith(MARK2 + " "):
                 return ref[len(MARK2):].strip(), children(client, block["id"]) if block.get("has_children", True) else []
         return None

@@ -559,8 +559,8 @@ class MarkAsSentLink(unittest.TestCase):
         self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
         self.assertEqual((owned_count(ledger, self.PAGE), shown(ledger, self.PAGE)), (1, 1))
         page_text = "".join(ledger.texts(self.PAGE))
-        for hidden in ("v7-net", "Dismiss ·", "oldhash"):
-            self.assertNotIn(hidden, page_text)
+        for machine in ("v7-net", "Dismiss ·", "oldhash"):
+            self.assertNotIn(machine, page_text)
         self.assertEqual([x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2])
 
     def test_the_new_block_shows_a_bold_name_the_reason_and_a_reach_out_link_to_the_verified_profile_only(self):

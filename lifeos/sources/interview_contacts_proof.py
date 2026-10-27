@@ -14,6 +14,7 @@ from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.interview.ui_probe import LEDGER_ROW, QA_PARENT, _seed
 from lifeos.jobs import identity
 from lifeos.network import match, surface
+from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.sources import interview_evidence as ev, m1m2_proof as base
 
@@ -166,7 +167,7 @@ def drive(client, reader, box, now, results, counts):
     others = {n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS])) for n in pages if n != "positive"}
     check("7a positive: a replay writes nothing", create.refresh(client, page, views["positive"][2], True, out) == "parent_unchanged")
     toggle = next(b for b in notion.children(client, w1, [notion.MAX_CALLS]) if b.get("type") == "callout")
-    tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in surface._refs(b)))
+    tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in hidden.refs(b)))
     client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]], "checked": True}})       # the runs as they are: the hidden link on the tick is its id
     evidence, _ = ev.network_contacts(client, [(parent, query)])
     again = view.opportunity(client, parent, evidence[0][1], container, None, create.today())

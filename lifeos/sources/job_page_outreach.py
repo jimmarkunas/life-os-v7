@@ -15,7 +15,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from lifeos.network import surface as N
-from lifeos.platform import report_region as R
+from lifeos.platform import hidden, report_region as R
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.recruiters import notion as store, outreach as O
 
@@ -144,7 +144,7 @@ def _owned(top):
 def _is_leads(client, block):
     """The Network Leads block (NET-2.3) is the current callout whose title carries a hidden marker, or the older toggle whose first child paragraph carries its marker."""
     if block.get("type") == "callout":
-        return any(ref.startswith(N.MARK2 + " ") for ref in N._refs(block))
+        return any(ref.startswith(N.MARK2 + " ") for ref in hidden.refs(block))
     if block.get("type") != "toggle" or not block.get("has_children", True):
         return False
     inner = R.children(client, block["id"], fail)
