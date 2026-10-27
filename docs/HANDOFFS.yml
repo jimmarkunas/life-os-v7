@@ -4,6 +4,36 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 633
+    owner: edge-oracle
+    path: lifeos/attention/card.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
+  - pr: 633
+    owner: edge-oracle
+    path: lifeos/attention/policy.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
+  - pr: 633
+    owner: edge-oracle
+    path: lifeos/attention/reconcile.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
+  - pr: 633
+    owner: edge-oracle
+    path: lifeos/attention/stage.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
+  - pr: 633
+    owner: edge-oracle
+    path: tests/attention/test_attention.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
+  - pr: 633
+    owner: edge-oracle
+    path: tests/attention/test_card.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-163?focusedCommentId=11303
   - pr: 575
     owner: edge-oracle
     path: lifeos/jobs/fit/stage.py
