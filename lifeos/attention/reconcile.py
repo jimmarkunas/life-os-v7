@@ -16,6 +16,11 @@ def key(week, category, item):
     return (str(week), category or "", normalize(item))
 
 
+def mkey(week, medium, category="", item=""):
+    """One row per message per week. The title carries changing context (who, how long it has waited), so the message identity is the key; a row with no Medium falls back to its text."""
+    return (str(week), medium) if medium else key(week, category, item)
+
+
 def plan(candidates, rows, today, proofs, done_media=frozenset()):
     """candidates: [{category, item, url, medium}] admitted from sources that were read completely.
     rows: [{id, item, category, done, active, medium, url, week}] of the current and the immediately prior week, read completely.
@@ -26,11 +31,11 @@ def plan(candidates, rows, today, proofs, done_media=frozenset()):
     out = {"create": [], "deactivate": [], "reactivate": [], "ambiguous": 0, "carried": 0, "reused": 0, "skipped_done": 0, "skipped_done_before": 0}
     by_key = {}
     for row in rows:
-        by_key.setdefault(key(row["week"], row["category"], row["item"]), []).append(row)
+        by_key.setdefault(mkey(row["week"], row.get("medium"), row["category"], row["item"]), []).append(row)
     planned = set()
 
     def want(category, item, url, medium, carried=False, received=""):
-        k = key(this_week, category, item)
+        k = mkey(this_week, medium, category, item)
         if k in planned:
             return
         existing = by_key.get(k, [])
@@ -57,9 +62,10 @@ def plan(candidates, rows, today, proofs, done_media=frozenset()):
     for c in candidates:
         want(c["category"], c["item"], c["url"], c["medium"], received=c.get("received", ""))
     for row in rows:                                                  # carry-forward: immediately prior week, still active and not done
-        if str(row["week"]) == str(prior) and row["active"] and not row["done"] and row["category"] != "Physical Mail":
+        if (str(row["week"]) == str(prior) and row["active"] and not row["done"] and row["category"] not in ("Physical Mail", "FYI")
+                and proofs.get(row["medium"]) != "absent"):
             want(row["category"], row["item"], row["url"], row["medium"], carried=True, received=row.get("received", ""))
-    for row in rows:                                                  # deactivate only on proof that the source condition is gone (label removed by Jim)
-        if str(row["week"]) == str(this_week) and row["active"] and not row["done"] and proofs.get(row["medium"]) == "absent":
+    for row in rows:                                                  # deactivate on proof that the source condition is gone (mark removed, or Jim replied), and retire FYI rows (not attention)
+        if str(row["week"]) == str(this_week) and row["active"] and not row["done"] and (proofs.get(row["medium"]) == "absent" or row["category"] == "FYI"):
             out["deactivate"].append(row["id"])
     return out

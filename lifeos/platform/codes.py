@@ -551,6 +551,7 @@ CODES = {
     "GMAIL_AMAZON_LABEL_INVALID": _r("gmail", "blocked", False, "The Amazon Gmail label is not valid.", "Fix the label."),
     "GMAIL_BODY_DECODE_FAILED": _r("gmail", "terminal", False, "A message body could not be decoded.", "None; the message is skipped."),
     "GMAIL_ERROR": _r("gmail", "bug", False, "An unnamed Gmail error.", "Check the log."),
+    "GMAIL_THREAD_INCOMPLETE": _r("gmail", "degraded", False, "A thread read did not return its messages.", "None; retried."),
     "GMAIL_LABEL_READBACK_INCOMPLETE": _r("gmail", "degraded", False, "A label read-back did not finish.", "None; retried."),
     "GMAIL_LISTING_INCOMPLETE": _r("gmail", "degraded", False, "A Gmail listing did not finish.", "None; retried."),
     "GMAIL_LIST_LIMIT_EXCEEDED": _r("gmail", "degraded", False, "A Gmail listing hit its page limit.", "None; the next run continues."),

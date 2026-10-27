@@ -3,7 +3,8 @@
 Flow: read the current and prior week completely -> read each mailbox source completely -> admit by policy -> plan -> write -> read back.
 Fail closed: an unreadable Notion week, a schema mismatch or an incomplete listing writes nothing for what it touches; a failed source only skips that source
 (its items are never deactivated) and the stage ends DEGRADED. Done is never written. Nothing is ever deleted."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parseaddr
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import os
@@ -130,6 +131,27 @@ def _props(c):
     return props
 
 
+def _who(sender):
+    """A short human name for a sender: the display name, else the part of the address before the @. Never more than 30 characters."""
+    name, address = parseaddr(sender or "")
+    return (name or address.split("@")[0] or "unknown").strip().strip('"')[:30]
+
+
+def _waiting(received, today):
+    """'today', '1 day' or 'N days' since the Chicago date the message arrived; empty when the date is unknown."""
+    try:
+        days = (today - date.fromisoformat(received)).days
+    except (TypeError, ValueError):
+        return ""
+    return "today" if days <= 0 else "1 day" if days == 1 else f"{days} days"
+
+
+def _title(c, today):
+    """The row title: the subject, who sent it, and how long it has waited. The row's identity is its Medium, so this text may change every day."""
+    wait = _waiting(c.get("received"), today)
+    return " · ".join(part for part in (c["item"], c.get("who"), f"waiting {wait}" if wait else "") if part)[:200]
+
+
 def _gmail_source(gmail, limit, live):
     """-> (candidates [{sender, subject, url, medium}], present medium tags, labeled ids). A missing label is created only when live."""
     try:
@@ -143,7 +165,7 @@ def _gmail_source(gmail, limit, live):
     for message_id in ids:
         record = gmail.message_record(message_id)
         out.append({"sender": record["sender"], "subject": record["subject"], "url": f"https://mail.google.com/mail/u/0/#all/{message_id}", "medium": f"Gmail:{message_id}",
-                    "received": _chicago_date(record.get("received_at"))})
+                    "received": _chicago_date(record.get("received_at")), "who": _who(record["sender"]), "thread": record.get("thread") or "", "received_iso": record.get("received_at") or ""})
     return out, {c["medium"] for c in out}, label
 
 
@@ -162,7 +184,9 @@ def _outlook_source(client, account, limit, live):
     for message in client.messages_in_category(OUTLOOK_CATEGORIES, limit):
         sender = ((message.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         out.append({"sender": sender, "subject": message.get("subject") or "", "url": "https://outlook.office.com/mail/id/" + quote(message["id"], safe=""),
-                    "medium": f"Outlook:{account}:{message['id']}", "received": _chicago_date(message.get("receivedDateTime"))})
+                    "medium": f"Outlook:{account}:{message['id']}", "received": _chicago_date(message.get("receivedDateTime")),
+                    "who": ((message.get("from") or {}).get("emailAddress") or {}).get("name", "")[:30] or _who(sender), "thread": message.get("conversationId") or "",
+                    "received_iso": message.get("receivedDateTime") or ""})
     return out, {c["medium"] for c in out}, OUTLOOK_CATEGORIES
 
 
@@ -179,9 +203,20 @@ def _outlook_proof(client, category, medium, labeled):
         return "unknown"
 
 
+def _replied(candidate, repliers):
+    """True only on proof that Jim answered after the message arrived (a reply he sent in the same thread). Any doubt, or a source that cannot answer, is False: the item stays."""
+    for prefix, check in repliers:
+        if candidate["medium"].startswith(prefix) and candidate.get("thread") and candidate.get("received_iso"):
+            try:
+                return bool(check(candidate["thread"], candidate["received_iso"]))
+            except (GmailError, OutlookError, ValueError, TypeError):
+                return False
+    return False
+
+
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
     counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "sources_failed": 0, "verified": False, "why": []}
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
         notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
@@ -191,12 +226,14 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     rows = read_week(notion, source_id, this_week) + read_week(notion, source_id, this_week - timedelta(days=7))
     candidates, labeled, proofs, failed = [], set(), {}, 0
     checkers = []                                                    # [(medium prefix, callable(medium) -> proof)]
+    repliers = []                                                    # [(medium prefix, callable(thread, since) -> Jim replied after it)]
     try:
         gmail = gmail or Gmail.from_env()
         found, present, label = _gmail_source(gmail, limit, live)
         counts["gmail"], labeled = len(found), labeled | present
         candidates += found
         checkers.append(("Gmail:", lambda m, g=gmail, l=label, p=present: _gmail_proof(g, l, m, p)))
+        repliers.append(("Gmail:", gmail.thread_replied_since))
     except (GmailError, KeyError) as error:
         failed += 1
         counts["why"].append("gmail:" + str(error)[:90])
@@ -212,19 +249,26 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
             labeled |= present
             candidates += found
             checkers.append((f"Outlook:{account}:", lambda m, c=client, f=folder, p=present: _outlook_proof(c, f, m, p)))
+            repliers.append((f"Outlook:{account}:", client.replied_since))
         except OutlookError as error:
             failed += 1
             counts["why"].append(f"outlook@{account}:" + str(error)[:90])
     counts["sources_failed"] = failed
-    admitted = []
+    admitted, answered = [], set()
     for c in candidates:
         verdict, detail = policy.decide(c["sender"], c["subject"])
+        if verdict == "ADMIT" and _replied(c, repliers):
+            counts["replied"] += 1                                       # Jim already answered: it no longer waits on him
+            answered.add(c["medium"])
+            continue
         if verdict == "ADMIT":
-            admitted.append({"category": detail, "item": policy.item_text(c["subject"]), "url": c["url"], "medium": c["medium"], "received": c.get("received", "")})
+            admitted.append({"category": detail, "item": _title({**c, "item": policy.item_text(c["subject"])}, today), "url": c["url"], "medium": c["medium"],
+                             "received": c.get("received", ""), "plain": policy.item_text(c["subject"])})
+            counts["categories"][detail] = counts["categories"].get(detail, 0) + 1
         elif verdict == "OWNED":
             counts["owned_elsewhere"] += 1
-        if verdict == "ADMIT":
-            counts["categories"][detail] = counts["categories"].get(detail, 0) + 1
+        else:
+            counts["fyi_skipped"] += 1
     counts["admitted"] = len(admitted)
     for row in rows:                                                 # proof of a stored source only from a source that was read completely this run
         medium = row["medium"]
@@ -233,11 +277,13 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
                 proofs[medium] = check(medium)
     for c in admitted:
         proofs[c["medium"]] = "present"
+    for medium in answered:
+        proofs[medium] = "absent"                                        # a stored row for an answered message is deactivated
     legacy = {(str(r["week"]), policy.normalize(r["item"])): r for r in rows if r["category"] == "Other"}
     recategorize = []                                                    # rows filed as Other before the Reply needed / Review / FYI split: recategorized in place, never duplicated
     for c in admitted:
         for week in (str(this_week), str(this_week - timedelta(days=7))):
-            row = legacy.get((week, policy.normalize(c["item"])))
+            row = legacy.get((week, policy.normalize(c["plain"])))
             if row and c["category"] != "Other":
                 row["category"] = c["category"]
                 recategorize.append((row["id"], c["category"], week == str(this_week)))
@@ -249,6 +295,11 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
     counts["backfilled"] = len(plan["backfill"])
     plan["upgrade"] = [r for r in rows if r["url"] and not r["linked"]]                                                              # rows written before the title was a link
     counts["linked"] = len(plan["upgrade"])
+    wanted = {c["medium"]: c["item"] for c in admitted}
+    plan["retitle"] = [(r["id"], wanted[r["medium"]], r["url"]) for r in rows if str(r["week"]) == str(this_week) and r["active"] and not r["done"]
+                       and r["medium"] in wanted and r["item"] != wanted[r["medium"]]]
+    counts["retitled"] = len(plan["retitle"])
+    counts["retired"] = sum(1 for r in rows if str(r["week"]) == str(this_week) and r["active"] and not r["done"] and r["category"] == "FYI")
     for name in ("ambiguous", "reused", "skipped_done", "skipped_done_before", "carried"):
         counts[name] = plan[name]
     if not live:
@@ -271,14 +322,16 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         for r in plan["upgrade"]:
             notion.update_page_properties(r["id"], {"Item": {"title": _linked_title(r["item"], r["url"])}})
             notion.call("PATCH", f"/blocks/{r['id']}/children", {"children": [_open_block(r["url"])]})
+        for row_id, title, url in plan["retitle"]:
+            notion.update_page_properties(row_id, {"Item": {"title": _linked_title(title, url)}})
         for row_id in plan["reactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": True}})
             counts["reactivated"] += 1
         after = read_week(notion, source_id, this_week)               # authoritative read-back from the canonical source
         seen = {}
         for r in after:
-            seen.setdefault(reconcile.key(r["week"], r["category"], r["item"]), []).append(r)
-        ok = all(len(seen.get(reconcile.key(c["week"], c["category"], c["item"]), [])) == 1 for c in plan["create"])
+            seen.setdefault(reconcile.mkey(r["week"], r["medium"], r["category"], r["item"]), []).append(r)
+        ok = all(len(seen.get(reconcile.mkey(c["week"], c["medium"], c["category"], c["item"]), [])) == 1 for c in plan["create"])
         ok = ok and all(not r["active"] for r in after if r["id"] in plan["deactivate"])
         ok = ok and all(r["done"] == done_before[r["id"]] for r in after if r["id"] in done_before)
         counts["verified"] = ok
