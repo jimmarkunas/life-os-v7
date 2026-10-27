@@ -71,7 +71,7 @@ class Surface(unittest.TestCase):
         self.assertEqual((counts["blocks"], counts["tables_present"]), ({"created": 1}, True))
         texts = ledger.texts("page-1")
         self.assertEqual(texts[:3], before)                                                  # the description region is untouched and first
-        self.assertEqual((texts[3], shown(ledger, "page-1")), ("\u200bLinkedIn connections", 2))
+        self.assertEqual((texts[3], shown(ledger, "page-1")), ("\u2060LinkedIn connections", 2))
         owned = ledger.owned("page-1")
         self.assertTrue(owned[0]["type"] == "paragraph" and "v7-net" not in "".join(ledger.texts("page-1")))                 # nothing machine-made shows on the page
         self.assertEqual(sum(1 for c in owned if c["type"] == "to_do"), 2)                    # a Dismiss tick per lead, no Same company tick on a certain match
