@@ -141,9 +141,13 @@ def _owned(top):
     return [b for b in top if b.get("type") == "heading_3" and R.titled(R.plain(b), TITLE)]
 
 
-def _is_leads(client, block_id):
-    """The Network Leads block (NET-2.3) is a toggle whose first child paragraph carries its marker."""
-    inner = R.children(client, block_id, fail)
+def _is_leads(client, block):
+    """The Network Leads block (NET-2.3) is the current callout whose title carries a hidden marker, or the older toggle whose first child paragraph carries its marker."""
+    if block.get("type") == "callout":
+        return any(ref.startswith(N.MARK2 + " ") for ref in N._refs(block))
+    if block.get("type") != "toggle" or not block.get("has_children", True):
+        return False
+    inner = R.children(client, block["id"], fail)
     return bool(inner) and inner[0].get("type") == "paragraph" and R.plain(inner[0]).startswith(N.MARK)
 
 
@@ -204,7 +208,7 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
         if not live:
             return "would_create"
         before = R.page_digest(client, page_id, [], fail)
-        leads = [b["id"] for b in top if b.get("type") == "toggle" and b.get("has_children", True) and _is_leads(client, b["id"])]
+        leads = [b["id"] for b in top if _is_leads(client, b)]
         body = {"children": _shell(want, now), **({"after": leads[-1]} if leads else {})}
         try:
             client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", body)

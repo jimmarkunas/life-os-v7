@@ -4,6 +4,7 @@ import io
 import json
 import pathlib
 import unittest
+from urllib.parse import unquote
 from datetime import date, datetime, timezone
 
 from lifeos.network import store, surface
@@ -70,9 +71,9 @@ class Surface(unittest.TestCase):
         self.assertEqual((counts["blocks"], counts["tables_present"]), ({"created": 1}, True))
         texts = ledger.texts("page-1")
         self.assertEqual(texts[:3], before)                                                  # the description region is untouched and first
-        self.assertEqual(texts[3], "Network Leads (2)")
+        self.assertEqual((texts[3], shown(ledger, "page-1")), ("\u200bLinkedIn connections", 2))
         owned = ledger.owned("page-1")
-        self.assertTrue(owned[0]["paragraph"]["rich_text"][0]["plain_text"].startswith("v7-net:1 "))
+        self.assertTrue(owned[0]["type"] == "paragraph" and "v7-net" not in "".join(ledger.texts("page-1")))                 # nothing machine-made shows on the page
         self.assertEqual(sum(1 for c in owned if c["type"] == "to_do"), 2)                    # a Dismiss tick per lead, no Same company tick on a certain match
         ledger.writes.clear()
         again = go(conn, ledger, live=True)
@@ -81,33 +82,33 @@ class Surface(unittest.TestCase):
     def test_a_dismiss_tick_is_persisted_before_the_block_is_replaced_and_hides_only_that_evidence(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
-        ledger.tick("page-1", "Dismiss · 1:")
+        ledger.tick("page-1", "Dismiss 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["blocks"]), (1, {"replaced": 1}))
         self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])
-        self.assertEqual(ledger.texts("page-1")[3], "Network Leads (1)")
+        self.assertEqual(shown(ledger, "page-1"), 1)
         conn.raw.execute("UPDATE v7_network_positions SET title='VP of Product' WHERE person_id=1")           # new evidence for that person
         go(conn, ledger, live=True)
-        self.assertEqual(ledger.texts("page-1")[3], "Network Leads (2)")                                      # it returns only because the evidence changed
+        self.assertEqual(shown(ledger, "page-1"), 2)                                      # it returns only because the evidence changed
 
     def test_a_same_company_tick_becomes_a_learned_alias_that_never_rewrites_the_stored_company(self):
         conn = build(people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")], jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")])
         ledger = ledger_for()
         go(conn, ledger, live=True)
         owned = ledger.owned("page-1")
-        self.assertTrue(any(c["to_do"]["rich_text"][0]["plain_text"].startswith("Same company ·") for c in owned if c["type"] == "to_do"))
-        ledger.tick("page-1", "Same company · 1:")
+        self.assertTrue(any("Same company" in c["to_do"]["rich_text"][1]["plain_text"] for c in owned if c["type"] == "to_do"))
+        ledger.tick("page-1", "Same company 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual(counts["ticks_same_company"], 1)
         self.assertEqual(conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(), [("meta platforms", "meta")])
         self.assertEqual(conn.raw.execute("SELECT company_key, company_name FROM v7_network_positions").fetchall(), [("meta platforms", "Meta Platforms Inc")])     # stored identity unchanged
-        self.assertFalse(any(c["to_do"]["rich_text"][0]["plain_text"].startswith("Same company ·") for c in ledger.owned("page-1") if c["type"] == "to_do"))
+        self.assertFalse(any("Same company" in c["to_do"]["rich_text"][1]["plain_text"] for c in ledger.owned("page-1") if c["type"] == "to_do"))
 
     def test_a_tick_on_evidence_that_has_since_changed_is_not_carried_over(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
         conn.raw.execute("UPDATE v7_network_positions SET last_verified='2026-10-01' WHERE person_id=1")
-        ledger.tick("page-1", "Dismiss · 1:")
+        ledger.tick("page-1", "Dismiss 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["ticks_stale"]), (0, 1))
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 0)
@@ -164,7 +165,7 @@ class Surface(unittest.TestCase):
                              pipeline_row("Acme Corp", "Unlisted Role"),                                                                                          # no Ledger page: no safe surface
                              pipeline_row("Elsewhere Ltd", "Engineer")])
         counts = go(conn, ledger, live=True)
-        self.assertEqual((ledger.texts("page-1")[3], ledger.texts("page-2")[3]), ("Network Leads (2)", "Network Leads (2)"))
+        self.assertEqual((shown(ledger, "page-1"), shown(ledger, "page-2")), (2, 2))
         self.assertEqual(len(ledger.texts("page-3")), 3)                                      # a plain REVIEW job gets nothing
         self.assertEqual((counts["targets_admitted"], counts["targets_pursuit_resolved"], counts["applied_no_safe_surface"], counts["interview_no_safe_surface"]), (1, 1, 2, 0))
         self.assertEqual(counts["pursuit_ambiguous"], 0)
@@ -205,8 +206,21 @@ class Surface(unittest.TestCase):
         self.assertEqual(set(ledger.writes), {"APPEND"})
 
 
+def state_for(conn):
+    from lifeos.network import match
+    roster, jobs, pipeline = network_surface._read(conn, NOW)
+    index = match.build_index([(pid, ckey, title, state, network_surface._day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
+    details = {posid: (name, url, cname, title, network_surface._day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
+    return index, details, TODAY, {}, set(), KEY1
+
+
+def shown(ledger, page):
+    """How many leads the page's Network Leads block shows (its paragraphs), and 0 with no block."""
+    return sum(1 for c in ledger.owned(page) or [] if c["type"] == "paragraph")
+
+
 def owned_count(ledger, page="page-1"):
-    return sum(1 for b in ledger.top(page) if b["type"] == "toggle")
+    return sum(1 for b in ledger.top(page) if b["type"] in ("toggle", "callout"))
 
 
 class Corrections(unittest.TestCase):
@@ -286,11 +300,7 @@ class Corrections(unittest.TestCase):
         self.assertEqual(owned_count(ledger), 1)
 
     def state(self, conn):
-        from lifeos.network import match
-        roster, jobs, pipeline = network_surface._read(conn, NOW)
-        index = match.build_index([(pid, ckey, title, state, network_surface._day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
-        details = {posid: (name, url, cname, title, network_surface._day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
-        return index, details, TODAY, {}, set(), KEY1
+        return state_for(conn)
 
     def test_a_failed_removal_is_degraded_and_the_block_remains_for_the_retry(self):
         conn, ledger = build(), ledger_for()
@@ -308,8 +318,8 @@ class Corrections(unittest.TestCase):
         people = [(1, "acme", "Acme Corp", "Director", "CURRENT", "2026-09-20")] + [(10 + i, "acme", "Acme Corp", "Engineer", "CURRENT", "2026-09-01") for i in range(4)]
         conn, ledger = build(people=people), ledger_for()
         go(conn, ledger, live=True)
-        self.assertEqual(ledger.texts("page-1")[3], "Network Leads (5)")
-        ledger.tick("page-1", "Dismiss · 1:")                                                                 # Jim dismisses person 1
+        self.assertEqual(shown(ledger, "page-1"), 5)
+        ledger.tick("page-1", "Dismiss 1:")                                                                 # Jim dismisses person 1
         for i in range(6):                                                                                    # six new people outrank person 1 (better title overlap, fresher)
             conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
                              (50 + i, f"k{50 + i}", f"person-{50 + i:05d}", f"Invented Person{50 + i}", "2026-09-07 00:00:00", "2026-09-07"))
@@ -320,15 +330,15 @@ class Corrections(unittest.TestCase):
         self.assertEqual(conn.raw.execute("SELECT person_id FROM v7_network_dismissals").fetchall(), [(1,)])
         conn.raw.execute("DELETE FROM v7_network_positions WHERE person_id >= 50")                              # person 1 would rank back in: still suppressed, evidence unchanged
         go(conn, ledger, live=True)
-        refs = [c["to_do"]["rich_text"][0]["plain_text"] for c in ledger.owned("page-1") if c["type"] == "to_do"]
-        self.assertFalse(any(r.startswith("Dismiss · 1:") for r in refs))
+        refs = [unquote(c["to_do"]["rich_text"][0]["href"].rsplit("/lifeos/", 1)[-1]) for c in ledger.owned("page-1") if c["type"] == "to_do"]
+        self.assertFalse(any(r.startswith("Dismiss 1:") for r in refs))
 
     def test_a_conflicting_alias_confirmation_fails_closed_and_changes_nothing(self):
         conn = build(people=[(1, "meta platforms", "Meta Platforms Inc", "Director", "CURRENT", "2026-09-20")], jobs=[(KEY1, "page-1", "Meta", "Director", "ADMIT")])
         ledger = ledger_for()
         go(conn, ledger, live=True)
         conn.raw.execute("INSERT INTO v7_network_aliases (alias_key, company_key, confirmed_at) VALUES ('meta platforms', 'somethingelse', '2026-10-01 00:00:00')")
-        ledger.tick("page-1", "Same company · 1:")
+        ledger.tick("page-1", "Same company 1:")
         before = ledger.texts("page-1")
         self.assertEqual(degraded(conn, ledger, True), "NETWORK_SURFACE_DEGRADED")
         self.assertEqual(conn.raw.execute("SELECT alias_key, company_key FROM v7_network_aliases").fetchall(), [("meta platforms", "somethingelse")])
@@ -383,7 +393,7 @@ class StoredState(unittest.TestCase):
 
     def test_a_block_page_is_still_rotated_so_a_dismiss_tick_is_read_and_persisted(self):
         conn, ledger, _ = self.settled()
-        ledger.tick("page-1", "Dismiss")
+        ledger.tick("page-1", "Dismiss ")
         counts = go(conn, ledger, live=True, limit=1)
         self.assertEqual((counts["pages_read"], counts["ticks_dismiss"], counts["blocks"]), (1, 1, {"replaced": 1}))
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
@@ -500,10 +510,10 @@ class MarkAsSentLink(unittest.TestCase):
         leads = [{"person_id": 1, "tier": "CURRENT", "freshness": "FRESH", "age_days": 3, "name": "Invented Person1", "company": "Acme Corp", "title": "Director", "verified": date(2026, 10, 1),
                   "url_key": "person-00001", "evidence_hash": "abc"}]
         url = surface.sent_url(self.ENV["V7_CLOSE_BASE_URL"], self.PAGE)
-        plain, linked = surface.build_block(leads)["toggle"]["children"], surface.build_block(leads, url)["toggle"]["children"]
-        self.assertEqual([c["type"] for c in plain], ["paragraph", "paragraph", "to_do"])
-        self.assertEqual([c["type"] for c in linked], ["paragraph", "quote", "paragraph", "to_do"])
-        self.assertEqual(linked[1]["quote"]["rich_text"][0]["text"], {"content": "Mark as Sent ↗", "link": {"url": url}})
+        plain, linked = surface.build_block(leads)["callout"]["children"], surface.build_block(leads, url)["callout"]["children"]
+        self.assertEqual([c["type"] for c in plain], ["paragraph", "to_do"])
+        self.assertEqual([c["type"] for c in linked], ["quote", "paragraph", "to_do"])
+        self.assertEqual(linked[0]["quote"]["rich_text"][0]["text"], {"content": "Mark as Sent ↗", "link": {"url": url}})
         self.assertNotEqual(surface.set_hash(leads), surface.set_hash(leads, url))
         self.assertEqual(surface.set_hash(leads, None), surface.set_hash(leads))
         self.assertEqual(surface.set_hash([], url), "")
@@ -515,25 +525,54 @@ class MarkAsSentLink(unittest.TestCase):
         self.assertEqual(ledger.texts(self.PAGE)[:3], before)                                       # the description (every other block) is untouched and first
         self.assertEqual(set(ledger.writes), {"APPEND"})                                            # the only write is the one new owned block: no delete, no other page, nothing in any other store
         owned = ledger.owned(self.PAGE)
-        self.assertEqual([c["type"] for c in owned], ["paragraph", "quote", "paragraph", "to_do", "paragraph", "to_do"])
-        self.assertTrue(owned[1]["quote"]["rich_text"][0]["plain_text"].startswith("Mark as Sent ↗"))
+        self.assertEqual([c["type"] for c in owned], ["quote", "paragraph", "to_do", "paragraph", "to_do"])
+        self.assertTrue(owned[0]["quote"]["rich_text"][0]["plain_text"].startswith("Mark as Sent ↗"))
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True, environ=self.ENV)["blocks"], ledger.writes), ({"unchanged": 1}, []))
 
     def test_without_an_origin_the_block_is_exactly_what_it_was(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ={})
-        self.assertEqual([c["type"] for c in ledger.owned(self.PAGE)], ["paragraph", "paragraph", "to_do", "paragraph", "to_do"])
+        self.assertEqual([c["type"] for c in ledger.owned(self.PAGE)], ["paragraph", "to_do", "paragraph", "to_do"])
 
     def test_an_older_block_is_replaced_once_and_keeps_the_dismissals(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ={})
-        ledger.tick(self.PAGE, "Dismiss · 1:")
+        ledger.tick(self.PAGE, "Dismiss 1:")
         counts = go(conn, ledger, live=True, environ=self.ENV)
         self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
         self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])         # persisted before the replacement, as always
-        self.assertEqual(ledger.texts(self.PAGE)[3], "Network Leads (1)")
+        self.assertEqual(shown(ledger, self.PAGE), 1)
         self.assertEqual(go(conn, ledger, live=True, environ=self.ENV)["blocks"], {"unchanged": 1})
+
+    def test_an_old_style_block_is_read_for_its_ticks_replaced_once_and_nothing_machine_made_shows(self):
+        """The first run after the redesign: the page holds the old toggle (visible marker and ids); Jim's Dismiss tick on it is persisted, the block is replaced by the callout, and no id shows."""
+        conn, ledger = self.world()
+        leads = network_surface._leads("Acme Corp", "Product Director", *state_for(conn))[0]
+        old = {"object": "block", "type": "toggle", "toggle": {"rich_text": [{"type": "text", "text": {"content": f"Network Leads ({len(leads)})"}}], "children": [
+            {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "v7-net:1 oldhash"}}]}}]
+            + [c for l in leads for c in ({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": f"{l['name']} · {surface.reason(l)} · open profile"}}]}},
+                                           {"object": "block", "type": "to_do", "to_do": {"rich_text": [{"type": "text", "text": {"content": f"Dismiss · {l['person_id']}:{l['evidence_hash']}"}}], "checked": l["person_id"] == 1}})]}}
+        ledger.call_once("PATCH", f"/blocks/{self.PAGE}/children", {"children": [old]})
+        self.assertEqual([x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2])                       # the old block still reads, with Jim's dismissal
+        counts = go(conn, ledger, live=True, environ=self.ENV)
+        self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
+        self.assertEqual((owned_count(ledger, self.PAGE), shown(ledger, self.PAGE)), (1, 1))
+        page_text = "".join(ledger.texts(self.PAGE))
+        for hidden in ("v7-net", "Dismiss ·", "oldhash"):
+            self.assertNotIn(hidden, page_text)
+        self.assertEqual([x["person_id"] for x in surface.leads_on_page(ledger, self.PAGE)], [2])
+
+    def test_the_new_block_shows_a_bold_name_the_reason_and_a_reach_out_link_to_the_verified_profile_only(self):
+        lead = {"person_id": 1, "tier": "CURRENT", "freshness": "FRESH", "age_days": 3, "name": "Invented Person1", "company": "Acme Corp", "title": "Director", "verified": date(2026, 10, 1),
+                "url_key": "person-00001", "evidence_hash": "abc"}
+        block = surface.build_block([lead])["callout"]
+        para = block["children"][0]["paragraph"]["rich_text"]
+        self.assertEqual((para[0]["text"]["content"], para[0]["annotations"]["bold"]), ("Invented Person1", True))
+        self.assertEqual((para[-1]["text"]["content"], para[-1]["text"]["link"]["url"]), ("Reach Out ↗", "https://www.linkedin.com/in/person-00001"))
+        visible = "".join(r["text"]["content"] for r in block["rich_text"]) + "".join(r["text"]["content"] for c in block["children"] for r in c[c["type"]]["rich_text"])
+        for machine in ("net:2", "Dismiss 1:", "abc"):
+            self.assertNotIn(machine, visible)
 
     def test_the_leads_reader_used_by_the_deployed_close_service_ignores_the_link(self):
         conn, ledger = self.world()

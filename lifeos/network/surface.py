@@ -7,15 +7,22 @@ refer or hiring authority is ever generated, and no outreach text is drafted."""
 import hashlib
 import re
 from datetime import date
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from lifeos.network import match
 from lifeos.platform.notion_client import NotionError, rich_text
 
-MARK = "v7-net:1"
+MARK = "v7-net:1"                                                       # the older block (a toggle that showed its marker and ids); still read, and retired once, so a replaced page loses nothing
+MARK2 = "net:2"                                                         # the current block (a callout): its marker and every tick id ride in a hidden link, never in visible text
 DESCRIPTION_MARK = "v7-jd:1"
 TICK = re.compile(r"^(Dismiss|Same company) · (\d+):([0-9a-f]{12})$")
+TICK2 = re.compile(r"^(Dismiss|Same company) (\d+):([0-9a-f]{12})$")
 BASE_URL = "https://www.linkedin.com/in/"
+HIDDEN = "https://example.com/lifeos/"                                  # an invisible zero-width character linked here carries the ids (Jim, Oct 27: no marker, hash or id may show on a page)
+ZW = "\u200b"
+TITLE = "LinkedIn connections"
+REACH = "Reach Out ↗"
+DISMISS_TEXT, SAME_TEXT = "Not relevant · dismiss", "Same company"
 
 
 class SurfaceError(NotionError):
@@ -38,7 +45,7 @@ def sent_url(base, page_id):
 
 def set_hash(leads, link=None):
     """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "")).encode()).hexdigest()[:12] if leads else ""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui2").encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -62,27 +69,51 @@ def _para(runs):
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": runs}}
 
 
-def _todo(text):
-    return {"object": "block", "type": "to_do", "to_do": {"rich_text": rich_text(text), "checked": False}}
+def _hidden(ref):
+    """A zero-width character that links to the ref: invisible on the page, read back from the link."""
+    return {"type": "text", "text": {"content": ZW, "link": {"url": HIDDEN + quote(ref, safe="")}}}
+
+
+def _todo(ref, text):
+    return {"object": "block", "type": "to_do", "to_do": {"rich_text": [_hidden(ref)] + rich_text(text), "checked": False}}
+
+
+def _bold(text):
+    return [{"type": "text", "text": {"content": text}, "annotations": {"bold": True}}]
 
 
 def build_block(leads, link=None):
-    """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key, evidence_hash}. -> one toggle block with children. `link` (sent_url) adds ONE quote block, right after the marker,
-    that opens the signed Mark as Sent form for this job. A quote, not a paragraph: the leads reader (leads_on_page, also in the deployed Close service) only reads paragraphs and to_dos, so it ignores the link."""
-    kids = [_para(rich_text(f"{MARK} {set_hash(leads, link)}"))]
+    """leads: display dicts {person_id, tier, freshness, age_days, name, company, title, verified, url_key, evidence_hash}. -> ONE callout "LinkedIn connections" (the approved look: Jim, Oct 27) with children.
+    Each lead is a paragraph (bold name, the fixed reason, a Reach Out link that only opens the verified profile) and a tick to dismiss it, plus a "Same company" tick on a possible match. The block's marker and
+    hash ride in a hidden link on the title and each tick's `<person id>:<evidence hash>` in a hidden link on the tick, so nothing machine-made shows. `link` (sent_url) adds ONE quote block at the top that opens
+    the signed Mark as Sent form for this job. A quote, not a paragraph: the leads reader (leads_on_page, also in the deployed Close service) only reads paragraphs and to_dos, so it ignores the link."""
+    kids = []
     if link:
         kids.append({"object": "block", "type": "quote", "quote": {"rich_text": [{"type": "text", "text": {"content": SENT_TEXT, "link": {"url": link}}},
                                                                                    {"type": "text", "text": {"content": " · after you have messaged someone about this job. LIFE OS sends nothing."}}]}})
     for lead in leads:
-        runs = rich_text(f"{lead['name']} · {reason(lead)} · ")
+        runs = _bold(lead["name"]) + rich_text(f" · {reason(lead)}")
         if lead.get("url_key"):
-            runs.append({"type": "text", "text": {"content": "open profile", "link": {"url": BASE_URL + lead["url_key"]}}})
+            runs.append({"type": "text", "text": {"content": " · "}})
+            runs.append({"type": "text", "text": {"content": REACH, "link": {"url": BASE_URL + lead["url_key"]}}})
         kids.append(_para(runs))
         ref = f"{lead['person_id']}:{lead['evidence_hash']}"
-        kids.append(_todo(f"Dismiss · {ref}"))
+        kids.append(_todo(f"Dismiss {ref}", DISMISS_TEXT))
         if lead["tier"] == match.POSSIBLE:
-            kids.append(_todo(f"Same company · {ref}"))
-    return {"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text(f"Network Leads ({len(leads)})"), "children": kids}}
+            kids.append(_todo(f"Same company {ref}", SAME_TEXT))
+    title = [_hidden(f"{MARK2} {set_hash(leads, link)}")] + _bold(TITLE)
+    return {"object": "block", "type": "callout", "callout": {"rich_text": title, "icon": {"type": "emoji", "emoji": "🔗"}, "color": "gray_background", "children": kids}}
+
+
+def _refs(block):
+    """The hidden refs carried by a block's own text (a zero-width character linked under HIDDEN)."""
+    inner = block.get(block.get("type")) or {}
+    out = []
+    for part in inner.get("rich_text") or []:
+        url = (part.get("href") if isinstance(part, dict) else None) or (((part.get("text") or {}).get("link") or {}).get("url") if isinstance(part, dict) else None) or ""
+        if url.startswith(HIDDEN):
+            out.append(unquote(url[len(HIDDEN):]))
+    return out
 
 
 def _plain(block):
@@ -108,45 +139,67 @@ def children(client, block_id):
     raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
 
 
+def _tick(child):
+    """(kind, person id, evidence hash, checked) for a Dismiss / Same company tick of either block generation, else None."""
+    if child.get("type") != "to_do":
+        return None
+    checked = bool((child.get("to_do") or {}).get("checked"))
+    for ref in _refs(child):
+        found = TICK2.match(ref)
+        if found:
+            return found.group(1), int(found.group(2)), found.group(3), checked
+    found = TICK.match(_plain(child))
+    return (found.group(1), int(found.group(2)), found.group(3), checked) if found else None
+
+
+def _owned_head(client, block):
+    """(hash, inner children) when the block is a Network Leads block of either generation, else None. A callout or toggle is only opened when its own title (new) or, for a toggle, its first child (old) says so."""
+    kind = block.get("type")
+    if kind == "callout":
+        for ref in _refs(block):
+            if ref.startswith(MARK2 + " "):
+                return ref[len(MARK2):].strip(), children(client, block["id"]) if block.get("has_children", True) else []
+        return None
+    if kind == "toggle" and block.get("has_children", True):
+        inner = children(client, block["id"])
+        if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
+            return _plain(inner[0])[len(MARK):].strip(), inner[1:]
+    return None
+
+
 def read_page(client, page_id):
     """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}. Normally one; an interrupted replacement can leave two,
     and the next run converges them (see apply). A page whose owned block cannot be read raises."""
     top = children(client, page_id)
     owned = []
     for block in top:
-        if block.get("type") != "toggle" or not block.get("has_children", True):
-            continue
-        inner = children(client, block["id"])
-        if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
-            ticks = []
-            for child in inner[1:]:
-                found = TICK.match(_plain(child)) if child.get("type") == "to_do" else None
-                if found:
-                    ticks.append((found.group(1), int(found.group(2)), found.group(3), bool((child.get("to_do") or {}).get("checked"))))
-            owned.append({"id": block["id"], "hash": _plain(inner[0])[len(MARK):].strip(), "ticks": ticks})
+        head = _owned_head(client, block)
+        if head:
+            owned.append({"id": block["id"], "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t]})
     return top, owned
 
 
 def leads_on_page(client, page_id, limit=10):
     """LIFE-21 (Mark as Sent): the people the page's owned block lists and Jim has not dismissed, in page order -> [{person_id, evidence_hash, name, reason}].
     Read only. No owned block -> []; two (an interrupted replacement) -> the newest, as apply converges; a lead without its Dismiss tick or an unreadable page raises."""
-    owned = None
+    inner = None
     for block in children(client, page_id):
-        if block.get("type") == "toggle" and block.get("has_children", True):
-            inner = children(client, block["id"])
-            if inner and inner[0].get("type") == "paragraph" and _plain(inner[0]).startswith(MARK):
-                owned = inner
+        head = _owned_head(client, block)
+        if head:
+            inner = head[1]
     leads = []
-    for child in (owned or [])[1:]:
-        text = _plain(child)
-        found = TICK.match(text) if child.get("type") == "to_do" else None
+    for child in inner or []:
+        tick = _tick(child)
         if child.get("type") == "paragraph":
-            name, _, reason = text.removesuffix("open profile").strip().removesuffix("·").strip().partition(" · ")
+            text = _plain(child)
+            for tail in (REACH, "open profile"):
+                text = text.removesuffix(tail)
+            name, _, reason = text.strip().removesuffix("·").strip().partition(" · ")
             leads.append({"name": name, "reason": reason, "person_id": None})
-        elif found and found.group(1) == "Dismiss":
+        elif tick and tick[0] == "Dismiss":
             if not leads or leads[-1]["person_id"] is not None:
                 raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
-            leads[-1].update(person_id=int(found.group(2)), evidence_hash=found.group(3), dismissed=bool((child.get("to_do") or {}).get("checked")))
+            leads[-1].update(person_id=tick[1], evidence_hash=tick[2], dismissed=tick[3])
     if any(lead["person_id"] is None or not lead["name"] for lead in leads):
         raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
     return [{k: lead[k] for k in ("person_id", "evidence_hash", "name", "reason")} for lead in leads if not lead["dismissed"]][:limit]

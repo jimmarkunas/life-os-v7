@@ -165,9 +165,9 @@ def drive(client, reader, box, now, results, counts):
     notes, human_before = notion.protected_snapshot(client, page, "opportunity"), base._human_tree(client, box["human"])
     others = {n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS])) for n in pages if n != "positive"}
     check("7a positive: a replay writes nothing", create.refresh(client, page, views["positive"][2], True, out) == "parent_unchanged")
-    toggle = next(b for b in notion.children(client, w1, [notion.MAX_CALLS]) if b.get("type") == "toggle")
-    tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and notion.text(b).startswith(f"Dismiss · {positive[2]['person_id']}:"))
-    client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": rich_text(notion.text(tick)), "checked": True}})
+    toggle = next(b for b in notion.children(client, w1, [notion.MAX_CALLS]) if b.get("type") == "callout")
+    tick = next(b for b in notion.children(client, toggle["id"], [notion.MAX_CALLS]) if b.get("type") == "to_do" and any(r.startswith(f"Dismiss {positive[2]['person_id']}:") for r in surface._refs(b)))
+    client.call("PATCH", f"/blocks/{quote(tick['id'], safe='')}", {"to_do": {"rich_text": [{"type": "text", "text": r["text"]} for r in tick["to_do"]["rich_text"]], "checked": True}})       # the runs as they are: the hidden link on the tick is its id
     evidence, _ = ev.network_contacts(client, [(parent, query)])
     again = view.opportunity(client, parent, evidence[0][1], container, None, create.today())
     check("7b positive: after a Dismiss tick the page refreshes in place", create.refresh(client, page, again, True, out) == "parent_refreshed")
