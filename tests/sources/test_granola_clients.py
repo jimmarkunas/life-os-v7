@@ -171,3 +171,46 @@ class Auto(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def go_with(value, send, client, catalog, live):
+    """The shared Granola harness with GRAN_UNMATCHED_TO set for this run."""
+    from tests.sources import test_granola_auto as t
+    with mock.patch.object(t, "ENV", {**t.ENV, "GRAN_UNMATCHED_TO": value}):
+        return t.go(send, client, catalog, live=live, rounds=())
+
+
+class Instruction(unittest.TestCase):
+    def run_with(self, value, live=True, extra=()):
+        seen, notion, catalog = [], Pages(), Catalog()
+        send = oracle([meeting(title="AI Update"), meeting(title="Lunch", mid=SECOND, start="2026-10-14T17:30:00Z"), *extra], sink=seen)
+        return go_with(value, send, notion, catalog, live), seen, notion, catalog
+
+
+class InstructionTests(Instruction):
+    def test_with_the_instruction_unmatched_meetings_are_filed_as_asked(self):
+        out, seen, notion, catalog = self.run_with("client")
+        c = out["counts"]
+        self.assertEqual((c["client_by_instruction"], c["carried"], c["purged"], c["unmatched"], c["failed"]), (2, 2, 2, 0, 0))
+        self.assertEqual(len([b for b in notion.kids[gc.CLIENT.parent] if b["type"] == "child_page"]), 2)
+
+    def test_internal_files_them_on_the_bytalos_page(self):
+        out, _, notion, _ = self.run_with("internal")
+        self.assertEqual(out["counts"]["carried"], 2)
+        self.assertEqual(len([b for b in notion.kids[gc.INTERNAL.parent] if b["type"] == "child_page"]), 2)
+
+    def test_without_it_or_with_a_value_that_is_not_one_of_the_two_nothing_changes(self):
+        for value in ("", "elsewhere"):
+            out, seen, notion, catalog = self.run_with(value)
+            self.assertEqual((out["counts"]["carried"], out["counts"]["unmatched"], out["counts"]["client_by_instruction"]), (0, 2, 0))
+            self.assertNotIn("show", [op for op, _ in seen])
+
+    def test_the_instruction_never_overrides_a_decision_the_rules_made(self):
+        out, _, _, _ = self.run_with("internal", extra=[meeting(title="Bytalos prep for TGP", mid="00000000-0000-4000-8000-000000000009", start="2026-10-15T17:30:00Z")])
+        self.assertEqual(out["counts"]["why"].get("ROUTE_TITLE_AMBIGUOUS"), 1)
+        self.assertEqual(out["counts"]["carried"], 2)
+
+    def test_a_dry_run_with_the_instruction_shows_the_count_and_writes_nothing(self):
+        out, seen, notion, catalog = self.run_with("client", live=False)
+        self.assertEqual((out["counts"]["client_by_instruction"], out["counts"]["carried"], catalog.saved), (2, 0, []))
+        self.assertNotIn("purge", [op for op, _ in seen])
