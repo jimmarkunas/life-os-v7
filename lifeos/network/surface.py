@@ -9,6 +9,7 @@ import re
 from datetime import date
 from urllib.parse import quote, unquote
 
+from lifeos.platform import ledger_body as body
 from lifeos.network import match
 from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
@@ -150,23 +151,40 @@ def _owned_head(client, block):
     return None
 
 
+class Top(list):
+    """The page's top-level blocks, plus `right`: the id of the right-hand column of the two-column Ledger page (lifeos.platform.ledger_body), None for the older flat page."""
+    right = None
+
+
+def _right(client, top):
+    """The right column's id on a two-column page, else None. Reads the column_list's children only when the page has exactly one."""
+    lists = [b for b in top if b.get("type") == "column_list"]
+    if len(lists) != 1:
+        return None
+    columns = [b for b in children(client, lists[0]["id"]) if b.get("type") == "column"]
+    return columns[1]["id"] if len(columns) == 2 else None
+
+
 def read_page(client, page_id):
-    """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}. Normally one; an interrupted replacement can leave two,
-    and the next run converges them (see apply). A page whose owned block cannot be read raises."""
-    top = children(client, page_id)
+    """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "parent", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}; `parent` is the page, or the right column of the two-column page.
+    Normally one; an interrupted replacement can leave two, and the next run converges them (see apply). A page whose owned block cannot be read raises."""
+    top = Top(children(client, page_id))
+    top.right = _right(client, top)
     owned = []
-    for block in top:
-        head = _owned_head(client, block)
-        if head:
-            owned.append({"id": block["id"], "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t]})
+    for parent, blocks in ((page_id, top), *(((top.right, children(client, top.right)),) if top.right else ())):
+        for block in blocks:
+            head = _owned_head(client, block)
+            if head:
+                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t]})
     return top, owned
 
 
 def leads_on_page(client, page_id, limit=10):
     """LIFE-21 (Mark as Sent): the people the page's owned block lists and Jim has not dismissed, in page order -> [{person_id, evidence_hash, name, reason}].
     Read only. No owned block -> []; two (an interrupted replacement) -> the newest, as apply converges; a lead without its Dismiss tick or an unreadable page raises."""
-    inner = None
-    for block in children(client, page_id):
+    inner, top = None, children(client, page_id)
+    right = _right(client, top)
+    for block in [*top, *(children(client, right) if right else ())]:
         head = _owned_head(client, block)
         if head:
             inner = head[1]
@@ -199,9 +217,28 @@ def guard(page, top, job_key, source_id):
     key = "".join(t.get("plain_text", "") for t in ((page.get("properties") or {}).get("Stable Job Key") or {}).get("rich_text") or [])
     if key != job_key:
         return "key_mismatch"
-    if not top or top[0].get("type") != "paragraph" or not _plain(top[0]).startswith(DESCRIPTION_MARK) or job_key not in _plain(top[0]):
+    if not top or not body.is_marker(top[0], job_key):
         return "no_description_marker"
     return None
+
+
+def _blank(block):
+    return block.get("type") == "paragraph" and not _plain(block).strip() and not hidden.refs(block)
+
+
+def _keep_nonempty(client, column_id, owned_ids):
+    """A column cannot be empty: before the last owned block leaves the right column, one blank paragraph is put there."""
+    if all(k["id"] in owned_ids for k in children(client, column_id)):
+        client.call_once("PATCH", f"/blocks/{quote(column_id, safe='')}/children", {"children": [_para([])]})
+
+
+def _drop_blanks(client, column_id):
+    """With a real block in the right column, its placeholder blank paragraph(s) go, so the block starts at the top of the column."""
+    kids = children(client, column_id)
+    if any(not _blank(k) for k in kids):
+        for k in kids:
+            if _blank(k):
+                client.call("DELETE", f"/blocks/{quote(k['id'], safe='')}")
 
 
 def _others(top, owned):
@@ -224,7 +261,8 @@ def apply(client, page_id, top, owned, desired_leads, live, link=None):
     holds the old and the new block, the old one is still visible, and the next run (the new block's hash is the wanted one) retires the extras and converges. Duplicates never accumulate."""
     want = set_hash(desired_leads, link)
     others = _others(top, owned)
-    matching = [o for o in owned if o["hash"] == want] if desired_leads else []
+    home = getattr(top, "right", None) or page_id                          # where the block belongs: the right column of the two-column page, else the page
+    matching = [o for o in owned if o["hash"] == want and o.get("parent", home) == home] if desired_leads else []      # a block with the right content in the wrong place is replaced, once
     if not desired_leads:
         action = "removed" if owned else "none"
     elif matching and len(owned) == 1:
@@ -238,17 +276,22 @@ def apply(client, page_id, top, owned, desired_leads, live, link=None):
     if not live:
         return "would_" + action
     keep = matching[-1] if matching else None
+    column = getattr(top, "right", None)                                # the two-column page keeps its block in the right column
     if not desired_leads:
         retire = list(owned)
+        if column and owned:
+            _keep_nonempty(client, column, {o["id"] for o in owned})
     elif keep:
         retire = [o for o in owned if o is not keep]
     else:
-        client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", {"children": [build_block(desired_leads, link)]})
+        client.call_once("PATCH", f"/blocks/{quote(column or page_id, safe='')}/children", {"children": [build_block(desired_leads, link)]})
         _, now_owned = read_page(client, page_id)
         fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
         if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:
             raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")      # the old block is still there and still visible: nothing known-good was retired
         retire = list(owned)
+        if column:
+            _drop_blanks(client, column)
     for old in retire:
         client.call("DELETE", f"/blocks/{quote(old['id'], safe='')}")
     _verify(client, page_id, others, want, 1 if desired_leads else 0)

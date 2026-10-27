@@ -10,6 +10,7 @@ import re
 import socket
 
 from lifeos.hiring import close_screen as S, decision as D
+from lifeos.platform import ledger_body as body
 from lifeos.platform import notion_files
 from lifeos.platform.notion_client import Client, NotionError
 from .close_app import TTL, HTML, _mac, _now, _same
@@ -58,17 +59,8 @@ def _plain(block):
 
 
 def description(client, pid):
-    """The job's own description from its Ledger page: the sections V7 published after its v7-jd marker, in order, up to the first block that is not one of them."""
-    text, started = [], False
-    for block in _children(client, pid):
-        kind, line = block.get("type"), _plain(block)
-        if not started:
-            started = kind == "paragraph" and line.startswith(MARKER)
-            continue
-        if kind not in TEXT:
-            break
-        text.append(f"- {line}" if kind == "bulleted_list_item" else line)
-    return "\n".join(t for t in text if t.strip())[:MAX_DESCRIPTION]
+    """The job's own description from its Ledger page, in either layout: the sections V7 published after its v7-jd marker (the two-column page reads its Overview and the Full job description toggle)."""
+    return body.text_of(client, pid, _children(client, pid), MAX_DESCRIPTION)
 
 
 def location(client, pid):

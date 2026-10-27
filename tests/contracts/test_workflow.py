@@ -572,7 +572,7 @@ CONSUMERS = {
         jobs={"network": DB | JUMP | TS | {"NOTION_API_TOKEN"}},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'NETWORK_HANDOFF_PAGE_ID', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-network', 'cancel-in-progress': False},
-        timeouts={'network': 30}, digest="5863cc2d727cbdd8"),
+        timeouts={'network': 30}, digest="34f9d82ffad5903f"),   # Jim, Oct 27: the layout stage (flat Ledger pages to the two-column page) added to the stage command
     "outlook": dict(
         jobs={"outlook": DB},
         direct=['LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'OUTLOOK_CLIENT_ID'],

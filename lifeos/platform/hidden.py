@@ -12,7 +12,7 @@ def run(ref):
 
 def refs(block):
     """The hidden refs carried by a block's own text, in order."""
-    inner = block.get(block.get("type")) or {}
+    inner = (block.get(block.get("type")) if block.get("type") else next((v for v in block.values() if isinstance(v, dict) and "rich_text" in v), None)) or {}
     out = []
     for part in inner.get("rich_text") or []:
         if not isinstance(part, dict):
