@@ -2,6 +2,7 @@
 sign-in once, then silent refresh), immutable message ids, bounded full enumeration. Every error is a fixed code: never a URL, a token,
 an address or a response body. Reads retry transient failures. Writes are limited to creating one mail folder and moving a message into
 it (both safe to repeat); nothing here ever deletes, sends or edits mail."""
+from datetime import datetime
 import json
 import time
 import urllib.error
@@ -146,6 +147,19 @@ class Outlook:
                 raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
             url = link
         raise OutlookError("OUTLOOK_LISTING_INCOMPLETE")
+
+    def replied_since(self, conversation_id, since_iso):
+        """True when Jim sent a message in this conversation after `since_iso` (Sent Items, compared here so the query stays a plain equality). Read-only; ids and times only."""
+        if not conversation_id:
+            return False
+        quoted = str(conversation_id).replace("'", "''")
+        reply = self.get("/me/mailFolders/sentitems/messages", {"$select": "id,sentDateTime", "$top": 25, "$filter": f"conversationId eq '{quoted}'"})
+        since = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+        for message in reply.get("value") or []:
+            sent = message.get("sentDateTime")
+            if sent and datetime.fromisoformat(str(sent).replace("Z", "+00:00")) > since:
+                return True
+        return False
 
     def messages_in_category(self, category, limit=5000):
         """Every message in the mailbox that carries the Outlook category (a name, or several spellings of it: one query per spelling, merged by message id), read-only (the message stays

@@ -37,7 +37,7 @@ def normalize(text):
 
 
 def decide(sender, subject):
-    """-> ("ADMIT", category) | ("OWNED", owner). Owned elsewhere always wins; otherwise the message is admitted (FYI when nothing says what it asks of Jim)."""
+    """-> ("ADMIT", category) | ("OWNED", owner) | ("SKIP", "fyi"). Owned elsewhere always wins; a risk signal or something that asks Jim for a reply or a decision is admitted; the rest is FYI and is skipped."""
     haystack = f"{sender or ''} | {item_text(subject)}"
     for owner, pattern in OWNED:
         if re.search(pattern, haystack, re.I):
@@ -48,4 +48,4 @@ def decide(sender, subject):
     for category, pattern in OWES:
         if re.search(pattern, haystack, re.I):
             return "ADMIT", category
-    return "ADMIT", "FYI"                                     # Jim's label or category IS the signal: mail he routes here and nothing else owns stays visible
+    return "SKIP", "fyi"                                      # LIFE-163 (Jim, Oct 26): attention is what WAITS ON HIM; mail that asks nothing of him is not attention, whatever carries the mark

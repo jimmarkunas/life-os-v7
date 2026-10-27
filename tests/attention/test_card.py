@@ -21,19 +21,17 @@ def line(blocks):
 class Render(unittest.TestCase):
     def test_empty_state_says_no_active_exceptions(self):
         text = line(card.render(0, NOW))[0]
-        self.assertTrue(text.startswith("Updated 1:30 PM CT · No active exceptions."))
-        self.assertIn("Suggested next decisions", text)
+        self.assertEqual(text, "Updated 1:30 PM CT · No active exceptions.")
+        self.assertNotIn("Suggested next decisions", text)                                     # Jim, Oct 26: generated advice above the table is not attention
 
     def test_counts_singular_and_plural(self):
-        self.assertTrue(line(card.render(1, NOW))[0].startswith("Updated 1:30 PM CT · 1 active exception\n"))
-        self.assertTrue(line(card.render(3, NOW))[0].startswith("Updated 1:30 PM CT · 3 active exceptions\n"))
+        self.assertEqual(line(card.render(1, NOW))[0], "Updated 1:30 PM CT · 1 active exception")
+        self.assertEqual(line(card.render(3, NOW))[0], "Updated 1:30 PM CT · 3 active exceptions")
 
-    def test_decision_links_are_rendered_as_notion_rich_text_links(self):
-        url = "https://example.invalid/bills"
-        block = card.render(0, NOW, [("Triage overdue bills", "4 on the Bills card", url)])[0]
-        linked = [part for part in block["paragraph"]["rich_text"] if (part.get("text", {}).get("link") or {}).get("url")]
-        self.assertEqual([part["text"]["link"]["url"] for part in linked], [url])
-        self.assertIn("Triage overdue bills", [part["text"]["content"] for part in linked])
+    def test_the_callout_text_is_one_status_line_even_when_decisions_are_passed(self):
+        block = card.render(0, NOW, [("Triage overdue bills", "4 on the Bills card", "https://example.invalid/bills")], "5 active hiring opportunities")[0]
+        self.assertEqual(report_region.plain(block), "Updated 1:30 PM CT · No active exceptions.")
+        self.assertEqual([part for part in block["paragraph"]["rich_text"] if (part.get("text", {}).get("link") or {}).get("url")], [])
 
     def test_degraded_never_looks_like_an_empty_queue(self):
         text = line(card.render(0, NOW, degraded=True))[0]
@@ -84,9 +82,7 @@ class Run(unittest.TestCase):
         before = {k: regions.full_tree(k) for k in ("calendar-callout", "jira-callout", "dcc-callout", "bills-callout", "amazon-callout")}
         children_before = [dict(k) for k in regions.children["attention-callout"]]
         regions, counts = self.go(regions=regions)
-        self.assertTrue(own(regions).startswith("Updated 1:30 PM CT · No active exceptions."))
-        self.assertIn("Suggested next decisions", own(regions))
-        self.assertIn("Hiring Pipeline unset", own(regions))
+        self.assertEqual(own(regions), "Updated 1:30 PM CT · No active exceptions.")
         self.assertEqual(regions.children["attention-callout"], children_before)                # the linked view is untouched and no child block is added
         self.assertEqual({k: regions.full_tree(k) for k in before}, before)
         self.assertEqual([m for m, _ in regions.log if m in ("APPEND", "DELETE")], [])
@@ -95,7 +91,7 @@ class Run(unittest.TestCase):
     def test_running_again_replaces_the_text_it_never_adds_a_second_line(self):
         regions, _ = self.go()
         regions, _ = self.go(pages=[page("a", "Card added")], regions=regions)
-        self.assertTrue(own(regions).startswith("Updated 1:30 PM CT · 1 active exception\n"))
+        self.assertEqual(own(regions), "Updated 1:30 PM CT · 1 active exception")
         self.assertEqual([k["id"] for k in regions.children["attention-callout"]], ["attention-view"])
 
     def test_counts_the_current_weeks_active_rows(self):

@@ -168,7 +168,7 @@ class Gmail:
         if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
             raise GmailError("GMAIL_MESSAGE_INCOMPLETE")
         return {"id": str(message_id), "sender": values.get("from", ""), "subject": values.get("subject", ""),
-                "received_at": received, "body_text": _find_text(full["payload"], keep_lines), "label_ids": labels}
+                "received_at": received, "body_text": _find_text(full["payload"], keep_lines), "label_ids": labels, "thread": str(full.get("threadId") or "")}
 
     MAIL_HEADERS = ("From", "Subject", "Auto-Submitted", "Precedence", "List-Id", "List-Unsubscribe", "X-Auto-Response-Suppress", "Reply-To")
 
@@ -234,6 +234,17 @@ class Gmail:
         message = urllib.parse.quote(str(message_id), safe="")
         return self._request("POST", f"{API}/messages/{message}/modify",
                              body={"addLabelIds": [amazon_label_id], "removeLabelIds": ["INBOX"]})
+
+    def thread_replied_since(self, thread_id, since_iso):
+        """True when Jim sent a message in this thread after `since_iso` (a message carrying the SENT label, later than that instant). Read-only; metadata only."""
+        if not thread_id:
+            return False
+        result = self._request("GET", f"{API}/threads/{urllib.parse.quote(str(thread_id), safe='')}?format=minimal")
+        messages = result.get("messages") if isinstance(result, dict) else None
+        if not isinstance(messages, list):
+            raise GmailError("GMAIL_THREAD_INCOMPLETE")
+        since = datetime.fromisoformat(since_iso).timestamp() * 1000
+        return any("SENT" in (m.get("labelIds") or []) and int(m.get("internalDate") or 0) > since for m in messages if isinstance(m, dict))
 
     def file_read(self, message_id, label_id):
         """Mark one message read and move it out of the Inbox into an existing label (LIFE-149); never deletes."""

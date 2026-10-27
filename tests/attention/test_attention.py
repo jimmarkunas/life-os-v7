@@ -55,11 +55,11 @@ class Reconcile(unittest.TestCase):
 
     def test_new_item_is_created_once_and_replay_or_natural_key_equivalent_is_not(self):
         p = reconcile.plan([cand("Card added"), cand("card  ADDED!", medium="Gmail:2")], [], TODAY, {})
-        self.assertEqual(len(p["create"]), 1)
+        self.assertEqual(len(p["create"]), 2)                                                    # two different messages are two rows, whatever their subjects
         again = reconcile.plan([cand("Card added")], [row("r1", "Card added")], TODAY, {})
         self.assertEqual((again["create"], again["reused"]), ([], 1))
-        equivalent = reconcile.plan([cand("card added")], [row("r1", "Card Added")], TODAY, {})
-        self.assertEqual(equivalent["create"], [])
+        retitled = reconcile.plan([cand("Card added · Ana · waiting 2 days")], [row("r1", "Card added · Ana · waiting 1 day")], TODAY, {})
+        self.assertEqual((retitled["create"], retitled["reused"]), ([], 1))                       # the title carries changing context; the message is the identity
 
     def test_ambiguous_duplicates_write_nothing(self):
         p = reconcile.plan([cand("Card added")], [row("r1", "Card added"), row("r2", "Card added")], TODAY, {})
@@ -84,6 +84,13 @@ class Reconcile(unittest.TestCase):
         after = reconcile.plan([], rows + [row("n", "Open item", week=WEEK)], TODAY, {})
         self.assertEqual(after["create"], [])
 
+    def test_an_item_jim_finished_in_an_earlier_week_is_not_recreated_while_its_mark_is_still_on_the_message(self):
+        """The Monday bug: Done belongs to one week's row, and the new week made a fresh unchecked copy of everything still marked."""
+        p = reconcile.plan([cand("Card added", medium="Gmail:9")], [], TODAY, {"Gmail:9": "present"}, done_media={"Gmail:9"})
+        self.assertEqual((p["create"], p["skipped_done_before"]), ([], 1))
+        again = reconcile.plan([cand("Card added", medium="Gmail:9")], [], TODAY, {"Gmail:9": "present"})
+        self.assertEqual(len(again["create"]), 1)                                                   # not finished before: still created
+
     def test_older_weeks_do_not_carry(self):
         self.assertEqual(reconcile.plan([], [row("a", "Old", week="2026-09-13")], TODAY, {})["create"], [])
 
@@ -100,6 +107,8 @@ class FakeNotion:
 
     def query_data_source(self, source, body):
         self.paths.append(("POST", "data_sources"))
+        if body["filter"].get("property") == "Done":
+            return {"results": [p for p in self.pages.values() if p["properties"]["Done"]["checkbox"]], "has_more": False}
         week = body["filter"]["date"]["equals"]
         return {"results": [p for p in self.pages.values() if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
 
@@ -154,7 +163,10 @@ class FakeGmail:
 
     def message_record(self, mid):
         sender, subject = self.messages[mid]
-        return {"sender": sender, "subject": subject, "label_ids": ["L1"], "received_at": getattr(self, "received", {}).get(mid, "2026-10-05T03:30:00+00:00")}
+        return {"sender": sender, "subject": subject, "label_ids": ["L1"], "thread": "t-" + mid, "received_at": getattr(self, "received", {}).get(mid, "2026-10-05T03:30:00+00:00")}
+
+    def thread_replied_since(self, thread, since):
+        return thread in getattr(self, "replied", set())
 
     def message_labels(self, mid):
         return ["INBOX"]                                           # label gone
@@ -162,7 +174,11 @@ class FakeGmail:
 
 class FakeOutlook:
     def messages_in_category(self, category, limit):
-        return [{"id": "o1", "subject": "Security alert: password was changed", "from": {"emailAddress": {"address": "a@example.com"}}}]
+        return [{"id": "o1", "subject": "Security alert: password was changed", "from": {"emailAddress": {"address": "a@example.com", "name": "Alex"}}, "conversationId": "c1",
+                 "receivedDateTime": "2026-10-05T03:30:00Z"}]
+
+    def replied_since(self, conversation, since):
+        return conversation in getattr(self, "replied", set())
 
 
 class Stage(unittest.TestCase):
@@ -174,10 +190,10 @@ class Stage(unittest.TestCase):
         gm = FakeGmail({"g1": ("no-reply@example.com", "Debit card ending 4328 was added"), "g2": ("news@example.com", "Monthly update"),
                         "g3": ("r@example.com", "Interview request - action required")})
         out = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
-        self.assertEqual((out["created"], out["admitted"], out["categories"].get("FYI"), out["owned_elsewhere"], out["verified"]), (3, 3, 1, 1, True))
+        self.assertEqual((out["created"], out["admitted"], out["categories"].get("FYI"), out["fyi_skipped"], out["owned_elsewhere"], out["verified"]), (2, 2, None, 1, 1, True))
         again = self.go(notion, gm, outlook=[("personal", FakeOutlook(), False)])
         self.assertEqual(again["created"], 0)
-        self.assertEqual(len(notion.pages), 3)
+        self.assertEqual(len(notion.pages), 2)
 
     def test_a_push_goes_out_for_new_items_only_with_counts(self):
         from unittest import mock
@@ -194,6 +210,40 @@ class Stage(unittest.TestCase):
         notion = FakeNotion()
         self.go(notion, FakeGmail({"g1": ("a@example.com", "Security alert")}))
         self.assertTrue({path for _, path in notion.paths} <= {"data_sources", "pages"})
+
+    def test_a_new_week_does_not_bring_back_what_jim_already_checked_off(self):
+        """Monday bug: the mark was still on the message, so the new week created a fresh unchecked copy of an item Jim had finished the week before."""
+        notion = FakeNotion([page("done1", "Card added", done=True, active=True, week=PRIOR, medium="Gmail:g1")])
+        out = self.go(notion, FakeGmail({"g1": ("no-reply@example.com", "Card added")}))
+        self.assertEqual((out["created"], out["skipped_done_before"], len(notion.pages)), (0, 1, 1))
+        fresh = self.go(FakeNotion(), FakeGmail({"g1": ("no-reply@example.com", "Card added")}))
+        self.assertEqual((fresh["created"], fresh["skipped_done_before"]), (1, 0))                          # never finished: still created
+
+    def test_a_message_jim_already_replied_to_is_not_attention(self):
+        gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan?"), "g2": ("ann@example.com", "Can you send the numbers?")})
+        gm.replied = {"t-g1"}
+        notion = FakeNotion([page("old", "Can you confirm the plan?", category="Reply needed", medium="Gmail:g1")])
+        out = self.go(notion, gm)
+        self.assertEqual((out["replied"], out["created"], out["deactivated"]), (1, 1, 1))
+        self.assertFalse(notion.pages["old"]["properties"]["Active"]["checkbox"])                  # the stored row for the answered message is closed (never Done)
+        self.assertFalse(notion.pages["old"]["properties"]["Done"]["checkbox"])
+
+    def test_a_reply_check_that_fails_keeps_the_item(self):
+        gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan?")})
+        gm.thread_replied_since = lambda thread, since: (_ for _ in ()).throw(GmailError("GMAIL_HTTP_500"))
+        self.assertEqual(self.go(FakeNotion(), gm)["created"], 1)
+
+    def test_fyi_rows_already_stored_are_retired_and_the_title_says_who_and_how_long(self):
+        gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan?")})
+        gm.received = {"g1": "2026-10-01T15:00:00+00:00"}
+        notion = FakeNotion([page("fyi", "Monthly update", category="FYI", medium="Gmail:g9")])
+        out = self.go(notion, gm)
+        self.assertEqual((out["created"], out["retired"], out["deactivated"]), (1, 1, 1))
+        self.assertFalse(notion.pages["fyi"]["properties"]["Active"]["checkbox"])
+        title = next(p for pid, p in notion.pages.items() if pid != "fyi")["properties"]["Item"]["title"][0]["plain_text"]
+        self.assertEqual(title, "Can you confirm the plan? · ted · waiting 4 days")
+        again = self.go(notion, gm)
+        self.assertEqual((again["created"], again["retitled"]), (0, 0))
 
     def test_dry_run_writes_nothing(self):
         notion = FakeNotion()
@@ -249,13 +299,14 @@ class Stage(unittest.TestCase):
 
     def test_owes_categories_and_legacy_other_rows_are_recategorized_without_duplicates(self):
         for sender, subject, expect in (("ted@example.com", "Can you confirm the plan", "Reply needed"), ("a@example.com", "Proposal attached for your review", "Review / decide"),
-                                        ("a@example.com", "Weekly summary", "FYI"), ("a@example.com", "Security alert: new sign-in", "Security")):
+                                        ("a@example.com", "Security alert: new sign-in", "Security")):
             self.assertEqual(policy.decide(sender, subject), ("ADMIT", expect))
-        gm = FakeGmail({"g1": ("a@example.com", "Weekly summary")})
-        notion = FakeNotion([page("old", "Weekly summary", category="Other", medium="Gmail:g1")])
+        self.assertEqual(policy.decide("a@example.com", "Weekly summary"), ("SKIP", "fyi"))                  # mail that asks nothing of Jim is not attention
+        gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan")})
+        notion = FakeNotion([page("old", "Can you confirm the plan", category="Other", medium="Gmail:g1")])
         out = self.go(notion, gm)
         self.assertEqual((out["created"], out["recategorized"]), (0, 1))
-        self.assertEqual(notion.pages["old"]["properties"]["Category"]["select"]["name"], "FYI")
+        self.assertEqual(notion.pages["old"]["properties"]["Category"]["select"]["name"], "Reply needed")
         self.assertEqual(len(notion.pages), 1)
         self.assertEqual(self.go(notion, gm)["recategorized"], 0)
 
@@ -265,7 +316,7 @@ class Stage(unittest.TestCase):
         self.go(notion, gm)
         self.go(notion, gm)
         weeks = sorted(p["properties"]["Week Ending"]["date"]["start"] for p in notion.pages.values())
-        self.assertEqual(weeks.count(WEEK), 2)                                         # the carried item and the freshly admitted one, each exactly once
+        self.assertEqual(weeks.count(WEEK), 1)                                         # the carried item and the freshly admitted one are the same message: one row
         self.assertEqual(weeks.count(PRIOR), 2)                                        # prior-week rows preserved unchanged
 
 
