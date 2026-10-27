@@ -68,6 +68,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `network-audit` -> `lifeos.network.importer:audit`
 - `network-import` -> `lifeos.network.importer:run`
 - `network-inspect` -> `lifeos.network.inspect:run`
+- `network-layout` -> `lifeos.sources.ledger_layout:run`
 - `network-match` -> `lifeos.sources.network_leads:run`
 - `network-surface` -> `lifeos.sources.network_surface:run`
 - `newsletter-trace` -> `lifeos.sources.newsletters.cardtrace:run`
@@ -285,6 +286,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/platform/http.py`: Polite HTTP fetch with manual redirect following. Returns facts only; URLs are never logged (public repo).
 - `lifeos/platform/impersonate.py`: Fetch a page the way a real Chrome does (TLS fingerprint and headers) for the few first-party sites that refuse plain scripted requests. Used only for registry sources th
 - `lifeos/platform/jira.py`: Minimal Jira Cloud REST client (stdlib only, platform: no product knowledge). Every error is a fixed code: never a URL, a response body or an issue field. Reads retry tra
+- `lifeos/platform/ledger_body.py`: The Job Ledger page body (contract v7.jd.1 text, v7.jd.2 layout; Jim, Oct 27: the approved two-column page, and no marker line showing).
 - `lifeos/platform/limits.py`: Provider limits, canonized once. Code imports these; docs/LIMITS.md explains them; tests keep them in sync. Rule: every outbound call path stays UNDER the provider's publ
 - `lifeos/platform/mail.py`: One small provider-neutral mail record for read-only classification. Gmail and Outlook are read differently inside; classifier code sees only this shape.
 - `lifeos/platform/names.py`: Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).
@@ -322,6 +324,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/sources/interview_journey_proof.py`: LIFE-78 synthetic journey proof on real Notion. Manual only: the interview-proof workflow with `confirm = QA` (the Interview token only, its own queue, no mail read), or 
 - `lifeos/sources/interview_sweep.py`: LIFE-88 (Jim, Oct 21 2026): every opportunity page, active or retired, becomes the new UI 3c page.
 - `lifeos/sources/job_page_outreach.py`: LIFE-10 §2 / LIFE-47: the outreach table on each Job Ledger job page, in the Recruiter Outreach style (Jim accepted the synthetic preview on Oct 20, 2026).
+- `lifeos/sources/ledger_layout.py`: Ledger page layout migration (Jim, Oct 27: the approved two-column page, and no marker line showing). Moves a flat v7.jd.1 Job Ledger page to v7.jd.2 (lifeos.platform.led
 - `lifeos/sources/linkedin_search.py`: D203: LinkedIn job search (the public guest search, no login, no browser) as a source that works in concert with the LinkedIn job-alert newsletter instead of colliding wi
 - `lifeos/sources/m1m2_proof.py`: LIFE-78 bounded synthetic M1/M2 exit: ONE finite case, an acquired vacancy to a second interview round, through real V7 code on native Notion QA surfaces. Manual only: in
 - `lifeos/sources/mail_filing.py`: LIFE-149 (Jim, Oct 27): file the Physical Mail vendor's notices. Mail from the vendor's no-reply address is marked read and moved out of the Inbox into the "Physical Mail

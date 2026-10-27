@@ -208,7 +208,7 @@ def sync_page(client, ledger, ledger_source, page_id, rows, now, live, link=None
         if not live:
             return "would_create"
         before = R.page_digest(client, page_id, [], fail)
-        leads = [b["id"] for b in top if _is_leads(client, b)]
+        leads = [b["id"] for b in top if _is_leads(client, b)] or [b["id"] for b in top if b.get("type") == "column_list"]      # the two-column page keeps its leads inside the column_list: the region goes after it
         body = {"children": _shell(want, now), **({"after": leads[-1]} if leads else {})}
         try:
             client.call_once("PATCH", f"/blocks/{quote(page_id, safe='')}/children", body)

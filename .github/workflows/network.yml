@@ -5,16 +5,16 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "inspect (counts of the file), import (record it in Hostinger) or audit (read-only counts of the stored tables) or match (NET-2.2: read-only counts of network leads; writes nothing) or surface (NET-2.3: the Network Leads block on Job Ledger pages; dry unless Actually write)"
+        description: "inspect (counts of the file), import (record it in Hostinger) or audit (read-only counts of the stored tables) or match (NET-2.2: read-only counts of network leads; writes nothing) or surface (NET-2.3: the Network Leads block on Job Ledger pages; dry unless Actually write) or layout (Jim, Oct 27: move flat Ledger pages to the approved two-column layout, one page proven at a time; dry unless Actually write)"
         type: choice
-        options: ["inspect", "import", "audit", "match", "surface"]
+        options: ["inspect", "import", "audit", "match", "surface", "layout"]
         default: "inspect"
       pages:
-        description: "surface only: the most Ledger pages one run may read (default 40; 1 for a first acceptance run)"
+        description: "surface or layout only: the most Ledger pages one run may read (surface default 40, layout 20; 1 for a first acceptance run)"
         type: string
         default: "40"
       live:
-        description: "import or surface only: actually write (import: Hostinger tables; surface: the two surface tables and the owned Network Leads block). Unticked = dry run, counts only"
+        description: "import, surface or layout only: actually write (import: Hostinger tables; surface: the two surface tables and the owned Network Leads block; layout: the Ledger pages' layout and the layout table). Unticked = dry run, counts only"
         type: boolean
         default: false
 permissions:
@@ -98,4 +98,4 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_network_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_network_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_API_TOKEN: ${{ steps.bws_network.outputs.NOTION_API_TOKEN || steps.bws_network_retry.outputs.NOTION_API_TOKEN }}
-        run: python -m lifeos.run "network-$STAGE" $([ "$STAGE" = "surface" ] && echo --limit "$PAGES") $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ]; } && [ "$LIVE" = "true" ] && echo --live)
+        run: python -m lifeos.run "network-$STAGE" $( { [ "$STAGE" = "surface" ] || [ "$STAGE" = "layout" ]; } && echo --limit "$PAGES") $( { [ "$STAGE" = "import" ] || [ "$STAGE" = "surface" ] || [ "$STAGE" = "layout" ]; } && [ "$LIVE" = "true" ] && echo --live)

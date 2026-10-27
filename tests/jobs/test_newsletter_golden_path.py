@@ -101,7 +101,7 @@ class JobLedger:
     source = SOURCE
 
     def __init__(self):
-        self.pages, self.blocks, self.calls, self.created, self.break_url = {}, {}, 0, 0, False
+        self.pages, self.blocks, self.kids, self.calls, self.created, self.break_url, self.n = {}, {}, {}, 0, 0, False, 0
 
     @staticmethod
     def _read(props):
@@ -115,8 +115,17 @@ class JobLedger:
         self.created += 1
         page_id = f"page{self.created}"
         self.pages[page_id] = {"props": self._read(props), "archived": False}
-        self.blocks[page_id] = [{"type": b["type"], b["type"]: {"rich_text": [{"plain_text": "".join(r["text"]["content"] for r in b[b["type"]]["rich_text"])}]}} for b in blocks]
+        self.blocks[page_id] = [self._store(b) for b in blocks]
         return page_id
+
+    def _store(self, b):
+        """A block as Notion keeps it: an id, its type, its text (with the link of each run) and its children, which are stored under its id."""
+        self.n += 1
+        kind, inner = b["type"], b[b["type"]]
+        runs = [{"plain_text": r["text"]["content"], "href": (r["text"].get("link") or {}).get("url")} for r in inner.get("rich_text", [])]
+        block = {"id": f"blk{self.n}", "type": kind, kind: {"rich_text": runs}, "has_children": bool(inner.get("children"))}
+        self.kids[block["id"]] = [self._store(c) for c in inner.get("children", ())]
+        return block
 
     def _shown(self, page):
         """The page's properties as Notion returns them (a wrong Apply URL when `break_url`)."""
@@ -143,7 +152,12 @@ class JobLedger:
             found = self.pages[path.rsplit("/", 1)[1]]
             return {"archived": found["archived"], "properties": self._shown(found)}
         if method == "GET" and "/children" in path:
-            return {"results": self.blocks[path.split("/blocks/")[1].split("/children")[0]][:3]}
+            owner = path.split("/blocks/")[1].split("/children")[0]
+            found = self.blocks[owner] if owner in self.blocks else self.kids[owner]
+            return {"results": found[:3] if "page_size=3" in path else found, "has_more": False}
+        if method == "PATCH" and path.endswith("/children"):
+            self.kids[path.split("/blocks/")[1].split("/children")[0]].extend(self._store(c) for c in body["children"])
+            return {}
         if method == "PATCH" and path.startswith("/pages/"):
             self.pages[path.rsplit("/", 1)[1]]["props"].update(self._read(body["properties"]))
             return {}

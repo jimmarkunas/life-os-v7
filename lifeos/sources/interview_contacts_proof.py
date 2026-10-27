@@ -14,7 +14,7 @@ from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.interview.ui_probe import LEDGER_ROW, QA_PARENT, _seed
 from lifeos.jobs import identity
 from lifeos.network import match, surface
-from lifeos.platform import hidden
+from lifeos.platform import hidden, ledger_body
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.sources import interview_evidence as ev, m1m2_proof as base
 
@@ -119,6 +119,53 @@ def contacts_table(reader, page_id):
     return walk(page_id, 0)
 
 
+PROBE = []
+LAYOUT_DESC = {"summary": f"Synthetic overview {SYN}\n• a synthetic bullet", "responsibilities": f"Own the synthetic roadmap {SYN}", "requirements": "", "qualifications": f"Ten synthetic years {SYN}"}
+
+
+def _ledger_page(client, box, key, children):
+    props = {"Job": {"title": rich_text(f"E10 layout QA {SYN}")}, "Company": {"rich_text": rich_text("Layout Synthetic")}, "Stable Job Key": {"rich_text": rich_text(key)}}
+    return client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": box["ledger"]}, "properties": props, "children": children})["id"]
+
+
+def layout_cases(client, reader, box, check, today):
+    """The two-column Ledger page on real Notion: a new page (nested create, toggle fill, leads block in the right column) and a flat page moved by the migration. Synthetic pages only."""
+    key = "qa-synthetic-layout-" + today.isoformat()
+    candidates = ["\u200b", "\u200c", "\u200d", "\u2060", "\u2062", "\u2063", "\ufeff", "\u00ad", "\u3164", "\u2800", "\u115f", "\u180e", "\u034f"]
+    probe_page = _ledger_page(client, box, key + "-chars", [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": c, "link": {"url": "https://example.com/lifeos/x"}}}]}} for c in candidates])
+    kept = [(ledger_body.hidden.refs(b) and True) or False for b in notion.children(reader, probe_page, [notion.MAX_CALLS])]
+    PROBE.append({"kept_by_codepoint": {f"U+{ord(c):04X}": ok for c, ok in zip(candidates, kept + [False] * (len(candidates) - len(kept)))}})
+    page = _ledger_page(client, box, key, ledger_body.build(key, LAYOUT_DESC))
+    ledger_body.fill(client, page, LAYOUT_DESC)
+    top = notion.children(reader, page, [notion.MAX_CALLS])
+    PROBE.append([{k: v for k, v in part.items() if k in ("type", "plain_text", "href", "text")} for part in ((top[0].get("paragraph") or {}).get("rich_text") or [])] if top else None)      # synthetic page only: what Notion kept of the hidden marker
+    where = ledger_body.find(reader, page, top)
+    check("9a a new Ledger page is a hidden marker and one column_list; the first line shows nothing", [b.get("type") for b in top] == ["paragraph", "column_list"]
+          and notion.text(top[0]) == ledger_body.hidden.ZW and ledger_body.marker_text(top[0]) == f"v7-jd:2 | key={key}")
+    check("9b the Overview column and the Full job description toggle hold the description", bool(where) and [notion.text(b) for b in notion.children(reader, where["toggle"], [notion.MAX_CALLS])]
+          == ["Responsibilities", LAYOUT_DESC["responsibilities"], "Qualifications", LAYOUT_DESC["qualifications"]] and notion.text(notion.children(reader, where["left"], [notion.MAX_CALLS])[0]) == "Overview")
+    leads = fictional_leads(today, "Layout")
+    top2, owned = surface.read_page(client, page)
+    check("9c the leads block is created in the right column", surface.apply(client, page, top2, owned, leads, True) == "created")
+    right = notion.children(reader, where["right"], [notion.MAX_CALLS])
+    check("9d the right column holds only the LinkedIn connections callout (the blank placeholder is gone), with the three contacts readable and no marker or id visible",
+          [b.get("type") for b in right] == ["callout"] and [lead["name"] for lead in surface.leads_on_page(reader, page)] == [lead["name"] for lead in leads]
+          and "net:2" not in notion.text(right[0]) and not any("Dismiss " in notion.text(c) for c in notion.children(reader, right[0]["id"], [notion.MAX_CALLS])))
+    top3, owned3 = surface.read_page(client, page)
+    check("9e a replay writes nothing", surface.apply(client, page, top3, owned3, leads, True) == "unchanged")
+    flat_key = key + "-flat"
+    note = f"Synthetic note Jim wrote {SYN}"
+    flat = _ledger_page(client, box, flat_key, [*ledger_body.legacy_blocks(flat_key, LAYOUT_DESC), base._block("paragraph", note)])
+    from lifeos.sources import ledger_layout                                                                   # noqa: PLC0415
+    check("9f a flat page is moved to the two-column layout", ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "migrated")
+    after = notion.children(reader, flat, [notion.MAX_CALLS])
+    check("9g after the move: hidden marker, the column_list, and Jim's note untouched and last", [b.get("type") for b in after] == ["paragraph", "column_list", "paragraph"]
+          and notion.text(after[0]) == ledger_body.hidden.ZW and notion.text(after[2]) == note)
+    words = ledger_body.text_of(reader, flat)
+    check("9h the description still reads the same words (summary, responsibilities, qualifications) for the resume worker", all(part in words for desc in (LAYOUT_DESC,) for part in (desc["summary"].split("\n")[0], desc["responsibilities"], desc["qualifications"])))
+    check("9i a replay finds the page done", ledger_layout.migrate(client, flat, flat_key, LAYOUT_DESC, True) == "done")
+
+
 def drive(client, reader, box, now, results, counts):
     check = lambda name, ok: results.append((name, bool(ok)))                                                  # noqa: E731
     today, container = now.date(), box["container"]
@@ -178,6 +225,23 @@ def drive(client, reader, box, now, results, counts):
     check("8c the other QA case pages are unchanged by the positive page's refresh",
           others == {n: notion.tree_digest(notion.read_tree(client, pages[n], [notion.TREE_MAX_CALLS])) for n in pages if n != "positive"})
     counts["pages"] = len(pages)
+
+
+def run_layout(environ, live, now=None, client=None, reader=None):
+    """The two-column Ledger page on real Notion (confirm = LAYOUT): its own fresh sandbox, synthetic pages only. -> counts only, like run."""
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != "LAYOUT":
+        return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
+    if live:
+        return {"proof": "refused", "code": "proof_requires_dry_dispatch", "failed": 1, "why": {}, "writes": 0}
+    now, client = (now or datetime.now(ev.TZ)).astimezone(ev.TZ), client or notion.make_client(environ)
+    results = []
+    try:
+        box = sandbox(client, now)
+        layout_cases(client, reader or notion.make_client(environ), box, lambda name, ok: results.append((name, bool(ok))), now.date())
+    except NotionError as error:
+        results.append((f"stopped: {str(error)[:60]}", False))
+    return {"proof": "layout", "synthetic": True, "assertions": {name: "PASS" if ok else "FAIL" for name, ok in results}, "passed": sum(ok for _, ok in results),
+            "failed": sum(not ok for _, ok in results), "why": {}, "probe": PROBE}
 
 
 def run(environ, live, now=None, client=None, reader=None):

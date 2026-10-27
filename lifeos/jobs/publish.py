@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import os
 
 from lifeos.jobs import classify, meta, lanes, ledger, store
+from lifeos.platform import ledger_body as body
 from lifeos.jobs.identity import aggregator_twin, norm, url_key, vacancy_id
 from lifeos.platform import limits
 from lifeos.platform.notion_client import Client, NotionError, rich_text
@@ -44,22 +45,8 @@ AGGREGATOR = lambda url: classify.apply_kind(url) == "aggregator"      # noqa: E
 
 
 def body_blocks(key, description):
-    """Contract v7.jd.1: marker paragraph, then heading_2 + bullets/paragraphs per non-empty section."""
-    blocks = [_block("paragraph", f"v7-jd:1 | key={key}")]
-    for field, heading in SECTIONS:
-        text = (description.get(field) or "").strip()
-        if not text:
-            continue
-        blocks.append(_block("heading_2", heading))
-        for line in text.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("•"):
-                blocks.append(_block("bulleted_list_item", line.lstrip("• ").strip() or "-"))
-            else:
-                blocks.append(_block("paragraph", line))
-    return blocks
+    """Contract v7.jd.1 (the flat body: visible marker, then heading_2 + bullets/paragraphs per non-empty section). Still used by the diagnostics and the synthetic proofs; real pages are written by lifeos.jobs.body.build."""
+    return body.legacy_blocks(key, description)
 
 
 VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}        # the Ledger's Visible Lane option is spelled "Scale-up" (Eligible Lanes uses "Scale-Up")
@@ -304,7 +291,10 @@ def run(limit, live, environ=os.environ):
         try:
             page_id, created = (adopted(listed[key]) if listed is not None and key in listed else existing_page(client, key)), False   # slow: no connection open
             if not page_id:
-                page_id, created = client.create(properties(row), body_blocks(key, desc)), True
+                page_id, created = client.create(properties(row), body.build(key, desc)), True
+                body.fill(client, page_id, desc)                                    # the toggle's own blocks (a toggle inside a column cannot carry them at creation)
+            else:
+                body.fill(client, page_id, desc, strict=False)                      # an adopted page whose fill never ran (the next run after a crash) is completed, never repeated
         except NotionError as error:
             counts["failed"] += 1
             counts["error"] = f"{error} {getattr(error, 'detail', '')}".strip()[:80]       # a fixed code (and Notion's own error code), so a job that fails every run says why
