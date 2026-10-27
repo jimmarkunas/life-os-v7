@@ -273,7 +273,7 @@ def _gmail_ids(gmail, limit, query):
 
 
 def parsed_sender(message):
-    """The allowlisted sender's kind (never an address): ORDERED, SHIPPED, DELIVERED or OTHER."""
+    """The allowlisted sender's kind (never an address): ORDERED, SHIPPED, DELIVERED, RETURN or OTHER."""
     return events.SENDERS.get(events._sender(message.get("sender")), "OTHER")
 
 

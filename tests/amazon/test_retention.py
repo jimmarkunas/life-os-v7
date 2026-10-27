@@ -41,7 +41,7 @@ class RetentionTests(unittest.TestCase):
         query = next(call[1] for call in gmail.calls if call[0] == "list_ids")
         self.assertIn("label:Amazon", query)
         self.assertIn("older_than:30d", query)
-        self.assertEqual(query.count("from:"), 3)
+        self.assertEqual(query.count("from:"), 4)
 
     def test_dry_run_counts_and_trashes_nothing(self):
         gmail, notion = recorded_store()

@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-RANK = {"ORDERED": 1, "SHIPPED": 2, "DELIVERED": 3, "REVIEW": 99}
+RANK = {"ORDERED": 1, "SHIPPED": 2, "DELIVERED": 3, "RETURNING": 4, "REFUNDED": 5, "REVIEW": 99}
 FIELDS = (
     "Order ID", "Status", "Ordered At", "Latest Event At", "Grand Total", "Item Summary", "Item Count",
     "Amazon Order URL", "Source Message IDs", "Last Source Subject", "Last Reconciled At", "Needs Review",
@@ -49,7 +49,7 @@ def reconcile(events, existing=None, now=None):
     by_key = {}
     try:
         for event in events:
-            if (event.get("status") not in ("ORDERED", "SHIPPED", "DELIVERED")
+            if (event.get("status") not in ("ORDERED", "SHIPPED", "DELIVERED", "RETURNING", "REFUNDED")
                     or not isinstance(event.get("id"), str) or not event["id"]):
                 return _conflict(existing), "EVENT_INVALID"
             event_time = _time(event.get("received_at"))
