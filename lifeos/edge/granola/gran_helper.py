@@ -6,12 +6,18 @@ endpoint (lifeos/imessage/alerts_endpoint.py), which has already checked Tailsca
 connection: `gran1 <len>\\n` + a JSON object of 1..4096 bytes; one reply: `gran1 <len>\\n` + a JSON object `{"ok", "code", "nonce", ...}`.
 Four fixed operations, no shell and nothing the caller can choose beyond a meeting id and a hash:
   sync   `grans sync documents`, then `grans sync transcripts` (no date limit). Reply {"documents": n, "transcripts": n, "exit": 0}, counts read from the local database.
-  list   every live meeting: {"id", "start" (the calendar start when the meeting has one, else when Granola created it, ISO with zone), "title", "attendees"}.
+  list   every live meeting: {"id", "start" (the calendar start when the meeting has one, else when Granola created it, ISO with zone), "title", "attendees"}, plus
+         "caps": what this helper can do beyond the base verbs ("notes", "purge_all"; LIFE-122 comment 11269).
          Private fields travel to the one caller in memory; nothing is logged, written or kept here.
-  show   {"id"} -> `grans show <id> --transcript --json --no-color` stdout verbatim in "json" (at most 25,000,000 bytes: the contract's own limit).
+  show   {"id"} -> `grans show <id> --transcript --json --no-color` stdout verbatim in "json" (at most 25,000,000 bytes: the contract's own limit), plus "notes" and
+         "summary" (Granola's own, each at most 60,000 characters, "" when there is none).
   purge  {"id", "content_sha256"} -> deletes that one meeting's transcript utterances from grans.db, but only if the caller's hash equals the hash this process computes
          itself with the transcript contract (lifeos/interview/transcript.py, installed beside this file) over a fresh `grans show` of that meeting. The caller sends
          it after it has written the transcript to Notion and read it back. Reply {"purged": 0|1}. Titles, notes and attendees stay (they are what `list` matches on).
+  purge  {"id", "content_sha256", "scope": "all"} -> the same hash check, then deletes EVERYTHING held for that meeting: utterances, panels, text chunks and their vectors,
+         sync-log rows, attendees, its calendar event, and the meeting row itself (notes, summary, title). Reply {"purged": n >= 1 on first success, "scope": "all"}.
+         Idempotent: a meeting that is already gone answers {"purged": 0, "scope": "all"}. Granola's next `sync` can bring a purged meeting back; the caller's catalog stops it
+         being carried twice. Any other scope value is GRAN_BAD_FRAME.
 Fixed error codes (reply ok false): GRAN_BAD_FRAME, GRAN_BAD_OP, GRAN_NOT_FOUND, GRAN_SYNC_FAILED, GRAN_AUTH_EXPIRED, GRAN_TIMEOUT, GRAN_OVERSIZE, GRAN_HASH_MISMATCH, and
 the contract's own TRANSCRIPT_* code when `purge` meets a transcript that no longer passes it. Never a message, path, exception text or transcript content.
 The Mac and Oracle share one Granola session, so a refresh on the Mac can sign Oracle out: that is GRAN_AUTH_EXPIRED, and a person signs Oracle in again. Stdlib only."""
@@ -31,6 +37,8 @@ MAX_REPLY = MAX_SHOW + 4096
 SYNC_EACH, SHOW_WAIT, SHORT_WAIT = 35, 50, 20          # seconds; the endpoint's hard limit is 90 for the whole connection
 ID = re.compile(r"^[0-9A-Za-z_-]{8,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+MAX_TEXT = 60_000                                       # characters of notes, and of summary, sent with a show
+CAPS = ["notes", "purge_all"]
 
 
 def _frame(body):
@@ -144,7 +152,7 @@ def op_list(req, ctx, nonce):
         db.close()
     except sqlite3.Error:
         return fail("GRAN_SYNC_FAILED", nonce)
-    return good(nonce, meetings=meetings)
+    return good(nonce, meetings=meetings, caps=CAPS)
 
 
 def _known(ctx, doc_id):
@@ -182,15 +190,32 @@ def op_show(req, ctx, nonce):
     if not _known(ctx, doc_id):
         return fail("GRAN_NOT_FOUND", nonce)
     text, code = _show(ctx, doc_id)
-    return fail(code, nonce) if code else good(nonce, json=text)
+    if code:
+        return fail(code, nonce)
+    notes, summary = _notes(ctx, doc_id)
+    return good(nonce, json=text, notes=notes, summary=summary)
+
+
+def _notes(ctx, doc_id):
+    """-> (notes, summary): Granola's own notes (markdown, else plain) and its AI summary (the summary column, else the meeting's panels), each cut at MAX_TEXT."""
+    try:
+        db = ctx.database()
+        row = db.execute("select notes_markdown, notes_plain, summary from documents where id=?", (doc_id,)).fetchone() or (None, None, None)
+        summary = row[2] or ""
+        if not summary.strip():
+            summary = "\n\n".join(p for (p,) in db.execute("select content_markdown from panels where document_id=? and deleted_at is null order by created_at", (doc_id,)) if p)
+        db.close()
+    except sqlite3.Error:
+        return "", ""
+    return (row[0] or row[1] or "")[:MAX_TEXT], summary[:MAX_TEXT]
 
 
 def op_purge(req, ctx, nonce):
-    doc_id, want = req.get("id"), req.get("content_sha256")
-    if not isinstance(doc_id, str) or not ID.match(doc_id) or not isinstance(want, str) or not HEX64.match(want):
+    doc_id, want, scope = req.get("id"), req.get("content_sha256"), req.get("scope")
+    if not isinstance(doc_id, str) or not ID.match(doc_id) or not isinstance(want, str) or not HEX64.match(want) or scope not in (None, "all"):
         return fail("GRAN_BAD_FRAME", nonce)
     if not _known(ctx, doc_id):
-        return fail("GRAN_NOT_FOUND", nonce)
+        return good(nonce, purged=0, scope="all") if scope == "all" else fail("GRAN_NOT_FOUND", nonce)   # whole-meeting purge is idempotent
     text, code = _show(ctx, doc_id)
     if code:
         return fail(code, nonce)
@@ -204,13 +229,36 @@ def op_purge(req, ctx, nonce):
     try:
         db = ctx.database(write=True)
         db.execute("pragma secure_delete=on")
-        removed = db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
+        removed = _purge_all(db, doc_id) if scope == "all" else db.execute("delete from transcript_utterances where document_id=?", (doc_id,)).rowcount
         db.commit()
         db.execute("pragma wal_checkpoint(truncate)")
         db.close()
     except sqlite3.Error:
         return fail("GRAN_SYNC_FAILED", nonce)
+    if scope == "all":
+        return good(nonce, purged=removed, scope="all")
     return good(nonce, purged=1 if removed > 0 else 0)
+
+
+def _purge_all(db, doc_id):
+    """Delete everything held for one meeting in one transaction -> the number of rows removed. Tables Granola has not created on this install are skipped."""
+    have = {name for (name,) in db.execute("select name from sqlite_master where type='table'")}
+    removed = 0
+    event = None
+    row = db.execute("select google_calendar_event_json from documents where id=?", (doc_id,)).fetchone()
+    try:
+        event = (json.loads(row[0]) or {}).get("id") if row and row[0] else None
+    except (TypeError, ValueError, AttributeError):
+        pass
+    if "chunks" in have and "embeddings" in have:
+        removed += db.execute("delete from embeddings where chunk_id in (select id from chunks where document_id=?)", (doc_id,)).rowcount
+    for table, column in (("chunks", "document_id"), ("panels", "document_id"), ("transcript_utterances", "document_id"), ("transcript_sync_log", "document_id"),
+                          ("panel_sync_log", "document_id"), ("document_people", "document_id"), ("documents", "id")):
+        if table in have:
+            removed += db.execute("delete from %s where %s=?" % (table, column), (doc_id,)).rowcount
+    if isinstance(event, str) and "events" in have:
+        removed += db.execute("delete from events where id=?", (event,)).rowcount
+    return removed
 
 
 OPS = {"sync": op_sync, "list": op_list, "show": op_show, "purge": op_purge}
