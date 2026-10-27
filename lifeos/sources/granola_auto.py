@@ -82,7 +82,7 @@ def header_of(shown):
 
 
 def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=None, context=None, connect=store.connect, now=None):
-    counts = {"meetings": 0, "already": 0, "unmatched": 0, "client_routed": 0, "client_by_instruction": 0, "client_listed": 0, "carried": 0, "purged": 0, "left_on_oracle": 0, "header": 0, "segments": 0, "failed": 0, "purge_capable": 0, "why": {}}
+    counts = {"meetings": 0, "already": 0, "unmatched": 0, "client_routed": 0, "client_by_instruction": 0, "unfiled_created": 0, "unfiled_exists": 0, "unfiled_planned": 0, "unfiled_waiting": 0, "triage_filed": 0, "triage_deleted": 0, "triage_delete_planned": 0, "triage_gone": 0, "triage_interview_later": 0, "carried": 0, "purged": 0, "left_on_oracle": 0, "header": 0, "segments": 0, "failed": 0, "purge_capable": 0, "why": {}}
     context = context or RunContext.start(840)
     now = (now or datetime.now(TZ)).astimezone(TZ).replace(tzinfo=None)
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
@@ -128,8 +128,14 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
         matched = granola_match.match(listed, have)                 # every meeting is matched against every round, so a round two meetings claim is ambiguous for both
         order = sorted(todo, key=lambda m: m.start, reverse=True)
         carried_now = 0
-        targets = {}                                                 # client target key -> "target_ok" | the failure, checked once per run
+        meetings_state = []                                          # the Meetings database check, made once per run: ["target_ok"] or the failure
         filed_as = {"client": granola_clients.CLIENT, "internal": granola_clients.INTERNAL}.get((environ.get("GRAN_UNMATCHED_TO") or "").strip().lower())
+        by_key = {keys[m.id]: m for m in listed}
+
+        def meetings_ok():
+            if not meetings_state:
+                meetings_state.append(granola_clients.check(client))
+            return meetings_state[0] == "target_ok"
 
         def finish(meeting, envelope, header, result, round_key, job_key, after=None):
             """The shared tail of a carried meeting: catalog row saved and read back, then (only then) the whole-meeting purge. -> True when the meeting counts as carried."""
@@ -175,8 +181,31 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 return None
             return envelope, (header_of(shown) if "notes" in caps else ())
 
+        def file_on_meetings(meeting, filed_to):
+            """File one meeting on the Meetings database (LIFE-166). -> True when it was handled (carried, or counted and left on Oracle)."""
+            if carried_now >= max(1, limit or PER_RUN):
+                counts["left_on_oracle"] += 1
+                why("GRAN_AUTO_LATER_RUN")
+                return True
+            if not meetings_ok():
+                counts["left_on_oracle"] += 1
+                why("GRAN_CLIENT_TARGET_NOT_OK")
+                return True
+            context.require_time()
+            got = fetch(meeting)
+            if got is None:
+                return True
+            envelope, header = got
+            result, wrote = granola_clients.write(client, filed_to, meeting, keys[meeting.id], envelope, live, header)
+            if not live or result not in ("TRANSCRIPT_WRITTEN", "TRANSCRIPT_NOOP"):
+                counts["left_on_oracle"] += 1
+                why(result)
+                counts["failed"] += int(result not in ("TRANSCRIPT_PLANNED",))
+                return True
+            return finish(meeting, envelope, header, result, hashlib.sha256(f"meetings:{filed_to}".encode()).hexdigest()[:16], None)
+
         def carry_client(meeting):
-            """LIFE-164: a meeting that matches no round but belongs to client work. -> False when it is not client work (the caller counts it unmatched)."""
+            """LIFE-164: a meeting that matches no round but belongs to client work. -> False when it is not client work (the caller lists it as Unfiled)."""
             target, route_code = granola_clients.route(meeting)
             if target is None and route_code == "ROUTE_NONE" and filed_as is not None:
                 target = filed_as                                    # Jim's one-off instruction for this run: whatever matches nothing is filed there
@@ -186,30 +215,52 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                     why(route_code)
                 return False
             counts["client_routed"] += 1
-            if carried_now >= max(1, limit or PER_RUN):
-                counts["left_on_oracle"] += 1
-                why("GRAN_AUTO_LATER_RUN")
-                return True
-            if targets.setdefault(target.key, granola_clients.check(client, target)) != "target_ok":
-                counts["left_on_oracle"] += 1
-                why("GRAN_CLIENT_TARGET_NOT_OK")
-                return True
-            context.require_time()
-            got = fetch(meeting)
-            if got is None:
-                return True
-            envelope, header = got
-            result, wrote = granola_clients.write(client, target, meeting, envelope, live, header)
-            counts["client_listed"] += wrote["listed"]
-            if not live or result not in ("TRANSCRIPT_WRITTEN", "TRANSCRIPT_NOOP"):
-                counts["left_on_oracle"] += 1
-                why(result)
-                counts["failed"] += int(result not in ("TRANSCRIPT_PLANNED",))
-                return True
-            finish(meeting, envelope, header, result, hashlib.sha256(target.parent.encode()).hexdigest()[:16], None)
+            file_on_meetings(meeting, target)
             return True
 
+        def triage():
+            """LIFE-166: Jim's decisions. A row marked Unfiled with a File as is filed there; Delete removes the meeting from Oracle. Rows whose meeting is gone from Oracle are closed."""
+            if not meetings_ok():
+                return
+            for page_id, key, choice in granola_clients.rows_where(client, granola_clients.UNFILED, True):
+                meeting = by_key.get(key)
+                if meeting is None:
+                    counts["triage_gone"] += 1
+                    if live:
+                        granola_clients.set_status(client, page_id, granola_clients.DELETED)
+                    continue
+                if keys[meeting.id] in done:
+                    continue                                          # carried by an earlier run; the row catches up through the write path
+                if choice == "Interview":
+                    counts["triage_interview_later"] += 1
+                    continue
+                if choice == "Delete":
+                    context.require_time()
+                    got = fetch(meeting)
+                    if got is None:
+                        continue
+                    if not live:
+                        counts["triage_delete_planned"] += 1
+                        continue
+                    reply = ask("purge", id=meeting.id, content_sha256=got[0].source_content_sha256, scope="all") if "purge_all" in caps else {}
+                    if reply.get("scope") == "all" and int(reply.get("purged") or 0) >= 1:
+                        granola_clients.set_status(client, page_id, granola_clients.DELETED)
+                        counts["triage_deleted"] += 1
+                    else:
+                        counts["left_on_oracle"] += 1
+                        why("GRAN_PURGE_SCOPE_NOT_CONFIRMED" if "purge_all" in caps else "GRAN_PURGE_ALL_UNSUPPORTED")
+                    continue
+                if choice in (granola_clients.CLIENT, granola_clients.INTERNAL, granola_clients.PERSONAL):
+                    before = counts["carried"]
+                    file_on_meetings(meeting, choice)
+                    counts["triage_filed"] += counts["carried"] - before
+                    done.add(keys[meeting.id])                          # one decision per meeting per run
+
+        listed_unfiled = []
+        triage()
         for meeting in order:
+            if keys[meeting.id] in done:
+                continue
             code, round_id = matched[meeting.id]
             if code != "MATCH":
                 if code == "MATCH_NONE" and carry_client(meeting):
@@ -217,6 +268,7 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
                 counts["unmatched"] += 1
                 counts["left_on_oracle"] += 1
                 why(code)
+                listed_unfiled.append(meeting)
                 continue
             if carried_now >= max(1, limit or PER_RUN):
                 counts["left_on_oracle"] += 1
@@ -243,6 +295,14 @@ def run(limit, live, environ=os.environ, send=granola_oracle.exchange, client=No
             except (NotionError, KeyError):
                 job_key = None
             finish(meeting, envelope, header, result, hashlib.sha256(round_id.encode()).hexdigest()[:16], job_key, after=lambda: create.link_transcript(client, round_id, True, {}))
+        if listed_unfiled and meetings_ok():                              # LIFE-166: every meeting nothing could place waits for Jim as an Unfiled row
+            for meeting in listed_unfiled:
+                outcome = granola_clients.unfiled_row(client, meeting, keys[meeting.id], live)
+                counts["unfiled_" + outcome] += 1
+        elif listed_unfiled:
+            why("GRAN_CLIENT_TARGET_NOT_OK")
+        if meetings_state and meetings_state[0] == "target_ok":
+            counts["unfiled_waiting"] = len(granola_clients.rows_where(client, granola_clients.UNFILED, False))
         return {"code": "GRAN_AUTO_DONE", "counts": counts}
     except Stop as stop:
         counts["failed"] += 1
