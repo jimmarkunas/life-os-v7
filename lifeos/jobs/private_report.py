@@ -1,5 +1,4 @@
-"""LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of the page that holds the Job Ledger
-(already private to Jim's workspace); the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing. One page per title: a page that already exists is
+"""LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing. One page per title: a page that already exists is
 left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
 from lifeos.platform import limits
 from lifeos.platform.notion_client import NotionError, rich_text
@@ -13,13 +12,7 @@ def _fail(counts, code):
     return counts
 
 
-def parent_page(client):
-    """-> the id of the page that holds the Job Ledger database (data source -> database -> page), or None."""
-    source = client.call("GET", f"/data_sources/{client.source}")
-    database = (source.get("parent") or {}).get("database_id")
-    if not database:
-        return None
-    return ((client.call("GET", f"/databases/{database}").get("parent") or {}).get("page_id")) or None
+REPORTS_PAGE = "4063c5a0592680079058c7b45bd602e6"          # Jim's private "Reports" page (shared with the Jobs integration, Oct 27 2026); an id is not a secret
 
 
 def _cell(text, link=False):
@@ -65,9 +58,7 @@ def publish(client, title, header, rows, live, links=()):
     """-> counts: {"rows", "page": "dry" | "new" | "present", "failed", "why"}. Write only when live; read back the row count before reporting 'new'."""
     counts = {"rows": len(rows), "page": "dry", "failed": 0, "why": {}}
     try:
-        parent = parent_page(client)
-        if not parent:
-            return _fail(counts, "PRIVATE_REPORT_NO_PARENT")
+        parent = REPORTS_PAGE
         if _existing(client, parent, title):
             counts["page"] = "present"
             return counts

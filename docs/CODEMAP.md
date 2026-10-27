@@ -213,7 +213,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/linkcheck.py`: Counts-only diagnostic: why do parked Scale-Up roles keep failing their link check? Reads v7_jobs and each parked role's own public job page, writes nothing, prints no ti
 - `lifeos/jobs/meta.py`: Ledger fields derived from what the pipeline already knows about a job: Location / Work Mode, Market, Visa Route, Compensation. Pure: no I/O. Only populated fields are re
 - `lifeos/jobs/names.py`: Employer-name comparison for Jobs: the hiring-pipeline handoff and the sponsor register. The normalizer and the token rules live in `lifeos.platform.names` (shared with I
-- `lifeos/jobs/private_report.py`: LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of the page that hold
+- `lifeos/jobs/private_report.py`: LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of Jim's private Repo
 - `lifeos/jobs/progression.py`: Does a protected human pursuit exist for this job? Retention asks here and never reads a Notion stage field.
 - `lifeos/jobs/publish.py`: Publish READY jobs to the Notion Job Ledger (free official API, <= 2.5 req/s, counts-only logs).
 - `lifeos/jobs/quality.py`: Precision guards: is this URL a single job page, and is this text a real job description? Pure functions. Found by the first live Notion batch (2 of 3 pages were wrong: a
