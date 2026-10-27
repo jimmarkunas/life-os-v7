@@ -235,6 +235,13 @@ class Gmail:
         return self._request("POST", f"{API}/messages/{message}/modify",
                              body={"addLabelIds": [amazon_label_id], "removeLabelIds": ["INBOX"]})
 
+    def file_read(self, message_id, label_id):
+        """Mark one message read and move it out of the Inbox into an existing label (LIFE-149); never deletes."""
+        if not isinstance(label_id, str) or not label_id or label_id in ("INBOX", "UNREAD", "TRASH", "SPAM"):
+            raise GmailError("GMAIL_FILE_LABEL_INVALID")
+        message = urllib.parse.quote(str(message_id), safe="")
+        return self._request("POST", f"{API}/messages/{message}/modify", body={"addLabelIds": [label_id], "removeLabelIds": ["INBOX", "UNREAD"]})
+
     def trash(self, message_id):
         """Move one message to the Gmail Trash (recoverable for 30 days); never a permanent delete."""
         return self._request("POST", f"{API}/messages/{urllib.parse.quote(str(message_id), safe='')}/trash")
