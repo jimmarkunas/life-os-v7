@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from lifeos.attention import policy, reconcile, stage
 from lifeos.platform.gmail import GmailError
@@ -109,6 +109,10 @@ class FakeNotion:
         self.paths.append(("POST", "data_sources"))
         if body["filter"].get("property") == "Done":
             return {"results": [p for p in self.pages.values() if p["properties"]["Done"]["checkbox"]], "has_more": False}
+        if "and" in body["filter"]:                                     # the stale sweep: Active, not Done, a week before the given date
+            before = body["filter"]["and"][2]["date"]["before"]
+            return {"results": [p for p in self.pages.values() if p["properties"]["Active"]["checkbox"] and not p["properties"]["Done"]["checkbox"]
+                                and p["properties"]["Week Ending"]["date"]["start"] < before], "has_more": False}
         week = body["filter"]["date"]["equals"]
         return {"results": [p for p in self.pages.values() if p["properties"]["Week Ending"]["date"]["start"] == week], "has_more": False}
 
@@ -240,6 +244,18 @@ class Stage(unittest.TestCase):
         self.assertFalse(notion.pages["old"]["properties"]["Done"]["checkbox"])
         again = self.go(notion, gm)
         self.assertEqual((again["created"], again["deactivated"]), (0, 0))
+
+    def test_old_weeks_are_closed_not_done_and_this_and_last_week_are_left(self):
+        old_week = (date.fromisoformat(PRIOR) - timedelta(days=14)).isoformat()
+        notion = FakeNotion([page("old", "Old one", week=old_week, medium="Gmail:x1"), page("oldd", "Old done", week=old_week, done=True, medium="Gmail:x2"),
+                             page("prior", "Last week", week=PRIOR, medium="Gmail:x3")])
+        out = self.go(notion, FakeGmail({}))
+        self.assertEqual(out["stale_closed"], 1)
+        self.assertFalse(notion.pages["old"]["properties"]["Active"]["checkbox"])
+        self.assertFalse(notion.pages["old"]["properties"]["Done"]["checkbox"])
+        self.assertTrue(notion.pages["oldd"]["properties"]["Active"]["checkbox"])
+        self.assertTrue(notion.pages["prior"]["properties"]["Active"]["checkbox"])
+        self.assertEqual(self.go(notion, FakeGmail({}))["stale_closed"], 0)
 
     def test_a_reply_check_that_fails_keeps_the_item(self):
         gm = FakeGmail({"g1": ("ted@example.com", "Can you confirm the plan?")})

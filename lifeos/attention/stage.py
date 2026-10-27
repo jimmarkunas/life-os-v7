@@ -87,6 +87,27 @@ def read_week(notion, source_id, week):
     raise AttentionError("ATTENTION_READ_INCOMPLETE")
 
 
+def read_stale(notion, source_id, before):
+    """Every row still Active and not Done whose Week Ending is before `before` (older than the prior week, which carry-forward no longer reaches). Complete or an error."""
+    found, cursor = [], None
+    for _ in range(50):
+        body = {"page_size": 100, "filter": {"and": [{"property": "Active", "checkbox": {"equals": True}}, {"property": "Done", "checkbox": {"equals": False}},
+                                                      {"property": "Week Ending", "date": {"before": str(before)}}]}}
+        if cursor:
+            body["start_cursor"] = cursor
+        try:
+            page = notion.query_data_source(source_id, body)
+        except NotionError:
+            raise AttentionError("ATTENTION_READ_FAILED") from None
+        found += [_row(p) for p in page.get("results", [])]
+        if not page.get("has_more"):
+            return found
+        cursor = page.get("next_cursor")
+        if not cursor:
+            raise AttentionError("ATTENTION_READ_INCOMPLETE")
+    raise AttentionError("ATTENTION_READ_INCOMPLETE")
+
+
 def read_done_media(notion, source_id):
     """The Medium of every row Jim has ever checked Done, in any week. Complete or an error: a partial read could let a finished item come back."""
     found, cursor = set(), None
@@ -238,7 +259,7 @@ def fold_threads(admitted, candidates):
 
 def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_clients=None, now=None):
     counts = {"gmail": 0, "outlook": 0, "outlook_accounts": 0, "admitted": 0, "owned_elsewhere": 0, "categories": {}, "created": 0, "carried": 0, "deactivated": 0, "reactivated": 0,
-              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "thread_folded": 0, "sources_failed": 0, "verified": False, "why": []}
+              "reused": 0, "ambiguous": 0, "skipped_done": 0, "skipped_done_before": 0, "replied": 0, "fyi_skipped": 0, "retitled": 0, "retired": 0, "thread_folded": 0, "stale_closed": 0, "sources_failed": 0, "verified": False, "why": []}
     source_id = (environ.get("NOTION_ATTENTION_DATA_SOURCE_ID") or SOURCE_ID).strip().replace("collection://", "")
     if notion is None:
         notion = Client({**environ, "NOTION_ATTENTION_DATA_SOURCE_ID": source_id}, token_name="NOTION_JIRA_TOKEN", source_name="NOTION_ATTENTION_DATA_SOURCE_ID")
@@ -313,6 +334,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
                 row["category"] = c["category"]
                 recategorize.append((row["id"], c["category"], week == str(this_week)))
     counts["recategorized"] = sum(1 for _, _, current in recategorize if current)
+    stale = read_stale(notion, source_id, this_week - timedelta(days=7))      # Jim, Oct 27: rows from older weeks never leave the table; close them (Active off, never Done)
+    counts["stale_closed"] = len(stale)
     plan = reconcile.plan(admitted, rows, today, proofs, read_done_media(notion, source_id))
     plan["recategorize"] = [(rid, cat) for rid, cat, current in recategorize if current]
     dates = {c["medium"]: c["received"] for c in admitted if c.get("received")}
@@ -340,6 +363,8 @@ def run(limit, live, environ=os.environ, gmail=None, notion=None, outlook_client
         for row_id in plan["deactivate"]:
             notion.update_page_properties(row_id, {"Active": {"checkbox": False}})
             counts["deactivated"] += 1
+        for r in stale:
+            notion.update_page_properties(r["id"], {"Active": {"checkbox": False}})
         for row_id, category in plan["recategorize"]:
             notion.update_page_properties(row_id, {"Category": {"select": {"name": category}}})
         for row_id, received in plan["backfill"]:
