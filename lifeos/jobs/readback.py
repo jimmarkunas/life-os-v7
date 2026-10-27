@@ -7,6 +7,7 @@ exact-key filters) instead of a GET per page; the body marker is still read per 
 from datetime import datetime, timezone
 
 from lifeos.jobs import store
+from lifeos.platform import ledger_body as body
 from lifeos.jobs.identity import url_key
 from lifeos.platform.notion_client import NotionError
 
@@ -44,9 +45,10 @@ def check(client, page_id, key, url, fit):
     if why:
         return why
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
-    first = _text((children[0].get("paragraph") if children else None) or {}, "rich_text")
-    if not first.startswith("v7-jd:1") or len(children) < 2:
-        return "no_description"
+    if not children or not body.is_marker(children[0]) or len(children) < 2:
+        return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
+    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children) or {}).get("toggle"):
+        return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
     return None
 
 
@@ -90,9 +92,10 @@ def check_listed(client, page_id, key, url, fit, pages):
     if why:
         return why
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
-    first = _text((children[0].get("paragraph") if children else None) or {}, "rich_text")
-    if not first.startswith("v7-jd:1") or len(children) < 2:
-        return "no_description"
+    if not children or not body.is_marker(children[0]) or len(children) < 2:
+        return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
+    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children) or {}).get("toggle"):
+        return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
     return None
 
 

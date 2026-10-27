@@ -440,6 +440,12 @@ CODES = {
     "NETWORK_SURFACE_DEGRADED": _r("network", "degraded", False, "The Network surface ran with a part failed.", "Read the stage's own code."),
     "NETWORK_SURFACE_PAGE_INCOMPLETE": _r("network", "degraded", False, "A surface page read did not finish.", "None; retried."),
     "NETWORK_SURFACE_READBACK_MISMATCH": _r("network", "bug", False, "A surface write did not read back as written.", "Retried."),
+    "LAYOUT_COLUMNS_MISSING": _r("network", "bug", False, "A Ledger page's two-column layout did not read back.", "None; the page is retried next run."),
+    "LAYOUT_TOGGLE_MISMATCH": _r("network", "bug", False, "A Ledger page's Full job description toggle did not read back as written.", "None; the old description is untouched and the page is retried."),
+    "LAYOUT_OVERVIEW_MISMATCH": _r("network", "bug", False, "A Ledger page's Overview column did not read back as written.", "None; the old description is untouched and the page is retried."),
+    "LAYOUT_OLD_BLOCKS_CHANGED": _r("network", "degraded", False, "A Ledger page changed while it was being moved; nothing was deleted.", "None; the page is retried next run."),
+    "LAYOUT_READBACK_MISMATCH": _r("network", "bug", False, "A Ledger page did not read back as the two-column layout after the move.", "Look at that page; the run reports it."),
+    "LAYOUT_PAGES_FAILED": _r("network", "bug", False, "One or more Ledger pages could not be moved to the two-column layout.", "See the counts; failed pages are retried next run."),
     # --- Outlook (lifeos/outlook/*, lifeos/platform/outlook.py, lifeos/sources/newsletters/outlook.py)
     "OUTLOOK_BAD_LINK": _r("outlook", "bug", False, "A paging link pointed off the Graph host, so it was not followed.", "A security check; do not follow."),
     "OUTLOOK_CONFIG_INVALID": _r("outlook", "blocked", False, "The Outlook configuration is not valid.", "Fix the variables."),

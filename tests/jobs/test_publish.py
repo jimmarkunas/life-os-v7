@@ -422,7 +422,7 @@ class PublicationOrderTests(unittest.TestCase):
 
         with mock.patch.object(publish, "Client", Client), mock.patch.object(publish.ledger, "verify", return_value=publish.ledger.OK), \
                 mock.patch.object(publish.store, "connect", return_value=self.db), mock.patch.object(publish.store, "ensure_schema"), \
-                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}), \
+                mock.patch.object(fit_sync, "run", return_value={}), mock.patch.object(readback, "run", return_value={}), mock.patch.object(publish.body, "fill", return_value=0), \
                 mock.patch.object(publish, "_now", return_value=datetime.datetime(2026, 10, 13, 9, 0)):
             counts = publish.run(2, True, {"V7_FIT_GATE": "true"})
         self.assertEqual((counts["picked"], counts["created"], counts["failed"]), (2, 2, 0))

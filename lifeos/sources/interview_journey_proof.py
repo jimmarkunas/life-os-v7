@@ -156,6 +156,9 @@ def run(environ, live, now=None, client=None):
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "E10":              # LIFE-88: the synthetic Network Leads / LinkedIn Contacts QA, same switch and sandbox rules
         from lifeos.sources import interview_contacts_proof
         return interview_contacts_proof.run(environ, live, now=now, client=client)
+    if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() == "LAYOUT":           # Jim, Oct 27: the two-column Ledger page and its migration, on real Notion in a fresh sandbox
+        from lifeos.sources import interview_contacts_proof
+        return interview_contacts_proof.run_layout(environ, live, now=now, client=client)
     if (environ.get("INTERVIEW_JOURNEY_PROOF") or "").strip() != CONFIRM:
         return {"proof": "refused", "code": "proof_confirm_missing", "failed": 1, "why": {}, "writes": 0}
     if live:
