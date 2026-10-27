@@ -34,7 +34,8 @@ def _query_body(since):
     return {"page_size": 100, "sorts": [{"property": "Latest Event At", "direction": "descending"}],
             "filter": {"or": [{"property": "Status", "select": {"equals": "ORDERED"}}, {"property": "Status", "select": {"equals": "SHIPPED"}},
                               {"property": "Needs Review", "checkbox": {"equals": True}},
-                              {"and": [{"property": "Status", "select": {"equals": "DELIVERED"}},
+                              {"property": "Status", "select": {"equals": "RETURNING"}},
+                              {"and": [{"or": [{"property": "Status", "select": {"equals": "DELIVERED"}}, {"property": "Status", "select": {"equals": "REFUNDED"}}]},
                                        {"property": "Latest Event At", "date": {"on_or_after": since}}]}]}}
 
 
@@ -118,27 +119,32 @@ def sections(rows, now):
     open_all = [r for r in rows if r.get("Status") in ("ORDERED", "SHIPPED") and r not in review]
     open_ = [r for r in open_all if (_when(r.get("Latest Event At")) or now) >= now - timedelta(days=OPEN_STALE_DAYS)]
     delivered = [r for r in rows if r.get("Status") == "DELIVERED" and r not in review and (_when(r.get("Latest Event At")) or now) >= cutoff]
+    returning = [r for r in rows if r.get("Status") == "RETURNING" and r not in review and (_when(r.get("Latest Event At")) or now) >= now - timedelta(days=OPEN_STALE_DAYS)]      # LIFE-124: leaves like an open order
+    refunded = [r for r in rows if r.get("Status") == "REFUNDED" and r not in review and (_when(r.get("Latest Event At")) or now) >= cutoff]                                  # LIFE-124: the same 7 days as Delivered
     key = lambda r: _when(r.get("Latest Event At")) or now
-    return (sorted(open_, key=key, reverse=True), sorted(delivered, key=key, reverse=True), sorted(review, key=key, reverse=True), len(open_all) - len(open_))
+    return (sorted(open_, key=key, reverse=True), sorted(delivered, key=key, reverse=True), sorted(review, key=key, reverse=True), len(open_all) - len(open_),
+            sorted(returning, key=key, reverse=True), sorted(refunded, key=key, reverse=True))
 
 
 def render(rows, now, degraded=False, url=None):
     """-> (blocks, counts). Pure."""
-    open_, delivered, review, older = sections(rows, now)
+    open_, delivered, review, older, returning, refunded = sections(rows, now)
     head = (f"DEGRADED · Amazon sync failed at {now.strftime('%-I:%M %p')} CT · showing last accepted orders" if degraded else f"Updated {now.strftime('%-I:%M %p')} CT")
-    summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days) · {len(review)} need review"
+    summary = f"{head} · {len(open_)} in transit · {len(delivered)} delivered (last {DELIVERED_DAYS} days)"
+    summary += (f" · {len(returning)} returning" if returning else "") + (f" · {len(refunded)} refunded (last {DELIVERED_DAYS} days)" if refunded else "") + f" · {len(review)} need review"
     if older:
         summary += f" · {older} older than {OPEN_STALE_DAYS} days not shown"
     blocks = [_paragraph(summary, url)]
-    for title, items, label in (("In transit", open_, None), (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"), ("Needs review", review, "Review")):
+    for title, items, label in (("In transit", open_, None), ("Returning", returning, "Returning"), (f"Delivered, last {DELIVERED_DAYS} days", delivered, "Delivered"),
+                                (f"Refunded, last {DELIVERED_DAYS} days", refunded, "Refunded"), ("Needs review", review, "Review")):
         if items:
             blocks.append(_paragraph(title))
             blocks += [_bullet(row, (row.get("Status", "").title() if label is None else label)) for row in items[:MAX_LISTED]]
             if len(items) > MAX_LISTED:
                 blocks.append(_paragraph(f"…and {len(items) - MAX_LISTED} more"))
-    if not (open_ or delivered or review):
+    if not (open_ or delivered or review or returning or refunded):
         blocks.append(_paragraph(f"No open orders and nothing delivered in the last {DELIVERED_DAYS} days"))
-    counts = {"in_transit": len(open_), "delivered": len(delivered), "review": len(review), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
+    counts = {"in_transit": len(open_), "delivered": len(delivered), "review": len(review), "returning": len(returning), "refunded": len(refunded), "older_open": older, "status": "degraded" if degraded else "fresh", "blocks_written": 0}
     return blocks, counts
 
 

@@ -1,4 +1,4 @@
-"""Pure extraction of the three accepted Amazon order mail events."""
+"""Pure extraction of the accepted Amazon order mail events: ordered, shipped, delivered, returning and refunded (LIFE-124)."""
 import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -10,6 +10,7 @@ SENDERS = {
     f"auto-confirm{_AT}{_DOMAIN}": "ORDERED",
     f"shipment-tracking{_AT}{_DOMAIN}": "SHIPPED",
     f"order-update{_AT}{_DOMAIN}": "DELIVERED",
+    f"return{_AT}{_DOMAIN}": "RETURN",               # LIFE-124: a return or refund notice; its subject decides RETURNING or REFUNDED
 }
 ORDER_ID_RE = re.compile(r"(?<![\w-])\d{3}-\d{7}-\d{7}(?![\w-])")
 TOTAL_LABEL_RE = re.compile(r"\bGrand\s+Total\b", re.IGNORECASE)
@@ -18,6 +19,9 @@ MAX_ORDERS_PER_MESSAGE = 10
 # Current confirmation mail states the total on its own lines: "Total" then "21.2 USD" (one or two decimals). Only a line that is exactly "Total", "Order Total" or "Grand Total" counts;
 # "Subtotal" and the unlabeled item prices above it never do.
 LINE_TOTAL_RE = re.compile(r"(?im)^[ \t]*(?:(?:Order|Grand)[ \t]+)?Total[ \t]*:?[ \t]*\r?\n?[ \t]*(?:USD[ \t]*)?(\$?[ \t]*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:[ \t]*USD)?[ \t\r]*$")
+REFUND_RE = re.compile(r"\brefund", re.IGNORECASE)
+SUBJECT_PREFIX_RE = re.compile(r"^\s*(?:(?:ordered|shipped|delivered)\s*:|(?:advance\s+)?refund\s+issued\s+for|your\s+refund\s+for|dropoff\s+confirmed\s+for|return\s+request\s+confirmed\s+for|"
+                               r"your\s+return\s+drop\s+off\s+confirmation\s+for|your\s+return\s+of)\s*:?\s*", re.IGNORECASE)
 CANONICAL_URL = "https://www.amazon.com/your-orders/order-details?orderID={}"
 
 
@@ -124,6 +128,8 @@ def extract(message):
         return {"status": "REVIEW", "reason": "ORDER_ID_MISSING" if not order_ids else "ORDER_ID_AMBIGUOUS"}
     order_id = next(iter(order_ids))
     status = SENDERS[sender]
+    if status == "RETURN":
+        status = "REFUNDED" if REFUND_RE.search(message.get("subject") if isinstance(message.get("subject"), str) else "") else "RETURNING"
     totals = set()
     if status == "ORDERED":
         labels, matches = TOTAL_LABEL_RE.findall(body), TOTAL_RE.findall(body)
@@ -141,7 +147,7 @@ def extract(message):
             return {"status": "REVIEW", "reason": "TOTAL_CONFLICT", "order_id": order_id}
     subject = message.get("subject") if isinstance(message.get("subject"), str) else ""
     subject = subject.strip()[:2000]
-    item_summary = re.sub(r"^\s*(?:ordered|shipped|delivered)\s*:\s*", "", subject, flags=re.IGNORECASE).strip()[:1000]
+    item_summary = SUBJECT_PREFIX_RE.sub("", subject, count=1).strip()[:1000]
     return {
         "id": message_id.strip(),
         "sender": sender,

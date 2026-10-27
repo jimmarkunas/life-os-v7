@@ -63,6 +63,38 @@ class EventExtractionTests(unittest.TestCase):
         self.assertEqual(malformed["reason"], "TOTAL_INVALID")
 
 
+class ReturnMailTests(unittest.TestCase):
+    """LIFE-124: the return sender is a fourth allowlisted sender; a refund subject is REFUNDED, any other return notice is RETURNING."""
+    def extract(self, subject):
+        return events.extract(message("m-r", "return", subject=subject))
+
+    def test_refund_subjects_are_refunded_and_the_item_text_loses_its_prefix(self):
+        for subject, item in (("Refund issued for Wiaocit 3 Pack Tempered Glass....", "Wiaocit 3 Pack Tempered Glass...."),
+                              ("Advance refund issued for FNTCASE for iPhone 17 Phone Case....", "FNTCASE for iPhone 17 Phone Case...."),
+                              ("Your refund for MOSISO Keyboard Cover Compatible....", "MOSISO Keyboard Cover Compatible....")):
+            parsed = self.extract(subject)
+            self.assertEqual((parsed["status"], parsed["item_summary"], parsed["grand_total"]), ("REFUNDED", item, None))
+
+    def test_other_return_notices_are_returning(self):
+        for subject in ("Dropoff confirmed for SHENHE Women's Cheerleader...", "Return request confirmed for Ailun 3 Pack Screen Protector...", "Your return of ROYALAY Lumbar Support Pillow...",
+                        "Your return drop off confirmation for MOSISO Keyboard Cover Compatible...."):
+            self.assertEqual(self.extract(subject)["status"], "RETURNING")
+
+    def test_a_return_mail_without_one_order_number_goes_to_review(self):
+        parsed = events.extract({**message("m-r", "return", subject="Refund issued for X"), "body_text": "no order here"})
+        self.assertEqual((parsed["status"], parsed["reason"]), ("REVIEW", "ORDER_ID_MISSING"))
+
+    def test_status_never_goes_down_and_a_refund_after_delivery_wins(self):
+        ordered = event("m1", "ORDERED", "2026-10-01T10:00:00+00:00", total="10.00")
+        delivered = event("m2", "DELIVERED", "2026-10-03T10:00:00+00:00")
+        returning = {**event("m3", "DELIVERED", "2026-10-05T10:00:00+00:00"), "status": "RETURNING"}
+        refunded = {**event("m4", "DELIVERED", "2026-10-07T10:00:00+00:00"), "status": "REFUNDED"}
+        row, reason = orders.reconcile([ordered, delivered, returning, refunded], None, NOW)
+        self.assertEqual((reason, row["Status"], row["Grand Total"]), (None, "REFUNDED", "10.00"))
+        again, reason = orders.reconcile([delivered], row, NOW)                                      # a late older event cannot lower it
+        self.assertEqual((reason, again["Status"]), (None, "REFUNDED"))
+
+
 class ReconciliationTests(unittest.TestCase):
     def test_monotone_merge_across_out_of_order_arrival(self):
         shipped = event("m-ship", "SHIPPED", "2026-10-02T12:00:00+00:00")
@@ -127,7 +159,7 @@ class StageTests(unittest.TestCase):
         self.assertNotIn("in:inbox", query)
         self.assertNotIn("label:", query)
         self.assertIn("after:", query)
-        self.assertEqual(query.count("from:"), 3)
+        self.assertEqual(query.count("from:"), 4)
         self.assertIn("label-amazon", gmail.messages["m-1"]["label_ids"])
         self.assertNotIn("INBOX", gmail.messages["m-1"]["label_ids"])
 

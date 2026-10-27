@@ -47,6 +47,27 @@ def texts(blocks):
     return [report_region.plain(b) for b in blocks]
 
 
+class ReturnRenderTests(unittest.TestCase):
+    """LIFE-124: returning orders and refunds are their own sections; refunds leave after the same 7 days as Delivered."""
+    def test_returning_and_refunded_sections_and_their_fall_off(self):
+        rows = [order(1, "RETURNING", "2026-10-03T15:00:00+00:00", summary="Phone case"), order(2, "REFUNDED", "2026-10-03T17:00:00+00:00", summary="Screen protector"),
+                order(3, "REFUNDED", "2026-09-26T18:00:00+00:00", summary="Old refund"), order(4, "RETURNING", "2026-06-08T10:00:00+00:00", summary="Old return")]
+        blocks, counts = card.render(rows, NOW)
+        text = texts(blocks)
+        self.assertEqual(text[0], "Updated 1:30 PM CT · 0 in transit · 0 delivered (last 7 days) · 1 returning · 1 refunded (last 7 days) · 0 need review")
+        self.assertIn("Returning", text)
+        self.assertIn("Refunded, last 7 days", text)
+        self.assertTrue(any(t.startswith("Phone case · Returning") for t in text))
+        self.assertTrue(any(t.startswith("Screen protector · Refunded") for t in text))
+        self.assertFalse(any("Old refund" in t or "Old return" in t for t in text))
+        self.assertEqual((counts["returning"], counts["refunded"]), (1, 1))
+
+    def test_the_query_asks_for_returning_and_recent_refunded_rows(self):
+        text = str(card._query_body("2026-09-27"))
+        self.assertIn("RETURNING", text)
+        self.assertIn("REFUNDED", text)
+
+
 class RenderTests(unittest.TestCase):
     def test_summary_sections_and_the_seven_day_delivered_window(self):
         blocks, counts = card.render(ROWS, NOW)
