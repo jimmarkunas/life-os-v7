@@ -35,8 +35,8 @@ def _query_body(since):
             "filter": {"or": [{"property": "Status", "select": {"equals": "ORDERED"}}, {"property": "Status", "select": {"equals": "SHIPPED"}},
                               {"property": "Needs Review", "checkbox": {"equals": True}},
                               {"property": "Status", "select": {"equals": "RETURNING"}},
-                              {"and": [{"or": [{"property": "Status", "select": {"equals": "DELIVERED"}}, {"property": "Status", "select": {"equals": "REFUNDED"}}]},
-                                       {"property": "Latest Event At", "date": {"on_or_after": since}}]}]}}
+                              {"and": [{"property": "Status", "select": {"equals": "DELIVERED"}}, {"property": "Latest Event At", "date": {"on_or_after": since}}]},
+                              {"and": [{"property": "Status", "select": {"equals": "REFUNDED"}}, {"property": "Latest Event At", "date": {"on_or_after": since}}]}]}}
 
 
 def read_rows(client, source_id, since):
