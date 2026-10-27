@@ -61,7 +61,20 @@ def nothing():
     yield C()
 
 
-def go(send, client, catalog, live=True, rounds=(ROW,), limit=3):
+def go(send, client, catalog, live=True, rounds=(ROW,), limit=3, patch_meetings=True):
+    """`patch_meetings`: the Meetings database (LIFE-166) is stubbed to an empty, reachable table; test_granola_clients runs the real module against its own fake."""
+    stub = [mock.patch.object(ga.granola_clients, "check", lambda c: "target_ok"), mock.patch.object(ga.granola_clients, "rows_where", lambda *a: []),
+            mock.patch.object(ga.granola_clients, "unfiled_row", lambda *a: "created")] if patch_meetings else []
+    for patcher in stub:
+        patcher.start()
+    try:
+        return _go(send, client, catalog, live, rounds, limit)
+    finally:
+        for patcher in stub:
+            patcher.stop()
+
+
+def _go(send, client, catalog, live, rounds, limit):
     with mock.patch.object(ga, "rounds_with_parents", lambda *a: (list(rounds), {ROUND: "parent-page"})), mock.patch.object(ga.notion, "target_check", lambda *a: "target_ok"), \
             mock.patch.object(ga.notion, "ownership", lambda *a: Ownership.MACHINE), mock.patch.object(ga.create, "link_transcript", lambda *a: "transcript_linked"), \
             mock.patch.object(ga.interview_evidence, "facts", lambda *a: ("job-key-1", None)), mock.patch.object(ga, "catalog_done", catalog.done), \
