@@ -50,17 +50,37 @@ class Helper(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.db = os.path.join(self.dir, "grans.db")
         db = sqlite3.connect(self.db)
-        db.executescript("""create table documents(id text primary key, created_at text, deleted_at text, google_calendar_event_json text, title text);
+        db.executescript("""create table documents(id text primary key, created_at text, deleted_at text, google_calendar_event_json text, title text, notes_markdown text, notes_plain text, summary text);
             create table document_people(document_id text, email text, full_name text);
-            create table transcript_utterances(id text primary key, document_id text, text text);""")
-        db.execute("insert into documents values (?,?,?,?,?)", (DOC, "2026-10-13T17:31:00Z", None, json.dumps({"start": {"dateTime": "2026-10-13T12:30:00-05:00"}}), "Follow up sync"))
-        db.execute("insert into documents values (?,?,?,?,?)", (OTHER, "2026-10-20T15:00:00Z", None, None, None))
-        db.execute("insert into documents values (?,?,?,?,?)", ("deleted-doc-0001", "2026-10-01T15:00:00Z", "2026-10-02T00:00:00Z", None, "gone"))
+            create table transcript_utterances(id text primary key, document_id text, text text);
+            create table panels(id text primary key, document_id text, content_markdown text, created_at text, deleted_at text);
+            create table chunks(id integer primary key, document_id text, text text);
+            create table embeddings(chunk_id integer, vector blob);
+            create table transcript_sync_log(document_id text, status text);
+            create table panel_sync_log(document_id text, status text);
+            create table events(id text primary key, summary text);""")
+        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", (DOC, "2026-10-13T17:31:00Z", None, json.dumps({"id": "evt-1", "start": {"dateTime": "2026-10-13T12:30:00-05:00"}}), "Follow up sync"))
+        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", (OTHER, "2026-10-20T15:00:00Z", None, None, None))
+        db.execute("insert into documents (id, created_at, deleted_at, google_calendar_event_json, title) values (?,?,?,?,?)", ("deleted-doc-0001", "2026-10-01T15:00:00Z", "2026-10-02T00:00:00Z", None, "gone"))
         db.executemany("insert into document_people values (?,?,?)", [(DOC, "attendee@example.com", "A"), (DOC, None, "Named Only"), (DOC, None, None)])
         for doc in (DOC, OTHER):
             db.executemany("insert into transcript_utterances values (?,?,?)", [("%s-%d" % (doc[:4], i), doc, "t") for i in range(3)])
+        db.execute("update documents set notes_markdown=?, summary=? where id=?", ("NOTES-md " + "n" * 70_000, "SUMMARY-text", DOC))
+        db.execute("insert into panels values ('p1', ?, 'PANEL-text', '2026-10-13', null)", (OTHER,))
+        for doc in (DOC, OTHER):
+            db.execute("insert into chunks (document_id, text) values (?, 'c')", (doc,))
+            db.execute("insert into embeddings values ((select max(id) from chunks), x'00')")
+            db.execute("insert into transcript_sync_log values (?, 'done')", (doc,))
+            db.execute("insert into panel_sync_log values (?, 'done')", (doc,))
+        db.executemany("insert into events values (?, 's')", [("evt-1",), ("evt-2",)])
         db.commit()
         db.close()
+
+    def count(self, table, column, doc):
+        db = sqlite3.connect(self.db)
+        n = db.execute("select count(*) from %s where %s=?" % (table, column), (doc,)).fetchone()[0]
+        db.close()
+        return n
 
     def call(self, body, fake=None, raw=None):
         fake = fake or Fake()
@@ -105,6 +125,49 @@ class Helper(unittest.TestCase):
         reply, fake = self.call({"op": "show", "id": DOC, "nonce": "n"})
         self.assertEqual(fake.calls, [["show", DOC, "--transcript", "--json", "--no-color"]])
         self.assertEqual(reply["json"], raw_transcript(DOC))
+
+    def test_show_carries_notes_and_summary_cut_at_the_limit_and_falls_back_to_panels(self):
+        reply, _ = self.call({"op": "show", "id": DOC, "nonce": "n"})
+        self.assertEqual(len(reply["notes"]), gh.MAX_TEXT)
+        self.assertTrue(reply["notes"].startswith("NOTES-md"))
+        self.assertEqual(reply["summary"], "SUMMARY-text")
+        other, _ = self.call({"op": "show", "id": OTHER, "nonce": "n"})
+        self.assertEqual((other["notes"], other["summary"]), ("", "PANEL-text"))         # no summary column: the meeting's panels; no notes: empty
+
+    def test_list_announces_what_this_helper_can_do(self):
+        self.assertEqual(self.call({"op": "list", "nonce": "n"})[0]["caps"], ["notes", "purge_all"])
+
+    def test_whole_meeting_purge_removes_everything_for_that_meeting_only_and_is_idempotent(self):
+        want = contract.normalize_granz(DOC, raw_transcript(DOC)).source_content_sha256
+        reply, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "all", "nonce": "n"})
+        self.assertEqual((reply["ok"], reply["scope"]), (True, "all"))
+        self.assertGreaterEqual(reply["purged"], 1)
+        for table, column in (("documents", "id"), ("transcript_utterances", "document_id"), ("chunks", "document_id"), ("document_people", "document_id"),
+                              ("transcript_sync_log", "document_id"), ("panel_sync_log", "document_id")):
+            self.assertEqual(self.count(table, column, DOC), 0, table)
+            if table != "document_people":                                              # (the other meeting has no attendees)
+                self.assertGreater(self.count(table, column, OTHER), 0, table)          # the other meeting is untouched
+        self.assertEqual(self.count("events", "id", "evt-1"), 0)
+        self.assertEqual(self.count("events", "id", "evt-2"), 1)
+        db = sqlite3.connect(self.db)
+        self.assertEqual(db.execute("select count(*) from embeddings").fetchone()[0], 1)    # only the other meeting's vector remains
+        db.close()
+        again, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "all", "nonce": "n"})
+        self.assertEqual((again["ok"], again["purged"], again["scope"]), (True, 0, "all"))
+
+    def test_whole_meeting_purge_with_the_wrong_hash_deletes_nothing(self):
+        reply, _ = self.call({"op": "purge", "id": DOC, "content_sha256": "0" * 64, "scope": "all", "nonce": "n"})
+        self.assertEqual((reply["ok"], reply["code"]), (False, "GRAN_HASH_MISMATCH"))
+        self.assertEqual((self.count("documents", "id", DOC), self.utterances(DOC)), (1, 3))
+
+    def test_purge_without_scope_keeps_the_old_behaviour_and_any_other_scope_is_refused(self):
+        want = contract.normalize_granz(DOC, raw_transcript(DOC)).source_content_sha256
+        refused, fake = self.call({"op": "purge", "id": DOC, "content_sha256": want, "scope": "some", "nonce": "n"})
+        self.assertEqual(refused["code"], "GRAN_BAD_FRAME")
+        self.assertEqual(fake.calls, [])
+        old, _ = self.call({"op": "purge", "id": DOC, "content_sha256": want, "nonce": "n"})
+        self.assertNotIn("scope", old)
+        self.assertEqual((self.count("documents", "id", DOC), self.utterances(DOC)), (1, 0))      # utterances only
 
     def test_show_of_an_unknown_or_deleted_meeting_is_not_found(self):
         for doc in ("99999999-9999-4999-8999-999999999999", "deleted-doc-0001"):
