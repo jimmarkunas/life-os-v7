@@ -44,7 +44,7 @@ def text_block(notion, block_id, kind, text):
     return notion._text_block(block_id, kind, text)
 
 
-def page(calendar="Calendar (Updated 10:06 PM CT)", jira="JIRA Execution (Updated 10:05 PM CT)", bills="Updated 10:07 PM CT · 0 due through one week from now · 26 overdue · Bill Tracker",
+def page(calendar="Calendar (Updated 10:06 PM CT)", jira="JIRA Execution (Updated 10:05 PM CT)", bills="Updated 10:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker",
          mail="Updated 10:12 PM CT · 13 waiting · 0 need review", amazon="Updated 10:08 PM CT · 0 in transit · 2 delivered (last 7 days) · 0 need review",
          attention="Updated 10:05 PM CT · 23 active exceptions", **kwargs):
     """The Daily Report as the cards leave it (invented content), built on the shared fake."""
@@ -90,8 +90,8 @@ class ComposeTests(unittest.TestCase):
     def areas(self, **over):
         link = {GTV: "https://example.invalid/browse/JFM-1"}
         base = {"Calendar": {"status": "Calendar (Updated 10:06 PM CT)", "lines": []}, "Jira": {"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": [GTV, SPRINT], "links": link},
-                "Bills": {"status": "Updated 10:07 PM CT · 0 due through one week from now · 26 overdue · Bill Tracker", "lines": [],
-                          "links": {"Updated 10:07 PM CT · 0 due through one week from now · 26 overdue · Bill Tracker": "https://example.invalid/tracker"}},
+                "Bills": {"status": "Updated 10:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker", "lines": [],
+                          "links": {"Updated 10:07 PM CT · 0 due through one week from now · 26 bills due · 26 overdue · Bill Tracker": "https://example.invalid/tracker"}},
                 "Mail Alerts": {"status": "Updated 10:12 PM CT · 13 waiting · 0 need review", "lines": []},
                 "Amazon": {"status": "Updated 10:08 PM CT · 0 in transit", "lines": []}, "Attention": {"status": "Updated 10:05 PM CT · 23 active exceptions", "lines": []},
                 "Hiring Pipeline": {"status": "Updated 10:13 PM CT · 5 active", "lines": []}}
@@ -107,16 +107,16 @@ class ComposeTests(unittest.TestCase):
         self.assertNotIn("sub", m)
         self.assertNotIn("items", m)
         self.assertNotIn("hiring", m)
-        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Overdue bills"), ("6", "Jira Overdue / Blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
+        self.assertEqual([(v, n) for v, n, _ in m["kpis"]], [("26", "Bills due"), ("6", "Jira Overdue / Blocked"), ("23", "Attention items"), ("13", "Mail waiting")])
         self.assertEqual(m["kpis"][1][2], "Jira · 10:05 PM CT")                                          # the combined count, labelled as such, with its source stamp
 
     def test_a_degraded_or_stale_card_is_named_in_the_closed_summary_and_never_shows_a_number_or_a_zero(self):
         areas = self.areas(Attention={"status": "DEGRADED · Attention sync failed at 10:05 PM CT · showing the last accepted exceptions", "lines": []},
-                           Bills={"status": "STALE · last accepted Oct 11 9:44 AM CT · 4 overdue", "lines": []})
+                           Bills={"status": "STALE · last accepted Oct 11 9:44 AM CT · 4 bills due · 4 overdue", "lines": []})
         m = card.compose(areas, NOW)
         self.assertEqual(m["health"], "Source health and freshness · 5 of 7 current · Bills STALE · Attention DEGRADED")
         self.assertTrue(m["detail"][1].startswith("⚠️ 5 of 7"))
-        self.assertEqual([(v, t) for v, n, t in m["kpis"] if n in ("Overdue bills", "Attention items")], [("—", "STALE · Bills (last 9:44 AM)"), ("—", "DEGRADED · Attention (last 10:05 PM)")])
+        self.assertEqual([(v, t) for v, n, t in m["kpis"] if n in ("Bills due", "Attention items")], [("—", "STALE · Bills (last 9:44 AM)"), ("—", "DEGRADED · Attention (last 10:05 PM)")])
         self.assertIn("Bills STALE", m["health"])
         self.assertIn("Attention DEGRADED", m["health"])
 
@@ -133,7 +133,7 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(m["kpis"][1][2], "UNREADABLE · Jira")
 
     def test_nothing_flagged_says_so_and_a_fresh_zero_is_a_zero(self):
-        areas = self.areas(Bills={"status": "Updated 10:07 PM CT · 0 due · 0 overdue", "lines": []}, Attention={"status": "Updated 10:05 PM CT · No active exceptions.", "lines": []},
+        areas = self.areas(Bills={"status": "Updated 10:07 PM CT · 0 due · 0 bills due · 0 overdue", "lines": []}, Attention={"status": "Updated 10:05 PM CT · No active exceptions.", "lines": []},
                            Jira={"status": "JIRA Execution (Updated 10:05 PM CT)", "lines": ["JFM Sprint 15 · 0 Overdue/Blocked · 1 Today"]})
         areas["Mail Alerts"] = {"status": "Updated 10:12 PM CT · 0 waiting · 0 need review", "lines": []}
         m = card.compose(areas, NOW)
@@ -197,7 +197,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual((counts["blocks_written"], counts["removed"]), (0, 0))
         self.assertEqual([m for m, _ in notion.log[mark:] if m in ("APPEND", "DELETE", "PATCH")], [])
         self.assertEqual(self.shape(notion), first)
-        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due through one week from now · 27 overdue · Bill Tracker")
+        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due through one week from now · 27 bills due · 27 overdue · Bill Tracker")
         counts = go(notion)
         self.assertEqual(counts["blocks_written"], 1)                                                                       # only the changed KPI number remains in the DCC
         self.assertEqual({k: [b["id"] for b in notion.children[k]] for k in ids}, ids)                                      # no block was added, removed or replaced
@@ -280,7 +280,7 @@ class RunTests(unittest.TestCase):
         kpi_row = notion.children["dcc-callout"][2]["id"]
         last = notion.children[notion.children[notion.children[kpi_row][3]["id"]][0]["id"]]
         last[0]["type"], last[0]["paragraph"] = "paragraph", {"rich_text": []}                         # the last card's number block was changed
-        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 overdue · Bill Tracker")      # an earlier card has new data
+        notion.children["bills-callout"][1] = text_block(notion, "bills-status-old", "paragraph", "Updated 10:07 PM CT · 0 due · 7 bills due · 7 overdue · Bill Tracker")      # an earlier card has new data
         mark = len(notion.log)
         with self.assertRaises(NotionError) as error:
             go(notion)
