@@ -452,6 +452,7 @@
    "lifeos/sources/alerts_app.py": "LIFE-75 (Jim, Oct 26 2026): the Alert settings screen on the private Close service (Oracle; only Jim's iPhone and MBP are admitted by the Edge gate). GET /alerts shows th",
    "lifeos/sources/close_app.py": "LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the",
    "lifeos/sources/granola_auto.py": "LIFE-122 (Jim, Oct 26: \"Approved, go\"): the Granola bridge, automatic. Every synced meeting that has not been carried before is matched to its Interview OS round; one tha",
+   "lifeos/sources/granola_clients.py": "LIFE-164 (Jim, Oct 27 2026): the Granola bridge for active client work. A synced meeting that matches no Interview OS round (granola_match) is routed to a client page ins",
    "lifeos/sources/hiring.py": "Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar e",
    "lifeos/sources/interview_contacts_proof.py": "LIFE-88 E10 synthetic QA: the opportunity page's LinkedIn Contacts table, through the real V7 path, on native Notion QA surfaces. Manual only: interview-proof with `confi",
    "lifeos/sources/interview_evidence.py": "LIFE-88: Interview OS's normal path (the `interview` stage, in the V7 tick). Composes the accepted evidence V7 can read today into the existing writer's queries; it lives",
