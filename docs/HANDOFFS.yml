@@ -4,6 +4,16 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 664
+    owner: career-v7
+    path: lifeos/platform/alert_registry.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-129?focusedCommentId=11368
+  - pr: 664
+    owner: career-v7
+    path: tests/contracts/test_workflow.py
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-129?focusedCommentId=11368
   - pr: 654
     owner: edge-oracle
     path: lifeos/sources/close_app.py
