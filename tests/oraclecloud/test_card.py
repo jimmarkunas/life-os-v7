@@ -18,7 +18,7 @@ SVC = {"gateway": True, "telegram": True, "whatsapp": True, "alerts": True}
 def stats(**over):
     return {"schema": card.SCHEMA, "observed_at": "2026-10-15T13:04:30Z", "cost": {"amount": 0, "currency": "USD"}, "cpu_24h_pct": 5.7,
             "memory_pct": 55.2, "disk_pct": 38.6, "a1_cores": {"used": 2, "available": 0}, "reclaim": "NONE", "services": dict(SVC),
-            "chatgpt": {"left_5h": 100, "left_week": 64}, **over}
+            "chatgpt": {"left_5h": 100, "left_week": 64}, "backup": {"ok": True, "code": "ok", "age_h": 3}, **over}
 
 
 def report(heading="Oracle Cloud"):
@@ -32,6 +32,12 @@ def report(heading="Oracle Cloud"):
 
 class Card(unittest.TestCase):
     ENV = {"IMESSAGE_ALERTS_HOST": "100.64.0.9", "ATTENTION_CARD_BLOCK_ID": "attn", "NOTION_JIRA_TOKEN": "unused"}
+
+    def setUp(self):
+        self.watched = []                                                            # the backup watch never reaches a store in these tests; what it was handed is recorded
+        patch = mock.patch.object(card.backup_watch, "record", lambda reading, environ, now: self.watched.append(reading))
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def run_card(self, rep, live=True, answer=None, env=None, now=NOW):
         answer = answer or (lambda host: json.dumps(stats()).encode())
@@ -52,7 +58,7 @@ class Card(unittest.TestCase):
             "Memory ██████░░░░ 55% · Disk ████░░░░░░ 39%",
             "",
             "Always Free A1 cores: 2 of 2 in use · no headroom · Reclaim risk: none",
-            "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓",
+            "Services: Gateway ✓ · Telegram ✓ · WhatsApp ✓ · Alerts ✓ · Backup ✓",
             "",
             "Codex 5h ██████████ 100% · Codex week ██████░░░░ 64%"])
         colors = [(i["plain_text"], i["annotations"].get("color")) for i in rep.blocks["obody"]["paragraph"]["rich_text"] if "█" in i["plain_text"] or "░" in i["plain_text"]]
@@ -97,7 +103,7 @@ class Card(unittest.TestCase):
         body = rep.plain("obody")
         self.assertIn("Cost this month: unavailable", body)
         self.assertIn("Codex plan: unavailable", body)
-        self.assertIn("Services: Gateway ✓ · Telegram ? · WhatsApp ✓ · Alerts ✗", body)
+        self.assertIn("Services: Gateway ✓ · Telegram ? · WhatsApp ✓ · Alerts ✗ · Backup ✓", body)
         self.assertEqual(rep.plain("ohead"), "Oracle Cloud (DEGRADED · Updated Oct 15 · 8:05 AM CT)")
         self.assertEqual((counts["missing"], counts["services_down"]), (3, 1))
 
@@ -109,6 +115,29 @@ class Card(unittest.TestCase):
         rep = report()
         self.run_card(rep, answer=lambda host: json.dumps(stats(chatgpt="anything else")).encode())     # any other string is off contract
         self.assertIn("DEGRADED", rep.plain("ohead"))
+
+    def test_the_backup_reading_is_shown_handed_to_the_watch_and_optional_on_the_wire(self):
+        rep = report()
+        self.run_card(rep, answer=lambda host: json.dumps(stats(backup={"ok": False, "code": "backup_drive_http_403", "age_h": 2})).encode())
+        self.assertIn("Alerts ✓ · Backup ✗", rep.plain("obody"))
+        self.assertEqual(self.watched[-1], {"ok": False, "code": "backup_drive_http_403", "age_h": 2})
+        rep = report()
+        self.run_card(rep, answer=lambda host: json.dumps(stats(backup={"ok": True, "code": "ok", "age_h": 40})).encode())    # a missed night
+        self.assertIn("Backup ✗", rep.plain("obody"))
+        rep = report()
+        old = stats()
+        del old["backup"]                                                            # Oracle's stats.mjs from before LIFE-129: still on contract, the backup is unknown
+        counts, log = self.run_card(rep, answer=lambda host: json.dumps(old).encode())
+        self.assertNotIn("source refused", log)
+        self.assertIn("Backup ?", rep.plain("obody"))
+        self.assertEqual((counts["missing"], self.watched[-1]), (1, None))
+        for bad in ({"ok": True, "code": "a /path", "age_h": 1}, {"ok": 1, "code": "ok", "age_h": 1}, {"ok": True, "code": "ok", "age_h": -1}, {"ok": True, "code": "ok"}):
+            counts, log = self.run_card(report(), answer=lambda host, bad=bad: json.dumps(stats(backup=bad)).encode())
+            self.assertIn("source refused", log, bad)
+
+    def test_a_dry_run_never_touches_the_backup_watch(self):
+        self.run_card(report(), live=False)
+        self.assertEqual(self.watched, [])
 
     def test_reclaim_risk_is_shown_plainly(self):
         rep = report()
@@ -122,7 +151,7 @@ class Card(unittest.TestCase):
             rep = report()
             counts, log = self.run_card(rep, answer=answer)
             self.assertIn("source refused", log)
-            self.assertEqual(counts["missing"], 11)
+            self.assertEqual(counts["missing"], 12)
             self.assertTrue(rep.plain("ohead").startswith("Oracle Cloud (DEGRADED · "))
             self.assertIn("Memory unavailable · Disk unavailable", rep.plain("obody"))
 
