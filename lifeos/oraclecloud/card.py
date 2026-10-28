@@ -11,11 +11,13 @@ when any reading is missing) and the one paragraph under it (one line per readin
 every other V7 region is proven unchanged. Counts and fixed codes only in the log."""
 import json
 import os
+import re
 import socket
 from datetime import datetime, timezone
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+from lifeos.oraclecloud import backup_watch
 from lifeos.platform import report_region, router
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
@@ -28,13 +30,15 @@ MAX_REPLY = 4096
 WAIT = 100                                                             # seconds: the endpoint itself stops at 90
 REPLY_TTL_SECONDS = 600
 KEYS = {"schema", "observed_at", "cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "services", "chatgpt"}
+OPTIONAL = {"backup"}             # LIFE-129: the off-site backup's last result; optional so the card and Oracle's stats.mjs can be updated in either order
+CODE = re.compile(r"[a-z0-9_]{1,40}")
 SERVICES = (("gateway", "Gateway"), ("telegram", "Telegram"), ("whatsapp", "WhatsApp"), ("alerts", "Alerts"))
 UNREPORTED = "unreported"         # the plan windows under Sign in with ChatGPT: OpenClaw prints none (Oct 16 2026), a known state, never counted as missing
 BAR = 10
 PROTECTED = (("JIRA_CARD_BLOCK_ID", router.JIRA_REGION), ("CALENDAR_CARD_BLOCK_ID", router.CALENDAR_REGION), ("BILLS_CARD_BLOCK_ID", router.BILLS_REGION),
              ("AMAZON_CARD_BLOCK_ID", router.AMAZON_REGION), ("ATTENTION_CARD_BLOCK_ID", router.ATTENTION_REGION), ("HIRING_CARD_BLOCK_ID", router.HIRING_REGION))
 UNAVAILABLE = {"cost": None, "cpu_24h_pct": None, "memory_pct": None, "disk_pct": None, "a1_cores": None, "reclaim": None,
-               "services": {k: None for k, _ in SERVICES}, "chatgpt": None}
+               "services": {k: None for k, _ in SERVICES}, "chatgpt": None, "backup": None}
 
 
 class OracleCardError(Exception):
@@ -65,6 +69,11 @@ def _whole(v):
     return type(v) is int and v >= 0
 
 
+def _backup_ok(b):
+    return b is None or (isinstance(b, dict) and set(b) == {"ok", "code", "age_h"} and type(b["ok"]) is bool and isinstance(b["code"], str)
+                         and CODE.fullmatch(b["code"]) is not None and (b["age_h"] is None or _whole(b["age_h"])))
+
+
 def validate(raw, now):
     """-> the readings ({key: value or None}). Off-contract or stale raises; a reply is used whole or not at all."""
     if not raw or len(raw) > MAX_REPLY:
@@ -75,17 +84,18 @@ def validate(raw, now):
     except (ValueError, TypeError, KeyError, AttributeError):
         raise _fail("ORACLE_OFF_CONTRACT") from None
     cost, a1, svc, plan = p.get("cost"), p.get("a1_cores"), p.get("services"), p.get("chatgpt")
-    if (set(p) != KEYS or p["schema"] != SCHEMA or not all(_pct(p[k]) for k in ("cpu_24h_pct", "memory_pct", "disk_pct"))
+    if (not KEYS <= set(p) <= KEYS | OPTIONAL or p["schema"] != SCHEMA or not all(_pct(p[k]) for k in ("cpu_24h_pct", "memory_pct", "disk_pct"))
             or not (cost is None or (isinstance(cost, dict) and set(cost) == {"amount", "currency"} and type(cost["amount"]) in (int, float)
                                      and cost["amount"] >= 0 and isinstance(cost["currency"], str) and len(cost["currency"]) == 3))
             or not (a1 is None or (isinstance(a1, dict) and set(a1) == {"used", "available"} and _whole(a1["used"]) and _whole(a1["available"])))
             or p["reclaim"] not in (None, "NONE", "AT_RISK")
             or not (isinstance(svc, dict) and set(svc) == {k for k, _ in SERVICES} and all(v in (None, True, False) for v in svc.values()))
+            or not _backup_ok(p.get("backup"))
             or not (plan in (None, UNREPORTED) or (isinstance(plan, dict) and set(plan) == {"left_5h", "left_week"} and all(_whole(v) and v <= 100 for v in plan.values())))):
         raise _fail("ORACLE_OFF_CONTRACT")
     if seen.tzinfo is None or abs((now - seen).total_seconds()) > REPLY_TTL_SECONDS:
         raise _fail("ORACLE_STALE")
-    return {k: p[k] for k in KEYS - {"schema", "observed_at"}}
+    return {**{k: p[k] for k in KEYS - {"schema", "observed_at"}}, "backup": p.get("backup")}
 
 
 def bar(pct):
@@ -96,7 +106,7 @@ def bar(pct):
 
 def missing(r):
     """How many readings are unavailable (a stopped service is a reading, not a missing one)."""
-    return sum(r[k] is None for k in ("cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "chatgpt")) + sum(
+    return sum(r[k] is None for k in ("cost", "cpu_24h_pct", "memory_pct", "disk_pct", "a1_cores", "reclaim", "chatgpt", "backup")) + sum(
         v is None for v in r["services"].values())
 
 
@@ -116,7 +126,9 @@ def render(r, now):
              + ("no headroom" if a1["available"] == 0 else f"{a1['available']} free"))
     reclaim = {"NONE": "Reclaim risk: none", "AT_RISK": "Reclaim risk: AT RISK (CPU and memory under Oracle's 20% idle line)"}.get(
         r["reclaim"], "Reclaim risk: unavailable")
-    services = "Services: " + " · ".join(f"{label} {'✓' if r['services'][k] else '✗' if r['services'][k] is False else '?'}" for k, label in SERVICES)
+    backup = backup_watch.healthy(r["backup"])
+    services = "Services: " + " · ".join(f"{label} {'✓' if v else '✗' if v is False else '?'}" for label, v in
+                                         [(label, r["services"][k]) for k, label in SERVICES] + [("Backup", backup)])
     chatgpt = ([("Codex plan: unavailable", None)] if plan is None else [("ChatGPT plan: not reported by Sign in with ChatGPT", "gray")] if plan == UNREPORTED else
                _gauge("Codex 5h", plan["left_5h"]) + sep + _gauge("Codex week", plan["left_week"]))
     segments = ([(f"{first} · {cpu}\n\n", None)] + _gauge("Memory", r["memory_pct"]) + sep + _gauge("Disk", r["disk_pct"])
@@ -192,7 +204,7 @@ def _writer(environ):
     return Client({"NOTION_API_TOKEN": (environ.get("NOTION_JIRA_TOKEN") or "").strip(), "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "unused"})
 
 
-def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None):
+def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, plan=None, watch=None):
     host = (environ.get("IMESSAGE_ALERTS_HOST") or "").strip()
     anchor = (environ.get("ATTENTION_CARD_BLOCK_ID") or "").strip()
     if not host or not anchor:
@@ -217,6 +229,7 @@ def run(limit, live, environ=os.environ, now=None, fetcher=fetch, client=None, p
               "services_down": sum(v is False for v in readings["services"].values()), "written": 0}
     if not live:
         return counts
+    (watch or backup_watch.record)(readings["backup"], environ, now)             # LIFE-129: never raises; the card's own result never depends on it
     protected_ids = {region: (environ.get(var) or "").strip() for var, region in PROTECTED}
     before = report_region.protected(client, protected_ids, _fail)
     try:

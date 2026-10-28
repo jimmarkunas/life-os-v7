@@ -1480,8 +1480,22 @@ jobs:
         if: ${{ always() }}
         # Jim's approval Oct 15 2026 (Option B): the Oracle Cloud callout under Communications Attention. Oracle answers numbers only (OCI cost,
         # metrics and limits read as the VM itself; local memory, disk, services). Jim, Oct 24 (#510): written every tick despite the step name, Codex 5h/Week from the AI Capacity reading.
+        # LIFE-129 (Jim, Oct 28 2026): the store and the push topic for the off-site backup alert (lifeos/oraclecloud/backup_watch.py), the same values the iMessage alerts step uses.
         name: Oracle Cloud card (daily from 6 AM CT; numbers only in the log; writes only when live)
         env:
+          LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
+          LIFEOS_ACQ_DB_NAME: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_NAME }}
+          LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
+          LIFEOS_ACQ_DB_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_DB_USER || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_DB_USER }}
+          LIFEOS_ACQ_SSH_HOST: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_HOST || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_JUMP_KEY || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_JUMP_KEY }}
+          LIFEOS_ACQ_SSH_JUMP_HOST: ${{ vars.V7_STORE_JUMP_HOST }}
+          LIFEOS_ACQ_SSH_JUMP_KNOWN_HOSTS: ${{ vars.V7_STORE_JUMP_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_VIA: ${{ vars.V7_STORE_VIA }}
+          LIFEOS_ACQ_SSH_KNOWN_HOSTS: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_KNOWN_HOSTS }}
+          LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
+          LIFEOS_ACQ_SSH_USER: ${{ steps.bws_imessage.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_imessage_retry.outputs.LIFEOS_ACQ_SSH_USER }}
+          NTFY_TOPIC: ${{ steps.bws_imessage.outputs.NTFY_TOPIC || steps.bws_imessage_retry.outputs.NTFY_TOPIC }}
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_imessage.outputs.IMESSAGE_ALERTS_HOST || steps.bws_imessage_retry.outputs.IMESSAGE_ALERTS_HOST }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_imessage.outputs.NOTION_JIRA_TOKEN || steps.bws_imessage_retry.outputs.NOTION_JIRA_TOKEN }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
