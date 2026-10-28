@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -232,7 +233,7 @@ class FakeDrive:
         self.requests, self.scope, self.md5, self.status = [], scope, md5, status
         self.folders = [{"id": "folder-1"}] * folders
         self.files = [{"id": f"f{i}", "name": f"n{i}"} for i in range(files)]           # newest first, as the real orderBy returns them
-        self.sent = b""
+        self.sent, self.fields = b"", ""
 
     def __call__(self, request, timeout=None):
         method, url = request.get_method(), request.full_url
@@ -246,13 +247,15 @@ class FakeDrive:
         if method == "GET":
             return Response(json.dumps({"files": self.files}).encode())
         if method == "POST" and "uploadType=resumable" in url:
+            self.fields = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("fields", [""])[0].split(",")      # Drive answers the final PUT with only these
             return Response(b"{}", {"Location": "https://www.googleapis.com/upload/drive/v3/files?upload_id=u1"})
         if method == "POST":
             return Response(json.dumps({"id": "folder-1"}).encode())
         if method == "PUT":
             import hashlib
             self.sent = request.data
-            return Response(json.dumps({"id": "new", "md5Checksum": self.md5 or hashlib.md5(request.data).hexdigest(), "size": str(len(request.data))}).encode())
+            full = {"id": "new", "md5Checksum": self.md5 or hashlib.md5(request.data).hexdigest(), "size": str(len(request.data))}
+            return Response(json.dumps({k: v for k, v in full.items() if k in self.fields}).encode())
         if method == "DELETE":
             return Response(b"")
         raise AssertionError(method + " " + url)
