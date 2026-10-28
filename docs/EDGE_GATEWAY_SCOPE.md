@@ -77,19 +77,6 @@ Derived from the live Oracle exec allowlist (ten rules), the Oracle-local wrappe
 - Personal-file cleanup is inventory/hash/propose/quarantine-first. Permanent deletion is never autonomous.
 - Oracle remains private-admin over Tailscale and keeps bounded runtime state only; durable meeting evidence remains in Notion.
 
-### Off-site backup (LIFE-129, Jim, October 27, 2026)
-
-Boot-volume backups stay in us-chicago-1 (cross-region replication is billed and not available here; a shared web host was rejected: its terms ban file storage). `lifeos/edge/backup/` adds a nightly, encrypted copy to Jim's Google Drive that does not depend on any Mac.
-
-- **What:** an explicit list (`SQLITE`, `FILES`, `TREES` in `offsite_backup.py`) of state that cannot be rebuilt: the Granola, OpenClaw state and agent databases (snapshotted by their owners through the sqlite backup API, never a raw copy of a live file), the OpenClaw config, the Fit and résumé config, the Close policy. About 40 MB.
-- **Never collected:** credentials, tokens and keys (the OpenClaw credentials folder, Bitwarden, GitHub and Notion configs, `auth.toml`, the `*-key` files, systemd credentials). They can be re-issued, and a copy off the machine only widens what a stolen copy could do. `DENY` enforces this and a test holds every list clear of it.
-- **Encrypted before it leaves:** with Jim's PUBLIC gpg key (`/etc/lifeos-offsite/recipient.asc`). The private key is never on Oracle; the installer and the job both refuse a key file that carries a secret key. The plain archive is deleted before the upload starts.
-- **Drive:** its own credential with the `drive.file` scope only (files this app creates; it cannot see the rest of the Drive), obtained once by `consent.py` on Jim's Mac and stored as the encrypted systemd credential `drive`. A wider grant is refused. Folder `LIFE OS Backups`; the newest 14 nightly copies stay; at most 3 removals per run.
-- **Run:** `lifeos-offsite-backup.timer`, nightly at 2:30 AM Central, as root (Type=oneshot, no listener). `offsite_backup.py check` exits non-zero when the last run failed or is over 36 hours old; the status file holds counts and a fixed code only.
-- **Install and rollback:** `oracle/install-offsite.sh` (`install`, `key`, `credential`, `dry`, `enable`, `run-now`, `verify`, `disable`, `uninstall`, `forget`). It touches only its own units, `/opt/lifeos-offsite` and its own two files.
-- **Alert on a failed or missed night: not built.** The alert gateway is the only sender (lifeos/platform/alerts.py), so this job does not send one itself. Until a signal path is decided, `check` and the status file are the evidence.
-- **Restore:** decrypt with Jim's private key (his personal Bitwarden vault plus a paper copy), untar, and put each file back as its owner; credentials are re-created from Bitwarden and the sign-in flows.
-
 
 ---
 

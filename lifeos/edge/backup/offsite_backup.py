@@ -2,8 +2,9 @@
 one region; this copy goes to Jim's Google Drive, encrypted with a PUBLIC key before it leaves the machine (the private key is never on Oracle: Jim keeps it).
   run     snapshot -> tar.gz -> gpg -> Drive (own folder, own credential, `drive.file` scope only) -> checksum check -> keep the newest 14 -> status file
   check   exit 0 only when the last run succeeded recently (a missed night is a failure, not silence)
-What goes in is an explicit list (SQLITE, FILES, TREES): databases (online snapshot, never a raw copy of a live file) and app config. Credential, token and key material
-is NEVER collected (DENY): it can be re-issued, and copying it off the machine only widens what a stolen copy could do. Stdlib only. Every error is a fixed code; the
+What goes in is an explicit list (SQLITE, FILES, TREES, SECRET_TREES): databases (online snapshot, never a raw copy of a live file) and app config. Credential, token and key
+material is collected ONLY from SECRET_TREES (Jim's decision, Oct 28 2026: the OpenClaw credentials folder, so a lost machine does not mean re-linking every channel); every other
+list stays behind DENY, so a stray token file in a config folder is still skipped. That is safe only because the archive is encrypted to Jim's public key before it leaves. Stdlib only. Every error is a fixed code; the
 status file and the output hold counts and codes, never a path, a name, a token or a response body. The Drive credential is one JSON object
 {"client_id", "client_secret", "refresh_token"} (systemd credential `drive`)."""
 import datetime
@@ -60,6 +61,9 @@ TREES = (   # (archive prefix, source directory): every regular file inside, exc
     ("openclaw/workspace", UBUNTU + "/.openclaw/workspace"),
     ("openclaw/jira-approvals", UBUNTU + "/.openclaw/jira-approvals"),
 )
+SECRET_TREES = (   # (archive prefix, source directory): credential material Jim chose to back up. Exempt from DENY, and ONLY these; never named in any output, counted only
+    ("openclaw/credentials", UBUNTU + "/.openclaw/credentials"),
+)
 DENY = re.compile(r"credential|secret|token|passw|\.env\b|auth|key|bws|/gh/|notion|\.pem|id_rsa|\.bak", re.I)    # never collected, and a test holds every list above clear of it
 
 
@@ -96,10 +100,11 @@ def snapshot(source, dest, owner, run=subprocess.run):
         raise BackupError("backup_db_snapshot")
 
 
-def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None):
+def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown=None, secret_trees=None):
     """Everything on the list -> {archive name: file in `work`}, plus counts. A missing REQUIRED source stops the run (nothing is uploaded); a missing optional one is counted."""
     sqlite, files, trees, chown = SQLITE if sqlite is None else sqlite, FILES if files is None else files, TREES if trees is None else trees, chown or shutil.chown
-    out, missing, skipped = {}, 0, 0
+    secret_trees = SECRET_TREES if secret_trees is None else secret_trees
+    out, missing, skipped, credentials = {}, 0, 0, 0
     for name, source, owner, required in sqlite:
         if denied(name, source):
             raise BackupError("backup_secret_path")
@@ -136,9 +141,17 @@ def collect(work, run=subprocess.run, sqlite=None, files=None, trees=None, chown
                     skipped += 1
                     continue
                 out[relative] = path
+    for prefix, root in secret_trees:
+        for folder, _, names in os.walk(root):
+            for leaf in sorted(names):
+                path = os.path.join(folder, leaf)
+                if os.path.islink(path) or not os.path.isfile(path):
+                    continue
+                out[prefix + "/" + os.path.relpath(path, root)] = path
+                credentials += 1
     if not out:
         raise BackupError("backup_nothing_to_save")
-    return out, {"missing": missing, "skipped": skipped}
+    return out, {"missing": missing, "skipped": skipped, "credentials": credentials}
 
 
 def build_archive(entries, dest):
@@ -361,7 +374,7 @@ def main(argv=None, environ=None):
             record = run("", state_dir=scratch, dry=True)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
-        print(record["code"], "files=%s bytes=%s missing=%s skipped=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped")))
+        print(record["code"], "files=%s bytes=%s missing=%s skipped=%s credentials=%s" % tuple(record.get(k, 0) for k in ("files", "bytes", "missing", "skipped", "credentials")))
         return 0 if record["ok"] else 1
     if argv[:1] != ["run"]:
         print("usage: offsite_backup.py run|check|dry")

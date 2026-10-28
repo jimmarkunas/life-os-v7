@@ -56,7 +56,12 @@ class Tmp(unittest.TestCase):
         (tree / "old.json.bak-1").write_text("old")           # a leftover copy: not collected
         (tree / "my-token.txt").write_text("secret")           # secret-shaped name: not collected
         os.symlink(self.src / "conf.json", tree / "link.json")
-        return dict(sqlite=(("db/a.sqlite", str(self.src / "a.sqlite"), "me", required),),
+        vault = self.src / "vault"
+        vault.mkdir()
+        (vault / "token-a.json").write_text("v1")             # credential material from the one chosen folder: collected
+        (vault / "auth-b.json").write_text("v2")
+        os.symlink(self.src / "conf.json", vault / "link.json")
+        return dict(secret_trees=(("v", str(vault)),), sqlite=(("db/a.sqlite", str(self.src / "a.sqlite"), "me", required),),
                     files=(("conf/conf.json", str(self.src / "conf.json"), required),),
                     trees=(("t", str(tree)),), chown=lambda *a, **k: None)
 
@@ -68,10 +73,11 @@ class Manifest(unittest.TestCase):
         for prefix, root in ob.TREES:
             self.assertFalse(ob.denied(prefix, root), prefix)
 
-    def test_credential_stores_and_key_files_are_never_listed(self):
+    def test_credential_material_comes_only_from_the_one_chosen_folder(self):
         listed = " ".join(s for _, s, *_ in ob.SQLITE + ob.FILES) + " " + " ".join(r for _, r in ob.TREES)
         for word in ("credentials", "/.config/bws", "/.config/gh", "/.config/notion", "auth.toml", "db-key", "hash-key", "event-key", "credstore"):
             self.assertNotIn(word, listed)
+        self.assertEqual([root for _, root in ob.SECRET_TREES], ["/home/ubuntu/.openclaw/credentials"])
 
     def test_the_deny_pattern_catches_what_it_is_for(self):
         for name in ("a/credentials/x", "x/my-token.txt", "auth.toml", "db-key", ".env", "x/secret.json", "bws/openclaw.env", "f.bak-1", "p.pem", "/home/u/.config/gh/hosts.yml"):
@@ -91,12 +97,16 @@ class Manifest(unittest.TestCase):
 class Collect(Tmp):
     def test_collects_snapshots_files_and_clean_trees_only(self):
         entries, extra = ob.collect(str(self.work), local_run, **self.lists())
-        self.assertEqual(sorted(entries), ["conf/conf.json", "db/a.sqlite", "t/keep.md", "t/sub/also.txt"])
-        self.assertEqual(extra, {"missing": 0, "skipped": 2})                               # the token-named file and the leftover copy; the symlink is simply not a regular file
+        self.assertEqual(sorted(entries), ["conf/conf.json", "db/a.sqlite", "t/keep.md", "t/sub/also.txt", "v/auth-b.json", "v/token-a.json"])
+        self.assertEqual(extra, {"missing": 0, "skipped": 2, "credentials": 2})                               # the token-named file and the leftover copy; the symlink is simply not a regular file
         copy = sqlite3.connect(entries["db/a.sqlite"])
         self.assertEqual(copy.execute("select count(*) from t").fetchone(), (3,))
         copy.close()
         self.assertNotEqual(entries["db/a.sqlite"], str(self.src / "a.sqlite"))              # a copy, never the live file
+
+    def test_a_secret_folder_is_never_a_way_around_the_rest(self):
+        entries, _ = ob.collect(str(self.work), local_run, **self.lists())
+        self.assertNotIn("t/my-token.txt", entries)                                          # a token file in an ordinary folder is still skipped
 
     def test_a_missing_required_source_stops_the_run(self):
         lists = self.lists()
@@ -143,7 +153,7 @@ class Archive(Tmp):
     def test_the_archive_holds_exactly_the_entries_with_normalised_owner_and_mode(self):
         entries, _ = ob.collect(str(self.work), local_run, **self.lists())
         dest = str(self.work / "x.tar.gz")
-        self.assertEqual(ob.build_archive(entries, dest), 4)
+        self.assertEqual(ob.build_archive(entries, dest), 6)
         with tarfile.open(dest) as tar:
             self.assertEqual(sorted(tar.getnames()), sorted(entries))
             for member in tar.getmembers():
@@ -338,7 +348,7 @@ class Run(Tmp):
     def go(self, drive, **over):
         lists = self.lists()
         state = str(Path(self.tmp) / "state")
-        patches = [mock.patch.object(ob, "SQLITE", lists["sqlite"]), mock.patch.object(ob, "FILES", lists["files"]), mock.patch.object(ob, "TREES", lists["trees"]),
+        patches = [mock.patch.object(ob, "SQLITE", lists["sqlite"]), mock.patch.object(ob, "FILES", lists["files"]), mock.patch.object(ob, "TREES", lists["trees"]), mock.patch.object(ob, "SECRET_TREES", lists["secret_trees"]),
                    mock.patch.object(ob.shutil, "chown", lambda *a, **k: None),
                    mock.patch.object(ob, "encrypt", lambda plain, dest, work, key_file=None, run=None: shutil.copy(plain, dest))]
         for p in patches:
@@ -350,7 +360,7 @@ class Run(Tmp):
     def test_a_good_night_writes_an_ok_status_with_counts_only(self):
         fake = FakeDrive(files=15, folders=1)
         record, state = self.go(ob.Drive(CRED, opener=fake))
-        self.assertEqual((record["ok"], record["code"], record["files"], record["kept"], record["removed"]), (True, "ok", 4, 14, 1))
+        self.assertEqual((record["ok"], record["code"], record["files"], record["kept"], record["removed"]), (True, "ok", 6, 14, 1))
         text = (Path(state) / "status.json").read_text()
         self.assertEqual(json.loads(text), record)
         for private in (self.tmp, "keep.md", "a.sqlite", "not-a-real"):
@@ -378,7 +388,7 @@ class Run(Tmp):
     def test_dry_stops_before_drive_and_writes_no_status(self):
         fake = FakeDrive(folders=1)
         record, state = self.go(ob.Drive(CRED, opener=fake), dry=True)
-        self.assertEqual((record["ok"], record["code"], record["files"]), (True, "dry_ok", 4))
+        self.assertEqual((record["ok"], record["code"], record["files"]), (True, "dry_ok", 6))
         self.assertEqual(fake.requests, [])
         self.assertFalse((Path(state) / "status.json").exists())
 
