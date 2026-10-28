@@ -1,0 +1,23 @@
+# LIFE-129: the nightly off-site backup (one run). Root, because it reads the databases of two other users (it snapshots each AS its owner) and /etc/lifeos-close. Nothing
+# here listens on a port. The Drive credential is an encrypted systemd credential, never a file the job can print. The plain archive is deleted before the upload starts.
+[Unit]
+Description=LIFE OS off-site backup (encrypted copy to Google Drive)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/lifeos-offsite/offsite_backup.py run
+LoadCredentialEncrypted=drive:/etc/credstore.encrypted/lifeos-offsite.drive
+StateDirectory=lifeos-offsite
+StateDirectoryMode=0755
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RuntimeMaxSec=1200
+MemoryMax=768M
+Nice=10
+IOSchedulingClass=idle

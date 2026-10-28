@@ -1,0 +1,11 @@
+# LIFE-129: once a night at 2:30 AM Central, with up to 10 minutes of random delay. Persistent: a night the machine was down runs when it comes back.
+[Unit]
+Description=LIFE OS off-site backup, nightly
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 America/Chicago
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
