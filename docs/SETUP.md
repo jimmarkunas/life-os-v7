@@ -44,6 +44,14 @@ The token lives only at the timer service. Never put it in the repo.
 3. Test: Actions > watchdog > Run workflow > tick **Send a test push**. Your phone should buzz within seconds.
 
 ## Jira (D54)
+
+### Sprint lifecycle — 7- and 14-day schedules
+V7's existing scheduled Jira rollover follows each board's **Jira start/end dates**. A Monday-to-Sunday sprint of 7 days keeps its weekly cadence; one of 14 days uses the existing two-week cadence (including daylight-saving transitions). V7 reuses precisely one next scheduled sprint, moves unfinished issues only after preflight, verifies carry-forward before close, closes the old sprint, starts the next sprint, and verifies the board has exactly one active sprint. It never creates a new 14-day sprint beyond the pre-planned roadmap. Other durations, missing/overlapping future sprints, and ambiguous active states fail closed.
+
+For a new board, add its `PROJECTKEY:boardid` entry to the existing **JIRA_BOARDS GitHub Actions secret** (no new scheduler or workflow). Use `:readonly` until its initial sprint state, issue carry policy and roadmap have been reviewed. When there is no prior expired sprint, V7 can activate exactly one current `future` sprint at its scheduled start. If an expired sprint is still `future` alongside an already-due subsequent sprint, V7 **does not silently activate the latter or move the former's work**. Reconcile the expired sprint and its unfinished work explicitly in Jira first, then remove `:readonly` to opt the board into automatic rollover. Preserve Jira as the scheduling authority and do not edit or create future sprint dates from code.
+
+**Validation:** run the existing `domains.yml` manual Jira `rollover` mode with `live` unticked (dry-run and no Jira writes). Check the expected existing sprint IDs, issue counts, and status, then enable only after review. The next scheduled V7 tick performs the same fail-closed operation. The retired ChatGPT LIFE OS Daily Runs and older life-os-automation workflows must not be re-enabled.
+
 Add these four as Actions **secrets** (never variables: this repo is public): `JIRA_BASE_URL` (your Atlassian site address, https://...), `JIRA_EMAIL`, `JIRA_API_TOKEN` (a Jira API token for that account), and `JIRA_BOARDS` (comma-separated `PROJECTKEY:boardid`; add `:all` after a board id to triage every non-Epic item, e.g. `AAA:5,BBB:38:all`; add `:readonly` for a team board you want in the report but not rolled over automatically, e.g. `CCC:60:readonly`). Boards may share a filter: V7 picks each project's own sprint by its name starting with the project key, and carries every unfinished item in a closing sprint forward whichever project it belongs to. Then run the workflow by hand with `jira_snapshot` or `jira_rollover` ticked and **Actually move mail** unticked: both are read-only dry runs and print counts only.
 
 ### Jira card in the Daily Report (Phase B)

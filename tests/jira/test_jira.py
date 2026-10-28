@@ -250,6 +250,79 @@ class RolloverTests(unittest.TestCase):
         self.assertIn("closed", client.log)            # the healthy project still rolled
 
 
+
+    def test_two_week_sprint_reuses_preplanned_window_and_preserves_dst(self):
+        current = sprint(1, "active",
+                         datetime(2026, 10, 12, tzinfo=TZ),
+                         datetime(2026, 10, 25, 23, 30, tzinfo=TZ), "AAA Sprint 1")
+        next_one = sprint(2, "future",
+                          datetime(2026, 10, 26, tzinfo=TZ),
+                          datetime(2026, 11, 8, 23, 30, tzinfo=TZ), "AAA Sprint 2")
+        client = FakeJira([current, next_one], [("K-1", 1, "To Do"), ("K-2", 1, "Done")])
+        now = datetime(2026, 10, 26, 6, tzinfo=TZ)
+        dry = run(client, False, now)
+        self.assertEqual((dry["reuse"], dry["would_create"], dry["would_carry"]), (1, 0, 1))
+        self.assertEqual(client.log, [])
+        done = run(client, True, now)
+        self.assertEqual((done["created"], done["closed"], done["started"], done["carried"]), (0, 1, 1, 1))
+        self.assertEqual(client.log, ["move", "closed", "active"])
+        # Nov 9 is in CST, unlike the October start date in CDT.
+        final = rollover.target_week(client.sprints_by_id[2], TZ)
+        self.assertEqual((final[1].date().isoformat(), final[2].date().isoformat()), ("2026-11-09", "2026-11-22"))
+
+    def test_two_week_sprint_waits_for_actual_second_sunday(self):
+        current = sprint(1, "active", datetime(2026, 10, 12, tzinfo=TZ),
+                         datetime(2026, 10, 25, 23, 30, tzinfo=TZ), "AAA Sprint 1")
+        next_one = sprint(2, "future", datetime(2026, 10, 26, tzinfo=TZ),
+                          datetime(2026, 11, 8, 23, 30, tzinfo=TZ), "AAA Sprint 2")
+        client = FakeJira([current, next_one], [("K-1", 1, "To Do")])
+        for day in (13, 19, 25):
+            result = rollover.run(1, True, environ=ENV, client=client, now=at(day, 12), auto=True)
+            self.assertEqual(result["not_due"], 1)
+        self.assertEqual(client.log, [])
+
+    def test_two_week_schedule_stops_at_last_planned_sprint(self):
+        last = sprint(8, "active", datetime(2027, 1, 18, tzinfo=TZ),
+                      datetime(2027, 1, 31, 23, 30, tzinfo=TZ), "AAA Sprint 8")
+        client = FakeJira([last])
+        with self.assertRaisesRegex(JiraError, "JIRA_TARGET_NOT_STAGED"):
+            run(client, True, datetime(2027, 2, 1, 6, tzinfo=TZ))
+        self.assertEqual(client.log, [])
+
+    def test_first_preplanned_sprint_opens_once_when_no_prior_sprint_exists(self):
+        first = sprint(2, "future", datetime(2026, 10, 26, tzinfo=TZ),
+                       datetime(2026, 11, 8, 23, 30, tzinfo=TZ), "AAA Sprint 2")
+        client = FakeJira([first], [("K-1", 2, "To Do")])
+        now = datetime(2026, 10, 28, 8, tzinfo=TZ)
+        dry = run(client, False, now)
+        self.assertEqual((dry["would_start"], dry["writes"]), (1, 0))
+        self.assertEqual(client.log, [])
+        live = run(client, True, now)
+        self.assertEqual((live["started"], live["closed"], live["carried"], live["writes"]), (1, 0, 0, 1))
+        self.assertEqual(client.log, ["active"])
+        again = rollover.run(1, True, environ=ENV, client=client, now=now, auto=True)
+        self.assertEqual((again["not_due"], again["writes"]), (1, 0))
+
+    def test_stale_prior_sprint_blocks_initial_activation_without_moving_scope(self):
+        first = sprint(1, "future", datetime(2026, 10, 12, tzinfo=TZ),
+                       datetime(2026, 10, 25, 23, 30, tzinfo=TZ), "AAA Sprint 1")
+        second = sprint(2, "future", datetime(2026, 10, 26, tzinfo=TZ),
+                        datetime(2026, 11, 8, 23, 30, tzinfo=TZ), "AAA Sprint 2")
+        client = FakeJira([first, second], [("K-1", 1, "To Do"), ("K-2", 2, "To Do")])
+        with self.assertRaisesRegex(JiraError, "JIRA_NO_ROLLOVER_CANDIDATE"):
+            run(client, True, datetime(2026, 10, 28, 11, tzinfo=TZ))
+        self.assertEqual(client.log, [])
+        self.assertEqual(client.members[1], {"K-1": "To Do"})
+        self.assertEqual(client.members[2], {"K-2": "To Do"})
+
+    def test_invalid_sprint_duration_fails_before_a_write(self):
+        first = sprint(1, "active", datetime(2026, 10, 12, tzinfo=TZ),
+                       datetime(2026, 10, 22, 23, 30, tzinfo=TZ), "AAA Sprint 1")
+        client = FakeJira([first])
+        with self.assertRaisesRegex(JiraError, "JIRA_UNSUPPORTED_CADENCE"):
+            run(client, True, datetime(2026, 10, 26, 8, tzinfo=TZ))
+        self.assertEqual(client.log, [])
+
 class ScheduledRolloverTests(unittest.TestCase):
     """Scheduled runs act only once the sprint has ended and it is Monday 00:00 local; every other hour is a quiet no-op."""
 
