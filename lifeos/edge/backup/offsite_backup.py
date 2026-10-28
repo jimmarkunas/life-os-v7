@@ -267,12 +267,12 @@ class Drive:
         with open(path, "rb") as handle:
             data = handle.read()
         meta = json.dumps({"name": name, "parents": [folder_id], "mimeType": "application/octet-stream", "appProperties": {"lifeos": FILE_TAG}}).encode()
-        _, headers = self._call("POST", UPLOAD + "?uploadType=resumable&fields=id", meta, "application/json; charset=UTF-8", want_headers=True,
+        _, headers = self._call("POST", UPLOAD + "?uploadType=resumable&fields=id,md5Checksum,size", meta, "application/json; charset=UTF-8", want_headers=True,
                                 extra={"X-Upload-Content-Type": "application/octet-stream", "X-Upload-Content-Length": str(len(data))})
         location = headers.get("Location")
         if not location or not location.startswith("https://www.googleapis.com/"):
             raise BackupError("backup_drive_off_contract")
-        made = self._call("PUT", location + ("&" if "?" in location else "?") + "fields=id,md5Checksum,size", data, "application/octet-stream")
+        made = self._call("PUT", location, data, "application/octet-stream")            # the reply carries the fields asked for when the session was opened
         if made.get("md5Checksum") != hashlib.md5(data).hexdigest() or str(made.get("size")) != str(len(data)):
             raise BackupError("backup_drive_upload_unverified")
         return made
