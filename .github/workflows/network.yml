@@ -13,6 +13,10 @@ on:
         description: "surface or layout only: the most Ledger pages one run may read (surface default 40, layout 20; 1 for a first acceptance run)"
         type: string
         default: "40"
+      shard:
+        description: "layout only: i/n (for example 0/4) - this run moves only its own slice of the pages, so up to 8 layout runs can go at once; leave 0/1 for all"
+        type: string
+        default: "0/1"
       live:
         description: "import, surface or layout only: actually write (import: Hostinger tables; surface: the two surface tables and the owned Network Leads block; layout: the Ledger pages' layout and the layout table). Unticked = dry run, counts only"
         type: boolean
@@ -20,7 +24,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: life-os-v7-network
+  group: ${{ inputs.stage == 'layout' && format('life-os-v7-network-layout-{0}', inputs.shard) || 'life-os-v7-network' }}
   cancel-in-progress: false
 jobs:
   network:
@@ -86,6 +90,7 @@ jobs:
           STAGE: ${{ inputs.stage }}
           LIVE: ${{ inputs.live }}
           PAGES: ${{ inputs.pages }}
+          LAYOUT_SHARD: ${{ inputs.shard }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_USER || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_USER }}
