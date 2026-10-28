@@ -114,7 +114,7 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False):
             first = current[0]
             sprint_days(first, tz)
             return {"start_only": True, "sprint_id": int(first["id"])}
-        if not expired and not current and auto and all(
+        if not expired and not current and auto and future and all(
             _when(s.get("startDate")) and _when(s["startDate"]).astimezone(tz) > now for s in future
         ):
             return {"not_due": True}
