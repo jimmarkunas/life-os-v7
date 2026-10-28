@@ -1,4 +1,4 @@
-"""Weekly sprint rollover (ported from V1's proven script). Read-only unless live; fails closed on ambiguity; never closes a
+"""Scheduled 7/14-day sprint rollover. Read-only unless live; fails closed on ambiguity; never closes a
 sprint before its end, never closes it before the carry-forward is verified, and verifies every step it takes.
 Output is counts and fixed codes only: sprint names, issue keys and summaries are private."""
 import os
@@ -34,15 +34,26 @@ def resolve_current(active, future, now, tz):
     return catchup[0], True
 
 
-def target_week(sprint, tz):
-    end = _when(sprint.get("endDate"))
-    if not end:
+def sprint_days(sprint, tz):
+    """Use the Jira schedule as authority: exactly 1 or 2 Monday-Sunday weeks."""
+    start, end = _when(sprint.get("startDate")), _when(sprint.get("endDate"))
+    if not start or not end:
         raise JiraError("JIRA_NO_END_DATE")
-    end_local = end.astimezone(tz)
+    first, last = start.astimezone(tz).date(), end.astimezone(tz).date()
+    days = (last - first).days + 1
+    if days not in (7, 14) or first.weekday() != 0 or last.weekday() != 6:
+        raise JiraError("JIRA_UNSUPPORTED_CADENCE")
+    return days
+
+
+def target_week(sprint, tz):
+    days = sprint_days(sprint, tz)
+    end_local = _when(sprint["endDate"]).astimezone(tz)
     start = datetime.combine(end_local.date() + timedelta(days=1), datetime.min.time(), tzinfo=tz)
     if start.weekday() != 0:
         raise JiraError("JIRA_NOT_MONDAY")
-    return end_local, start, start + timedelta(days=6, hours=23, minutes=30)
+    # Local dates, not elapsed UTC hours, preserve Monday/Sunday across DST.
+    return end_local, start, start + timedelta(days=days - 1, hours=23, minutes=30)
 
 
 def sprint_name(project, start, end):
@@ -82,6 +93,31 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False):
         raise JiraError("JIRA_BOARD_NOT_SCRUM")
     active = owned(client.sprints(board_id, "active"), project, keys)
     future = owned(client.sprints(board_id, "future"), project, keys)
+    # First activation: open an unambiguous currently scheduled sprint without
+    # inventing a preceding sprint. If an older future sprint has already
+    # expired, STOP: its unfinished work requires an explicit recovery decision.
+    # In particular, never silently combine a stale sprint with a pre-planned
+    # customer roadmap sprint.
+    if not active:
+        expired, current = [], []
+        for candidate in future:
+            first, last = _when(candidate.get("startDate")), _when(candidate.get("endDate"))
+            if not first or not last:
+                continue
+            if last.astimezone(tz) <= now:
+                expired.append(candidate)
+            elif first.astimezone(tz) <= now < last.astimezone(tz):
+                current.append(candidate)
+        if len(current) > 1:
+            raise JiraError("JIRA_ACTIVE_AMBIGUOUS")
+        if not expired and len(current) == 1:
+            first = current[0]
+            sprint_days(first, tz)
+            return {"start_only": True, "sprint_id": int(first["id"])}
+        if not expired and not current and auto and all(
+            _when(s.get("startDate")) and _when(s["startDate"]).astimezone(tz) > now for s in future
+        ):
+            return {"not_due": True}
     sprint, catchup = resolve_current(active, future, now, tz)
     sprint_id = int(sprint["id"])
     if auto:                                                  # scheduled: do nothing until the sprint has ended and it is Monday morning
@@ -94,6 +130,10 @@ def plan(client, project, board_id, now, tz, keys=(), auto=False):
     matching = [s for s in future if int(s.get("id", -1)) != sprint_id and _matches(s, start, end, tz)]
     if len(matching) > 1:
         raise JiraError("JIRA_TARGET_AMBIGUOUS")
+    # A two-week roadmap is finite. Do not manufacture Sprint 9 after its
+    # planned final date, or reinterpret a different future sprint as the next.
+    if sprint_days(sprint, tz) == 14 and not matching:
+        raise JiraError("JIRA_TARGET_NOT_STAGED")
     return {"sprint_id": sprint_id, "catchup": catchup, "unfinished": unfinished, "stranded": len(stranded), "end_local": end_local,
             "start": start, "end": end, "target_id": int(matching[0]["id"]) if matching else None,
             "name": sprint_name(project, start, end)}
@@ -131,6 +171,16 @@ def run_project(client, project, board_id, live, now, tz, sleep, keys=(), auto=F
         p = plan(client, project, board_id, now, tz, keys, auto)
         if p.get("not_due"):
             return {"not_due": 1}
+        if p.get("start_only"):
+            if not live:
+                return {"would_start": 1}
+            _state(client, p["sprint_id"], "future", "JIRA_TARGET_NOT_FUTURE")
+            client.set_sprint_state(p["sprint_id"], "active")
+            _state(client, p["sprint_id"], "active", "JIRA_START_VERIFY_FAILED")
+            after = owned(client.sprints(board_id, "active"), project, keys)
+            if len(after) != 1 or int(after[0].get("id", -1)) != p["sprint_id"]:
+                raise JiraError("JIRA_FINAL_VERIFY_FAILED")
+            return {"started": 1}
         if not live:
             return {"reuse": int(p["target_id"] is not None), "would_create": int(p["target_id"] is None),
                     "would_carry": len(p["unfinished"]), "would_strand": p["stranded"], "catchup": int(p["catchup"])}
