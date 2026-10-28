@@ -470,3 +470,7 @@ exemptions:
   - pr: 657
     expires: "2026-10-31"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-118?focusedCommentId=11327
+
+  - pr: 659
+    expires: "2026-10-31"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-118?focusedCommentId=11330
