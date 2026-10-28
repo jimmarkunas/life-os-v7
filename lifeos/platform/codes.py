@@ -445,6 +445,7 @@ CODES = {
     "LAYOUT_OVERVIEW_MISMATCH": _r("network", "bug", False, "A Ledger page's Overview column did not read back as written.", "None; the old description is untouched and the page is retried."),
     "LAYOUT_OLD_BLOCKS_CHANGED": _r("network", "degraded", False, "A Ledger page changed while it was being moved; nothing was deleted.", "None; the page is retried next run."),
     "LAYOUT_READBACK_MISMATCH": _r("network", "bug", False, "A Ledger page did not read back as the two-column layout after the move.", "Look at that page; the run reports it."),
+    "LAYOUT_SHARD_INVALID": _r("network", "bug", False, "The layout migration was given a shard that is not i/n with n up to 8.", "Dispatch again with a shard like 0/4."),
     "LAYOUT_PAGES_FAILED": _r("network", "bug", False, "One or more Ledger pages could not be moved to the two-column layout.", "See the counts; failed pages are retried next run."),
     # --- Outlook (lifeos/outlook/*, lifeos/platform/outlook.py, lifeos/sources/newsletters/outlook.py)
     "OUTLOOK_BAD_LINK": _r("outlook", "bug", False, "A paging link pointed off the Graph host, so it was not followed.", "A security check; do not follow."),
@@ -797,6 +798,7 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+    "LAYOUT_SHARD",                # Jim, Oct 27: which slice (i/n) of the Ledger pages a layout run moves
     "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs
     "GRAN_PIN_DAY",                # LIFE-37: the day the manual Granola run is pinned to
     "GRAN_UNMATCHED_TO",           # LIFE-164: one-off instruction on the manual Granola run: file meetings that match nothing as client or internal
