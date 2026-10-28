@@ -37,16 +37,32 @@ def _same(actual, expected):
     return len(actual) == len(expected) and all(a.get("type") == e["type"] and _text(a) == _text(e) for a, e in zip(actual, expected))
 
 
-def read(connection, limit):
-    """-> [(job_key, page_id, description dict)] of PUBLISHED jobs not yet DONE or LEFT, oldest first. A missing state table reads as nothing done."""
+MAX_SHARDS = 8
+
+
+def shard_of(environ):
+    """LAYOUT_SHARD "i/n" -> (i, n): this run takes only the jobs whose id is i modulo n, so n runs can move different pages at once and never the same page. Unset = (0, 1), everything."""
+    raw = (environ.get("LAYOUT_SHARD") or "0/1").strip()
+    try:
+        index, count = (int(part) for part in raw.split("/"))
+    except ValueError:
+        raise LayoutError("LAYOUT_SHARD_INVALID") from None
+    if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
+        raise LayoutError("LAYOUT_SHARD_INVALID")
+    return index, count
+
+
+def read(connection, limit, shard=(0, 1)):
+    """-> [(job_key, page_id, description dict)] of PUBLISHED jobs not yet DONE or LEFT, oldest first, only this shard's. A missing state table reads as nothing done."""
+    index, count = shard
     with connection.cursor() as cursor:
         try:
             cursor.execute(f"SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
                            f"JOIN v7_job_descriptions d ON d.job_id = j.id LEFT JOIN {STATE} s ON s.job_key = j.dedupe_key "
-                           f"WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND s.job_key IS NULL ORDER BY j.id LIMIT %s", (limit,))
+                           f"WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND s.job_key IS NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s", (count, index, limit))
         except Exception:                                              # noqa: BLE001 - the state table may not exist before the first live run
             cursor.execute("SELECT j.dedupe_key, j.notion_page_id, d.summary, d.responsibilities, d.requirements, d.qualifications, d.full_text FROM v7_jobs j "
-                           "JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL ORDER BY j.id LIMIT %s", (limit,))
+                           "JOIN v7_job_descriptions d ON d.job_id = j.id WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND MOD(j.id, %s) = %s ORDER BY j.id LIMIT %s", (count, index, limit))
         rows = cursor.fetchall()
     out = []
     for key, page, summary, resp, req, qual, full in rows:
@@ -134,12 +150,13 @@ def _remember(connection, key, page, state, cleared, counts):
 
 def _run(limit, live, environ, connection, client):
     budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES
+    shard = shard_of(environ)
     counts = {"live": bool(live), "read": 0, "done": 0, "migrated": 0, "would_migrate": 0, "left": 0, "failed": 0, "why": {}}
     if live:
         with connection.cursor() as cursor:
             cursor.execute(SCHEMA)
     client = client or Client(environ)
-    for key, page, desc in read(connection, budget):
+    for key, page, desc in read(connection, budget, shard):
         counts["read"] += 1
         try:
             outcome = migrate(client, page, key, desc, live)

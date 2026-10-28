@@ -111,3 +111,29 @@ class StateSave(unittest.TestCase):
         counts = {"state_not_saved": 0}
         layout._remember(conn, KEY, "page-1", layout.DONE, True, counts)
         self.assertEqual((counts["state_not_saved"], self.Connection.pings > 0), (1, True))
+
+
+class Shards(unittest.TestCase):
+    def test_a_shard_is_i_over_n_and_anything_else_is_refused(self):
+        self.assertEqual(layout.shard_of({}), (0, 1))
+        self.assertEqual(layout.shard_of({"LAYOUT_SHARD": "2/4"}), (2, 4))
+        for bad in ("4/4", "1/0", "-1/4", "a/b", "1/9", "3"):
+            with self.assertRaises(layout.LayoutError) as caught:
+                layout.shard_of({"LAYOUT_SHARD": bad})
+            self.assertEqual(str(caught.exception), "LAYOUT_SHARD_INVALID")
+
+    def test_the_read_asks_the_store_for_only_its_own_slice(self):
+        seen = []
+
+        class Cursor:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def execute(self, sql, args=()): seen.append((sql, args))
+            def fetchall(self): return []
+
+        class Connection:
+            def cursor(self): return Cursor()
+
+        layout.read(Connection(), 15, (2, 4))
+        self.assertIn("MOD(j.id, %s) = %s", seen[0][0])
+        self.assertEqual(seen[0][1], (4, 2, 15))
