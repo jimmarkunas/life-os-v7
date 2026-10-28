@@ -258,6 +258,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/network/store.py`: NET-1 Hostinger state (approved tables v7_network_people, v7_network_positions, v7_network_batches): the sole writer of them.
 - `lifeos/network/surface.py`: NET-2.3 (D160): the one machine-owned "Network Leads (n)" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client.
 ### lifeos/oraclecloud/
+- `lifeos/oraclecloud/backup_watch.py`: LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backup job on Oracle (lifeos/edge/backup) sends nothing itself: t
 - `lifeos/oraclecloud/card.py`: The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under th
 ### lifeos/outlook/
 - `lifeos/outlook/stage.py`: Outlook stages. `auth` signs one mailbox in once (read-only by default; `write` asks for the right to move mail into a folder) (device code; the token goes straight into 
@@ -416,6 +417,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `v7_network_dismissals`: `lifeos/network/store.py`
 - `v7_network_aliases`: `lifeos/network/store.py`
 - `v7_network_page_state`: `lifeos/network/store.py`
+- `v7_offsite_backup`: `lifeos/oraclecloud/backup_watch.py`
 - `v7_outlook_token`: `lifeos/platform/outlook_tokens.py`
 - `v7_outlook_mail_seen`: `lifeos/sources/newsletters/outlook.py`
 

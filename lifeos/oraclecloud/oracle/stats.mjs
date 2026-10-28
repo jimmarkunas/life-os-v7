@@ -1,7 +1,7 @@
 // Oracle Cloud card source (Jim's approval Oct 15 2026: Option B, OCI's own data; daily Notion card under Communications Attention).
 // Installed as ~/.local/lib/lifeos-oracle/stats.mjs on lifeos-edge-01 and run only by the private endpoint (alerts_endpoint.py, request `oracle1`).
 // Read-only: OCI is reached as the VM itself (instance principal; dynamic group lifeos-edge-01-readonly may only read metrics, usage-report and
-// resource-availability), the rest is local (/proc, statfs, systemctl --user, the OpenClaw CLI). Each reading is independent: a failed one is null,
+// resource-availability), the rest is local (/proc, statfs, systemctl --user, the OpenClaw CLI, the off-site backup's status file). Each reading is independent: a failed one is null,
 // never a guess or a zero. Prints ONE JSON line of numbers, booleans and fixed codes; no ids, names or messages.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
@@ -14,6 +14,7 @@ const SDK = path.join(os.homedir(), ".local/share/lifeos-oci/package.json");
 const OPENCLAW = path.join(os.homedir(), ".openclaw/tools/node/bin/openclaw");
 const IMDS = "http://169.254.169.254/opc/v2/instance/";
 const UNITS = { gateway: "openclaw-gateway.service", whatsapp: "lifeos-whatsapp-attention.service", alerts: "lifeos-alerts-whatsapp.service" };
+const BACKUP_STATUS = "/var/lib/lifeos-offsite/status.json";   // LIFE-129: the nightly off-site backup's last result (root-written, world-readable; counts and a fixed code)
 const IDLE_PCT = 20;                                    // Oracle's Always Free idle rule: 7-day CPU p95, network and (A1) memory all below 20%
 
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -40,6 +41,20 @@ export function parsePlan(text) {
 export function reclaimState(cpuP95, memMean) {
   if (cpuP95 == null || memMean == null) return null;
   return cpuP95 >= IDLE_PCT || memMean >= IDLE_PCT ? "NONE" : "AT_RISK";
+}
+
+// LIFE-129: the off-site backup's status file -> { ok, code, age_h }. Only the fixed lowercase code and the age leave; no file or Drive name. A missing file is
+// "backup_never_ran" (the backup is installed on this host, so no status is itself a failure); an unreadable or off-shape one is null (unknown, never a guess).
+export function backupState(text, nowMs, missing = false) {
+  if (missing) return { ok: false, code: "backup_never_ran", age_h: null };
+  let s;
+  try { s = JSON.parse(text); } catch { return null; }
+  if (!s || typeof s.ok !== "boolean" || typeof s.code !== "string" || !/^[a-z0-9_]{1,40}$/.test(s.code) || !Number.isInteger(s.at) || s.at <= 0) return null;
+  return { ok: s.ok, code: s.code, age_h: Math.max(0, Math.floor((nowMs / 1000 - s.at) / 3600)) };
+}
+
+function backup() {
+  try { return backupState(fs.readFileSync(BACKUP_STATUS, "utf8"), Date.now()); } catch (e) { return e && e.code === "ENOENT" ? backupState("", 0, true) : null; }
 }
 
 export function memoryPct(meminfo) {
@@ -128,6 +143,7 @@ export async function collect() {
     reclaim: reclaimState(cloud.cpuP95, cloud.mem7),
     services: svc,
     chatgpt: plan,
+    backup: backup(),
   };
 }
 

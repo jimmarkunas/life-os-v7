@@ -43,6 +43,7 @@ REGISTRY = {
     # --- other watchers with their own state
     "jira_rollover_stuck": _page("jira", "The Monday sprint rollover has not worked for 3 hours."),
     "calendar_sync_stuck": _page("calendar", "The calendar bridge has not synced for 3 hours."),
+    "offsite_backup_failed": _info("edge", "The nightly off-site backup (Oracle to Drive) failed, or has not succeeded for 36 hours (LIFE-129, Jim: quiet, phone only)."),
     "imessage_action": _page("imessage", "A message needs action: time critical goes out at once, action required waits through quiet hours (10 PM to 8 AM Central)."),
     # --- the pipeline's own health (lifeos/platform/gate.py, the watchdog)
     "pipeline_stalled": _page("platform", "No hourly run has succeeded for 2.5 hours."),

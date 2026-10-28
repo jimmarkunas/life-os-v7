@@ -390,6 +390,7 @@
    "lifeos/network/surface.py": "NET-2.3 (D160): the one machine-owned \"Network Leads (n)\" block on a Job Ledger page. Platform only: Notion calls arrive through the caller's client."
   },
   "oraclecloud": {
+   "lifeos/oraclecloud/backup_watch.py": "LIFE-129 (Jim, Oct 28 2026): a failed or missed off-site backup night must reach the phone, quietly. The backup job on Oracle (lifeos/edge/backup) sends nothing itself: t",
    "lifeos/oraclecloud/card.py": "The Daily Report's Oracle Cloud callout, written every tick (Jim's approval Oct 15 2026: Option B, OCI's own data; the callout under Communications Attention, or under th"
   },
   "outlook": {
@@ -626,6 +627,7 @@
   "v7_network_page_state": "lifeos/network/store.py",
   "v7_network_people": "lifeos/network/store.py",
   "v7_network_positions": "lifeos/network/store.py",
+  "v7_offsite_backup": "lifeos/oraclecloud/backup_watch.py",
   "v7_outlook_mail_seen": "lifeos/sources/newsletters/outlook.py",
   "v7_outlook_token": "lifeos/platform/outlook_tokens.py",
   "v7_source_items": "lifeos/jobs/store.py",

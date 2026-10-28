@@ -1,7 +1,7 @@
 // node --test lifeos/oraclecloud/oracle/stats.test.mjs   (synthetic inputs; no network, no OCI)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePlan, reclaimState, memoryPct, diskPct } from "./stats.mjs";
+import { parsePlan, reclaimState, memoryPct, diskPct, backupState } from "./stats.mjs";
 
 test("the ChatGPT plan line is read strictly; any other shape is unavailable", () => {
   assert.deepEqual(parsePlan("- openai usage: 5h 87% left ⏱4h 19m · Week 42% left ⏱6d 9h"), { left_5h: 87, left_week: 42 });
@@ -30,4 +30,14 @@ test("memory and disk are percentages of what is actually in use", () => {
   assert.equal(memoryPct("garbage"), null);
   assert.equal(diskPct({ blocks: 1000, bavail: 610 }), 39);
   assert.equal(diskPct({ blocks: 0, bavail: 0 }), null);
+});
+
+test("the off-site backup reading carries only ok, a fixed code and the age in whole hours", () => {
+  const at = 1793206850;
+  assert.deepEqual(backupState(JSON.stringify({ ok: true, code: "ok", at, files: 1154, bytes: 10129666 }), (at + 3 * 3600 + 59) * 1000), { ok: true, code: "ok", age_h: 3 });
+  assert.deepEqual(backupState(JSON.stringify({ ok: false, code: "backup_drive_http_403", at }), at * 1000), { ok: false, code: "backup_drive_http_403", age_h: 0 });
+  assert.deepEqual(backupState("", 0, true), { ok: false, code: "backup_never_ran", age_h: null });
+  assert.equal(backupState("not json", 0), null);
+  assert.equal(backupState(JSON.stringify({ ok: true, code: "Some /path or name", at }), at * 1000), null);
+  assert.equal(backupState(JSON.stringify({ ok: "yes", code: "ok", at }), at * 1000), null);
 });
