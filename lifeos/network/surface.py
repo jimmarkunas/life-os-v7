@@ -26,6 +26,7 @@ DISMISS_TEXT, SAME_TEXT = "Not relevant · dismiss", "Same company"
 STATUS = ("Contacted", "Referral", "Closed")                              # the approved card's "Referral status" ticks (Jim, Oct 28: the UI PROOF "LinkedIn Contacts (3 of 5)" page)
 PENDING = "building"                                                    # the hash a card block carries until every card is written: a block cut short never reads as the wanted one
 PROFILE = "LinkedIn profile ↗"
+ICON = {"type": "external", "external": {"url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"}}   # Jim, Oct 28: the LinkedIn logo, not Notion's default bulb (a callout must carry an icon)
 
 
 class SurfaceError(NotionError):
@@ -48,7 +49,7 @@ def sent_url(base, page_id):
 
 def set_hash(leads, link=None):
     """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui3").encode()).hexdigest()[:12] if leads else ""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui5").encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -137,8 +138,8 @@ def write_cards(client, parent_id, leads, want, carried=None):
     """Writes the approved "LinkedIn connections" block into parent_id: an outer callout, one inner callout per contact, each holding its card. The outer title carries the PENDING hash until the
     last card is in, then the wanted hash, so an interrupted write is replaced next run and never accepted. carried: {person_id: {kind: checked}}. -> the outer block id."""
     carried = carried or {}
-    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "children": [
-        {"object": "block", "type": "callout", "callout": {"rich_text": []}} for _ in leads]}}
+    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "icon": ICON, "children": [
+        {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": ICON}} for _ in leads]}}
     outer_id = _append_last(client, parent_id, shell)
     cards = [b for b in children(client, outer_id) if b.get("type") == "callout"]
     if len(cards) != len(leads):
