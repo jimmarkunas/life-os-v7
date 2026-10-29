@@ -191,7 +191,7 @@ def _cards(client, inner):
         lists = [b for b in children(client, card["id"]) if b.get("type") == "column_list"]
         columns = [b for b in children(client, lists[0]["id"]) if b.get("type") == "column"] if len(lists) == 1 else []
         if len(columns) != 2:
-            raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+            continue                                                    # a card a cut-short write left unfinished carries no lead and no tick; its block is replaced (its hash is PENDING)
         lines = [_plain(b) for b in children(client, columns[0]["id"]) if b.get("type") == "paragraph"]
         ticks = []
         for toggle in [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"]:
