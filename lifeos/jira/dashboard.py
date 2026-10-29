@@ -115,14 +115,22 @@ def _number(prop):
     return (prop or {}).get("number") if isinstance((prop or {}).get("number"), (int, float)) else None
 
 
-def megibow_jim(client, block_id, week_start):
-    """Jim's counts for the week from the MegIBOW table V7 writes (its header names each week's Monday, e.g. "Oct 19"); None when the week or table is not there."""
-    if not block_id:
-        return None
+def _megibow_rows(client, block_id):
     tables = [b for b in children(client, block_id) if b.get("type") == "table"]
     if len(tables) != 1:
         return None
     rows = [[_plain(c) for c in (r.get("table_row") or {}).get("cells") or []] for r in children(client, tables[0]["id"])]
+    return rows if rows and [c.strip() for c in rows[0][:1]] == ["Activity"] and any([c.strip() for c in r[:1]] == [R.CATEGORIES[0]] for r in rows) else None
+
+
+def megibow_jim(client, block_id, week_start, root=None):
+    """Jim's counts for the week from the MegIBOW table V7 writes (its header names each week's Monday, e.g. "Oct 19"); None when the week or table is not there.
+    Without MEGIBOW_BLOCK_ID the table is found as the MegIBOW stage finds it: the one top-level callout on the dashboard page that holds the Activity table."""
+    if block_id:
+        rows = _megibow_rows(client, block_id)
+    else:
+        found = [r for b in (children(client, root) if root else []) if b.get("type") == "callout" for r in [_megibow_rows(client, b["id"])] if r]
+        rows = found[0] if len(found) == 1 else None
     if not rows:
         return None
     want = R.day(week_start)
@@ -255,7 +263,7 @@ def build(limit, live, environ=os.environ, jira=None, client=None, now=None):
         result["checkin"] = "kept"
     else:
         people = build_people(jira, issues, now, label)
-        megibow = {"Jim": megibow_jim(client, (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), week_start),
+        megibow = {"Jim": megibow_jim(client, (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), week_start, root),
                    "Matt": megibow_matt(client, source_of(client, found[MATT_MEGIBOW]), week_start)}
         blocks = R.checkin(people, now, week_start, megibow, terms)
         result["checkin"] = write_checkin(client, found[CHECKINS], wed, blocks, live)
