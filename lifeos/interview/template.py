@@ -14,8 +14,12 @@ import hashlib
 import re
 from datetime import date
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
-from .view import HOLD_LINE, NEXT_LINE, UNCONNECTED, hand_action, primary_action, stage      # noqa: F401 - HOLD_LINE / NEXT_LINE are this writer's carried line formats
+from .view import HOLD_LINE, NEXT_LINE, UNCONNECTED, evidence_since, hand_action, hand_set_at, hold, primary_action, stage      # noqa: F401 - HOLD_LINE / NEXT_LINE are this writer's carried line formats
+
+CENTRAL = ZoneInfo("America/Chicago")
+HOLD_LABEL = {"paused": "Paused", "waiting": "Waiting on employer"}      # LIFE-111: lifeos.hiring.models.HOLD_LABEL's words
 
 GRAY, NV = "gray", "Not verified"
 ARROW, INFO = "https://www.notion.so/icons/arrow-right_gray.svg", "https://www.notion.so/icons/info-alternate_gray.svg"
@@ -150,17 +154,32 @@ def fold_lines(view, label, action):
             + [done_line(k, d) for k, d in view.done] + list(view.decisions) + list(view.hand))
 
 
+def _day(moment):
+    local = moment.astimezone(CENTRAL)
+    return f"{local:%b} {local.day}"
+
+
 def hand_parts(view):
-    """LIFE-112: Jim's own next action and/or due date, beside the derived one and labelled as his; its Mark Complete link (which clears it) once the Close screen is configured."""
+    """LIFE-112 (Jim, Oct 29): Jim's own next action and/or due date, which replaces the derived one; its Mark Complete link (which clears it) once the Close screen is configured."""
     hand = hand_action(view)
     if not hand:
         return []
     key, text, due = hand
-    out = [para(("SET BY JIM", True), " · ", (text, True)), para(("Due: ", True), due or "No date set", " · set by Jim on the Manage screen; new evidence never changes it")]
+    out = [para((text, True)), para(("Due: ", True), due or "No date set", " · ", ("Owner: ", True), "Jim · set on the Manage screen; new evidence never changes it")]
     if view.close_base and view.page_id:
         url = f"{view.close_base}/complete?{urlencode({'o': view.page_id.replace('-', ''), 'a': key})}"
         out.append(para(("Mark Complete ↗", False, url), " · clears this action; nothing is recorded until you confirm there."))
     return out
+
+
+def status_parts(view):
+    """LIFE-111: the Stage line's opportunity status: Jim's hand-set Paused / Waiting on employer, or why it was cleared by new evidence, else not verified."""
+    held = hold(view)
+    if held and not held[3]:
+        return [(HOLD_LABEL[held[0]], True), f" · set by Jim {_day(held[1])} · off the to-do list until new evidence arrives"]
+    if held:
+        return [f"{HOLD_LABEL[held[0]]} cleared by new evidence ({held[3][1]} {_day(held[3][0])})"]
+    return ["Not verified (outcome sources not connected)"]
 
 
 def complete_parts(view, label, action):
@@ -257,12 +276,18 @@ def opportunity_page(view, today, source="pending", adopted=None):
     if view.close_base and view.page_id:                                   # E14 (Jim, Oct 24): every action for this opportunity, each confirmed on its own Close screen
         ledger += [" · " if ledger else "", ("Manage ↗", False, f"{view.close_base}/manage?{urlencode({'o': view.page_id.replace('-', '')})}")]
     posting = [("Original posting ↗", False, view.apply_url)] if view.apply_url else []
-    primary = callout([
+    derived = [
         para((action, True)),
         para(("Due: ", True), due, " · ", ("Owner: ", True), "Jim · ", ("Source completeness: ", True), "Partial",
              *([" · ", ("Request message ↗", False, link)] if link else [])),
-        *complete_parts(view, label, action), *hand_parts(view)], None, PLAIN,
-        (label, True), " · ", basis)
+        *complete_parts(view, label, action)]
+    mine = hand_parts(view)
+    if mine:                                                               # LIFE-112 (Jim, Oct 29): his action replaces the derived one; new evidence since he set it shows under his
+        new = evidence_since(view, hand_set_at(view))
+        later = [divider(), para(("New since you set this", True), f" · {new[1]} {_day(new[0])} · ", (label, True), " · ", basis), *derived] if new else []
+        primary = callout([*mine, *later], None, PLAIN, ("SET BY JIM", True), " · your next action")
+    else:
+        primary = callout(derived, None, PLAIN, (label, True), " · ", basis)
     secondary = [h(4, "Secondary Actions"), para("No additional verified actions."),
                  note("A live opportunity may show up to two. Never pad with invented obligations."),
                  toggle("Empty / unknown states", [field("All caught up", "Only after complete source checks."),
@@ -302,7 +327,7 @@ def opportunity_page(view, today, source="pending", adopted=None):
         fold(marker, render_line(view.stable_job_key, source), *fold_lines(view, label, action),
              extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),
         para(("Stage: ", True), current, " · ", ("Next confirmed interview: ", True), next_date, " · ",
-             ("Current opportunity status: ", True), "Not verified (outcome sources not connected)", *([" · "] + ledger if ledger else [])),
+             ("Current opportunity status: ", True), *status_parts(view), *([" · "] + ledger if ledger else [])),
         callout([h(3, "Action Center"), columns((0.625, [primary]), (0.375, secondary))], ARROW, "blue_background"),
         divider(), columns((0.63, left), (0.37, right)), divider(),
         h(2, "Job Description — Original Posting"),

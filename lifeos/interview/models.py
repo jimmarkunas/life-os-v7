@@ -1,5 +1,5 @@
 """Internal identity evidence; never serialize these records into public logs."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -67,6 +67,7 @@ class Child:
     ordinal: int | None = None
     identity_valid: bool | None = None
     legacy: bool = False                       # LIFE-88: a hand-made round page whose number and date Jim let V7 read from its title (named pursuits only); shown, never written
+    created: str | None = field(default=None, compare=False)        # LIFE-111/112: when the round page was created (Notion created_time): new interview evidence for a hand-set state
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ carried as `None`, which the template renders as not verified. Nothing here is g
 only from the exact row's human-owned Submitted Résumé field (Jim, Oct 24), never from the Resume column, which holds the latest
 résumé LIFE OS built, not the one Jim sent."""
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from lifeos.platform.notion_client import NotionError
 from .identity import valid_date
@@ -32,6 +32,7 @@ class Round:
     interviewer: str | None
     calendar: str | None = None                  # LIFE-78 E10: "accepted" | "cancelled" from the round page's own Logistics reference, else not verified
     joining: bool = False                        # E10: that accepted round page records its invite's joining details (link or location, #481)
+    created: str | None = field(default=None, compare=False)        # LIFE-111/112: when the round page was created (new interview evidence after a hand-set state)
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ def submitted_resume(props):
 
 def rounds_of(children):
     """Machine interview pages with a verified identity line (and, for a pursuit Jim named, hand-made ones whose title states the number and date), in D15 order (dated before undated is decided in sort_rounds)."""
-    return tuple(Round(c.page_id, c.ordinal, c.interview_date, c.interviewer) for c in getattr(children, "items", ())
+    return tuple(Round(c.page_id, c.ordinal, c.interview_date, c.interviewer, created=getattr(c, "created", None)) for c in getattr(children, "items", ())
                  if c.identity_valid is True or c.legacy)
 
 
@@ -126,7 +127,7 @@ def with_calendar(client, rounds):
             except NotionError:
                 ref, cancelled = None, False
             state = ("cancelled" if cancelled else "accepted") if ref else None
-        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state, state == "accepted" and meeting is not None))
+        out.append(Round(r.page_id, r.ordinal, r.date, r.interviewer, state, state == "accepted" and meeting is not None, r.created))
     return tuple(out)
 
 
@@ -183,17 +184,53 @@ def primary_action(view, today):
             "not connected yet, so no next action is shown as current.", "Unverified", None, "source evidence incomplete")
 
 
+def _latest(view, pattern):
+    """The latest hand-set line of one kind on either record (the exact Ledger row, this page's fold), by its own time; ties go to the page's fold."""
+    found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(pattern.fullmatch, view.hand_ledger + view.hand)) if m]
+    return max(found, key=lambda f: f[:2])[2] if found else None
+
+
 def hand_action(view):
     """LIFE-112: the next action and/or due date Jim set by hand -> (key, text, due or None), or None. The latest line on either record (this page's fold, the exact Ledger
     row) wins; it is never derived, never overwritten by evidence, and Mark Complete clears it (a completion line for its key, the op that set it)."""
-    found = [(datetime.fromisoformat(m.group(2)), i, m) for i, m in enumerate(map(NEXT_LINE.fullmatch, view.hand_ledger + view.hand)) if m]
-    if not found:
+    m = _latest(view, NEXT_LINE)
+    if m is None:
         return None
-    m = max(found, key=lambda f: f[:2])[2]
     text, due = m.group(4).strip(), None if m.group(1) == "none" else m.group(1)
     if not (text or due) or m.group(3) in dict(view.done):
         return None
     return m.group(3), text or "Next step set by Jim", due
+
+
+def hand_set_at(view):
+    """LIFE-112: when Jim set the next action hand_action shows (an aware datetime), or None when none is shown."""
+    m = _latest(view, NEXT_LINE)
+    return datetime.fromisoformat(m.group(2)) if m and hand_action(view) else None
+
+
+def _created(value):
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def evidence_since(view, since):
+    """LIFE-111/112 (Jim, Oct 29: the automation works in concert with his hand-set state): the first interview round page created after `since` -> (aware datetime, what),
+    or None. Only a round page with a readable creation time counts; nothing is inferred from a date alone."""
+    found = sorted((t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
+                   for r in view.rounds if (t := _created(r.created)) is not None and since is not None and t > since)
+    return found[0] if found else None
+
+
+def hold(view):
+    """LIFE-111: Jim's hand-set Paused / Waiting on employer -> (state, set at, op, cleared) or None (Active, or never set). `cleared` is (when, what) when new
+    interview evidence arrived after he set it (the opportunity is back on the to-do list and the page says why), else None."""
+    m = _latest(view, HOLD_LINE)
+    if m is None or m.group(1) == "active":
+        return None
+    at = datetime.fromisoformat(m.group(2))
+    return m.group(1), at, m.group(3), evidence_since(view, at)
 
 
 def stage(view, today):
