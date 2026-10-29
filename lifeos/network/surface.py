@@ -6,6 +6,7 @@ The ticks carry `<person id>:<evidence hash>`, so a tick can only ever confirm t
 refer or hiring authority is ever generated, and no outreach text is drafted."""
 import hashlib
 import re
+import time
 from datetime import date
 from urllib.parse import quote, unquote
 
@@ -150,17 +151,33 @@ def write_cards(client, parent_id, leads, want, carried=None):
         toggles = [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"] if len(columns) == 2 else []
         if len(toggles) != 1:
             raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
-        client.call_once("PATCH", f"/blocks/{quote(toggles[0]['id'], safe='')}/children", {"children": status_ticks(lead, mine)})
+        _write(client, f"/blocks/{quote(toggles[0]['id'], safe='')}/children", {"children": status_ticks(lead, mine)})
     client.call("PATCH", f"/blocks/{quote(outer_id, safe='')}", {"callout": {"rich_text": [hidden.run(f"{MARK2} {want}")] + _bold(TITLE)}})
     return outer_id
 
 
+def _write(client, path, body, sleep=time.sleep):
+    """One append. A 429 means Notion did not apply it, so only that refusal is retried (8 slices share one integration's rate limit)."""
+    for attempt in range(5):
+        try:
+            return client.call_once("PATCH", path, body)
+        except NotionError as error:
+            if str(error) != "NOTION_HTTP_429" or attempt == 4:
+                raise
+            sleep(2 + 2 * attempt)
+
+
 def _append_last(client, parent_id, block):
-    """Appends ONE block to parent_id and returns its id, proven by reading the parent back: the last child must be a new block of that type."""
-    before = {b["id"] for b in children(client, parent_id)}
-    client.call_once("PATCH", f"/blocks/{quote(parent_id, safe='')}/children", {"children": [block]})
+    """Appends ONE block to parent_id and returns its id: from Notion's own reply (the appended block), else proven by reading the parent back (its last child must be of that type)."""
+    made = _write(client, f"/blocks/{quote(parent_id, safe='')}/children", {"children": [block]})
+    results = (made or {}).get("results") if isinstance(made, dict) else None
+    if isinstance(results, list) and results:
+        last = results[-1]
+        if last.get("type") != block["type"] or not last.get("id"):
+            raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+        return last["id"]
     after = children(client, parent_id)
-    if not after or after[-1]["id"] in before or after[-1].get("type") != block["type"]:
+    if not after or after[-1].get("type") != block["type"]:
         raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
     return after[-1]["id"]
 
@@ -248,7 +265,7 @@ def _right(client, top):
     return columns[1]["id"] if len(columns) == 2 else None
 
 
-def read_page(client, page_id):
+def read_page(client, page_id, deep=True):
     """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "parent", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}; `parent` is the page, or the right column of the two-column page.
     Normally one; an interrupted replacement can leave two, and the next run converges them (see apply). A page whose owned block cannot be read raises."""
     top = Top(children(client, page_id))
@@ -259,7 +276,7 @@ def read_page(client, page_id):
             head = _owned_head(client, block)
             if head:
                 cards = [c for c in head[1] if c.get("type") == "callout"]         # the approved card block: its ticks sit inside each card's Referral status toggle
-                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + [t for card in _cards(client, cards) for t in card["ticks"]]})
+                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + ([t for card in _cards(client, cards) for t in card["ticks"]] if deep else [])})
     return top, owned
 
 
@@ -342,7 +359,7 @@ def _others(top, owned):
 
 def _verify(client, page_id, others, want, count):
     """Proves the page holds exactly `count` owned blocks, all with the wanted hash, and that no other top-level block changed."""
-    top, owned = read_page(client, page_id)
+    top, owned = read_page(client, page_id, deep=False)                  # the hash proves the block; its cards' ticks are not needed here
     if _others(top, owned) != others or len(owned) != count or any(o["hash"] != want for o in owned):
         raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
     return top, owned
@@ -384,7 +401,7 @@ def apply(client, page_id, top, owned, desired_leads, live, link=None):
                 if checked and kind in STATUS + (SAME_TEXT,):
                     carried.setdefault(person_id, {})[kind] = True
         write_cards(client, column or page_id, desired_leads, want, carried)
-        _, now_owned = read_page(client, page_id)
+        _, now_owned = read_page(client, page_id, deep=False)
         fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
         if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:
             raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")      # the old block is still there and still visible: nothing known-good was retired
