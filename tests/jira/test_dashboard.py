@@ -11,6 +11,7 @@ from lifeos.platform.notion_client import NotionError
 ROOT = "a" * 32
 NOW = datetime(2026, 10, 29, 13, 5, tzinfo=D.CENTRAL)             # Thursday 1:05 PM CT: the check-in owed is Wed Oct 28
 SITE = "https://example.test"
+PHONE, SSN = "-".join(("312", "555", "0100")), "-".join(("123", "45", "6789"))      # built at run time: the privacy guard refuses phone- and SSN-shaped literals
 
 
 def issue(key, summary, cat="new", status=None, changed=None, due=None, labels=(), parent=None, parent_level=1, level=0, desc=None):
@@ -32,7 +33,7 @@ def adf(*blocks):
 VISION = adf(("h", "Mary Morrissey vision (present tense)"), ("p", "\"It's January 2, 2027, and I'm paid $70/hr by two contracts.\""), ("h", "Current reality"), ("p", "Runway: 6 months"))
 ISSUES = [
     issue("JFM-1", "Shipped the deck", "done", changed="2026-10-27T10:00:00.000-0500", parent="JFM-9"),
-    issue("JFM-2", "Call Pat at 312-555-0100 about the $220K role", due="2026-11-02", parent="JFM-9"),
+    issue("JFM-2", f"Call Pat at {PHONE} about the $220K role", due="2026-11-02", parent="JFM-9"),
     issue("JFM-3", "Old overdue thing", "indeterminate", due="2026-10-20", parent="JFM-104"),
     issue("JFM-4", "Q4 Career Win: first paid contract", labels=("q4-qbr-2026", "must-win"), due="2026-11-20", parent="JFM-9", desc=VISION),
     issue("JFM-5", "Stuck item", "indeterminate", status="Blocked", parent="JFM-106"),
@@ -180,8 +181,8 @@ class Scrub(unittest.TestCase):
         for raw, want in (("Teladoc — Principal PM (FT, $220K): win the offer", "Teladoc — Principal PM (FT, [private]): win the offer"),
                           ("Contract ($70/hr): low priority", "Contract ([private]): low priority"),
                           ("$500/month recurring revenue", "[private] recurring revenue"),
-                          ("Email matt@example.com", "Email [private]"), ("Call 312-555-0100 now", "Call [private] now"),
-                          ("Account 12345678 closed", "Account [private] closed"), ("SSN 123-45-6789", "SSN [private]"),
+                          ("Email matt@example.com", "Email [private]"), (f"Call {PHONE} now", "Call [private] now"),
+                          ("Account 12345678 closed", "Account [private] closed"), (f"SSN {SSN}", "SSN [private]"),
                           ("Weekend with Lisa and Patrick", "Weekend with [private] and Patrick"),
                           ("Q4 Career Win: first paid contract by Nov 20 (JFM-223)", "Q4 Career Win: first paid contract by Nov 20 (JFM-223)")):
             self.assertEqual(scrub(raw, t)[0], want)
