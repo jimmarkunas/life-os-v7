@@ -32,6 +32,12 @@ _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 HOLD_LINE = re.compile(rf"v7-hold:1;state=({PAUSED}|{WAITING}|{ACTIVE});at=({_AT});op=([0-9a-f]{{16}})")          # the Interview writer keeps its own copies (contract-tested)
 NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
 NEXT_MAX = 200                                                 # a hand-entered next action longer than this is refused, never cut
+# LIFE-114 (Jim, Oct 29): sent material Jim records on Manage, one line each, kept with the hold and next-action lines: an application form or portal answers (an optional link),
+# or a Google Drive file (a project plan, an article). Each line is its own record; none replaces another.
+FORM, FILE = "form", "file"
+SENT_KINDS = {FORM: "Application form / portal answers", FILE: "Google Drive file"}
+SENT_LINE = re.compile(rf"v7-sent:1;kind=({FORM}|{FILE});at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")
+SENT_MAX = 20                                                  # sent-material lines kept per record, newest last
 
 
 def hold_line(state, at, op):
@@ -42,9 +48,23 @@ def next_line(text, due, at, op):
     return f"v7-next:1;due={due or 'none'};at={at};op={op};text={text}"
 
 
+def sent_line(kind, text, url, at, op):
+    return f"v7-sent:1;kind={kind};at={at};op={op};url={url or 'none'};text={text}"
+
+
 def hand_lines(text):
-    """The hand-set lines in a record's text, in order."""
-    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t))
+    """The hand-set lines in a record's text, in order (holds, next actions and LIFE-114 sent material)."""
+    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t))
+
+
+def sent_of(lines):
+    """LIFE-114: -> [{"kind", "text", "url" or None, "at", "op"}] of every sent-material line, oldest first; a repeated op counts once."""
+    out, seen = [], set()
+    for m in sorted(filter(None, map(SENT_LINE.fullmatch, lines)), key=lambda m: datetime.fromisoformat(m.group(2))):
+        if m.group(3) not in seen:
+            seen.add(m.group(3))
+            out.append({"kind": m.group(1), "text": m.group(5).strip(), "url": None if m.group(4) == "none" else m.group(4), "at": m.group(2), "op": m.group(3)})
+    return out
 
 
 def _latest(lines, pattern):

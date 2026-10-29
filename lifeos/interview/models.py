@@ -40,6 +40,8 @@ class RoundQuery:
     recruiters_state: str | None = None        # None = the Recruiters source is not connected to this run; "linked" | "none" | "unreadable"
     contacts: tuple = ()                       # E10 (Jim, Oct 24): the job's own Network Leads on its Ledger page, as (name, why); private page content only
     contacts_state: str | None = None          # None = no Ledger row linked; "linked" | "none" | "unreadable"
+    sent_mail: tuple = ()                      # LIFE-114: (sent time ISO, subject) of Jim's own messages on the request thread `source`; private page content only
+    sent_mail_state: str | None = None         # None = Gmail not read for this run; "read" | "unreadable"
     refresh_only: bool = False                 # E05: bring an existing machine page with no rounds (a recruiter lead) up to date; never creates a page or a round
 
 

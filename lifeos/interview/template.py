@@ -12,11 +12,12 @@ because the API creates child pages only at the end of a page. Nested children a
 from .notion import FOLD, JIM_NOTES, LIVE_PANE, MARKERS, RAW_HEADING, RAW_TOGGLE, ROUND_FOLD
 import hashlib
 import re
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from .view import HOLD_LINE, NEXT_LINE, UNCONNECTED, evidence_since, hand_action, hand_set_at, hold, primary_action, stage      # noqa: F401 - HOLD_LINE / NEXT_LINE are this writer's carried line formats
+from .view import (HOLD_LINE, NEXT_LINE, SENT_LINE, UNCONNECTED, evidence_since, hand_action, hand_set_at, hold, primary_action, sent_material,  # noqa: F401 - the *_LINE are
+                   stage)                                                                                                                   # this writer's carried line formats
 
 CENTRAL = ZoneInfo("America/Chicago")
 HOLD_LABEL = {"paused": "Paused", "waiting": "Waiting on employer"}      # LIFE-111: lifeos.hiring.models.HOLD_LABEL's words
@@ -127,6 +128,8 @@ DONE_MAX = 20                                                  # completion line
 DECISION_LINE = re.compile(r"Hiring decision \(V7\) · .+ · op [A-Za-z0-9_-]{8,64}")
 DECISION_MAX = 20                                              # decision lines carried per page, newest last
 HAND_MAX = 10                                                  # LIFE-111/112: hand-set hold and next-action lines (Manage) carried per page, newest last
+SENT_MAX = 20                                                  # LIFE-114: sent-material lines (Manage) carried per page, newest last (= hiring.models.SENT_MAX)
+SENT_KIND = {"form": "Application form", "file": "Drive file"}
 
 
 def action_key(text, context=""):
@@ -206,9 +209,11 @@ def _health(view, rounds_label):
     linked = [r for r in view.rounds if r.calendar]
     threads = {"linked": f"{len(view.recruiters)} thread(s) linked from the Recruiters database by this job's exact request message",
                "none": "no Recruiters row for this job's exact request message", "unreadable": "DEGRADED · Recruiters source unreadable this run"}
-    resume = {"recorded": f"{len(view.resume)} submitted résumé file(s) on the exact Job Ledger row; other sent materials not connected",
-              "not_recorded": "no submitted résumé recorded on the Job Ledger row; other sent materials not connected",
-              "not_connected": "the Job Ledger has no Submitted Résumé field; other sent materials not connected"}
+    mail = {"read": f"{len(view.sent_mail)} email(s) you sent on the request thread", "unreadable": "DEGRADED · Gmail unreadable this run"}.get(view.sent_mail_state, "sent email not read this run")
+    others = f"; {len(sent_material(view))} form(s) / Drive file(s) recorded on Manage; {mail}"          # LIFE-114
+    resume = {"recorded": f"{len(view.resume)} submitted résumé file(s) on the exact Job Ledger row{others}",
+              "not_recorded": f"no submitted résumé recorded on the Job Ledger row{others}",
+              "not_connected": f"the Job Ledger has no Submitted Résumé field{others}"}
     contacts = {"linked": f"{len(view.contacts)} Network lead(s) from the job's Ledger page", "none": "no Network leads on the job's Ledger page",
                 "unreadable": "DEGRADED · Network leads unreadable this run"}
     joining = sum(r.joining for r in linked)
@@ -216,7 +221,7 @@ def _health(view, rounds_label):
         f"joining details on {joining} accepted round page(s)" if joining else "joining details not verified")
     rows += [(name, calendar if name == "Calendar" and linked
               else threads[view.recruiters_state] if name == "Recruiter email threads" and view.recruiters_state in threads
-              else resume.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run")
+              else resume.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run" + others)
               if name == "Submitted résumé and sent materials"
               else contacts.get(view.contacts_state, "not connected (no exact Job Ledger row)") if name == "LinkedIn contacts"
               else "not connected to LIFE OS yet") for name in UNCONNECTED]
@@ -265,6 +270,21 @@ def _submitted(view):
         return [bullet(("Submitted résumé", True), " — ", (name, False, url or _url(view.ledger_page_id)), " (Job Ledger)") for name, url in view.resume]
     why = {"not_recorded": "not recorded on the Job Ledger row", "not_connected": "not connected (the Job Ledger has no Submitted Résumé field)"}
     return [bullet(("Submitted résumé", True), " — ", why.get(view.resume_state, "unavailable · the exact Job Ledger row is not verified this run"))]
+
+
+def _sent(view):
+    """LIFE-114 (Jim, Oct 29): after the résumé, the forms and Drive files Jim recorded on Manage, then his own emails on this job's request thread (Gmail, read only).
+    Cover letters are not tracked. An unread mailbox is said, never shown as none sent."""
+    out = [bullet((SENT_KIND[kind], True), " — ", (text, False, url) if url else text, f" · recorded {_day(at)}") for kind, text, url, at in sent_material(view)]
+    mails = sorted(view.sent_mail)
+    if view.sent_mail_state == "read":
+        out += [bullet(("Email you sent", True), " — ", (subject or "(no subject)", False, view.request_url) if view.request_url else (subject or "(no subject)"),
+                       f" · {_day(datetime.fromisoformat(at))}") for at, subject in mails]
+        if not mails:
+            out.append(bullet(("Follow-up / thank-you email", True), " — none sent on this job's request thread yet"))
+    elif view.sent_mail_state == "unreadable":
+        out.append(bullet(("Follow-up / thank-you email", True), " — DEGRADED · Gmail unreadable this run"))
+    return out
 
 
 def opportunity_page(view, today, source="pending", adopted=None):
@@ -320,9 +340,9 @@ def opportunity_page(view, today, source="pending", adopted=None):
         callout([h(3, "Recruiters & Coordinators"), table(_recruiters(view)),
                  note("Email opens the latest verified thread for THIS job only, never composes. Interview participants are "
                       "listed only under Interviews.")], "👥", "gray_background"),
-        callout([h(3, "Materials Sent"), *_submitted(view),
-                 note("Other sent forms, correspondence, project plans and articles appear here when linked to verified files "
-                      "or outbound messages.")], "📎", "gray_background")]
+        callout([h(3, "Materials Sent"), *_submitted(view), *_sent(view),
+                 note("Forms, portal answers and Drive files (project plans, articles) appear here once you record them on Manage; your own "
+                      "emails on this job's request thread are read from Gmail.")], "📎", "gray_background")]
     machine = [
         fold(marker, render_line(view.stable_job_key, source), *fold_lines(view, label, action),
              extra=[_health(view, f"{len(view.rounds)} verified interview page(s)")]),

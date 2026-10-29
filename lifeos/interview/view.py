@@ -22,6 +22,7 @@ HAND_SET = "LIFE OS Hand-Set"
 _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 HOLD_LINE = re.compile(rf"v7-hold:1;state=(paused|waiting|active);at=({_AT});op=([0-9a-f]{{16}})")
 NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
+SENT_LINE = re.compile(rf"v7-sent:1;kind=(form|file);at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")     # LIFE-114: sent material Jim recorded on Manage
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,8 @@ class Opportunity:
     resume_state: str | None = None              # None = Job Ledger row not verified; "recorded" | "not_recorded" | "not_connected" (no such field)
     hand: tuple = ()                             # LIFE-111/112: the hand-set lines Manage wrote in this page's fold, carried forward as written
     hand_ledger: tuple = ()                      # LIFE-111/112: the hand-set lines on the exact Job Ledger row (read only here)
+    sent_mail: tuple = ()                        # LIFE-114: (sent time ISO, subject) of Jim's own messages on this job's request thread, read only from Gmail
+    sent_mail_state: str | None = None           # None = not connected this run; "read" | "unreadable"
 
 
 def _plain(prop):
@@ -85,7 +88,7 @@ def ledger_facts(client, page_id, stable_job_key):
     if row.get("archived") or row.get("in_trash") or not stable_job_key or _plain(props.get("Stable Job Key")) != stable_job_key:
         return "mismatch", {}
     resume, resume_state = submitted_resume(props)
-    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t))
+    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t))
     return "linked", {"compensation": _plain(props.get("Compensation")), "work_mode": _plain(props.get("Location / Work Mode")),
                       "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits")),
                       "resume": resume, "resume_state": resume_state, "hand_ledger": hand}
@@ -156,7 +159,8 @@ def opportunity(client, parent_query, query, pipeline_id, children=None, today="
                        request if request.startswith("https://") else None, pipeline_id,
                        rounds=sort_rounds(with_calendar(client, rounds_of(children)), today),
                        recruiters=tuple(getattr(query, "recruiters", ()) or ()), recruiters_state=getattr(query, "recruiters_state", None),
-                       contacts=tuple(getattr(query, "contacts", ()) or ()) if state == "linked" else (), contacts_state=getattr(query, "contacts_state", None) if state == "linked" else None, **facts)
+                       contacts=tuple(getattr(query, "contacts", ()) or ()) if state == "linked" else (), contacts_state=getattr(query, "contacts_state", None) if state == "linked" else None,
+                       sent_mail=tuple(getattr(query, "sent_mail", ()) or ()), sent_mail_state=getattr(query, "sent_mail_state", None), **facts)
 
 
 def primary_action(view, today):
@@ -221,6 +225,16 @@ def evidence_since(view, since):
     found = sorted((t, f"Interview {r.ordinal} page added" if r.ordinal else "an interview page added")
                    for r in view.rounds if (t := _created(r.created)) is not None and since is not None and t > since)
     return found[0] if found else None
+
+
+def sent_material(view):
+    """LIFE-114: the sent material Jim recorded on Manage, on either record, oldest first, each op once -> [(kind, text, url or None, aware datetime)]."""
+    found, seen = [], set()
+    for m in sorted(filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)), key=lambda m: datetime.fromisoformat(m.group(2))):
+        if m.group(3) not in seen:
+            seen.add(m.group(3))
+            found.append((m.group(1), m.group(5).strip(), None if m.group(4) == "none" else m.group(4), datetime.fromisoformat(m.group(2))))
+    return found
 
 
 def hold(view):
