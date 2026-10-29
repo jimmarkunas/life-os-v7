@@ -157,3 +157,16 @@ class FewerCalls(unittest.TestCase):
         answers[:] = [NotionError("NOTION_HTTP_400")]
         with self.assertRaises(NotionError):
             surface._write(Busy(), "/blocks/x/children", {}, sleep=lambda s: None)
+
+
+class CutShortWrite(unittest.TestCase):
+    """A run cancelled mid-write leaves a block whose cards are empty: the next read skips those cards instead of failing the page, so the page is rebuilt."""
+
+    def test_an_unfinished_card_is_skipped_not_fatal(self):
+        from lifeos.network import surface
+
+        class Half:
+            def call(self, method, path, body=None):
+                return {"results": [], "has_more": False}                # the card holds no column_list yet
+
+        self.assertEqual(surface._cards(Half(), [{"id": "c1", "type": "callout"}]), [])
