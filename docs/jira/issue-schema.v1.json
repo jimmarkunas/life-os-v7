@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/jira/issue-schema.v1.json",
+  "title": "LIFE Jira issue — writing contract v1",
+  "description": "Machine-readable form of the 'LIFE Jira issue-writing contract' in docs/life-os-development-policy.md (Jim-approved October 29, 2026, LIFE-79). The policy section is authoritative; this schema lists the fields an issue must carry. 'agent_uat' and 'evidence' are required before an issue is Done, not while it is being written. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["key", "issue_type", "statement", "acceptance_criteria", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
+  "properties": {
+    "key": {"$ref": "#/$defs/issue_key"},
+    "issue_type": {"enum": ["Epic", "Story", "Task", "Bug", "Sub-task"]},
+    "statement": {
+      "description": "A Story uses a user story. A Task or Bug uses a bounded outcome statement when a user story does not fit.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {"const": "user_story"},
+            "text": {"type": "string", "pattern": "^As an? .+, I want .+, so that .+\\.$"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {"const": "outcome"},
+            "text": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "acceptance_criteria": {
+      "description": "Kept separate from the statement; one Given/When/Then per distinct behavior, edge case or required UI state.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["given", "when", "then"],
+        "properties": {
+          "given": {"type": "string", "minLength": 1},
+          "when": {"type": "string", "minLength": 1},
+          "then": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "notion_requirement": {"description": "Link to the exact Notion requirement; the requirement itself is not copied into Jira.", "$ref": "#/$defs/https_url"},
+    "component": {"type": "string", "minLength": 1},
+    "fix_version": {"type": "string", "pattern": "^.+ [0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "owner": {"description": "The named human or authorized agent that owns the issue.", "type": "string", "minLength": 1},
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tools", "host", "setup_state"],
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "purpose"],
+            "properties": {"name": {"type": "string", "minLength": 1}, "purpose": {"type": "string", "minLength": 1}}
+          }
+        },
+        "host": {"type": "string", "minLength": 1},
+        "setup_state": {"enum": ["ready", "not_required", "prerequisite_issue"]},
+        "setup_prerequisites": {"type": "array", "items": {"$ref": "#/$defs/issue_key"}},
+        "secret_refs": {
+          "description": "Identifiers only. A value never appears in Jira.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "identifier"],
+            "properties": {
+              "kind": {"enum": ["bitwarden_item", "bitwarden_project", "github_actions_secret", "github_actions_variable", "oracle_service"]},
+              "identifier": {"type": "string", "pattern": "^\\S+$"}
+            }
+          }
+        }
+      },
+      "if": {"properties": {"setup_state": {"const": "prerequisite_issue"}}},
+      "then": {"required": ["setup_prerequisites"], "properties": {"setup_prerequisites": {"minItems": 1}}}
+    },
+    "human_actions": {
+      "description": "Each blocking human action is an owned sub-task with an explicit unblock condition.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subtask_key", "owner", "action", "unblock_condition"],
+        "properties": {
+          "subtask_key": {"$ref": "#/$defs/issue_key"},
+          "owner": {"type": "string", "minLength": 1},
+          "action": {"type": "string", "minLength": 1},
+          "unblock_condition": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "ui": {
+      "description": "Classification from the policy's UI-first applicability gate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": {"enum": ["new_or_changed_ui", "existing_ui_changed_results", "no_user_visible_change"]},
+        "figma_frames": {"type": "array", "items": {"$ref": "#/$defs/https_url"}},
+        "figma_not_applicable_reason": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"scope": {"const": "new_or_changed_ui"}}},
+      "then": {"anyOf": [{"required": ["figma_frames"], "properties": {"figma_frames": {"minItems": 1}}}, {"required": ["figma_not_applicable_reason"]}]}
+    },
+    "fast_proof": {
+      "description": "Schedule-independent. A scheduled production run is never the first test.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "steps", "read_back", "schedule_independent"],
+      "properties": {
+        "kind": {"enum": ["deterministic_test", "on_demand_entrypoint"]},
+        "steps": {"type": "string", "minLength": 1},
+        "read_back": {"type": "string", "minLength": 1},
+        "schedule_independent": {"const": true}
+      }
+    },
+    "agent_uat": {
+      "description": "Required for every issue before Done.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "criteria", "negative_cases"],
+      "properties": {
+        "sha": {"$ref": "#/$defs/sha"},
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["criterion", "result", "evidence"],
+            "properties": {
+              "criterion": {"type": "integer", "minimum": 1},
+              "result": {"enum": ["pass", "fail"]},
+              "evidence": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "negative_cases": {"type": "string", "minLength": 1}
+      }
+    },
+    "human_uat": {
+      "description": "Required only when human judgment is needed; otherwise record why not. An evidence record, not a workflow status.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "reason_not_required": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "scenario": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"required": {"const": true}}},
+      "then": {"required": ["owner", "scenario"]},
+      "else": {"required": ["reason_not_required"]}
+    },
+    "authorization": {
+      "description": "'Agent Go' is the authorization status. Lane labels route; 'pull-ready' alone never authorizes execution.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_go", "lane_labels"],
+      "properties": {
+        "agent_go": {"type": "boolean"},
+        "lane_labels": {"type": "array", "items": {"enum": ["lane-career-v7", "lane-edge-comm"]}},
+        "pull_ready": {"type": "boolean"}
+      }
+    },
+    "evidence": {
+      "description": "Required before Done: exact PR and Jira evidence plus the completion receipt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "pr_url", "pr_title", "reviewed_sha", "proof", "exceptions", "completion_receipt"],
+      "properties": {
+        "branch": {"$ref": "#/$defs/branch"},
+        "pr_url": {"$ref": "#/$defs/https_url"},
+        "pr_title": {"$ref": "#/$defs/pr_title"},
+        "reviewed_sha": {"$ref": "#/$defs/sha"},
+        "proof": {"type": "string", "minLength": 1},
+        "exceptions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "completion_receipt": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "issue_key": {"type": "string", "pattern": "^[A-Z][A-Z0-9]+-[0-9]+$"},
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "https_url": {"type": "string", "pattern": "^https://\\S+$"},
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "branch": {
+      "description": "<project-key-lower>/<ISSUE-KEY>/<fix-version-slug>/<component-slug>/<scope-slug>",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*/[A-Z][A-Z0-9]+-[0-9]+/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "pr_title": {
+      "description": "[<ISSUE-KEY>][<component-slug>][<fix-version-slug>] <outcome>",
+      "type": "string",
+      "pattern": "^\\[[A-Z][A-Z0-9]+-[0-9]+\\]\\[[a-z0-9]+(?:-[a-z0-9]+)*\\]\\[[a-z0-9]+(?:-[a-z0-9]+)*\\] \\S.*$"
+    }
+  },
+  "examples": [
+    {
+      "key": "LIFE-79",
+      "issue_type": "Task",
+      "statement": {"kind": "outcome", "text": "LIFE issues follow one written contract and a machine-readable schema, adopted in the V7 development policy."},
+      "acceptance_criteria": [
+        {"given": "the policy PR is merged", "when": "an agent writes a LIFE Story", "then": "the Story has a user story and separate Given/When/Then acceptance criteria"},
+        {"given": "the policy PR is merged", "when": "an agent opens a code PR for a LIFE issue", "then": "the branch and PR title follow the contract's formats"}
+      ],
+      "notion_requirement": "https://app.notion.com/p/4073c5a0592681b3bce8fb46d54f0dc3",
+      "component": "Platform / Core OS",
+      "fix_version": "Platform / Core OS 1.0.0",
+      "owner": "Career Claude Code (V7 writer)",
+      "execution": {
+        "tools": [{"name": "git", "purpose": "branch and PR"}, {"name": "python -m unittest", "purpose": "deterministic proof"}],
+        "host": "Claude Code cloud session",
+        "setup_state": "not_required",
+        "secret_refs": []
+      },
+      "human_actions": [],
+      "ui": {"scope": "no_user_visible_change"},
+      "fast_proof": {"kind": "deterministic_test", "steps": "python -m unittest tests.contracts.test_jira_issue_schema", "read_back": "the policy on main contains the contract and links this schema", "schedule_independent": true},
+      "human_uat": {"required": true, "owner": "Jim", "scenario": "Review the policy diff and approve or reject it"},
+      "authorization": {"agent_go": false, "lane_labels": [], "pull_ready": false}
+    }
+  ]
+}
