@@ -84,7 +84,7 @@ class Leads(unittest.TestCase):
     def test_a_dismiss_tick_in_the_right_column_is_read_persisted_and_the_block_replaced(self):
         ledger, pid, conn = self.world()
         go(conn, ledger, live=True)
-        ledger.tick(pid, "Dismiss 1:")
+        ledger.tick(pid, "Closed 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["blocks"]), (1, {"replaced": 1}))
         self.assertEqual([ledger.blocks[k]["type"] for k in ledger.kids[ledger.right(pid)]], ["callout"])

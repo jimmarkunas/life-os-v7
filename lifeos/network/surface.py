@@ -18,11 +18,14 @@ MARK = "v7-net:1"                                                       # the ol
 MARK2 = "net:2"                                                         # the current block (a callout): its marker and every tick id ride in a hidden link, never in visible text
 DESCRIPTION_MARK = "v7-jd:1"
 TICK = re.compile(r"^(Dismiss|Same company) · (\d+):([0-9a-f]{12})$")
-TICK2 = re.compile(r"^(Dismiss|Same company) (\d+):([0-9a-f]{12})$")
+TICK2 = re.compile(r"^(Dismiss|Same company|Contacted|Referral|Closed) (\d+):([0-9a-f]{12})$")
 BASE_URL = "https://www.linkedin.com/in/"
 TITLE = "LinkedIn connections"
 REACH = "Reach Out ↗"
 DISMISS_TEXT, SAME_TEXT = "Not relevant · dismiss", "Same company"
+STATUS = ("Contacted", "Referral", "Closed")                              # the approved card's "Referral status" ticks (Jim, Oct 28: the UI PROOF "LinkedIn Contacts (3 of 5)" page)
+PENDING = "building"                                                    # the hash a card block carries until every card is written: a block cut short never reads as the wanted one
+PROFILE = "LinkedIn profile ↗"
 
 
 class SurfaceError(NotionError):
@@ -45,7 +48,7 @@ def sent_url(base, page_id):
 
 def set_hash(leads, link=None):
     """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui2").encode()).hexdigest()[:12] if leads else ""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui3").encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -98,6 +101,85 @@ def build_block(leads, link=None):
             kids.append(_todo(f"Same company {ref}", SAME_TEXT))
     title = [hidden.run(f"{MARK2} {set_hash(leads, link)}")] + _bold(TITLE)
     return {"object": "block", "type": "callout", "callout": {"rich_text": title, "icon": {"type": "emoji", "emoji": "🔗"}, "color": "gray_background", "children": kids}}
+
+
+def _employee(lead):
+    """The card's second line: role and relation, fixed words only."""
+    if lead["tier"] == match.CURRENT:
+        text = (f"{lead['title']} · " if lead["title"] else "") + "Current employee"
+    elif lead["tier"] == match.PREVIOUS:
+        text = "Former employee"
+    else:
+        text = (f"{lead['title']} · " if lead["title"] else "") + "Same company?"
+    return text + (" · verify first" if lead["freshness"] == "STALE" else "")
+
+
+def card_columns(lead, carried=None):
+    """One contact card's column_list (the approved card: Jim, Oct 28): left 65% bold name, role and relation, profile link and contact state; right 35% an empty "Referral status" toggle (its
+    ticks go in by a second request, Notion's two-level limit). carried: {kind: checked} from the block being replaced, so Jim's ticks survive a rewrite."""
+    carried = carried or {}
+    profile = ([{"type": "text", "text": {"content": PROFILE, "link": {"url": BASE_URL + lead["url_key"]}}}] if lead.get("url_key") else rich_text("Profile unavailable"))
+    left = [_para(_bold(lead["name"])), _para(rich_text(_employee(lead))), _para(profile + rich_text(" · " + ("Contacted" if carried.get("Contacted") else "Not contacted")))]
+    right = [{"object": "block", "type": "toggle", "toggle": {"rich_text": rich_text("Referral status")}}]
+    return {"object": "block", "type": "column_list", "column_list": {"children": [
+        {"object": "block", "type": "column", "column": {"width_ratio": 0.65, "children": left}},
+        {"object": "block", "type": "column", "column": {"width_ratio": 0.35, "children": right}}]}}
+
+
+def status_ticks(lead, carried=None):
+    carried = carried or {}
+    ref = f"{lead['person_id']}:{lead['evidence_hash']}"
+    kinds = STATUS + ((SAME_TEXT,) if lead["tier"] == match.POSSIBLE else ())
+    return [{"object": "block", "type": "to_do", "to_do": {"rich_text": [hidden.run(f"{kind} {ref}")] + rich_text(kind), "checked": bool(carried.get(kind))}} for kind in kinds]
+
+
+def write_cards(client, parent_id, leads, want, carried=None):
+    """Writes the approved "LinkedIn connections" block into parent_id: an outer callout, one inner callout per contact, each holding its card. The outer title carries the PENDING hash until the
+    last card is in, then the wanted hash, so an interrupted write is replaced next run and never accepted. carried: {person_id: {kind: checked}}. -> the outer block id."""
+    carried = carried or {}
+    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "children": [
+        {"object": "block", "type": "callout", "callout": {"rich_text": []}} for _ in leads]}}
+    outer_id = _append_last(client, parent_id, shell)
+    cards = [b for b in children(client, outer_id) if b.get("type") == "callout"]
+    if len(cards) != len(leads):
+        raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+    for card, lead in zip(cards, leads):
+        mine = carried.get(lead["person_id"]) or {}
+        columns = [b for b in children(client, _append_last(client, card["id"], card_columns(lead, mine))) if b.get("type") == "column"]
+        toggles = [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"] if len(columns) == 2 else []
+        if len(toggles) != 1:
+            raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+        client.call_once("PATCH", f"/blocks/{quote(toggles[0]['id'], safe='')}/children", {"children": status_ticks(lead, mine)})
+    client.call("PATCH", f"/blocks/{quote(outer_id, safe='')}", {"callout": {"rich_text": [hidden.run(f"{MARK2} {want}")] + _bold(TITLE)}})
+    return outer_id
+
+
+def _append_last(client, parent_id, block):
+    """Appends ONE block to parent_id and returns its id, proven by reading the parent back: the last child must be a new block of that type."""
+    before = {b["id"] for b in children(client, parent_id)}
+    client.call_once("PATCH", f"/blocks/{quote(parent_id, safe='')}/children", {"children": [block]})
+    after = children(client, parent_id)
+    if not after or after[-1]["id"] in before or after[-1].get("type") != block["type"]:
+        raise SurfaceError("NETWORK_SURFACE_READBACK_MISMATCH")
+    return after[-1]["id"]
+
+
+def _cards(client, inner):
+    """The approved block's cards -> [{"name", "reason", "ticks": [(kind, person_id, evidence_hash, checked)]}] in page order. Reads each card's columns and its Referral status toggle."""
+    out = []
+    for card in inner:
+        if card.get("type") != "callout":
+            continue
+        lists = [b for b in children(client, card["id"]) if b.get("type") == "column_list"]
+        columns = [b for b in children(client, lists[0]["id"]) if b.get("type") == "column"] if len(lists) == 1 else []
+        if len(columns) != 2:
+            raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+        lines = [_plain(b) for b in children(client, columns[0]["id"]) if b.get("type") == "paragraph"]
+        ticks = []
+        for toggle in [b for b in children(client, columns[1]["id"]) if b.get("type") == "toggle"]:
+            ticks += [t for t in (_tick(c) for c in children(client, toggle["id"])) if t]
+        out.append({"name": lines[0].strip() if lines else "", "reason": lines[1].strip() if len(lines) > 1 else "", "ticks": ticks})
+    return out
 
 
 def _plain(block):
@@ -175,7 +257,8 @@ def read_page(client, page_id):
         for block in blocks:
             head = _owned_head(client, block)
             if head:
-                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t]})
+                cards = [c for c in head[1] if c.get("type") == "callout"]         # the approved card block: its ticks sit inside each card's Referral status toggle
+                owned.append({"id": block["id"], "parent": parent, "hash": head[0], "ticks": [t for t in (_tick(c) for c in head[1]) if t] + [t for card in _cards(client, cards) for t in card["ticks"]]})
     return top, owned
 
 
@@ -188,6 +271,16 @@ def leads_on_page(client, page_id, limit=10):
         head = _owned_head(client, block)
         if head:
             inner = head[1]
+    if any(c.get("type") == "callout" for c in inner or []):
+        cards = _cards(client, inner)
+        found = []
+        for card in cards:
+            ids = [(t[1], t[2]) for t in card["ticks"]]
+            if not card["name"] or not ids:
+                raise SurfaceError("NETWORK_SURFACE_PAGE_INCOMPLETE")
+            if not any(t[0] == "Closed" and t[3] for t in card["ticks"]):
+                found.append({"person_id": ids[0][0], "evidence_hash": ids[0][1], "name": card["name"], "reason": card["reason"]})
+        return found[:limit]
     leads = []
     for child in inner or []:
         tick = _tick(child)
@@ -284,7 +377,12 @@ def apply(client, page_id, top, owned, desired_leads, live, link=None):
     elif keep:
         retire = [o for o in owned if o is not keep]
     else:
-        client.call_once("PATCH", f"/blocks/{quote(column or page_id, safe='')}/children", {"children": [build_block(desired_leads, link)]})
+        carried = {}
+        for old in owned:
+            for kind, person_id, _evidence, checked in old["ticks"]:
+                if checked and kind in STATUS + (SAME_TEXT,):
+                    carried.setdefault(person_id, {})[kind] = True
+        write_cards(client, column or page_id, desired_leads, want, carried)
         _, now_owned = read_page(client, page_id)
         fresh = [o for o in now_owned if o["id"] not in {x["id"] for x in owned}]
         if len(fresh) != 1 or fresh[0]["hash"] != want or [o["id"] for o in now_owned if o["id"] in {x["id"] for x in owned}] != [o["id"] for o in owned]:

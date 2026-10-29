@@ -63,8 +63,20 @@ class FakeLedger:
         right = self.right(page_id)
         for b in self.top(page_id) + ([self.blocks[k] for k in self.kids[right]] if right else []):
             if b["type"] in ("toggle", "callout"):
-                return [self.blocks[k] for k in self.kids[b["id"]]]
+                return [c for k in self.kids[b["id"]] for c in self._card(self.blocks[k])]
         return None
+
+    def _card(self, block):
+        """An approved card (a callout) flattened to its name paragraph and its status ticks, so a card reads like one lead of the older flat block."""
+        if block["type"] != "callout":
+            return [block]
+        out = []
+        for lst in self.kids[block["id"]]:
+            left, right = self.kids[lst][0], self.kids[lst][1]
+            out.append(self.blocks[self.kids[left][0]])
+            for toggle in self.kids[right]:
+                out += [self.blocks[t] for t in self.kids[toggle]]
+        return out
 
     def tick(self, page_id, prefix):
         """Tick the first to_do whose text or hidden ref starts with `prefix` (the ref is the link target after the ZW character)."""

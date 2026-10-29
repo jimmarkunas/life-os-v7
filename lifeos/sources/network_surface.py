@@ -108,7 +108,7 @@ def _decisions(owned, full, job_key, ckey):
         lead = shown.get((person_id, evidence))
         if lead is None:
             stale += 1                                                 # the evidence changed since the block was written: a tick never carries over to new evidence
-        elif kind == "Dismiss":
+        elif kind in ("Dismiss", "Closed"):                              # the approved card's Closed tick (Jim, Oct 28) is the dismissal: that person leaves this job's cards
             dismissals.append((job_key, person_id, evidence))
         elif lead["tier"] == match.POSSIBLE:
             aliases.append((lead["company_key"], ckey))
@@ -188,6 +188,21 @@ def run(limit, live, environ=os.environ, connection=None, client=None, now=None,
         return _run(limit, live, environ, opened, client, now, today)
 
 
+MAX_SHARDS = 8
+
+
+def shard_of(environ):
+    """SURFACE_SHARD "i/n" -> (i, n). Unset = (0, 1), every page."""
+    raw = (environ.get("SURFACE_SHARD") or "0/1").strip()
+    try:
+        index, count = (int(part) for part in raw.split("/"))
+    except ValueError:
+        raise NetworkError("NETWORK_SURFACE_SHARD_INVALID") from None
+    if not 0 < count <= MAX_SHARDS or not 0 <= index < count:
+        raise NetworkError("NETWORK_SURFACE_SHARD_INVALID")
+    return index, count
+
+
 def _run(limit, live, environ, connection, client, now, today):
     budget = limit if isinstance(limit, int) and limit > 0 else DEFAULT_PAGES      # an explicit positive limit is honoured exactly (the first live run can be 1 page)
     roster, jobs, pipeline = _read(connection, now)
@@ -196,6 +211,10 @@ def _run(limit, live, environ, connection, client, now, today):
     index = match.build_index([(pid, ckey, title, state, _day(verified), posid) for pid, ckey, title, state, verified, posid, *_ in roster])
     details = {posid: (name, url, cname, title, _day(verified)) for pid, ckey, title, state, verified, posid, cname, name, url in roster}
     surfaced, others, counts = resolve_targets(jobs, pipeline, now)
+    index_n, count_n = shard_of(environ)
+    if count_n > 1:                                                     # Jim, Oct 28: up to 8 surface runs at once, each only its own slice of the pages (job key modulo n), so no two touch one page
+        surfaced = {k: v for k, v in surfaced.items() if int(k[:8], 16) % count_n == index_n}
+        others = [o for o in others if int(o[0][:8], 16) % count_n == index_n]
     counts.update({"live": bool(live), "roster_positions": len(roster), "published_pages": len(jobs), "pages_read": 0, "pages_deferred": 0, "with_leads": 0, "blocks": {}, "ticks_dismiss": 0,
                    "ticks_same_company": 0, "ticks_stale": 0, "guard_failed": {}, "failed": 0, "degraded": False, "pages_unread": 0})
     if counts["pursuit_source"] == "unavailable":
@@ -222,7 +241,7 @@ def _run(limit, live, environ, connection, client, now, today):
         counts["guard_failed"]["ledger_target"] = counts["guard_failed"].get("ledger_target", 0) + 1
         return _finish(counts)
     close_base = (environ.get("V7_CLOSE_BASE_URL") or "").strip()
-    wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0], surface.sent_url(close_base, page))
+    wanted = {k: surface.set_hash(_leads(company, title, index, details, today, aliases, dismissed, k)[0])
               for k, (page, company, title, classes) in surfaced.items()}       # what each target page should show now, as the hash of its block ("" = none): pure and in memory
     state, counts["state_table"] = store.load_page_state(connection)
     if counts["state_table"]:
@@ -289,7 +308,7 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
         aliases.update(dict(new_aliases))
     shown, _ = _leads(company, title, index, details, today, local_aliases, local_dismissed, key)
     counts["with_leads"] += bool(shown)
-    link = surface.sent_url(close_base, page_id)
+    link = None                                                         # the approved card block (Jim, Oct 28) carries no Mark as Sent line
     action = surface.apply(notion, page_id, top, owned, shown, live, link)
     counts["blocks"][action] = counts["blocks"].get(action, 0) + 1
     if recorded is not None and live and not action.startswith("would_"):
