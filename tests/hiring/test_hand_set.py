@@ -69,7 +69,7 @@ class ManageNotesPage(unittest.TestCase):
         status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 200, body)
         self.assertIn("<b>State:</b> Active", body)
-        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["hold", "next"])
+        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["hold", "next", "sent"])        # LIFE-114 adds sent material
         self.assertIn('value="paused">Pause it', body)
         self.assertNotIn('value="active"', body)                                                       # Active is the state already
         status, body, _ = h.hand_review("hold", v="paused")
@@ -298,18 +298,45 @@ class Pipeline(unittest.TestCase):
 class OpportunityPage(unittest.TestCase):
     NEXT = M.next_line("Send the work sample to Pat", "2026-11-02", SET_AT, OP)
 
-    def test_jims_action_shows_beside_the_derived_one_with_its_own_label_and_complete_link(self):
+    def test_jims_action_replaces_the_derived_one_with_its_own_label_and_complete_link(self):
         page = opp(close_base="https://edge.example.test", page_id="0" * 32, hand=(self.NEXT,))
         shown = texts(template.opportunity_page(page, "2026-10-24"))
-        self.assertIn("PRIMARY ACTION · derived from the linked recruiter message", shown)             # the derived action keeps its own label
-        self.assertIn("SET BY JIM · Send the work sample to Pat", shown)
-        self.assertTrue(any(t.startswith("Due: 2026-11-02 · set by Jim") for t in shown))
+        self.assertIn("SET BY JIM · your next action", shown)                                           # Jim, Oct 29: his action replaces the derived one
+        self.assertIn("Send the work sample to Pat", shown)
+        self.assertNotIn("PRIMARY ACTION · derived from the linked recruiter message", shown)
+        self.assertFalse([t for t in shown if t.startswith("New since you set this")])                   # no newer evidence: the derived action is not shown at all
+        self.assertTrue(any(t.startswith("Due: 2026-11-02 · Owner: Jim · set on the Manage screen") for t in shown))
         self.assertIn(f"v7-action:1;key={OP};text=Send the work sample to Pat", shown)                 # completable by its own key
         self.assertIn(self.NEXT, shown)                                                                 # carried forward as written
         self.assertIn(f"https://edge.example.test/complete?o={'0' * 32}&a={OP}", str(template.opportunity_page(page, "2026-10-24")))
         degraded = texts(template.opportunity_page(replace(page, request_url=None, stable_job_key="exampleco-stpm"), "2026-10-24"))
-        self.assertTrue(any(t.startswith("DEGRADED · NO VERIFIED ACTION") for t in degraded))
-        self.assertIn("SET BY JIM · Send the work sample to Pat", degraded)
+        self.assertFalse([t for t in degraded if t.startswith("DEGRADED · NO VERIFIED ACTION")])
+        self.assertIn("SET BY JIM · your next action", degraded)
+
+    def test_evidence_after_jim_set_it_shows_under_his_as_new_and_never_replaces_it(self):
+        old = view.Round("round-1", 1, "2026-10-28", None, "accepted", created="2026-10-04T12:00:00.000Z")      # before SET_AT: not new
+        page = opp(hand=(self.NEXT,), rounds=(old,))
+        self.assertFalse([t for t in texts(template.opportunity_page(page, "2026-10-24")) if t.startswith("New since you set this")])
+        new = view.Round("round-2", 2, "2026-11-04", None, "accepted", created="2026-10-08T15:00:00.000Z")
+        shown = texts(template.opportunity_page(opp(hand=(self.NEXT,), rounds=(old, new)), "2026-10-24"))
+        self.assertIn("SET BY JIM · your next action", shown)
+        self.assertIn("Send the work sample to Pat", shown)
+        line = [t for t in shown if t.startswith("New since you set this")]
+        self.assertEqual(line, ["New since you set this · Interview 2 page added Oct 8 · PRIMARY ACTION · from the accepted Calendar invite"])
+        self.assertIn("Prepare for Interview 1 on 2026-10-28.", shown)                                  # the derived action, under his
+        self.assertIsNone(view.evidence_since(opp(rounds=(view.Round("r", 3, None, None),)), view.hand_set_at(opp(hand=(self.NEXT,)))))   # no creation time: never new
+
+    def test_the_stage_line_shows_the_hold_and_why_new_evidence_cleared_it(self):
+        held = opp(hand=(M.hold_line(M.WAITING, SET_AT, "f" * 16),))
+        stage = [t for t in texts(template.opportunity_page(held, "2026-10-24")) if t.startswith("Stage: ")][0]
+        self.assertIn("Current opportunity status: Waiting on employer · set by Jim Oct 5 · off the to-do list until new evidence arrives", stage)
+        newer = view.Round("round-2", 2, "2026-11-04", None, "accepted", created="2026-10-07T15:00:00.000Z")
+        cleared = [t for t in texts(template.opportunity_page(replace(held, rounds=(newer,)), "2026-10-24")) if t.startswith("Stage: ")][0]
+        self.assertIn("Current opportunity status: Waiting on employer cleared by new evidence (Interview 2 page added Oct 7)", cleared)
+        active = opp(hand=(M.hold_line(M.WAITING, SET_AT, "f" * 16), M.hold_line(M.ACTIVE, "2026-10-06T09:00:00-05:00", "e" * 16)))
+        self.assertIsNone(view.hold(active))
+        self.assertIn("Current opportunity status: Not verified (outcome sources not connected)",
+                      [t for t in texts(template.opportunity_page(active, "2026-10-24")) if t.startswith("Stage: ")][0])
 
     def test_new_evidence_never_overwrites_it_and_no_date_is_ever_invented(self):
         rounds = (view.Round("round-1", 1, "2026-10-28", None, "accepted"),)
@@ -342,7 +369,7 @@ class OpportunityPage(unittest.TestCase):
         out = {"writes": 0}
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_refreshed")
         shown = U.texts(client, page_id)
-        self.assertTrue({self.NEXT, hold, "SET BY JIM · Send the work sample to Pat"} <= set(shown), shown)
+        self.assertTrue({self.NEXT, hold, "SET BY JIM · your next action", "Send the work sample to Pat"} <= set(shown), shown)
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
 
     def test_mark_complete_on_its_key_clears_it_on_the_page_and_on_manage(self):

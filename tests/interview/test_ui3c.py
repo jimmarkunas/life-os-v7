@@ -316,7 +316,7 @@ class Layout(unittest.TestCase):
         shown = "\n".join(texts(client, page_id))
         self.assertIn("Submitted résumé — Jim Resume ExampleCo.pdf (Job Ledger)", shown)
         self.assertIn("Submitted résumé and sent materials: 2 submitted résumé file(s) on the exact Job Ledger row", shown)
-        self.assertLess(shown.index("Submitted résumé — Jim Resume"), shown.index("Other sent forms"))                # listed first in Materials Sent
+        self.assertLess(shown.index("Submitted résumé — Jim Resume"), shown.index("Forms, portal answers and Drive files"))                # listed first in Materials Sent
         self.assertIn("https://www.notion.so/row", str(client.blocks))                                     # an uploaded file opens from its row
         self.assertIn("https://drive.example/r", str(client.blocks))
         self.assertNotIn("files.example", str(client.blocks))                                             # an expiring file URL is never written
