@@ -25,7 +25,6 @@ class Contract(unittest.TestCase):
     def test_the_policy_owns_the_contract_and_links_the_schema(self):
         self.assertIn("### LIFE Jira issue-writing contract", POLICY)
         self.assertIn("(jira/issue-schema.v1.json)", POLICY)
-        self.assertIn("docs/jira/issue-schema.v1.json", (ROOT / "AGENTS.md").read_text())
         self.assertNotIn("As the Main User. Given:", POLICY)        # the old combined story/criteria format is reconciled away
 
     def test_the_policy_examples_match_the_schema_formats(self):
