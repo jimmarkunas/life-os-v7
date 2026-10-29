@@ -41,6 +41,7 @@ REGISTRY = {
     "hold_not_retried": _info("jobs", "A large, growing HOLD pile with nothing touched in 24 hours."),
     "expiry_*": _page("jobs", "A credential or token expires within a week."),
     # --- other watchers with their own state
+    "jm_dashboard_failed": _info("jira", "The Jim & Matt dashboard (Jira to Notion, JFM-221) failed while a Wednesday check-in was owed, or is still failing at 9 AM Central."),
     "jira_rollover_stuck": _page("jira", "The Monday sprint rollover has not worked for 3 hours."),
     "calendar_sync_stuck": _page("calendar", "The calendar bridge has not synced for 3 hours."),
     "offsite_backup_failed": _info("edge", "The nightly off-site backup (Oracle to Drive) failed, or has not succeeded for 36 hours (LIFE-129, Jim: quiet, phone only)."),

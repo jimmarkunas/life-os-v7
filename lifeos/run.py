@@ -93,6 +93,7 @@ STAGES = {
     "jira-rollover-watch": lazy("lifeos.jira.watch"),
     "jira-probe": lazy("lifeos.jira.snapshot", "probe"),
     "jira-card": lazy("lifeos.jira.card"),
+    "jm-dashboard": lazy("lifeos.jira.dashboard"),          # JFM-221: the Jim & Matt Dashboard V2 from Jira (weekly check-in, quarterly synopsis, completed archive); read-only on Jira
     "agenda-snapshot": lazy("lifeos.agenda.snapshot"),
     "agenda-card": lazy("lifeos.agenda.card"),
     "fit-profile-sync": lazy("lifeos.jobs.fit.profile_sync"),     # Fit profile: the approved Notion block into the one Bitwarden extra secret (isolated job, profile-sync.yml)
