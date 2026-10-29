@@ -82,9 +82,9 @@ on:
         type: boolean
         default: false
       jira:
-        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, or a read-only layout probe"
+        description: "Jira only (unticked 'Run every domain job' above): snapshot, card, report (both), rollover, rollover+snapshot, a read-only layout probe, or the Jim & Matt dashboard (JFM-221)"
         type: choice
-        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe"]
+        options: ["none", "snapshot", "card", "report", "rollover", "both", "probe", "dashboard"]
         default: "none"
       refresh:
         description: "Close screen refresh (Jim, Oct 24): hiring = redraw the Hiring Pipeline region right after a verified close; recruiters = redraw only the Recruiter Outreach table after a verified recruiter close, status or Mark as Sent (no mail read). It queues in the after-tick group, so it never runs beside another Daily Report writer; the Close service skips it when a run is already waiting"
@@ -252,6 +252,19 @@ jobs:
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_jira.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_jira_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN || steps.bws_jira_retry.outputs.NOTION_JIRA_TOKEN }}
         run: python -m lifeos.run jira-card $([ "$LIVE" = "true" ] && echo --live)
+      - id: jmdash
+        continue-on-error: true
+        name: Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)
+        if: ${{ inputs.jira == 'dashboard' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
+        env:
+          JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID || '3cf3c5a059268008acfac0b4765caa92' }}
+          MEGIBOW_BLOCK_ID: ${{ secrets.MEGIBOW_BLOCK_ID }}
+          JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
+          JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
+          NOTION_JIRA_TOKEN: ${{ steps.bws_jira.outputs.NOTION_JIRA_TOKEN || steps.bws_jira_retry.outputs.NOTION_JIRA_TOKEN }}
+          NTFY_TOPIC: ${{ steps.bws_jira.outputs.NTFY_TOPIC || steps.bws_jira_retry.outputs.NTFY_TOPIC }}
+        run: python -m lifeos.run jm-dashboard $([ "$LIVE" = "true" ] && echo --live)
       - id: jprobe
         continue-on-error: true
         name: Jira layout probe (read-only; counts only)
@@ -269,7 +282,7 @@ jobs:
           JIRA_EMAIL: ${{ steps.bws_jira.outputs.JIRA_EMAIL || steps.bws_jira_retry.outputs.JIRA_EMAIL }}
         run: python -m lifeos.run jira-rollover $([ "$LIVE" = "true" ] && echo --live)
       - name: Jira warning (does not fail the run)
-        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure') }}
+        if: ${{ always() && (steps.jsnap.outcome == 'failure' || steps.jcard.outcome == 'failure' || steps.jrollauto.outcome == 'failure' || steps.jrollwatch.outcome == 'failure' || steps.jroll.outcome == 'failure' || steps.jprobe.outcome == 'failure' || steps.jmdash.outcome == 'failure') }}
         run: echo "::warning title=Jira::a Jira step failed; the Jobs pipeline is unaffected"
 
 
