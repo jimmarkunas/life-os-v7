@@ -14,7 +14,7 @@ on:
         type: string
         default: "40"
       shard:
-        description: "layout only: i/n (for example 0/4) - this run moves only its own slice of the pages, so up to 8 layout runs can go at once; leave 0/1 for all"
+        description: "surface or layout only: i/n (for example 0/4) - this run takes only its own slice of the pages, so up to 8 runs of the stage can go at once; leave 0/1 for all"
         type: string
         default: "0/1"
       live:
@@ -24,7 +24,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ inputs.stage == 'layout' && format('life-os-v7-network-layout-{0}', inputs.shard) || 'life-os-v7-network' }}
+  group: ${{ inputs.stage == 'layout' && format('life-os-v7-network-layout-{0}', inputs.shard) || (inputs.stage == 'surface' && inputs.shard != '0/1') && format('life-os-v7-network-surface-{0}', inputs.shard) || 'life-os-v7-network' }}
   cancel-in-progress: false
 jobs:
   network:
@@ -91,6 +91,7 @@ jobs:
           LIVE: ${{ inputs.live }}
           PAGES: ${{ inputs.pages }}
           LAYOUT_SHARD: ${{ inputs.shard }}
+          SURFACE_SHARD: ${{ inputs.shard }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_NAME }}
           LIFEOS_ACQ_DB_PASSWORD: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_PASSWORD || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_PASSWORD }}
           LIFEOS_ACQ_DB_USER: ${{ steps.bws_network.outputs.LIFEOS_ACQ_DB_USER || steps.bws_network_retry.outputs.LIFEOS_ACQ_DB_USER }}

@@ -74,7 +74,7 @@ class Surface(unittest.TestCase):
         self.assertEqual((texts[3], shown(ledger, "page-1")), ("\u2060LinkedIn connections", 2))
         owned = ledger.owned("page-1")
         self.assertTrue(owned[0]["type"] == "paragraph" and "v7-net" not in "".join(ledger.texts("page-1")))                 # nothing machine-made shows on the page
-        self.assertEqual(sum(1 for c in owned if c["type"] == "to_do"), 2)                    # a Dismiss tick per lead, no Same company tick on a certain match
+        self.assertEqual(sum(1 for c in owned if c["type"] == "to_do"), 6)                    # Contacted, Referral, Closed per card, no Same company tick on a certain match
         ledger.writes.clear()
         again = go(conn, ledger, live=True)
         self.assertEqual((again["blocks"], ledger.writes), ({"unchanged": 1}, []))
@@ -82,7 +82,7 @@ class Surface(unittest.TestCase):
     def test_a_dismiss_tick_is_persisted_before_the_block_is_replaced_and_hides_only_that_evidence(self):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
-        ledger.tick("page-1", "Dismiss 1:")
+        ledger.tick("page-1", "Closed 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["blocks"]), (1, {"replaced": 1}))
         self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])
@@ -108,7 +108,7 @@ class Surface(unittest.TestCase):
         conn, ledger = build(), ledger_for()
         go(conn, ledger, live=True)
         conn.raw.execute("UPDATE v7_network_positions SET last_verified='2026-10-01' WHERE person_id=1")
-        ledger.tick("page-1", "Dismiss 1:")
+        ledger.tick("page-1", "Closed 1:")
         counts = go(conn, ledger, live=True)
         self.assertEqual((counts["ticks_dismiss"], counts["ticks_stale"]), (0, 1))
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 0)
@@ -203,7 +203,7 @@ class Surface(unittest.TestCase):
         ids = [b["id"] for b in ledger.top("page-1")]
         go(conn, ledger, live=True)
         self.assertEqual([b["id"] for b in ledger.top("page-1")][:3], ids)
-        self.assertEqual(set(ledger.writes), {"APPEND"})
+        self.assertEqual(set(ledger.writes), {"APPEND", "UPDATE"})                                   # the block and its cards are appended; only the new block's own title is updated
 
 
 def state_for(conn):
@@ -230,7 +230,7 @@ class Corrections(unittest.TestCase):
         jobs = [(KEY1, "page-1", "Acme Corp", "Product Director", "ADMIT"), (KEY2, "page-2", "Acme Corp", "Engineer", "ADMIT")]
         conn, ledger = build(jobs=jobs), ledger_for((KEY1, "page-1"), (KEY2, "page-2"))
         counts = go(conn, ledger, live=True, limit=1)
-        self.assertEqual((counts["pages_read"], counts["pages_deferred"], ledger.writes), (1, 1, ["APPEND"]))
+        self.assertEqual((counts["pages_read"], counts["pages_deferred"], ledger.writes), (1, 1, ["APPEND"] * 5 + ["UPDATE"]))
         self.assertEqual((owned_count(ledger, "page-1"), owned_count(ledger, "page-2")), (1, 0))
         self.assertEqual(go(conn, ledger, limit=5)["pages_read"], 2)                          # a larger explicit limit reads more; DEFAULT_PAGES applies only when none is supplied
 
@@ -319,7 +319,7 @@ class Corrections(unittest.TestCase):
         conn, ledger = build(people=people), ledger_for()
         go(conn, ledger, live=True)
         self.assertEqual(shown(ledger, "page-1"), 5)
-        ledger.tick("page-1", "Dismiss 1:")                                                                 # Jim dismisses person 1
+        ledger.tick("page-1", "Closed 1:")                                                                 # Jim dismisses person 1
         for i in range(6):                                                                                    # six new people outrank person 1 (better title overlap, fresher)
             conn.raw.execute("INSERT OR IGNORE INTO v7_network_people (id, person_key, url_key, display_name, first_seen, last_observed, status, history_coverage) VALUES (?,?,?,?,?,?,'ACTIVE','SEED_ONLY')",
                              (50 + i, f"k{50 + i}", f"person-{50 + i:05d}", f"Invented Person{50 + i}", "2026-09-07 00:00:00", "2026-09-07"))
@@ -393,7 +393,7 @@ class StoredState(unittest.TestCase):
 
     def test_a_block_page_is_still_rotated_so_a_dismiss_tick_is_read_and_persisted(self):
         conn, ledger, _ = self.settled()
-        ledger.tick("page-1", "Dismiss ")
+        ledger.tick("page-1", "Closed ")
         counts = go(conn, ledger, live=True, limit=1)
         self.assertEqual((counts["pages_read"], counts["ticks_dismiss"], counts["blocks"]), (1, 1, {"replaced": 1}))
         self.assertEqual(conn.raw.execute("SELECT COUNT(*) FROM v7_network_dismissals").fetchone()[0], 1)
@@ -523,22 +523,21 @@ class MarkAsSentLink(unittest.TestCase):
         before = ledger.texts(self.PAGE)
         go(conn, ledger, live=True, environ=self.ENV)
         self.assertEqual(ledger.texts(self.PAGE)[:3], before)                                       # the description (every other block) is untouched and first
-        self.assertEqual(set(ledger.writes), {"APPEND"})                                            # the only write is the one new owned block: no delete, no other page, nothing in any other store
+        self.assertEqual(set(ledger.writes), {"APPEND", "UPDATE"})                                  # only the new owned block: no delete, no other page, nothing in any other store
         owned = ledger.owned(self.PAGE)
-        self.assertEqual([c["type"] for c in owned], ["quote", "paragraph", "to_do", "paragraph", "to_do"])
-        self.assertTrue(owned[0]["quote"]["rich_text"][0]["plain_text"].startswith("Mark as Sent ↗"))
+        self.assertEqual([c["type"] for c in owned], ["paragraph", "to_do", "to_do", "to_do"] * 2)     # the approved cards carry no Mark as Sent line (Jim, Oct 28)
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True, environ=self.ENV)["blocks"], ledger.writes), ({"unchanged": 1}, []))
 
     def test_without_an_origin_the_block_is_exactly_what_it_was(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ={})
-        self.assertEqual([c["type"] for c in ledger.owned(self.PAGE)], ["paragraph", "to_do", "paragraph", "to_do"])
+        self.assertEqual([c["type"] for c in ledger.owned(self.PAGE)], ["paragraph", "to_do", "to_do", "to_do"] * 2)
 
     def test_an_older_block_is_replaced_once_and_keeps_the_dismissals(self):
         conn, ledger = self.world()
         go(conn, ledger, live=True, environ={})
-        ledger.tick(self.PAGE, "Dismiss 1:")
+        ledger.tick(self.PAGE, "Closed 1:")
         counts = go(conn, ledger, live=True, environ=self.ENV)
         self.assertEqual((counts["blocks"], counts["ticks_dismiss"]), ({"replaced": 1}, 1))
         self.assertEqual(conn.raw.execute("SELECT job_key, person_id FROM v7_network_dismissals").fetchall(), [(KEY1, 1)])         # persisted before the replacement, as always
