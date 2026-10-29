@@ -4,6 +4,11 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 681
+    owner: edge-oracle
+    path: .github/workflows/domains.yml
+    expires: "2026-11-05"
+    approval: https://jimmarkunas.atlassian.net/browse/JFM-221?focusedCommentId=11433
   - pr: 664
     owner: career-v7
     path: lifeos/platform/alert_registry.py
@@ -381,6 +386,9 @@ handoffs:
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
 exemptions:
+  - pr: 681
+    expires: "2026-11-05"
+    approval: https://jimmarkunas.atlassian.net/browse/JFM-221?focusedCommentId=11433
   - pr: 553
     expires: "2026-10-26"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-76?focusedCommentId=11156
