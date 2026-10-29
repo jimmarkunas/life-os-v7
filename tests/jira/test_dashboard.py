@@ -268,6 +268,11 @@ class Pages(unittest.TestCase):
         self.assertIn("JFM-7 — A QBR decision · Done", synopsis)
         self.assertEqual(sum(1 for t in synopsis if t.startswith("Jim")), 1)                      # old content removed, never doubled
 
+    def test_without_the_block_id_jims_megibow_table_is_found_on_the_dashboard_page(self):
+        n = Notion()
+        shown = n.texts(n.page_titled(n.kids[ROOT][0], "Check-in — Wed Oct 28, 2026")) if go(n, env={"MEGIBOW_BLOCK_ID": ""}) else []
+        self.assertIn("Total 6 / min 5 · ⚠️ below target", shown)
+
     def test_matts_manual_megibow_row_and_an_explained_block_are_read(self):
         n = Notion()
         matt = n.kids[ROOT][3]
