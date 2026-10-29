@@ -48,7 +48,7 @@ def sent_url(base, page_id):
 
 def set_hash(leads, link=None):
     """The block's identity. The link's presence is part of it, so a block written before the link existed is replaced exactly once (Dismiss and Same company ticks are persisted first, as always)."""
-    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui4").encode()).hexdigest()[:12] if leads else ""
+    return hashlib.sha256(("|".join(f"{l['person_id']}:{l['evidence_hash']}" for l in leads) + ("|ms1" if link else "") + "|ui3").encode()).hexdigest()[:12] if leads else ""
 
 
 def _day(moment):
@@ -137,8 +137,8 @@ def write_cards(client, parent_id, leads, want, carried=None):
     """Writes the approved "LinkedIn connections" block into parent_id: an outer callout, one inner callout per contact, each holding its card. The outer title carries the PENDING hash until the
     last card is in, then the wanted hash, so an interrupted write is replaced next run and never accepted. carried: {person_id: {kind: checked}}. -> the outer block id."""
     carried = carried or {}
-    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "icon": None, "children": [
-        {"object": "block", "type": "callout", "callout": {"rich_text": [], "icon": None}} for _ in leads]}}       # no icon: the template's callouts have none (Notion adds a bulb when the key is left out)
+    shell = {"object": "block", "type": "callout", "callout": {"rich_text": [hidden.run(f"{MARK2} {PENDING}")] + _bold(TITLE), "children": [
+        {"object": "block", "type": "callout", "callout": {"rich_text": []}} for _ in leads]}}
     outer_id = _append_last(client, parent_id, shell)
     cards = [b for b in children(client, outer_id) if b.get("type") == "callout"]
     if len(cards) != len(leads):
