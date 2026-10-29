@@ -83,7 +83,7 @@ class Journey(unittest.TestCase):
         """One natural run of the Interview step, exactly as the runner calls it, with the mailbox and Calendar as they are now."""
         calendar = type("Calendar", (), {"list_events": lambda s, a, b: [e for e in self.events if e.get("status") != "cancelled"],
                                          "request": lambda s, m, p, params=None: {"items": list(self.events)}})()
-        with patch.object(ev.pipeline, "read_applied", return_value=[]):
+        with patch.object(ev.pipeline, "read_applied", return_value=[]), patch.object(create, "today", lambda: NOW.date().isoformat()):   # the page's "today" is the journey's NOW, never the wall clock
             return ev.run(20, True, environ=LIVE, client=self.notion, calendar=calendar, now=NOW, ledger=object(), records=list(records),
                           ledger_rows=self.ledger.for_company, writer=self.ledger, recruiters=self.recruiters)
 

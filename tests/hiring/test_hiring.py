@@ -642,6 +642,14 @@ class RegionWriterTests(unittest.TestCase):
         with self.assertRaises(stage.NotionError):                                      # the retired shape (a paragraph under the heading) is unreadable, never guessed
             dcc._text_of(page(status="between"), "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
 
+    def test_the_command_center_never_counts_a_held_row_as_active(self):
+        from lifeos.dcc import card as dcc
+        t = page()
+        held = [("Initech — Director", None), ("Waiting on employer · Submitted", None), ("No to-do · waiting on employer (set by Jim Oct 5)", None), ("Opportunity Notes", None)]
+        card.present(t, ENV, "Updated 2:00 PM CT · 2 active", [*WANT, held], True)
+        status, _ = dcc._text_of(t, "0000000000000000000000000000a001", "floating", router.HIRING_REGION)
+        self.assertEqual(status, "Updated 2:00 PM CT · 2 active")                       # LIFE-111: listed in the table, off the active count
+
     def test_the_region_chatgpt_writes_is_outside_the_proof_but_never_touched(self):
         t = page()
         t.trip = ("0000000000000000000000000000a001", lambda tree: tree.blocks["dcc-p"]["paragraph"].update({"rich_text": rich("chatgpt rewrote it")}))

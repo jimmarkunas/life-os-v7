@@ -352,20 +352,30 @@ HAND_SET = "LIFE OS Hand-Set"            # the Job Ledger rich_text property tha
 
 
 def _op(line):
-    m = M.HOLD_LINE.fullmatch(line) or M.NEXT_LINE.fullmatch(line)
+    m = M.HOLD_LINE.fullmatch(line) or M.NEXT_LINE.fullmatch(line) or M.SENT_LINE.fullmatch(line)
     return m.group(3) if m else None
+
+
+def _kept(lines, line):
+    """The Ledger property after `line`: the latest hold and next-action lines and the newest SENT_MAX sent-material lines (LIFE-114), the new line last."""
+    kind = line.split(":", 1)[0]
+    keep = {"v7-hold": 1, "v7-next": 1, "v7-sent": M.SENT_MAX}
+    out = []
+    for prefix, n in keep.items():
+        mine = [t for t in lines if t.startswith(prefix + ":")]
+        out += mine[-(n - 1):] if prefix == kind and n > 1 else [] if prefix == kind else mine[-n:]
+    return out + [line]
 
 
 def set_hand(client, kind, want, line, live, pages=None, parents=None):
     """-> {"status": dry_run | recorded | already_recorded, "verified": bool} or a DecisionError: ONE hand-set line (models.hold_line / next_line) on the ONE open record
-    decision.route chose. Ledger: the HAND_SET property becomes the latest line of the other kind plus this one, on the exact Applied row while it has no decision (`pages`:
+    decision.route chose. Ledger: the HAND_SET property becomes _kept(...) (the latest of each other kind, LIFE-114 sent lines kept) plus this one, on the exact Applied row while it has no decision (`pages`:
     the caller's fresh Applied read). Notes: the line is appended to the page's ⚙️ LIFE OS fold while the page is still Active (`parents()`, the page reader); a page without
     the fold is refused. The record is read, re-read just before the write (any change refuses it) and read back; the line's op makes a retry a no-op. Nothing else changes."""
     op = _op(line)
     if kind not in ("ledger", "notes") or not op or not _page_id(want.get("id")):
         raise fail("REQUEST_INVALID")
     want = {**want, "id": _page_id(want["id"])}
-    hold = line.startswith("v7-hold:")
     if kind == "ledger":
         props = client.call("GET", f"/data_sources/{client.source}").get("properties") or {}
         if (props.get(HAND_SET) or {}).get("type") != "rich_text":
@@ -384,7 +394,7 @@ def set_hand(client, kind, want, line, live, pages=None, parents=None):
         page, text = read()
         if any(_op(t) == op for t in text.splitlines()):
             return {"status": "already_recorded", "verified": True}
-        new = "\n".join([t for t in M.hand_lines(text) if t.startswith("v7-hold:") != hold][-1:] + [line])
+        new = "\n".join(_kept(M.hand_lines(text), line))
         if not live:
             return {"status": "dry_run", "verified": False}
         again, text_again = read()

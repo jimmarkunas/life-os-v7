@@ -5,7 +5,9 @@ Close, Mark Complete, Build résumé / I applied with this résumé, Mark as Sen
 12b: Reopen a closed pursuit, from the same hub, through a signed review and confirm: a fresh read routes the REOPEN to the record that closed it, and
 decision.confirm_rejected (Ledger) or decision.move_page (Notes page back to Active Opportunities) writes and reads it back. Reopening a Hired outcome needs its
 own tick. LIFE-111 / LIFE-112 (Jim, Oct 25): on an open pursuit, set Paused, Waiting on employer or back to Active, or a next action and/or due date of Jim's own,
-through the same signed review and confirm: a fresh read routes it to the open record, and decision.set_hand writes one line on it and reads it back. Fixed codes only."""
+through the same signed review and confirm: a fresh read routes it to the open record, and decision.set_hand writes one line on it and reads it back. LIFE-114 (Jim, Oct 29):
+record sent material the same way: an application form or portal answers (an optional link), or a Google Drive file (a project plan, an article) that must exist and not be
+in the trash when it is reviewed and again when it is confirmed. Fixed codes only."""
 import re
 from datetime import date
 from html import escape as e
@@ -19,6 +21,8 @@ PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?")
+LINK = re.compile(r"https://[^\s<>\"]{1,500}")
 
 
 def _stop(status, eyebrow, title, text, detail, css="alert"):
@@ -83,7 +87,55 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
              f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "next"))}'
              f'<label class="lead">Next action <input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Due <input type="date" name="due"></label>'
              '<div class="actions"><button class="btn">Review next action</button><span class="lead">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</span></div></form>')
+    sent = M.sent_of(lines)
+    body += '<div class="eyebrow">Materials sent</div>' + ("".join(f'<p class="lead">{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</p>' for m in sent)
+                                                          or '<p class="lead">None recorded yet.</p>')
+    kinds = "".join(f'<label class="lead"><input type="radio" name="sk" value="{k}"{" checked" if k == M.FORM else ""}> {e(label)}</label> ' for k, label in M.SENT_KINDS.items())
+    body += (f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "sent"))}<div class="actions">{kinds}</div>'
+             f'<label class="lead">What it was <input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Link <input type="url" name="su" maxlength="500"></label>'
+             '<div class="actions"><button class="btn">Review sent material</button><span class="lead">A form: say what it was, a link is optional. A Drive file: paste its link.</span></div></form>')
     return body
+
+
+def _drive(secrets):
+    """The Drive client on a POST that has the credential (close_gate passes it on POST only), else None."""
+    if not secrets.get("gdrive"):
+        return None
+    from .resume_app import gdrive_client
+    return gdrive_client(secrets["gdrive"])
+
+
+def _drive_file(drive, fid):
+    """-> (name, link) of a Drive file that exists and is not in the trash, else None. Read only."""
+    meta = drive.get(fid)
+    name, link = meta.get("name"), meta.get("webViewLink")
+    if meta.get("trashed") or not isinstance(name, str) or not name.strip() or not (isinstance(link, str) and LINK.fullmatch(link)):
+        return None
+    return " ".join(name.split())[:M.NEXT_MAX], link
+
+
+def _sent_check(form, secrets):
+    """LIFE-114: -> (kind, text, url, None) for a valid sent-material form, or (None, None, None, the refusal). A Drive file is read (never changed) to name it."""
+    sk, text, url = form.get("sk", ""), " ".join((form.get("sx") or "").split()), (form.get("su") or "").strip()
+    if sk == M.FORM:
+        if not text or len(text) > M.NEXT_MAX or not text.isprintable() or (url and not LINK.fullmatch(url)):
+            return None, None, None, _stop(400, "Not accepted", "Say what the form was; a link is optional", f"Up to {M.NEXT_MAX} characters; a link starts with https://.", "Nothing was changed.")
+        return sk, text, url or None, None
+    if sk != M.FILE:
+        return None, None, None, _stop(400, "Not accepted", "Choose a form or a Drive file", "Reload Manage and choose one.", "Nothing was changed.")
+    hit = DRIVE_LINK.fullmatch(url)
+    if not hit:
+        return None, None, None, _stop(400, "Not accepted", "Paste the Google Drive link of the file", "Open the file in Drive and copy its link.", "Nothing was changed.")
+    drive = _drive(secrets)
+    if drive is None:
+        return None, None, None, _stop(409, "Not recorded", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was changed.")
+    try:
+        found = _drive_file(drive, hit.group(1))
+    except RuntimeError as error:                                          # gdrive.DriveError: fixed codes only
+        return None, None, None, _stop(409, "Not recorded", "That Drive file could not be read", "Check the link and that the file is shared with you.", f"Refused: {str(error)[:60]}. Nothing was changed.")
+    if not found:
+        return None, None, None, _stop(409, "Not recorded", "That Drive file is in the trash or has no name", "Restore it in Drive or pick another file.", "Nothing was changed.")
+    return sk, found[0], found[1], None
 
 
 def _hub(req, who, secrets):
@@ -147,6 +199,10 @@ def _hand_post(req, who, secrets):
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
     value, text, due = form.get("v", ""), " ".join((form.get("nx") or "").split()), (form.get("due") or "").strip()
+    if act == "sent":                                                     # LIFE-114: the Drive file is read at review and again at confirm, before anything is written
+        value, text, due, refused = _sent_check(form, secrets)
+        if refused:
+            return refused
     if act == "hold" and value not in M.HOLD_LABEL and value != M.ACTIVE:
         return _stop(400, "Not accepted", "Choose Paused, Waiting on employer or Active", "Reload Manage and choose one.", "Nothing was changed.")
     if act == "next":
@@ -156,13 +212,16 @@ def _hand_post(req, who, secrets):
             valid = False
         if not valid or len(text) > M.NEXT_MAX or not (text or due) or not (text or "x").isprintable():
             return _stop(400, "Not accepted", "Enter a next action, a real due date, or both", f"A next action is up to {M.NEXT_MAX} characters; a due date is a real calendar date.", "Nothing was changed.")
-    payload = value if act == "hold" else f"{text}\x1f{due}"
+    payload = value if act == "hold" else f"{value}\x1f{text}\x1f{due or ''}" if act == "sent" else f"{text}\x1f{due}"
     sign = C._mac(secret, "manage-hand-c", login, o, st, exp, act, payload)
-    what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Your next action: {text or '—'} · Due: {due or 'No date set'}")
+    what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Sent: {M.SENT_KINDS[value]} · {text}" if act == "sent"
+            else f"Your next action: {text or '—'} · Due: {due or 'No date set'}")
     if step == "review":
-        fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t")} | ({"v": value} if act == "hold" else {"nx": text, "due": due}) | {"c": sign}
+        fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t")} | (
+            {"v": value} if act == "hold" else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent" else {"nx": text, "due": due}) | {"c": sign}
         note = ("The stage stays as the evidence shows; the Hiring Pipeline lists it with no to-do until you set it back to Active or new mail or Calendar evidence arrives."
                 if act == "hold" and value != M.ACTIVE else "It goes back on the to-do list." if act == "hold"
+                else "Listed under Materials Sent on the opportunity page after the next hourly run." if act == "sent"
                 else "Shown beside the derived action, labelled set by Jim, after the next hourly run. New evidence never changes it; Mark Complete clears it.")
         return 200, C.HTML, S.page("Review the change", "Nothing is recorded until you confirm.", (
             f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
@@ -179,7 +238,7 @@ def _hand_post(req, who, secrets):
     if routed != kind or D._page_id(target["id"]) != o or (target.get("decision") if kind == "ledger" else target.get("retired")):
         return _stop(409, "Conflict", "Opportunity changed", "The open record this form names is no longer the one this pursuit lives on.", "Nothing was changed. Reload Manage and try again.")
     at, op = C._now().isoformat(timespec="seconds"), C._mac(secret, "op-h", o, st, exp, act, payload)[:16]
-    line = M.hold_line(value, at, op) if act == "hold" else M.next_line(text, due, at, op)
+    line = M.hold_line(value, at, op) if act == "hold" else M.sent_line(value, text, due, at, op) if act == "sent" else M.next_line(text, due, at, op)
     try:
         done = D.set_hand(client, kind, {"id": o, "company": company, "role": role}, line, True, pages, lambda: C._state(client, config["pipeline"], pages=[])[1])
     except NotionError as error:
@@ -198,7 +257,7 @@ def _hand_post(req, who, secrets):
 
 
 def _post(req, who, secrets):
-    if req["form"].get("act") in ("hold", "next"):
+    if req["form"].get("act") in ("hold", "next", "sent"):
         return _hand_post(req, who, secrets)
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, step, exp, st, kind = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", "")

@@ -229,6 +229,34 @@ def recruiter_threads(environ, evidence, recruiters=None):
             for p, q in evidence], False
 
 
+GMAIL_THREAD = re.compile(r"https://mail\.google\.com/mail/u/0/#all/([0-9a-f]{8,32})")      # the request link platform.mail writes for a Gmail thread
+SENT_SHOWN = 10
+
+
+def sent_mail(environ, evidence, gmail=None):
+    """LIFE-114 (Jim, Oct 29): Jim's own messages (follow-ups, thank-yous) on each request's Gmail thread, matched only by the exact thread in the request link; read only,
+    metadata only. -> (evidence with sent_mail on each Gmail request, failed?). No Gmail credential in this step leaves the evidence unchanged (not connected)."""
+    threads = sorted({m.group(1) for _, q in evidence if (m := GMAIL_THREAD.fullmatch((q.source or "").strip()))})
+    if not threads:
+        return evidence, False
+    if gmail is None:
+        names = ("GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REFRESH_TOKEN")
+        if not all((environ.get(n) or "").strip() for n in names):
+            return evidence, False
+        gmail = Gmail(*(environ[n] for n in names))
+    found, failed = {}, False
+    for thread in threads:
+        try:
+            found[thread] = (tuple((at.isoformat(timespec="seconds"), subject) for at, subject in gmail.thread_sent(thread)[-SENT_SHOWN:]), "read")
+        except GmailError:                                                   # unknown is never "none sent": this request reads DEGRADED this run
+            found[thread], failed = ((), "unreadable"), True
+    out = []
+    for p, q in evidence:
+        m = GMAIL_THREAD.fullmatch((q.source or "").strip())
+        out.append((p, replace(q, sent_mail=found[m.group(1)][0], sent_mail_state=found[m.group(1)][1]) if m else q))
+    return out, failed
+
+
 CONTACTS_SHOWN = 5
 
 
@@ -531,6 +559,9 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
     evidence, unreadable = network_contacts(client, evidence)
     if unreadable:
         flag("network_unreadable")
+    evidence, unreadable = sent_mail(environ, evidence, gmail)
+    if unreadable:
+        flag("sent_mail_unreadable")
     counts = stage.run(limit, live, environ, client=client, evidence=evidence, context=injected or RunContext.start(STAGE_SECONDS))      # a fresh clock: the mail read above can take minutes, and the writes need their own budget
     if where:
         counts["where"] = where

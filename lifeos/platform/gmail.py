@@ -246,6 +246,25 @@ class Gmail:
         since = datetime.fromisoformat(since_iso).timestamp() * 1000
         return any("SENT" in (m.get("labelIds") or []) and int(m.get("internalDate") or 0) > since for m in messages if isinstance(m, dict))
 
+    def thread_sent(self, thread_id):
+        """LIFE-114: Jim's own messages in one thread (the SENT label) -> [(sent time, aware UTC datetime, subject)], oldest first. Read-only; metadata only, never a body."""
+        result = self._request("GET", f"{API}/threads/{urllib.parse.quote(str(thread_id), safe='')}?format=metadata&metadataHeaders=Subject")
+        messages = result.get("messages") if isinstance(result, dict) else None
+        if not isinstance(messages, list):
+            raise GmailError("GMAIL_THREAD_INCOMPLETE")
+        out = []
+        for m in messages:
+            if not isinstance(m, dict) or "SENT" not in (m.get("labelIds") or []):
+                continue
+            try:
+                sent = datetime.fromtimestamp(int(m.get("internalDate")) / 1000, timezone.utc)
+            except (TypeError, ValueError, OverflowError, OSError):
+                raise GmailError("GMAIL_THREAD_INCOMPLETE") from None
+            headers = ((m.get("payload") or {}).get("headers") or []) if isinstance(m.get("payload"), dict) else []
+            subject = next((h["value"] for h in headers if isinstance(h, dict) and str(h.get("name", "")).lower() == "subject" and isinstance(h.get("value"), str)), "")
+            out.append((sent, " ".join(subject.split())))
+        return sorted(out)
+
     def file_read(self, message_id, label_id):
         """Mark one message read and move it out of the Inbox into an existing label (LIFE-149); never deletes."""
         if not isinstance(label_id, str) or not label_id or label_id in ("INBOX", "UNREAD", "TRASH", "SPAM"):

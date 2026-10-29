@@ -48,6 +48,13 @@ def _links(client, block_id):
     return {report_region.plain(b).strip(): _link(b) for b in kids if _link(b)}
 
 
+def _held(row):
+    """LIFE-111: a row Jim paused or set to waiting reads "No to-do · ..." in its Next step cell; it is listed, never counted as active."""
+    cells = (row.get("table_row") or {}).get("cells") or []
+    step = cells[2] if len(cells) > 2 else []
+    return "".join(p.get("plain_text") or (p.get("text") or {}).get("content") or "" for p in step if isinstance(p, dict)).startswith("No to-do")
+
+
 def _text_of(client, block_id, kind, region):
     """-> (status text, [every other text line of the card]) or raises NotionError."""
     if kind == "own":
@@ -57,7 +64,7 @@ def _text_of(client, block_id, kind, region):
         return report_region.plain({"type": "callout", "callout": meta.get("callout") or {}}).strip(), []
     if kind == "floating":
         found = report_region.floating_region(client, report_region.clean_id(block_id), region, _fail, with_status=False)
-        heading, active = report_region.plain(found["heading"]).strip(), len(found["rows"]) - 1           # the Hiring Pipeline has no status paragraph: the heading and the table rows say it all
+        heading, active = report_region.plain(found["heading"]).strip(), sum(1 for r in found["rows"][1:] if not _held(r))     # the Hiring Pipeline has no status paragraph: the heading and the table rows say it all
         stamp = heading[len(region) + 2:-1].strip() if heading.startswith(region + " (") and heading.endswith(")") else ""        # D188: the update time lives in the heading, as Calendar's does
         return (f"{stamp} · {active} active" if stamp and active else stamp), []
     kids = report_region.children(client, report_region.clean_id(block_id), _fail)

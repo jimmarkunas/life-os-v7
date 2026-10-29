@@ -184,7 +184,7 @@ def legacy_round(block, child):
         date = datetime(year, int(month), int(day)).date().isoformat()
     except ValueError:
         return child
-    return Child(child.page_id, child.parent_id, date, who, int(number), child.identity_valid, True)
+    return Child(child.page_id, child.parent_id, date, who, int(number), child.identity_valid, True, child.created)
 
 
 NEST_KINDS = ("column_list", "column", "toggle")
@@ -246,12 +246,13 @@ def explicit_child(client, page_id, home=None, via=None):
     blocks, _ = machine_lines(client, page_id, 2)
     first = text(blocks[0]) if blocks else ""
     machine = first == MARKERS["round"]
+    created = page.get("created_time") if isinstance(page.get("created_time"), str) else None
     if not machine:
-        return Child(page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None)
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False if "interview:" in first else None, created=created)
     data = parse_identity(text(blocks[1])) if len(blocks) > 1 and blocks[1].get("type") == "paragraph" else None
     if data is None:
-        return Child(page_id, parent.get("page_id", ""), identity_valid=False)
-    return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True)
+        return Child(page_id, parent.get("page_id", ""), identity_valid=False, created=created)
+    return Child(page_id, parent.get("page_id", ""), **data, identity_valid=True, created=created)
 
 
 def _protected_children(client, page_id, budget):
