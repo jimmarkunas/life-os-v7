@@ -263,6 +263,20 @@ CODES = {
     "AMAZON_NOW_INVALID": _r("amazon", "bug", False, "The clock value passed in is not a time.", "A code defect."),
     "AMAZON_ORDER_ID_CONFLICT": _r("amazon", "terminal", False, "Two orders claim one id.", "None; check the order."),
     "AMAZON_TOTAL_INVALID": _r("amazon", "terminal", False, "An order total is not a number.", "None; the order is skipped."),
+    # --- JFM-221: the Jim & Matt dashboard fed from Jira (lifeos/jira/dashboard.py, dash_*.py)
+    "JM_DASH_CONFIG_MISSING": _r("jira", "blocked", False, "The Jim & Matt dashboard page id (JM_DASHBOARD_PAGE_ID) is not set.", "Set the variable."),
+    "JM_DASH_LAYOUT_MISSING": _r("jira", "blocked", False, "A Jim & Matt dashboard child (Weekly Check-ins, Quarterly QBR Records, Completed Archive, Matt's MegIBOW table) is missing or renamed.", "Restore its exact title."),
+    "JM_DASH_LAYOUT_AMBIGUOUS": _r("jira", "blocked", False, "Two children of the Jim & Matt dashboard carry the same machine title.", "Rename or archive the extra one."),
+    "JM_DASH_DATABASE_SHAPE": _r("jira", "blocked", False, "A Jim & Matt dashboard database does not have exactly one data source.", "Restore the database."),
+    "JM_DASH_TOO_MANY_BLOCKS": _r("jira", "terminal", False, "A Jim & Matt dashboard page has more blocks than one run reads.", "Archive old content."),
+    "JM_DASH_TOO_MANY_ROWS": _r("jira", "terminal", False, "A Jim & Matt dashboard table has more rows than one run reads.", "Archive old rows."),
+    "JM_DASH_APPEND_MISMATCH": _r("jira", "retry", True, "Notion did not confirm every block appended to a dashboard page.", "None; the next run rebuilds it."),
+    "JM_DASH_JIRA_BAD_PAGE": _r("jira", "retry", True, "Jira's search answered in an unexpected shape.", "None; retried next run."),
+    "JM_DASH_JIRA_TOO_MANY_PAGES": _r("jira", "terminal", False, "A Jira search for the dashboard matched more issues than one run reads.", "Narrow the search."),
+    "JM_DASH_FAILED": _r("jira", "bug", False, "The Jim & Matt dashboard run failed for an unexpected reason.", "Read the run log (counts and codes only)."),
+    "JM_DASH_KEYERROR": _r("jira", "bug", False, "The Jim & Matt dashboard met a record without a field it needs.", "Read the run log (counts and codes only)."),
+    "JM_DASH_VALUEERROR": _r("jira", "bug", False, "The Jim & Matt dashboard met a value it could not read.", "Read the run log (counts and codes only)."),
+    "JM_DASH_TYPEERROR": _r("jira", "bug", False, "The Jim & Matt dashboard met a record of an unexpected type.", "Read the run log (counts and codes only)."),
     # --- Jira: the card, the snapshot and the weekly sprint rollover (lifeos/jira/*, lifeos/platform/jira.py)
     "JIRA_ACTIVE_AMBIGUOUS": _r("jira", "blocked", False, "More than one active sprint was found on the board.", "Close the extra sprint."),
     "JIRA_BAD_PAGE": _r("jira", "bug", False, "A Jira page reply was not the expected shape.", "Retried next run."),
@@ -801,6 +815,7 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+    "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
     "LAYOUT_SHARD",                # Jim, Oct 27: which slice (i/n) of the Ledger pages a layout run moves
     "SURFACE_SHARD",               # Jim, Oct 28: which slice (i/n) of the Ledger pages a surface run writes
     "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs
