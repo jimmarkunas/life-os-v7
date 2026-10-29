@@ -119,3 +119,41 @@ class Migration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FewerCalls(unittest.TestCase):
+    """Jim, Oct 28: the card writer takes Notion's own reply for the appended block, and retries only an append Notion refused with 429."""
+
+    def test_the_appended_block_id_comes_from_notions_reply_without_a_read(self):
+        from lifeos.network import surface
+
+        class Reply:
+            calls = []
+
+            def call_once(self, method, path, body=None):
+                self.calls.append(method)
+                return {"results": [{"id": "new1", "type": "callout"}]}
+
+            def call(self, method, path, body=None):
+                raise AssertionError("no read is needed")
+
+        client = Reply()
+        self.assertEqual(surface._append_last(client, "parent", {"type": "callout", "callout": {}}), "new1")
+        self.assertEqual(client.calls, ["PATCH"])
+
+    def test_only_a_429_refusal_is_retried(self):
+        from lifeos.network import surface
+        from lifeos.platform.notion_client import NotionError
+        answers = [NotionError("NOTION_HTTP_429"), {"results": []}]
+
+        class Busy:
+            def call_once(self, method, path, body=None):
+                answer = answers.pop(0)
+                if isinstance(answer, Exception):
+                    raise answer
+                return answer
+
+        self.assertEqual(surface._write(Busy(), "/blocks/x/children", {}, sleep=lambda s: None), {"results": []})
+        answers[:] = [NotionError("NOTION_HTTP_400")]
+        with self.assertRaises(NotionError):
+            surface._write(Busy(), "/blocks/x/children", {}, sleep=lambda s: None)
