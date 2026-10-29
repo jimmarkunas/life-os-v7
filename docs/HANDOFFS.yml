@@ -4,6 +4,11 @@
 # that the entry is on the default branch). It cannot lift a `protected` or `unresolved` path.
 version: 1
 handoffs:
+  - pr: 681
+    owner: edge-oracle
+    path: .github/workflows/domains.yml
+    expires: "2026-11-05"
+    approval: https://jimmarkunas.atlassian.net/browse/JFM-221?focusedCommentId=11433
   - pr: 664
     owner: career-v7
     path: lifeos/platform/alert_registry.py
