@@ -47,7 +47,7 @@ class Contract(unittest.TestCase):
     def test_secret_values_are_excluded_and_life_workflow_is_documented(self):
         refs = SCHEMA["properties"]["execution"]["properties"]["secret_refs"]["items"]["properties"]
         self.assertEqual(set(refs), {"kind", "identifier"})
-        self.assertIn("LIFE workflow statuses are Agent Go, Agent UAT, and Human UAT", SCHEMA["description"])
+        self.assertIn("LIFE workflow statuses include Agent UAT and Human UAT", SCHEMA["description"])
         self.assertIs(SCHEMA["properties"]["fast_proof"]["properties"]["schedule_independent"]["const"], True)
         self.assertIn("LIFE uses the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
         self.assertIn("no compulsory independent Tech Lead review", POLICY)
