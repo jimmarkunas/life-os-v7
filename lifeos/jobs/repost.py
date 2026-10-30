@@ -7,7 +7,7 @@ sync_last_seen(): daily Notion write per resighted/flagged page (no reads).
 """
 from datetime import datetime, timedelta, timezone
 
-from lifeos.jobs import store
+from lifeos.jobs import ledger, store
 from lifeos.platform import notion_client
 
 WINDOW_DAYS = 60
@@ -49,7 +49,7 @@ def is_ghost(seen_count, first_seen, posted_date, now):
 
 
 def sync_props(last_seen, ghost):
-    props = {"Last Seen": {"date": {"start": last_seen.date().isoformat()}}}
+    props = {"Last Seen": {"date": {"start": ledger.ct_day(last_seen).isoformat()}}}
     if ghost:
         props["Review Reason"] = {"rich_text": notion_client.rich_text("possible ghost: reposted or long-open without a real date")}
     return props
