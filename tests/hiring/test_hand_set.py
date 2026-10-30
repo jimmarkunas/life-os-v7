@@ -167,7 +167,7 @@ class ManageNotesPage(unittest.TestCase):
         ledger_ready(h.world.source)
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409, body)
-        self.assertIn("This opportunity now lives on its Job Ledger row", body)
+        self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(TD.TARGET)}" target="_blank" rel="noopener">its Job Ledger row ↗</a>', body)
         self.assertIn("marked Applied on the Job Ledger after Manage opened", body)
         self.assertIn("/manage?o=" + D._page_id(h.world.ws.target), body)                              # Manage again, from the opportunity page
         self.assertEqual(h.writes(), (0, 0))
@@ -193,7 +193,7 @@ class ManageNotesPage(unittest.TestCase):
         h.world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                  # Applied unticked after Manage opened
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409, body)
-        self.assertIn("This opportunity now lives on its Notes page", body)
+        self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(h.world.ws.target)}" target="_blank" rel="noopener">its Notes page ↗</a>', body)
         moved = next(f for f in forms(body) if f.get("act") == "hold")
         self.assertEqual((moved["k"], moved["o"], moved["v"]), ("notes", D._page_id(h.world.ws.target), "waiting"))
         self.assertEqual(h.writes(), (0, 0))
