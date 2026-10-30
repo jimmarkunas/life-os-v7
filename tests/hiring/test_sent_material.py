@@ -94,7 +94,64 @@ class Manage(unittest.TestCase):
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([s["text"] for s in M.sent_of(got)], ["Portal answers", "Assessment answers"])
         self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.WAITING, "Call Pat", 4))
-        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["hold", "next", "sent"])
+        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["hold", "next", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item
+
+
+class Remove(unittest.TestCase):
+    """LIFE-172 (Jim, Oct 30 2026): a sent item is removed on Manage through its own review and confirm. The removal is one more append-only line naming the item's op,
+    so the record keeps its history; Manage and the opportunity page then leave the item out."""
+    def test_a_removed_item_leaves_manage_and_the_ledger_keeps_both_lines(self):
+        h = M2([(TD.TARGET, COMPANY, ROLE)])
+        ledger_ready(h.world.source)
+        for text in ("Test", "Portal answers"):
+            self.assertEqual(h.hand("sent", sk="form", sx=text)[0], 200)
+        test = next(m for m in M.sent_of(hand_text(h.world.source).splitlines()) if m["text"] == "Test")
+        remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent" and f.get("v") == test["op"])
+        before = len(h.world.source.patches())
+        status, body, _ = h.call("POST", "/manage", form=remove)
+        self.assertEqual(status, 200, body)
+        self.assertIn("Remove sent material: Test", body)
+        self.assertEqual(len(h.world.source.patches()), before)                                        # review writes nothing
+        status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(len(h.world.source.patches()), before + 1)
+        got = hand_text(h.world.source).splitlines()
+        self.assertEqual([m["text"] for m in M.sent_of(got)], ["Portal answers"])
+        self.assertEqual(sum(1 for t in got if M.SENT_LINE.fullmatch(t)), 2)                           # the item's own line stays: history is kept
+        self.assertEqual(M.UNSENT_LINE.fullmatch(got[-1]).group(3), test["op"])
+        hub = h.hub(h.world.ws.target)[1]
+        self.assertNotIn("Form / portal answers: Test", hub)
+        self.assertEqual([f["v"] for f in forms(hub) if f.get("act") == "unsent"], [next(m["op"] for m in M.sent_of(got))])
+
+    def test_a_forged_or_invalid_removal_writes_nothing(self):
+        h = M2([(TD.TARGET, COMPANY, ROLE)])
+        ledger_ready(h.world.source)
+        self.assertEqual(h.hand("sent", sk="form", sx="Test")[0], 200)
+        before = len(h.world.source.patches())
+        remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent")
+        self.assertEqual(h.call("POST", "/manage", form={**remove, "v": "not-an-op"})[0], 400)
+        review = h.fields(h.call("POST", "/manage", form=remove)[1])
+        for patch in ({"v": "0" * 16}, {"sx": "Something else"}, {"c": "0" * 64}, {"act": "sent"}):
+            self.assertEqual(h.call("POST", "/manage", form={**review, **patch, "step": "confirm"})[0], 403, patch)
+        self.assertEqual(len(h.world.source.patches()), before)
+
+    def test_on_a_notes_page_the_removal_is_appended_to_the_fold(self):
+        h, fold = notes_page()
+        self.assertEqual(h.hand("sent", sk="form", sx="Test")[0], 200)
+        remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent")
+        status, body, _ = h.call("POST", "/manage", form={**h.fields(h.call("POST", "/manage", form=remove)[1]), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(M.sent_of(lines(h, fold)), [])
+        self.assertTrue(M.UNSENT_LINE.fullmatch(lines(h, fold)[-1]))
+
+    def test_the_page_leaves_a_removed_item_out_and_carries_the_removal(self):
+        gone = M.unsent_line(OP, "2026-10-06T09:00:00-05:00", "e" * 16)
+        page = Page()
+        self.assertFalse([t for t in page.materials(opp(hand=(FORM,), hand_ledger=(gone,))) if t.startswith("Application form")])     # removed on the other record: still gone
+        para = lambda t: {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": t}]}}         # noqa: E731
+        self.assertEqual(create.hand_lines([para(FORM), para(gone)]), (FORM, gone))
+        self.assertEqual(create._undone([{"text": notion.FOLD, "children": [{"text": gone}]}]), [{"text": notion.FOLD, "children": []}])
+        self.assertEqual((view.UNSENT_LINE.pattern, D._op(gone)), (M.UNSENT_LINE.pattern, "e" * 16))
 
 
 class Page(unittest.TestCase):
