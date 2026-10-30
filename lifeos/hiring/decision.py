@@ -360,13 +360,16 @@ HAND_SET = "LIFE OS Hand-Set"            # the Job Ledger rich_text property tha
 
 def _op(line):
     m = M.HOLD_LINE.fullmatch(line) or M.NEXT_LINE.fullmatch(line) or M.SENT_LINE.fullmatch(line)
-    return m.group(3) if m else None
+    if m:
+        return m.group(3)
+    m = M.UNSENT_LINE.fullmatch(line)                                    # LIFE-172: a removal carries its own op first, then the removed item's
+    return m.group(2) if m else None
 
 
 def _kept(lines, line):
     """The Ledger property after `line`: the latest hold and next-action lines and the newest SENT_MAX sent-material lines (LIFE-114), the new line last."""
     kind = line.split(":", 1)[0]
-    keep = {"v7-hold": 1, "v7-next": 1, "v7-sent": M.SENT_MAX}
+    keep = {"v7-hold": 1, "v7-next": 1, "v7-sent": M.SENT_MAX, "v7-unsent": M.SENT_MAX}
     out = []
     for prefix, n in keep.items():
         mine = [t for t in lines if t.startswith(prefix + ":")]

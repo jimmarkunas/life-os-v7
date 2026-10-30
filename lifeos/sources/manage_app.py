@@ -21,6 +21,7 @@ PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+OP = re.compile(r"[0-9a-f]{16}")                                          # LIFE-172: the op of the sent item to remove
 DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?")
 LINK = re.compile(r"https://[^\s<>\"]{1,500}")
 
@@ -87,9 +88,10 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
              f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "next"))}'
              f'<label class="lead">Next action <input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Due <input type="date" name="due"></label>'
              '<div class="actions"><button class="btn">Review next action</button><span class="lead">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</span></div></form>')
-    sent = M.sent_of(lines)
-    body += '<div class="eyebrow">Materials sent</div>' + ("".join(f'<p class="lead">{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</p>' for m in sent)
-                                                          or '<p class="lead">None recorded yet.</p>')
+    sent, unsent = M.sent_of(lines), _hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "unsent")
+    body += '<div class="eyebrow">Materials sent</div>' + ("".join(                          # LIFE-172: each item can be removed, through its own review and confirm
+        f'<form method="post" action="/manage">{S._hidden(unsent | {"v": m["op"], "sx": m["text"]})}<p class="lead">{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))} '
+        '<button class="btn link">Remove</button></p></form>' for m in sent) or '<p class="lead">None recorded yet.</p>')
     kinds = "".join(f'<label class="lead"><input type="radio" name="sk" value="{k}"{" checked" if k == M.FORM else ""}> {e(label)}</label> ' for k, label in M.SENT_KINDS.items())
     body += (f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "sent"))}<div class="actions">{kinds}</div>'
              f'<label class="lead">What it was <input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Link <input type="url" name="su" maxlength="500"></label>'
@@ -212,7 +214,8 @@ def _moved(secret, login, act, routed, target, parents, o, company, role, form):
     where = "its Job Ledger row" if routed == "ledger" else "its Notes page"
     why = ("It was marked Applied on the Job Ledger after Manage opened, so the opportunity now lives on that row."
            if routed == "ledger" else "Applied was unticked on the Job Ledger after Manage opened, so the opportunity now lives on its Notes page.")
-    keep = {"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent" else {"nx": form.get("nx", ""), "due": form.get("due", "")}
+    keep = ({"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
+            else {"v": form.get("v", ""), "sx": form.get("sx", "")} if act == "unsent" else {"nx": form.get("nx", ""), "due": form.get("due", "")})
     fields = _hand_fields(secret, login, routed, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + C.TTL, act) | keep
     body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on <a href="https://www.notion.so/{D._page_id(target["id"])}" target="_blank" rel="noopener">{e(where)} ↗</a></h3><p class="lead">{e(why)}</p>'
             '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on the new record, then confirm.</div>'
@@ -231,11 +234,13 @@ def _hand_post(req, who, secrets):
         return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
-    value, text, due = form.get("v", ""), " ".join((form.get("nx") or "").split()), (form.get("due") or "").strip()
+    value, text, due = form.get("v", ""), " ".join((form.get("sx" if act == "unsent" else "nx") or "").split()), (form.get("due") or "").strip()
     if act == "sent":                                                     # LIFE-114: the Drive file is read at review and again at confirm, before anything is written
         value, text, due, refused = _sent_check(form, secrets)
         if refused:
             return refused
+    if act == "unsent" and not (OP.fullmatch(value) and len(text) <= M.NEXT_MAX and text.isprintable()):
+        return _stop(400, "Not accepted", "Choose an item to remove", "Reload Manage and choose one.", "Nothing was changed.")
     if act == "hold" and value not in M.HOLD_LABEL and value != M.ACTIVE:
         return _stop(400, "Not accepted", "Choose Paused, Waiting on employer or Active", "Reload Manage and choose one.", "Nothing was changed.")
     if act == "next":
@@ -245,16 +250,18 @@ def _hand_post(req, who, secrets):
             valid = False
         if not valid or len(text) > M.NEXT_MAX or not (text or due) or not (text or "x").isprintable():
             return _stop(400, "Not accepted", "Enter a next action, a real due date, or both", f"A next action is up to {M.NEXT_MAX} characters; a due date is a real calendar date.", "Nothing was changed.")
-    payload = value if act == "hold" else f"{value}\x1f{text}\x1f{due or ''}" if act == "sent" else f"{text}\x1f{due}"
+    payload = value if act == "hold" else f"{value}\x1f{text}\x1f{due or ''}" if act == "sent" else f"{value}\x1f{text}" if act == "unsent" else f"{text}\x1f{due}"
     sign = C._mac(secret, "manage-hand-c", login, o, st, exp, act, payload)
-    what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Sent: {M.SENT_KINDS[value]} · {text}" if act == "sent"
+    what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Sent: {M.SENT_KINDS[value]} · {text}" if act == "sent" else f"Remove sent material: {text}" if act == "unsent"
             else f"Your next action: {text or '—'} · Due: {due or 'No date set'}")
     if step == "review":
         fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t")} | (
-            {"v": value} if act == "hold" else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent" else {"nx": text, "due": due}) | {"c": sign}
+            {"v": value} if act == "hold" else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
+            else {"v": value, "sx": text} if act == "unsent" else {"nx": text, "due": due}) | {"c": sign}
         note = ("The stage stays as the evidence shows; the Hiring Pipeline lists it with no to-do until you set it back to Active or new mail or Calendar evidence arrives."
                 if act == "hold" and value != M.ACTIVE else "It goes back on the to-do list." if act == "hold"
                 else "Listed under Materials Sent on the opportunity page after the next hourly run." if act == "sent"
+                else "Taken off Materials Sent after the next hourly run; the record keeps a removal line, so its history stays." if act == "unsent"
                 else "Shown beside the derived action, labelled set by Jim, after the next hourly run. New evidence never changes it; Mark Complete clears it.")
         return 200, C.HTML, S.page("Review the change", "Nothing is recorded until you confirm.", (
             f'<section class="section"><div class="eyebrow">Review</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
@@ -271,7 +278,8 @@ def _hand_post(req, who, secrets):
     if routed != kind or D._page_id(target["id"]) != o or (target.get("decision") if kind == "ledger" else target.get("retired")):
         return _moved(secret, login, act, routed, target, parents, o, company, role, form)
     at, op = C._now().isoformat(timespec="seconds"), C._mac(secret, "op-h", o, st, exp, act, payload)[:16]
-    line = M.hold_line(value, at, op) if act == "hold" else M.sent_line(value, text, due, at, op) if act == "sent" else M.next_line(text, due, at, op)
+    line = (M.hold_line(value, at, op) if act == "hold" else M.sent_line(value, text, due, at, op) if act == "sent" else M.unsent_line(value, at, op) if act == "unsent"
+            else M.next_line(text, due, at, op))
     try:
         done = D.set_hand(client, kind, {"id": o, "company": company, "role": role}, line, True, pages, lambda: C._state(client, config["pipeline"], pages=[])[1])
     except NotionError as error:
@@ -290,7 +298,7 @@ def _hand_post(req, who, secrets):
 
 
 def _post(req, who, secrets):
-    if req["form"].get("act") in ("hold", "next", "sent"):
+    if req["form"].get("act") in ("hold", "next", "sent", "unsent"):
         return _hand_post(req, who, secrets)
     form, secret, login = req["form"], secrets["link"], who["login"]
     o, step, exp, st, kind = D._page_id(form.get("o")), form.get("step"), form.get("exp", ""), form.get("st", ""), form.get("k", "")

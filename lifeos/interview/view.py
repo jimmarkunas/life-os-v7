@@ -23,6 +23,7 @@ _AT = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 HOLD_LINE = re.compile(rf"v7-hold:1;state=(paused|waiting|active);at=({_AT});op=([0-9a-f]{{16}})")
 NEXT_LINE = re.compile(rf"v7-next:1;due=(\d{{4}}-\d{{2}}-\d{{2}}|none);at=({_AT});op=([0-9a-f]{{16}});text=(.*)")
 SENT_LINE = re.compile(rf"v7-sent:1;kind=(form|file);at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")     # LIFE-114: sent material Jim recorded on Manage
+UNSENT_LINE = re.compile(rf"v7-unsent:1;at=({_AT});op=([0-9a-f]{{16}});of=([0-9a-f]{{16}})")                              # LIFE-172: a sent item Jim removed on Manage
 
 
 @dataclass(frozen=True)
@@ -88,7 +89,7 @@ def ledger_facts(client, page_id, stable_job_key):
     if row.get("archived") or row.get("in_trash") or not stable_job_key or _plain(props.get("Stable Job Key")) != stable_job_key:
         return "mismatch", {}
     resume, resume_state = submitted_resume(props)
-    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t))
+    hand = tuple(t for t in (_plain(props.get(HAND_SET)) or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t))
     return "linked", {"compensation": _plain(props.get("Compensation")), "work_mode": _plain(props.get("Location / Work Mode")),
                       "apply_url": _plain(props.get("Apply URL")), "fit_summary": _plain(props.get("Why It Fits")),
                       "resume": resume, "resume_state": resume_state, "hand_ledger": hand}
@@ -228,8 +229,8 @@ def evidence_since(view, since):
 
 
 def sent_material(view):
-    """LIFE-114: the sent material Jim recorded on Manage, on either record, oldest first, each op once -> [(kind, text, url or None, aware datetime)]."""
-    found, seen = [], set()
+    """LIFE-114: the sent material Jim recorded on Manage, on either record, oldest first, each op once and (LIFE-172) none he removed -> [(kind, text, url or None, aware datetime)]."""
+    found, seen = [], {m.group(3) for m in map(UNSENT_LINE.fullmatch, view.hand_ledger + view.hand) if m}
     for m in sorted(filter(None, map(SENT_LINE.fullmatch, view.hand_ledger + view.hand)), key=lambda m: datetime.fromisoformat(m.group(2))):
         if m.group(3) not in seen:
             seen.add(m.group(3))
