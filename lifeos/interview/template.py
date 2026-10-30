@@ -16,7 +16,7 @@ from datetime import date, datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from .view import (HOLD_LINE, NEXT_LINE, SENT_LINE, UNCONNECTED, evidence_since, hand_action, hand_set_at, hold, primary_action, sent_material,  # noqa: F401 - the *_LINE are
+from .view import (HOLD_LINE, NEXT_LINE, SENT_LINE, UNSENT_LINE, UNCONNECTED, evidence_since, hand_action, hand_set_at, hold, primary_action, sent_material,  # noqa: F401 - the *_LINE are
                    stage)                                                                                                                   # this writer's carried line formats
 
 CENTRAL = ZoneInfo("America/Chicago")

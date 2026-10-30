@@ -38,6 +38,7 @@ FORM, FILE = "form", "file"
 SENT_KINDS = {FORM: "Application form / portal answers", FILE: "Google Drive file"}
 SENT_LINE = re.compile(rf"v7-sent:1;kind=({FORM}|{FILE});at=({_AT});op=([0-9a-f]{{16}});url=(https://\S+|none);text=(.*)")
 SENT_MAX = 20                                                  # sent-material lines kept per record, newest last
+UNSENT_LINE = re.compile(rf"v7-unsent:1;at=({_AT});op=([0-9a-f]{{16}});of=([0-9a-f]{{16}})")     # LIFE-172 (Jim, Oct 30): a sent item removed on Manage, by its op; append-only
 
 
 def hold_line(state, at, op):
@@ -52,14 +53,18 @@ def sent_line(kind, text, url, at, op):
     return f"v7-sent:1;kind={kind};at={at};op={op};url={url or 'none'};text={text}"
 
 
+def unsent_line(of, at, op):
+    return f"v7-unsent:1;at={at};op={op};of={of}"
+
+
 def hand_lines(text):
     """The hand-set lines in a record's text, in order (holds, next actions and LIFE-114 sent material)."""
-    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t))
+    return tuple(t for t in (text or "").splitlines() if HOLD_LINE.fullmatch(t) or NEXT_LINE.fullmatch(t) or SENT_LINE.fullmatch(t) or UNSENT_LINE.fullmatch(t))
 
 
 def sent_of(lines):
-    """LIFE-114: -> [{"kind", "text", "url" or None, "at", "op"}] of every sent-material line, oldest first; a repeated op counts once."""
-    out, seen = [], set()
+    """LIFE-114: -> [{"kind", "text", "url" or None, "at", "op"}] of every sent-material line, oldest first; a repeated op counts once and (LIFE-172) a removed one not at all."""
+    out, seen = [], {m.group(3) for m in map(UNSENT_LINE.fullmatch, lines) if m}
     for m in sorted(filter(None, map(SENT_LINE.fullmatch, lines)), key=lambda m: datetime.fromisoformat(m.group(2))):
         if m.group(3) not in seen:
             seen.add(m.group(3))
