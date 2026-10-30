@@ -67,8 +67,8 @@ def resolve(client, config, pid):
     if routed != kind or D._page_id(target["id"]) != pid:
         raise D.fail("STALE_IDENTITY")
     closed = bool(target.get("decision")) if kind == "ledger" else bool(target["retired"])
-    if kind == "notes" and not closed and D.unapplied_matches(client, want):
-        raise D.fail("LEDGER_UNAPPLIED")                                 # a Ledger row for this role that is not marked Applied may be this application: resolve it first
+    if kind == "notes" and not closed and (blocking := D.unapplied_matches(client, want)):
+        raise D.Unapplied(blocking)                                      # a Ledger row for this role that is not marked Applied may be this application: resolve it first (LIFE-169: the screen links it)
     return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed), "pages": pages, "parents": parents}
 
 
@@ -268,4 +268,4 @@ def handle(req, who, secrets):
             return _stop(404, "Not found", "Nothing here", "This service only closes one opportunity at a time.", "Nothing was changed.")
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)
     except NotionError as error:
-        return _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+        return importlib.import_module("lifeos.sources.manage_app").unapplied(error.rows) if isinstance(error, D.Unapplied) else _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")

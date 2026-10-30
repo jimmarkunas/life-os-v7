@@ -152,7 +152,50 @@ class ManageNotesPage(unittest.TestCase):
         del h.world.source.pages[TD.TARGET]
         ws = h.world.ws
         ws.relocate(ws.target, ws.retired[0])                                                           # closed (moved to Retired) since the form was opened
-        self.assertEqual(h.call("POST", "/manage", form={**review, "step": "confirm"})[0], 409)
+        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
+        self.assertEqual(status, 409)
+        self.assertIn("This opportunity was closed after Manage opened", body)
+        self.assertFalse([f for f in forms(body) if f.get("act")])                                      # a closed pursuit is offered nothing to carry over
+        self.assertEqual(h.writes(), (0, 0))
+
+    def test_an_entry_whose_pursuit_moved_to_its_ledger_row_is_kept_and_offered_there(self):
+        """LIFE-169 (Jim, Oct 30 2026, Becton Dickinson): Applied was ticked on the Ledger after Manage opened. Nothing is written on confirm; the screen says the
+        opportunity now lives on its Job Ledger row and offers the same next action for review there, signed for that row only."""
+        h, fold = notes_page()
+        review = h.fields(h.hand_review("next", nx="Follow up via email", due="2026-11-02")[1])
+        h.world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE)
+        ledger_ready(h.world.source)
+        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
+        self.assertEqual(status, 409, body)
+        self.assertIn("This opportunity now lives on its Job Ledger row", body)
+        self.assertIn("marked Applied on the Job Ledger after Manage opened", body)
+        self.assertIn("/manage?o=" + D._page_id(h.world.ws.target), body)                              # Manage again, from the opportunity page
+        self.assertEqual(h.writes(), (0, 0))
+        moved = next(f for f in forms(body) if f.get("act") == "next")
+        self.assertEqual((moved["k"], moved["o"], moved["nx"], moved["due"], moved["step"]), ("ledger", D._page_id(TD.TARGET), "Follow up via email", "2026-11-02", "review"))
+        for patch in ({"k": "notes"}, {"o": D._page_id(h.world.ws.target)}, {"t": "0" * 64}):          # signed for the Ledger row only
+            self.assertEqual(h.call("POST", "/manage", form={**moved, **patch})[0], 403, patch)
+        status, body, _ = h.call("POST", "/manage", form=moved)
+        self.assertEqual(status, 200, body)
+        self.assertIn("Your next action: Follow up via email · Due: 2026-11-02", body)
+        self.assertEqual(h.writes(), (0, 0))                                                            # review writes nothing
+        status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(M.next_of(hand_text(h.world.source).splitlines())["text"], "Follow up via email")
+        self.assertIsNone(M.next_of(lines(h, fold)))                                                    # nothing went to the Notes page
+
+    def test_a_hold_whose_pursuit_moved_back_to_its_notes_page_is_offered_there(self):
+        h, fold = notes_page()
+        h.world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE)
+        ledger_ready(h.world.source)
+        review = h.fields(h.hand_review("hold", v="waiting")[1])
+        self.assertEqual(review["k"], "ledger")
+        h.world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                  # Applied unticked after Manage opened
+        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
+        self.assertEqual(status, 409, body)
+        self.assertIn("This opportunity now lives on its Notes page", body)
+        moved = next(f for f in forms(body) if f.get("act") == "hold")
+        self.assertEqual((moved["k"], moved["o"], moved["v"]), ("notes", D._page_id(h.world.ws.target), "waiting"))
         self.assertEqual(h.writes(), (0, 0))
 
     def test_a_page_without_the_life_os_fold_is_refused(self):
