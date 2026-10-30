@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/jira/issue-schema.v1.json",
   "title": "LIFE Jira issue — writing contract v1",
-  "description": "Machine-readable form of the 'LIFE Jira issue-writing contract' in docs/life-os-development-policy.md (Jim-approved October 29, 2026, LIFE-79). The policy section is authoritative; this schema lists the fields an issue must carry. 'agent_uat' and 'evidence' are required before an issue is Done, not while it is being written. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
+  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md. LIFE workflow statuses are Agent Go, Agent UAT, and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Agent Go authorizes the approved issue and in-scope subtasks, including merge after required checks/review and non-production deployment. Production access/writes, secret access, spending, and permission changes remain separately controlled. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
   "type": "object",
   "additionalProperties": false,
   "required": ["key", "issue_type", "statement", "acceptance_criteria", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
@@ -150,7 +150,7 @@
       }
     },
     "human_uat": {
-      "description": "Required only when human judgment is needed; otherwise record why not. An evidence record, not a workflow status.",
+      "description": "LIFE Human UAT status is required only when human judgment is needed; otherwise record why not. When used, record named human acceptance evidence.",
       "type": "object",
       "additionalProperties": false,
       "required": ["required"],
