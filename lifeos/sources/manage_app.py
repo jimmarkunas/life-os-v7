@@ -188,6 +188,39 @@ def _hub(req, who, secrets):
     return 200, C.HTML, S.page("Manage opportunity", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
 
 
+def unapplied(rows):
+    """LIFE-169 (Jim, Oct 30 2026): Close's DECISION_LEDGER_UNAPPLIED, saying which Job Ledger row blocks the closure and what to do, not only its code. Nothing is written."""
+    links = "".join(f'<a class="btn link" href="https://www.notion.so/{e(r)}" target="_blank" rel="noopener">Open the Job Ledger row →</a>' for r in rows)
+    return 409, C.HTML, S.page("This opportunity cannot be closed yet", "See the status below. A closure counts as done only after the canonical record is read back.", (
+        '<section class="section"><div class="eyebrow">Not changed</div><h3 class="step-title">A Job Ledger row for this role is not marked Applied</h3>'
+        '<p class="lead">That row may be this same application, so Close will not choose between the two records.</p>'
+        '<p class="lead">If it is this application, tick <b>Applied</b> on that row, then open Close again from the opportunity page: it closes on the Ledger row. '
+        'If it is a different job, leave it unticked and ask for a review; Close stays blocked until then.</p>'
+        f'<div class="notice alert">Refused: DECISION_LEDGER_UNAPPLIED. Nothing was changed.</div><div class="actions">{links}</div></section>')), ()
+
+
+def _moved(secret, login, act, routed, target, parents, o, company, role, form):
+    """LIFE-169 (Jim, Oct 30 2026): the pursuit no longer lives on the record this form names. Nothing is written; the screen says where it lives now and, when that record
+    is open, offers the same change for review there with Jim's entry carried over (a form signed for that record only; its confirm does its own fresh read)."""
+    closed = target.get("decision") if routed == "ledger" else target.get("retired")
+    page = target if routed == "notes" else next((p for p in parents if D._page_id(p["id"]) == o), None)
+    hub = _link("Open Manage again", "/manage?" + urlencode({"o": D._page_id(page["id"])}), "From the opportunity page, with its current state.") if page else ""
+    if closed:
+        body = ('<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity was closed after Manage opened</h3>'
+                '<p class="lead">A closed opportunity takes no next action or hold.</p><div class="notice alert">Nothing was changed.</div>' + hub + '</section>')
+        return 409, C.HTML, S.page("Opportunity changed", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
+    where = "its Job Ledger row" if routed == "ledger" else "its Notes page"
+    why = ("It was marked Applied on the Job Ledger after Manage opened, so the opportunity now lives on that row."
+           if routed == "ledger" else "Applied was unticked on the Job Ledger after Manage opened, so the opportunity now lives on its Notes page.")
+    keep = {"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent" else {"nx": form.get("nx", ""), "due": form.get("due", "")}
+    fields = _hand_fields(secret, login, routed, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + C.TTL, act) | keep
+    body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on {e(where)}</h3><p class="lead">{e(why)}</p>'
+            '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on the new record, then confirm.</div>'
+            f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on {e(where)}</button></div></form>'
+            + hub + '</section>')
+    return 409, C.HTML, S.page("Opportunity changed", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
+
+
 def _hand_post(req, who, secrets):
     """LIFE-111 / LIFE-112: review, then confirm, one hand-set line on the open record. Review never reads Notion; confirm writes only after a fresh read routes to the same open record."""
     form, secret, login = req["form"], secrets["link"], who["login"]
@@ -236,7 +269,7 @@ def _hand_post(req, who, secrets):
     rows, parents = C._state(client, config["pipeline"], o, pages)
     routed, target = D.route(rows, parents, {"action": D.ACTION, "id": o, "company": company, "role": role})
     if routed != kind or D._page_id(target["id"]) != o or (target.get("decision") if kind == "ledger" else target.get("retired")):
-        return _stop(409, "Conflict", "Opportunity changed", "The open record this form names is no longer the one this pursuit lives on.", "Nothing was changed. Reload Manage and try again.")
+        return _moved(secret, login, act, routed, target, parents, o, company, role, form)
     at, op = C._now().isoformat(timespec="seconds"), C._mac(secret, "op-h", o, st, exp, act, payload)[:16]
     line = M.hold_line(value, at, op) if act == "hold" else M.sent_line(value, text, due, at, op) if act == "sent" else M.next_line(text, due, at, op)
     try:
