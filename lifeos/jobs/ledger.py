@@ -1,10 +1,22 @@
 """Production target guard: before any Notion write (publish, audit trash, retention trash) verify the configured data source really is the LIFE OS
 Job Ledger, by the properties this code reads and writes and their types. Wrong or unreadable target = no write. Checked once per client."""
+from datetime import timezone
+from zoneinfo import ZoneInfo
+
 from lifeos.platform.notion_client import NotionError
 
 REQUIRED = {"Job": "title", "Apply URL": "url", "Stable Job Key": "rich_text", "Applied": "checkbox", "Applied On": "date", "Saturn Decision": "select",
             "Visible Lane": "select", "Admission Status": "select", "Posting Date": "date", "First Surfaced": "date", "LIFE OS Fit": "number"}
 OK, UNREADABLE, MISMATCH = "ok", "target_unreadable", "target_mismatch"
+CT = ZoneInfo("America/Chicago")
+
+
+def ct_day(moment):
+    """LIFE-170 (Jim, Oct 30 2026): the Ledger's day stamps (First Surfaced, Last Seen) are Jim's calendar day in US Central, so "today" turns over at midnight CT,
+    not 7 PM. Jobs OS stores naive UTC instants; a date (or None) passes through unchanged."""
+    if not hasattr(moment, "hour"):
+        return moment
+    return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(CT).date()
 
 
 def verify(client):
