@@ -94,7 +94,7 @@ class Manage(unittest.TestCase):
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([s["text"] for s in M.sent_of(got)], ["Portal answers", "Assessment answers"])
         self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.WAITING, "Call Pat", 4))
-        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["hold", "next", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item
+        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item; LIFE-173: Drive search
 
 
 class Remove(unittest.TestCase):
@@ -240,3 +240,62 @@ class Mail(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Search(unittest.TestCase):
+    """LIFE-173 (Jim, Oct 30 2026): "I don't want to have to hunt for Google Drive files". Manage searches Jim's Drive by name (read only); a hit opens the usual
+    sent-material review for that file, so nothing is recorded until he confirms there."""
+    class Found(Drive):
+        def __init__(self, files=None):
+            super().__init__()
+            self.queries, self.files = [], files
+
+        def find(self, query, order="createdTime"):
+            self.queries.append((query, order))
+            return [dict(self.meta)] if self.files is None else self.files
+
+    def search(self, h, q, drive):
+        form = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "drive")
+        with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
+            return h.call("POST", "/manage", form={**form, "q": q}), form
+
+    def test_a_hit_opens_the_review_for_that_file_and_confirm_records_it(self):
+        h, fold = notes_page()
+        drive = self.Found()
+        (status, body, _), form = self.search(h, "Launch o'plan", drive)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(drive.queries, [("name contains 'Launch o\\'plan' and mimeType != 'application/vnd.google-apps.folder'", "modifiedTime desc")])
+        self.assertIn("Launch plan for ExampleCo", body)
+        self.assertIn(f"/manage?o={form['p']}", body)                                                  # back to Manage, nothing recorded
+        self.assertEqual(h.writes(), (0, 0))
+        pick = next(f for f in forms(body) if f.get("act") == "sent")
+        self.assertEqual((pick["sk"], pick["su"]), (M.FILE, drive.meta["webViewLink"]))
+        with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
+            status, body, _ = h.call("POST", "/manage", form=pick)
+            self.assertEqual(status, 200, body)
+            self.assertIn("Launch plan for ExampleCo", body)
+            self.assertEqual(h.writes(), (0, 0))                                                        # review writes nothing
+            status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
+        self.assertEqual(status, 200, body)
+        self.assertEqual([(m["kind"], m["text"]) for m in M.sent_of(lines(h, fold))], [(M.FILE, "Launch plan for ExampleCo")])
+
+    def test_no_match_an_empty_query_a_missing_credential_or_a_forged_form_shows_nothing_and_writes_nothing(self):
+        h, fold = notes_page()
+        (status, body, _), form = self.search(h, "nothing", self.Found(files=[]))
+        self.assertEqual(status, 200)
+        self.assertIn("No Drive file matches", body)
+        self.assertEqual(self.search(h, "   ", self.Found())[0][0], 400)
+        self.assertEqual(self.search(h, "x" * 101, self.Found())[0][0], 400)
+        self.assertEqual(self.search(h, "plan", None)[0][0], 409)
+        drive = self.Found()
+        with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
+            for patch in ({"t": "0" * 64}, {"act": "drive", "o": "e" * 32}, {"exp": "1"}):
+                self.assertEqual(h.call("POST", "/manage", form={**form, "q": "plan", **patch})[0], 403, patch)
+        self.assertEqual(drive.queries, [])
+        self.assertEqual(h.writes(), (0, 0))
+
+    def test_folders_and_files_without_a_drive_link_are_never_offered(self):
+        h, _ = notes_page()
+        files = [{"name": "Odd", "webViewLink": "https://example.test/x"}, {"name": None, "webViewLink": DRIVE_URL}, {"name": "Good plan", "webViewLink": DRIVE_URL}]
+        (status, body, _), _ = self.search(h, "plan", self.Found(files=files))
+        self.assertEqual([f["su"] for f in forms(body) if f.get("act") == "sent"], [DRIVE_URL])

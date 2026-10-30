@@ -21,6 +21,8 @@ PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+QMAX, HITS = 100, 15                                                       # LIFE-173: a Drive search's longest query and most results shown
+FOLDER = "application/vnd.google-apps.folder"
 OP = re.compile(r"[0-9a-f]{16}")                                          # LIFE-172: the op of the sent item to remove
 DRIVE_LINK = re.compile(r"https://(?:drive\.google\.com/file|docs\.google\.com/(?:document|spreadsheets|presentation))/d/([A-Za-z0-9_-]{10,200})(?:/[A-Za-z]*)?(?:[?#]\S*)?")
 LINK = re.compile(r"https://[^\s<>\"]{1,500}")
@@ -95,7 +97,10 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
     kinds = "".join(f'<label class="lead"><input type="radio" name="sk" value="{k}"{" checked" if k == M.FORM else ""}> {e(label)}</label> ' for k, label in M.SENT_KINDS.items())
     body += (f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "sent"))}<div class="actions">{kinds}</div>'
              f'<label class="lead">What it was <input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Link <input type="url" name="su" maxlength="500"></label>'
-             '<div class="actions"><button class="btn">Review sent material</button><span class="lead">A form: say what it was, a link is optional. A Drive file: paste its link.</span></div></form>')
+             '<div class="actions"><button class="btn">Review sent material</button><span class="lead">A form: say what it was, a link is optional. A Drive file: paste its link.</span></div></form>'
+             f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "drive") | {"p": D._page_id(page["id"])})}'      # LIFE-173: find the file instead of hunting for its link
+             f'<label class="lead">Search my Drive <input type="search" name="q" maxlength="{QMAX}" placeholder="Part of the file name"></label>'
+             '<div class="actions"><button class="btn">Search my Drive</button><span class="lead">Pick a file from the results; you review it before anything is recorded.</span></div></form>')
     return body
 
 
@@ -297,7 +302,39 @@ def _hand_post(req, who, secrets):
                  f"{company} — {role} · {what}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
+def _drive_search(req, who, secrets):
+    """LIFE-173 (Jim, Oct 30 2026): "I don't want to have to hunt for Google Drive files". A signed search of Jim's Drive by file name (read only, the Close service's own Drive
+    credential, newest edits first); each hit opens the usual sent-material review for that file, so nothing is recorded until he confirms there."""
+    form, secret, login = req["form"], secrets["link"], who["login"]
+    o, exp, st, kind, company, role = D._page_id(form.get("o")), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("co", ""), form.get("ro", "")
+    if (not o or kind not in ("ledger", "notes") or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
+            or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, "drive")) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
+        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
+    q = " ".join((form.get("q") or "").split())
+    if not q or len(q) > QMAX or not q.isprintable():
+        return _stop(400, "Not accepted", "Type part of the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
+    drive = _drive(secrets)
+    if drive is None:
+        return _stop(409, "Not searched", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was searched.")
+    from lifeos.platform.gdrive import _quote
+    try:
+        files = drive.find(f"name contains '{_quote(q)}' and mimeType != '{FOLDER}'", order="modifiedTime desc")
+    except RuntimeError as error:                                          # gdrive.DriveError: fixed codes only
+        return _stop(409, "Not searched", "Google Drive could not be searched", "Try again in a minute.", f"Refused: {str(error)[:60]}. Nothing was changed.")
+    hits = [f for f in files if isinstance(f.get("name"), str) and DRIVE_LINK.fullmatch(str(f.get("webViewLink") or ""))][:HITS]
+    pick = _hand_fields(secret, login, kind, o, company, role, int(exp), "sent") | {"sk": M.FILE, "sx": ""}
+    rows = "".join(f'<form method="post" action="/manage">{S._hidden(pick | {"su": f["webViewLink"]})}<div class="actions"><button class="btn">Pick</button>'
+                   f'<span class="lead">{e(" ".join(f["name"].split()))} · <a href="{e(f["webViewLink"])}" target="_blank" rel="noopener">open ↗</a></span></div></form>' for f in hits)
+    body = (f'<section class="section"><div class="eyebrow">Search my Drive</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
+            f'<p class="lead">Files whose name contains “{e(q)}”, most recently edited first{f" (the first {HITS})" if len(hits) == HITS else ""}.</p>'
+            + (rows or '<div class="notice alert">No Drive file matches. Try a shorter part of the name.</div>')
+            + (_link("Back to Manage", "/manage?" + urlencode({"o": back}), "Nothing was recorded.") if (back := D._page_id(form.get("p"))) else "") + '</section>')
+    return 200, C.HTML, S.page("Search my Drive", "Pick the file you sent; you review it before anything is recorded.", body, PATH, TAB), ()
+
+
 def _post(req, who, secrets):
+    if req["form"].get("act") == "drive":
+        return _drive_search(req, who, secrets)
     if req["form"].get("act") in ("hold", "next", "sent", "unsent"):
         return _hand_post(req, who, secrets)
     form, secret, login = req["form"], secrets["link"], who["login"]
