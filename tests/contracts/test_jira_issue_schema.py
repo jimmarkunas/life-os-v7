@@ -44,11 +44,13 @@ class Contract(unittest.TestCase):
         self.assertFalse(re.fullmatch(story, "As the Main User. Given: x. When: y. Then: z."))
         self.assertEqual(SCHEMA["properties"]["acceptance_criteria"]["items"]["required"], ["given", "when", "then"])
 
-    def test_no_secret_value_field_and_no_workflow_status_is_introduced(self):
+    def test_secret_values_are_excluded_and_life_workflow_is_documented(self):
         refs = SCHEMA["properties"]["execution"]["properties"]["secret_refs"]["items"]["properties"]
         self.assertEqual(set(refs), {"kind", "identifier"})
-        self.assertNotIn("status", SCHEMA["properties"])                # Agent/Human UAT are evidence records, not statuses
+        self.assertIn("LIFE workflow statuses are Agent Go, Agent UAT, and Human UAT", SCHEMA["description"])
         self.assertIs(SCHEMA["properties"]["fast_proof"]["properties"]["schedule_independent"]["const"], True)
+        self.assertIn("LIFE uses the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
+        self.assertIn("merge only after required checks and review pass", POLICY)
 
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
