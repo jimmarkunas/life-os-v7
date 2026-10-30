@@ -153,7 +153,7 @@ def _hub(req, who, secrets):
     rid = D._page_id(rec["id"])
     body = ('<section class="section"><div class="eyebrow">Exact opportunity</div><div class="jobhead"><div>'
             f'<h2>{e(page["role"])}</h2><div class="company">{e(page["company"])}</div></div>'
-            f'<span class="status">{"Closed" if closed else "Open"} · {"Job Ledger" if kind == "ledger" else "Notes page"}</span></div></section><section class="section">'
+            f'<a class="status" href="https://www.notion.so/{rid}" target="_blank" rel="noopener">{"Closed" if closed else "Open"} · {"Job Ledger" if kind == "ledger" else "Notes page"} ↗</a></div></section><section class="section">'
             '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>')
     exp = int(C._now().timestamp()) + C.TTL
     if closed:
@@ -214,7 +214,7 @@ def _moved(secret, login, act, routed, target, parents, o, company, role, form):
            if routed == "ledger" else "Applied was unticked on the Job Ledger after Manage opened, so the opportunity now lives on its Notes page.")
     keep = {"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent" else {"nx": form.get("nx", ""), "due": form.get("due", "")}
     fields = _hand_fields(secret, login, routed, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + C.TTL, act) | keep
-    body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on {e(where)}</h3><p class="lead">{e(why)}</p>'
+    body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on <a href="https://www.notion.so/{D._page_id(target["id"])}" target="_blank" rel="noopener">{e(where)} ↗</a></h3><p class="lead">{e(why)}</p>'
             '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on the new record, then confirm.</div>'
             f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on {e(where)}</button></div></form>'
             + hub + '</section>')

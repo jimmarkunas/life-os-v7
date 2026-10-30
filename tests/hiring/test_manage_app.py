@@ -44,7 +44,7 @@ class Hub(unittest.TestCase):
         self.assertIn(f"/resume?j={lid}", links(body))
         self.assertIn(f"/sent?j={lid}", links(body))
         self.assertNotIn("Reopen this opportunity", body)
-        self.assertIn("Open · Job Ledger", body)
+        self.assertIn(f'<a class="status" href="https://www.notion.so/{lid}" target="_blank" rel="noopener">Open · Job Ledger ↗</a>', body)     # LIFE-169: the record label opens it in Notion
         self.assertEqual(h.writes(), (0, 0))
 
     def test_a_notes_only_pursuit_links_close_on_its_own_page_and_no_ledger_actions(self):
