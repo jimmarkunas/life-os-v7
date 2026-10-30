@@ -50,10 +50,10 @@ class Contract(unittest.TestCase):
         self.assertIn("LIFE workflow statuses are Agent Go, Agent UAT, and Human UAT", SCHEMA["description"])
         self.assertIs(SCHEMA["properties"]["fast_proof"]["properties"]["schedule_independent"]["const"], True)
         self.assertIn("LIFE uses the `Agent UAT` and `Human UAT` workflow statuses", POLICY)
-        self.assertIn("merge only after required checks and review pass", POLICY)
-        self.assertIn("Assign an independent reviewer and merge operator before implementation", POLICY)
-        self.assertIn("The writer\'s GitHub identity cannot approve its own PR", POLICY)
-        self.assertIn("Name an independent reviewer and authorized merge operator", SCHEMA["description"])
+        self.assertIn("no compulsory independent Tech Lead review", POLICY)
+        self.assertNotIn("Assign an independent reviewer and merge operator before implementation", POLICY)
+        self.assertIn("Do not invent approvals", POLICY)
+        self.assertIn("Independent technical review is optional for routine PRs", SCHEMA["description"])
 
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
