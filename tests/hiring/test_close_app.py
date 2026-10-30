@@ -177,7 +177,13 @@ class Get(unittest.TestCase):
     def test_an_unapplied_ledger_row_for_the_same_role_blocks_a_notes_only_closure(self):
         h = Harness([("ee" * 16, COMPANY, ROLE)])
         h.world.source.pages["ee" * 16]["properties"]["Applied"] = {"checkbox": False}
-        self.assertIn("DECISION_LEDGER_UNAPPLIED", h.open(h.world.ws.target.replace("-", ""))[1])
+        status, body = h.open(h.world.ws.target.replace("-", ""))[:2]
+        self.assertIn("DECISION_LEDGER_UNAPPLIED", body)
+        self.assertEqual(status, 409)                                                                   # LIFE-169: it says which row blocks it and what to do, not only the code
+        self.assertIn("A Job Ledger row for this role is not marked Applied", body)
+        self.assertIn(f'href="https://www.notion.so/{"ee" * 16}"', body)
+        self.assertIn("tick <b>Applied</b> on that row", body)
+        self.assertEqual(h.writes()[0], 0)
 
 
 class Post(unittest.TestCase):

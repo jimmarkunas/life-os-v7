@@ -30,6 +30,13 @@ def fail(code):
     return DecisionError("DECISION_" + code)
 
 
+class Unapplied(DecisionError):
+    """DECISION_LEDGER_UNAPPLIED with the page ids of the Job Ledger rows that block a Notes-page closure, so the screen can link them (LIFE-169)."""
+    def __init__(self, rows):
+        super().__init__(str(fail("LEDGER_UNAPPLIED")))
+        self.rows = rows
+
+
 def _text(prop, kind):
     return "".join((p.get("plain_text") or (p.get("text") or {}).get("content") or "") for p in (prop or {}).get(kind) or []).strip()
 
