@@ -281,7 +281,7 @@ def run(limit, live, environ=os.environ):
             desc["summary"] = (full or "")[:6000]
         row = {"title": title, "company": company, "url": url, "source": source, "provider": provider, "lane": lane,
                "key": key,
-               "first_seen": first_seen.date() if hasattr(first_seen, "date") else first_seen, "posted": posted,
+               "first_seen": ledger.ct_day(first_seen), "posted": posted,
                "fit": fit, "fit_line": fit_line,
                "admission": admission if gated else None, "admission_reason": admission_reason if gated else None,
                "work_mode": work_mode, "salary": salary, "apply_kind": apply_kind,
