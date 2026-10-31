@@ -221,3 +221,24 @@ class RoleBackfill(unittest.TestCase):
         client = Client(empty=[("page10", "k10")])
         counts = self.run_backfill(client, [("page10", "k10", "Job")], live=False)
         self.assertEqual((counts["role_due"], counts["role_filled"], client.patches), (1, 0, []))
+
+
+class NewestScoreFirst(unittest.TestCase):
+    """LIFE-212: after a lane-policy re-score marks every published page due, the pages scored last (the Cloud Fit batch's promotions) are synced first."""
+
+    def test_the_newest_scores_are_picked_first_on_the_production_sql(self):
+        import datetime
+        from lifeos.jobs import meta
+        from tests.kit.jobsdb import JobsDB
+        db = JobsDB()
+        self.addCleanup(db.raw.close)
+        t0 = datetime.datetime(2026, 10, 31, 1, 0)
+        for job_id in range(1, 6):
+            at = t0 + datetime.timedelta(minutes=job_id)
+            db.insert("v7_jobs", id=job_id, dedupe_key=f"k{job_id}", status="PUBLISHED", title="Product Manager", company="Acme", final_apply_url=f"https://boards.example.com/a/{job_id}",
+                      first_seen=t0, last_seen=t0, updated_at=t0, source="web", lane="US Remote", notion_page_id=f"page-{job_id}", fit_synced_at=t0, meta_v=meta.META_VERSION)
+            db.insert("v7_job_fit", job_id=job_id, score=80, decision="Go", line="fits", confidence="high", model_version="v3", profile_hash="p", jd_fingerprint="f",
+                      scored_at=at, admission="ADMIT")
+        with db.cursor() as cursor:
+            cursor.execute(fit_sync.PICK, (meta.META_VERSION, 2))
+            self.assertEqual([row[0] for row in cursor.fetchall()], [5, 4])

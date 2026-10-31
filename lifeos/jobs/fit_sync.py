@@ -11,7 +11,9 @@ PICK = ("SELECT j.id, j.notion_page_id, f.score, f.line, f.admission, f.admissio
         " j.lane, j.location_text, j.salary_text, j.route_evidence, d.full_text, j.title FROM v7_jobs j"
         " JOIN v7_job_fit f ON f.job_id=j.id LEFT JOIN v7_job_descriptions d ON d.job_id=j.id"
         " WHERE j.status='PUBLISHED' AND j.notion_page_id IS NOT NULL AND f.score IS NOT NULL"
-        " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at LIMIT %s")
+        " AND (j.fit_synced_at IS NULL OR j.fit_synced_at < f.scored_at OR j.meta_v IS NULL OR j.meta_v < %s) ORDER BY f.scored_at DESC, j.id LIMIT %s")
+# LIFE-212: newest score first. A lane-policy re-score marks every published page due at once; oldest-first then left the pages the Cloud Fit batch had just
+# promoted at the back, and its check failed the run (LEDGER_SYNC_INCOMPLETE) until the whole wave had synced. The wave is finite, so nothing waits forever.
 ROLE_PAGES, ROLE_BATCH = 5, 25                         # Role-only backfill: at most 5 query pages (500 empty Roles) read and 25 pages written per run
 VISIBLE_LANE_LABEL = {"Scale-Up": "Scale-up"}          # same spelling rule as publish (the Ledger's existing option)
 
