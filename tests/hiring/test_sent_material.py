@@ -284,7 +284,6 @@ class Search(unittest.TestCase):
         (status, body, _), form = self.search(h, "nothing", self.Found(files=[]))
         self.assertEqual(status, 200)
         self.assertIn("No Drive file matches", body)
-        self.assertEqual(self.search(h, "   ", self.Found())[0][0], 400)
         self.assertEqual(self.search(h, "x" * 101, self.Found())[0][0], 400)
         self.assertEqual(self.search(h, "plan", None)[0][0], 409)
         drive = self.Found()
@@ -293,6 +292,20 @@ class Search(unittest.TestCase):
                 self.assertEqual(h.call("POST", "/manage", form={**form, "q": "plan", **patch})[0], 403, patch)
         self.assertEqual(drive.queries, [])
         self.assertEqual(h.writes(), (0, 0))
+
+    def test_an_empty_box_lists_the_latest_files_to_pick_from(self):
+        """Jim, Oct 31 2026: "I shouldn't have to type". An empty search lists the most recently edited files (folders excluded); a Pick opens the review as before."""
+        h, _ = notes_page()
+        drive = self.Found()
+        for q in ("", "   "):
+            (status, body, _), _ = self.search(h, q, drive)
+            self.assertEqual(status, 200, body)
+            self.assertIn("Your Drive files, most recently edited first", body)
+            self.assertIn("Launch plan for ExampleCo", body)
+            self.assertEqual([f["su"] for f in forms(body) if f.get("act") == "sent"], [drive.meta["webViewLink"]])
+        self.assertEqual(drive.queries, [("mimeType != 'application/vnd.google-apps.folder'", "modifiedTime desc")] * 2)
+        self.assertEqual(h.writes(), (0, 0))
+        self.assertIn("Show my Drive files", h.hub(h.world.ws.target)[1])
 
     def test_folders_and_files_without_a_drive_link_are_never_offered(self):
         h, _ = notes_page()
