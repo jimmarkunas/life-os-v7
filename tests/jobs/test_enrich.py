@@ -721,3 +721,93 @@ class ThinBoardFeedTests(unittest.TestCase):
         for source in ("web:adobe", "linkedin-search", None):
             self.assertFalse(lanes.thin_review_source(source))
         self.assertIsNone(audit.judge("https://boards.greenhouse.io/acme/jobs/7654321", "Senior Data Engineer, New York.", thin_ok=True))
+
+
+GUEST_FRAGMENT = ('<section class="top-card-layout"><a href="https://www.linkedin.com/jobs/view/4443205698"><h2 class="top-card-layout__title font-sans">'
+                  'Senior Data Engineer</h2></a><a class="topcard__org-name-link">Acme</a></section>'
+                  '<div class="show-more-less-html__markup">' + LONG + '</div>')          # the jobPosting guest API fragment: no <title>, no JSON-LD
+
+
+class LinkedInPageAfterMismatchTests(unittest.TestCase):
+    """LIFE-212 (Jim, Oct 31 2026): a LinkedIn row whose employer link fails the title match takes its own LinkedIn posting instead of looping back to the same link."""
+    EMPLOYER = "https://careers.example.com/jobs/senior-data-engineer-1234567"
+    POSTING = "https://www.linkedin.com/jobs/view/4443205698"
+
+    def setUp(self):
+        from tests.kit.jobsdb import JobsDB                                   # noqa: PLC0415
+        self.db, self.fetched = JobsDB(), []
+        self.addCleanup(self.db.raw.close)
+
+    def add(self, job_id, source, final, kind="ats"):
+        self.db.raw.execute("INSERT INTO v7_jobs (id, dedupe_key, status, source, lane, title, source_url, final_apply_url, apply_kind, first_seen, last_seen, updated_at) "
+                            "VALUES (?, ?, 'RESOLVED', ?, 'US Remote', 'Senior Data Engineer', ?, ?, ?, '2026-10-30 00:00:00', '2026-10-30 00:00:00', '2026-10-30 00:00:00')",
+                            (job_id, "k%d" % job_id, source, self.POSTING if job_id == 1 else self.POSTING.replace("98", "11"), final, kind))
+
+    def fetch(self, url, **kw):
+        self.fetched.append(url)
+        if "linkedin.com" in url:
+            return Page(200, GUEST_FRAGMENT)
+        return Page(200, "<html><head><title>Sign in | Careers</title></head><body>" + LONG + "</body></html>")      # an apply / sign-in page that does not name the role
+
+    def enrich(self):
+        with mock.patch.object(enrich.store, "connect", return_value=self.db), mock.patch.object(enrich.store, "ensure_schema"), mock.patch.object(enrich, "fetch", self.fetch), \
+                mock.patch.object(enrich.usage, "reserve", lambda c, n: 0):
+            return enrich.run(10, True)
+
+    def row(self, job_id):
+        return self.db.raw.execute("SELECT status, final_apply_url, apply_kind, resolve_attempts, unresolved_reason FROM v7_jobs WHERE id=?", (job_id,)).fetchone()
+
+    def test_an_employer_link_that_fails_the_match_switches_to_the_linkedin_posting_which_then_proves_the_role(self):
+        self.add(1, "linkedin-search", self.EMPLOYER)
+        counts = self.enrich()
+        self.assertEqual(counts["linkedin_page"], 1)
+        self.assertEqual(self.row(1), ("RESOLVED", self.POSTING, "aggregator", 0, None))          # kept moving, not an attempt, never back to the same employer link
+        self.enrich()
+        self.assertEqual(self.row(1)[:3], ("READY", self.POSTING, "aggregator"))
+        self.assertTrue(self.fetched[-1].startswith("https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4443205698"))
+
+    def test_a_row_already_on_its_linkedin_posting_that_mismatches_keeps_todays_path(self):
+        self.add(1, "linkedin-alerts", self.POSTING, kind="aggregator")
+        with mock.patch.object(enrich.jd, "linkedin_title", return_value="Warehouse Associate"):
+            counts = self.enrich()
+        self.assertEqual(counts["linkedin_page"], 0)
+        self.assertEqual(self.row(1), ("NEW", None, None, 1, "link_mismatch"))
+
+    def test_only_linkedin_rows_switch_and_a_wrong_page_of_another_kind_keeps_its_reason(self):
+        self.add(1, "jobright", self.EMPLOYER)
+        self.add(2, "linkedin-search", "https://careers.example.com/jobs/listing", kind="ats")
+        with mock.patch.object(enrich, "read_page", side_effect=[{"outcome": "mismatch"}, {"outcome": "mismatch", "reason": "jd_listing"}]):
+            counts = self.enrich()
+        self.assertEqual(counts["linkedin_page"], 0)
+        self.assertEqual(self.row(1)[0], "NEW")
+        self.assertEqual(self.row(2)[::4], ("NEW", "jd_listing"))
+
+
+class LinkedInGuestTitleTests(unittest.TestCase):
+    def test_the_guest_fragment_names_the_role_in_its_top_card(self):
+        result = enrich.parse_html("https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4443205698", "Senior Data Engineer", GUEST_FRAGMENT, strict=True)
+        self.assertEqual(result["outcome"], "ready")                          # strict: only the found title counts, and the fragment has no <title>
+        self.assertEqual(enrich.jd.linkedin_title(GUEST_FRAGMENT), "Senior Data Engineer")
+        self.assertIsNone(enrich.jd.linkedin_title("<html><title>x</title></html>"))
+        self.assertEqual(enrich.parse_html("https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/1", "Payroll Clerk", GUEST_FRAGMENT, strict=True)["outcome"], "mismatch")
+
+
+class TitleNormalisationTests(unittest.TestCase):
+    CASES = [   # (wanted, found title, strict, ok)
+        ("Technical Product Manager (TPM)", "Technical Product Manager", True, True),
+        ("SAP S4HANA Finance Lead", "SAP S/4HANA Finance Lead", True, True),
+        ("SAP S/4HANA Finance Lead", "SAP S4HANA Finance Lead", True, True),
+        ("SAP S 4HANA Architect", "SAP S/4HANA Architect | Acme", True, True),
+        ("Senior Data Engineer (Remote)", "Senior Data Engineer", True, True),
+        ("Technical Product Manager (TPM)", "Technical Program Coordinator", True, False),      # a different role still fails
+        ("SAP S/4HANA Finance Lead", "Oracle Finance Lead", True, False),
+        ("Technical Product Manager (TPM)", "Sign in | Careers", True, False),
+        ("(TPM)", "TPM", True, True),                                        # nothing outside the brackets: the bracket is the title
+        ("Staff Software Engineer", "Staff Software Engineer", False, True),
+        ("Staff Software Engineer", "Registered Nurse", False, False),
+    ]
+
+    def test_title_ok_table(self):
+        for want, found, strict, ok in self.CASES:
+            with self.subTest(want=want, found=found):
+                self.assertEqual(enrich._title_ok(want, found, strict=strict), ok)

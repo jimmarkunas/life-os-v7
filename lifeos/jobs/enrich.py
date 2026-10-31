@@ -73,9 +73,14 @@ def _title_ok(want, *found, strict=False):
     """Lenient: most of the job-title words appear in the title / page text found at the final link.
     Strict (a link whose shape could not vouch for it): the page's own TITLE must carry nearly all the words; body text does not count,
     because a listing or portal page contains many job titles."""
-    tokens = [t for t in ats_match.norm(want).split() if len(t) > 2]
-    hay = ats_match.norm(" ".join(f for f in (found[:1] if strict else found) if f))
+    tokens = [t for t in _joined(re.sub(r"\([^)]*\)", " ", want or "")).split() if len(t) > 2] or [t for t in _joined(want).split() if len(t) > 2]   # LIFE-212 (Jim, Oct 31 2026): "(TPM)" is not a word the page must repeat
+    hay = _joined(" ".join(f for f in (found[:1] if strict else found) if f))
     return bool(tokens) and sum(t in hay.split() for t in tokens) / len(tokens) >= (0.8 if strict else 0.6)
+
+
+def _joined(text):
+    """Normalised words with a lone letter joined to the number that follows it, on both sides: "S/4HANA", "S4HANA" and "S 4HANA" all read "s4hana"."""
+    return re.sub(r"\b([a-z]) (?=[0-9])", r"\1", ats_match.norm(text))         # LIFE-212 (Jim, Oct 31 2026)
 
 
 def _greenhouse_embed(url, html):
@@ -178,6 +183,7 @@ def parse_html(url, title, html, lane=None, strict=False, first_party=False):
             desc, source_kind = jd.describe(body_text if region is None else region, is_html=False), "page_text"      # a LinkedIn guest page: the description element, not its sign-in chrome
         posted = valid_through = None
         found_title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I) or [None, ""])[1]
+        found_title = jd.linkedin_title(html) or found_title          # LIFE-212 (Jim, Oct 31 2026): a LinkedIn guest fragment has no <title>; its top card names the role
     result = finish(title, desc, found_title, posted, source_kind, valid_through, lane, strict, first_party)
     if first_party and result.get("outcome") == "mismatch" and not result.get("reason") and _title_words_in(title, html) >= 0.8:
         result = finish(title, desc, title, posted, source_kind, valid_through, lane, False, first_party)       # the employer's own board listed this role at this address and its page carries the role's words (a page <title> that says only "Careers" proved nothing either way)
@@ -268,6 +274,13 @@ def save(connection, job_id, result):
         elif outcome == "closed":
             cursor.execute("UPDATE v7_jobs SET status='CLOSED', unresolved_reason='closed', updated_at=%s WHERE id=%s",
                            (now, job_id))
+        elif outcome == "linkedin_page":                 # LIFE-212 (Jim, Oct 31 2026): the employer link failed the match, so the row's LinkedIn posting becomes its link (D3 rank 4) and Enrich reads it next
+            cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (result["url"], job_id))
+            if cursor.fetchone():
+                cursor.execute("UPDATE v7_jobs SET status='DUPLICATE', final_apply_url=NULL, unresolved_reason=%s, updated_at=%s WHERE id=%s", ("dup_of_final_url", now, job_id))
+            else:
+                cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='aggregator', link_proof=NULL, unresolved_reason=NULL, updated_at=%s WHERE id=%s",
+                               (result["url"], now, job_id))
         elif outcome == "mismatch":                      # wrong link: take it back, never publish it
             cursor.execute("UPDATE v7_jobs SET status=IF(resolve_attempts+1>=%s, 'HOLD', 'NEW'), final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, "
                            "unresolved_reason=%s, resolve_attempts=resolve_attempts+1, updated_at=%s WHERE id=%s",   # an attempt: a link that keeps failing parks on HOLD, never loops
@@ -375,13 +388,14 @@ def run(limit, live, drain=False):
             with connection.cursor() as cursor:
                 relinked = relink_first_party(cursor)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof FROM v7_jobs WHERE status='RESOLVED' "
+            cursor.execute("SELECT id, final_apply_url, title, apply_kind, unresolved_reason, lane, source, link_proof, source_url FROM v7_jobs WHERE status='RESOLVED' "
                            "AND final_apply_url IS NOT NULL ORDER BY last_seen DESC LIMIT %s", (limit,))
             fetched = [tuple(r) for r in cursor.fetchall()]
     rows = [r[:5] for r in fetched]
     lane_of = {r[0]: r[5] for r in fetched}
     source_of = {r[0]: r[6] for r in fetched}
     proof_of = {r[0]: (r[7] if len(r) > 7 else None) for r in fetched}
+    page_of = {r[0]: (r[8] if len(r) > 8 else None) for r in fetched}          # LIFE-212: the row's own posting (a LinkedIn row's /jobs/view/<id>)
     counts = {"picked": len(rows), "outcome": {}, "source": {}, "relinked": relinked}
     results = []
     for job_id, url, title, kind, _prev in rows:
@@ -415,12 +429,29 @@ def run(limit, live, drain=False):
     counts["reader_misses"] = ats_detail.misses()
     counts["blocked_final"] = blocked_report(results, {job_id: url for job_id, url, _, _, _ in rows})
     counts["mismatch"] = mismatch_report(results, {r[0]: r[1] for r in rows}, source_of, {r[0]: r[4] for r in rows})
+    counts["linkedin_page"] = linkedin_page(results, source_of, page_of)
     if live and results:
         with store.connect() as connection:
             for job_id, result in results:
                 save(connection, job_id, result)
     counts["saved"] = bool(live)
     return counts
+
+
+def linkedin_page(results, source_of, page_of):
+    """LIFE-212 (Jim, Oct 31 2026): a LinkedIn row whose employer link failed the title match (often an apply, sign-in or JavaScript page) used to go back to NEW,
+    where the resolver found the same link again until HOLD. It now takes its own LinkedIn posting, flagged `aggregator` (as page_fallback does), and Enrich
+    proves that page next. A row already on LinkedIn that mismatches keeps today's path (back to NEW, an attempt). -> the number switched."""
+    from lifeos.jobs.resolve.aggregators import li_apply                    # noqa: PLC0415 - as run() imports it
+    switched = 0
+    for job_id, result in results:
+        own = page_of.get(job_id) or ""
+        if (result["outcome"] != "mismatch" or result.get("reason") or not str(source_of.get(job_id) or "").startswith("linkedin")
+                or li_apply.is_linkedin(result.get("final_url") or "") or not (li_apply.is_linkedin(own) and li_apply.job_id(own))):
+            continue
+        result.update(outcome="linkedin_page", url="https://www.linkedin.com/jobs/view/" + li_apply.job_id(own))
+        switched += 1
+    return switched
 
 
 def _strict(job_id, titles, unproven_ids):
