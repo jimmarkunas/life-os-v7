@@ -349,3 +349,37 @@ class Expiry(unittest.TestCase):
         status, body, _ = h.call("POST", "/manage", form={**remove_or_next, "nx": "Call Pat", "t": "0" * 64})
         self.assertEqual(status, 403)
         self.assertIn("Reload Manage", body)
+
+
+class Picker(unittest.TestCase):
+    """LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): Google's own Drive picker on Manage, shown only once its public browser identifiers are set; a pick
+    posts the usual sent-material form (sk=file, su=the file's link), so the review and confirm are unchanged and nothing is recorded before them."""
+    CONFIG = {"client_id": "123-abc.apps.googleusercontent.com", "api_key": "AIzaSyExample_Key", "app_id": "123456789"}
+
+    def test_no_picker_until_it_is_configured(self):
+        h, _ = notes_page()
+        body = h.hub(h.world.ws.target)[1]
+        self.assertNotIn("pick-drive", body)
+        self.assertNotIn("manage-picker.js", body)
+        self.assertIn("Show my Drive files", body)                                                     # the LIFE-173 way stays
+
+    def test_the_configured_picker_button_posts_the_usual_sent_form(self):
+        h, _ = notes_page()
+        with mock.patch.dict(manage_app.PICKER, self.CONFIG):
+            body = h.hub(h.world.ws.target)[1]
+        self.assertIn('<script src="/manage-picker.js" defer></script>', body)
+        self.assertEqual(body.count("<script"), body.count('<script src="/'))                           # no inline script: the CSP allows none
+        self.assertIn('id="pick-drive" disabled data-client="123-abc.apps.googleusercontent.com" data-key="AIzaSyExample_Key" data-app="123456789"', body)
+        pick = next(f for f in forms(body) if f.get("act") == "sent" and "su" in f and f.get("su") == "" and f.get("sk") == M.FILE and 'id="pick-form"' in body)
+        self.assertEqual((pick["sk"], pick["su"]), (M.FILE, ""))
+        self.assertIn("Show my Drive files", body)
+        status, ctype, js, extra = manage_app.handle_js({}, {}, {})
+        self.assertEqual((status, ctype, extra), (200, "text/javascript; charset=utf-8", ()))
+        for part in (b"https://www.googleapis.com/auth/drive.file", b'"https://drive.google.com/file/d/" + d.docs[0].id + "/view"', b"google.picker.Action.PICKED", b"f.submit()"):
+            self.assertIn(part, js)
+        self.assertNotIn(b"auth/drive\"", js)                                                           # never the full Drive scope
+        self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))   # the link the picker posts is one the review accepts
+
+    def test_the_picker_script_is_routed(self):
+        from lifeos.sources import close_app
+        self.assertEqual(close_app.ROUTES["/manage-picker.js"], ("manage_app", "handle_js"))
