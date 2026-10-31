@@ -21,6 +21,7 @@ PATH, TAB = "Daily Report / Active Opportunities / Manage", "Manage opportunity"
 REASON = "Reopened on the Close screen"
 HOLD_CHOICES = ((M.PAUSED, "Pause it"), (M.WAITING, "Waiting on employer"), (M.ACTIVE, "Back to Active"))
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+MANAGE_TTL = 8 * 3600                                                      # LIFE-174 (Jim, Oct 31): a Manage page stays usable for a working session, not 15 minutes
 QMAX, HITS = 100, 15                                                       # LIFE-173: a Drive search's longest query and most results shown
 FOLDER = "application/vnd.google-apps.folder"
 OP = re.compile(r"[0-9a-f]{16}")                                          # LIFE-172: the op of the sent item to remove
@@ -85,7 +86,7 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
         body += f'<p class="lead"><b>Your next action:</b> {e(nxt["text"] or "—")} · <b>Due:</b> {e(nxt["due"] or "No date set")}</p>'
     if kind == "ledger" and not ledger_ready:
         return body + f'<div class="notice alert">Not available yet: the Job Ledger has no “{e(D.HAND_SET)}” text property, so nothing can be stored on this application. Nothing was changed.</div>'
-    form = lambda act, extra=None: f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | (extra or {}))}'   # noqa: E731
+    form = lambda act, extra=None: f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | {"p": D._page_id(page["id"])} | (extra or {}))}'   # noqa: E731
     buttons = "".join(f'<button class="btn" name="v" value="{v}">{e(label)}</button>' for v, label in HOLD_CHOICES if v != (hold or {}).get("state", M.ACTIVE))
     body += (f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'      # LIFE-174 (Jim, Oct 31): one card per action, fields and button together
              f'<div class="mcard"><h4>Set a next action</h4>{form("next")}<div class="mrow">'
@@ -93,9 +94,9 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
              '<button class="btn">Review next action</button></div></form><p class="hint">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</p></div>')
     sent, unsent = M.sent_of(lines), _hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "unsent")
     body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(                        # LIFE-172: each item can be removed, through its own review and confirm
-        f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
+        f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
         '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
-    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive", {"p": D._page_id(page["id"])})}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
+    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
              f'<label class="fld">Search my Drive<input type="search" name="q" maxlength="{QMAX}" placeholder="Part of the file name"></label><button class="btn">Search my Drive</button></div></form>'
              '<p class="hint">Pick a file from the results; you review it before anything is recorded.</p>'
              f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
@@ -182,7 +183,7 @@ def _hub(req, who, secrets):
             f'<h2>{e(page["role"])}</h2><div class="company">{e(page["company"])}</div></div>'
             f'<a class="status" href="https://www.notion.so/{rid}" target="_blank" rel="noopener">{"Closed" if closed else "Open"} · {"Job Ledger" if kind == "ledger" else "Notes page"} ↗</a></div></section><section class="section">'
             '<div class="eyebrow">Actions</div><p class="lead">Each action opens its own screen and changes nothing until you confirm there.</p>')
-    exp = int(C._now().timestamp()) + C.TTL
+    exp = int(C._now().timestamp()) + MANAGE_TTL
     if closed:
         try:                                                               # offered only when the POST's REOPEN routing would reach this same record
             routed, again = D.route(rows, parents, {"action": D.REOPEN, "id": rid, "company": page["company"], "role": page["role"]})
@@ -241,7 +242,7 @@ def _moved(secret, login, act, routed, target, parents, o, company, role, form):
            if routed == "ledger" else "Applied was unticked on the Job Ledger after Manage opened, so the opportunity now lives on its Notes page.")
     keep = ({"v": form.get("v", "")} if act == "hold" else {"sk": form.get("sk", ""), "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
             else {"v": form.get("v", ""), "sx": form.get("sx", "")} if act == "unsent" else {"nx": form.get("nx", ""), "due": form.get("due", "")})
-    fields = _hand_fields(secret, login, routed, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + C.TTL, act) | keep
+    fields = _hand_fields(secret, login, routed, D._page_id(target["id"]), company, role, int(C._now().timestamp()) + MANAGE_TTL, act) | keep | {"p": form.get("p", "")}
     body = (f'<section class="section"><div class="eyebrow">Conflict</div><h3 class="step-title">This opportunity now lives on <a href="https://www.notion.so/{D._page_id(target["id"])}" target="_blank" rel="noopener">{e(where)} ↗</a></h3><p class="lead">{e(why)}</p>'
             '<div class="notice alert">Nothing was changed. Your entry is kept below: review it on the new record, then confirm.</div>'
             f'<form method="post" action="/manage">{S._hidden(fields)}<div class="actions"><button class="btn primary">Review this change on {e(where)}</button></div></form>'
@@ -256,7 +257,7 @@ def _hand_post(req, who, secrets):
     company, role = form.get("co", ""), form.get("ro", "")
     if (not o or step not in ("cancel", "review", "confirm") or kind not in ("ledger", "notes") or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
             or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, act)) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
+        return _expired(form)
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing changed", "The opportunity keeps its current state and next action.", "Nothing was written.", "")
     value, text, due = form.get("v", ""), " ".join((form.get("sx" if act == "unsent" else "nx") or "").split()), (form.get("due") or "").strip()
@@ -280,7 +281,7 @@ def _hand_post(req, who, secrets):
     what = (f"Set it to {M.HOLD_LABEL.get(value, 'Active')}" if act == "hold" else f"Sent: {M.SENT_KINDS[value]} · {text}" if act == "sent" else f"Remove sent material: {text}" if act == "unsent"
             else f"Your next action: {text or '—'} · Due: {due or 'No date set'}")
     if step == "review":
-        fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t")} | (
+        fields = {k: form.get(k, "") for k in ("o", "k", "co", "ro", "exp", "st", "act", "t", "p")} | (
             {"v": value} if act == "hold" else {"sk": value, "sx": form.get("sx", ""), "su": form.get("su", "")} if act == "sent"
             else {"v": value, "sx": text} if act == "unsent" else {"nx": text, "due": due}) | {"c": sign}
         note = ("The stage stays as the evidence shows; the Hiring Pipeline lists it with no to-do until you set it back to Active or new mail or Calendar evidence arrives."
@@ -322,6 +323,15 @@ def _hand_post(req, who, secrets):
                  f"{company} — {role} · {what}{' (already recorded)' if done['status'] == 'already_recorded' else ''}.", "ok")
 
 
+def _expired(form):
+    """LIFE-174 (Jim, Oct 31 2026): a stale or altered Manage form writes nothing; the screen offers Manage again for the same opportunity in one click."""
+    page = D._page_id(form.get("p"))
+    body = ('<section class="section"><div class="eyebrow">Not accepted</div><h3 class="step-title">This page has expired</h3>'
+            '<p class="lead">Manage was open too long, or the form was changed. Open it again and repeat the step.</p><div class="notice danger">Nothing was changed.</div>'
+            + (_link("Reload Manage", "/manage?" + urlencode({"o": page}), "Opens this opportunity's Manage screen fresh.") if page else "") + '</section>')
+    return 403, C.HTML, _styled(S.page("This page has expired", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB)), ()
+
+
 def _drive_search(req, who, secrets):
     """LIFE-173 (Jim, Oct 30 2026): "I don't want to have to hunt for Google Drive files". A signed search of Jim's Drive by file name (read only, the Close service's own Drive
     credential, newest edits first); each hit opens the usual sent-material review for that file, so nothing is recorded until he confirms there."""
@@ -329,7 +339,7 @@ def _drive_search(req, who, secrets):
     o, exp, st, kind, company, role = D._page_id(form.get("o")), form.get("exp", ""), form.get("st", ""), form.get("k", ""), form.get("co", ""), form.get("ro", "")
     if (not o or kind not in ("ledger", "notes") or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
             or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, "drive")) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
+        return _expired(form)
     q = " ".join((form.get("q") or "").split())
     if not q or len(q) > QMAX or not q.isprintable():
         return _stop(400, "Not accepted", "Type part of the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
@@ -362,7 +372,7 @@ def _post(req, who, secrets):
     company, role = form.get("co", ""), form.get("ro", "")
     if (not o or step not in ("cancel", "review", "confirm") or kind not in ("ledger", "notes") or not (exp.isascii() and exp.isdigit()) or int(exp) < C._now().timestamp()
             or not C._same(form.get("t"), C._mac(secret, "manage-reopen", login, o, st, exp)) or not C._same(C._fingerprint(kind, o, company, role, True), st)):
-        return _stop(403, "Not accepted", "This form is no longer valid", "Reload Manage from the opportunity page.", "Nothing was changed.", "danger")
+        return _expired(form)
     if step == "cancel":
         return _stop(200, "Cancelled", "Nothing reopened", "The opportunity stays closed.", "Nothing was written.", "")
     hired = form.get("h") == "1"
