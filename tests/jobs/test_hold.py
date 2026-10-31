@@ -41,7 +41,7 @@ class HoldExpiryTests(unittest.TestCase):
     def test_dry_run_counts_what_is_due_and_writes_nothing(self):
         out, seen = self.go(False)
         self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"jobright": 9}, "by_source_reason": {"jobright": {"jd_thin": 9}}, "saved": False,
-                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0}, "release_candidates": 0, "released": 0})
+                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0, "source_retired_openjobs": 0}, "release_candidates": 0, "released": 0})
         self.assertFalse([s for s, _ in seen if s.startswith("UPDATE")])
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):
@@ -322,7 +322,10 @@ class RetiredSourceTests(unittest.TestCase):
               (1, 'k1', 'NEW', 'lensa', 'Newsletter', '2026-10-09 00:00:00', '2026-10-09 00:00:00', '2026-10-09 00:00:00'),
               (2, 'k2', 'HOLD', 'lensa', 'Newsletter', '2026-10-09 00:00:00', '2026-10-09 00:00:00', '2026-10-09 00:00:00'),
               (3, 'k3', 'RESOLVED', 'lensa', 'Newsletter', '2026-10-09 00:00:00', '2026-10-09 00:00:00', '2026-10-09 00:00:00'),
-              (4, 'k4', 'NEW', 'jobright', 'Newsletter', '2026-10-09 00:00:00', '2026-10-09 00:00:00', '2026-10-09 00:00:00');
+              (4, 'k4', 'NEW', 'jobright', 'Newsletter', '2026-10-09 00:00:00', '2026-10-09 00:00:00', '2026-10-09 00:00:00'),
+              (5, 'k5', 'NEW', 'web:openjobs', 'US Remote', '2026-10-04 00:00:00', '2026-10-04 00:00:00', '2026-10-04 00:00:00'),
+              (6, 'k6', 'HOLD', 'web:openjobs', 'US Remote', '2026-10-04 00:00:00', '2026-10-04 00:00:00', '2026-10-04 00:00:00'),
+              (7, 'k7', 'RESOLVED', 'web:openjobs', 'US Remote', '2026-10-04 00:00:00', '2026-10-04 00:00:00', '2026-10-04 00:00:00');
         """)
 
     def run_hold(self, live):
@@ -334,10 +337,11 @@ class RetiredSourceTests(unittest.TestCase):
 
     def test_a_dry_run_counts_the_open_retired_jobs_and_writes_nothing(self):
         before = self.states()
-        self.assertEqual(self.run_hold(False)["retired"], {"source_retired_lensa": 2})
+        self.assertEqual(self.run_hold(False)["retired"], {"source_retired_lensa": 2, "source_retired_openjobs": 2})
         self.assertEqual(self.states(), before)
 
     def test_live_ends_only_the_retired_sources_open_jobs_with_the_specific_reason(self):
-        self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 2})
-        self.assertEqual(self.states(), {1: "EXCLUDED_UNRESOLVED:source_retired_lensa", 2: "EXCLUDED_UNRESOLVED:source_retired_lensa", 3: "RESOLVED:", 4: "NEW:"})
-        self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 0})       # nothing left to close
+        self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 2, "source_retired_openjobs": 2})
+        self.assertEqual(self.states(), {1: "EXCLUDED_UNRESOLVED:source_retired_lensa", 2: "EXCLUDED_UNRESOLVED:source_retired_lensa", 3: "RESOLVED:", 4: "NEW:",
+                                         5: "EXCLUDED_UNRESOLVED:source_retired_openjobs", 6: "EXCLUDED_UNRESOLVED:source_retired_openjobs", 7: "RESOLVED:"})   # LIFE-212: Open Jobs' NEW rows too
+        self.assertEqual(self.run_hold(True)["retired"], {"source_retired_lensa": 0, "source_retired_openjobs": 0})       # nothing left to close
