@@ -15,6 +15,12 @@ CT = ZoneInfo("America/Chicago")
 SQL = ("SELECT j.status, j.unresolved_reason, f.admission, f.admission_reason, f.score, f.cloud_status, j.company, j.title, j.lane, j.source, j.first_seen, j.posted_date,"
        " COALESCE(j.final_apply_url, j.source_url) FROM v7_jobs j LEFT JOIN v7_job_fit f ON f.job_id = j.id"
        " WHERE j.notion_page_id IS NULL AND j.status IN ('NEW', 'RESOLVED', 'READY', 'HOLD')")
+# LIFE-212 (Jim, Oct 31 2026: "show me the published vs bounced split"): where the jobs given their one retry in the first run after hold.MISMATCH_AT are now.
+# That run's expire-holds step stamps every job it requeues with the same recovered_at; it can also hold that day's D185 day-6 retries (hold.recover).
+RELEASED = ("SELECT j.status, j.source LIKE 'linkedin%%', COUNT(*) FROM v7_jobs j WHERE j.recovered_at = (SELECT MIN(recovered_at) FROM v7_jobs WHERE recovered_at >= %s)"
+            " GROUP BY 1, 2")
+OUTCOME = {"PUBLISHED": "on the board", "READY": "still on its way", "RESOLVED": "still on its way", "NEW": "still on its way", "HOLD": "still on its way",
+           "DUPLICATE": "bounced: same job already on the board"}
 
 
 def reason(status, why, admission, admission_why, score, cloud):
@@ -51,6 +57,28 @@ def rows_of(found, now):
     return [r[2] for r in out], dict(sorted(groups.items(), key=lambda kv: -kv[1]))
 
 
+def outcome(status):
+    """A released job's current state in plain words: on the board, still moving, or bounced (and why)."""
+    if status in OUTCOME:
+        return OUTCOME[status]
+    if status == "EXCLUDED_UNRESOLVED":
+        return "bounced: its retry failed"
+    return "bounced: excluded by the lane rules" if str(status).startswith("EXCLUDED") else f"other ({status})"
+
+
+def released_lines(rows):
+    """-> intro lines for the LIFE-212 release split, from RELEASED rows (status, is_linkedin, n)."""
+    by = {}
+    for status, linkedin, n in rows:
+        key = outcome(status)
+        total, li = by.get(key, (0, 0))
+        by[key] = (total + int(n), li + (int(n) if linkedin else 0))
+    if not by:
+        return []
+    lines = [f"LIFE-212 release: {sum(t for t, _ in by.values())} jobs got their one retry in the first run after 5:00 AM CT on Oct 31. Where they are now:"]
+    return lines + [f"{t} · {key} ({li} from LinkedIn)" for key, (t, li) in sorted(by.items(), key=lambda kv: -kv[1][0])]
+
+
 def run(limit, live, connect=store.connect, client=None, now=None):
     """-> counts: total, by reason group, and the report page result (private_report.publish)."""
     from lifeos.jobs import private_report
@@ -59,6 +87,9 @@ def run(limit, live, connect=store.connect, client=None, now=None):
     with connect() as connection, connection.cursor() as cursor:
         cursor.execute(SQL)
         found = cursor.fetchall()
+        from lifeos.jobs import hold                                    # noqa: PLC0415
+        cursor.execute(RELEASED, (hold.MISMATCH_AT,))
+        release = released_lines(cursor.fetchall())
     rows, groups = rows_of(found, now)
     left_out = max(0, len(rows) - MAX_ROWS)
     rows = rows[:MAX_ROWS]
@@ -68,6 +99,7 @@ def run(limit, live, connect=store.connect, client=None, now=None):
     intro += [f"{n} · {group}" for group, n in groups.items()]
     if left_out:
         intro.append(f"{left_out} more are left out of the table below (it lists the first {MAX_ROWS}).")
+    intro += release
     header = ["why it is not on the board", "company", "title", "lane", "days waiting", "posting age (days)", "source", "link"]
     result = private_report.publish(client or Client(), title, header, rows, live, links=(7,), intro=intro)
-    return {"total": len(found), "groups": groups, "left_out": left_out, **result}
+    return {"total": len(found), "groups": groups, "left_out": left_out, "release": release[1:], **result}
