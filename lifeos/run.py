@@ -104,6 +104,7 @@ STAGES = {
     "scale-up-exclusion-review": lazy("lifeos.jobs.exclusions", "review"),          # LIFE-121: the high-scoring Scale-Up jobs Jim's own Fit rules removed, to one private Notion page (diag.yml, report job); counts in the clear
     "scale-up-register": lazy("lifeos.sources.scale_up_register"),          # LIFE-121 London coverage step 1: current register vs the Scale-Up registry; London sponsors not held, to one private Notion page (diag.yml, report job)          # LIFE-121: read-only report of why Scale-Up jobs are EXCLUDED_FIT (reason, Fit band, source; counts only) (diag.yml)
     "alerts-open": lazy("lifeos.jobs.alertstate"),
+    "jobs-backlog": lazy("lifeos.jobs.backlog"),          # LIFE-212 (a): every job not on the Job Ledger yet and why it waits, to one dated private Notion page (diag.yml, report job); counts in the clear
     "newsletter-trace": lazy("lifeos.sources.newsletters.cardtrace"),      # LIFE-64: read-only per-card cause check for one message (diag.yml job `trace`); never on a tick
     "notion-sandbox-access": lazy("lifeos.sources.notion_sandbox_access"),   # LIFE-10 §2: read-only check that the Jobs integration can read the synthetic sandbox Ledger (diag.yml job `sandbox`); never on a tick
     "notion-sandbox-outreach-proof": lazy("lifeos.sources.notion_sandbox_outreach_proof"),   # LIFE-10 §2: one-time synthetic writer proof on one sandbox page (diag.yml job `sandbox`, typed SYNTHETIC); never on a tick
@@ -172,6 +173,7 @@ STAGES = {
 # D182: a stage whose counts carry `failed > 0` exits 1 with this fixed code (counts are still printed), so the workflow step reports failure, the
 # finish job's lane list names it, and the existing report job pushes it. Only the stages listed here; every other stage keeps its exit behavior.
 PARTIAL_FAILURE = {"capacity-card": "CAPACITY_READ_FAILED", "job-page-outreach": "JOB_PAGE_OUTREACH_PAGES_FAILED", "notion-sandbox-access": "NOTION_SANDBOX_ACCESS_DENIED", "notion-sandbox-outreach-proof": "NOTION_SANDBOX_PROOF_FAILED", "publish": "PUBLISH_RECORDS_FAILED", "fit": "FIT_CLOUD_DEGRADED", "fit-cloud-backlog": "FIT_CLOUD_DEGRADED", "interview": "INTERVIEW_OS_DEGRADED", "manual-job": "MANUAL_JOB_FAILED", "granola-auto": "GRAN_AUTO_FAILED", "mail-filing": "PHYSMAIL_FILING_FAILED", "scale-up-exclusion-review": "PRIVATE_REPORT_FAILED", "scale-up-register": "PRIVATE_REPORT_FAILED"}      # fit: D214, only when the cloud shadow is enabled and failed
+PARTIAL_FAILURE["jobs-backlog"] = "PRIVATE_REPORT_FAILED"          # LIFE-212 (a): the backlog report page
 
 
 def _step_code(counts):

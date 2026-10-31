@@ -60,6 +60,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `jira-snapshot` -> `lifeos.jira.snapshot:run`
 - `jm-dashboard` -> `lifeos.jira.dashboard:run`
 - `job-page-outreach` -> `lifeos.sources.job_page_outreach:run`
+- `jobs-backlog` -> `lifeos.jobs.backlog:run`
 - `linkedin-search` -> `lifeos.sources.linkedin_search:run`
 - `mail-alerts` -> `lifeos.physmail.stage:run`
 - `mail-card` -> `lifeos.physmail.card:run`
@@ -188,6 +189,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/jobs/alertstate.py`: Read-only diagnostic: which alerts are open and why. Prints open alert keys (source names only), per source the new jobs in the last 24 hours against the 14-day daily bas
 - `lifeos/jobs/ats_detail.py`: Direct job readers for ATS pages that are JavaScript shells. The job URL already names the tenant and the job, so each reader asks the ATS's public JSON (or the JSON embe
 - `lifeos/jobs/audit.py`: Precision audit: no-network pass over READY and PUBLISHED rows with the quality guards.
+- `lifeos/jobs/backlog.py`: LIFE-212 (a) (Jim, Oct 31 2026: "I can't see the backlog ... Add a report"): every job that is not on the Job Ledger yet and not finally bounced, with why it waits.
 - `lifeos/jobs/classify.py`: Where does a final apply URL live? employer site > employer's ATS > aggregator (by host only).
 - `lifeos/jobs/daily.py`: Daily counts (LIFE-74): a few integers per day and name that the stages' own counts lines cannot give the monitors, because a log line is gone after a run and the store k
 - `lifeos/jobs/enrich.py`: Enrich stage: RESOLVED rows -> read the FINAL page for description, real posting date, liveness, and a match check.
