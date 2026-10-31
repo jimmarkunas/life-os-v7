@@ -80,6 +80,49 @@ def release(cursor, now, live):
     return len(picked), len(done)
 
 
+MISMATCH_AT = datetime(2026, 10, 31, 10, 0)      # LIFE-212 (Jim, Oct 31 2026: "yes to both"): 5:00 AM CT. A link_mismatch hold from before this time gets its one retry now
+LINKEDIN_VIEW = "https://www.linkedin.com/jobs/view/"
+
+
+def mismatch_release(cursor, now, live):
+    """One-off (LIFE-212, Jim, Oct 31): every worthwhile job held for link_mismatch before MISMATCH_AT gets its D185 retry now, once each (recovered_at). A LinkedIn
+    row takes its own LinkedIn posting as an aggregator link (as enrich.linkedin_page does since PR 708) and Enrich reads it next; any other row a resolve stage
+    reads goes back to NEW with one attempt left, for the PR 708 title check. A row whose posting another job already holds, or that nothing can retry, stays
+    for the seven-day rule. A second failure is excluded by the usual rules. -> (candidates, released)."""
+    from lifeos.jobs.resolve.aggregators import li_apply                     # noqa: PLC0415 - as enrich imports it
+    cursor.execute("SELECT id, lane, posted_date, first_seen, source, source_url, dedupe_key FROM v7_jobs WHERE status='HOLD' AND recovered_at IS NULL "
+                   "AND unresolved_reason='link_mismatch' AND updated_at < %s ORDER BY updated_at, id", (MISMATCH_AT,))
+    picked = []
+    for job_id, lane, posted, first_seen, source, source_url, key in cursor.fetchall():
+        if not worthwhile(lane, posted, first_seen, "link_mismatch", now):
+            continue
+        own = li_apply.job_id(source_url) if str(source or "").startswith("linkedin") and li_apply.is_linkedin(source_url or "") else None
+        if own:
+            cursor.execute("SELECT id FROM v7_jobs WHERE final_apply_url=%s AND id<>%s LIMIT 1", (LINKEDIN_VIEW + own, job_id))
+            if not cursor.fetchone():
+                picked.append((job_id, key, LINKEDIN_VIEW + own))
+        elif source in RESOLVED_BY:
+            picked.append((job_id, key, None))
+    done = []
+    for job_id, key, link in picked if live else ():
+        if link:
+            cursor.execute("UPDATE v7_jobs SET status='RESOLVED', final_apply_url=%s, apply_kind='aggregator', link_proof=NULL, unresolved_reason='recovery_retry', recovered_at=%s, "
+                           "updated_at=%s, resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",
+                           (link, now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
+        else:
+            cursor.execute("UPDATE v7_jobs SET status='NEW', final_apply_url=NULL, apply_kind=NULL, link_proof=NULL, unresolved_reason='recovery_retry', recovered_at=%s, updated_at=%s, "
+                           "resolve_attempts=%s, enrich_attempts=%s WHERE id=%s AND status='HOLD' AND recovered_at IS NULL",
+                           (now, now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1, job_id))
+        if cursor.rowcount:
+            done.append((job_id, key))
+    if done:                                                                  # read-back, as release()
+        cursor.execute("SELECT id, dedupe_key FROM v7_jobs WHERE id IN (" + ",".join(["%s"] * len(done)) + ") AND status IN ('NEW', 'RESOLVED') AND unresolved_reason='recovery_retry' "
+                       "AND recovered_at=%s AND resolve_attempts=%s AND enrich_attempts=%s", (*[d[0] for d in done], now, limits.RESOLVE_MAX_ATTEMPTS - 1, limits.ENRICH_MAX_ATTEMPTS - 1))
+        if sorted(tuple(r) for r in cursor.fetchall()) != sorted(done):
+            raise store.StoreError("HOLD_READBACK_MISMATCH")
+    return len(picked), len(done)
+
+
 DUE = "((status='HOLD' AND (updated_at < %s OR recovered_at IS NOT NULL)) OR (status IN ('NEW', 'RESOLVED') AND recovered_at < %s))"       # (hold cutoff, recovery deadline)
 
 
@@ -92,6 +135,7 @@ def run(limit, live, now=None):
         with connection.cursor() as cursor:
             candidates, requeued = recover(cursor, now, live)
             release_candidates, released = release(cursor, now, live)
+            mismatch_candidates, mismatch_released = mismatch_release(cursor, now, live)
             cursor.execute("SELECT COUNT(*), COALESCE(SUM(unresolved_reason IS NULL), 0), COALESCE(SUM(recovered_at IS NOT NULL), 0) FROM v7_jobs WHERE " + DUE, due_at)
             due, no_reason, failed_due = (int(x or 0) for x in cursor.fetchone())
             cursor.execute("SELECT COUNT(*) FROM v7_jobs WHERE status='HOLD'")
@@ -121,4 +165,5 @@ def run(limit, live, now=None):
                 if tuple(int(x or 0) for x in cursor.fetchone()) != (due, failed_due) or excluded != due:         # read-back: every due job is now terminal with its reason, as many as were counted
                     raise store.StoreError("HOLD_READBACK_MISMATCH")
     return {"on_hold": holding, "due": due, "excluded": excluded, "by_reason": by_reason, "by_source": by_source, "by_source_reason": matrix, "saved": bool(live),
-            "recovery_candidates": candidates, "recovered": requeued, "retired": retired, "release_candidates": release_candidates, "released": released}
+            "recovery_candidates": candidates, "recovered": requeued, "retired": retired, "release_candidates": release_candidates, "released": released,
+            "mismatch_candidates": mismatch_candidates, "mismatch_released": mismatch_released}

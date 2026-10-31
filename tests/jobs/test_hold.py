@@ -41,7 +41,8 @@ class HoldExpiryTests(unittest.TestCase):
     def test_dry_run_counts_what_is_due_and_writes_nothing(self):
         out, seen = self.go(False)
         self.assertEqual(out, {"on_hold": 9, "due": 3, "excluded": 0, "by_reason": {"jd_thin": 9}, "by_source": {"jobright": 9}, "by_source_reason": {"jobright": {"jd_thin": 9}}, "saved": False,
-                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0, "source_retired_openjobs": 0}, "release_candidates": 0, "released": 0})
+                               "recovery_candidates": 0, "recovered": 0, "retired": {"source_retired_lensa": 0, "source_retired_openjobs": 0}, "release_candidates": 0, "released": 0,
+                               "mismatch_candidates": 0, "mismatch_released": 0})
         self.assertFalse([s for s, _ in seen if s.startswith("UPDATE")])
 
     def test_live_excludes_only_hold_jobs_older_than_seven_days_as_a_terminal_status(self):
@@ -205,6 +206,33 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.db.row(2)[:3], ("RESOLVED", "recovery_retry", "https://aggregator.example.com/j/2"))
         self.assertEqual(self.db.row(2)[4], limits.RESOLVE_MAX_ATTEMPTS - 1)      # exactly one attempt left, and recovered_at set: a second failure is excluded
         self.assertEqual([self.db.row(i)[0] for i in (3, 4, 5)], ["HOLD", "HOLD", "HOLD"])
+
+    def test_life_212_link_mismatch_holds_get_one_retry_a_linkedin_row_on_its_own_posting(self):
+        """Jim, Oct 31 2026: the jobs held for link_mismatch before 5:00 AM CT get their one retry; a LinkedIn row goes to RESOLVED on its LinkedIn posting."""
+        view = "https://www.linkedin.com/jobs/view/4300000001"
+        self.db.job(1, days_held=1, reason="link_mismatch", source="linkedin-alerts")
+        self.db.raw.execute("UPDATE v7_jobs SET source_url=? WHERE id=1", ("https://www.linkedin.com/comm/jobs/view/4300000001/?trackingId=x",))
+        self.db.job(2, days_held=1, reason="link_mismatch")                       # Jobright: back to the resolver with one attempt left
+        self.db.job(3, days_held=1, reason="link_mismatch", source="linkedin-alerts")
+        self.db.raw.execute("UPDATE v7_jobs SET source_url=? WHERE id=3", ("https://www.linkedin.com/jobs/view/4300000003",))
+        self.db.job(9, status="PUBLISHED", days_held=1, reason=None, link="https://www.linkedin.com/jobs/view/4300000003")   # another job already holds row 3's posting: row 3 stays
+        self.db.job(4, days_held=1, reason="link_mismatch", source="discover")    # nothing can retry it: left for the seven-day rule
+        self.db.job(5, days_held=1, reason="jd_thin")                             # another reason: untouched
+        self.db.job(6, days_held=0.01, reason="link_mismatch")                    # held after the release time: the normal rules
+        self.db.job(7, days_held=1, reason="link_mismatch", recovered=NOW - timedelta(days=2))   # already had its retry: untouched
+        with mock.patch.object(hold, "MISMATCH_AT", NOW - timedelta(hours=1)):
+            dry = self.go(live=False)
+            out = self.go()
+            again = self.go(NOW + timedelta(minutes=20))
+        self.assertEqual((dry["mismatch_candidates"], dry["mismatch_released"]), (2, 0))
+        self.assertEqual((out["mismatch_candidates"], out["mismatch_released"], again["mismatch_released"]), (2, 2, 0))
+        self.assertEqual(self.db.row(1)[:3], ("RESOLVED", "recovery_retry", view))
+        self.assertEqual(self.db.raw.execute("SELECT apply_kind FROM v7_jobs WHERE id=1").fetchone()[0], "aggregator")
+        self.assertEqual(self.db.row(2)[:3], ("NEW", "recovery_retry", None))
+        self.assertEqual([self.db.row(i)[4] for i in (1, 2)], [limits.RESOLVE_MAX_ATTEMPTS - 1] * 2)       # one attempt left and recovered_at set: a second failure is excluded
+        self.assertTrue(all(self.db.row(i)[5] for i in (1, 2)))
+        self.assertEqual([self.db.row(i)[:2] for i in (3, 4, 5, 6)], [("HOLD", "link_mismatch"), ("HOLD", "link_mismatch"), ("HOLD", "jd_thin"), ("HOLD", "link_mismatch")])
+        self.assertEqual(self.db.row(7)[0], "EXCLUDED_UNRESOLVED")                # its earlier retry failed: the usual rule ends it
 
     def test_a_hold_that_needs_the_reader_waits_for_the_reset_and_any_other_goes_early(self):
         self.db.job(1, days_held=1, reason="jd_thin", link=LINK)                 # needs the TinyFish reader: waits for the 7:05 PM CT release
