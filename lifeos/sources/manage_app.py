@@ -85,23 +85,43 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
         body += f'<p class="lead"><b>Your next action:</b> {e(nxt["text"] or "—")} · <b>Due:</b> {e(nxt["due"] or "No date set")}</p>'
     if kind == "ledger" and not ledger_ready:
         return body + f'<div class="notice alert">Not available yet: the Job Ledger has no “{e(D.HAND_SET)}” text property, so nothing can be stored on this application. Nothing was changed.</div>'
+    form = lambda act, extra=None: f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, act) | (extra or {}))}'   # noqa: E731
     buttons = "".join(f'<button class="btn" name="v" value="{v}">{e(label)}</button>' for v, label in HOLD_CHOICES if v != (hold or {}).get("state", M.ACTIVE))
-    body += (f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "hold"))}<div class="actions">{buttons}</div></form>'
-             f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "next"))}'
-             f'<label class="lead">Next action <input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Due <input type="date" name="due"></label>'
-             '<div class="actions"><button class="btn">Review next action</button><span class="lead">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</span></div></form>')
+    body += (f'<div class="mcard"><h4>Status</h4>{form("hold")}<div class="mrow">{buttons}</div></form></div>'      # LIFE-174 (Jim, Oct 31): one card per action, fields and button together
+             f'<div class="mcard"><h4>Set a next action</h4>{form("next")}<div class="mrow">'
+             f'<label class="fld">Next action<input type="text" name="nx" maxlength="{M.NEXT_MAX}"></label><label class="fld due">Due<input type="date" name="due"></label>'
+             '<button class="btn">Review next action</button></div></form><p class="hint">Shown beside the derived action, labelled set by Jim; Mark Complete clears it.</p></div>')
     sent, unsent = M.sent_of(lines), _hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "unsent")
-    body += '<div class="eyebrow">Materials sent</div>' + ("".join(                          # LIFE-172: each item can be removed, through its own review and confirm
-        f'<form method="post" action="/manage">{S._hidden(unsent | {"v": m["op"], "sx": m["text"]})}<p class="lead">{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))} '
-        '<button class="btn link">Remove</button></p></form>' for m in sent) or '<p class="lead">None recorded yet.</p>')
-    kinds = "".join(f'<label class="lead"><input type="radio" name="sk" value="{k}"{" checked" if k == M.FORM else ""}> {e(label)}</label> ' for k, label in M.SENT_KINDS.items())
-    body += (f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "sent"))}<div class="actions">{kinds}</div>'
-             f'<label class="lead">What it was <input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label> <label class="lead">Link <input type="url" name="su" maxlength="500"></label>'
-             '<div class="actions"><button class="btn">Review sent material</button><span class="lead">A form: say what it was, a link is optional. A Drive file: paste its link.</span></div></form>'
-             f'<form method="post" action="/manage">{S._hidden(_hand_fields(secret, login, kind, o, page["company"], page["role"], exp, "drive") | {"p": D._page_id(page["id"])})}'      # LIFE-173: find the file instead of hunting for its link
-             f'<label class="lead">Search my Drive <input type="search" name="q" maxlength="{QMAX}" placeholder="Part of the file name"></label>'
-             '<div class="actions"><button class="btn">Search my Drive</button><span class="lead">Pick a file from the results; you review it before anything is recorded.</span></div></form>')
+    body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(                        # LIFE-172: each item can be removed, through its own review and confirm
+        f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
+        '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
+    body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive", {"p": D._page_id(page["id"])})}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
+             f'<label class="fld">Search my Drive<input type="search" name="q" maxlength="{QMAX}" placeholder="Part of the file name"></label><button class="btn">Search my Drive</button></div></form>'
+             '<p class="hint">Pick a file from the results; you review it before anything is recorded.</p>'
+             f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
+             '<label class="fld">Drive link<input type="url" name="su" maxlength="500"></label><button class="btn">Review Drive file</button></div></form></div>'
+             f'<div class="mcard"><h4>Add an application form or portal answers</h4>{form("sent", {"sk": M.FORM})}<div class="mrow">'
+             f'<label class="fld">What it was<input type="text" name="sx" maxlength="{M.NEXT_MAX}"></label><label class="fld">Link (optional)<input type="url" name="su" maxlength="500"></label>'
+             '<button class="btn">Review form</button></div></form></div>')
     return body
+
+
+CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(--light);padding:16px 18px;margin:0 0 14px}.mcard h4{margin:0 0 12px;font-size:13px;font-weight:720}"   # LIFE-174
+       ".mrow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:flex-end}.mrow .fld{flex:1 1 220px}.mrow .fld.due{flex:0 1 170px}"
+       ".fld{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:680;color:var(--muted)}"
+       ".fld input{font:inherit;font-weight:500;color:var(--ink);background:var(--paper);border:1px solid var(--border-strong);border-radius:7px;padding:9px 11px;min-height:40px;width:100%;box-sizing:border-box}"
+       ".fld input:focus-visible{outline:3px solid var(--focus);outline-offset:1px}.hint{margin:10px 0 0;font-size:12px;color:var(--muted)}"
+       ".item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}.item:last-of-type{border-bottom:none}"
+       ".or{margin:14px 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740}")
+
+
+def handle_css(req, who, secrets):
+    return 200, "text/css; charset=utf-8", CSS.encode(), ()
+
+
+def _styled(page):
+    """The Close page with Manage's own stylesheet after /close.css (the gate's CSP allows only this origin's files, never inline styles)."""
+    return page.replace(b'<link rel="stylesheet" href="/close.css">', b'<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">')
 
 
 def _drive(secrets):
@@ -192,7 +212,7 @@ def _hub(req, who, secrets):
         if not closed:
             body += _link("Mark outreach as sent", "/sent?" + urlencode({"j": rid}), "Record a message you sent to a contact for this job.")
     body += (f'</section><div class="actions"><a class="btn link" href="https://www.notion.so/{pid}" target="_blank" rel="noopener">Open the opportunity page in Notion →</a></div>')
-    return 200, C.HTML, S.page("Manage opportunity", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB), ()
+    return 200, C.HTML, _styled(S.page("Manage opportunity", "One interview opportunity: its actions, each confirmed on its own screen.", body, PATH, TAB)), ()
 
 
 def unapplied(rows):
