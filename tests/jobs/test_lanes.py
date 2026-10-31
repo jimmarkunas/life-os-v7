@@ -269,20 +269,42 @@ class OtherLaneNeedsAPositiveMarket(unittest.TestCase):
 
 
 class FirstPartyAge(unittest.TestCase):
-    """D111: a job on its employer's own board is open: its posting age is not judged (aggregator and feed jobs keep the age rule)."""
+    """D111: a job on its employer's own board is open: its posting age is not judged (aggregator and feed jobs keep the age rule).
+    LIFE-212 (Jim, Oct 31 2026): except in US Remote (14 days) and Scale-Up (30 days), where a dated employer-board job is bounced by age too."""
 
-    def test_an_old_posting_on_an_employers_board_is_not_excluded_but_the_same_age_elsewhere_is(self):
+    def first_party(self, facts, **kw):
+        return Facts(**{**facts.__dict__, "first_party": True, **kw})
+
+    def test_an_old_posting_on_an_employers_board_is_excluded_in_us_remote_and_scale_up(self):
         old = uk(posted=ago(90))
         self.assertEqual(qualify(SCALE, old, TODAY).reason, "older than 30 days")
-        self.assertEqual(qualify(SCALE, Facts(**{**old.__dict__, "first_party": True}), TODAY).status, ADMIT)
+        self.assertEqual(qualify(SCALE, self.first_party(old), TODAY).reason, "older than 30 days")
         us_old = us(posted=ago(60))
         self.assertEqual(qualify(US, us_old, TODAY).reason, "older than 14 days")
-        self.assertEqual(qualify(US, Facts(**{**us_old.__dict__, "first_party": True}), TODAY).status, ADMIT)
+        self.assertEqual(qualify(US, self.first_party(us_old), TODAY).reason, "older than 14 days")
 
-    def test_an_undated_first_party_us_job_is_not_sent_to_review_for_its_date(self):
+    def test_the_us_remote_employer_board_limit_is_14_days(self):
+        self.assertEqual(qualify(US, self.first_party(us(), posted=ago(14)), TODAY).status, ADMIT)
+        self.assertEqual((qualify(US, self.first_party(us(), posted=ago(15)), TODAY).status, qualify(US, self.first_party(us(), posted=ago(15)), TODAY).reason),
+                         (EXCLUDE, "older than 14 days"))
+
+    def test_the_scale_up_employer_board_limit_is_30_days(self):
+        self.assertEqual(qualify(SCALE, self.first_party(uk(), posted=ago(30)), TODAY).status, ADMIT)
+        self.assertEqual((qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).status, qualify(SCALE, self.first_party(uk(), posted=ago(31)), TODAY).reason),
+                         (EXCLUDE, "older than 30 days"))
+
+    def test_a_skilled_worker_employer_board_job_is_still_not_judged_by_age(self):
+        sw = uk(posted=ago(90), route={"Skilled Worker": POSITIVE}, located=True)
+        self.assertEqual(qualify(SW, sw, TODAY).reason, "older than 14 days")
+        self.assertEqual(qualify(SW, self.first_party(sw), TODAY).status, ADMIT)
+        self.assertEqual((lanes.first_party_age("Skilled Worker"), lanes.first_party_age("US Remote"), lanes.first_party_age("Newsletter"), lanes.first_party_age("Scale-up")),
+                         (None, 14, 14, 30))
+
+    def test_an_undated_first_party_job_is_never_bounced_on_age(self):
         undated = Facts(**{**us().__dict__, "posted": None})
         self.assertEqual(qualify(US, undated, TODAY).reason, "posting date unresolved")
-        self.assertEqual(qualify(US, Facts(**{**undated.__dict__, "first_party": True}), TODAY).status, ADMIT)
+        self.assertEqual(qualify(US, self.first_party(undated), TODAY).status, ADMIT)
+        self.assertEqual(qualify(SCALE, self.first_party(uk(posted=None)), TODAY).status, ADMIT)
 
     def test_only_an_employer_board_source_counts_as_first_party(self):
         self.assertTrue(lanes.first_party_source("web:su-wheely-technologies-ltd"))
