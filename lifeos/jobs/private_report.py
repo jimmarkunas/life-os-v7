@@ -54,8 +54,9 @@ def _existing(client, parent, title):
     return None
 
 
-def publish(client, title, header, rows, live, links=()):
-    """-> counts: {"rows", "page": "dry" | "new" | "present", "failed", "why"}. Write only when live; read back the row count before reporting 'new'."""
+def publish(client, title, header, rows, live, links=(), intro=()):
+    """-> counts: {"rows", "page": "dry" | "new" | "present", "failed", "why"}. Write only when live; read back the row count before reporting 'new'.
+    `intro` (LIFE-212): summary lines written as ONE paragraph above the tables."""
     counts = {"rows": len(rows), "page": "dry", "failed": 0, "why": {}}
     try:
         parent = REPORTS_PAGE
@@ -64,7 +65,7 @@ def publish(client, title, header, rows, live, links=()):
             return counts
         if not live:
             return counts
-        blocks = tables(header, rows, links)
+        blocks = ([{"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text("\n".join(intro))}}] if intro else []) + tables(header, rows, links)
         if len(blocks) > limits.NOTION_MAX_CHILD_BLOCKS - 1:
             return _fail(counts, "PRIVATE_REPORT_TOO_LARGE")
         page = client.call_once("POST", "/pages", {"parent": {"type": "page_id", "page_id": parent}, "properties": {"title": {"title": rich_text(title)}}, "children": blocks})
