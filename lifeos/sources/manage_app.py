@@ -96,6 +96,12 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
     body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(                        # LIFE-172: each item can be removed, through its own review and confirm
         f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
         '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
+    if picker_ready():                                                    # LIFE-217: Google's own picker; a pick opens the usual review (sk=file, su=its link)
+        pick = form("sent", {"sk": M.FILE, "su": ""}).replace("<form ", '<form id="pick-form" ', 1)
+        body += (f'<div class="mcard"><h4>Pick a Google Drive file you sent</h4>{pick}</form>'
+                 f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(PICKER["client_id"])}" data-key="{e(PICKER["api_key"])}" data-app="{e(PICKER["app_id"])}">Choose from Google Drive</button></div>'
+                 '<p class="hint">Google asks you to sign in the first time; it sees only the file you pick. You review it before anything is recorded.</p>'
+                 '<script src="/manage-picker.js" defer></script></div>')
     body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
              f'<label class="fld">Search my Drive (optional)<input type="search" name="q" maxlength="{QMAX}" placeholder="Leave empty for your latest files"></label><button class="btn">Show my Drive files</button></div></form>'
              '<p class="hint">Click it with the box empty to pick from your most recently edited files, or type part of a name first. You review the file before anything is recorded.</p>'
@@ -114,6 +120,49 @@ CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(
        ".fld input:focus-visible{outline:3px solid var(--focus);outline-offset:1px}.hint{margin:10px 0 0;font-size:12px;color:var(--muted)}"
        ".item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}.item:last-of-type{border-bottom:none}"
        ".or{margin:14px 0 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:740}")
+
+
+# LIFE-217 (Jim, Oct 31 2026: "build the Google pop-up picker"; "Google sign-in pop-up"): Google's own Drive picker on Manage. Its sign-in asks only drive.file
+# (the files Jim picks); the Close service's Drive credential never reaches the browser. These are public browser identifiers (an OAuth client id, a Picker API
+# key restricted to this origin, the Cloud project number), not secrets. While any is blank the picker button is not shown and the name search stays the way in.
+PICKER = {"client_id": "", "api_key": "", "app_id": ""}
+PICKER_JS = """(function () {
+  var b = document.getElementById("pick-drive"), f = document.getElementById("pick-form"), token = null, ready = null;
+  if (!b || !f) { return; }
+  function load(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src; s.async = true; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+  ready = Promise.all([load("https://apis.google.com/js/api.js"), load("https://accounts.google.com/gsi/client")])
+    .then(function () { return new Promise(function (ok) { gapi.load("picker", ok); }); });
+  function fail() { b.disabled = false; b.textContent = "Google Drive did not open: use the search below"; }
+  function show() {
+    var view = new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(false).setSelectFolderEnabled(false);
+    new google.picker.PickerBuilder().addView(view).setOAuthToken(token).setDeveloperKey(b.dataset.key).setAppId(b.dataset.app)
+      .setCallback(function (d) {
+        if (d.action === google.picker.Action.PICKED && d.docs && d.docs[0] && /^[A-Za-z0-9_-]{10,200}$/.test(d.docs[0].id)) {
+          f.elements.su.value = "https://drive.google.com/file/d/" + d.docs[0].id + "/view";
+          f.submit();
+        }
+      }).build().setVisible(true);
+  }
+  var client = null;
+  ready.then(function () {
+    client = google.accounts.oauth2.initTokenClient({ client_id: b.dataset.client, scope: "https://www.googleapis.com/auth/drive.file",
+      callback: function (r) { if (r && r.access_token) { token = r.access_token; show(); } else { fail(); } } });
+    b.disabled = false;
+  }, fail);
+  b.addEventListener("click", function () {
+    if (!client) { return; }
+    if (token) { show(); } else { client.requestAccessToken(); }
+  });
+})();
+"""
+
+
+def picker_ready():
+    return all(isinstance(PICKER.get(k), str) and PICKER[k].strip() for k in ("client_id", "api_key", "app_id"))
+
+
+def handle_js(req, who, secrets):
+    return 200, "text/javascript; charset=utf-8", PICKER_JS.encode(), ()
 
 
 def handle_css(req, who, secrets):
