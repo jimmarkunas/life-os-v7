@@ -690,7 +690,7 @@ def lanes_public(reason):
 
 class NoHistoricalRescore(unittest.TestCase):
     def test_the_score_and_lane_policy_versions_are_unchanged(self):
-        """D213: no version bump for that change (l15 is the later keep-list change, which does bump), so stage.PICK finds no stored score stale for this change and no PUBLISHED job is re-scored by it (D94 unchanged)."""
+        """D213: no version bump for that change (l15 is the later keep-list change, which does bump; l17 is the LIFE-212 age limits, which bump so jobs already on the board are re-judged against them), so stage.PICK finds no stored score stale for this change and no PUBLISHED job is re-scored by it (D94 unchanged)."""
         from lifeos.jobs import lanes
         from lifeos.jobs.fit import MODEL_VERSION
-        self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l16"))
+        self.assertEqual((MODEL_VERSION, lanes.POLICY_VERSION), ("6", "l17"))
