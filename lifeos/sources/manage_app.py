@@ -97,8 +97,8 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
         f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
         '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
     body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
-             f'<label class="fld">Search my Drive<input type="search" name="q" maxlength="{QMAX}" placeholder="Part of the file name"></label><button class="btn">Search my Drive</button></div></form>'
-             '<p class="hint">Pick a file from the results; you review it before anything is recorded.</p>'
+             f'<label class="fld">Search my Drive (optional)<input type="search" name="q" maxlength="{QMAX}" placeholder="Leave empty for your latest files"></label><button class="btn">Show my Drive files</button></div></form>'
+             '<p class="hint">Click it with the box empty to pick from your most recently edited files, or type part of a name first. You review the file before anything is recorded.</p>'
              f'<div class="or">or paste its link</div>{form("sent", {"sk": M.FILE})}<div class="mrow">'
              '<label class="fld">Drive link<input type="url" name="su" maxlength="500"></label><button class="btn">Review Drive file</button></div></form></div>'
              f'<div class="mcard"><h4>Add an application form or portal answers</h4>{form("sent", {"sk": M.FORM})}<div class="mrow">'
@@ -341,14 +341,14 @@ def _drive_search(req, who, secrets):
             or not C._same(form.get("t"), C._mac(secret, "manage-hand", login, o, st, exp, "drive")) or not C._same(C._fingerprint(kind, o, company, role, False), st)):
         return _expired(form)
     q = " ".join((form.get("q") or "").split())
-    if not q or len(q) > QMAX or not q.isprintable():
-        return _stop(400, "Not accepted", "Type part of the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
+    if len(q) > QMAX or not q.isprintable():                             # an empty box lists the latest files (Jim, Oct 31 2026: "I shouldn't have to type")
+        return _stop(400, "Not accepted", "Shorten the file name", f"Up to {QMAX} characters.", "Nothing was searched.")
     drive = _drive(secrets)
     if drive is None:
         return _stop(409, "Not searched", "Google Drive is not connected", "The Drive credential is not installed on the Close service.", "Nothing was searched.")
     from lifeos.platform.gdrive import _quote
     try:
-        files = drive.find(f"name contains '{_quote(q)}' and mimeType != '{FOLDER}'", order="modifiedTime desc")
+        files = drive.find((f"name contains '{_quote(q)}' and " if q else "") + f"mimeType != '{FOLDER}'", order="modifiedTime desc")
     except RuntimeError as error:                                          # gdrive.DriveError: fixed codes only
         return _stop(409, "Not searched", "Google Drive could not be searched", "Try again in a minute.", f"Refused: {str(error)[:60]}. Nothing was changed.")
     hits = [f for f in files if isinstance(f.get("name"), str) and DRIVE_LINK.fullmatch(str(f.get("webViewLink") or ""))][:HITS]
@@ -356,7 +356,7 @@ def _drive_search(req, who, secrets):
     rows = "".join(f'<form method="post" action="/manage">{S._hidden(pick | {"su": f["webViewLink"]})}<div class="actions"><button class="btn">Pick</button>'
                    f'<span class="lead">{e(" ".join(f["name"].split()))} · <a href="{e(f["webViewLink"])}" target="_blank" rel="noopener">open ↗</a></span></div></form>' for f in hits)
     body = (f'<section class="section"><div class="eyebrow">Search my Drive</div><p class="step-title">{e(role)}</p><p class="lead">{e(company)}</p>'
-            f'<p class="lead">Files whose name contains “{e(q)}”, most recently edited first{f" (the first {HITS})" if len(hits) == HITS else ""}.</p>'
+            f'<p class="lead">{f"Files whose name contains “{e(q)}”" if q else "Your Drive files"}, most recently edited first{f" (the first {HITS})" if len(hits) == HITS else ""}.</p>'
             + (rows or '<div class="notice alert">No Drive file matches. Try a shorter part of the name.</div>')
             + (_link("Back to Manage", "/manage?" + urlencode({"o": back}), "Nothing was recorded.") if (back := D._page_id(form.get("p"))) else "") + '</section>')
     return 200, C.HTML, S.page("Search my Drive", "Pick the file you sent; you review it before anything is recorded.", body, PATH, TAB), ()
