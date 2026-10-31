@@ -29,6 +29,8 @@ class FakeClient:
         self.writes.append((method, path, body))
         tables = []
         for index, table in enumerate(body["children"]):
+            if table.get("type") != "table":                       # LIFE-212: an intro paragraph above the tables
+                continue
             rows = table["table"]["children"]
             self.blocks[f"t{index}"] = [{"id": f"r{n}"} for n in range(len(rows) - self.lose_rows)]
             tables.append({"id": f"t{index}", "type": "table"})
