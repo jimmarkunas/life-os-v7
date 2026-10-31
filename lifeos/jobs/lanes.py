@@ -28,6 +28,7 @@ class LanePolicy:
     pay_floor: int | None = None         # annual, only when pay is explicit
     max_age_days: int | None = None      # new-admission freshness; None = no gate
     unknown_date_blocks: bool = True     # a missing posting date goes to REVIEW (False: it does not suppress)
+    first_party_age: bool = False        # LIFE-212 (Jim, Oct 31 2026): an employer-board job is also judged by its known Posting Date (not D111-exempt); an undated one is not
     route: str | None = None             # required route evidence ("Scale-up", "Skilled Worker")
     geography_required: bool = False
     london_only: bool = False            # D96: the job must be in London; a stated place that is not London is EXCLUDE (an empty location stays Review)
@@ -37,10 +38,10 @@ class LanePolicy:
 
 
 POLICIES = {
-    "US Remote": LanePolicy("US Remote", "US", "$", work_mode="remote_only", pay_floor=75_000, max_age_days=14),
+    "US Remote": LanePolicy("US Remote", "US", "$", work_mode="remote_only", pay_floor=75_000, max_age_days=14, first_party_age=True),
     # Scale-Up: the liberal lane. Any work mode, no pay floor, route + geography evidence required, 30-day age gate
     # (Jim, 2026-10-01; the earlier canon had no age gate). A missing posting date does not suppress it.
-    "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, route="Scale-up",
+    "Scale-Up": LanePolicy("Scale-Up", "UK", "£", pay_floor=40_000, max_age_days=30, unknown_date_blocks=False, first_party_age=True, route="Scale-up",
                            geography_required=True, london_only=True, bucket="Target"),
     # Skilled Worker (Phase 2, enabled by Jim 2026-10-01): sponsor-register evidence for the actual employer is the route; London positive, a named
     # non-target place negative, UK-remote / unresolved geography goes to Review; explicit pay under GBP 65,000 excludes; 14 days; Fit 72 like every lane.
@@ -170,6 +171,8 @@ def _qualify(policy, facts, today):
             return Decision(REVIEW, "posting date in the future")
         elif (today - facts.posted).days > policy.max_age_days:
             return Decision(EXCLUDE, f"older than {policy.max_age_days} days")
+    elif policy.max_age_days is not None and policy.first_party_age and facts.posted is not None and (today - facts.posted).days > policy.max_age_days:
+        return Decision(EXCLUDE, f"older than {policy.max_age_days} days")      # LIFE-212 (Jim, Oct 31 2026): an employer-board job over its lane's age is bounced too
     if policy.route:
         state = facts.route.get(policy.route, UNRESOLVED)
         if state == NEGATIVE:
@@ -357,6 +360,13 @@ _CITY_STATE = re.compile(r"^\s*[A-Za-z][A-Za-z .'-]*,\s*[A-Z]{2}\b")
 def work_mode_for_fit(location, title, text):
     """detect_work_mode over the Fit window (D92). D89's rule that a named US city and state with no cue is an office job is withdrawn by D204."""
     return detect_work_mode(location, title, text, window=FIT_WINDOW)      # D204: a named city with no office requirement is no longer read as office
+
+
+def first_party_age(lane):
+    """LIFE-212 (Jim, Oct 31 2026): the lane's max age when its employer-board (first-party) jobs are judged by age too, else None (D111 still exempts them)."""
+    name = lane_for(lane)
+    policy = next((p for key, p in POLICIES.items() if key.casefold() == name.casefold()), None)     # the Ledger spells it `Scale-up` (D165)
+    return policy.max_age_days if policy and policy.first_party_age else None
 
 
 def first_party_source(source):

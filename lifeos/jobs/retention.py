@@ -5,6 +5,7 @@ Notion, OUR pages only (matched by stored page id; pre-existing ledger rows are 
   an UNAPPLIED job with no Saturn Decision whose age is 30+ days (employer Posting Date, else First Surfaced; never Created At)
   and for which progression.resolve says NOT_PROTECTED  ->  trashed (recoverable 30 days), marked PURGED here, and a 90-day tombstone is written.
 A job read off its employer's own board (source web:<board>) is open while the board lists it (D111): it is retired only once a complete listing of that board no longer has it (D167).
+LIFE-212 (Jim, Oct 31 2026): a lane whose policy judges employer-board jobs by age (US Remote 14 days, Scale-Up 30) retires a job older than that age, listed on its board or not.
 Applied jobs are never destructively retired by Jobs until the Interview progression handoff (INT-7.1A) exists: they resolve UNKNOWN and are kept.
 No legacy Lifecycle / Liveness value is read for a decision or written. One filtered Notion query per page of 100 (the approved weekly read). Counts only.
 """
@@ -51,10 +52,22 @@ def age_days(posted, first_surfaced, today):
     return (today - anchor).days if anchor else None
 
 
-def action(posted, first_surfaced, applied, saturn, today):
+def _lane_age(lane):
+    """The Ledger lane's own first-party max age (LIFE-212), or None. Only the lane itself: the Newsletter lane keeps RETIRE_DAYS and D167."""
+    return None if lane in lanes.LANE_ALIAS else lanes.first_party_age(lane)
+
+
+def retire_days(lane):
+    """(query cutoff in days, least age in days to retire) for a lane. LIFE-212 (Jim, Oct 31 2026): a lane that judges employer-board jobs by age (US Remote 14,
+    Scale-Up 30) retires a job OLDER than that age, as admission bounces it ("older than N days"); every other lane keeps RETIRE_DAYS."""
+    days = _lane_age(lane)
+    return (days, days + 1) if days else (RETIRE_DAYS, RETIRE_DAYS)
+
+
+def action(posted, first_surfaced, applied, saturn, today, days=RETIRE_DAYS):
     """'retire' | None. Retire only a stale, unprotected, unapplied job."""
     age = age_days(posted, first_surfaced, today)
-    if age is None or age < RETIRE_DAYS:
+    if age is None or age < days:
         return None
     return "retire" if progression.resolve(applied, saturn) == progression.NOT_PROTECTED else None
 
@@ -85,10 +98,10 @@ def _date(prop):
 
 
 def candidates(client, now, lane):
-    """(page id, Posting Date, First Surfaced) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
+    """(page id, Posting Date, First Surfaced, lane) of one lane from the filtered query, up to MAX_PAGES pages of 100."""
     found, cursor = [], None
     for _ in range(MAX_PAGES):
-        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=RETIRE_DAYS), lane)}
+        body = {"page_size": limits.NOTION_PAGE_SIZE, "filter": query_filter(now - timedelta(days=retire_days(lane)[0]), lane)}     # LIFE-212: the lane's own age
         if cursor:
             body["start_cursor"] = cursor
         try:
@@ -98,7 +111,7 @@ def candidates(client, now, lane):
             raise notion_client.NotionError(" ".join(part for part in (str(error), f"lane={tag}", error.detail) if part)) from None
         for page in data.get("results", []):
             props = page.get("properties") or {}
-            found.append((page["id"], _date(props.get("Posting Date")), _date(props.get("First Surfaced"))))
+            found.append((page["id"], _date(props.get("Posting Date")), _date(props.get("First Surfaced")), lane))
         if not data.get("has_more"):
             break
         cursor = data.get("next_cursor")
@@ -131,13 +144,13 @@ def purge_notion(live, now, environ=None):
     counts["candidates"] = len(pages)
     with store.connect() as connection, connection.cursor() as cursor:
         ours, open_on_board = {}, set()
-        for page_id, posted, first in pages:
+        for page_id, posted, first, lane in pages:
             cursor.execute("SELECT id, dedupe_key, fuzzy_key, company, title, source FROM v7_jobs WHERE notion_page_id=%s", (page_id,))
             row = cursor.fetchone()
             if not row:
                 continue
-            ours[page_id] = (row[:5], posted, first)
-            if lanes.first_party_source(row[5]):
+            ours[page_id] = (row[:5], posted, first, lane)
+            if lanes.first_party_source(row[5]) and _lane_age(lane) is None:      # LIFE-212 (Jim, Oct 31 2026): not in US Remote or Scale-Up, which retire it by age
                 # D167 (D111): a role on its employer's own board is open, so its posting age does not retire it. It is retired only once a complete
                 # listing of that board no longer has it (the web pass marks it REMOVED). No board record at all cannot prove it closed: keep it.
                 cursor.execute("SELECT SUM(state='CURRENT'), SUM(state='REMOVED') FROM v7_source_items WHERE job_id=%s", (row[0],))
@@ -149,14 +162,14 @@ def purge_notion(live, now, environ=None):
     if not live:
         return counts
     writes, today = 0, now.date()
-    for page_id, ((job_id, key, fuzzy, company, title), posted, first) in ours.items():
+    for page_id, ((job_id, key, fuzzy, company, title), posted, first, lane) in ours.items():
         # the filter already excluded Applied and Saturn Decision rows; the handoff can still protect an unapplied pursuit
         if page_id in open_on_board:
             continue
         if hiring_pipeline.handoff_for(company, title, opportunities).protected:
             counts["protected"] += 1
             continue
-        if action(posted, first, False, None, today) != "retire" or writes >= WRITES_PER_RUN:
+        if action(posted, first, False, None, today, retire_days(lane)[1]) != "retire" or writes >= WRITES_PER_RUN:
             continue
         writes += 1
         try:

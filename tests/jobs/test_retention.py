@@ -68,14 +68,16 @@ class Purge(unittest.TestCase):
         self.assertEqual(trashed, ["/pages/old", "/pages/undated-old"])                # a recent Posting Date keeps a reposted job; a recent First Surfaced keeps an undated one
         self.assertEqual((counts["retired"], counts["failed"]), (2, 0))
 
-    def retire(self, source, board):
-        """-> counts and the pages trashed, for one old, unapplied job read from `source`, whose board record is `board` = (CURRENT, REMOVED)."""
-        with mock.patch.object(retention.tombstone, "write"):
-            client, counts = self.run_purge([page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", source)}, True, boards={7: board})
+    def retire(self, source, board, lane="Skilled Worker", posted="2026-08-01", pipeline=()):
+        """-> counts and the pages trashed, for one unapplied job of `lane` read from `source`, whose board record is `board` = (CURRENT, REMOVED).
+        D167 is exercised in Skilled Worker, which keeps it; US Remote and Scale-Up retire by age (LIFE-212)."""
+        with mock.patch.object(retention.tombstone, "write"), mock.patch.object(retention.hiring_pipeline, "handoff_for",
+                                                                               lambda company, title, opportunities: mock.Mock(protected=(company, title) in pipeline)):
+            client, counts = self.run_purge([page("p1", posted)], {"p1": (7, "k", "f", "Acme", "Role", source)}, True, lanes=(lane,), boards={7: board})
         return counts, [path for method, path in client.log if method == "PATCH"]
 
     def test_a_role_still_listed_on_its_employers_board_is_kept_however_old(self):
-        counts, trashed = self.retire("web:acme", (1, 0))                              # D111: open means open
+        counts, trashed = self.retire("web:acme", (1, 0))                              # D111: open means open (Skilled Worker)
         self.assertEqual((trashed, counts["kept_open"], counts["retired"]), ([], 1, 0))
 
     def test_a_role_with_no_board_record_is_kept_because_nothing_proves_it_closed(self):
@@ -92,8 +94,38 @@ class Purge(unittest.TestCase):
             self.assertEqual((source, trashed, counts["kept_open"]), (source, ["/pages/p1"], 0))
 
     def test_a_dry_run_counts_the_roles_it_would_keep_open(self):
-        client, counts = self.run_purge([page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", "web:acme")}, False, boards={7: (1, 0)})
+        client, counts = self.run_purge([page("p1", "2026-08-01")], {"p1": (7, "k", "f", "Acme", "Role", "web:acme")}, False, lanes=("Skilled Worker",), boards={7: (1, 0)})
         self.assertEqual((counts["ours"], counts["kept_open"], counts["retired"]), (1, 1, 0))
+
+    def test_a_us_remote_employer_board_role_over_14_days_is_retired_though_still_listed(self):
+        # LIFE-212 (Jim, Oct 31 2026): NOW is Oct 11; 15 days old is retired, 14 is kept, listed on its board or not
+        counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-26")
+        self.assertEqual((trashed, counts["kept_open"], counts["retired"]), (["/pages/p1"], 0, 1))
+        counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-27")
+        self.assertEqual((trashed, counts["retired"]), ([], 0))
+
+    def test_a_scale_up_employer_board_role_retires_after_30_days(self):
+        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-10")       # 31 days
+        self.assertEqual((trashed, counts["kept_open"], counts["retired"]), (["/pages/p1"], 0, 1))
+        counts, trashed = self.retire("web:acme", (1, 0), lane="Scale-Up", posted="2026-09-11")       # 30 days
+        self.assertEqual((trashed, counts["retired"]), ([], 0))
+
+    def test_the_query_asks_each_lane_for_its_own_age(self):
+        client, _ = self.run_purge([], {}, False, lanes=("US Remote", "Scale-Up", "Skilled Worker", "Newsletter"))
+        cutoff = {f["and"][3]["select"]["equals"]: f["and"][4]["or"][0]["date"]["before"] for f in client.queries}
+        self.assertEqual(cutoff, {"US Remote": "2026-09-27", "Scale-up": "2026-09-11", "Skilled Worker": "2026-09-11", "Newsletter": "2026-09-11"})
+
+    def test_a_pipeline_protected_us_remote_employer_board_role_is_kept(self):
+        counts, trashed = self.retire("web:acme", (1, 0), lane="US Remote", posted="2026-09-26", pipeline={("Acme", "Role")})
+        self.assertEqual((trashed, counts["protected"], counts["retired"]), ([], 1, 0))
+
+    def test_applied_and_saturn_decided_rows_are_still_asked_out_by_the_us_remote_query(self):
+        text = str(retention.query_filter(NOW - dt.timedelta(days=retention.retire_days("US Remote")[0]), "US Remote"))
+        for part in ("'Applied'", "'Applied On'", "'Saturn Decision'", "2026-09-27"):
+            self.assertIn(part, text)
+        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, True, None, NOW.date(), 15), None)                 # applied: kept (UNKNOWN until the handoff)
+        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, "Go", NOW.date(), 15), None)                # a Saturn Decision: kept
+        self.assertEqual(retention.action(dt.date(2026, 9, 1), None, False, None, NOW.date(), 15), "retire")
 
     def test_the_ledgers_own_spelling_of_a_lane_is_asked_for_not_the_databases(self):
         # The database says `Scale-Up`, the Ledger option is `Scale-up`; Notion refused the former with HTTP 400 on both Sundays (run 38153372055).

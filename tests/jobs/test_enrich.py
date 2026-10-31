@@ -123,6 +123,17 @@ class FreshnessAuthority(unittest.TestCase):
         old = enrich.finish("Program Manager", self.desc(), "Program Manager", enrich._now().date() - timedelta(days=45), "ats_api", None, "Scale-Up")
         self.assertEqual(old["outcome"], "stale")                                  # 30 days for Scale-Up
 
+    def test_an_employer_board_job_is_stale_by_age_in_us_remote_and_scale_up_only(self):
+        """LIFE-212 (Jim, Oct 31 2026): US Remote 14 days, Scale-Up 30; Skilled Worker keeps D111 (a job on its employer's own board is not judged by age)."""
+        from datetime import timedelta
+        today = enrich._now().date()
+        read = lambda lane, days: enrich.finish("Program Manager", self.desc(), "Program Manager", today - timedelta(days=days), "ats_api", None, lane, False, True)["outcome"]
+        self.assertEqual([read("US Remote", 14), read("US Remote", 15), read("Newsletter", 15)], ["ready", "stale", "stale"])
+        self.assertEqual([read("Scale-Up", 30), read("Scale-Up", 31)], ["ready", "stale"])
+        self.assertEqual(read("Skilled Worker", 90), "ready")
+        undated = enrich.finish("Program Manager", self.desc(), "Program Manager", None, "ats_api", None, "US Remote", False, True)
+        self.assertEqual(undated["outcome"], "ready")                                  # no posting date: never bounced on age
+
     def test_a_thin_page_on_a_scale_up_sponsors_own_board_is_ready_for_review_and_nothing_else_is_let_through(self):
         """Jim, Oct 21: Review it as long as there is a link. Every other lane and every aggregator still holds a thin page (jd_thin)."""
         from lifeos.jobs import enrich, jd
@@ -347,6 +358,24 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertIn("EXCLUDED_STALE", update[3][0])
         self.assertIn("notion_page_id IS NULL", update[3][0])
 
+    def test_a_stale_employer_board_job_over_its_lanes_age_is_not_revived(self):
+        """LIFE-212 (Jim, Oct 31 2026): the D111 age requeue no longer revives a US Remote (14 days) or Scale-Up (30 days) job over its age; Skilled Worker and undated ones still return."""
+        import datetime as dt
+        import sqlite3
+        now = dt.datetime(2026, 10, 31, 12, 0)
+        cur = self.Cur([])
+        enrich.relink_first_party(cur, now=now)
+        sql, params = [(s, p) for s, p in cur.sql if "requeued_age" in s][0]
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE v7_jobs (id, status, source, notion_page_id, final_apply_url, lane, posted_date, unresolved_reason, enrich_attempts, updated_at)")
+        rows = [(1, "US Remote", 14), (2, "US Remote", 15), (3, "Newsletter", 15), (4, "Scale-Up", 30), (5, "Scale-Up", 31), (6, "Skilled Worker", 90), (7, "US Remote", None)]
+        for job_id, lane, days in rows:
+            posted = None if days is None else (now.date() - dt.timedelta(days=days)).isoformat()
+            db.execute("INSERT INTO v7_jobs VALUES (?, 'EXCLUDED_STALE', 'web:acme', NULL, 'https://x/1', ?, ?, NULL, 1, NULL)", (job_id, lane, posted))
+        db.execute(sql.replace("%%", "%").replace("%s", "?"), [str(p) if isinstance(p, (dt.date, dt.datetime)) else p for p in params])
+        revived = sorted(i for (i,) in db.execute("SELECT id FROM v7_jobs WHERE status='RESOLVED'"))
+        self.assertEqual(revived, [1, 4, 6, 7])
+
     def test_revolut_403_is_retried_as_chrome(self):
         html = JOB % ("2020-01-01", LONG.replace('"', "'"))
         with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
@@ -363,7 +392,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
         self.assertEqual(result["reason"], "http_403")
 
     def test_a_first_party_403_is_retried_as_the_announced_bot(self):
-        html = JOB % ("2020-01-01", LONG.replace('"', "'"))
+        html = JOB % (enrich._now().date().isoformat(), LONG.replace('"', "'"))         # LIFE-212: dated today, as a US Remote employer-board job is judged by age too
         with mock.patch.object(enrich, "fetch", return_value=Page(403, "")), \
                 mock.patch.object(enrich.egress, "honest", return_value=Page(200, html)) as honest:
             result = enrich.read_page("https://careers.example.com/j/1", "Senior Data Engineer", first_party=True)
@@ -372,7 +401,7 @@ class FirstPartyRelinkTests(unittest.TestCase):
 
     def test_a_greenhouse_embed_page_is_read_from_the_boards_own_api(self):
         shell = "<html><title>Job openings</title><script src='https://boards.greenhouse.io/embed/job_board/js?for=acme'></script>" + "<p>all roles</p>" * 500
-        api = {"title": "Senior Data Engineer", "html": LONG, "posted": "2026-10-01"}
+        api = {"title": "Senior Data Engineer", "html": LONG, "posted": enrich._now().date().isoformat()}     # LIFE-212: a fixed date ages past the US Remote limit
         with mock.patch.object(enrich, "fetch", return_value=Page(200, shell)), mock.patch.object(enrich, "_api_job", side_effect=[None, api]) as read:
             result = enrich.read_page("https://acme.example/job-openings/?gh_jid=4567", "Senior Data Engineer", first_party=True)
         read.assert_called_with("https://boards.greenhouse.io/embed/job_app?for=acme&token=4567")

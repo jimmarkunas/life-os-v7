@@ -205,7 +205,8 @@ def finish(title, desc, found_title, posted, source_kind, valid_through, lane=No
     today = _now().date()
     if valid_through and valid_through < today:
         return {"outcome": "closed"}
-    max_age = None if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days     # the lane policy is the only freshness authority; a job on its employer's own board is open (D111)
+    max_age = lanes.first_party_age(lane) if first_party else lanes.POLICIES[lanes.lane_for(lane)].max_age_days     # the lane policy is the only freshness authority; a job on its employer's own board is open (D111)
+                                                                                                                     # LIFE-212 (Jim, Oct 31 2026): except in US Remote and Scale-Up, where it is judged by age too
     if posted and max_age is not None and (today - posted) > timedelta(days=max_age):
         return {"outcome": "stale", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
     return {"outcome": "ready", "posted": posted, "description": desc, "source_kind": source_kind, **({"proof": "title"} if strict else {})}
@@ -283,6 +284,19 @@ THIN_BOARD_REQUEUE_UNTIL = datetime(2026, 10, 26, 7, 30)           # Jim, Oct 25
 THIN_BOARD_NOW = "(unresolved_reason='jd_thin' AND (source LIKE 'web:gh-%%' OR source LIKE 'web:lv-%%' OR source LIKE 'web:ab-%%'))"
 
 
+def _first_party_over_age(now):
+    """LIFE-212 (Jim, Oct 31 2026): (SQL, params) leaving out a stale employer-board job whose lane judges it by age (US Remote, Scale-Up) and whose known Posting Date is over that age."""
+    clauses, params = [], []
+    for name in lanes.POLICIES:
+        days = lanes.first_party_age(name)
+        if days is None:
+            continue
+        rows = [name] + [alias for alias, target in lanes.LANE_ALIAS.items() if target == name]       # a Newsletter row is judged as US Remote
+        clauses.append("(lane IN (" + ", ".join(["%s"] * len(rows)) + ") AND posted_date IS NOT NULL AND posted_date < %s)")
+        params += rows + [(now - timedelta(days=days)).date()]
+    return ("", []) if not clauses else (" AND NOT (" + " OR ".join(clauses) + ")", params)
+
+
 def relink_first_party(cursor, now=None):
     """D101: a first-party career-page job (source web:*) has no resolver: its link IS its own page. When an audit or Enrich bounced it back to NEW or HOLD
     (a stale reason, a 403 now readable as Chrome) it stayed stuck for good. Put it back to RESOLVED with its own URL when that URL passes the link test.
@@ -305,9 +319,10 @@ def relink_first_party(cursor, now=None):
                    " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND (unresolved_reason LIKE 'http_40%%' OR unresolved_reason IN ('jd_thin', 'description_empty', 'description_empty_tf'))"
                    " AND " + slot, (limits.ENRICH_MAX_ATTEMPTS - 1, now))                 # an employer's own role parked after failed reads (a closed page, a thin page) is read once more a day; one failure parks it again
     reread = int(cursor.rowcount or 0)
+    aged, params = _first_party_over_age(now)
     cursor.execute("UPDATE v7_jobs SET status='RESOLVED', unresolved_reason='requeued_age', enrich_attempts=0, updated_at=%s WHERE status='EXCLUDED_STALE'"
-                   " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL", (now,))
-    return len(ids) + reread + int(cursor.rowcount or 0)           # D111: a job dropped as old that sits on its employer's own board is read again, and is no longer judged by age
+                   " AND source LIKE 'web:%%' AND source<>'web:openjobs' AND notion_page_id IS NULL AND final_apply_url IS NOT NULL" + aged, (now, *params))
+    return len(ids) + reread + int(cursor.rowcount or 0)           # D111: a job dropped as old that sits on its employer's own board is read again (LIFE-212: not one its lane still finds too old)
 
 
 def host_family(url):
