@@ -94,7 +94,7 @@ class Manage(unittest.TestCase):
         got = hand_text(h.world.source).splitlines()
         self.assertEqual([s["text"] for s in M.sent_of(got)], ["Portal answers", "Assessment answers"])
         self.assertEqual((M.hold_of(got)["state"], M.next_of(got)["text"], len(got)), (M.WAITING, "Call Pat", 4))
-        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item; LIFE-173: Drive search
+        self.assertEqual(sorted(f.get("act") for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")), ["drive", "hold", "next", "sent", "sent", "unsent", "unsent"])   # LIFE-172: one Remove per item; LIFE-173: Drive search; LIFE-174: a Drive-link form and a form form
 
 
 class Remove(unittest.TestCase):
@@ -299,3 +299,18 @@ class Search(unittest.TestCase):
         files = [{"name": "Odd", "webViewLink": "https://example.test/x"}, {"name": None, "webViewLink": DRIVE_URL}, {"name": "Good plan", "webViewLink": DRIVE_URL}]
         (status, body, _), _ = self.search(h, "plan", self.Found(files=files))
         self.assertEqual([f["su"] for f in forms(body) if f.get("act") == "sent"], [DRIVE_URL])
+
+
+class Layout(unittest.TestCase):
+    """LIFE-174 (Jim, Oct 31 2026): Manage's actions are one card each, their fields and button together, styled by /manage.css (the gate's CSP allows no inline styles)."""
+    def test_the_hub_links_its_stylesheet_and_every_field_sits_in_a_card(self):
+        h, _ = notes_page()
+        body = h.hub(h.world.ws.target)[1]
+        self.assertIn('<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">', body)
+        self.assertNotIn("<style", body)
+        for heading in ("Status", "Set a next action", "Materials sent", "Add a Google Drive file you sent", "Add an application form or portal answers"):
+            self.assertIn(f'<div class="mcard"><h4>{heading}</h4>', body)
+        self.assertEqual(sorted(f.get("sk") for f in forms(body) if f.get("act") == "sent"), [M.FILE, M.FORM])
+        self.assertEqual(h.call("GET", "/manage.css")[:2][0], 200)
+        self.assertEqual(manage_app.handle_css({}, {}, {})[:2], (200, "text/css; charset=utf-8"))
+        self.assertIn(".mcard{", manage_app.CSS)

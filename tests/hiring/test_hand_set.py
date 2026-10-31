@@ -69,7 +69,7 @@ class ManageNotesPage(unittest.TestCase):
         status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 200, body)
         self.assertIn("<b>State:</b> Active", body)
-        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["drive", "hold", "next", "sent"])        # LIFE-114 adds sent material, LIFE-173 the Drive search
+        self.assertEqual(sorted(f.get("act") for f in forms(body) if f.get("act")), ["drive", "hold", "next", "sent", "sent"])        # LIFE-114 sent material (LIFE-174: a Drive-link form and a form form), LIFE-173 the Drive search
         self.assertIn('value="paused">Pause it', body)
         self.assertNotIn('value="active"', body)                                                       # Active is the state already
         status, body, _ = h.hand_review("hold", v="paused")

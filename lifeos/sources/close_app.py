@@ -19,7 +19,7 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/sources/resume_app.py", "lifeos/platform/notion_files.py", "lifeos/platform/gdrive.py", "lifeos/platform/google_consent.py",
            "lifeos/sources/manage_app.py", "lifeos/sources/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py")
 ROUTES = {"/sent": ("outreach_app", "handle"), "/referral": ("outreach_app", "handle_status"), "/recruiter": ("outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
-          "/resume": ("resume_app", "handle"), "/manage": ("manage_app", "handle"), "/brief": ("outreach_app", "handle_brief"), "/alerts": ("alerts_app", "handle"), "/alerts.css": ("alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
+          "/resume": ("resume_app", "handle"), "/manage": ("manage_app", "handle"), "/manage.css": ("manage_app", "handle_css"), "/brief": ("outreach_app", "handle_brief"), "/alerts": ("alerts_app", "handle"), "/alerts.css": ("alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
 
 
