@@ -16,6 +16,19 @@ ROWS = [
 ]
 
 
+RELEASED = [("PUBLISHED", 1, 30), ("PUBLISHED", 0, 2), ("EXCLUDED_UNRESOLVED", 1, 4), ("EXCLUDED_FIT", 1, 5), ("DUPLICATE", 1, 1), ("RESOLVED", 0, 1)]
+
+
+class TwoQueries(Cursor):
+    """The backlog query returns ROWS; the LIFE-212 release query returns its own (status, is_linkedin, n) rows."""
+    def __init__(self, rows, released=()):
+        super().__init__(rows)
+        self.released = list(released)
+
+    def fetchall(self):
+        return self.released if "recovered_at" in (self.last or "") else super().fetchall()
+
+
 class Report(unittest.TestCase):
     def test_every_job_has_one_plain_reason_and_ready_comes_first_oldest_first(self):
         rows, groups = backlog.rows_of(ROWS, NOW)
@@ -30,12 +43,12 @@ class Report(unittest.TestCase):
         self.assertNotIn("Stripe", " ".join(groups))                                        # the counts carry reasons only, never a company or title
 
     def test_a_dry_run_reads_only_and_a_live_run_writes_one_dated_page(self):
-        cursor = Cursor(ROWS)
+        cursor = TwoQueries(ROWS)
         counts = backlog.run(0, False, connect=lambda: cursor, client=FakeClient(), now=NOW)
         self.assertEqual((counts["total"], counts["page"], counts["failed"], counts["left_out"]), (5, "dry", 0, 0))
-        self.assertEqual(cursor.sql, ["SELECT"])
+        self.assertEqual(cursor.sql, ["SELECT", "SELECT"])                                  # reads only
         client = FakeClient()
-        counts = backlog.run(0, True, connect=lambda: Cursor(ROWS), client=client, now=NOW)
+        counts = backlog.run(0, True, connect=lambda: TwoQueries(ROWS, RELEASED), client=client, now=NOW)
         self.assertEqual((counts["page"], counts["rows"], counts["failed"]), ("new", 5, 0))
         page = next(b for m, p, b in client.writes if m == "POST" and p == "/pages")
         self.assertEqual(page["properties"]["title"]["title"][0]["text"]["content"], "LIFE-212 Jobs backlog — Oct 31, 2026 02:00 AM CT — 5 not on the board")
@@ -43,3 +56,13 @@ class Report(unittest.TestCase):
         self.assertIn("5 jobs are not on the Job Ledger yet", intro)
         self.assertIn("1 · ready · waiting to publish", intro)
         self.assertEqual(page["children"][1]["type"], "table")
+        self.assertIn("LIFE-212 release: 43 jobs got their one retry", intro)
+        self.assertIn("32 · on the board (30 from LinkedIn)", intro)
+        self.assertIn("5 · bounced: excluded by the lane rules (5 from LinkedIn)", intro)
+        self.assertIn("4 · bounced: its retry failed (4 from LinkedIn)", intro)
+        self.assertIn("1 · bounced: same job already on the board (1 from LinkedIn)", intro)
+        self.assertIn("1 · still on its way (0 from LinkedIn)", intro)
+        self.assertEqual(counts["release"][0], "32 · on the board (30 from LinkedIn)")
+
+    def test_no_release_adds_no_lines(self):
+        self.assertEqual(backlog.released_lines([]), [])
