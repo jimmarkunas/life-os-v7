@@ -314,3 +314,25 @@ class Layout(unittest.TestCase):
         self.assertEqual(h.call("GET", "/manage.css")[:2][0], 200)
         self.assertEqual(manage_app.handle_css({}, {}, {})[:2], (200, "text/css; charset=utf-8"))
         self.assertIn(".mcard{", manage_app.CSS)
+
+
+class Expiry(unittest.TestCase):
+    """LIFE-174 (Jim, Oct 31 2026): Manage forms stayed valid for only 15 minutes, so a page left open refused every click. They now last 8 hours, and a stale or
+    altered form offers Manage again in one click, writing nothing."""
+    def test_a_page_open_for_hours_still_works_and_an_expired_one_offers_a_reload(self):
+        from datetime import timedelta
+        h, fold = notes_page()
+        form = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "drive")
+        drive = Search.Found()
+        with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
+            status, body, _ = h.call("POST", "/manage", form={**form, "q": "plan"}, now=h.clock + timedelta(hours=7))
+            self.assertEqual(status, 200, body)
+            status, body, _ = h.call("POST", "/manage", form={**form, "q": "plan"}, now=h.clock + timedelta(hours=9))
+        self.assertEqual(status, 403)
+        self.assertIn("This page has expired", body)
+        self.assertIn(f"/manage?o={form['p']}", body)
+        self.assertEqual(h.writes(), (0, 0))
+        remove_or_next = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "next")
+        status, body, _ = h.call("POST", "/manage", form={**remove_or_next, "nx": "Call Pat", "t": "0" * 64})
+        self.assertEqual(status, 403)
+        self.assertIn("Reload Manage", body)
