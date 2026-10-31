@@ -61,6 +61,28 @@ class Gate(unittest.TestCase):
             for header in ("Cache-Control: no-store", "X-Frame-Options: DENY", "Content-Security-Policy:", "X-Content-Type-Options: nosniff", "Referrer-Policy: same-origin"):
                 self.assertIn(header, text)                              # no-referrer would make the browser post `Origin: null`, which the origin check refuses
 
+    def test_only_the_manage_hub_page_may_load_googles_drive_picker(self):
+        """LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): GET /manage's HTML gets the picker CSP; every other screen, a POST, a refusal or a script keeps default-src 'self'."""
+        def csp(text):
+            return next(line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Content-Security-Policy: "))
+        _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
+        self.assertEqual((status, csp(text)), (200, gate.PICKER_CSP))
+        self.assertEqual(text.count("Content-Security-Policy:"), 1)
+        self.assertIn("script-src 'self' https://apis.google.com https://accounts.google.com;", gate.PICKER_CSP)
+        self.assertNotIn("unsafe-eval", gate.PICKER_CSP)
+        self.assertNotIn("script-src 'self' 'unsafe-inline'", gate.PICKER_CSP)
+        for part in ("frame-ancestors 'none'", "form-action 'self'", "base-uri 'none'"):
+            self.assertIn(part, gate.PICKER_CSP)
+        for raw in (http(path="/close?l=abc"), http(path="/manage.css"), http("POST", "/manage", POST_OK, b"o=abc")):
+            _, _, text = self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
+            self.assertEqual(csp(text), gate.CSP, raw[:30])
+        js = lambda req, who, secrets: (200, "text/javascript; charset=utf-8", b"1", ())          # noqa: E731
+        _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=js)
+        self.assertEqual(csp(text), gate.CSP)
+        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())          # noqa: E731
+        _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
+        self.assertEqual(csp(text), gate.CSP)
+
     def test_get_reads_the_current_opportunity_through_a_read_only_client_and_writes_nothing(self):
         class Notion:                                                   # a fake Notion client: one opportunity, every call recorded
             source = "ds-ledger"
