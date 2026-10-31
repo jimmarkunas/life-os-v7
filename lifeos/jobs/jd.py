@@ -105,6 +105,18 @@ def linkedin_description(html):
     return _clean(parser.parts)
 
 
+LINKEDIN_TITLE = "top-card-layout__title"      # LIFE-212 (Jim, Oct 31 2026): the element a LinkedIn guest posting (page or jobPosting fragment) names the role in
+
+
+def linkedin_title(html):
+    """The role as a LinkedIn guest posting names it (its top card's h1/h2/a), or None when the page has no such element. The guest API fragment has no <title>."""
+    if LINKEDIN_TITLE not in (html or ""):
+        return None
+    parser = _Region(LINKEDIN_TITLE)
+    parser.feed(html)
+    return " ".join(_clean(parser.parts).split()) or None
+
+
 def _heading_kind(line):
     bare = line.strip(" :*-•").lower()
     if not bare or len(bare) > 70 or (len(line.split()) > 9):

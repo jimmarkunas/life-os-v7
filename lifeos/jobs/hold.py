@@ -19,6 +19,7 @@ REASON = "hold_expired"
 FAILED_RECOVERY = "unresolved_after_recovery"      # the alert counts this reason
 RESOLVED_BY = ("jobright", "linkedin-alerts", "linkedin-search", "dice")       # the sources a resolve stage reads (lifeos/run.py); a NEW job of any other source would wait for nothing
 RETIRED = {"lensa": "source_retired_lensa"}               # D201: a retired source's NEW or HOLD jobs end EXCLUDED_UNRESOLVED with this reason (its RESOLVED jobs carry on)
+RETIRED["web:openjobs"] = "source_retired_openjobs"   # LIFE-212 (Jim, Oct 31 2026): Open Jobs shut down Oct 10 (D201) and no resolve stage reads it, so its NEW rows waited for nothing
 
 
 def worthwhile(lane, posted, first_seen, reason, now):
