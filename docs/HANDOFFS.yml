@@ -391,6 +391,9 @@ handoffs:
 # LIFE-109: an approved emergency repair outside the active delivery train (docs/OWNERSHIP.yml `trains`). One entry exempts exactly one PR number from the train check until `expires`; `approval` is the https link to
 # Jim's recorded approval. It lifts nothing else: ownership, protected and unresolved paths are still enforced.
 exemptions:
+  - pr: 714
+    expires: "2026-11-07"
+    approval: https://jimmarkunas.atlassian.net/browse/LIFE-126?focusedCommentId=11576
   - pr: 711
     expires: "2026-11-07"
     approval: https://jimmarkunas.atlassian.net/browse/LIFE-212?focusedCommentId=11570
