@@ -3,6 +3,10 @@
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
+## Buzz pilot entrypoint — only for LIFE-216
+
+For the approved Buzz Community roadmap, use [docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) as the frozen 25-step contract and LIFE-216 as the live execution/approval/evidence ledger. LOS-70 and its Notion page own product decisions. No Agent Go, credentials, paid usage, live integration or deployment authority arises from this pointer; verify one-writer and protected gates separately. No new scheduler/orchestrator.
+
 ## Development entrypoint (all authorized coding agents)
 ### Fast Start — routine bootstrap target: 60 seconds
 - **Measure, do not guess:** At session start run `START_EPOCH=$(date -u +%s)`. After essential Jira/GitHub reads report `bootstrap_seconds=$(($(date -u +%s)-START_EPOCH))` and number of remote reads in the existing progress message; no tracking file, scheduler, extra API call or telemetry service. **60 seconds is a target**, not permission to omit required authority or safety checks. If a slow provider exceeds it, begin the safe, ready work and name only the remaining required blocker.
