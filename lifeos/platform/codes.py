@@ -798,6 +798,24 @@ for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAI
         _base = CODES[_reason]
         CODES["FIT_EDGE_REFUSED_" + _reason] = _r(_base.stage, _base.klass, _base.attempt, "Oracle refused: " + _base.meaning[0].lower() + _base.meaning[1:], _base.action, _base.severity)
 
+CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/context_refactor.py), LIFE-79
+    'CURRENT_SCOPE': _r("delivery context refactor", 'state', False, 'A section the planner classed as live scope or acceptance; it stays in Jira.', 'None.'),
+    'DETAILED_REQUIREMENT': _r("delivery context refactor", 'state', False, "A clean, detailed requirement section the planner may propose moving to the issue's one existing Notion page.", 'Review the diff.'),
+    'HISTORICAL_EVIDENCE': _r("delivery context refactor", 'state', False, 'A section the planner classed as completed evidence or superseded history; it stays in Jira.', 'None.'),
+    'AMBIGUOUS_NOTION_OWNER': _r("delivery context refactor", 'blocked', False, 'More than one Notion page is linked, so no requirement is moved.', 'Owner names the one page.'),
+    'NO_NOTION_OWNER': _r("delivery context refactor", 'blocked', False, 'No existing Notion page is linked; nothing moves and no page is created.', 'Owner links the existing page.'),
+    'NOTION_PAGE_NOT_READ': _r("delivery context refactor", 'blocked', False, 'The linked Notion page was not in the snapshot.', 'Fetch it by id and re-plan.'),
+    'EXCLUDED_BY_CONFIG': _r("delivery context refactor", 'terminal', False, 'The issue is on the exclusion list (LOS-70) and is left alone.', 'None.'),
+    'ACTIVE_DISCOVERY': _r("delivery context refactor", 'terminal', False, 'The issue is under active discovery and is left alone.', 'Re-plan after discovery closes.'),
+    'CLAIMED_BY_OTHER_WRITER': _r("delivery context refactor", 'blocked', False, 'Another writer holds the issue, so the single-writer rule stops the run.', 'Wait for the claim to clear.'),
+    'SECRET_LIKE_VALUE': _r("delivery context refactor", 'blocked', False, 'A secret-looking value is in the text, so nothing moves.', 'Owner removes it first.'),
+    'NOTHING_TO_MOVE': _r("delivery context refactor", 'terminal', False, 'No section qualifies to move; the issue is unchanged.', 'None.'),
+    'APPROVAL_MISSING_ATTRIBUTION': _r("delivery context refactor", 'blocked', False, 'The approval does not say who approved it or where.', "Record Jim's approval."),
+    'PLAN_DIGEST_MISMATCH': _r("delivery context refactor", 'blocked', False, 'The approval was given for a different plan.', 'Re-plan and re-approve.'),
+    'TARGETS_NOT_EXACT': _r("delivery context refactor", 'blocked', False, 'The approved targets differ from the planned targets.', 'Approve the exact list.'),
+    'BATCH_TOO_LARGE': _r("delivery context refactor", 'blocked', False, 'The batch is over the approved or hard cap.', 'Split the batch.'),
+})
+
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
     "LAYOUT_SHARD",                # Jim, Oct 27: which slice (i/n) of the Ledger pages a layout run moves
