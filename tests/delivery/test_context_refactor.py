@@ -246,6 +246,16 @@ class Pilot(unittest.TestCase):
         self.assertFalse(cr.verify(plan, after)["ok"])
 
 
+    def test_an_approved_replacement_stands_in_for_the_stub_and_the_original_still_moves_verbatim(self):
+        snap = snapshot(issue(description=DESC2, owner_moves=["Decision", "Rollout plan"], replacements={"Decision": "## Current authority\n\nConsolidated.\n\n", "Rollout plan": ""}))
+        p = cr.build_plan(snap, CONFIG)["issues"][0]
+        self.assertIn("## Current authority", p["proposed_description"])
+        self.assertNotIn("## Decision (approved by Jim)", p["proposed_description"])
+        self.assertNotIn(cr.POINTER, p["proposed_description"])
+        self.assertIn("## Decision (approved by Jim)\n\nApproved: keep the pilot small.", p["notion_append"])      # the original wording is preserved in Notion
+        self.assertIn(PICKED.rstrip(), p["notion_append"])
+
+
 class Boundaries(unittest.TestCase):
     def test_the_module_has_no_network_process_or_datastore(self):
         src = open(cr.__file__).read()
