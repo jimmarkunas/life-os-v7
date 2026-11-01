@@ -119,7 +119,8 @@ def plan_issue(issue, notion, config):
         base["sections"].append(entry)
         if move:
             head, _ = (sec.split("\n", 1) + [""])[:2]
-            out.append(head + "\n\n%s %s — %s (verbatim there; earlier text stays in this issue's history).\n\n" % (POINTER, owner["url"], head.lstrip("# ").strip()))
+            swap = next((v for k, v in issue.get("replacements", {}).items() if heading.lstrip("# ").startswith(k)), None)   # owner-approved text in place of the usual stub (may be empty)
+            out.append(head + "\n\n%s %s — %s (verbatim there; earlier text stays in this issue's history).\n\n" % (POINTER, owner["url"], head.lstrip("# ").strip()) if swap is None else swap)
             moved.append(sec)
             base["mapping"].append({"from": entry["id"], "to": "NOTION:%s#%s" % (owner["id"], entry["heading"]), "sha": entry["sha"]})
         else:
