@@ -55,6 +55,30 @@ class Contract(unittest.TestCase):
         self.assertIn("Do not invent approvals", POLICY)
         self.assertIn("Independent technical review is optional for routine PRs", SCHEMA["description"])
 
+    def test_agent_go_is_the_human_released_priority_ordered_queue(self):
+        """LIFE-126 (Jim, Nov 1 2026): Agent Go is the explicit human-released agent queue, ordered by Priority then Rank."""
+        selector = POLICY.split("### Deterministic agent work selection", 1)[1].split("### Jira-first development lifecycle", 1)[0]
+        authorization = next(line for line in POLICY.splitlines() if line.startswith("- **Authorization, scope, assignment, and routing.**"))
+        query = 'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC'
+        self.assertIn(query, selector)                                   # the one selector query, Priority first and Rank as tie-breaker
+        self.assertIn("Rank breaks ties", selector)
+        self.assertIn("never promotes work into `Agent Go`", selector)    # a newly started agent cannot authorize or promote its own ticket
+        self.assertIn("never promotes its own, a self-created or any unapproved issue into Agent Go", authorization)
+        self.assertIn("not a technical guarantee", authorization)         # the org-admins restriction is not an agent-identity boundary
+        self.assertIn("does not by itself start a dormant agent", selector)
+        for skipped in ("incomplete incoming `Blocks` predecessor", "`acceptance-pending` hold", "conflicting or already-claimed writer", "execution environment the agent does not support"):
+            self.assertIn(skipped, selector)                              # blocked or conflicting work is skipped without mutation
+        self.assertIn("exclusive-writer mutation surface is free", selector)
+        self.assertIn('transition Agent Go to In Progress (ID 6, "Start authorized work")', selector)
+        self.assertIn("transition ID 5 (To Do to Agent Go", authorization)
+        self.assertIn("empty `Agent Go` queue", selector)
+        for obsolete in ("unavailable on Jira Free", "queries its own lane **and** `pull-ready`", "even when labeled `pull-ready`", "readiness marker"):
+            self.assertNotIn(obsolete, POLICY)
+        self.assertNotIn("unavailable Agent Go transition", SCHEMA["description"])
+        self.assertNotIn("unavailable on Jira Free", json.dumps(SCHEMA))
+        for retained in ("Agent UAT", "Human UAT", "protected-action", "single-writer"):
+            self.assertIn(retained, POLICY)
+
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
             self.assertEqual(sorted(set(SCHEMA["required"]) - set(example)), [])

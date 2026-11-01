@@ -388,7 +388,6 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `granola.yml`: jobs granola; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOSE_BASE_URL, V7_CLOUD_FIT_PROFILE_REF
 - `interview-proof.yml`: jobs proof; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
-- `lane-guard.yml`: jobs lane-guard; manual no; secrets -
 - `manual-job.yml`: jobs manual; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `network.yml`: jobs network; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NETWORK_HANDOFF_PAGE_ID, NOTION_JOB_LEDGER_DATA_SOURCE_ID
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
