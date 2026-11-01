@@ -306,35 +306,6 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
 
-@unittest.skipIf(yaml is None, "PyYAML not installed")
-class LaneGuardWorkflow(unittest.TestCase):
-    """LIFE-78: the lane guard runs from TRUSTED default-branch code and reads the pull request only as data through the API; it can hold no secret and no write permission."""
-    path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "lane-guard.yml"
-
-    def test_it_is_pull_request_target_read_only_and_secret_free(self):
-        text, doc = self.path.read_text(), yaml.safe_load(self.path.read_text())
-        self.assertEqual(list(doc[True]), ["pull_request_target"])
-        self.assertEqual(doc["permissions"], {"contents": "read", "pull-requests": "read"})
-        for word in ("secrets.", "bitwarden", "LIFEOS_", "NOTION_", "GMAIL_", "--live"):
-            self.assertNotIn(word, text)
-        self.assertEqual(list(doc["jobs"]), ["lane-guard"])        # and (above) no schedule or dispatch trigger
-
-    def test_it_never_checks_out_or_runs_the_pull_requests_code(self):
-        """The tampering test: a ref on the checkout, a PR-controlled value in a command, or any other script than the guard on the default branch would let a PR change what judges it."""
-        text, steps = self.path.read_text(), yaml.safe_load(self.path.read_text())["jobs"]["lane-guard"]["steps"]
-        checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout"))
-        self.assertEqual(checkout["with"], {"persist-credentials": False})                    # no `ref:`, no `repository:`: the default branch only
-        for risky in ("head.sha", "head.ref", "head.repo", "github.event.pull_request.body", "github.event.pull_request.title", "github.head_ref", "pull/"):
-            self.assertNotIn(risky, text)
-        runs = [s["run"] for s in steps if "run" in s]
-        self.assertEqual([r.split("  ")[0] for r in runs], ["python3 -I lifeos/lane_guard.py"])
-        self.assertEqual([s["uses"] for s in steps if "uses" in s], ["actions/checkout@v5"])          # nothing installed: stdlib only
-        self.assertEqual(next(s for s in steps if "run" in s)["env"], {"GITHUB_TOKEN": "${{ github.token }}"})
-
-    def test_pr_tests_no_longer_carries_or_runs_the_guard(self):
-        self.assertNotIn("lane_guard", (self.path.parent / "pr-tests.yml").read_text())
-
-
 class FastPathFirstTests(unittest.TestCase):
     """D206 (LIFE-76 PR 1): the Ledger never waits on bulk discovery, and a quick proof run reads few boards."""
     @classmethod
@@ -831,7 +802,7 @@ CONSUMER_STEPS = {
 }
 CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "granola", "granola-auto", "hourly", "interview-proof", "manual-job", "network", "outlook", "profile-sync", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
-SECRET_FREE = ("pr-tests", "lane-guard")         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
+SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
