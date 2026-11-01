@@ -832,13 +832,6 @@
     "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
-  "lane-guard.yml": {
-   "jobs": [
-    "lane-guard"
-   ],
-   "manual": false,
-   "secrets": []
-  },
   "manual-job.yml": {
    "jobs": [
     "manual"
