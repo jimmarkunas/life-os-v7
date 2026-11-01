@@ -261,8 +261,8 @@
         "readback": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["verified", "saved_questions"],
-          "properties": {"verified": {"const": true}, "saved_questions": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}}}
+          "required": ["verified", "saved_questions", "revision_after"],
+          "properties": {"verified": {"const": true}, "saved_questions": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}}, "revision_after": {"description": "The issue revision (its updated timestamp) read back after the write.", "type": "string", "minLength": 1}}
         }
       }
     },
