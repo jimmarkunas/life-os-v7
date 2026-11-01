@@ -257,7 +257,8 @@
    "lifeos/dcc/header.py": "The date and time line under the Daily Report's title (D183), written by V7."
   },
   "delivery": {
-   "lifeos/delivery/census.py": "DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored."
+   "lifeos/delivery/census.py": "DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.",
+   "lifeos/delivery/context_refactor.py": "LIFE-79: dry-run planner for the Jira/Notion context refactor; it reads snapshots and writes nothing."
   },
   "hiring": {
    "lifeos/hiring/auto_close.py": "Auto-close on a known rejection (Jim, Oct 24 2026): \"Should these auto-close on known rejection and persist for 24 hours with a closed/rejected message?\"",

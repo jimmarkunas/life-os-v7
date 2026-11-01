@@ -136,6 +136,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/dcc/header.py`: The date and time line under the Daily Report's title (D183), written by V7.
 ### lifeos/delivery/
 - `lifeos/delivery/census.py`: DEL-1.1: count the real tracking numbers in recent mail, read-only. Nothing is written, labelled, trashed or stored.
+- `lifeos/delivery/context_refactor.py`: LIFE-79: dry-run planner for the Jira/Notion context refactor; it reads snapshots and writes nothing.
 ### lifeos/hiring/
 - `lifeos/hiring/auto_close.py`: Auto-close on a known rejection (Jim, Oct 24 2026): "Should these auto-close on known rejection and persist for 24 hours with a closed/rejected message?"
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
