@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jimmarkunas/life-os-v7/blob/main/docs/jira/issue-schema.v1.json",
   "title": "LIFE Jira issue — writing contract v1",
-  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md. LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
+  "description": "Machine-readable form of the LIFE Jira issue-writing contract in docs/life-os-development-policy.md. LIFE workflow statuses include Agent UAT and Human UAT. Agent UAT and evidence are required before Done; Human UAT is conditional on human judgment and requires acceptance evidence when used. Jim's original issue-specific approval, or his human release of the issue into the Agent Go queue, authorizes the assigned agent to implement and open a PR on the approved issue and explicitly approved in-scope subtasks. Independent technical review is optional for routine PRs unless explicitly required by the Jira issue or enforceable GitHub rules. The assigned agent may merge ordinary authorized work after the necessary exact-head checks and proof pass if their GitHub permissions permit it. Never invent native approvals or override branch protections; protected operations and production access retain their separate authority gates. Non-production deployment remains subject to existing environment and agent permissions. Work intake is human-defined with agent/chat assistance; agents resume their own work, then select from the Agent Go queue within their lane by Jira Priority then Rank, and never promote work into Agent Go themselves. Only independent work runs in parallel, and blockers must be Done. Stop after acceptance criteria, required proof/UAT, and no material defect; additional polish requires new approval. Production access/writes, secret access, spending, and permission changes remain separately controlled. New product outcomes originate in an approved LOS Idea; maintenance, bugs and in-scope children of an approved Epic cite that parent instead. A checked acceptance item requires cited evidence, and a checklist tick is never Done. This schema is a read-back and test contract, not a native Jira validator. Secrets appear only as identifiers. Component and Fix Version follow the policy's OS-aligned scheme: fix_version is '<component> X.Y.Z'.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["key", "issue_type", "statement", "acceptance_criteria", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
+  "required": ["key", "issue_type", "statement", "product_origin", "acceptance_criteria", "component", "fix_version", "owner", "execution", "ui", "fast_proof", "human_uat", "authorization"],
   "properties": {
     "key": {"$ref": "#/$defs/issue_key"},
     "issue_type": {"enum": ["Epic", "Story", "Task", "Bug", "Sub-task"]},
@@ -32,6 +32,42 @@
         }
       ]
     },
+    "product_origin": {
+      "description": "Traceable origin. A new product outcome comes from an LOS Idea approved for delivery; maintenance, bugs, scoped technical tasks and in-scope children of an approved finite Epic cite that approved parent instead. Not enforced natively by Jira.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "los_key", "approved_for_delivery", "approval_source"],
+          "properties": {
+            "kind": {"const": "los_idea"},
+            "los_key": {"type": "string", "pattern": "^LOS-[0-9]+$"},
+            "approved_for_delivery": {"const": true},
+            "approval_source": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "epic_key", "epic_approval_source"],
+          "properties": {
+            "kind": {"const": "approved_epic_child"},
+            "epic_key": {"$ref": "#/$defs/issue_key"},
+            "epic_approval_source": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "parent_ref", "approval_source"],
+          "properties": {
+            "kind": {"enum": ["maintenance", "bug", "scoped_technical_task"]},
+            "parent_ref": {"$ref": "#/$defs/issue_key"},
+            "approval_source": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
     "acceptance_criteria": {
       "description": "Kept separate from the statement; one Given/When/Then per distinct behavior, edge case or required UI state.",
       "type": "array",
@@ -43,8 +79,12 @@
         "properties": {
           "given": {"type": "string", "minLength": 1},
           "when": {"type": "string", "minLength": 1},
-          "then": {"type": "string", "minLength": 1}
-        }
+          "then": {"type": "string", "minLength": 1},
+          "state": {"enum": ["unchecked", "checked"]},
+          "evidence": {"type": "string", "minLength": 1}
+        },
+        "if": {"properties": {"state": {"const": "checked"}}, "required": ["state"]},
+        "then": {"required": ["evidence"]}
       }
     },
     "notion_requirement": {"description": "Link to the exact Notion requirement; the requirement itself is not copied into Jira.", "$ref": "#/$defs/https_url"},
@@ -193,6 +233,39 @@
     }
   },
   "$defs": {
+    "discovery_capture": {
+      "description": "One saved discovery tranche in the owning LOS Description after an owner reply. Used for read-back tests; Jira does not enforce it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["los_key", "tranche", "owner_reply_date", "entries", "readback"],
+      "properties": {
+        "los_key": {"type": "string", "pattern": "^LOS-[0-9]+$"},
+        "tranche": {"type": "integer", "minimum": 1},
+        "owner_reply_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["question_number", "owner_answer", "decision_state", "requirement_impact", "open_gap"],
+            "properties": {
+              "question_number": {"type": "integer", "minimum": 1},
+              "owner_answer": {"type": "string", "minLength": 1},
+              "decision_state": {"enum": ["APPROVED DECISION", "PROPOSED", "UNRESOLVED", "FEASIBILITY TO VERIFY"]},
+              "requirement_impact": {"type": "string", "minLength": 1},
+              "open_gap": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "readback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verified", "saved_questions"],
+          "properties": {"verified": {"const": true}, "saved_questions": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}}}
+        }
+      }
+    },
     "issue_key": {"type": "string", "pattern": "^[A-Z][A-Z0-9]+-[0-9]+$"},
     "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
     "https_url": {"type": "string", "pattern": "^https://\\S+$"},
@@ -217,6 +290,7 @@
         {"given": "the policy PR is merged", "when": "an agent writes a LIFE Story", "then": "the Story has a user story and separate Given/When/Then acceptance criteria"},
         {"given": "the policy PR is merged", "when": "an agent opens a code PR for a LIFE issue", "then": "the branch and PR title follow the contract's formats"}
       ],
+      "product_origin": {"kind": "los_idea", "los_key": "LOS-40", "approved_for_delivery": true, "approval_source": "LOS-40 October 19 approved permanent recurring composability gate"},
       "notion_requirement": "https://app.notion.com/p/4073c5a0592681b3bce8fb46d54f0dc3",
       "component": "Platform / Core OS",
       "fix_version": "Platform / Core OS 1.0.0",

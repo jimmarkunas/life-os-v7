@@ -88,6 +88,64 @@ class Contract(unittest.TestCase):
             self.assertIn(required, rule)
         self.assertNotIn("Buzz or T3", POLICY)                            # T3 is retired as an authorization channel
 
+    def test_los_first_discovery_and_description_first_contract_is_in_the_policy(self):
+        """LIFE-79 (Jim, Nov 1 2026): new product outcomes start in an approved LOS Idea; answers persist before the next tranche; Description owns requirements."""
+        rule = POLICY.split("### LOS-first discovery and description-first requirements", 1)[1].split("## 2. Locked architecture", 1)[0]
+        for required in ("`DISCOVERY_NOT_READY", "`DISCOVERY_CAPTURE_BLOCKED`", "A parked LOS Idea is not delivery authorization", "**Exception without bypass:**",
+                         "cannot launder a new product outcome", "**NOT TECHNICALLY ENFORCED**", "Discovery log — Tranche N", "never inferred from an assistant recommendation",
+                         "never comment-only", "A stale comment never outranks a current Description", "`Given / When / Then`", "**UNVERIFIED**",
+                         "is not an interactive Jira checklist", "is never Done", "`QUEUE_NOT_READY`", "Agent Go release, Priority order, claims, one-writer scope and protected-operation gates are unchanged"):
+            self.assertIn(required, rule)
+
+    def _origin_errors(self, origin):
+        issue = dict(SCHEMA["examples"][0], product_origin=origin)
+        return list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue))
+
+    @unittest.skipIf(jsonschema is None, "jsonschema not installed")
+    def test_a_new_product_outcome_needs_an_approved_los_origin_but_existing_epic_work_does_not(self):
+        issue = {k: v for k, v in SCHEMA["examples"][0].items() if k != "product_origin"}
+        self.assertTrue(list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(issue)))                       # missing product origin
+        self.assertEqual(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": True, "approval_source": "Jim, 2026-11-01"}), [])
+        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LOS-70", "approved_for_delivery": False, "approval_source": "parked"}))   # parked is not approved
+        self.assertTrue(self._origin_errors({"kind": "los_idea", "los_key": "LIFE-70", "approved_for_delivery": True, "approval_source": "x"}))          # not an LOS key
+        self.assertEqual(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100", "epic_approval_source": "Jim approved the finite Epic"}), [])
+        self.assertEqual(self._origin_errors({"kind": "bug", "parent_ref": "LIFE-101", "approval_source": "approved Epic LIFE-100"}), [])
+        self.assertTrue(self._origin_errors({"kind": "approved_epic_child", "epic_key": "LIFE-100"}))             # a claimed exception must cite its approval
+        self.assertTrue(self._origin_errors({"kind": "new_product"}))                                              # no unlisted way around LOS
+
+    @staticmethod
+    def _unpersisted(answered, capture):
+        """Test fixture check only: answered question numbers that are not in the saved entries or in the verified read-back."""
+        saved = {e["question_number"] for e in capture["entries"]} & set(capture["readback"]["saved_questions"])
+        return sorted(set(answered) - saved)
+
+    @unittest.skipIf(jsonschema is None, "jsonschema not installed")
+    def test_every_answered_discovery_question_must_be_saved_and_read_back(self):
+        validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/discovery_capture", "$defs": DEFS})
+        entry = lambda n, state="APPROVED DECISION": {"question_number": n, "owner_answer": "Jim's answer", "decision_state": state, "requirement_impact": "impact", "open_gap": "none"}
+        capture = {"los_key": "LOS-70", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14]}}
+        self.assertEqual(list(validator.iter_errors(capture)), [])
+        self.assertEqual(self._unpersisted([13, 14], capture), [])
+        partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13]})
+        self.assertEqual(self._unpersisted([13, 14], partial), [14])                                              # DISCOVERY_CAPTURE_BLOCKED: Q14 not saved
+        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": False, "saved_questions": [13, 14]}))))   # no unverified read-back
+        self.assertTrue(list(validator.iter_errors(dict(capture, entries=[]))))
+        self.assertTrue(list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")]))))              # approval state is one of the four
+
+    @unittest.skipIf(jsonschema is None, "jsonschema not installed")
+    def test_acceptance_needs_given_when_then_and_a_check_needs_cited_evidence(self):
+        validator = jsonschema.Draft202012Validator(SCHEMA)
+        issue = lambda criteria: dict(SCHEMA["examples"][0], acceptance_criteria=criteria)
+        item = {"given": "g", "when": "w", "then": "t"}
+        self.assertEqual(list(validator.iter_errors(issue([dict(item, state="unchecked")]))), [])
+        self.assertEqual(list(validator.iter_errors(issue([dict(item, state="checked", evidence="PR #1 same-head CI run 123")]))), [])
+        self.assertTrue(list(validator.iter_errors(issue([]))))                                                    # missing acceptance criteria
+        self.assertTrue(list(validator.iter_errors(issue([{"given": "g", "when": "w"}]))))                         # not Given/When/Then
+        self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked")]))))                         # unsafe completion claim: ticked without proof
+        self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked", evidence="")]))))
+        self.assertIn("a checklist tick is never Done", SCHEMA["description"])
+        self.assertIn("not a native Jira validator", SCHEMA["description"])
+
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
             self.assertEqual(sorted(set(SCHEMA["required"]) - set(example)), [])
