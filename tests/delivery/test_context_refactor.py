@@ -187,6 +187,65 @@ class Execution(unittest.TestCase):
         self.assertEqual(r["results"][0]["lost"], ["LIFE-1#2"])
 
 
+PICKED = "## Rollout plan\n\n" + "\n\n".join("Operators export the nightly archive, verify the checksum list and file the receipt for site number %d." % i for i in range(5)) + "\n\n"
+DESC2 = "## Decision (approved by Jim)\n\nApproved: keep the pilot small.\n\n" + PICKED + "## Acceptance\n\n**Given** a, **when** b, **then** c.\n"
+PARENT = {"title": "Rollout requirements", "parent_id": "pp", "parent_revision": "p1"}
+
+
+class Pilot(unittest.TestCase):
+    def test_markup_does_not_hide_a_duplicate_and_a_partial_copy_is_not_added(self):
+        page = "<b>Rollout plan</b>\n" + "\n".join("<p>Operators export the nightly archive, verify the checksum list and file the receipt for site number %d.</p>" % i for i in range(5))
+        done = cr.build_plan(snapshot(issue(description=DESC2, owner_moves=["Rollout plan"]), page_text=page), CONFIG)["issues"][0]
+        self.assertEqual((done["status"], done["notion_append"]), ("PLANNED", ""))                  # already there: point, do not copy
+        part = "\n".join("Operators export the nightly archive, verify the checksum list and file the receipt for site number %d." % i for i in range(2))
+        held = cr.build_plan(snapshot(issue(description=DESC2, owner_moves=["Rollout plan"]), page_text=part), CONFIG)["issues"][0]
+        self.assertEqual(held["status"], "NOOP")
+        self.assertEqual([e["partial_duplicate"] > 0.2 for e in held["exceptions"]], [True])        # listed for a person, nothing moved
+
+    def test_owner_choice_moves_a_section_but_never_a_conflict_or_an_approved_decision_label(self):
+        plan = cr.build_plan(snapshot(issue(description=DESC2, owner_moves=["Rollout plan"])), CONFIG)["issues"][0]
+        self.assertEqual([s["destination"] for s in plan["sections"]], ["JIRA", "NOTION", "JIRA"])
+        self.assertEqual(cr.classify("## ACTIVE AUTHORIZATION - APPROVED (SUPERSEDES DISCOVERY-ONLY LANGUAGE)\n\nGo.")[0], "DECISION")
+        bad = DESC2.replace("Operators export", "Operators use T3 to export", 1)
+        self.assertEqual(cr.build_plan(snapshot(issue(description=bad, owner_moves=["Rollout plan"])), CONFIG)["issues"][0]["status"], "NOOP")
+
+    def test_an_anchor_is_carried_and_must_exist_exactly_once(self):
+        snap = snapshot(issue(description=DESC2, owner_moves=["Rollout plan"], notion_anchor="Existing heading"), page_text="# P\n\nExisting heading\n")
+        plan = cr.build_plan(snap, CONFIG)
+        op = cr.validate(plan, APPROVAL(plan, ["LIFE-1"]), live_of(snap))["operations"][0]
+        self.assertEqual(op["after_heading"], "Existing heading")
+        snap["notion"]["p1"]["text"] = "# P\n"
+        self.assertIn("ANCHOR_NOT_UNIQUE:LIFE-1", cr.validate(plan, APPROVAL(plan, ["LIFE-1"]), live_of(snap))["problems"])
+
+    def test_a_new_page_is_only_proposed_and_needs_its_own_approval(self):
+        snap = {"issues": [issue(description=DESC2, notion_pages=[], owner_moves=["Rollout plan"], new_page=PARENT, notion_preface="> Draft note.")], "notion": {}}
+        plan = cr.build_plan(snap, CONFIG)
+        p = plan["issues"][0]
+        self.assertEqual((p["status"], p["reasons"], p["create_page"]["title"]), ("PLANNED", [], "Rollout requirements"))
+        self.assertTrue(p["notion_append"].startswith("# Rollout requirements\n\n> Draft note."))
+        self.assertIn(cr.NEW_URL, p["proposed_description"])
+        live = live_of(snap)
+        self.assertIn("PAGE_CREATION_NOT_APPROVED:LIFE-1", cr.validate(plan, APPROVAL(plan, ["LIFE-1"]), live)["problems"])
+        ok = cr.validate(plan, APPROVAL(plan, ["LIFE-1"], page_creation=["LIFE-1"]), live)
+        self.assertEqual([o["op"] for o in ok["operations"]], ["notion_create_page", "notion_readback_created", "jira_edit_description", "jira_readback"])
+        live["children"] = {"pp": ["Rollout requirements"]}
+        self.assertIn("EXISTING_PAGE_WITH_TITLE:LIFE-1", cr.validate(plan, APPROVAL(plan, ["LIFE-1"], page_creation=["LIFE-1"]), live)["problems"])
+
+    def test_a_created_page_is_not_created_twice_and_the_readback_substitutes_its_url(self):
+        snap = {"issues": [issue(description=DESC2, notion_pages=[], owner_moves=["Rollout plan"], new_page=PARENT)], "notion": {}}
+        plan = cr.build_plan(snap, CONFIG)
+        p, url = plan["issues"][0], "https://notion.example/new"
+        after = {"issues": {"LIFE-1": dict(issue(), description=p["proposed_description"].replace(cr.NEW_URL, url))}, "created_pages": {"LIFE-1": {"url": url, "text": p["notion_append"]}}}
+        self.assertTrue(cr.verify(plan, after)["ok"])
+        live = live_of(snap)
+        live["issues"]["LIFE-1"] = after["issues"]["LIFE-1"]
+        live["created_pages"] = after["created_pages"]
+        done = cr.validate(plan, APPROVAL(plan, ["LIFE-1"], page_creation=["LIFE-1"]), live)
+        self.assertEqual((done["ok"], done["operations"]), (True, []))
+        after["created_pages"]["LIFE-1"]["text"] = ""
+        self.assertFalse(cr.verify(plan, after)["ok"])
+
+
 class Boundaries(unittest.TestCase):
     def test_the_module_has_no_network_process_or_datastore(self):
         src = open(cr.__file__).read()
