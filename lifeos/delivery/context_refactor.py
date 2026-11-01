@@ -133,7 +133,7 @@ def plan_issue(issue, notion, config):
         return dict(base, status="NOOP", reasons=base["reasons"] or ["NOTHING_TO_MOVE"], proposed_description=text)
     proposed = "".join(out)
     fresh = [x for x in moved if x not in notion_text and overlap(x, notion_text) < 0.8]       # already present: point to it, never duplicate
-    head = "# %s\n\n%s\n\n" % (new["title"], issue.get("notion_preface", "").strip()) if new else ""
+    head = "%s%s\n\n" % ("# %s\n\n" % new["title"] if new.get("title_heading", True) else "", issue.get("notion_preface", "").strip()) if new else ""
     append = (head + "## Migrated from %s (Jira revision %s)\n\n" % (key, issue.get("updated")) + "".join(x.rstrip("\n") + "\n\n" for x in fresh)) if fresh or new else ""
     if SECRET.search(append):
         return dict(base, status="BLOCKED", reasons=["SECRET_LIKE_VALUE"])
