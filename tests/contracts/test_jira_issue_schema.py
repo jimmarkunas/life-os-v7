@@ -79,6 +79,15 @@ class Contract(unittest.TestCase):
         for retained in ("Agent UAT", "Human UAT", "protected-action", "single-writer"):
             self.assertIn(retained, POLICY)
 
+    def test_requirement_changes_are_reconciled_in_the_live_records(self):
+        """LIFE-79 (Jim, Nov 1 2026): an approved requirement change corrects the directly affected live Jira records, bounded and event-driven."""
+        rule = POLICY.split("### Requirement-change reconciliation", 1)[1].split("## 2. Locked architecture", 1)[0]
+        for required in ("not a scheduler, audit, backlog, workflow, status, automation or approval gate", "bounded text search", "in place",
+                         "must not remain an active prerequisite", "`HISTORICAL — SUPERSEDED`", "`RECONCILED`", "`PARTIAL / BLOCKED`",
+                         "never moves an issue into `Agent Go`", "one-writer scope and protected-operation gates are unchanged"):
+            self.assertIn(required, rule)
+        self.assertNotIn("Buzz or T3", POLICY)                            # T3 is retired as an authorization channel
+
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
             self.assertEqual(sorted(set(SCHEMA["required"]) - set(example)), [])
