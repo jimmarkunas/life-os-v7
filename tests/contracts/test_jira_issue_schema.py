@@ -123,12 +123,13 @@ class Contract(unittest.TestCase):
     def test_every_answered_discovery_question_must_be_saved_and_read_back(self):
         validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/discovery_capture", "$defs": DEFS})
         entry = lambda n, state="APPROVED DECISION": {"question_number": n, "owner_answer": "Jim's answer", "decision_state": state, "requirement_impact": "impact", "open_gap": "none"}
-        capture = {"los_key": "LOS-70", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14]}}
+        capture = {"los_key": "LOS-70", "tranche": 4, "owner_reply_date": "2026-11-01", "entries": [entry(13), entry(14, "UNRESOLVED")], "readback": {"verified": True, "saved_questions": [13, 14], "revision_after": "2026-11-01T12:00:00.000-0600"}}
         self.assertEqual(list(validator.iter_errors(capture)), [])
         self.assertEqual(self._unpersisted([13, 14], capture), [])
-        partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13]})
+        partial = dict(capture, entries=[entry(13)], readback={"verified": True, "saved_questions": [13], "revision_after": "r"})
         self.assertEqual(self._unpersisted([13, 14], partial), [14])                                              # DISCOVERY_CAPTURE_BLOCKED: Q14 not saved
-        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": False, "saved_questions": [13, 14]}))))   # no unverified read-back
+        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": False, "saved_questions": [13, 14], "revision_after": "r"}))))
+        self.assertTrue(list(validator.iter_errors(dict(capture, readback={"verified": True, "saved_questions": [13, 14]}))))     # a read-back names the revision it read   # no unverified read-back
         self.assertTrue(list(validator.iter_errors(dict(capture, entries=[]))))
         self.assertTrue(list(validator.iter_errors(dict(capture, entries=[entry(13, "ASSUMED")]))))              # approval state is one of the four
 
@@ -145,6 +146,37 @@ class Contract(unittest.TestCase):
         self.assertTrue(list(validator.iter_errors(issue([dict(item, state="checked", evidence="")]))))
         self.assertIn("a checklist tick is never Done", SCHEMA["description"])
         self.assertIn("not a native Jira validator", SCHEMA["description"])
+
+    def test_context_efficiency_contract_is_in_the_policy(self):
+        """LIFE-79 (Jim, Nov 1 2026): minimal Jira-first retrieval, clear ownership, persisted interviews, budgets that never beat correctness, fresh-agent handoff."""
+        rule = POLICY.split("### Context efficiency", 1)[1].split("## 2. Locked architecture", 1)[0]
+        for required in ("Read the owning Jira issue first", "only the specific Notion section, GitHub file or related Jira issue", "Never pull whole conversation histories",
+                         "while its source revision is unchanged", "stop researching once sufficient authoritative evidence exists",
+                         "safety, authority, a contradiction, missing proof or verification",                                  # the exceptions to reuse
+                         "The LOS Description holds", "The LIFE Description holds", "Notion holds detailed product specifications", "GitHub holds code",
+                         "Comments hold active development findings and receipts, not requirements", "never move, delete, summarize away or overwrite",
+                         "do not re-fetch Notion during routine questioning", "narrow edit", "revision changed since it was read, re-read and merge",
+                         "Independently read the change back before the next tranche", "`DISCOVERY_CAPTURE_BLOCKED` and stops the next tranche",
+                         "never overrides correctness", "from one Jira key and its authoritative links, without pasted conversation history",
+                         "rather than speculative implementation", "no task store, scheduler, dispatcher, index, context-sync service or agent relay",
+                         "cannot observe or limit an external agent's tool calls",
+                         "Agent Go release, Priority order, claims, one-writer scope and protected-operation gates are unchanged"):
+            self.assertIn(required, rule)
+        self.assertNotIn("token limit", rule.lower())                       # no artificial token budget
+
+    def test_the_schema_lets_a_fresh_agent_recover_scope_from_one_key_without_chat_history(self):
+        for needed in ("key", "product_origin", "acceptance_criteria", "execution", "authorization", "owner", "component", "fix_version"):
+            self.assertIn(needed, SCHEMA["required"])
+        self.assertFalse(SCHEMA["additionalProperties"])                    # no place to paste a conversation
+        for chat in ("chat_history", "conversation", "transcript"):
+            self.assertNotIn(chat, SCHEMA["properties"])
+        self.assertEqual(SCHEMA["properties"]["notion_requirement"]["$ref"], "#/$defs/https_url")   # detail is linked, not copied into Jira
+
+    @unittest.skipIf(jsonschema is None, "jsonschema not installed")
+    def test_a_pasted_conversation_is_not_accepted_as_issue_content(self):
+        bad = dict(SCHEMA["examples"][0], chat_history="Jim said ...")
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(SCHEMA).validate(bad)
 
     def test_every_example_carries_the_required_fields(self):
         for example in SCHEMA["examples"]:
