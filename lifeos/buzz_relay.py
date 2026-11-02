@@ -114,18 +114,21 @@ class Relay:
 
     def _post(self, community, channel, text, actor, idempotency_key):
         digest = hashlib.sha256(f"{community}|{channel}|{actor}|{idempotency_key}|{text}".encode()).hexdigest()[:32]
+        ident = hashlib.sha256(f"{community}|{channel}|{actor}|{idempotency_key}".encode()).hexdigest()[:32]  # the key alone, so a restart still sees a reused key
         prior = self.sent.get((community, idempotency_key))
         if prior and prior[0] != digest:
             raise BuzzError("idempotency_conflict")
         try:  # read before write: a retry after an ambiguous outcome must never duplicate
-            found = self._query(community, {"kinds": [9], "#h": [channel], "#i": [digest], "limit": 1})
+            found = self._query(community, {"kinds": [9], "#h": [channel], "#k": [ident], "limit": 1})
         except BuzzError as e:
             if e.code in ("community_not_authorized", "key_not_configured"):
                 raise
             raise BuzzError("precheck_unavailable") from None
+        if found and self._tag(found[0], "i") != digest:
+            raise BuzzError("idempotency_conflict")  # same key, different text, even across a restart
         if found:
             return {"status": "already_delivered", "event_id": found[0].get("id"), "actor": actor}
-        ev = prior[1] if prior else nip98.event(self.keys[community], 9, [["h", channel], ["actor", actor], ["i", digest]], text)
+        ev = prior[1] if prior else nip98.event(self.keys[community], 9, [["h", channel], ["actor", actor], ["i", digest], ["k", ident]], text)
         self.sent[(community, idempotency_key)] = (digest, ev)
         while len(self.sent) > MAX_CACHE:
             self.sent.pop(next(iter(self.sent)))
