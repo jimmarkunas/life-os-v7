@@ -74,7 +74,7 @@ def _day(at):
     return f"{date.fromisoformat(at[:10]):%b} {int(at[8:10])}"
 
 
-def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
+def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp, picker=None):
     """LIFE-111 / LIFE-112: the hand-set state of the open pursuit and its two signed forms (nothing is written from here)."""
     o, hold, nxt = D._page_id(rec["id"]), M.hold_of(lines), M.next_of(lines)
     if nxt and nxt["op"] in {m.group(1) for m in map(C.DONE_LINE.fullmatch, lines) if m}:
@@ -96,10 +96,10 @@ def _hand(secret, login, kind, rec, page, lines, ledger_ready, exp):
     body += '<div class="mcard"><h4>Materials sent</h4>' + ("".join(                        # LIFE-172: each item can be removed, through its own review and confirm
         f'<form method="post" action="/manage" class="item">{S._hidden(unsent | {"p": D._page_id(page["id"]), "v": m["op"], "sx": m["text"]})}<span>{e(M.SENT_KINDS[m["kind"]])}: {e(m["text"])} · recorded {e(_day(m["at"]))}</span>'
         '<button class="btn">Remove</button></form>' for m in sent) or '<p class="hint">None recorded yet.</p>') + '</div>'
-    if picker_ready():                                                    # LIFE-217: Google's own picker; a pick opens the usual review (sk=file, su=its link)
+    if picker:                                                            # LIFE-217: Google's own picker; a pick opens the usual review (sk=file, su=its link)
         pick = form("sent", {"sk": M.FILE, "su": ""}).replace("<form ", '<form id="pick-form" ', 1)
         body += (f'<div class="mcard"><h4>Pick a Google Drive file you sent</h4>{pick}</form>'
-                 f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(PICKER["client_id"])}" data-key="{e(PICKER["api_key"])}" data-app="{e(PICKER["app_id"])}">Choose from Google Drive</button></div>'
+                 f'<div class="mrow"><button type="button" class="btn" id="pick-drive" disabled data-client="{e(picker["client_id"])}" data-key="{e(picker["api_key"])}" data-app="{e(picker["app_id"])}">Choose from Google Drive</button></div>'
                  '<p class="hint">Google asks you to sign in the first time; it sees only the file you pick. You review it before anything is recorded.</p>'
                  '<script src="/manage-picker.js" defer></script></div>')
     body += (f'<div class="mcard"><h4>Add a Google Drive file you sent</h4>{form("drive")}<div class="mrow">'   # LIFE-173: find the file instead of hunting for its link
@@ -123,9 +123,11 @@ CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(
 
 
 # LIFE-217 (Jim, Oct 31 2026: "build the Google pop-up picker"; "Google sign-in pop-up"): Google's own Drive picker on Manage. Its sign-in asks only drive.file
-# (the files Jim picks); the Close service's Drive credential never reaches the browser. These are public browser identifiers (an OAuth client id, a Picker API
-# key restricted to this origin, the Cloud project number), not secrets. While any is blank the picker button is not shown and the name search stays the way in.
-PICKER = {"client_id": "", "api_key": "", "app_id": ""}
+# (the files Jim picks); the Close service's Drive credential never reaches the browser. Its browser identifiers (an OAuth client id, a Picker API key restricted
+# to this origin, the Cloud project number) are the Close service's optional `picker` credential (install-close.sh credential picker), never in this public repository;
+# close_gate passes them on GET /manage only. Without them the picker button is not shown and the name search stays the way in.
+PICKER_FIELDS = {"client_id": re.compile(r"[0-9]{6,20}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com"), "api_key": re.compile(r"AIza[0-9A-Za-z_-]{30,60}"),
+                 "app_id": re.compile(r"[0-9]{6,20}")}
 PICKER_JS = """(function () {
   var b = document.getElementById("pick-drive"), f = document.getElementById("pick-form"), token = null, ready = null;
   if (!b || !f) { return; }
@@ -157,8 +159,11 @@ PICKER_JS = """(function () {
 """
 
 
-def picker_ready():
-    return all(isinstance(PICKER.get(k), str) and PICKER[k].strip() for k in ("client_id", "api_key", "app_id"))
+def picker(secrets):
+    """The picker's browser identifiers from the gate (GET /manage only), each in its exact shape, else None (no button)."""
+    got = secrets.get("picker")
+    ok = isinstance(got, dict) and all(isinstance(got.get(k), str) and rx.fullmatch(got[k]) for k, rx in PICKER_FIELDS.items())
+    return {k: got[k] for k in PICKER_FIELDS} if ok else None
 
 
 def handle_js(req, who, secrets):
@@ -256,7 +261,7 @@ def _hub(req, who, secrets):
         raw = next((p for p in pages if D._page_id(p.get("id")) == rid), {}) if kind == "ledger" else {}
         props = raw.get("properties") or {}
         ledger_lines = M.hand_lines(D._text(props.get(D.HAND_SET), "rich_text")) if kind == "ledger" else ()
-        body += '</section><section class="section">' + _hand(secrets["link"], who["login"], kind, rec, page, ledger_lines + tuple(lines), D.HAND_SET in props, exp)
+        body += '</section><section class="section">' + _hand(secrets["link"], who["login"], kind, rec, page, ledger_lines + tuple(lines), D.HAND_SET in props, exp, picker(secrets))
     if kind == "ledger":
         body += _link("Build résumé · I applied with this résumé", "/resume?" + urlencode({"j": rid}), "Tailor a résumé, or record which one you sent.")
         if not closed:

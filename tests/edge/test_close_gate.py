@@ -83,6 +83,24 @@ class Gate(unittest.TestCase):
         _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
         self.assertEqual(csp(text), gate.CSP)
 
+    def test_the_picker_credential_reaches_only_get_manage(self):
+        """LIFE-217: the optional `picker` credential (the Drive picker's browser identifiers) is read for GET /manage only; absent or broken means no picker."""
+        ids = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
+        self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
+        self.assertNotIn("picker", self.calls[-1][2])                                              # absent: no picker
+        with open(os.path.join(self.creds, "picker"), "w") as f:
+            json.dump({**ids, "other": "dropped"}, f)
+        self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
+        self.assertEqual(self.calls[-1][2]["picker"], ids)
+        for raw in (http(path="/close?l=abc"), http("POST", "/manage", POST_OK, b"o=abc"), http(path="/manage-picker.js")):
+            self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
+            self.assertNotIn("picker", self.calls[-1][2], raw[:30])
+        with open(os.path.join(self.creds, "picker"), "w") as f:
+            f.write("not json")
+        code, status, _ = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
+        self.assertEqual((code, status), (0, 200))
+        self.assertNotIn("picker", self.calls[-1][2])
+
     def test_get_reads_the_current_opportunity_through_a_read_only_client_and_writes_nothing(self):
         class Notion:                                                   # a fake Notion client: one opportunity, every call recorded
             source = "ds-ledger"

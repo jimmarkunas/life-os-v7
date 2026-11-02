@@ -1,5 +1,5 @@
 #!/bin/bash
-# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off | units DIR |
+# LIFE-47 S2 on Oracle, run as root via `opc` (never `ubuntu`): policy LOGIN LEDGER PIPELINE NODE... | credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off|picker|picker-off | units DIR |
 #   (gdrive: pipe lifeos/platform/google_consent.py into it, see that file)
 #   install COMMIT (close_release.py stages and proves the approved commit before anything live changes) | verify | rollback | uninstall.
 #   auto (Edge auto-release, Jim Oct 24: main's green head, only when the Close closure changed, only while installed and serving; verify, else back to the tree that
@@ -88,6 +88,9 @@ EOF
   if [ -s "$CREDS/lifeos-close.ghvars" ]; then                                       # optional (Jim, Oct 26): the Alert settings screen saves the master switch, the mute and the channel choices as repository variables; absent = the screen is read-only
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=ghvars:$CREDS/lifeos-close.ghvars" "$1/lifeos-close@.service"
   fi
+  if [ -s "$CREDS/lifeos-close.picker" ]; then                                       # optional (LIFE-217, Jim Oct 31): the Manage Drive picker's browser identifiers; absent = no picker button
+    sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=picker:$CREDS/lifeos-close.picker" "$1/lifeos-close@.service"
+  fi
   if [ -s "$CREDS/lifeos-close.gdrive" ]; then                                       # optional (Jim, Oct 24): Build resume saves to Google Drive (My Drive / LIFE OS / Résumés, full drive scope, Jim Oct 24); absent = Notion upload
     sed -i "/^LoadCredentialEncrypted=link:/a LoadCredentialEncrypted=gdrive:$CREDS/lifeos-close.gdrive" "$1/lifeos-close@.service"
   fi
@@ -113,11 +116,17 @@ case "${1:-}" in
               printf '%s' "$value" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); sys.exit(0 if all(isinstance(d.get(k), str) and d[k] for k in ("client_id", "client_secret", "refresh_token")) else 1)' 2>/dev/null \
                 || { say "STOP: no complete Drive credential arrived; the stored one (if any) is unchanged"; exit 1; }
               printf '%s' "$value" | systemd-creds encrypt --name=gdrive - "$CREDS/lifeos-close.gdrive"; value="" ;;
+      picker) [ -t 0 ] && { say "pipe the picker JSON into this: {\"client_id\": ..., \"api_key\": ..., \"app_id\": ...}"; exit 2; }
+              value="$(cat)"
+              printf '%s' "$value" | python3 -I -c 'import json, re, sys; d = json.load(sys.stdin); shapes = {"client_id": r"[0-9]{6,20}-[a-z0-9]{10,64}[.]apps[.]googleusercontent[.]com", "api_key": r"AIza[0-9A-Za-z_-]{30,60}", "app_id": r"[0-9]{6,20}"}; sys.exit(0 if isinstance(d, dict) and set(d) == set(shapes) and all(isinstance(d[k], str) and re.fullmatch(p, d[k]) for k, p in shapes.items()) else 1)' 2>/dev/null \
+                || { say "STOP: the picker JSON needs exactly client_id, api_key and app_id in their Google shapes; the stored one (if any) is unchanged"; exit 1; }
+              printf '%s' "$value" | systemd-creds encrypt --name=picker - "$CREDS/lifeos-close.picker"; value="" ;;
+      picker-off) rm -f "$CREDS/lifeos-close.picker"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "picker credential removed; Manage shows no picker button"; exit 0 ;;
       gdrive-off) rm -f "$CREDS/lifeos-close.gdrive"; [ ! -e "$UNITS/lifeos-close@.service" ] || { units "$UNITS"; systemctl daemon-reload; }; say "Drive credential removed; Build resume uploads to Notion again"; exit 0 ;;
-      *) say "credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off"; exit 2 ;;
+      *) say "credential notion|link|github|github-off|ghvars|ghvars-off|gdrive|gdrive-off|picker|picker-off"; exit 2 ;;
     esac
     chmod 600 "$CREDS/lifeos-close.${2}"; say "encrypted credential ${2} stored (value not shown)"
-    if { [ "$2" = github ] || [ "$2" = ghvars ] || [ "$2" = gdrive ]; } && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
+    if { [ "$2" = github ] || [ "$2" = ghvars ] || [ "$2" = gdrive ] || [ "$2" = picker ]; } && [ -e "$UNITS/lifeos-close@.service" ]; then units "$UNITS"; systemctl daemon-reload; say "the next connection loads it"; fi ;;   # never re-creates an uninstalled service
   units) units "${2:?dir}" ;;
   install)
     commit="${2:?approved full commit sha}"
