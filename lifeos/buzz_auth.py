@@ -9,9 +9,9 @@ SCOPES = ("buzz:read", "buzz:write")
 
 
 class AuthError(Exception):
-    def __init__(self, code, status=401, sub=None):
+    def __init__(self, code, status=401, sub=None, reason=None):
         super().__init__(code)
-        self.code, self.status, self.sub = code, status, sub
+        self.code, self.status, self.sub, self.reason = code, status, sub, reason
 
 
 def _b64(s):
@@ -61,6 +61,8 @@ class Verifier:
             raise AuthError("invalid_token")
         now, aud, exp = self.clock(), claims.get("aud"), claims.get("exp")
         aud = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
+        if isinstance(exp, (int, float)) and not isinstance(exp, bool) and exp <= now and isinstance(claims.get("sub"), str):  # signature is already verified, so this subject is real
+            raise AuthError("invalid_token", 401, claims["sub"][:64], "expired")
         if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now \
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
@@ -72,4 +74,4 @@ class Verifier:
             raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
         label, communities = self.users[sub]
         scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
-        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities}
+        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities, "iat": claims.get("iat"), "exp": exp, "tid": hashlib.sha256(sig).hexdigest()[:8]}

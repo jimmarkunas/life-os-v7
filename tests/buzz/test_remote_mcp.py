@@ -124,6 +124,29 @@ class TokenChecks(Server):
         self.assertEqual(v.verify("Bearer " + token(exp=NOW + 9999))["client"], "claude")
 
 
+class Telemetry(Server):
+    def test_expired_tokens_are_logged_with_the_verified_subject_and_no_token_material(self):
+        self.start()
+        expired = token(exp=NOW - 5)
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, expired)[0], 401)
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, "a.b.c")[0], 401)
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"})[0], 401)           # no token at all is not logged
+        self.assertEqual([(a["outcome"], a["reason"], a["sub"]) for a in self.audit], [("invalid_token", "expired", "user-claude"), ("invalid_token", None, None)])
+        blob = json.dumps(self.audit)
+        for secret in (expired, expired.split(".")[2], expired.split(".")[1]):
+            self.assertNotIn(secret, blob)
+
+    def test_successful_calls_record_issue_expiry_and_a_token_id_that_changes_with_each_token(self):
+        self.start()
+        t1, t2 = token(iat=NOW - 60, exp=NOW + 600), token(iat=NOW - 30, exp=NOW + 3600)
+        for tok in (t1, t1, t2):
+            self.assertEqual(self.tool(tok, "buzz_list_channels", community="life-os")[0], 200)
+        rows = self.audit
+        self.assertEqual([(r["iat"], r["exp"]) for r in rows], [(NOW - 60, NOW + 600), (NOW - 60, NOW + 600), (NOW - 30, NOW + 3600)])
+        self.assertEqual((rows[0]["tid"] == rows[1]["tid"], rows[0]["tid"] != rows[2]["tid"], len(rows[0]["tid"])), (True, True, 8))   # a renewal shows up as a new tid
+        self.assertNotIn(t1.split(".")[2], json.dumps(rows))
+
+
 class DualClient(Server):
     def test_both_chat_clients_use_one_endpoint_and_see_the_same_tools_and_room(self):
         self.start()
