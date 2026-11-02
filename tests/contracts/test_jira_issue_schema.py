@@ -5,9 +5,11 @@ import re
 import unittest
 from pathlib import Path
 
+from tests.contracts.test_development_policy_split import reassemble
+
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs" / "jira" / "issue-schema.v1.json"
-POLICY = (ROOT / "docs" / "life-os-development-policy.md").read_text()
+POLICY = reassemble()                                                    # LIFE-79 Nov 2: the whole policy, from its verbatim parts
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
 DEFS = SCHEMA["$defs"]
 
