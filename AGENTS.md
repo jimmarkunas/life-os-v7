@@ -3,6 +3,17 @@
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
+## LIFE OS FAST PATH — all agents
+
+**Read the named LIFE issue first.** Retrieve only missing authoritative context. Reuse unchanged evidence. Parallelize independent reads. Stop when sufficient evidence exists; execute already-approved scoped work immediately. Independently verify every consequential write. Never reopen discovery, audit unrelated systems, or create duplicate planning artifacts. Exceed routine limits only for a specific safety, authorization, contradiction or missing-proof dependency.
+
+- **Routine FAST budget:** target ≤30 seconds, ≤2 remote rounds and ≤4 remote calls; STANDARD bounded change target ≤60 seconds. Targets never override required authority or proof. Batch independent reads; do not fetch whole policy/Notion pages when a specific section or exact issue is sufficient.
+- **Follow authority:** current Jim instruction → live V7 Development Policy → current LOS (new product decisions only) → owning Notion requirements → live LIFE execution issue → existing GitHub implementation. On work in progress, use LIFE as control plane and consult LOS only for a missing or changed product decision.
+- **Scope and readiness:** LOS approved outcomes go to owning LIFE Epic → scoped Tasks → independently executable Sub-tasks; do not substitute a 25-row checklist for agent-executable tickets. An issue missing approved origin, owner/lane, correct Component/Fix Version, true dependencies, human prerequisites, Given/When/Then, host, fast proof or stop condition returns `DISCOVERY_NOT_READY` or `QUEUE_NOT_READY` with the exact gap.
+- **Execution gate:** only an approved named instruction or a correctly released Agent Go issue permits scoped work; enforce current one-writer claim, permissions and protected-operation approval. A Jira comment/status or an agent message alone does not grant authority.
+- **Evidence and closure:** targeted proof → real receiver/user outcome → independent read-back → Jira status/acceptance update; Notion holds long-form rationale/evidence and GitHub owns code/CI. Never equate PR merge or CI with product Done. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the immediate responsible action.
+- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy, bulk audit or additional governance layer without explicit approval. Developer-policy and safety gates remain authoritative if this summary differs.
+
 ## Buzz pilot entrypoint — only for LIFE-216
 
 For the approved Buzz Community roadmap, use [docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) as the frozen 25-step contract and LIFE-216 as the live execution/approval/evidence ledger. LOS-70 and its Notion page own product decisions. No Agent Go, credentials, paid usage, live integration or deployment authority arises from this pointer; verify one-writer and protected gates separately. No new scheduler/orchestrator.
