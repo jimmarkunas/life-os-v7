@@ -22,6 +22,9 @@ class Base(unittest.TestCase):
         from tests.kit.jobsdb import JobsDB
         self.db = JobsDB()
         self.addCleanup(self.db.raw.close)
+        clock = mock.patch.object(stage, "_now", return_value=T)           # the fixtures are dated T; the stage's age gates (LIFE-212: 14 days) must judge them as of T, not the wall clock
+        clock.start()
+        self.addCleanup(clock.stop)
 
     def job(self, job_id, status="READY", admission="ADMIT", page=None, exclusion=None, cloud_status=None, seen=T, text=GOOD, kind="ats_api",
             url="https://boards.greenhouse.io/acme/jobs/100", source="jobright"):
