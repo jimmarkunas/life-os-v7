@@ -13,6 +13,10 @@ CLIENTS = {"cid-claude": "claude", "cid-chatgpt": "chatgpt"}
 USERS = {"user-1": ("life-os", "bytalos"), "user-lifeos-only": ("life-os",)}
 NOW = 1_800_000_000
 POST = dict(community="life-os", channel=CHAN, text="synthetic hello", idempotency_key="k1")
+KEYS = {("claude", "life-os"): bytes([21]) * 32, ("claude", "bytalos"): bytes([22]) * 32, ("chatgpt", "life-os"): bytes([23]) * 32, ("chatgpt", "bytalos"): bytes([24]) * 32}   # synthetic, one per pairing
+CHANS = {"life-os": CHAN, "bytalos": OTHER}
+BOTH = (("life-os", CHAN), ("bytalos", OTHER))
+WR = dict(scope="buzz:read buzz:write")
 
 
 def _prime(rng, bits=1024):
@@ -45,12 +49,12 @@ def token(alg="RS256", kid="k1", sign=True, **over):
 
 
 class Server(unittest.TestCase):
-    def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=()):
-        self.fake = fake or FakeRelay()
-        self.relay = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, writes, self.fake)
+    def start(self, fake=None, writes=((("life-os", CHAN)),), fetch=None, origins=(), keys=None):
+        self.fake, keys = fake or FakeRelay(), KEYS if keys is None else keys
+        self.relays = {i: Relay(URLS, {c: k for (ii, c), k in keys.items() if ii == i}, writes, self.fake) for i in ("claude", "chatgpt") if any(ii == i for ii, _ in keys)}
         self.audit = []
-        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch or (lambda url: JWKS), clock=lambda: NOW)
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relay, verifier, BASE, origins, self.audit.append))
+        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=fetch or (lambda url: JWKS), clock=lambda: NOW)
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relays, verifier, BASE, origins, self.audit.append))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)
@@ -110,7 +114,7 @@ class TokenChecks(Server):
 
     def test_key_rotation_refreshes_but_unknown_kid_cannot_hammer_the_idp(self):
         fetches, keys = [], {"keys": []}
-        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
+        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
         for _ in range(5):
             with self.assertRaises(AuthError):
                 v.verify("Bearer " + token())
@@ -167,19 +171,20 @@ class DualClient(Server):
         self.assertEqual(self.tool(tok, "buzz_post_message", **dict(POST, channel=OTHER))[1], {"error": "write_disabled"})
         self.assertEqual(self.fake.events, [])
 
-    def test_cross_client_duplicate_refusal_and_restart_safe_conflict(self):
+    def test_idempotency_is_scoped_to_the_signing_identity_and_survives_restart(self):
         self.start()
-        wr = dict(scope="buzz:read buzz:write")
-        first = self.tool(token(client_id="cid-claude", **wr), "buzz_post_message", **POST)[1]
-        again = self.tool(token(client_id="cid-chatgpt", **wr), "buzz_post_message", **POST)[1]
-        self.assertEqual((first["status"], again["status"], again["event_id"], len(self.fake.events)), ("sent_not_read_back", "already_delivered", first["event_id"], 1))
-        self.assertEqual(self.tool(token(client_id="cid-chatgpt", **wr), "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
-        self.start(fake=self.fake)                                                  # restart: new process, empty in-memory cache, same relay
-        self.assertEqual(self.tool(token(**wr), "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
-        self.assertEqual(self.tool(token(**wr), "buzz_post_message", **POST)[1]["status"], "already_delivered")
-        self.assertEqual(len(self.fake.events), 1)
+        tc, tg = token(client_id="cid-claude", **WR), token(client_id="cid-chatgpt", **WR)
+        first, other = self.tool(tc, "buzz_post_message", **POST)[1], self.tool(tg, "buzz_post_message", **POST)[1]
+        self.assertEqual((first["status"], other["status"], len(self.fake.events)), ("sent_not_read_back", "sent_not_read_back", 2))   # same key from the other product is a different actor
+        self.assertNotEqual((first["actor"], first["event_id"]), (other["actor"], other["event_id"]))
+        self.assertEqual(self.tool(tc, "buzz_post_message", **POST)[1]["status"], "already_delivered")
+        self.assertEqual(self.tool(tg, "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
+        self.start(fake=self.fake)                                                  # restart: new process, empty in-memory caches, same relay
+        self.assertEqual(self.tool(tc, "buzz_post_message", **dict(POST, text="different"))[1], {"error": "idempotency_conflict"})
+        self.assertEqual((self.tool(tg, "buzz_post_message", **POST)[1]["status"], self.tool(tc, "buzz_post_message", **POST)[1]["status"]), ("already_delivered",) * 2)
+        self.assertEqual(len(self.fake.events), 2)
 
-    def test_concurrent_posts_from_both_clients_create_one_event(self):
+    def test_concurrent_posts_from_both_clients_create_one_event_per_identity(self):
         self.start()
         gate, out = threading.Barrier(8), []
         def go(i):
@@ -188,7 +193,55 @@ class DualClient(Server):
         threads = [threading.Thread(target=go, args=(i,)) for i in range(8)]
         [t.start() for t in threads]
         [t.join() for t in threads]
-        self.assertEqual((sorted(out), len(self.fake.events)), (["already_delivered"] * 7 + ["sent_not_read_back"], 1))
+        self.assertEqual((sorted(out), len(self.fake.events)), (["already_delivered"] * 6 + ["sent_not_read_back"] * 2, 2))
+
+
+class FourIdentities(Server):
+    def test_each_client_and_community_pairing_signs_with_its_own_key_and_reads_back_independently(self):
+        self.start(writes=BOTH)
+        pairs = [(c, k) for c in ("claude", "chatgpt") for k in ("life-os", "bytalos")]
+        receipts = {}
+        for client, comm in pairs:
+            tok = token(client_id="cid-" + client, **WR)
+            status, receipts[client, comm] = self.tool(tok, "buzz_post_message", community=comm, channel=CHANS[comm], text=f"synthetic from {client} to {comm}", idempotency_key="id-" + client + comm[:2])
+            self.assertEqual((status, receipts[client, comm]["status"]), (200, "sent_not_read_back"))
+        pubs = {pair: nip98.pubkey(KEYS[pair]) for pair in pairs}
+        self.assertEqual(len(set(pubs.values())), 4)
+        by_id = {e["id"]: e for e in self.fake.events}
+        for pair in pairs:
+            ev = by_id[receipts[pair]["event_id"]]
+            self.assertEqual((ev["pubkey"], dict(ev["tags"])["h"], dict(ev["tags"])["actor"]), (pubs[pair], CHANS[pair[1]], "key:" + pubs[pair][:16]))
+            other = ({"claude": "chatgpt", "chatgpt": "claude"}[pair[0]], pair[1])              # the OTHER product's identity reads it back
+            got = self.tool(token(client_id="cid-" + other[0]), "buzz_get_messages", community=pair[1], channel=CHANS[pair[1]])[1]
+            self.assertIn((receipts[pair]["event_id"], f"synthetic from {pair[0]} to {pair[1]}", "key:" + pubs[pair][:16]), [(m["event_id"], m["untrusted_text"], m["actor"]) for m in got])
+        self.assertEqual({a["identity"] for a in self.audit if a["tool"] == "buzz_post_message"}, {p[:16] for p in pubs.values()})
+        self.assertNotIn(KEY_A.hex(), json.dumps(self.audit))
+
+    def test_a_missing_credential_denies_only_its_pairing_and_never_falls_back(self):
+        keys = {k: v for k, v in KEYS.items() if k != ("chatgpt", "bytalos")}
+        self.start(writes=BOTH, keys=keys)
+        tg = token(client_id="cid-chatgpt", **WR)
+        for call in (("buzz_list_channels", dict(community="bytalos")), ("buzz_post_message", dict(POST, community="bytalos", channel=OTHER))):
+            self.assertEqual(self.tool(tg, *call[:1], **call[1]), (200, {"error": "key_not_configured"}))
+        self.assertEqual((self.fake.calls, self.fake.events), ([], []))                  # claude's bytalos key was never borrowed
+        self.assertEqual(self.tool(token(client_id="cid-claude", **WR), "buzz_list_channels", community="bytalos")[0], 200)
+        self.assertEqual(self.tool(tg, "buzz_list_channels", community="life-os")[0], 200)
+        self.assertEqual(self.tool(tg, "buzz_post_message", **POST)[1]["actor"], "key:" + nip98.pubkey(KEYS["chatgpt", "life-os"])[:16])
+
+    def test_a_client_with_no_identity_at_all_is_denied_before_any_relay_request(self):
+        self.start(writes=BOTH, keys={k: v for k, v in KEYS.items() if k[0] == "claude"})
+        for call in (("buzz_list_channels", dict(community="life-os")), ("buzz_post_message", POST)):
+            self.assertEqual(self.tool(token(client_id="cid-chatgpt", **WR), call[0], **call[1]), (200, {"error": "client_identity_not_configured"}))
+        self.assertEqual((self.fake.calls, self.fake.events), ([], []))
+        self.assertEqual(self.tool(token(client_id="cid-claude"), "buzz_list_channels", community="life-os")[0], 200)
+
+    def test_the_caller_cannot_choose_the_identity(self):
+        self.start(writes=BOTH)
+        tok = token(client_id="cid-chatgpt", **WR)
+        for forged in (dict(client="claude"), dict(actor="key:" + nip98.pubkey(KEYS["claude", "life-os"])[:16]), dict(identity="claude")):
+            self.assertEqual(self.tool(tok, "buzz_post_message", **dict(POST, **forged)), (200, {"error": "invalid_argument"}))
+        self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_post_message", "arguments": POST}}, tok, X_Client="claude", X_Actor="claude", User_Agent="Claude-User")
+        self.assertEqual([e["pubkey"] for e in self.fake.events], [nip98.pubkey(KEYS["chatgpt", "life-os"])])
 
 
 class UserAuthorization(Server):
@@ -239,7 +292,8 @@ class Startup(unittest.TestCase):
     def test_unit_does_not_use_isolated_mode_and_keeps_sandboxing(self):
         unit = self.UNIT.read_text()
         self.assertNotIn(" -I ", unit.split("ExecStart=")[1].splitlines()[0])
-        for line in ("NoNewPrivileges=yes", "ProtectSystem=strict", "User=buzz-mcp", "LoadCredentialEncrypted=buzz_key_life_os", "Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current"):
+        self.assertEqual(unit.count("LoadCredentialEncrypted="), 4)                    # exactly the four identity slots
+        for line in ("NoNewPrivileges=yes", "ProtectSystem=strict", "User=buzz-mcp", "LoadCredentialEncrypted=buzz_key_claude_life_os", "LoadCredentialEncrypted=buzz_key_chatgpt_bytalos", "Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current"):
             self.assertIn(line, unit)
 
     def test_execstart_imports_from_the_staged_layout_without_secrets(self):
@@ -259,7 +313,7 @@ class Startup(unittest.TestCase):
             s.bind(("127.0.0.1", 0))
             port = s.getsockname()[1]
         env = self.env(stage, BUZZ_MCP_PORT=str(port), BUZZ_MCP_PUBLIC_URL=BASE, BUZZ_OAUTH_ISSUER=ISS, BUZZ_OAUTH_JWKS_URL=ISS + "/jwks", BUZZ_OAUTH_CLIENTS="cid-claude:claude",
-                       BUZZ_OAUTH_USERS="user-1:life-os", BUZZ_URL_LIFE_OS=URLS["life-os"], BUZZ_KEY_LIFE_OS=KEY_A.hex())
+                       BUZZ_OAUTH_USERS="user-1:life-os", BUZZ_URL_LIFE_OS=URLS["life-os"], BUZZ_KEY_CLAUDE_LIFE_OS=KEY_A.hex())
         proc = subprocess.Popen(self.exec_argv(), cwd=tempfile.gettempdir(), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         self.addCleanup(proc.kill)
         self.addCleanup(proc.stderr.close)
@@ -283,6 +337,24 @@ class Startup(unittest.TestCase):
             urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/mcp", b"{}", method="POST"))
         except urllib.error.HTTPError as e:
             return e.code
+
+
+class OracleShapes(Server):
+    def test_issuer_trailing_slash_is_equivalent_but_nothing_else(self):
+        v = Verifier("https://identity.example.test", BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: JWKS, clock=lambda: NOW)
+        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test/"))["client"], "claude")     # Oracle IAM issues iss with a trailing slash
+        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test"))["client"], "claude")
+        for bad in ("https://identity.example.test.evil", "https://identity.example.test//x", None, ["https://identity.example.test"], 5):
+            with self.assertRaises(AuthError):
+                v.verify("Bearer " + token(iss=bad))
+
+    def test_authorization_server_address_is_separate_from_the_issuer(self):
+        env = {**Config.ENV, "BUZZ_OAUTH_ISSUER": "https://identity.example.test/", "BUZZ_OAUTH_AS_URL": "https://idcs-x.example.test/", "BUZZ_OAUTH_CLIENTS": "cid-oracle:claude"}
+        auth = buzz_mcp.from_env(env)[1]
+        self.assertEqual((auth.issuer, auth.as_url, auth.clients), ("https://identity.example.test", "https://idcs-x.example.test", {"cid-oracle": "claude"}))
+        self.assertEqual(buzz_mcp.from_env(Config.ENV)[1].as_url, ISS)
+        with self.assertRaises(ValueError):
+            buzz_mcp.from_env({**env, "BUZZ_OAUTH_AS_URL": "http://insecure.example.test"})
 
 
 class Transport(Server):
@@ -309,32 +381,42 @@ class Transport(Server):
         self.fake.fail_query = True
         results = [self.tool(tok, "buzz_list_channels", community="life-os"), self.tool(tok, "buzz_post_message", **POST)]
         blob = json.dumps([self.audit, results])
-        for secret in (tok, tok.split(".")[2], KEY_A.hex(), KEY_B.hex(), POST["text"]):
+        for secret in (tok, tok.split(".")[2], *(k.hex() for k in KEYS.values()), POST["text"]):
             self.assertNotIn(secret, blob)
 
 
 class Config(unittest.TestCase):
+    FOUR = {f"BUZZ_KEY_{i}_{c}": KEYS[i.lower(), c.lower().replace("_", "-")].hex() for i in ("CLAUDE", "CHATGPT") for c in ("LIFE_OS", "BYTALOS")}
     ENV = {"BUZZ_MCP_PUBLIC_URL": BASE + "/", "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-claude:claude,cid-chatgpt:chatgpt", "BUZZ_OAUTH_USERS": "user-1:life-os+bytalos",
-           "BUZZ_URL_LIFE_OS": URLS["life-os"] + "/", "BUZZ_KEY_LIFE_OS": KEY_A.hex()}
+           "BUZZ_URL_LIFE_OS": URLS["life-os"] + "/", "BUZZ_URL_BYTALOS": URLS["bytalos"], **FOUR}
 
-    def test_from_env_defaults_to_no_writes_and_rejects_unsafe_config(self):
-        relay, auth, base, origins = buzz_mcp.from_env(self.ENV)
-        self.assertEqual((relay.writes, base, origins, auth.audience, auth.clients), (set(), BASE, (), BASE + "/mcp", {"cid-claude": "claude", "cid-chatgpt": "chatgpt"}))
+    def test_from_env_builds_four_identities_defaults_to_no_writes_and_rejects_unsafe_config(self):
+        relays, auth, base, origins = buzz_mcp.from_env(self.ENV)
+        self.assertEqual(({i: {c: nip98.pubkey(k) for c, k in r.keys.items()} for i, r in relays.items()}, {r.writes.__len__() for r in relays.values()}),
+                         ({i: {c: nip98.pubkey(KEYS[i, c]) for c in ("life-os", "bytalos")} for i in ("claude", "chatgpt")}, {0}))
+        self.assertEqual((base, origins, auth.audience, auth.clients), (BASE, (), BASE + "/mcp", {"cid-claude": "claude", "cid-chatgpt": "chatgpt"}))
         url_ids = buzz_mcp.from_env({**self.ENV, "BUZZ_OAUTH_CLIENTS": "https://chatgpt.com/oauth/client.json:chatgpt, dcr-abc123:claude"})[1]
         self.assertEqual(url_ids.clients, {"https://chatgpt.com/oauth/client.json": "chatgpt", "dcr-abc123": "claude"})   # ChatGPT's CIMD client_id is a URL
+        no_chatgpt = {k: v for k, v in self.ENV.items() if "CHATGPT_BYTALOS" not in k}
+        self.assertEqual({i: set(r.keys) for i, r in buzz_mcp.from_env(no_chatgpt)[0].items()}, {"claude": {"life-os", "bytalos"}, "chatgpt": {"life-os"}})
         bad = [{**self.ENV, "BUZZ_MCP_PUBLIC_URL": "http://edge.example.test"}, {**self.ENV, "BUZZ_MCP_PUBLIC_URL": BASE + "/mcp"}, {**self.ENV, "BUZZ_OAUTH_ISSUER": ""}, {**self.ENV, "BUZZ_OAUTH_JWKS_URL": "http://x"},
-               {**self.ENV, "BUZZ_OAUTH_CLIENTS": "x:admin"}, {**self.ENV, "BUZZ_OAUTH_USERS": ""}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1:other"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1"}, {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"}]
+               {**self.ENV, "BUZZ_OAUTH_CLIENTS": "x:admin"}, {**self.ENV, "BUZZ_OAUTH_CLIENTS": "x:shared"}, {**self.ENV, "BUZZ_OAUTH_USERS": ""}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1:other"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1"},
+               {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_CLAUDE_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"},
+               {**self.ENV, "BUZZ_KEY_LIFE_OS": KEY_A.hex()},                                                             # the old per-community shared key is refused, not used as a fallback
+               {**self.ENV, "BUZZ_KEY_CHATGPT_BYTALOS": self.FOUR["BUZZ_KEY_CLAUDE_BYTALOS"]},                          # one key may not fill two identity slots
+               {k: v for k, v in self.ENV.items() if not k.startswith("BUZZ_KEY_")}]
         for env in bad:
             with self.assertRaises(ValueError) as c:
                 buzz_mcp.from_env(env)
             self.assertNotIn("nothex", str(c.exception))
+            self.assertNotIn(KEY_A.hex(), str(c.exception))
 
     def test_systemd_credentials_overlay_the_environment(self):
         import tempfile, pathlib
         with tempfile.TemporaryDirectory() as d:
-            pathlib.Path(d, "buzz_key_life_os").write_text(KEY_A.hex() + "\n")
-            env = buzz_mcp.credentials({**self.ENV, "BUZZ_KEY_LIFE_OS": "", "CREDENTIALS_DIRECTORY": d})
-        self.assertEqual(nip98.secret_from(env["BUZZ_KEY_LIFE_OS"]), KEY_A)
+            pathlib.Path(d, "buzz_key_chatgpt_bytalos").write_text(KEYS["chatgpt", "bytalos"].hex() + "\n")
+            env = buzz_mcp.credentials({**self.ENV, "BUZZ_KEY_CHATGPT_BYTALOS": "", "CREDENTIALS_DIRECTORY": d})
+        self.assertEqual(nip98.secret_from(env["BUZZ_KEY_CHATGPT_BYTALOS"]), KEYS["chatgpt", "bytalos"])
         self.assertEqual(buzz_mcp.credentials({"A": "1"}), {"A": "1"})
 
 
