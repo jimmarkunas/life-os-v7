@@ -25,10 +25,11 @@ def verify(pub_hex, msg, sig_hex):
 class FakeRelay:
     """Mock Buzz relay: validates NIP-98 on every call, stores kind-9 events, answers the filters the bridge uses."""
     def __init__(self):
-        self.events, self.calls, self.fail_events, self.drop_ack, self.fail_query = [], [], None, False, False
+        self.events, self.calls, self.fail_events, self.drop_ack, self.fail_query, self.agents = [], [], None, False, False, []
 
     def __call__(self, method, url, headers, body, timeout=15):
         self.calls.append((url, json.loads(body)))
+        self.agents.append(headers.get("User-Agent"))
         ev = json.loads(base64.b64decode(headers["Authorization"][6:]))
         tags = dict((t[0], t[1]) for t in ev["tags"])
         ok = (ev["kind"] == 27235 and tags["u"] == url and tags["method"] == method and tags["payload"] == hashlib.sha256(body).hexdigest()
@@ -123,6 +124,12 @@ class Reads(unittest.TestCase):
         for bad in (0, 51, True, "5"):
             self.assertEqual(call(relay, "buzz_get_messages", community="life-os", channel=CHAN, limit=bad)[1]["error"], "invalid_argument")
         self.assertEqual(fake.calls, [])
+
+    def test_every_relay_request_carries_an_explicit_user_agent(self):
+        fake, relay = setup()
+        call(relay, "buzz_list_channels", community="life-os")
+        call(relay, "buzz_post_message", **POST)
+        self.assertTrue(len(fake.agents) >= 3 and all(a == "life-os-buzz-bridge/0.2" for a in fake.agents))   # the default Python-urllib signature is blocked with 403 by Cloudflare
 
     def test_list_get_search_through_signed_requests(self):
         fake, relay = setup()
