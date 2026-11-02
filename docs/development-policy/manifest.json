@@ -1,0 +1,165 @@
+{
+  "policy": "docs/life-os-development-policy.md",
+  "baseline": {
+    "blob": "392cb93e4fefd3c138fec016545043859f50e6ff",
+    "sha256": "0704d935c1f9d55642319acf158b219fcd3010ba37794b25a7bdd162e7551747",
+    "characters": 102529,
+    "lines": 448
+  },
+  "header_lines": 2,
+  "link_rewrites": [
+    {
+      "from": "](jira/issue-schema.v1.json)",
+      "to": "](../jira/issue-schema.v1.json)",
+      "why": "the parts sit one folder below docs/, so the one relative link is re-based; reassembly reverses it"
+    }
+  ],
+  "parts": [
+    {
+      "path": "docs/development-policy/01-status-mission-ui-first.md",
+      "title": "Status, mission and UI/UX-first delivery",
+      "baseline_lines": [
+        1,
+        30
+      ],
+      "headings": [
+        "# LIFE OS Development Policy",
+        "## 1. Mission and authority",
+        "### UI/UX-first delivery — Jim-approved October 14, 2026",
+        "### Deterministic UI-first applicability and proof gate — Jim-approved October 14, 2026"
+      ]
+    },
+    {
+      "path": "docs/development-policy/02-jira-planning-model.md",
+      "title": "Jira planning authority, feature-Epic model, components and versioning",
+      "baseline_lines": [
+        31,
+        64
+      ],
+      "headings": [
+        "### Jira product and development planning authority — Jim-approved October 13, 2026",
+        "### LIFE Jira feature-Epic and product-requirement model — Jim-approved October 26, 2026",
+        "### LIFE Jira OS component and release versioning — Jim-approved October 16, 2026"
+      ]
+    },
+    {
+      "path": "docs/development-policy/03-jira-issue-writing-contract.md",
+      "title": "LIFE Jira issue-writing contract",
+      "baseline_lines": [
+        65,
+        82
+      ],
+      "headings": [
+        "### LIFE Jira issue-writing contract — Jim-approved October 29, 2026 (LIFE-79)"
+      ]
+    },
+    {
+      "path": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md",
+      "title": "Deterministic work selection, Jira-first lifecycle, requirement-change reconciliation",
+      "baseline_lines": [
+        83,
+        119
+      ],
+      "headings": [
+        "### Deterministic agent work selection — mandatory when an authorized execution session starts or resumes",
+        "### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers",
+        "### Requirement-change reconciliation — Jim-approved November 1, 2026 (LIFE-79)"
+      ]
+    },
+    {
+      "path": "docs/development-policy/05-discovery-context-efficiency.md",
+      "title": "LOS-first discovery and context efficiency",
+      "baseline_lines": [
+        120,
+        143
+      ],
+      "headings": [
+        "### LOS-first discovery and description-first requirements — Jim-approved November 1, 2026 (LIFE-79)",
+        "### Context efficiency — Jim-approved November 1, 2026 (LIFE-79)"
+      ]
+    },
+    {
+      "path": "docs/development-policy/06-locked-architecture.md",
+      "title": "Locked architecture and execution constitution",
+      "baseline_lines": [
+        144,
+        164
+      ],
+      "headings": [
+        "## 2. Locked architecture and execution constitution"
+      ]
+    },
+    {
+      "path": "docs/development-policy/07-bootstrap-bounded-autonomy.md",
+      "title": "Bootstrap, Claude Code delivery mode and bounded autonomy",
+      "baseline_lines": [
+        165,
+        191
+      ],
+      "headings": [
+        "## 3. Bootstrap and outcome-bounded execution",
+        "### Claude Code end-to-end delivery mode — Jim-directed October 17, 2026",
+        "### Bounded autonomy — one approval per delivery objective — Jim-approved October 23, 2026 (LIFE-79)"
+      ]
+    },
+    {
+      "path": "docs/development-policy/08-deadline-delivery-gates.md",
+      "title": "Deadline Mode, delivery and activation contract, outcome and blocker gates",
+      "baseline_lines": [
+        192,
+        265
+      ],
+      "headings": [
+        "### Deadline Mode — Jim-directed October 19, 2026",
+        "### Delivery and activation contract — Jim-directed October 19, 2026",
+        "### User Outcome Gate",
+        "### Blocker Qualification Gate"
+      ]
+    },
+    {
+      "path": "docs/development-policy/09-fast-lanes-workspace-runtime.md",
+      "title": "Fast shipping, fast-lane coordination, workspace affinity, runtime completeness",
+      "baseline_lines": [
+        266,
+        357
+      ],
+      "headings": [
+        "### Fast shipping mode",
+        "### Fast-lane coordination mode",
+        "### Repository workspace affinity gate",
+        "### Runtime Completeness Gate"
+      ]
+    },
+    {
+      "path": "docs/development-policy/10-mutation-proof-tests.md",
+      "title": "Mutation, proof, tests and TestKit",
+      "baseline_lines": [
+        358,
+        411
+      ],
+      "headings": [
+        "## 4. Mutation, proof, tests, and TestKit",
+        "### Standing composability / architecture-health phase gate — Jim-approved October 19, 2026 (LIFE-79)",
+        "### Decision numbers are claimed, never picked — Jim-approved October 20, 2026 (LIFE-89)",
+        "### Jobs incremental architecture stress gate",
+        "### Production-shaped regression gate"
+      ]
+    },
+    {
+      "path": "docs/development-policy/11-review-coordination-completion-budgets.md",
+      "title": "Review, coordination, completion, budgets and metadata",
+      "baseline_lines": [
+        412,
+        448
+      ],
+      "headings": [
+        "## 5. Review and workspace",
+        "## 6. Coordination, Notion safety, retry",
+        "## 7. Completion",
+        "## 8. Budgets and mandatory metadata"
+      ]
+    }
+  ],
+  "reassembled_sha256": "0704d935c1f9d55642319acf158b219fcd3010ba37794b25a7bdd162e7551747",
+  "amendments": []
+}
