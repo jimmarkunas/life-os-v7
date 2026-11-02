@@ -8,7 +8,7 @@ Project-specific context (requirements, workflows, configuration) is not here. I
 
 | Path | Authority | Purpose | Owner | Retrieval |
 |---|---|---|---|---|
-| [`INDEX.md`](INDEX.md) | Routing only: no rule of its own | This manifest: which global source answers which question, who owns it and how to fetch it | Jim (change by reviewed PR; Q04) | Read first in a fresh session, then fetch only the rows the task needs |
+| [`INDEX.md`](INDEX.md) | Routing only: no rule of its own | This manifest: which global source answers which question, who owns it and how to fetch it |  | Read first in a fresh session, then fetch only the rows the task needs |
 | [`AGENTS.md`](AGENTS.md) | Bootstrap pointer, subordinate to the Development Policy | Agent start-up: Fast Path, repository routing, budgets | Jim (change by reviewed PR; Q04) | Read on every coding task |
 | [`CLAUDE.md`](CLAUDE.md) | Bootstrap pointer, subordinate to the Development Policy | Claude Code entrypoint: start order, time zone, Deadline Mode trigger | Jim (change by reviewed PR; Q04) | Read on every Claude Code task |
 | [`docs/life-os-development-policy.md`](docs/life-os-development-policy.md) | Canonical: the Development Policy entrypoint and index | Global engineering, delivery and agent-execution policy; links every section to its part | Jim (change by reviewed PR; Q04) | Read the index, then only the parts the task needs |

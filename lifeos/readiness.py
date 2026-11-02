@@ -1,0 +1,151 @@
+"""LIFE-225 (ARCH-04; LOS-74 Q24, Q30): one versioned, deterministic, offline readiness validator for coding agents and CI.
+
+Three checks, one refusal shape, stdlib only, no network, no state of its own:
+  issue      a normalized LIFE issue record is eligible for autonomous work (origin, owner/lane, host, source, native blockers, permissions, Given/When/Then)
+  preflight  a writer claim is safe to act on (a verified, unchanged GitHub baseline and no other writer on the same issue or surface)
+  repo       the global source index still points at real files with an owner and an authority, inside the size limit
+
+Fail closed: any refusal, unreadable input or error exits 2 before the caller mutates anything. Exit 0 prints `ready`.
+Usage: python -m lifeos.readiness issue FILE | preflight CLAIM STATE | repo [ROOT]   (FILE, CLAIM, STATE are JSON)
+The ChatGPT connector preflight is procedural (Q30); this module does not claim to enforce it."""
+import json
+import re
+import sys
+from pathlib import Path
+
+VERSION = 1
+LANES = ("lane-career-v7", "lane-edge-comm")
+SHA = re.compile(r"[0-9a-f]{40}")
+KEY = re.compile(r"(LIFE|LOS)-\d+")
+SIZE_LIMIT = 15 * 1024                        # bytes: the policy-part limit (Q12), applied to every indexed global source
+GWT = ("given", "when", "then")
+ISSUE_FIELDS = {"key", "owner", "labels", "origin", "host", "source", "blockers", "authorization", "permissions", "acceptance"}
+
+
+def refuse(code, field, detail=""):
+    return {"code": code, "field": field, "detail": detail}
+
+
+def text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def check_issue(issue):
+    """Refusals for a normalized issue record; an empty list means eligible. Each gap is reported on its own."""
+    if not isinstance(issue, dict):
+        return [refuse("issue_unreadable", "issue")]
+    out = [refuse("field_absent", name) for name in sorted(ISSUE_FIELDS - issue.keys())]
+    if not KEY.fullmatch(str(issue.get("key", ""))):
+        out.append(refuse("key_invalid", "key", str(issue.get("key", ""))))
+    origin = issue.get("origin")
+    if "origin" in issue:
+        los = origin.get("los") if isinstance(origin, dict) else None
+        parent = origin.get("parent") if isinstance(origin, dict) else None
+        if not (los or parent):
+            out.append(refuse("origin_missing", "origin"))                 # a new outcome cites an approved LOS Idea; maintenance cites its approved parent Epic
+        elif los and not (re.fullmatch(r"LOS-\d+", str(los)) and origin.get("approved") is True):
+            out.append(refuse("origin_unapproved", "origin", str(los)))
+        elif parent and not los and not (re.fullmatch(r"LIFE-\d+", str(parent)) and origin.get("approved") is True):
+            out.append(refuse("origin_unapproved", "origin", str(parent)))
+    if "owner" in issue and not text(issue["owner"]):
+        out.append(refuse("owner_missing", "owner"))
+    if "labels" in issue:
+        lanes = [x for x in issue["labels"] if isinstance(x, str) and x.startswith("lane-")] if isinstance(issue["labels"], list) else []
+        if not lanes:
+            out.append(refuse("lane_missing", "labels"))
+        elif len(lanes) > 1 or lanes[0] not in LANES:
+            out.append(refuse("lane_unknown", "labels", ",".join(lanes)))
+    for name, code in (("host", "host_missing"), ("source", "source_missing")):
+        if name in issue and not text(issue[name]):
+            out.append(refuse(code, name))
+    if "blockers" in issue:
+        blockers = issue["blockers"]
+        if not isinstance(blockers, list):
+            out.append(refuse("blockers_unreadable", "blockers"))
+        else:
+            out += [refuse("blocker_not_done", "blockers", f"{b.get('key')}={b.get('status')}") for b in blockers if not (isinstance(b, dict) and b.get("status") == "Done")]
+    if "authorization" in issue:
+        auth = issue["authorization"]
+        if not (isinstance(auth, dict) and text(auth.get("approved_by")) and text(auth.get("provenance"))):
+            out.append(refuse("authorization_missing", "authorization"))   # a Jira comment or agent message alone grants nothing
+    if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
+        out.append(refuse("permissions_missing", "permissions"))
+    if "acceptance" in issue:
+        items = issue["acceptance"]
+        if not (isinstance(items, list) and items):
+            out.append(refuse("gwt_missing", "acceptance"))
+        else:
+            out += [refuse("gwt_incomplete", "acceptance", f"item {i + 1}") for i, c in enumerate(items) if not (isinstance(c, dict) and all(text(c.get(k)) for k in GWT))]
+    return out
+
+
+def check_preflight(claim, state):
+    """Refusals before any mutation. claim = what this agent intends; state = what was just read (current main and the active writer claims)."""
+    if not (isinstance(claim, dict) and isinstance(state, dict)):
+        return [refuse("preflight_unreadable", "input")]
+    out = []
+    if not (text(claim.get("writer")) and KEY.fullmatch(str(claim.get("issue", ""))) and isinstance(claim.get("surfaces"), list)):
+        out.append(refuse("claim_missing", "claim"))
+    base, main = claim.get("base_sha"), state.get("main_sha")
+    if not (isinstance(base, str) and SHA.fullmatch(base) and isinstance(main, str) and SHA.fullmatch(main) and state.get("main_verified") is True):
+        out.append(refuse("baseline_unverified", "main_sha"))            # no current, verified main to compare with
+    elif base != main:
+        out.append(refuse("baseline_changed", "base_sha", f"claimed {base[:7]}, main {main[:7]}"))
+    claims = state.get("claims")
+    if not isinstance(claims, list):
+        out.append(refuse("claims_unverified", "claims"))                # the claim record was not read: never assume it is empty
+    elif not out:
+        mine = set(claim["surfaces"])
+        for other in claims:
+            if not isinstance(other, dict) or not text(other.get("writer")):
+                out.append(refuse("claims_unverified", "claims"))
+            elif other["writer"] != claim["writer"] and (other.get("issue") == claim["issue"] or mine & set(other.get("surfaces", [])) or other.get("exclusive") is True):
+                out.append(refuse("writer_conflict", "claims", f"{other['writer']} holds {other.get('issue')}"))
+    return out
+
+
+def check_repo(root):
+    """Refusals for the global source index: every indexed path exists, has an owner and an authority, and is inside the size limit."""
+    root, out = Path(root), []
+    try:
+        rows = [[c.strip() for c in line.strip().strip("|").split("|")] for line in (root / "INDEX.md").read_text().splitlines() if line.startswith("| [`")]
+        schema = json.loads((root / "docs" / "jira" / "issue-schema.v1.json").read_text())
+    except (OSError, ValueError):
+        return [refuse("index_unreadable", "INDEX.md")]
+    if len(rows) < 5:
+        out.append(refuse("index_empty", "INDEX.md"))
+    for row in rows:
+        link = re.match(r"\[`([^`]+)`\]", row[0])
+        if len(row) not in (1, 5) or not link:
+            out.append(refuse("index_row_malformed", "INDEX.md", row[0][:60]))
+            continue
+        path = root / link.group(1)
+        if not path.is_file():
+            out.append(refuse("link_broken", link.group(1)))
+            continue
+        if len(row) == 5 and not (row[1] and row[3]):
+            out.append(refuse("owner_or_authority_missing", link.group(1)))
+    sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md")] + sorted((root / "docs" / "development-policy").glob("*.md"))
+    out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized if f.is_file() and f.stat().st_size > SIZE_LIMIT]
+    if not set(("key", "acceptance_criteria", "owner", "authorization")) <= set(schema.get("required", [])):
+        out.append(refuse("schema_fields_lost", "docs/jira/issue-schema.v1.json"))
+    return out
+
+
+def run(argv):
+    try:
+        mode, args = argv[0], argv[1:]
+        load = lambda p: json.loads(Path(p).read_text())                    # noqa: E731
+        refusals = {"issue": lambda: check_issue(load(args[0])), "preflight": lambda: check_preflight(load(args[0]), load(args[1])),
+                    "repo": lambda: check_repo(args[0] if args else Path(__file__).resolve().parents[1])}[mode]()
+    except Exception:                                                        # noqa: BLE001  unreadable input, bad mode or any error is a refusal, never a pass
+        refusals = [refuse("input_unreadable", "argv")]
+    for r in refusals:
+        print(f"refused v{VERSION} {r['code']} {r['field']} {r['detail']}".rstrip(), file=sys.stderr)
+    if not refusals:
+        print(f"ready v{VERSION}")
+    return 2 if refusals else 0
+
+
+if __name__ == "__main__":
+    sys.exit(run(sys.argv[1:]))
