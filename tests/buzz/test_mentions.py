@@ -14,13 +14,13 @@ ACTOR = "key:" + nip98.pubkey(KEY_A)[:16]
 POST = dict(community="life-os", channel=CHAN, text="synthetic addressed hello", idempotency_key="m1")
 
 
-def profile(key, name):
-    return nip98.event(key, 0, [], json.dumps({"name": name, "display_name": name}))
+KEY_ADMIN = bytes([40]) * 32
+ROSTERS = {CHAN: [PK_CODE, PK_CODEX], OTHER: [PK_CODE_B]}   # the channels' current member lists (kind 39002)
 
 
-def setup(aliases=ALIASES, may_address=True, profiles=(KEY_CODE, KEY_CODEX, KEY_CODE_B)):
+def setup(aliases=ALIASES, may_address=True, rosters=ROSTERS):
     fake = FakeRelay()
-    fake.events += [profile(k, "synthetic") for k in profiles]
+    fake.events += [nip98.event(KEY_ADMIN, 39002, [["d", chan]] + [["p", pk] for pk in members], "") for chan, members in rosters.items()]
     return fake, Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, [("life-os", CHAN), ("bytalos", OTHER)], fake, recipients=aliases, may_address=may_address)
 
 
@@ -82,9 +82,14 @@ class Refusals(unittest.TestCase):
         fake, relay = setup(aliases={k: v for k, v in ALIASES.items() if k[1] != "codex"})   # revoked: removed from the approved table
         self.refused(relay, fake, "recipient_not_authorized", recipient="Codex")
 
-    def test_a_recipient_the_community_does_not_know_is_not_verified(self):
-        fake, relay = setup(profiles=(KEY_CODEX,))   # no signed profile for the configured Claude-Code key in this community
-        self.refused(relay, fake, "recipient_not_verified", recipient="Claude-Code")
+    def test_a_community_profile_without_channel_membership_publishes_nothing(self):
+        profile = nip98.event(KEY_CODE, 0, [], json.dumps({"name": "claude-code", "display_name": "Claude Code"}))   # the identity exists in the community...
+        fake, relay = setup(rosters={CHAN: [PK_CODEX], OTHER: [PK_CODE]})   # ...but is absent from THIS channel (a member only of another one)
+        fake.events.append(profile)
+        self.refused(relay, fake, "recipient_not_channel_member", recipient="Claude-Code")
+        self.assertEqual(relay.post_message(**POST, recipient="Codex")["status"], "sent_not_read_back")   # the member of this channel still works
+        fake, relay = setup(rosters={})   # no member list at all fails closed too
+        self.refused(relay, fake, "recipient_not_channel_member", recipient="Codex")
 
     def test_an_unreachable_relay_fails_closed_before_any_event(self):
         fake, relay = setup()
@@ -125,15 +130,37 @@ class Pending(unittest.TestCase):
         receiver = Relay(URLS, {"life-os": KEY_CODE}, (), fake)   # the addressed identity, read-only, long after the post
         before = len(fake.events)
         first, second = receiver.get_addressed("life-os"), receiver.get_addressed("life-os", CHAN)
-        self.assertEqual([(m["event_id"], m["actor"], m["recipients"]) for m in first], [(sent["event_id"], ACTOR, [PK_CODE])])
-        self.assertEqual(first, second)
+        self.assertEqual([(m["event_id"], m["actor"], m["recipients"]) for m in first["messages"]], [(sent["event_id"], ACTOR, [PK_CODE])])
+        self.assertEqual((first, first["next_before"]), (second, None))   # fewer than a page: nothing older remains
         self.assertEqual(len(fake.events), before)   # reading wrote nothing: no inbox, no acknowledgment
-        self.assertEqual(receiver.get_addressed("life-os", OTHER), [])
+        self.assertEqual(receiver.get_addressed("life-os", OTHER)["messages"], [])
         with self.assertRaises(BuzzError):
             receiver.get_addressed("life-os", "not-a-uuid")
         with self.assertRaises(BuzzError) as c:
             receiver.get_addressed("bytalos")
         self.assertEqual(c.exception.code, "key_not_configured")
+
+
+class Paging(unittest.TestCase):
+    def test_older_pending_messages_are_reachable_page_by_page_even_across_a_shared_second(self):
+        fake, _ = setup()
+        sent = [nip98.event(KEY_A, 9, [["h", CHAN], ["p", PK_CODE]], f"synthetic {i}", created_at=2000 - i // 2) for i in range(120)]   # pairs share a second
+        fake.events += sent + [nip98.event(KEY_A, 9, [["h", CHAN], ["p", PK_CODEX]], "someone else", created_at=2001)]
+        receiver = Relay(URLS, {"life-os": KEY_CODE}, (), fake)
+        seen, before, pages = [], None, 0
+        while True:
+            page = receiver.get_addressed("life-os", limit=49, before=before)   # 49 splits a shared second across the page boundary
+            seen += [m["event_id"] for m in page["messages"]]
+            pages += 1
+            if page["next_before"] is None:
+                break
+            before = page["next_before"]
+            self.assertLess(pages, 10)
+        self.assertEqual(set(seen), {e["id"] for e in sent})   # every one reached, none lost at a boundary
+        self.assertGreater(len(seen), len(set(seen)))   # the boundary second repeats: callers dedupe by event id
+        for bad in (0, -1, "5", True, 1.5):
+            with self.assertRaises(BuzzError):
+                receiver.get_addressed("life-os", before=bad)
 
 
 class Server(unittest.TestCase):
@@ -143,6 +170,7 @@ class Server(unittest.TestCase):
         self.assertEqual(tools["buzz_post_message"]["inputSchema"]["properties"]["recipient"]["enum"], list(buzz_mcp.ALIASES))
         self.assertNotIn("recipient", tools["buzz_post_message"]["inputSchema"]["required"])
         self.assertTrue(tools["buzz_get_addressed"]["annotations"]["readOnlyHint"])
+        self.assertIn("before", tools["buzz_get_addressed"]["inputSchema"]["properties"])
         err, out = call(relay, "buzz_post_message", **POST, recipient=PK_CODE)
         self.assertEqual((err, out["error"]), (True, "invalid_argument"))
         err, out = call(relay, "buzz_post_message", **POST, recipient="Codex")

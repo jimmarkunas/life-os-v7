@@ -41,8 +41,8 @@ class FakeRelay:
                 return 500, b"{}"
             f = json.loads(body)[0]
             out = [e for e in self.events if e["kind"] in f.get("kinds", [e["kind"]]) and (f.get("#h") is None or ["h", f["#h"][0]] in e["tags"])
-                   and (f.get("#k") is None or ["k", f["#k"][0]] in e["tags"]) and (f.get("#p") is None or ["p", f["#p"][0]] in e["tags"]) and (f.get("authors") is None or e["pubkey"] in f["authors"]) and (f.get("search") is None or f["search"] in e["content"])]
-            return 200, json.dumps(out[:f["limit"]]).encode()
+                   and (f.get("#k") is None or ["k", f["#k"][0]] in e["tags"]) and (f.get("#d") is None or ["d", f["#d"][0]] in e["tags"]) and (f.get("until") is None or e["created_at"] <= f["until"]) and (f.get("#p") is None or ["p", f["#p"][0]] in e["tags"]) and (f.get("authors") is None or e["pubkey"] in f["authors"]) and (f.get("search") is None or f["search"] in e["content"])]
+            return 200, json.dumps(sorted(out, key=lambda e: -e["created_at"])[:f["limit"]]).encode()   # newest first, like the relay
         sent = json.loads(body)
         if self.fail_events == "before":
             raise TimeoutError("lost before delivery")

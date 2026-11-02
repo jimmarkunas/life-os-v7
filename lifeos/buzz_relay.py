@@ -93,30 +93,36 @@ class Relay:
         flt = {"kinds": [9], "#h": [self._ok(channel, UUID)], "limit": self._limit(limit, 20)}
         return [self._view(e) for e in self._query(community, flt)]
 
-    def get_addressed(self, community, channel=None, limit=None):
-        """Messages whose signed `p` tag names THIS identity: plain relay history, stateless, so reading never marks anything delivered or acknowledged."""
+    def get_addressed(self, community, channel=None, limit=None, before=None):
+        """Messages whose signed `p` tag names THIS identity, newest first: plain relay history, stateless, so reading never marks anything delivered or acknowledged.
+        Older ones are reached by passing `next_before` back as `before` (the relay's inclusive `until`); the boundary second may repeat, so dedupe by event_id."""
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         flt = {"kinds": [9], "#p": [nip98.pubkey(self.keys[community])], "limit": self._limit(limit, 20)}
         if channel is not None:
             flt["#h"] = [self._ok(channel, UUID)]
-        return [self._view(e) for e in self._query(community, flt)]
+        if before is not None:
+            if not isinstance(before, int) or isinstance(before, bool) or before < 1:
+                raise BuzzError("invalid_argument")
+            flt["until"] = before
+        found = [self._view(e) for e in self._query(community, flt)]
+        return {"messages": found, "next_before": min(m["created_at"] for m in found) if len(found) >= flt["limit"] else None}  # None: nothing older remains
 
-    def _recipient(self, community, alias):
-        """A recipient is an owner-approved alias for this community whose identity the community's relay actually knows (it has a signed profile there); never a caller-supplied key."""
+    def _recipient(self, community, channel, alias):
+        """A recipient is an owner-approved alias for this community AND a current member of the destination channel (Buzz's mention contract: every recipient is a member when the message is written); never a caller-supplied key. Nobody is invited or added here."""
         if not isinstance(alias, str) or not ALIAS.match(alias):
             raise BuzzError("invalid_argument")
         pk = self.recipients.get((community, alias.lower()))
         if not self.may_address or pk is None or pk == nip98.pubkey(self.keys[community]):
             raise BuzzError("recipient_not_authorized")
         try:
-            known = self._query(community, {"kinds": [0], "authors": [pk], "limit": 1})
+            roster = self._query(community, {"kinds": [39002], "#d": [channel], "limit": 1})  # the channel's current member list
         except BuzzError as e:
             if e.code in ("community_not_authorized", "key_not_configured"):
                 raise
             raise BuzzError("precheck_unavailable") from None
-        if not known:
-            raise BuzzError("recipient_not_verified")
+        if not any(t[:2] == ["p", pk] for e in roster for t in e.get("tags", [])):
+            raise BuzzError("recipient_not_channel_member")
         return pk
 
     def search_messages(self, community, query, channel=None, limit=None):
@@ -138,7 +144,7 @@ class Relay:
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         actor = "key:" + nip98.pubkey(self.keys[community])[:16]  # fixed by the server's own signing key; never caller-supplied
-        to = self._recipient(community, recipient) if recipient is not None else None  # every refusal happens here, before any event exists
+        to = self._recipient(community, channel, recipient) if recipient is not None else None  # every refusal happens here, before any event exists
         with self.lock:
             return self._post(community, channel, text, actor, idempotency_key, to)
 
