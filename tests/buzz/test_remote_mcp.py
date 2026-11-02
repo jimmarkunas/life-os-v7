@@ -135,7 +135,7 @@ class DualClient(Server):
             self.assertEqual((status, init["result"]["protocolVersion"]), (200, "2025-03-26"))
             seen[client] = (self.rpc(tok, "tools/list")[1]["result"], self.tool(tok, "buzz_get_messages", community="life-os", channel=CHAN))
         self.assertEqual(seen["claude"], seen["chatgpt"])
-        self.assertEqual([t["name"] for t in seen["claude"][0]["tools"]], ["buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_post_message"])
+        self.assertEqual([t["name"] for t in seen["claude"][0]["tools"]], ["buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_get_addressed", "buzz_post_message"])
         self.assertEqual(seen["claude"][1][1][0]["untrusted_text"], "synthetic room message")
         self.assertEqual({a["client"] for a in self.audit}, {"claude", "chatgpt"})
 
