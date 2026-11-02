@@ -1,6 +1,6 @@
 """Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the only public path.
 Every /mcp call needs an OAuth access token (lifeos.buzz_auth); writes also need the buzz:write scope AND an allowlisted (community, channel), so they are off by default.
-Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>:claude|chatgpt,... (client_id may be a URL), BUZZ_OAUTH_USERS=<sub>:<community>+<community>,... (owner-approved users), BUZZ_URL_<COMMUNITY>,
+Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>,... (allowed OAuth clients; an id may be a URL), BUZZ_OAUTH_USERS=<sub>:<claude|chatgpt>:<community>+<community>,... (owner-approved IdP users; the label picks the signing identity), BUZZ_URL_<COMMUNITY>,
 BUZZ_KEY_<CLIENT>_<COMMUNITY> (four distinct scoped member keys: claude|chatgpt x life_os|bytalos, never an owner key, no shared or fallback key), BUZZ_WRITE_CHANNELS=community:uuid,..., optional BUZZ_MCP_ORIGINS, optional BUZZ_OAUTH_AS_URL (authorization-server metadata address if it differs from the issuer)."""
 import json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -91,7 +91,7 @@ def handler(relays, auth, base, origins=(), audit=_audit):
 
         def _deny(self, code, err, scope="buzz:read"):
             extra = "" if err == "missing_token" else f', error="{err}"'
-            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{scope}"')
+            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{auth.audience}{scope}"')
 
         def _who(self):
             if self.headers.get("Origin") and self.headers["Origin"] not in origins:
@@ -99,6 +99,8 @@ def handler(relays, auth, base, origins=(), audit=_audit):
             try:
                 return auth.verify(self.headers.get("Authorization", ""))
             except AuthError as e:
+                if e.code == "user_not_authorized":  # lets the owner see which `sub` to allowlist; a subject id is not a secret
+                    audit({"client": None, "identity": None, "sub": e.sub, "tool": None, "community": None, "outcome": e.code})
                 self._deny(e.status, e.code) if e.status != 503 else self._send(503, {"error": e.code})
 
         def do_POST(self):
@@ -139,7 +141,7 @@ def handler(relays, auth, base, origins=(), audit=_audit):
 
         def do_GET(self):
             if self.path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
-                return self._send(200, {"resource": base + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": list(SCOPES), "bearer_methods_supported": ["header"]})
+                return self._send(200, {"resource": base + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": [auth.audience + x for x in SCOPES], "bearer_methods_supported": ["header"]})
             if self.path == "/mcp" and self._who() is not None:
                 self._send(405, {"error": "method not allowed"}, Allow="POST")
             elif self.path != "/mcp":
@@ -171,14 +173,15 @@ def from_env(env):
     if env.get("buzz_auth_tag".upper()):  # Block's CLI NIP-OA delegation (x-auth-tag header + event auth tag) is not implemented: fail closed
         raise ValueError("delegated NIP-OA identity is unsupported; configure the member's own scoped key")
     writes = [tuple(x.split(":", 1)) for x in env.get("buzz_write_channels".upper(), "").split(",") if x.strip()]
-    clients = dict(x.strip().rsplit(":", 1) for x in env.get("BUZZ_OAUTH_CLIENTS", "").split(",") if ":" in x)
+    clients = frozenset(x.strip() for x in env.get("BUZZ_OAUTH_CLIENTS", "").split(",") if x.strip())
     users = {}
     for x in env.get("BUZZ_OAUTH_USERS", "").split(","):
-        sub, _, comms = x.strip().rpartition(":")
-        users[sub] = tuple(comms.split("+"))
+        rest, _, comms = x.strip().rpartition(":")
+        sub, _, label = rest.rpartition(":")
+        users[sub] = (label, tuple(comms.split("+")))
     base = https(env, "BUZZ_MCP_PUBLIC_URL")
-    if not pubs or not users or not all(sub and set(c) <= set(COMMUNITIES) and c for sub, c in users.items()) or not clients or not set(clients.values()) <= set(IDENTITIES) or "/" in base[8:]:
-        raise ValueError("at least one BUZZ_URL_<COMMUNITY> with a BUZZ_KEY_<CLIENT>_<COMMUNITY>, BUZZ_OAUTH_CLIENTS (claude|chatgpt), BUZZ_OAUTH_USERS (<sub>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
+    if not pubs or not users or not all(sub and lab in IDENTITIES and c and set(c) <= set(COMMUNITIES) for sub, (lab, c) in users.items()) or not clients or "/" in base[8:]:
+        raise ValueError("at least one BUZZ_URL_<COMMUNITY> with a BUZZ_KEY_<CLIENT>_<COMMUNITY>, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS (<sub>:<claude|chatgpt>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
     auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"), users, https(env, "BUZZ_OAUTH_AS_URL") if env.get("BUZZ_OAUTH_AS_URL") else None)
     return {i: Relay(urls, ks, writes) for i, ks in keys.items() if ks}, auth, base, tuple(x for x in env.get("BUZZ_MCP_ORIGINS", "").split(",") if x)
 

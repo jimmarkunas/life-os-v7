@@ -1,6 +1,6 @@
 """OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores secrets or logs a token.
-The calling product (claude / chatgpt) comes from the token's signed client_id/azp matched against a server-side allowlist, never from anything the caller sends.
-The signed-in USER must also be allowlisted by `sub`, with the communities that user may reach; an authorized client alone grants nothing."""
+The OAuth client (client_id/azp) must be allowlisted, and the signed-in USER must be allowlisted by `sub` with a product label (claude / chatgpt) and the communities that user may reach.
+The label comes only from the verified `sub`, never from anything the caller sends: each product's connector is authorized by its own IdP user, so one registered client can serve both."""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz_relay import _NoRedirect
 
@@ -9,9 +9,9 @@ SCOPES = ("buzz:read", "buzz:write")
 
 
 class AuthError(Exception):
-    def __init__(self, code, status=401):
+    def __init__(self, code, status=401, sub=None):
         super().__init__(code)
-        self.code, self.status = code, status
+        self.code, self.status, self.sub = code, status, sub
 
 
 def _b64(s):
@@ -25,7 +25,7 @@ def fetch_json(url):
 
 class Verifier:
     def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300):
-        self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, dict(clients), jwks_url, {k: frozenset(v) for k, v in users.items()}
+        self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, frozenset(clients), jwks_url, {k: (v[0], frozenset(v[1])) for k, v in users.items()}
         self.as_url = as_url or issuer  # where clients fetch authorization-server metadata; some IdPs (Oracle IAM) publish it away from the `iss` string
         self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock = fetch, clock, ttl, {}, -1e9, threading.Lock()
 
@@ -65,11 +65,11 @@ class Verifier:
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
         cid = claims.get("client_id") or claims.get("azp")
-        client = self.clients.get(cid) if isinstance(cid, str) else None
-        if not client:
+        if not isinstance(cid, str) or cid not in self.clients:
             raise AuthError("client_not_authorized", 403)
         sub = claims.get("sub")
         if not isinstance(sub, str) or sub not in self.users:  # fail closed: absent, wrong-type or unlisted user
-            raise AuthError("user_not_authorized", 403)
-        scope = claims.get("scope")
-        return {"client": client, "scopes": set(scope.split()) if isinstance(scope, str) else set(), "sub": sub[:64], "communities": self.users[sub]}
+            raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
+        label, communities = self.users[sub]
+        scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
+        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities}
