@@ -152,6 +152,28 @@ class AutoReleaseRun(unittest.TestCase):
         self.assertFalse(os.path.exists(stored))
         self.assertNotIn("gdrive", open(unit).read())
 
+    def test_the_picker_credential_is_piped_shape_checked_loaded_only_while_it_exists_and_picker_off_removes_it(self):
+        """LIFE-217: the Drive picker's browser identifiers, piped as JSON; anything but exactly the three fields in their Google shapes is refused unchanged."""
+        unit, stored = os.path.join(self.sim, "units", "lifeos-close@.service"), os.path.join(self.sim, "creds", "lifeos-close.picker")
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        self.assertNotIn("picker", open(unit).read())
+        good = '{"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza' + "x" * 35 + '", "app_id": "1234567"}'
+        done = subprocess.run(["bash", self.script, "credential", "picker"], env=self.env, input=good, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(open(stored).read(), good)
+        for bad in ("", "not json", '{"client_id": "c", "api_key": "k", "app_id": "1"}', good[:-1] + ', "x": "y"}'):
+            done = subprocess.run(["bash", self.script, "credential", "picker"], env=self.env, input=bad, capture_output=True, text=True, timeout=60)
+            self.assertEqual(done.returncode, 1, bad)
+            self.assertIn("unchanged", done.stdout)
+            self.assertEqual(open(stored).read(), good)
+        self.assertIn("systemd-creds encrypt --name=picker -", open(os.path.join(self.sim, "log")).read())
+        self.assertEqual(self.run_("units", os.path.join(self.sim, "units"))[0], 0)
+        self.assertIn("LoadCredentialEncrypted=picker:" + stored, open(unit).read().splitlines())
+        code, out = self.run_("credential", "picker-off")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(os.path.exists(stored))
+        self.assertNotIn("picker", open(unit).read())
+
     def test_a_green_changed_commit_is_released_and_a_rerun_or_unchanged_commit_is_not(self):
         rc, out = self.run_("auto", HEAD=B, BODY="y lifeos/a.py")
         self.assertEqual((rc, self.at("current"), self.at("previous"), self.etc("auto.checked")), (0, B[:12], A[:12], [B]), out)

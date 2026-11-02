@@ -174,8 +174,15 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         ghvars = open(ghvars_path, "rb").read().strip() if req["path"] == "/alerts" and os.path.isfile(ghvars_path) else b""      # optional (Jim, Oct 26): the Alert settings screen edits repository variables; ONLY /alerts ever gets it, GET and POST
     except OSError:
         ghvars = b""
+    picker_path = os.path.join(creds, "picker")
+    try:                                                                  # optional (LIFE-217, Jim Oct 31): the Drive picker's browser identifiers; ONLY GET /manage gets them
+        picker = json.loads(open(picker_path, "rb").read()) if req["method"] == "GET" and req["path"] in PICKER_PATHS and os.path.isfile(picker_path) else None
+    except (OSError, ValueError):
+        picker = None
     after = []
     secrets["config"] = {k: policy.get(k) for k in ("ledger", "pipeline")}
+    if isinstance(picker, dict):
+        secrets["picker"] = {k: picker[k] for k in ("client_id", "api_key", "app_id") if isinstance(picker.get(k), str)}
     if policy.get("recruiters"):                                          # D221 Mark as Sent; without it /sent refuses NOTION_CONFIG_MISSING and nothing is written
         secrets["config"]["recruiters"] = policy["recruiters"]
     try:
