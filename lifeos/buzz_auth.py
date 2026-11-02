@@ -61,16 +61,16 @@ class Verifier:
             raise AuthError("invalid_token")
         now, aud, exp = self.clock(), claims.get("aud"), claims.get("exp")
         aud = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
-        if isinstance(exp, (int, float)) and not isinstance(exp, bool) and exp <= now and isinstance(claims.get("sub"), str):  # signature is already verified, so this subject is real
-            raise AuthError("invalid_token", 401, claims["sub"][:64], "expired")
-        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now \
+        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) \
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
-        cid = claims.get("client_id") or claims.get("azp")
-        if not isinstance(cid, str) or cid not in self.clients:
+        cid, sub = claims.get("client_id") or claims.get("azp"), claims.get("sub")
+        client_ok, user_ok = isinstance(cid, str) and cid in self.clients, isinstance(sub, str) and sub in self.users
+        if exp <= now:  # an expired token is always the same 401; its subject is attributed only once issuer, audience, client and user all check out
+            raise AuthError("invalid_token", 401, sub[:64] if client_ok and user_ok else None, "expired" if client_ok and user_ok else None)
+        if not client_ok:
             raise AuthError("client_not_authorized", 403)
-        sub = claims.get("sub")
-        if not isinstance(sub, str) or sub not in self.users:  # fail closed: absent, wrong-type or unlisted user
+        if not user_ok:  # fail closed: absent, wrong-type or unlisted user
             raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
         label, communities = self.users[sub]
         scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other

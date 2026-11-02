@@ -136,6 +136,25 @@ class Telemetry(Server):
         for secret in (expired, expired.split(".")[2], expired.split(".")[1]):
             self.assertNotIn(secret, blob)
 
+    def test_an_expired_token_is_attributed_only_after_issuer_audience_client_and_user_all_check_out(self):
+        self.start()
+        ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+        for label, bad in (("wrong audience", dict(aud="https://other.example/mcp")), ("wrong issuer", dict(iss="https://evil.example")), ("unauthorized client", dict(client_id="cid-unknown")),
+                           ("unauthorized subject", dict(sub="user-2")), ("unlisted subject with a real-looking name", dict(sub="user-claude-2")), ("no audience", dict(aud=None))):
+            status, raw, _ = self.req("POST", "/mcp", ping, token(exp=NOW - 5, **bad))
+            self.assertEqual((status, label), (401, label))                                  # still the same fail-closed 401, never 403 or 200
+            self.assertEqual(json.loads(raw), {"error": "invalid_token"}, label)
+        self.assertEqual([(a["outcome"], a["reason"], a["sub"]) for a in self.audit], [("invalid_token", None, None)] * 6)   # no subject for any of them
+        self.assertEqual(self.req("POST", "/mcp", ping, token(exp=NOW - 5))[0], 401)         # the valid expired token for an allowed user IS attributed
+        self.assertEqual(self.audit[-1]["reason"], "expired")
+        self.assertEqual(self.audit[-1]["sub"], "user-claude")
+        for tok in (token(exp=NOW - 5, sub="user-2"), token(exp=NOW - 5, aud="https://other.example/mcp")):
+            self.assertNotIn(tok.split(".")[2], json.dumps(self.audit))
+            self.assertNotIn(tok.split(".")[1], json.dumps(self.audit))
+        self.assertEqual(self.req("POST", "/mcp", ping, token(sub="user-2"))[0], 403)         # NOT expired: unauthorized user keeps its 403 and is logged for allowlisting
+        self.assertEqual((self.audit[-1]["outcome"], self.audit[-1]["sub"]), ("user_not_authorized", "user-2"))
+        self.assertEqual(self.req("POST", "/mcp", ping, token(client_id="cid-unknown"))[0], 403)
+
     def test_successful_calls_record_issue_expiry_and_a_token_id_that_changes_with_each_token(self):
         self.start()
         t1, t2 = token(iat=NOW - 60, exp=NOW + 600), token(iat=NOW - 30, exp=NOW + 3600)
