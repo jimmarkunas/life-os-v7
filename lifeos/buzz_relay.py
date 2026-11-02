@@ -8,6 +8,7 @@ TOKEN = re.compile(r"^[A-Za-z0-9_.:@-]{1,64}$")
 URL = re.compile(r"^https://[a-z0-9-]+\.communities\.buzz\.xyz$")
 COMMUNITIES = ("life-os", "bytalos")
 MAX_TEXT, MAX_CACHE = 4000, 256
+UA = "life-os-buzz-bridge/0.2"
 
 
 class BuzzError(Exception):
@@ -40,7 +41,7 @@ class Relay:
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         url, body = self.urls[community] + path, json.dumps(payload, separators=(",", ":")).encode()
-        headers = {"Authorization": nip98.auth_header(self.keys[community], "POST", url, body), "Content-Type": "application/json"}
+        headers = {"Authorization": nip98.auth_header(self.keys[community], "POST", url, body), "Content-Type": "application/json", "User-Agent": UA}  # Cloudflare in front of hosted Buzz refuses the default Python-urllib signature (403, code 1010)
         try:
             status, raw = self.send("POST", url, headers, body)
         except Exception:
