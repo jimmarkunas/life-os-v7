@@ -62,7 +62,8 @@ def call(relay, name, **args):
     return out["isError"], json.loads(out["content"][0]["text"])
 
 
-POST = dict(community="life-os", channel=CHAN, text="synthetic hello", actor="chatgpt:jim", idempotency_key="k1")
+POST = dict(community="life-os", channel=CHAN, text="synthetic hello", idempotency_key="k1")
+ACTOR = "key:" + nip98.pubkey(KEY_A)[:16]
 
 
 class Crypto(unittest.TestCase):
@@ -164,10 +165,67 @@ class Writes(unittest.TestCase):
         recomputed = hashlib.sha256(json.dumps([0, ev["pubkey"], ev["created_at"], 9, ev["tags"], ev["content"]], separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
         self.assertEqual((receipt["status"], receipt["event_id"], ev["id"]), ("sent_not_read_back", recomputed, recomputed))
         self.assertEqual(ev["pubkey"], nip98.pubkey(KEY_A))
-        self.assertIn(["actor", "chatgpt:jim"], ev["tags"])
+        self.assertIn(["actor", ACTOR], ev["tags"])
+        self.assertEqual(receipt["actor"], ACTOR)
         receiver = Relay(URLS, {"life-os": KEY_B}, (), fake)                    # a separately authenticated identity reads it back
         got = call(receiver, "buzz_get_messages", community="life-os", channel=CHAN)[1]
-        self.assertEqual((got[0]["event_id"], got[0]["untrusted_text"], got[0]["actor"]), (recomputed, "synthetic hello", "chatgpt:jim"))
+        self.assertEqual((got[0]["event_id"], got[0]["untrusted_text"], got[0]["actor"]), (recomputed, "synthetic hello", ACTOR))
+
+    def test_caller_cannot_assert_or_spoof_an_actor(self):
+        fake, relay = setup()
+        for forged in ("agent-7", "key:" + nip98.pubkey(KEY_B)[:16], "key:" + "0" * 16):
+            self.assertEqual(call(relay, "buzz_post_message", **dict(POST, actor=forged)), (True, {"error": "invalid_argument"}))
+        self.assertNotIn("actor", buzz_mcp.TOOLS["buzz_post_message"][1])
+        self.assertEqual((fake.calls, fake.events), ([], []))
+        call(relay, "buzz_post_message", **POST)                                  # the only attribution is the server key's
+        bridge_b = Relay(URLS, {"life-os": KEY_B}, [("life-os", CHAN)], fake)
+        call(bridge_b, "buzz_post_message", **dict(POST, idempotency_key="k2"))
+        self.assertEqual([dict(e["tags"])["actor"] for e in fake.events], [ACTOR, "key:" + nip98.pubkey(KEY_B)[:16]])
+        self.assertEqual([e["pubkey"][:16] for e in fake.events], [dict(e["tags"])["actor"][4:] for e in fake.events])
+
+    def test_concurrent_identical_requests_post_exactly_one_event(self):
+        fake, relay = setup()
+        real, gate = fake.__call__, threading.Barrier(8)
+        def slow(method, url, headers, body, timeout=15):                        # widen the race window: every thread would pass an unlocked precheck
+            if url.endswith("/query"):
+                import time; time.sleep(0.05)
+            return real(method, url, headers, body, timeout)
+        relay.send, out = slow, []
+        def go():
+            gate.wait()
+            out.append(call(relay, "buzz_post_message", **POST)[1])
+        threads = [threading.Thread(target=go) for _ in range(8)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(len(fake.events), 1)
+        self.assertEqual(sorted(o["status"] for o in out), ["already_delivered"] * 7 + ["sent_not_read_back"])
+        self.assertEqual({o["event_id"] for o in out}, {fake.events[0]["id"]})
+
+    def test_concurrent_conflicting_payloads_post_only_the_first(self):
+        fake, relay = setup()
+        gate, out = threading.Barrier(6), []
+        def go(i):
+            gate.wait()
+            out.append(call(relay, "buzz_post_message", **dict(POST, text=f"variant {i % 2}"))[1])
+        threads = [threading.Thread(target=go, args=(i,)) for i in range(6)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(len(fake.events), 1)
+        self.assertEqual(sum(o.get("error") == "idempotency_conflict" for o in out), 3)
+        self.assertEqual(sum(o.get("status") in ("sent_not_read_back", "already_delivered") for o in out), 3)
+
+    def test_concurrent_retries_after_ambiguous_delivery_never_duplicate(self):
+        fake, relay = setup()
+        fake.fail_events = "after"
+        self.assertEqual(call(relay, "buzz_post_message", **POST)[1]["error"], "delivery_unknown")
+        fake.fail_events, gate, out = None, threading.Barrier(6), []
+        def go():
+            gate.wait()
+            out.append(call(relay, "buzz_post_message", **POST)[1]["status"])
+        threads = [threading.Thread(target=go) for _ in range(6)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual((out, len(fake.events)), (["already_delivered"] * 6, 1))
 
     def test_idempotency_duplicate_and_conflict(self):
         fake, relay = setup()
@@ -205,7 +263,7 @@ class Writes(unittest.TestCase):
 
     def test_invalid_post_inputs(self):
         fake, relay = setup()
-        for bad in (dict(text=""), dict(text="x" * 4001), dict(actor="has space"), dict(idempotency_key="a/b"), dict(channel="nope")):
+        for bad in (dict(text=""), dict(text="x" * 4001), dict(idempotency_key="a/b"), dict(channel="nope")):
             self.assertEqual(call(relay, "buzz_post_message", **dict(POST, **bad))[1]["error"], "invalid_argument")
         self.assertEqual(fake.calls, [])
 
@@ -249,7 +307,7 @@ class Config(unittest.TestCase):
     def test_from_env(self):
         relay, token = buzz_mcp.from_env(self.ENV)
         self.assertEqual((token, set(relay.urls), relay.writes, relay.urls["life-os"]), (TOKEN, {"life-os"}, {("life-os", CHAN)}, URLS["life-os"]))
-        for bad in ({**self.ENV, "BUZZ_MCP_TOKEN": "short"}, {**self.ENV, "BUZZ_URL_LIFE_OS": "https://evil.example.com"}, {**self.ENV, "BUZZ_URL_LIFE_OS": "http://x.communities.buzz.xyz"},
+        for bad in ({**self.ENV, "BUZZ_MCP_TOKEN": "short"}, {**self.ENV, "BUZZ_AUTH_TAG": '["auth","x","y","z"]'}, {**self.ENV, "BUZZ_URL_LIFE_OS": "https://evil.example.com"}, {**self.ENV, "BUZZ_URL_LIFE_OS": "http://x.communities.buzz.xyz"},
                     {"BUZZ_MCP_TOKEN": TOKEN}, {**self.ENV, "BUZZ_KEY_LIFE_OS": "nothex"}):
             with self.assertRaises(ValueError) as c:
                 buzz_mcp.from_env(bad)

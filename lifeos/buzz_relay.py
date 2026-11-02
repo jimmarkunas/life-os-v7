@@ -1,6 +1,6 @@
 """Scoped Buzz relay client: reads via POST /query, writes via POST /events (the surface Block's `buzz` CLI uses). The transport is injectable so tests never touch a network.
 Authorization is explicit: a community needs a configured relay URL and its own scoped key; a write also needs that exact (community, channel) in `writes`. Errors are fixed codes."""
-import hashlib, json, re, urllib.error, urllib.request
+import hashlib, json, re, threading, urllib.error, urllib.request
 from lifeos import buzz_nip98 as nip98
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -32,6 +32,7 @@ def urllib_transport(method, url, headers, body, timeout=15):
 class Relay:
     def __init__(self, urls, keys, writes=(), transport=urllib_transport):
         self.urls, self.keys, self.writes, self.send, self.sent = urls, keys, set(writes), transport, {}
+        self.lock = threading.Lock()  # one writer at a time: precheck, event choice and submit are one atomic step
 
     def _call(self, community, path, payload):
         if community not in COMMUNITIES or community not in self.urls:
@@ -97,14 +98,21 @@ class Relay:
             flt["#h"] = [self._ok(channel, UUID)]
         return [self._view(e) for e in self._query(community, flt)]
 
-    def post_message(self, community, channel, text, actor, idempotency_key):
-        self._ok(channel, UUID), self._ok(actor, TOKEN), self._ok(idempotency_key, TOKEN)
+    def post_message(self, community, channel, text, idempotency_key):
+        self._ok(channel, UUID), self._ok(idempotency_key, TOKEN)
         if not isinstance(text, str) or not 1 <= len(text) <= MAX_TEXT:
             raise BuzzError("invalid_argument")
         if community not in COMMUNITIES or community not in self.urls:
             raise BuzzError("community_not_authorized")
         if (community, channel) not in self.writes:
             raise BuzzError("write_disabled")
+        if community not in self.keys:
+            raise BuzzError("key_not_configured")
+        actor = "key:" + nip98.pubkey(self.keys[community])[:16]  # fixed by the server's own signing key; never caller-supplied
+        with self.lock:
+            return self._post(community, channel, text, actor, idempotency_key)
+
+    def _post(self, community, channel, text, actor, idempotency_key):
         digest = hashlib.sha256(f"{community}|{channel}|{actor}|{idempotency_key}|{text}".encode()).hexdigest()[:32]
         prior = self.sent.get((community, idempotency_key))
         if prior and prior[0] != digest:
