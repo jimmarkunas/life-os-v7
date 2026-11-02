@@ -1,0 +1,34 @@
+# LIFE-216 / BUZZ-16. Install only after the protected gates in docs/buzz-remote-mcp-deploy.md. Loopback-only; writes stay off while BUZZ_WRITE_CHANNELS is empty.
+[Unit]
+Description=LIFE OS Buzz remote MCP (loopback, OAuth-protected)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=buzz-mcp
+Group=buzz-mcp
+WorkingDirectory=/opt/lifeos-buzz-mcp/current
+Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current PYTHONDONTWRITEBYTECODE=1 BUZZ_MCP_PORT=8787
+EnvironmentFile=/etc/lifeos-buzz-mcp/config.env
+LoadCredentialEncrypted=buzz_key_life_os:/etc/lifeos-buzz-mcp/buzz_key_life_os.cred
+LoadCredentialEncrypted=buzz_key_bytalos:/etc/lifeos-buzz-mcp/buzz_key_bytalos.cred
+# not -I: isolated mode ignores PYTHONPATH and the working directory, so the staged package could not be imported. -s -B keep user site and bytecode out.
+ExecStart=/usr/bin/python3 -s -B -m lifeos.buzz_mcp
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+MemoryMax=256M
+TasksMax=64
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

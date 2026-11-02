@@ -1,11 +1,15 @@
-"""ChatGPT-facing MCP server (streamable HTTP, JSON replies) for four Buzz operations. Loopback only, bearer-token protected, disabled for writes unless a (community, channel) is allowlisted.
-Config (environment, never logged): BUZZ_MCP_TOKEN, BUZZ_URL_<COMMUNITY>, BUZZ_KEY_<COMMUNITY> (a scoped key per community, never an owner key), BUZZ_WRITE_CHANNELS=community:uuid,..."""
-import hmac, json, os, sys
+"""Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the only public path.
+Every /mcp call needs an OAuth access token (lifeos.buzz_auth); writes also need the buzz:write scope AND an allowlisted (community, channel), so they are off by default.
+Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>:claude|chatgpt,... (client_id may be a URL), BUZZ_OAUTH_USERS=<sub>:<community>+<community>,... (owner-approved users), BUZZ_URL_<COMMUNITY>,
+BUZZ_KEY_<COMMUNITY> (a scoped member key per community, never an owner key), BUZZ_WRITE_CHANNELS=community:uuid,..., optional BUZZ_MCP_ORIGINS."""
+import json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from lifeos import buzz_nip98 as nip98
+from lifeos.buzz_auth import SCOPES, AuthError, Verifier
 from lifeos.buzz_relay import COMMUNITIES, URL, BuzzError, Relay
 
-PROTOCOL, MAX_BODY = "2025-06-18", 65536
+PROTOCOL, VERSIONS, MAX_BODY = "2025-06-18", ("2025-06-18", "2025-03-26", "2024-11-05"), 65536
 COMM = {"type": "string", "enum": list(COMMUNITIES)}
 CHAN = {"type": "string", "description": "channel UUID"}
 LIM = {"type": "integer", "minimum": 1, "maximum": 50}
@@ -36,7 +40,8 @@ def rpc(relay, msg):
     if mid is None:
         return None
     if method == "initialize":
-        res = {"protocolVersion": PROTOCOL, "capabilities": {"tools": {}}, "serverInfo": {"name": "life-os-buzz-bridge", "version": "0.1.0"}}
+        want = (msg.get("params") or {}).get("protocolVersion") if isinstance(msg.get("params"), dict) else None
+        res = {"protocolVersion": want if want in VERSIONS else PROTOCOL, "capabilities": {"tools": {}}, "serverInfo": {"name": "life-os-buzz-bridge", "version": "0.2.0"}}
     elif method == "ping":
         res = {}
     elif method == "tools/list":
@@ -56,22 +61,48 @@ def rpc(relay, msg):
     return {"jsonrpc": "2.0", "id": mid, "result": res}
 
 
-def handler(relay, token):
+def _audit(rec):
+    print(json.dumps(rec, separators=(",", ":")), file=sys.stderr, flush=True)  # fixed fields only: never a token, key, or message text
+
+
+def handler(relay, auth, base, origins=(), audit=_audit):
+    meta = base + "/.well-known/oauth-protected-resource"
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
-        def _send(self, code, payload=None):
+        def _send(self, code, payload=None, **hdr):
             body = json.dumps(payload).encode() if payload is not None else b""
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            for k, v in hdr.items():
+                self.send_header(k.replace("_", "-"), v)
             self.end_headers()
             self.wfile.write(body)
 
+        def _deny(self, code, err, scope="buzz:read"):
+            extra = "" if err == "missing_token" else f', error="{err}"'
+            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{scope}"')
+
+        def _who(self):
+            if self.headers.get("Origin") and self.headers["Origin"] not in origins:
+                return self._send(403, {"error": "origin_not_allowed"})
+            try:
+                return auth.verify(self.headers.get("Authorization", ""))
+            except AuthError as e:
+                self._deny(e.status, e.code) if e.status != 503 else self._send(503, {"error": e.code})
+
         def do_POST(self):
-            if self.path != "/mcp" or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + token):
-                return self._send(401 if self.path == "/mcp" else 404, {"error": "unauthorized"})
+            if self.path != "/mcp":
+                return self._send(404, {"error": "not found"})
+            who = self._who()
+            if who is None:
+                return
+            accept = self.headers.get("Accept", "application/json")
+            if self.headers.get("MCP-Protocol-Version", PROTOCOL) not in VERSIONS or not ("json" in accept or "*/*" in accept):
+                return self._send(400, {"error": "unsupported_protocol_or_accept"})
             n = int(self.headers.get("Content-Length") or 0)
             try:
                 msg = json.loads(self.rfile.read(n)) if 0 < n <= MAX_BODY else None
@@ -79,12 +110,37 @@ def handler(relay, token):
                 msg = None
             if not isinstance(msg, dict):
                 return self._send(400, {"error": "bad request"})
-            reply = rpc(relay, msg)
+            params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+            spec = TOOLS.get(params.get("name")) if msg.get("method") == "tools/call" and isinstance(params.get("name"), str) else None
+            need = "buzz:read" if spec and spec[3] else "buzz:write"
+            if spec and need not in who["scopes"]:
+                return self._deny(403, "insufficient_scope", need)
+            args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            if spec and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
+                reply = {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": json.dumps({"error": "community_not_authorized"})}], "isError": True}}
+            else:
+                reply = rpc(relay, msg) if "method" in msg else None  # client-side JSON-RPC responses are accepted and ignored
+            if spec and reply:
+                inner = json.loads(reply["result"]["content"][0]["text"])
+                audit({"client": who["client"], "sub": who["sub"], "tool": params["name"], "community": args.get("community") if isinstance(args.get("community"), str) else None,
+                       "outcome": inner.get("error", "ok") if isinstance(inner, dict) else "ok"})
             self._send(202) if reply is None else self._send(200, reply)
 
         def do_GET(self):
-            self._send(405, {"error": "method not allowed"})
+            if self.path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
+                return self._send(200, {"resource": base + "/mcp", "authorization_servers": [auth.issuer], "scopes_supported": list(SCOPES), "bearer_methods_supported": ["header"]})
+            if self.path == "/mcp" and self._who() is not None:
+                self._send(405, {"error": "method not allowed"}, Allow="POST")
+            elif self.path != "/mcp":
+                self._send(404, {"error": "not found"})
     return H
+
+
+def https(env, name, community=False):
+    v = env.get(name, "").rstrip("/")
+    if not v.startswith("https://") or "?" in v or "#" in v or (community and not URL.match(v)):
+        raise ValueError(f"{name} must be a plain https URL" + (" on <name>.communities.buzz.xyz" if community else ""))
+    return v
 
 
 def from_env(env):
@@ -92,25 +148,36 @@ def from_env(env):
     for c in COMMUNITIES:
         suffix = c.upper().replace("-", "_")
         if env.get("BUZZ_URL_" + suffix) and env.get("BUZZ_KEY_" + suffix):
-            url = env["BUZZ_URL_" + suffix].rstrip("/")
-            if not URL.match(url):
-                raise ValueError("community URL must be https://<name>.communities.buzz.xyz")
-            urls[c], keys[c] = url, nip98.secret_from(env["BUZZ_KEY_" + suffix])
+            urls[c], keys[c] = https(env, "BUZZ_URL_" + suffix, True), nip98.secret_from(env["BUZZ_KEY_" + suffix])
     if env.get("buzz_auth_tag".upper()):  # Block's CLI NIP-OA delegation (x-auth-tag header + event auth tag) is not implemented: fail closed
         raise ValueError("delegated NIP-OA identity is unsupported; configure the member's own scoped key")
     writes = [tuple(x.split(":", 1)) for x in env.get("buzz_write_channels".upper(), "").split(",") if x.strip()]
-    token = env.get("buzz_mcp_token".upper(), "")
-    if len(token) < 24 or not urls:
-        raise ValueError("BUZZ_MCP_TOKEN (24+ chars) and at least one community URL+key are required")
-    return Relay(urls, keys, writes), token
+    clients = dict(x.strip().rsplit(":", 1) for x in env.get("BUZZ_OAUTH_CLIENTS", "").split(",") if ":" in x)
+    users = {}
+    for x in env.get("BUZZ_OAUTH_USERS", "").split(","):
+        sub, _, comms = x.strip().rpartition(":")
+        users[sub] = tuple(comms.split("+"))
+    base = https(env, "BUZZ_MCP_PUBLIC_URL")
+    if not urls or not users or not all(sub and set(c) <= set(COMMUNITIES) and c for sub, c in users.items()) or not clients or not set(clients.values()) <= {"claude", "chatgpt"} or "/" in base[8:]:
+        raise ValueError("at least one community URL+key, BUZZ_OAUTH_CLIENTS (claude|chatgpt), BUZZ_OAUTH_USERS (<sub>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
+    auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"), users)
+    return Relay(urls, keys, writes), auth, base, tuple(x for x in env.get("BUZZ_MCP_ORIGINS", "").split(",") if x)
+
+
+def credentials(env):
+    """Overlay systemd LoadCredential(Encrypted) files (name -> ENV_NAME) on the environment so keys never sit in unit files."""
+    out = dict(env)
+    for f in Path(env["CREDENTIALS_DIRECTORY"]).iterdir() if env.get("CREDENTIALS_DIRECTORY") else ():
+        out[f.name.upper()] = f.read_text().strip()
+    return out
 
 
 def main():
     try:
-        relay, token = from_env(os.environ)
-    except ValueError as e:
+        relay, auth, base, origins = from_env(credentials(os.environ))
+    except (ValueError, OSError) as e:
         sys.exit(f"config error: {e}")
-    ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relay, token)).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("buzz_mcp_port".upper(), "8787"))), handler(relay, auth, base, origins)).serve_forever()
 
 
 if __name__ == "__main__":
