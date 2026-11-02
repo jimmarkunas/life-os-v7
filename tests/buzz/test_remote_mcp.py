@@ -83,7 +83,7 @@ class Discovery(Server):
         self.start()
         for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
             status, raw, _ = self.req("GET", path)
-            self.assertEqual((status, json.loads(raw)), (200, {"resource": BASE + "/mcp", "authorization_servers": [ISS], "scopes_supported": ["buzz:read", "buzz:write"], "bearer_methods_supported": ["header"]}))
+            self.assertEqual((status, json.loads(raw)), (200, {"resource": BASE + "/mcp", "authorization_servers": [ISS], "scopes_supported": [BASE + "/mcpbuzz:read", BASE + "/mcpbuzz:write"], "bearer_methods_supported": ["header"]}))
         for status, _, hdr in (self.req("POST", "/mcp", {"id": 1, "method": "ping"}), self.req("GET", "/mcp")):
             self.assertEqual(status, 401)
             self.assertIn(f'resource_metadata="{BASE}/.well-known/oauth-protected-resource"', hdr["WWW-Authenticate"])
@@ -153,7 +153,7 @@ class DualClient(Server):
         status, raw, hdr = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_post_message", "arguments": POST}}, read)
         self.assertEqual(status, 403)
         self.assertIn('error="insufficient_scope"', hdr["WWW-Authenticate"])
-        self.assertIn('scope="buzz:write"', hdr["WWW-Authenticate"])
+        self.assertIn(f'scope="{BASE}/mcpbuzz:write"', hdr["WWW-Authenticate"])
         self.assertEqual((self.fake.calls, self.fake.events), ([], []))
         self.assertEqual(self.tool(read, "buzz_list_channels", community="life-os")[0], 200)
         self.assertEqual(self.tool(token(scope="buzz:write"), "buzz_list_channels", community="life-os")[0], 403)   # write scope does not imply read
@@ -340,6 +340,16 @@ class Startup(unittest.TestCase):
 
 
 class OracleShapes(Server):
+    def test_scopes_may_carry_the_audience_prefix_oracle_adds_but_no_other_prefix(self):
+        self.start()
+        q = BASE + "/mcp"
+        self.assertEqual(self.tool(token(scope=f"{q}buzz:read"), "buzz_list_channels", community="life-os")[0], 200)
+        self.assertEqual(self.tool(token(scope=f"{q}buzz:write"), "buzz_post_message", **POST)[0], 200)
+        for bad in ("https://evil.example/mcpbuzz:write", f"{q}x", "buzz:writer"):
+            self.assertEqual(self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_post_message", "arguments": POST}}, token(scope=bad))[0], 403)
+        self.assertEqual(len(self.fake.events), 1)                                   # only the properly scoped write went through
+
+
     def test_issuer_trailing_slash_is_equivalent_but_nothing_else(self):
         v = Verifier("https://identity.example.test", BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: JWKS, clock=lambda: NOW)
         self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test/"))["client"], "claude")     # Oracle IAM issues iss with a trailing slash
