@@ -29,7 +29,7 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin buzz-mcp
 sudo install -d -o root -g root /opt/lifeos-buzz-mcp/releases/<sha> /etc/lifeos-buzz-mcp
 # copy lifeos/__init__.py lifeos/buzz_*.py (nothing else; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
-# /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS (<sub>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
+# /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_AS_URL (only if the IdP publishes its metadata away from the issuer, as Oracle IAM does), BUZZ_OAUTH_USERS (<sub>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
 printf %s "$KEY" | sudo systemd-creds encrypt --name=buzz_key_life_os - /etc/lifeos-buzz-mcp/buzz_key_life_os.cred   # same for bytalos
 sudo cp lifeos/edge/buzz/oracle/lifeos-buzz-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now lifeos-buzz-mcp
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/mcp -d '{}'      # expect 401
@@ -44,5 +44,7 @@ Capacity: unit caps memory at 256 MB and CPU at 50% of one core; the host has ab
 2. Verify against the real relay that the `#k`/`#i` tag filters are indexed and a just-posted event is immediately visible to a `#k` query. If the relay cannot do this, leave writes off: cross-restart conflict rejection is then unproven. No new datastore is allowed.
 3. Confirm the ChatGPT account's custom-MCP write entitlement (the docs do not state which plans allow it).
 4. Put one synthetic test `community:channel` in `BUZZ_WRITE_CHANNELS`, post once, read back event id, content, channel and `actor` from the other client.
+
+Oracle IAM (Default identity domain) notes: `iss` is `https://identity.oraclecloud.com/` (a trailing slash is treated as equivalent); metadata and signing keys live at the domain URL (`BUZZ_OAUTH_AS_URL`, `BUZZ_OAUTH_JWKS_URL`, the latter needs "Configure client access" on); no dynamic registration, and neither Claude's nor ChatGPT's client-ID-document route is accepted by Oracle today, so both products use ONE registered client (`BUZZ_OAUTH_CLIENTS=<client_id>:shared`). With a shared client the token cannot say which product called; the audit line records `client: shared` plus the User-Agent as an explicitly unverified hint. A second registered client (a second free-domain app slot) would restore verified per-product attribution.
 
 Known limits: one process only (the write lock is in-process); the relay's read-after-write consistency is unverified; a new IdP client registration (DCR) changes the `client_id`, so `BUZZ_OAUTH_CLIENTS` must be updated to match.

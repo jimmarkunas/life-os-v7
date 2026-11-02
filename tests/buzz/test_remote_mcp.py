@@ -49,7 +49,7 @@ class Server(unittest.TestCase):
         self.fake = fake or FakeRelay()
         self.relay = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, writes, self.fake)
         self.audit = []
-        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch or (lambda url: JWKS), clock=lambda: NOW)
+        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=fetch or (lambda url: JWKS), clock=lambda: NOW)
         srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relay, verifier, BASE, origins, self.audit.append))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
@@ -110,7 +110,7 @@ class TokenChecks(Server):
 
     def test_key_rotation_refreshes_but_unknown_kid_cannot_hammer_the_idp(self):
         fetches, keys = [], {"keys": []}
-        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
+        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
         for _ in range(5):
             with self.assertRaises(AuthError):
                 v.verify("Bearer " + token())
@@ -283,6 +283,30 @@ class Startup(unittest.TestCase):
             urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/mcp", b"{}", method="POST"))
         except urllib.error.HTTPError as e:
             return e.code
+
+
+class SharedClientAndOracleShapes(Server):
+    def test_issuer_trailing_slash_is_equivalent_but_nothing_else(self):
+        v = Verifier("https://identity.example.test", BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch=lambda u: JWKS, clock=lambda: NOW)
+        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test/"))["client"], "claude")     # Oracle IAM issues iss with a trailing slash
+        self.assertEqual(v.verify("Bearer " + token(iss="https://identity.example.test"))["client"], "claude")
+        for bad in ("https://identity.example.test.evil", "https://identity.example.test//x", None, ["https://identity.example.test"], 5):
+            with self.assertRaises(AuthError):
+                v.verify("Bearer " + token(iss=bad))
+
+    def test_shared_client_is_labelled_shared_and_user_agent_is_only_an_unverified_hint(self):
+        self.start()
+        tok = token(client_id="cid-claude")
+        self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "buzz_list_channels", "arguments": {"community": "life-os"}}}, tok, User_Agent="openai-mcp/1.0 " + "x" * 80)
+        self.assertEqual((self.audit[0]["client"], len(self.audit[0]["unverified_ua"])), ("claude", 40))   # the UA never changes the token-derived label
+
+    def test_authorization_server_address_is_separate_from_the_issuer(self):
+        env = {**Config.ENV, "BUZZ_OAUTH_ISSUER": "https://identity.example.test/", "BUZZ_OAUTH_AS_URL": "https://idcs-x.example.test/", "BUZZ_OAUTH_CLIENTS": "cid-shared:shared"}
+        _, auth, _, _ = buzz_mcp.from_env(env)
+        self.assertEqual((auth.issuer, auth.as_url, auth.clients), ("https://identity.example.test", "https://idcs-x.example.test", {"cid-shared": "shared"}))
+        self.assertEqual(buzz_mcp.from_env(Config.ENV)[1].as_url, ISS)
+        with self.assertRaises(ValueError):
+            buzz_mcp.from_env({**env, "BUZZ_OAUTH_AS_URL": "http://insecure.example.test"})
 
 
 class Transport(Server):

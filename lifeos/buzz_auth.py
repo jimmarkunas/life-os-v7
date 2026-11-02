@@ -1,5 +1,5 @@
 """OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores secrets or logs a token.
-The calling product (claude / chatgpt) comes from the token's signed client_id/azp matched against a server-side allowlist, never from anything the caller sends.
+The calling client label (claude / chatgpt, or "shared" when both products use one registered client) comes from the token's signed client_id/azp matched against a server-side allowlist, never from anything the caller sends.
 The signed-in USER must also be allowlisted by `sub`, with the communities that user may reach; an authorized client alone grants nothing."""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz_relay import _NoRedirect
@@ -24,8 +24,9 @@ def fetch_json(url):
 
 
 class Verifier:
-    def __init__(self, issuer, audience, clients, jwks_url, users, fetch=fetch_json, clock=time.time, ttl=300):
+    def __init__(self, issuer, audience, clients, jwks_url, users, as_url=None, fetch=fetch_json, clock=time.time, ttl=300):
         self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, dict(clients), jwks_url, {k: frozenset(v) for k, v in users.items()}
+        self.as_url = as_url or issuer  # where clients fetch authorization-server metadata; some IdPs (Oracle IAM) publish it away from the `iss` string
         self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock = fetch, clock, ttl, {}, -1e9, threading.Lock()
 
     def _key(self, kid):
@@ -60,7 +61,7 @@ class Verifier:
             raise AuthError("invalid_token")
         now, aud, exp = self.clock(), claims.get("aud"), claims.get("exp")
         aud = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
-        if claims.get("iss") != self.issuer or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now \
+        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now \
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
         cid = claims.get("client_id") or claims.get("azp")
