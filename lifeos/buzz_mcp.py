@@ -91,7 +91,7 @@ def handler(relays, auth, base, origins=(), audit=_audit):
 
         def _deny(self, code, err, scope="buzz:read"):
             extra = "" if err == "missing_token" else f', error="{err}"'
-            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{scope}"')
+            self._send(code, {"error": err}, WWW_Authenticate=f'Bearer resource_metadata="{meta}"{extra}, scope="{auth.audience}{scope}"')
 
         def _who(self):
             if self.headers.get("Origin") and self.headers["Origin"] not in origins:
@@ -139,7 +139,7 @@ def handler(relays, auth, base, origins=(), audit=_audit):
 
         def do_GET(self):
             if self.path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
-                return self._send(200, {"resource": base + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": list(SCOPES), "bearer_methods_supported": ["header"]})
+                return self._send(200, {"resource": base + "/mcp", "authorization_servers": [auth.as_url], "scopes_supported": [auth.audience + x for x in SCOPES], "bearer_methods_supported": ["header"]})
             if self.path == "/mcp" and self._who() is not None:
                 self._send(405, {"error": "method not allowed"}, Allow="POST")
             elif self.path != "/mcp":

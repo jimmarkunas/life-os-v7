@@ -71,5 +71,5 @@ class Verifier:
         sub = claims.get("sub")
         if not isinstance(sub, str) or sub not in self.users:  # fail closed: absent, wrong-type or unlisted user
             raise AuthError("user_not_authorized", 403)
-        scope = claims.get("scope")
-        return {"client": client, "scopes": set(scope.split()) if isinstance(scope, str) else set(), "sub": sub[:64], "communities": self.users[sub]}
+        scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
+        return {"client": client, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": self.users[sub]}
