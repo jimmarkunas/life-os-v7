@@ -354,7 +354,7 @@ class Expiry(unittest.TestCase):
 class Picker(unittest.TestCase):
     """LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): Google's own Drive picker on Manage, shown only once its public browser identifiers are set; a pick
     posts the usual sent-material form (sk=file, su=the file's link), so the review and confirm are unchanged and nothing is recorded before them."""
-    CONFIG = {"client_id": "123-abc.apps.googleusercontent.com", "api_key": "AIzaSyExample_Key", "app_id": "123456789"}
+    CONFIG = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
 
     def test_no_picker_until_it_is_configured(self):
         h, _ = notes_page()
@@ -365,11 +365,11 @@ class Picker(unittest.TestCase):
 
     def test_the_configured_picker_button_posts_the_usual_sent_form(self):
         h, _ = notes_page()
-        with mock.patch.dict(manage_app.PICKER, self.CONFIG):
+        with mock.patch.object(manage_app, "picker", lambda secrets: self.CONFIG):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn('<script src="/manage-picker.js" defer></script>', body)
         self.assertEqual(body.count("<script"), body.count('<script src="/'))                           # no inline script: the CSP allows none
-        self.assertIn('id="pick-drive" disabled data-client="123-abc.apps.googleusercontent.com" data-key="AIzaSyExample_Key" data-app="123456789"', body)
+        self.assertIn(f'id="pick-drive" disabled data-client="{self.CONFIG["client_id"]}" data-key="{self.CONFIG["api_key"]}" data-app="1234567"', body)
         pick = next(f for f in forms(body) if f.get("act") == "sent" and "su" in f and f.get("su") == "" and f.get("sk") == M.FILE and 'id="pick-form"' in body)
         self.assertEqual((pick["sk"], pick["su"]), (M.FILE, ""))
         self.assertIn("Show my Drive files", body)
@@ -379,6 +379,14 @@ class Picker(unittest.TestCase):
             self.assertIn(part, js)
         self.assertNotIn(b"auth/drive\"", js)                                                           # never the full Drive scope
         self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))   # the link the picker posts is one the review accepts
+
+    def test_the_identifiers_come_only_from_the_gate_and_only_in_their_exact_shapes(self):
+        self.assertEqual(manage_app.picker({"picker": dict(self.CONFIG)}), self.CONFIG)
+        self.assertEqual(manage_app.picker({"picker": {**self.CONFIG, "extra": "x"}}), self.CONFIG)              # only the three fields are used
+        for bad in ({}, {"picker": None}, {"picker": {**self.CONFIG, "api_key": ""}}, {"picker": {**self.CONFIG, "client_id": 'x" onclick="y'}},
+                    {"picker": {**self.CONFIG, "app_id": "12a"}}, {"picker": {k: v for k, v in self.CONFIG.items() if k != "app_id"}}):
+            self.assertIsNone(manage_app.picker(bad), bad)
+        self.assertFalse(hasattr(manage_app, "PICKER"))                                                        # never held in this public repository
 
     def test_the_picker_script_is_routed(self):
         from lifeos.sources import close_app
