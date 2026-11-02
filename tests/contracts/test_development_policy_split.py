@@ -79,3 +79,48 @@ class Split(unittest.TestCase):
         for line in reassemble().splitlines():
             if len(line) > 120 and not line.startswith("#"):
                 self.assertNotIn(line, entry)
+
+
+class GlobalIndex(unittest.TestCase):
+    """LIFE-222 (LOS-74 Q11): the root INDEX.md routes every global source with its path, authority, purpose, owner and retrieval, and copies no policy text."""
+    INDEX = ROOT / "INDEX.md"
+
+    def rows(self, heading):
+        section = self.INDEX.read_text().split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0]
+        return [[c.strip() for c in line.strip("|").split(" | ")] for line in section.splitlines() if line.startswith("| [`")]
+
+    @staticmethod
+    def path(cell):
+        found = re.fullmatch(r"\[`([^`]+)`\]\(([^)]+)\)", cell)
+        assert found and found.group(1) == found.group(2), cell
+        return found.group(1)
+
+    def test_every_row_is_complete_and_resolves(self):
+        rows = self.rows("Global sources")
+        self.assertGreater(len(rows), 10)
+        for row in rows:
+            self.assertEqual(len(row), 5, row)                                    # path, authority, purpose, owner, retrieval
+            self.assertTrue(all(row), row)
+            self.assertTrue((ROOT / self.path(row[0])).is_file(), row[0])
+        for row in self.rows("Not global sources"):
+            self.assertEqual(len(row), 1, row)
+            self.assertTrue((ROOT / self.path(row[0])).is_file(), row[0])
+
+    def test_the_policy_bootstrap_and_every_policy_part_are_routed(self):
+        listed = {self.path(r[0]) for r in self.rows("Global sources")}
+        must = {"INDEX.md", "AGENTS.md", "CLAUDE.md", "docs/life-os-development-policy.md", "docs/development-policy/manifest.json", "docs/jira/issue-schema.v1.json"}
+        self.assertLessEqual(must | {p["path"] for p in MANIFEST["parts"]}, listed)
+
+    def test_every_file_under_docs_is_classified_exactly_once(self):
+        listed = [self.path(r[0]) for r in self.rows("Global sources") + self.rows("Not global sources")]
+        self.assertEqual(len(listed), len(set(listed)))
+        on_disk = {p.relative_to(ROOT).as_posix() for p in (ROOT / "docs").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+        self.assertEqual(on_disk - set(listed), set(), "classify the new docs file in INDEX.md")
+
+    def test_it_copies_no_policy_text_and_stays_small(self):
+        text = self.INDEX.read_text()
+        self.assertLessEqual(len(text.encode()), 15 * 1024)
+        for line in reassemble().splitlines():
+            if len(line) > 80 and not line.startswith("#"):
+                self.assertNotIn(line, text)
+        self.assertIn("[INDEX.md](INDEX.md)", (ROOT / "README.md").read_text())

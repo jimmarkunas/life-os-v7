@@ -2,6 +2,7 @@
 
 A lean, composable operating system for one person's life. Built one shipped step at a time.
 
+- **Global source index:** [INDEX.md](INDEX.md): which file answers which question, its authority, owner and how to retrieve it.
 - **Development procedure:** [Canonical Development Policy](docs/life-os-development-policy.md) and [AGENTS.md](AGENTS.md). Product priority lives in Jira `LOS`; active development scope, sequencing and status live in Jira `LIFE`.
 - **Historical initial newsletter design:** [docs/PLAN.md](docs/PLAN.md) (not an active LIFE OS plan).
 - **One-time setup (secrets, variables, Notion, Hostinger):** [docs/SETUP.md](docs/SETUP.md)
