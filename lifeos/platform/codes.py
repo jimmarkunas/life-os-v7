@@ -818,7 +818,7 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
-    "BUZZ_MCP_PUBLIC_URL", "BUZZ_MCP_ORIGINS", "BUZZ_OAUTH_ISSUER", "BUZZ_OAUTH_JWKS_URL", "BUZZ_OAUTH_CLIENTS",      # LIFE-216 / BUZZ-16: remote Buzz MCP settings
+    "BUZZ_MCP_PUBLIC_URL", "BUZZ_MCP_ORIGINS", "BUZZ_OAUTH_ISSUER", "BUZZ_OAUTH_JWKS_URL", "BUZZ_OAUTH_CLIENTS", "BUZZ_OAUTH_USERS",      # LIFE-216 / BUZZ-16: remote Buzz MCP settings
     "LAYOUT_SHARD",                # Jim, Oct 27: which slice (i/n) of the Ledger pages a layout run moves
     "SURFACE_SHARD",               # Jim, Oct 28: which slice (i/n) of the Ledger pages a surface run writes
     "MANUAL_JOB_URL", "MANUAL_JOB_COMPANY", "MANUAL_JOB_TITLE", "MANUAL_JOB_ROUND_DAY", "MANUAL_JOB_REQUEST_URL",       # LIFE-37: the manual job run's inputs

@@ -274,11 +274,24 @@ class Config(unittest.TestCase):
         self.assertNotIn("0.0.0.0", src)
 
 
+BASELINE_LINES, ADDED_LINE_CAP, FILE_CAP = 283, 300, 4   # PR #732 shipped 283 counted lines in 3 files; BUZZ-16 may add at most 300 production lines and one file (buzz_auth.py)
+
+
+def within_budget(files, lines):
+    return files <= FILE_CAP and lines - BASELINE_LINES <= ADDED_LINE_CAP   # two independent limits, never a tuple comparison
+
+
 class Budget(unittest.TestCase):
+    def test_limits_are_enforced_independently(self):
+        for files, lines, ok in ((4, 583, True), (4, 584, False), (3, 584, False), (3, 100, True), (5, 100, False), (5, 9999, False)):
+            self.assertEqual(within_budget(files, lines), ok, (files, lines))
+
     def test_policy_code_size_cap_for_this_package(self):
         files = sorted((ROOT / "lifeos").glob("buzz_*.py"))
         lines = sum(1 for f in files for ln in f.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#"))
-        self.assertLessEqual((len(files), lines), (4, 283 + 300))   # PR #732 baseline 283 counted lines in 3 files + the 300-line package cap; BUZZ-16 adds lifeos/buzz_auth.py
+        self.assertLessEqual(len(files), FILE_CAP)
+        self.assertLessEqual(lines - BASELINE_LINES, ADDED_LINE_CAP)
+        self.assertTrue(within_budget(len(files), lines))
 
 
 if __name__ == "__main__":

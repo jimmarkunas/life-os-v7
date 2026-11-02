@@ -1,5 +1,6 @@
 """OAuth 2.1 resource-server checks for the remote Buzz MCP (stdlib only). Access tokens are RS256 JWTs from ONE configured issuer; this module never issues tokens, stores secrets or logs a token.
-The calling product (claude / chatgpt) comes from the token's signed client_id/azp matched against a server-side allowlist, never from anything the caller sends."""
+The calling product (claude / chatgpt) comes from the token's signed client_id/azp matched against a server-side allowlist, never from anything the caller sends.
+The signed-in USER must also be allowlisted by `sub`, with the communities that user may reach; an authorized client alone grants nothing."""
 import base64, hashlib, hmac, json, threading, time, urllib.request
 from lifeos.buzz_relay import _NoRedirect
 
@@ -23,8 +24,8 @@ def fetch_json(url):
 
 
 class Verifier:
-    def __init__(self, issuer, audience, clients, jwks_url, fetch=fetch_json, clock=time.time, ttl=300):
-        self.issuer, self.audience, self.clients, self.jwks_url = issuer, audience, dict(clients), jwks_url
+    def __init__(self, issuer, audience, clients, jwks_url, users, fetch=fetch_json, clock=time.time, ttl=300):
+        self.issuer, self.audience, self.clients, self.jwks_url, self.users = issuer, audience, dict(clients), jwks_url, {k: frozenset(v) for k, v in users.items()}
         self.fetch, self.clock, self.ttl, self.keys, self.loaded, self.lock = fetch, clock, ttl, {}, -1e9, threading.Lock()
 
     def _key(self, kid):
@@ -66,5 +67,8 @@ class Verifier:
         client = self.clients.get(cid) if isinstance(cid, str) else None
         if not client:
             raise AuthError("client_not_authorized", 403)
+        sub = claims.get("sub")
+        if not isinstance(sub, str) or sub not in self.users:  # fail closed: absent, wrong-type or unlisted user
+            raise AuthError("user_not_authorized", 403)
         scope = claims.get("scope")
-        return {"client": client, "scopes": set(scope.split()) if isinstance(scope, str) else set(), "sub": str(claims.get("sub", ""))[:64]}
+        return {"client": client, "scopes": set(scope.split()) if isinstance(scope, str) else set(), "sub": sub[:64], "communities": self.users[sub]}

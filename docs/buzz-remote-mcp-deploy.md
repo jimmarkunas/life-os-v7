@@ -13,6 +13,7 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 ## What the code does
 - `/mcp` Streamable HTTP, JSON replies, stateless (no `Mcp-Session-Id`), protocol `2025-06-18` with `2025-03-26`/`2024-11-05` negotiated, `MCP-Protocol-Version`, `Accept` and `Origin` checks, notifications and client replies answered `202`, GET/DELETE `405`.
 - `/.well-known/oauth-protected-resource` (and `/mcp` suffix form) names the authorization server; every `401` carries `WWW-Authenticate: Bearer resource_metadata=...`; wrong scope is `403 insufficient_scope`.
+- Authorization is two checks, both fail closed: the OAuth client must be allowlisted (`BUZZ_OAUTH_CLIENTS`) AND the token `sub` must be allowlisted (`BUZZ_OAUTH_USERS`) with the communities that user may reach. A different user on an authorized client gets `403 user_not_authorized`; a community outside the user's list is denied before any relay request.
 - `lifeos/buzz_auth.py` validates RS256 JWTs: signature against the issuer's JWKS, `iss`, `aud` = this resource, `exp`/`nbf`, and the signed `client_id`/`azp` against `BUZZ_OAUTH_CLIENTS`. That mapping (`<client_id>:claude|chatgpt`) is the only source of the audit label; caller-sent actor strings are ignored.
 - Scopes: `buzz:read` for the three read tools, `buzz:write` for `buzz_post_message`. Writes additionally need the exact `(community, channel)` in `BUZZ_WRITE_CHANNELS`, which ships empty.
 - Idempotency survives restarts through the relay: every posted event carries `k` (hash of community|channel|actor|key) and `i` (hash including text) tags. A retry reads `#k` first: same text returns `already_delivered`, different text returns `idempotency_conflict`. The in-memory cache only reuses an already-signed event.
@@ -27,8 +28,8 @@ Status: **code only. Nothing is deployed, no public ingress exists, and no real 
 ```
 sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin buzz-mcp
 sudo install -d -o root -g root /opt/lifeos-buzz-mcp/releases/<sha> /etc/lifeos-buzz-mcp
-# copy lifeos/__init__.py lifeos/buzz_*.py (nothing else) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
-# /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
+# copy lifeos/__init__.py lifeos/buzz_*.py (nothing else; tests/buzz/test_remote_mcp.py::Startup runs the unit's ExecStart from exactly this layout) into releases/<sha>/lifeos/ ; ln -sfn releases/<sha> /opt/lifeos-buzz-mcp/current
+# /etc/lifeos-buzz-mcp/config.env (non-secret): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS, BUZZ_OAUTH_USERS (<sub>:life-os+bytalos,...; the owner-approved users), BUZZ_URL_LIFE_OS, BUZZ_URL_BYTALOS, BUZZ_WRITE_CHANNELS=
 printf %s "$KEY" | sudo systemd-creds encrypt --name=buzz_key_life_os - /etc/lifeos-buzz-mcp/buzz_key_life_os.cred   # same for bytalos
 sudo cp lifeos/edge/buzz/oracle/lifeos-buzz-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now lifeos-buzz-mcp
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8787/mcp -d '{}'      # expect 401

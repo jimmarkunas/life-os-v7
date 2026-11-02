@@ -1,15 +1,16 @@
 """LIFE-216 / BUZZ-16: the shared remote MCP (OAuth 2.1 resource server + Streamable HTTP) for Claude Chat and ChatGPT Chat, proved over real loopback HTTP against a MOCKED relay and a LOCAL test identity provider.
 These are fixture results: they say nothing about the real claude.ai / chatgpt.com connectors or live Buzz."""
-import base64, hashlib, json, random, threading, unittest, urllib.error, urllib.request
+import base64, hashlib, json, os, pathlib, random, shlex, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 
 from lifeos import buzz_mcp, buzz_nip98 as nip98
 from lifeos.buzz_auth import AuthError, Verifier
 from lifeos.buzz_relay import Relay
-from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, URLS, FakeRelay
+from tests.buzz.test_bridge import CHAN, KEY_A, KEY_B, OTHER, ROOT, URLS, FakeRelay
 
 BASE, ISS = "https://edge.example.test", "https://idp.example.test"
 CLIENTS = {"cid-claude": "claude", "cid-chatgpt": "chatgpt"}
+USERS = {"user-1": ("life-os", "bytalos"), "user-lifeos-only": ("life-os",)}
 NOW = 1_800_000_000
 POST = dict(community="life-os", channel=CHAN, text="synthetic hello", idempotency_key="k1")
 
@@ -48,7 +49,7 @@ class Server(unittest.TestCase):
         self.fake = fake or FakeRelay()
         self.relay = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, writes, self.fake)
         self.audit = []
-        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", fetch or (lambda url: JWKS), clock=lambda: NOW)
+        verifier = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, fetch or (lambda url: JWKS), clock=lambda: NOW)
         srv = ThreadingHTTPServer(("127.0.0.1", 0), buzz_mcp.handler(self.relay, verifier, BASE, origins, self.audit.append))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
@@ -109,7 +110,7 @@ class TokenChecks(Server):
 
     def test_key_rotation_refreshes_but_unknown_kid_cannot_hammer_the_idp(self):
         fetches, keys = [], {"keys": []}
-        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
+        v = Verifier(ISS, BASE + "/mcp", CLIENTS, ISS + "/jwks", USERS, lambda u: (fetches.append(u), keys)[1], clock=lambda: NOW)
         for _ in range(5):
             with self.assertRaises(AuthError):
                 v.verify("Bearer " + token())
@@ -190,6 +191,100 @@ class DualClient(Server):
         self.assertEqual((sorted(out), len(self.fake.events)), (["already_delivered"] * 7 + ["sent_not_read_back"], 1))
 
 
+class UserAuthorization(Server):
+    def test_a_different_user_on_an_authorized_client_gets_nothing(self):
+        self.start()
+        for name, tok in (("other_user", token(sub="user-2")), ("absent_sub", token(sub=None)), ("numeric_sub", token(sub=1)), ("list_sub", token(sub=["user-1"])),
+                          ("write_scope_other_user", token(sub="user-2", scope="buzz:read buzz:write"))):
+            for call in (("buzz_list_channels", dict(community="life-os")), ("buzz_post_message", POST)):
+                status, raw, _ = self.req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": call[0], "arguments": call[1]}}, tok)
+                self.assertEqual((status, json.loads(raw)), (403, {"error": "user_not_authorized"}), name)
+        self.assertEqual(self.req("POST", "/mcp", {"id": 1, "method": "ping"}, token(sub="user-2"))[0], 403)
+        self.assertEqual((self.fake.calls, self.fake.events, self.audit), ([], [], []))
+
+    def test_community_boundary_is_per_user_and_checked_before_any_relay_request(self):
+        self.start()
+        tok = token(sub="user-lifeos-only", scope="buzz:read buzz:write")
+        self.assertEqual(self.tool(tok, "buzz_list_channels", community="bytalos"), (200, {"error": "community_not_authorized"}))
+        self.assertEqual(self.tool(tok, "buzz_post_message", **dict(POST, community="bytalos"))[1], {"error": "community_not_authorized"})
+        self.assertEqual(self.tool(tok, "buzz_search_messages", query="x")[1], {"error": "community_not_authorized"})   # no community: denied, not defaulted
+        self.assertEqual((self.fake.calls, self.fake.events), ([], []))
+        self.assertEqual(self.tool(tok, "buzz_list_channels", community="life-os")[0], 200)
+        self.assertEqual(len(self.fake.calls), 1)
+        self.assertEqual(self.tool(token(scope="buzz:read"), "buzz_list_channels", community="bytalos")[0], 200)       # a user granted both communities still reaches both
+        self.assertEqual(self.audit[0]["outcome"], "community_not_authorized")
+
+
+class Startup(unittest.TestCase):
+    """Runs the unit's real ExecStart, parsed from the unit file, from the staged /opt layout (only lifeos/__init__.py + lifeos/buzz_*.py) with synthetic config."""
+    UNIT = ROOT / "lifeos" / "edge" / "buzz" / "oracle" / "lifeos-buzz-mcp.service"
+
+    def stage(self):
+        stage = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, stage, True)
+        (stage / "lifeos").mkdir()
+        for f in [ROOT / "lifeos" / "__init__.py", *(ROOT / "lifeos").glob("buzz_*.py")]:
+            shutil.copy(f, stage / "lifeos" / f.name)
+        return stage
+
+    def exec_argv(self, flags=None):
+        unit = self.UNIT.read_text()
+        argv = shlex.split(next(l for l in unit.splitlines() if l.startswith("ExecStart="))[10:])
+        self.assertEqual(argv[0], "/usr/bin/python3")
+        return [sys.executable, *(argv[1:] if flags is None else flags)]
+
+    def env(self, stage, **extra):
+        return {"PATH": os.environ["PATH"], "PYTHONPATH": str(stage), "PYTHONDONTWRITEBYTECODE": "1", **extra}
+
+    def test_unit_does_not_use_isolated_mode_and_keeps_sandboxing(self):
+        unit = self.UNIT.read_text()
+        self.assertNotIn(" -I ", unit.split("ExecStart=")[1].splitlines()[0])
+        for line in ("NoNewPrivileges=yes", "ProtectSystem=strict", "User=buzz-mcp", "LoadCredentialEncrypted=buzz_key_life_os", "Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current"):
+            self.assertIn(line, unit)
+
+    def test_execstart_imports_from_the_staged_layout_without_secrets(self):
+        stage = self.stage()
+        other = tempfile.mkdtemp()                                   # cwd that is NOT the stage: only PYTHONPATH can supply the package
+        self.addCleanup(shutil.rmtree, other, True)
+        done = subprocess.run(self.exec_argv(), cwd=other, env=self.env(stage), capture_output=True, text=True, timeout=30)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("config error", done.stderr)                   # reached main() and failed on missing config, not on import
+        self.assertNotIn("ModuleNotFoundError", done.stderr)
+        isolated = subprocess.run([sys.executable, "-I", *self.exec_argv()[3:]], cwd=other, env=self.env(stage), capture_output=True, text=True, timeout=30)
+        self.assertIn("ModuleNotFoundError", isolated.stderr)        # negative control: the old -I command really cannot start
+
+    def test_staged_service_serves_loopback_discovery(self):
+        stage = self.stage()
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        env = self.env(stage, BUZZ_MCP_PORT=str(port), BUZZ_MCP_PUBLIC_URL=BASE, BUZZ_OAUTH_ISSUER=ISS, BUZZ_OAUTH_JWKS_URL=ISS + "/jwks", BUZZ_OAUTH_CLIENTS="cid-claude:claude",
+                       BUZZ_OAUTH_USERS="user-1:life-os", BUZZ_URL_LIFE_OS=URLS["life-os"], BUZZ_KEY_LIFE_OS=KEY_A.hex())
+        proc = subprocess.Popen(self.exec_argv(), cwd=tempfile.gettempdir(), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(proc.kill)
+        self.addCleanup(proc.stderr.close)
+        for _ in range(100):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource") as r:
+                    self.assertEqual(json.load(r)["resource"], BASE + "/mcp")
+                break
+            except OSError:
+                self.assertIsNone(proc.poll(), "service exited during startup")
+                time.sleep(0.1)
+        else:
+            self.fail("service never answered")
+        self.assertEqual(self.post_status(port), 401)
+        proc.kill()
+        self.assertNotIn(KEY_A.hex(), proc.stderr.read())
+
+    @staticmethod
+    def post_status(port):
+        try:
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/mcp", b"{}", method="POST"))
+        except urllib.error.HTTPError as e:
+            return e.code
+
+
 class Transport(Server):
     def test_streamable_http_shapes(self):
         self.start(origins=("https://claude.ai",))
@@ -219,7 +314,7 @@ class Transport(Server):
 
 
 class Config(unittest.TestCase):
-    ENV = {"BUZZ_MCP_PUBLIC_URL": BASE + "/", "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-claude:claude,cid-chatgpt:chatgpt",
+    ENV = {"BUZZ_MCP_PUBLIC_URL": BASE + "/", "BUZZ_OAUTH_ISSUER": ISS, "BUZZ_OAUTH_JWKS_URL": ISS + "/jwks", "BUZZ_OAUTH_CLIENTS": "cid-claude:claude,cid-chatgpt:chatgpt", "BUZZ_OAUTH_USERS": "user-1:life-os+bytalos",
            "BUZZ_URL_LIFE_OS": URLS["life-os"] + "/", "BUZZ_KEY_LIFE_OS": KEY_A.hex()}
 
     def test_from_env_defaults_to_no_writes_and_rejects_unsafe_config(self):
@@ -228,7 +323,7 @@ class Config(unittest.TestCase):
         url_ids = buzz_mcp.from_env({**self.ENV, "BUZZ_OAUTH_CLIENTS": "https://chatgpt.com/oauth/client.json:chatgpt, dcr-abc123:claude"})[1]
         self.assertEqual(url_ids.clients, {"https://chatgpt.com/oauth/client.json": "chatgpt", "dcr-abc123": "claude"})   # ChatGPT's CIMD client_id is a URL
         bad = [{**self.ENV, "BUZZ_MCP_PUBLIC_URL": "http://edge.example.test"}, {**self.ENV, "BUZZ_MCP_PUBLIC_URL": BASE + "/mcp"}, {**self.ENV, "BUZZ_OAUTH_ISSUER": ""}, {**self.ENV, "BUZZ_OAUTH_JWKS_URL": "http://x"},
-               {**self.ENV, "BUZZ_OAUTH_CLIENTS": "x:admin"}, {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"}]
+               {**self.ENV, "BUZZ_OAUTH_CLIENTS": "x:admin"}, {**self.ENV, "BUZZ_OAUTH_USERS": ""}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1:other"}, {**self.ENV, "BUZZ_OAUTH_USERS": "user-1"}, {**self.ENV, "BUZZ_OAUTH_CLIENTS": ""}, {**self.ENV, "BUZZ_KEY_LIFE_OS": "nothex"}, {**self.ENV, "BUZZ_AUTH_TAG": "x"}]
         for env in bad:
             with self.assertRaises(ValueError) as c:
                 buzz_mcp.from_env(env)

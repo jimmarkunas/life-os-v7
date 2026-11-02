@@ -1,6 +1,6 @@
 """Remote MCP server (Streamable HTTP, JSON replies, stateless) shared by Claude Chat and ChatGPT Chat for four Buzz operations. Loopback only; a TLS reverse proxy is the only public path.
 Every /mcp call needs an OAuth access token (lifeos.buzz_auth); writes also need the buzz:write scope AND an allowlisted (community, channel), so they are off by default.
-Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>:claude|chatgpt,... (client_id may be a URL), BUZZ_URL_<COMMUNITY>,
+Config (environment or systemd credentials, never logged): BUZZ_MCP_PUBLIC_URL, BUZZ_OAUTH_ISSUER, BUZZ_OAUTH_JWKS_URL, BUZZ_OAUTH_CLIENTS=<client_id>:claude|chatgpt,... (client_id may be a URL), BUZZ_OAUTH_USERS=<sub>:<community>+<community>,... (owner-approved users), BUZZ_URL_<COMMUNITY>,
 BUZZ_KEY_<COMMUNITY> (a scoped member key per community, never an owner key), BUZZ_WRITE_CHANNELS=community:uuid,..., optional BUZZ_MCP_ORIGINS."""
 import json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -115,10 +115,14 @@ def handler(relay, auth, base, origins=(), audit=_audit):
             need = "buzz:read" if spec and spec[3] else "buzz:write"
             if spec and need not in who["scopes"]:
                 return self._deny(403, "insufficient_scope", need)
-            reply = rpc(relay, msg) if "method" in msg else None  # client-side JSON-RPC responses are accepted and ignored
+            args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            if spec and args.get("community") not in who["communities"]:  # the user's own community boundary, enforced before any relay request
+                reply = {"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": json.dumps({"error": "community_not_authorized"})}], "isError": True}}
+            else:
+                reply = rpc(relay, msg) if "method" in msg else None  # client-side JSON-RPC responses are accepted and ignored
             if spec and reply:
                 inner = json.loads(reply["result"]["content"][0]["text"])
-                audit({"client": who["client"], "sub": who["sub"], "tool": params["name"], "community": (params.get("arguments") or {}).get("community") if isinstance(params.get("arguments"), dict) else None,
+                audit({"client": who["client"], "sub": who["sub"], "tool": params["name"], "community": args.get("community") if isinstance(args.get("community"), str) else None,
                        "outcome": inner.get("error", "ok") if isinstance(inner, dict) else "ok"})
             self._send(202) if reply is None else self._send(200, reply)
 
@@ -149,10 +153,14 @@ def from_env(env):
         raise ValueError("delegated NIP-OA identity is unsupported; configure the member's own scoped key")
     writes = [tuple(x.split(":", 1)) for x in env.get("buzz_write_channels".upper(), "").split(",") if x.strip()]
     clients = dict(x.strip().rsplit(":", 1) for x in env.get("BUZZ_OAUTH_CLIENTS", "").split(",") if ":" in x)
+    users = {}
+    for x in env.get("BUZZ_OAUTH_USERS", "").split(","):
+        sub, _, comms = x.strip().rpartition(":")
+        users[sub] = tuple(comms.split("+"))
     base = https(env, "BUZZ_MCP_PUBLIC_URL")
-    if not urls or not clients or not set(clients.values()) <= {"claude", "chatgpt"} or "/" in base[8:]:
-        raise ValueError("at least one community URL+key, BUZZ_OAUTH_CLIENTS (claude|chatgpt) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
-    auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"))
+    if not urls or not users or not all(sub and set(c) <= set(COMMUNITIES) and c for sub, c in users.items()) or not clients or not set(clients.values()) <= {"claude", "chatgpt"} or "/" in base[8:]:
+        raise ValueError("at least one community URL+key, BUZZ_OAUTH_CLIENTS (claude|chatgpt), BUZZ_OAUTH_USERS (<sub>:<community>+...) and an origin-only BUZZ_MCP_PUBLIC_URL are required")
+    auth = Verifier(https(env, "BUZZ_OAUTH_ISSUER"), base + "/mcp", clients, https(env, "BUZZ_OAUTH_JWKS_URL"), users)
     return Relay(urls, keys, writes), auth, base, tuple(x for x in env.get("BUZZ_MCP_ORIGINS", "").split(",") if x)
 
 

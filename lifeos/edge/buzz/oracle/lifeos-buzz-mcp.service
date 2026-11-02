@@ -12,7 +12,8 @@ Environment=PYTHONPATH=/opt/lifeos-buzz-mcp/current PYTHONDONTWRITEBYTECODE=1 BU
 EnvironmentFile=/etc/lifeos-buzz-mcp/config.env
 LoadCredentialEncrypted=buzz_key_life_os:/etc/lifeos-buzz-mcp/buzz_key_life_os.cred
 LoadCredentialEncrypted=buzz_key_bytalos:/etc/lifeos-buzz-mcp/buzz_key_bytalos.cred
-ExecStart=/usr/bin/python3 -I -m lifeos.buzz_mcp
+# not -I: isolated mode ignores PYTHONPATH and the working directory, so the staged package could not be imported. -s -B keep user site and bytecode out.
+ExecStart=/usr/bin/python3 -s -B -m lifeos.buzz_mcp
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes
