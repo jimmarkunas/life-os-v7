@@ -231,6 +231,12 @@ class Pilot(unittest.TestCase):
         live["children"] = {"pp": ["Rollout requirements"]}
         self.assertIn("EXISTING_PAGE_WITH_TITLE:LIFE-1", cr.validate(plan, APPROVAL(plan, ["LIFE-1"], page_creation=["LIFE-1"]), live)["problems"])
 
+    def test_a_new_page_can_skip_the_title_heading_because_the_database_title_is_the_title(self):
+        snap = {"issues": [issue(description=DESC2, notion_pages=[], owner_moves=["Rollout plan"], new_page=dict(PARENT, title_heading=False), notion_preface="> Draft note.")], "notion": {}}
+        p = cr.build_plan(snap, CONFIG)["issues"][0]
+        self.assertTrue(p["notion_append"].startswith("> Draft note."))
+        self.assertNotIn("# Rollout requirements", p["notion_append"])
+
     def test_a_created_page_is_not_created_twice_and_the_readback_substitutes_its_url(self):
         snap = {"issues": [issue(description=DESC2, notion_pages=[], owner_moves=["Rollout plan"], new_page=PARENT)], "notion": {}}
         plan = cr.build_plan(snap, CONFIG)
