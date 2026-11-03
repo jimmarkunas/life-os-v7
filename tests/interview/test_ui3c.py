@@ -209,7 +209,8 @@ class Layout(unittest.TestCase):
     def test_values_come_from_the_view_and_missing_sources_say_so(self):
         current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"), view.Round("r1", 1, "2026-10-01", None)),
                               compensation="$90/hr", work_mode="Remote", apply_url="https://jobs.example.com/1", fit_summary="ERP programs")
-        client, page_id = written(current)
+        with patch.object(create, "today", return_value=TODAY):                # rendered() reads the real clock: pin it to the fixture date
+            client, page_id = written(current)
         shown = texts(client, page_id)
         for value in ("$90/hr (Job Ledger)", "Remote (Job Ledger)", "ERP programs (LIFE OS fit summary)", "Pat Example",
                       "2026-11-02 · Calendar event not verified", "Prepare for Interview 2 on 2026-11-02.", "Original posting ↗",
@@ -219,6 +220,15 @@ class Layout(unittest.TestCase):
         for invented in ("ExampleCo Inc", "Rituraj", "Smartsheet", "$58", "QA preview", "sandbox"):
             self.assertNotIn(invented, "\n".join(shown))
         self.assertNotIn("to_do", str(client.blocks))                         # no fake completion control
+
+    def test_the_injected_clock_decides_the_action_before_on_and_after_the_interview_date(self):
+        current = opportunity((view.Round("r2", 2, "2026-11-02", "Pat Example"),))
+        for clock, upcoming in (("2026-10-20", True), ("2026-11-02", True), ("2026-11-03", False)):        # before, same day, after
+            with self.subTest(clock=clock), patch.object(create, "today", return_value=clock):
+                shown = "\n".join(texts(*written(current)))
+            self.assertEqual("Prepare for Interview 2 on 2026-11-02." in shown, upcoming)
+            self.assertEqual("Interview 2 date passed" in shown, not upcoming)
+            self.assertIn("Calendar: not connected to LIFE OS yet", shown)                              # missing sources still say so
 
     def test_a_recruiter_lead_page_says_to_reply_or_close_and_any_other_job_keeps_the_degraded_action(self):
         lead = dataclasses.replace(opportunity(), stable_job_key="recruiter-acme-program-manager", ledger="not_linked")
