@@ -369,6 +369,45 @@ class Paging(unittest.TestCase):
                 break
         self.check(seen, events)
 
+    def test_600_events_in_one_second_and_600_in_the_previous_second_are_all_retrieved(self):
+        for gap in (1, 3):   # adjacent seconds, and a quiet gap between them
+            events = [fake_event(i, 200) for i in range(600)] + [fake_event(1000 + i, 200 - gap) for i in range(600)]
+            for tie in (lambda e: 0, lambda e: hashlib.sha256(("scramble" + e["id"]).encode()).hexdigest()):
+                fake, relay = self.tape(events)
+                fake.tie = tie
+                seen, cursor, errors = [], None, []
+                for _ in range(80):
+                    err, out = read(relay, "get_messages", channel=CHAN, limit=49, **({"cursor": cursor} if cursor else {}))
+                    if err:
+                        errors.append(out)
+                        break
+                    seen += [m["event_id"] for m in out["data"]]
+                    cursor = out["next_cursor"]
+                    if cursor is None:
+                        break
+                self.assertEqual(errors, [], gap)   # the older second is reachable: no unsupported-boundary error
+                self.check(seen, events)
+                self.assertEqual((len(seen), len(set(seen)), cursor), (1200, 1200, None))   # all of them, once each, and a real end of the history
+
+    def test_a_second_that_fills_the_whole_window_still_fails_closed_at_the_real_relay_limit(self):
+        events = [fake_event(i, 300) for i in range(1001)]
+        _, relay = self.tape(events)
+        err, out = read(relay, "get_messages", channel=CHAN, limit=49)
+        self.assertEqual((err, out["error"], out["max_same_second"]), (True, "page_boundary_unsupported", 1000))   # 1,001 matching events in one second, at the real relay limit
+        events = [fake_event(i, 300) for i in range(1001)] + [fake_event(5000 + i, 299) for i in range(50)]   # older events must not hide the unreachable tail
+        _, relay = self.tape(events)
+        seen, cursor, failed = [], None, None
+        for _ in range(60):
+            err, out = read(relay, "get_messages", channel=CHAN, limit=49, **({"cursor": cursor} if cursor else {}))
+            if err:
+                failed = out["error"]
+                break
+            seen += [m["event_id"] for m in out["data"]]
+            cursor = out["next_cursor"]
+            if cursor is None:
+                break
+        self.assertEqual(failed, "page_boundary_unsupported")   # never silently skips the unverified tail of the 1,001-event second to reach older events
+
     def test_the_exact_unsupported_boundary_is_reported_not_skipped(self):
         events = [fake_event(i, 7000) for i in range(60)]
         with mock.patch.object(buzz_relay, "RELAY_MAX", 40):

@@ -112,6 +112,9 @@ class Relay:
             full = len(raw) >= window
             floor = min((e["created_at"] for e in batch), default=0) if full else -1
             pool = sorted((e for e in batch if e["created_at"] > floor and (last is None or (e["created_at"], e["id"]) < (ts, last))), key=lambda e: (e["created_at"], e["id"]), reverse=True)
+            if not pool and full and last is not None and floor < ts:  # the window reached an older second, so the cursor's own second is fully enumerated and nothing in it is left: step to the next older second
+                ts, last, window = ts - 1, None, lim + 2
+                continue
             if len(pool) > lim or not full or window >= RELAY_MAX:
                 break
             window = min(window * 4, RELAY_MAX)
