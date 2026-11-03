@@ -131,9 +131,9 @@ def capabilities(relay, who):
             "limits": {"page_max": 50, "text_max": MAX_TEXT, "request_max_bytes": MAX_BODY, "response_max_bytes": MAX_RESPONSE, "cursor_ttl_seconds": CURSOR_TTL},
             "pagination": {"cursor": "opaque, signed, bound to its query; send it back unchanged", "lossless": True, "unsupported_boundary": f"more than {RELAY_MAX} matching events in a single second", "search": "one relevance-ordered page, not lossless"},
             "read": {n: {"summary": d, "parameters": {k: {"type": t, "required": q} for k, (t, q) in p.items()}, "scope": "buzz:read", "available": reason("buzz:read") is None, "reason": reason("buzz:read")} for n, (d, p, _) in READ.items()},
-            "publish": {n: {"summary": d, "parameters": {k: {"type": t, "required": q} for k, (t, q) in POST_ARGS.items()}, "scope": "buzz:write", "event_type": et,
+            "publish": {n: {"summary": d, "parameters": {k: {"type": t, "required": q} for k, (t, q) in {**POST_ARGS, "case": ("str", nc), "reply_to": ("str", nr)}.items()}, "scope": "buzz:write", "event_type": et,
                             "available": n not in DISABLED and reason("buzz:write", None if any(writable.values()) else "write_disabled") is None,
-                            "reason": DISABLED.get(n) or reason("buzz:write", None if any(writable.values()) else "write_disabled")} for n, (d, et, _, _) in PUBLISH.items()},
+                            "reason": DISABLED.get(n) or reason("buzz:write", None if any(writable.values()) else "write_disabled")} for n, (d, et, nc, nr) in PUBLISH.items()},
             "addressing": {"enabled": relay.may_address and any(agents.values()), "reason": None if relay.may_address and any(agents.values()) else "addressing_off", "agents": agents},
             "writable_channels": writable, "event_types": {"publish": list(ETYPES), "council_read_only": list(COUNCIL_TYPES)}, "errors": ERRORS}
 

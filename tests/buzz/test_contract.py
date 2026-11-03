@@ -84,6 +84,8 @@ class Discovery(unittest.TestCase):
         self.assertEqual((err, out["ok"], out["contract"], caps["contract"], caps["fingerprint"]), (False, True, "1.0", "1.0", FINGERPRINT))
         self.assertEqual(caps["identity"]["communities"]["life-os"], ACTOR)
         self.assertTrue(caps["publish"]["message"]["available"] and caps["addressing"]["enabled"])
+        need = lambda op: sorted(k for k, v in caps["publish"][op]["parameters"].items() if v["required"])
+        self.assertEqual((need("message"), need("reply"), need("handoff_request")), (["channel", "idempotency_key", "text"], ["channel", "idempotency_key", "reply_to", "text"], ["case", "channel", "idempotency_key", "text"]))   # a model can see what each operation needs
         self.assertEqual((caps["publish"]["council_contribution"]["available"], caps["publish"]["council_contribution"]["reason"]), (False, "separate_authorization_required"))
         self.assertIn("1000", caps["pagination"]["unsupported_boundary"])
         self.assertEqual(set(caps["errors"]), {"unsupported", "unauthorized", "disabled", "degraded", "caller"})
@@ -325,6 +327,21 @@ class Paging(unittest.TestCase):
         for page in range(60):
             calls[0] += 1   # a different tie order on every call
             err, out = read(relay, "get_messages", channel=CHAN, limit=50, **({"cursor": cursor} if cursor else {}))
+            self.assertFalse(err, out)
+            seen += [m["event_id"] for m in out["data"]]
+            cursor = out["next_cursor"]
+            if cursor is None:
+                break
+        self.check(seen, events)
+
+    def test_more_than_50_in_one_second_survives_a_restart_between_every_page(self):
+        events = [fake_event(i, 6000) for i in range(130)] + [fake_event(900 + i, 5990 + i) for i in range(10)]
+        fake, _ = self.tape(events)
+        fake.tie = lambda e: hashlib.sha256(("restart" + e["id"]).encode()).hexdigest()
+        seen, cursor = [], None
+        for _ in range(40):
+            fresh = Relay(URLS, {"life-os": KEY_A, "bytalos": KEY_B}, WRITES, fake)   # a new process holds nothing from the last page
+            err, out = read(fresh, "get_messages", channel=CHAN, limit=20, **({"cursor": cursor} if cursor else {}))
             self.assertFalse(err, out)
             seen += [m["event_id"] for m in out["data"]]
             cursor = out["next_cursor"]
