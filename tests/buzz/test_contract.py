@@ -1,6 +1,6 @@
 """LIFE-254 / LIFE-249: the permanent three-tool Buzz MCP contract (buzz_capabilities, buzz_read, buzz_publish) plus the five legacy tools, proved against a MOCKED relay and a LOCAL test identity provider.
 These are fixture results. They say nothing about real ChatGPT or Claude Chat discovering the tools; that needs live connector acceptance."""
-import ast, base64, hashlib, json, pathlib, random, unittest
+import ast, base64, functools, hashlib, json, pathlib, random, unittest
 from unittest import mock
 
 from lifeos import buzz_mcp, buzz_nip98 as nip98, buzz_relay
@@ -26,13 +26,15 @@ def unsigned_auth(secret, method, url, body=None):
 
 
 def setUpModule():
-    global _patch
-    _patch = mock.patch.object(nip98, "auth_header", unsigned_auth)
-    _patch.start()
+    global _patches
+    _patches = [mock.patch.object(nip98, "auth_header", unsigned_auth), mock.patch.object(nip98, "pubkey", functools.lru_cache(maxsize=None)(nip98.pubkey))]   # pubkey is a pure function of the key: cache the 19 ms derivation
+    for patch in _patches:
+        patch.start()
 
 
 def tearDownModule():
-    _patch.stop()
+    for patch in _patches:
+        patch.stop()
 
 
 def setup(keys=None, writes=WRITES, recipients=ALIASES, may_address=True, rosters=ROSTERS, **kw):
