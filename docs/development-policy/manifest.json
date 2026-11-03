@@ -160,6 +160,8 @@
       ]
     }
   ],
-  "reassembled_sha256": "0704d935c1f9d55642319acf158b219fcd3010ba37794b25a7bdd162e7551747",
-  "amendments": []
+  "reassembled_sha256": "2049f03bf1f4728c0a380a6d05c28a420eb0ad74084bc685a1e55c46b056b5ab",
+  "amendments": [
+    {"date": "2026-11-02", "pr": "https://github.com/jimmarkunas/life-os-v7/pull/746", "approval": "Jim Markunas, November 2, 2026 CT, LIFE-79 comment 11683 and chat instruction: correct only the Part 01 Status paragraph so the current life-os-automation Production Contract is binding for runtime and schedules (V1/V2 implementations remain historical)", "part": "docs/development-policy/01-status-mission-ui-first.md"}
+  ]
 }
