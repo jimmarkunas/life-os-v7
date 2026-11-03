@@ -123,15 +123,19 @@ def check_repo(root):
     """Refusals for the global source index: every indexed path exists, has an owner and an authority, and is inside the size limit."""
     root, out = Path(root), []
     try:
-        rows = [[c.strip() for c in line.strip().strip("|").split("|")] for line in (root / "INDEX.md").read_text().splitlines() if line.startswith("| [`")]
+        rows, section = [], ""
+        for line in (root / "INDEX.md").read_text().splitlines():
+            section = line[3:].strip() if line.startswith("## ") else section
+            if line.startswith("| [`"):
+                rows.append((section == "Global sources", [c.strip() for c in line.strip().strip("|").split("|")]))
         schema = json.loads((root / "docs" / "jira" / "issue-schema.v1.json").read_text())
     except (OSError, ValueError):
         return [refuse("index_unreadable", "INDEX.md")]
-    if len(rows) < 5:
+    if sum(is_global for is_global, _ in rows) < 5:
         out.append(refuse("index_empty", "INDEX.md"))
-    for row in rows:
+    for is_global, row in rows:
         link = re.match(r"\[`([^`]+)`\]\(([^)]+)\)$", row[0])
-        if len(row) not in (1, 5) or not link:
+        if len(row) != (5 if is_global else 1) or not link:              # global-source rows carry all five columns; only the Not global list is link-only
             out.append(refuse("index_row_malformed", "INDEX.md", row[0][:60]))
             continue
         if link.group(2) != link.group(1):
@@ -141,7 +145,7 @@ def check_repo(root):
         if not path.is_file():
             out.append(refuse("link_broken", link.group(1)))
             continue
-        if len(row) == 5 and not (row[1] and row[3]):
+        if is_global and not (row[1] and row[3]):
             out.append(refuse("owner_or_authority_missing", link.group(1)))
     sized = [root / n for n in ("INDEX.md", "AGENTS.md", "CLAUDE.md")] + sorted((root / "docs" / "development-policy").glob("*.md"))
     out += [refuse("size_over_limit", str(f.relative_to(root)), str(f.stat().st_size)) for f in sized if f.is_file() and f.stat().st_size > SIZE_LIMIT]
