@@ -182,7 +182,7 @@ class Server(unittest.TestCase):
         relays = buzz_mcp.from_env({**env, "BUZZ_RECIPIENTS": f"Claude-Code:life-os:{PK_CODE}, Codex:bytalos:{PK_CODEX}", "BUZZ_MENTION_SENDERS": "claude"})[0]
         self.assertEqual((relays["claude"].may_address, relays["chatgpt"].may_address), (True, False))
         self.assertEqual(relays["chatgpt"].recipients, {("life-os", "claude-code"): PK_CODE, ("bytalos", "codex"): PK_CODEX})
-        for bad in ({"BUZZ_RECIPIENTS": f"Council-Architect:life-os:{PK_CODE}"}, {"BUZZ_RECIPIENTS": f"Codex:elsewhere:{PK_CODE}"}, {"BUZZ_RECIPIENTS": "Codex:life-os:nothex"},
+        for bad in ({"BUZZ_RECIPIENTS": f"Bad Alias!:life-os:{PK_CODE}"}, {"BUZZ_RECIPIENTS": f"Codex:elsewhere:{PK_CODE}"}, {"BUZZ_RECIPIENTS": "Codex:life-os:nothex"},
                     {"BUZZ_RECIPIENTS": f"Codex:life-os:{PK_CODE},codex:life-os:{PK_CODEX}"}, {"BUZZ_RECIPIENTS": f"Codex:life-os:{PK_CODE}:x"}, {"BUZZ_MENTION_SENDERS": "admin"}):
             with self.assertRaises(ValueError):
                 buzz_mcp.from_env({**env, **bad})
