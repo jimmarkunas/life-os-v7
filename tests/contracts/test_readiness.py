@@ -168,6 +168,8 @@ class RepositoryIndex(Fixture):
                 ("owner", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("| Jim (change by reviewed PR; Q04) |", "|  |", 1)), "owner_or_authority_missing"),
                 ("size", lambda r: (r / "docs" / "development-policy" / "06-locked-architecture.md").write_text("x" * 16000), "size_over_limit docs/development-policy/06-locked-architecture.md"),
                 ("destination", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("[`AGENTS.md`](AGENTS.md)", "[`AGENTS.md`](docs/SETUP.md)", 1)), "link_destination_mismatch AGENTS.md docs/SETUP.md"),
+                ("stripped", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace(next(l for l in (r / "INDEX.md").read_text().splitlines() if l.startswith("| [`AGENTS.md`]")), "| [`AGENTS.md`](AGENTS.md) |")), "index_row_malformed INDEX.md [`AGENTS.md`]"),
+                ("non_global_with_metadata", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("| [`docs/PLAN.md`](docs/PLAN.md) |", "| [`docs/PLAN.md`](docs/PLAN.md) | x | x | x | x |")), "index_row_malformed INDEX.md [`docs/PLAN.md`]"),
                 ("index", lambda r: (r / "INDEX.md").write_text("# empty\n"), "index_empty"),
                 ("schema", lambda r: (r / "docs" / "jira" / "issue-schema.v1.json").write_text(json.dumps({"required": ["key"]})), "schema_fields_lost")):
             with self.subTest(name=name):
