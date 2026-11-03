@@ -2,7 +2,7 @@
 
 # LIFE OS Development Policy
 
-**Status:** Canonical active LIFE OS V7 development methodology, owned by `jimmarkunas/life-os-v7`; V1 and V2 are historical references only. **Owner:** Jim Markunas; material changes require Jim's explicit approval. For V7 runtime, Jim's current instructions and the live V7 implementation/workflow are authoritative; the V1 `life-os-automation` production contract is historical reference only; Notion `Development Projects` is coordination-only (ownership, concurrency, takeover, handoff). Repo supplements may add mechanics but may not override this policy.
+**Status:** Canonical active LIFE OS V7 development methodology, owned by `jimmarkunas/life-os-v7`; the V1 and V2 implementations are historical references only. **Owner:** Jim Markunas; material changes require Jim's explicit approval. For runtime and schedules, Jim's current instructions and the current Production Contract (`jimmarkunas/life-os-automation/docs/life-os-production-contract.md`) remain binding, as the authority order in §1 states; the live V7 implementation/workflow is what exists. `LIFE OS Daily Runs` is retired, and V7's existing GitHub scheduled workflows are the sole scheduled executor; retirement does not transfer to V7 any capability V7 has not implemented. This Development Policy governs development method. Notion `Development Projects` is coordination-only (ownership, concurrency, takeover, handoff). Repo supplements may add mechanics but may not override this policy.
 
 **Machine bootstrap routing index:** V7 `AGENTS.md` and `docs/CODEMAP.md`. They are pointer-only and adds no product, runtime, roadmap, or architectural authority. Use it to select the smallest canonical source set before reading further.
 
