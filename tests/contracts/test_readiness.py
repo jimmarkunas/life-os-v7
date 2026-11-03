@@ -10,14 +10,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SHA_A, SHA_B = "a" * 40, "b" * 40
+SHA_B = "b" * 40
 
 ISSUE = {"key": "LIFE-901", "owner": "Example Owner", "labels": ["lane-career-v7", "example-label"], "origin": {"los": "LOS-901", "approved": True},
          "host": "isolated cloud worktree", "source": "docs/life-os-development-policy.md", "blockers": [{"key": "LIFE-900", "status": "Done"}],
          "authorization": {"approved_by": "Example Owner", "provenance": "issue description"}, "permissions": ["repo:write"],
          "acceptance": [{"given": "a ready issue", "when": "the validator runs", "then": "it reports ready"}]}
-CLAIM = {"writer": "agent-one", "issue": "LIFE-901", "base_sha": SHA_A, "surfaces": ["lifeos/readiness.py"]}
-STATE = {"main_sha": SHA_A, "main_verified": True, "claims": []}
+CLAIM = {"writer": "agent-one", "issue": "LIFE-901", "surfaces": ["lifeos/readiness.py"]}
 
 
 def entry(*args):
@@ -79,36 +78,79 @@ class IssueEligibility(Fixture):
 
 
 class WriterPreflight(Fixture):
-    def run_preflight(self, claim=None, state=None):
-        return entry("preflight", self.write("claim.json", CLAIM if claim is None else claim), self.write("state.json", STATE if state is None else state))
+    """main is fetched by the validator itself from a real (temporary) git origin; the state file only carries the writer-claim record."""
 
-    def test_valid_claim_with_unchanged_baseline_proceeds(self):
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd or self.clone, check=True, capture_output=True, text=True).stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        origin, self.clone = self.dir / "origin.git", self.dir / "clone"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", origin], check=True)
+        subprocess.run(["git", "clone", "-q", origin, self.clone], check=True, capture_output=True)
+        (self.clone / "f").write_text("1")
+        self.git("add", "f"), self.git("commit", "-q", "-m", "one"), self.git("push", "-q", "origin", "HEAD:main")
+        self.base = self.git("rev-parse", "HEAD")
+        self.claim = dict(CLAIM, base_sha=self.base)
+        self.mine = {"writer": "agent-one", "issue": "LIFE-901", "surfaces": ["lifeos/readiness.py", "AGENTS.md"]}
+
+    def run_preflight(self, claim=None, claims=None, pre=False, repo=None, state=None):
+        args = ["preflight"] + (["--pre"] if pre else []) + [self.write("claim.json", self.claim if claim is None else claim),
+                                                             self.write("state.json", {"claims": [self.mine] if claims is None else claims} if state is None else state), repo or self.clone]
+        return entry(*args)
+
+    def test_valid_recorded_claim_with_unchanged_baseline_proceeds(self):
         self.assertEqual(self.run_preflight(), (0, "ready v1\n", ""))
-        other = dict(STATE, claims=[{"writer": "agent-two", "issue": "LIFE-902", "surfaces": ["docs/other.md"]}])
-        self.assertEqual(self.run_preflight(state=other)[0], 0)                      # a different writer on a different issue and surface does not conflict
-        self.assertEqual(self.run_preflight(state=dict(STATE, claims=[dict(CLAIM)]))[0], 0)    # my own claim is not a conflict
+        other = {"writer": "agent-two", "issue": "LIFE-902", "surfaces": ["docs/other.md"]}
+        self.assertEqual(self.run_preflight(claims=[self.mine, other])[0], 0)         # a different writer on a different issue and surface does not conflict
+
+    def test_no_recorded_claim_blocks_mutation_but_not_the_pre_claim_check(self):
+        for claims in ([], [dict(self.mine, writer="agent-two")], [dict(self.mine, issue="LIFE-902")], [dict(self.mine, surfaces=["docs/other.md"])]):
+            with self.subTest(claims=claims):
+                status, out, err = self.run_preflight(claims=claims)
+                self.assertEqual((status, out), (2, ""))
+                self.assertTrue("claim_not_recorded" in err or "writer_conflict" in err, err)
+        self.assertEqual(self.run_preflight(claims=[], pre=True)[0], 0)                # may I record this claim? yes, nobody holds it
+        self.assertEqual(self.run_preflight(claims=[dict(self.mine, writer="agent-two")], pre=True)[0], 2)
 
     def test_a_different_writer_on_the_same_issue_or_surface_is_refused_before_mutation(self):
         for held in ({"writer": "agent-two", "issue": "LIFE-901", "surfaces": []},
                      {"writer": "agent-two", "issue": "LIFE-902", "surfaces": ["lifeos/readiness.py"]},
                      {"writer": "agent-two", "issue": "LIFE-902", "surfaces": [], "exclusive": True}):
-            with self.subTest(held=held):
-                status, out, err = self.run_preflight(state=dict(STATE, claims=[held]))
-                self.assertEqual((status, out), (2, ""))
-                self.assertIn("refused v1 writer_conflict claims agent-two holds", err)
+            for pre in (False, True):
+                with self.subTest(held=held, pre=pre):
+                    status, out, err = self.run_preflight(claims=[self.mine, held], pre=pre)
+                    self.assertEqual((status, out), (2, ""))
+                    self.assertIn("refused v1 writer_conflict claims agent-two holds", err)
 
-    def test_a_changed_or_unverified_baseline_is_refused(self):
-        self.assertIn("baseline_changed base_sha claimed aaaaaaa, main bbbbbbb", self.run_preflight(state=dict(STATE, main_sha=SHA_B))[2])
-        for state in (dict(STATE, main_verified=False), {k: v for k, v in STATE.items() if k != "main_sha"}, dict(STATE, main_sha="main")):
-            with self.subTest(state=state):
-                status, _, err = self.run_preflight(state=state)
+    def test_a_changed_baseline_is_refused(self):
+        (self.clone / "f").write_text("2")
+        self.git("add", "f"), self.git("commit", "-q", "-m", "two"), self.git("push", "-q", "origin", "HEAD:main")
+        status, out, err = self.run_preflight()
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn(f"baseline_changed base_sha claimed {self.base[:7]}, main {self.git('rev-parse', 'HEAD')[:7]}", err)
+
+    def test_main_is_fetched_live_never_asserted_by_the_caller(self):
+        self.assertEqual(self.run_preflight(state={"claims": [self.mine], "main_sha": SHA_B, "main_verified": True})[0], 0)   # asserted fields are ignored
+        (self.clone / "f").write_text("2")
+        self.git("add", "f"), self.git("commit", "-q", "-m", "two"), self.git("push", "-q", "origin", "HEAD:main")
+        stale = self.run_preflight(state={"claims": [self.mine], "main_sha": self.base, "main_verified": True})   # a caller claiming the old main is verified still fails
+        self.assertEqual(stale[0], 2)
+        self.assertIn("baseline_changed", stale[2])
+
+    def test_an_unreachable_or_unfetchable_main_is_refused_as_unverified(self):
+        for repo in (self.dir / "absent", self.write("notrepo.txt", "x")):
+            with self.subTest(repo=repo):
+                status, _, err = self.run_preflight(repo=repo)
                 self.assertEqual(status, 2)
                 self.assertIn("baseline_unverified", err)
+        self.git("remote", "set-url", "origin", str(self.dir / "gone.git"))
+        self.assertIn("baseline_unverified", self.run_preflight()[2])
 
     def test_an_unread_claim_record_or_missing_claim_is_refused(self):
-        self.assertIn("claims_unverified", self.run_preflight(state={k: v for k, v in STATE.items() if k != "claims"})[2])
+        self.assertIn("claims_unverified", self.run_preflight(state={})[2])
         self.assertIn("claim_missing", self.run_preflight(claim={"issue": "LIFE-901"})[2])
-        self.assertEqual(entry("preflight", self.write("c.json", CLAIM))[0], 2)      # no state file at all
+        self.assertEqual(entry("preflight", self.write("c.json", self.claim))[0], 2)  # no state file at all
 
 
 class RepositoryIndex(Fixture):
@@ -125,6 +167,7 @@ class RepositoryIndex(Fixture):
                 ("link", lambda r: (r / "docs" / "DECISIONS_INDEX.md").unlink(), "link_broken docs/DECISIONS_INDEX.md"),
                 ("owner", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("| Jim (change by reviewed PR; Q04) |", "|  |", 1)), "owner_or_authority_missing"),
                 ("size", lambda r: (r / "docs" / "development-policy" / "06-locked-architecture.md").write_text("x" * 16000), "size_over_limit docs/development-policy/06-locked-architecture.md"),
+                ("destination", lambda r: (r / "INDEX.md").write_text((r / "INDEX.md").read_text().replace("[`AGENTS.md`](AGENTS.md)", "[`AGENTS.md`](docs/SETUP.md)", 1)), "link_destination_mismatch AGENTS.md docs/SETUP.md"),
                 ("index", lambda r: (r / "INDEX.md").write_text("# empty\n"), "index_empty"),
                 ("schema", lambda r: (r / "docs" / "jira" / "issue-schema.v1.json").write_text(json.dumps({"required": ["key"]})), "schema_fields_lost")):
             with self.subTest(name=name):
@@ -137,7 +180,7 @@ class RepositoryIndex(Fixture):
 
     def test_the_agent_entrypoint_names_the_validator(self):
         agents = (ROOT / "AGENTS.md").read_text()
-        for command in ("python -m lifeos.readiness issue", "python -m lifeos.readiness preflight", "python -m lifeos.readiness repo"):
+        for command in ("python -m lifeos.readiness issue", "python -m lifeos.readiness preflight --pre", "python -m lifeos.readiness preflight CLAIM", "python -m lifeos.readiness repo"):
             self.assertIn(command, agents)
         self.assertIn("procedural", agents)                      # the ChatGPT connector preflight is not claimed as code-enforced (Q30)
 

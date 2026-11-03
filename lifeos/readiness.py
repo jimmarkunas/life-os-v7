@@ -2,14 +2,15 @@
 
 Three checks, one refusal shape, stdlib only, no network, no state of its own:
   issue      a normalized LIFE issue record is eligible for autonomous work (origin, owner/lane, host, source, native blockers, permissions, Given/When/Then)
-  preflight  a writer claim is safe to act on (a verified, unchanged GitHub baseline and no other writer on the same issue or surface)
+  preflight  a writer claim is safe to act on (live-fetched, unchanged GitHub baseline; no other writer on the issue or surface; with --pre only availability, otherwise this writer's own recorded claim too)
   repo       the global source index still points at real files with an owner and an authority, inside the size limit
 
 Fail closed: any refusal, unreadable input or error exits 2 before the caller mutates anything. Exit 0 prints `ready`.
-Usage: python -m lifeos.readiness issue FILE | preflight CLAIM STATE | repo [ROOT]   (FILE, CLAIM, STATE are JSON)
+Usage: python -m lifeos.readiness issue FILE | preflight [--pre] CLAIM STATE [REPO] | repo [ROOT]   (FILE, CLAIM, STATE are JSON; main is fetched live from REPO's origin, never asserted)
 The ChatGPT connector preflight is procedural (Q30); this module does not claim to enforce it."""
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -79,16 +80,27 @@ def check_issue(issue):
     return out
 
 
-def check_preflight(claim, state):
-    """Refusals before any mutation. claim = what this agent intends; state = what was just read (current main and the active writer claims)."""
+def fetch_main(repo):
+    """The live origin/main SHA, fetched here by git itself; the caller cannot assert it. None when the fetch or the lookup fails."""
+    try:
+        subprocess.run(["git", "-C", str(repo), "fetch", "-q", "origin", "main"], check=True, capture_output=True, timeout=60)
+        sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "origin/main"], check=True, capture_output=True, text=True, timeout=20).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return sha if SHA.fullmatch(sha) else None
+
+
+def check_preflight(claim, state, main, pre=False):
+    """Refusals before any mutation. claim = what this agent intends; state = the writer-claim record just read; main = the SHA fetch_main returned.
+    pre=True is the pre-claim availability check (may I record this claim?). The default is the mutation gate: it also requires this writer's own recorded claim."""
     if not (isinstance(claim, dict) and isinstance(state, dict)):
         return [refuse("preflight_unreadable", "input")]
     out = []
     if not (text(claim.get("writer")) and KEY.fullmatch(str(claim.get("issue", ""))) and isinstance(claim.get("surfaces"), list)):
         out.append(refuse("claim_missing", "claim"))
-    base, main = claim.get("base_sha"), state.get("main_sha")
-    if not (isinstance(base, str) and SHA.fullmatch(base) and isinstance(main, str) and SHA.fullmatch(main) and state.get("main_verified") is True):
-        out.append(refuse("baseline_unverified", "main_sha"))            # no current, verified main to compare with
+    base = claim.get("base_sha")
+    if not (isinstance(base, str) and SHA.fullmatch(base) and isinstance(main, str) and SHA.fullmatch(main)):
+        out.append(refuse("baseline_unverified", "main_sha"))            # main was not fetched live, so there is nothing to compare with
     elif base != main:
         out.append(refuse("baseline_changed", "base_sha", f"claimed {base[:7]}, main {main[:7]}"))
     claims = state.get("claims")
@@ -101,6 +113,9 @@ def check_preflight(claim, state):
                 out.append(refuse("claims_unverified", "claims"))
             elif other["writer"] != claim["writer"] and (other.get("issue") == claim["issue"] or mine & set(other.get("surfaces", [])) or other.get("exclusive") is True):
                 out.append(refuse("writer_conflict", "claims", f"{other['writer']} holds {other.get('issue')}"))
+        recorded = [c for c in claims if isinstance(c, dict) and c.get("writer") == claim["writer"] and c.get("issue") == claim["issue"] and mine <= set(c.get("surfaces", []))]
+        if not (pre or recorded or out):
+            out.append(refuse("claim_not_recorded", "claims", f"{claim['writer']} has no recorded claim on {claim['issue']} covering the surfaces"))
     return out
 
 
@@ -115,9 +130,12 @@ def check_repo(root):
     if len(rows) < 5:
         out.append(refuse("index_empty", "INDEX.md"))
     for row in rows:
-        link = re.match(r"\[`([^`]+)`\]", row[0])
+        link = re.match(r"\[`([^`]+)`\]\(([^)]+)\)$", row[0])
         if len(row) not in (1, 5) or not link:
             out.append(refuse("index_row_malformed", "INDEX.md", row[0][:60]))
+            continue
+        if link.group(2) != link.group(1):
+            out.append(refuse("link_destination_mismatch", link.group(1), link.group(2)))   # the clickable destination must be the file the label names
             continue
         path = root / link.group(1)
         if not path.is_file():
@@ -135,8 +153,10 @@ def check_repo(root):
 def run(argv):
     try:
         mode, args = argv[0], argv[1:]
+        pre = mode == "preflight" and args[:1] == ["--pre"]
+        args = args[1:] if pre else args
         load = lambda p: json.loads(Path(p).read_text())                    # noqa: E731
-        refusals = {"issue": lambda: check_issue(load(args[0])), "preflight": lambda: check_preflight(load(args[0]), load(args[1])),
+        refusals = {"issue": lambda: check_issue(load(args[0])), "preflight": lambda: check_preflight(load(args[0]), load(args[1]), fetch_main(args[2] if len(args) > 2 else Path(__file__).resolve().parents[1]), pre),
                     "repo": lambda: check_repo(args[0] if args else Path(__file__).resolve().parents[1])}[mode]()
     except Exception:                                                        # noqa: BLE001  unreadable input, bad mode or any error is a refusal, never a pass
         refusals = [refuse("input_unreadable", "argv")]
