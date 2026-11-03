@@ -26,6 +26,7 @@ class FakeRelay:
     """Mock Buzz relay: validates NIP-98 on every call, stores kind-9 events, answers the filters the bridge uses."""
     def __init__(self):
         self.events, self.calls, self.fail_events, self.drop_ack, self.fail_query, self.agents = [], [], None, False, False, []
+        self.tie, self.dupes, self.check_auth = (lambda e: 0), False, True   # check_auth=False skips the BIP-340 verification of the request header (about 19 ms each) for tests that are not about authentication
 
     def __call__(self, method, url, headers, body, timeout=15):
         self.calls.append((url, json.loads(body)))
@@ -33,16 +34,19 @@ class FakeRelay:
         ev = json.loads(base64.b64decode(headers["Authorization"][6:]))
         tags = dict((t[0], t[1]) for t in ev["tags"])
         ok = (ev["kind"] == 27235 and tags["u"] == url and tags["method"] == method and tags["payload"] == hashlib.sha256(body).hexdigest()
-              and verify(ev["pubkey"], bytes.fromhex(ev["id"]), ev["sig"]))
+              and (not self.check_auth or verify(ev["pubkey"], bytes.fromhex(ev["id"]), ev["sig"])))
         if not ok:
             return 401, b"{}"
         if url.endswith("/query"):
             if self.fail_query:
                 return 500, b"{}"
             f = json.loads(body)[0]
-            out = [e for e in self.events if e["kind"] in f.get("kinds", [e["kind"]]) and (f.get("#h") is None or ["h", f["#h"][0]] in e["tags"])
-                   and (f.get("#k") is None or ["k", f["#k"][0]] in e["tags"]) and (f.get("#d") is None or ["d", f["#d"][0]] in e["tags"]) and (f.get("until") is None or e["created_at"] <= f["until"]) and (f.get("#p") is None or ["p", f["#p"][0]] in e["tags"]) and (f.get("authors") is None or e["pubkey"] in f["authors"]) and (f.get("search") is None or f["search"] in e["content"])]
-            return 200, json.dumps(sorted(out, key=lambda e: -e["created_at"])[:f["limit"]]).encode()   # newest first, like the relay
+            match = lambda e: (e["kind"] in f.get("kinds", [e["kind"]]) and (f.get("ids") is None or e["id"] in f["ids"]) and (f.get("authors") is None or e["pubkey"] in f["authors"])
+                               and (f.get("until") is None or e["created_at"] <= f["until"]) and (f.get("since") is None or e["created_at"] >= f["since"]) and (f.get("search") is None or f["search"] in e["content"])
+                               and all(any(t[0] == k[1:] and len(t) > 1 and t[1] in v for t in e["tags"]) for k, v in f.items() if k.startswith("#")))   # NIP-01 tag filters, whatever the letter
+            out = sorted((e for e in self.events if match(e)), key=lambda e: (-e["created_at"], self.tie(e)))   # newest first; the order inside one second is the relay's business, so tests may scramble it
+            out = out[:f["limit"]]
+            return 200, json.dumps(out + (out[:3] if self.dupes else [])).encode()
         sent = json.loads(body)
         if self.fail_events == "before":
             raise TimeoutError("lost before delivery")
@@ -93,12 +97,12 @@ class Crypto(unittest.TestCase):
 
 
 class Protocol(unittest.TestCase):
-    def test_exactly_five_tools_with_strict_schemas(self):
+    def test_exactly_eight_tools_three_permanent_then_five_legacy_with_strict_schemas(self):
         _, relay = setup()
         res = buzz_mcp.rpc(relay, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        self.assertEqual([t["name"] for t in res], ["buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_get_addressed", "buzz_post_message"])
+        self.assertEqual([t["name"] for t in res], ["buzz_capabilities", "buzz_read", "buzz_publish", "buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_get_addressed", "buzz_post_message"])
         self.assertTrue(all(t["inputSchema"]["additionalProperties"] is False for t in res))
-        self.assertEqual([t["annotations"]["readOnlyHint"] for t in res], [True, True, True, True, False])
+        self.assertEqual([t["annotations"]["readOnlyHint"] for t in res], [True, True, False, True, True, True, True, False])
 
     def test_handshake_notification_and_unsupported_methods(self):
         _, relay = setup()
@@ -281,7 +285,7 @@ class Config(unittest.TestCase):
         self.assertNotIn("0.0.0.0", src)
 
 
-BASELINE_LINES, ADDED_LINE_CAP, FILE_CAP = 283, 300, 4   # PR #732 shipped 283 counted lines in 3 files; BUZZ-16 may add at most 300 production lines and one file (buzz_auth.py)
+BASELINE_LINES, ADDED_LINE_CAP, FILE_CAP = 468, 300, 4   # main at the start of the permanent-interface package (LIFE-254/LIFE-249) counted 468 lines in 4 files (PR #732: 283, BUZZ-16 and LIFE-249 since); this package may add at most 300 production lines and no file
 
 
 def within_budget(files, lines):
@@ -290,7 +294,7 @@ def within_budget(files, lines):
 
 class Budget(unittest.TestCase):
     def test_limits_are_enforced_independently(self):
-        for files, lines, ok in ((4, 583, True), (4, 584, False), (3, 584, False), (3, 100, True), (5, 100, False), (5, 9999, False)):
+        for files, lines, ok in ((4, 768, True), (4, 769, False), (3, 769, False), (3, 100, True), (5, 100, False), (5, 9999, False)):
             self.assertEqual(within_budget(files, lines), ok, (files, lines))
 
     def test_policy_code_size_cap_for_this_package(self):
