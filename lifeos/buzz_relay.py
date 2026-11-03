@@ -5,6 +5,7 @@ from lifeos import buzz_nip98 as nip98
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 TOKEN = re.compile(r"^[A-Za-z0-9_.:@-]{1,64}$")
+ALIAS, HEX = re.compile(r"^[A-Za-z0-9-]{1,32}$"), re.compile(r"^[0-9a-f]{64}$")
 URL = re.compile(r"^https://[a-z0-9-]+\.communities\.buzz\.xyz$")
 COMMUNITIES = ("life-os", "bytalos")
 MAX_TEXT, MAX_CACHE = 4000, 256
@@ -31,8 +32,9 @@ def urllib_transport(method, url, headers, body, timeout=15):
 
 
 class Relay:
-    def __init__(self, urls, keys, writes=(), transport=urllib_transport):
+    def __init__(self, urls, keys, writes=(), transport=urllib_transport, recipients=None, may_address=False):
         self.urls, self.keys, self.writes, self.send, self.sent = urls, keys, set(writes), transport, {}
+        self.recipients, self.may_address = dict(recipients or {}), may_address  # {(community, lowercase alias): hex pubkey}; owner-approved, and addressing is off unless this sender is allowed
         self.lock = threading.Lock()  # one writer at a time: precheck, event choice and submit are one atomic step
 
     def _call(self, community, path, payload):
@@ -67,7 +69,7 @@ class Relay:
 
     def _view(self, e):
         return {"event_id": e.get("id"), "pubkey": e.get("pubkey"), "created_at": e.get("created_at"), "channel": self._tag(e, "h"),
-                "actor": self._tag(e, "actor"), "untrusted_text": str(e.get("content", ""))[:MAX_TEXT]}
+                "actor": self._tag(e, "actor"), "recipients": [t[1] for t in e.get("tags", []) if len(t) > 1 and t[0] == "p"], "untrusted_text": str(e.get("content", ""))[:MAX_TEXT]}
 
     @staticmethod
     def _ok(value, pattern):
@@ -91,6 +93,38 @@ class Relay:
         flt = {"kinds": [9], "#h": [self._ok(channel, UUID)], "limit": self._limit(limit, 20)}
         return [self._view(e) for e in self._query(community, flt)]
 
+    def get_addressed(self, community, channel=None, limit=None, before=None):
+        """Messages whose signed `p` tag names THIS identity, newest first: plain relay history, stateless, so reading never marks anything delivered or acknowledged.
+        Older ones are reached by passing `next_before` back as `before` (the relay's inclusive `until`); the boundary second may repeat, so dedupe by event_id."""
+        if community not in self.keys:
+            raise BuzzError("key_not_configured")
+        flt = {"kinds": [9], "#p": [nip98.pubkey(self.keys[community])], "limit": self._limit(limit, 20)}
+        if channel is not None:
+            flt["#h"] = [self._ok(channel, UUID)]
+        if before is not None:
+            if not isinstance(before, int) or isinstance(before, bool) or before < 1:
+                raise BuzzError("invalid_argument")
+            flt["until"] = before
+        found = [self._view(e) for e in self._query(community, flt)]
+        return {"messages": found, "next_before": min(m["created_at"] for m in found) if len(found) >= flt["limit"] else None}  # None: nothing older remains
+
+    def _recipient(self, community, channel, alias):
+        """A recipient is an owner-approved alias for this community AND a current member of the destination channel (Buzz's mention contract: every recipient is a member when the message is written); never a caller-supplied key. Nobody is invited or added here."""
+        if not isinstance(alias, str) or not ALIAS.match(alias):
+            raise BuzzError("invalid_argument")
+        pk = self.recipients.get((community, alias.lower()))
+        if not self.may_address or pk is None or pk == nip98.pubkey(self.keys[community]):
+            raise BuzzError("recipient_not_authorized")
+        try:
+            roster = self._query(community, {"kinds": [39002], "#d": [channel], "limit": 1})  # the channel's current member list
+        except BuzzError as e:
+            if e.code in ("community_not_authorized", "key_not_configured"):
+                raise
+            raise BuzzError("precheck_unavailable") from None
+        if not any(t[:2] == ["p", pk] for e in roster for t in e.get("tags", [])):
+            raise BuzzError("recipient_not_channel_member")
+        return pk
+
     def search_messages(self, community, query, channel=None, limit=None):
         if not isinstance(query, str) or not 1 <= len(query) <= 200:
             raise BuzzError("invalid_argument")
@@ -99,7 +133,7 @@ class Relay:
             flt["#h"] = [self._ok(channel, UUID)]
         return [self._view(e) for e in self._query(community, flt)]
 
-    def post_message(self, community, channel, text, idempotency_key):
+    def post_message(self, community, channel, text, idempotency_key, recipient=None):
         self._ok(channel, UUID), self._ok(idempotency_key, TOKEN)
         if not isinstance(text, str) or not 1 <= len(text) <= MAX_TEXT:
             raise BuzzError("invalid_argument")
@@ -110,11 +144,12 @@ class Relay:
         if community not in self.keys:
             raise BuzzError("key_not_configured")
         actor = "key:" + nip98.pubkey(self.keys[community])[:16]  # fixed by the server's own signing key; never caller-supplied
+        to = self._recipient(community, channel, recipient) if recipient is not None else None  # every refusal happens here, before any event exists
         with self.lock:
-            return self._post(community, channel, text, actor, idempotency_key)
+            return self._post(community, channel, text, actor, idempotency_key, to)
 
-    def _post(self, community, channel, text, actor, idempotency_key):
-        digest = hashlib.sha256(f"{community}|{channel}|{actor}|{idempotency_key}|{text}".encode()).hexdigest()[:32]
+    def _post(self, community, channel, text, actor, idempotency_key, to=None):
+        digest = hashlib.sha256(((f"p:{to}|" if to else "") + f"{community}|{channel}|{actor}|{idempotency_key}|{text}").encode()).hexdigest()[:32]  # the recipient is part of the digest: a retry can never silently retarget
         ident = hashlib.sha256(f"{community}|{channel}|{actor}|{idempotency_key}".encode()).hexdigest()[:32]  # the key alone, so a restart still sees a reused key
         prior = self.sent.get((community, idempotency_key))
         if prior and prior[0] != digest:
@@ -129,7 +164,7 @@ class Relay:
             raise BuzzError("idempotency_conflict")  # same key, different text, even across a restart
         if found:
             return {"status": "already_delivered", "event_id": found[0].get("id"), "actor": actor}
-        ev = prior[1] if prior else nip98.event(self.keys[community], 9, [["h", channel], ["actor", actor], ["i", digest], ["k", ident]], text)
+        ev = prior[1] if prior else nip98.event(self.keys[community], 9, [["h", channel], ["actor", actor], ["i", digest], ["k", ident]] + ([["p", to]] if to else []), text)
         self.sent[(community, idempotency_key)] = (digest, ev)
         while len(self.sent) > MAX_CACHE:
             self.sent.pop(next(iter(self.sent)))
@@ -141,4 +176,4 @@ class Relay:
             raise
         if not isinstance(ack, dict) or ack.get("accepted") is not True or ack.get("event_id") != ev["id"]:
             raise BuzzError("delivery_unknown", event_id=ev["id"], retryable=False, next="read the channel before any retry")
-        return {"status": "sent_not_read_back", "event_id": ev["id"], "pubkey": ev["pubkey"], "actor": actor, "community": community, "channel": channel}
+        return {"status": "sent_not_read_back", "event_id": ev["id"], "pubkey": ev["pubkey"], "actor": actor, "community": community, "channel": channel, **({"recipient": "key:" + to[:16]} if to else {})}
