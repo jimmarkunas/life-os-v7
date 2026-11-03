@@ -9,9 +9,9 @@ SCOPES = ("buzz:read", "buzz:write")
 
 
 class AuthError(Exception):
-    def __init__(self, code, status=401, sub=None):
+    def __init__(self, code, status=401, sub=None, reason=None):
         super().__init__(code)
-        self.code, self.status, self.sub = code, status, sub
+        self.code, self.status, self.sub, self.reason = code, status, sub, reason
 
 
 def _b64(s):
@@ -61,15 +61,17 @@ class Verifier:
             raise AuthError("invalid_token")
         now, aud, exp = self.clock(), claims.get("aud"), claims.get("exp")
         aud = [aud] if isinstance(aud, str) else aud if isinstance(aud, list) else []
-        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now \
+        if not isinstance(claims.get("iss"), str) or claims["iss"].rstrip("/") != self.issuer.rstrip("/") or self.audience not in aud or isinstance(exp, bool) or not isinstance(exp, (int, float)) \
                 or (isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] > now):
             raise AuthError("invalid_token")
-        cid = claims.get("client_id") or claims.get("azp")
-        if not isinstance(cid, str) or cid not in self.clients:
+        cid, sub = claims.get("client_id") or claims.get("azp"), claims.get("sub")
+        client_ok, user_ok = isinstance(cid, str) and cid in self.clients, isinstance(sub, str) and sub in self.users
+        if exp <= now:  # an expired token is always the same 401; its subject is attributed only once issuer, audience, client and user all check out
+            raise AuthError("invalid_token", 401, sub[:64] if client_ok and user_ok else None, "expired" if client_ok and user_ok else None)
+        if not client_ok:
             raise AuthError("client_not_authorized", 403)
-        sub = claims.get("sub")
-        if not isinstance(sub, str) or sub not in self.users:  # fail closed: absent, wrong-type or unlisted user
+        if not user_ok:  # fail closed: absent, wrong-type or unlisted user
             raise AuthError("user_not_authorized", 403, sub[:64] if isinstance(sub, str) else None)
         label, communities = self.users[sub]
         scope = claims.get("scope")  # Oracle IAM names scopes <audience><scope>; accept exactly that prefix and no other
-        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities}
+        return {"client": label, "scopes": {x[len(self.audience):] if x.startswith(self.audience) else x for x in scope.split()} if isinstance(scope, str) else set(), "sub": sub[:64], "communities": communities, "iat": claims.get("iat"), "exp": exp, "tid": hashlib.sha256(sig).hexdigest()[:8]}

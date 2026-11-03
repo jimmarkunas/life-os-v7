@@ -102,8 +102,8 @@ def handler(relays, auth, base, origins=(), audit=_audit):
             try:
                 return auth.verify(self.headers.get("Authorization", ""))
             except AuthError as e:
-                if e.code == "user_not_authorized":  # lets the owner see which `sub` to allowlist; a subject id is not a secret
-                    audit({"client": None, "identity": None, "sub": e.sub, "tool": None, "community": None, "outcome": e.code})
+                if e.code in ("user_not_authorized", "invalid_token") and e.status != 503:  # which `sub` to allowlist, and when clients present expired tokens (renewal evidence); ids are not secrets
+                    audit({"client": None, "identity": None, "sub": e.sub, "tool": None, "community": None, "outcome": e.code, "reason": e.reason})
                 self._deny(e.status, e.code) if e.status != 503 else self._send(503, {"error": e.code})
 
         def do_POST(self):
@@ -138,7 +138,8 @@ def handler(relays, auth, base, origins=(), audit=_audit):
             if spec and reply:
                 inner = json.loads(reply["result"]["content"][0]["text"])
                 comm = args.get("community") if isinstance(args.get("community"), str) else None
-                audit({"client": who["client"], "identity": ids.get((who["client"], comm)), "sub": who["sub"], "tool": params["name"], "community": comm, "to": args.get("recipient") if args.get("recipient") in ALIASES else None,
+                audit({"client": who["client"], "identity": ids.get((who["client"], comm)), "sub": who["sub"], "iat": who["iat"], "exp": who["exp"], "tid": who["tid"], "tool": params["name"], "community": comm,
+                       "to": args.get("recipient") if args.get("recipient") in ALIASES else None,
                        "outcome": inner.get("error", "ok") if isinstance(inner, dict) else "ok"})
             self._send(202) if reply is None else self._send(200, reply)
 
