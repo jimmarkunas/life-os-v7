@@ -26,7 +26,7 @@ class FakeRelay:
     """Mock Buzz relay: validates NIP-98 on every call, stores kind-9 events, answers the filters the bridge uses."""
     def __init__(self):
         self.events, self.calls, self.fail_events, self.drop_ack, self.fail_query, self.agents = [], [], None, False, False, []
-        self.tie, self.dupes = (lambda e: 0), False
+        self.tie, self.dupes, self.check_auth = (lambda e: 0), False, True   # check_auth=False skips the BIP-340 verification of the request header (about 19 ms each) for tests that are not about authentication
 
     def __call__(self, method, url, headers, body, timeout=15):
         self.calls.append((url, json.loads(body)))
@@ -34,7 +34,7 @@ class FakeRelay:
         ev = json.loads(base64.b64decode(headers["Authorization"][6:]))
         tags = dict((t[0], t[1]) for t in ev["tags"])
         ok = (ev["kind"] == 27235 and tags["u"] == url and tags["method"] == method and tags["payload"] == hashlib.sha256(body).hexdigest()
-              and verify(ev["pubkey"], bytes.fromhex(ev["id"]), ev["sig"]))
+              and (not self.check_auth or verify(ev["pubkey"], bytes.fromhex(ev["id"]), ev["sig"])))
         if not ok:
             return 401, b"{}"
         if url.endswith("/query"):
