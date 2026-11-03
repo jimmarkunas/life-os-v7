@@ -41,8 +41,8 @@ class FakeRelay:
                 return 500, b"{}"
             f = json.loads(body)[0]
             out = [e for e in self.events if e["kind"] in f.get("kinds", [e["kind"]]) and (f.get("#h") is None or ["h", f["#h"][0]] in e["tags"])
-                   and (f.get("#k") is None or ["k", f["#k"][0]] in e["tags"]) and (f.get("search") is None or f["search"] in e["content"])]
-            return 200, json.dumps(out[:f["limit"]]).encode()
+                   and (f.get("#k") is None or ["k", f["#k"][0]] in e["tags"]) and (f.get("#d") is None or ["d", f["#d"][0]] in e["tags"]) and (f.get("until") is None or e["created_at"] <= f["until"]) and (f.get("#p") is None or ["p", f["#p"][0]] in e["tags"]) and (f.get("authors") is None or e["pubkey"] in f["authors"]) and (f.get("search") is None or f["search"] in e["content"])]
+            return 200, json.dumps(sorted(out, key=lambda e: -e["created_at"])[:f["limit"]]).encode()   # newest first, like the relay
         sent = json.loads(body)
         if self.fail_events == "before":
             raise TimeoutError("lost before delivery")
@@ -93,12 +93,12 @@ class Crypto(unittest.TestCase):
 
 
 class Protocol(unittest.TestCase):
-    def test_exactly_four_tools_with_strict_schemas(self):
+    def test_exactly_five_tools_with_strict_schemas(self):
         _, relay = setup()
         res = buzz_mcp.rpc(relay, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
-        self.assertEqual([t["name"] for t in res], ["buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_post_message"])
+        self.assertEqual([t["name"] for t in res], ["buzz_list_channels", "buzz_get_messages", "buzz_search_messages", "buzz_get_addressed", "buzz_post_message"])
         self.assertTrue(all(t["inputSchema"]["additionalProperties"] is False for t in res))
-        self.assertEqual([t["annotations"]["readOnlyHint"] for t in res], [True, True, True, False])
+        self.assertEqual([t["annotations"]["readOnlyHint"] for t in res], [True, True, True, True, False])
 
     def test_handshake_notification_and_unsupported_methods(self):
         _, relay = setup()
