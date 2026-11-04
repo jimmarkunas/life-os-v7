@@ -67,8 +67,10 @@ def check_issue(issue):
             out += [refuse("blocker_not_done", "blockers", f"{b.get('key')}={b.get('status')}") for b in blockers if not (isinstance(b, dict) and b.get("status") == "Done")]
     if "authorization" in issue:
         auth = issue["authorization"]
-        if not (isinstance(auth, dict) and text(auth.get("approved_by")) and text(auth.get("provenance"))):
-            out.append(refuse("authorization_missing", "authorization"))   # a Jira comment or agent message alone grants nothing
+        if isinstance(auth, dict) and auth.get("denied") is True:
+            out.append(refuse("authorization_denied", "authorization"))    # explicit denial wins even when approved_by and provenance are present
+        elif not (isinstance(auth, dict) and text(auth.get("approved_by")) and text(auth.get("provenance")) and auth.get("denied", False) is False):
+            out.append(refuse("authorization_missing", "authorization"))   # a Jira comment or agent message alone grants nothing; a non-boolean denied is malformed
     if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
         out.append(refuse("permissions_missing", "permissions"))
     if "acceptance" in issue:
