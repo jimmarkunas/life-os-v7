@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import datetime
 from unittest import mock
 
 from lifeos.jobs import enrich
@@ -636,6 +637,11 @@ if __name__ == "__main__":
 class BoardApiTests(unittest.TestCase):
     """Oct 25 7:40 PM CT drain: 154 pages stayed blocked (jd_thin 80, empty 49); Lever and Greenhouse-listed jobs among them were read short."""
 
+    def setUp(self):
+        patcher = mock.patch.object(enrich, "_now", return_value=datetime(2026, 10, 22, 12, 0))   # the fixtures' 2026-10-20 postings stay fresh whatever the real date
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_a_lever_job_is_read_whole_not_just_its_opening(self):
         data = {"text": "Senior Data Engineer", "createdAt": 1792454400000, "description": "<p>We build data tools.</p>",
                 "descriptionPlain": "We build data tools.", "additional": "<p>Benefits: health cover.</p>",
@@ -698,6 +704,11 @@ class BoardApiTests(unittest.TestCase):
 
 class ThinBoardFeedTests(unittest.TestCase):
     """Jim, Oct 25: a Greenhouse, Lever or Ashby board's own feed text is the posting; a short one is reviewed from its link, never held."""
+
+    def setUp(self):
+        patcher = mock.patch.object(enrich, "_now", return_value=datetime(2026, 10, 22, 12, 0))   # the fixtures' 2026-10-20 postings stay fresh whatever the real date
+        patcher.start()
+        self.addCleanup(patcher.stop)
     SHORT = "<p>" + "Senior Data Engineer on the platform team in New York, building our data stack. " * 3 + "</p>"     # 200-400 characters: thin, not empty
 
     def test_a_thin_board_feed_is_not_held(self):
