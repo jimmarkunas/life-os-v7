@@ -67,6 +67,26 @@ class IssueEligibility(Fixture):
                 self.assertEqual((status, out), (2, ""))
                 self.assertIn(f"refused v1 {code} ", err)
 
+    def test_explicit_denial_is_refused_distinctly_even_with_approver_and_provenance(self):
+        status, out, err = self.issue(lambda d: d["authorization"].update(denied=True))
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn("refused v1 authorization_denied authorization", err)
+        self.assertNotIn("authorization_missing", err)
+        status, _, err = self.issue(lambda d: d.update(authorization={"denied": True}))        # denial wins over missing fields
+        self.assertEqual(status, 2)
+        self.assertIn("authorization_denied", err)
+
+    def test_authorized_issues_without_denial_stay_ready_and_malformed_denial_is_refused(self):
+        for value in (None, False):
+            with self.subTest(denied=value):
+                mutate = (lambda d: None) if value is None else (lambda d: d["authorization"].update(denied=False))
+                self.assertEqual(self.issue(mutate), (0, "ready v1\n", ""))
+        for value in ("true", "false", 1, 0, None, [], {}):
+            with self.subTest(denied=value):
+                status, out, err = self.issue(lambda d: d["authorization"].update(denied=value))
+                self.assertEqual((status, out), (2, ""))
+                self.assertIn("refused v1 authorization_missing ", err)
+
     def test_maintenance_cites_its_approved_parent_instead_of_a_los_origin(self):
         self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": True}))[0], 0)
         self.assertEqual(self.issue(lambda d: d.update(origin={"parent": "LIFE-220", "approved": False}))[0], 2)
