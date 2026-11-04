@@ -160,8 +160,19 @@
       ]
     }
   ],
-  "reassembled_sha256": "2049f03bf1f4728c0a380a6d05c28a420eb0ad74084bc685a1e55c46b056b5ab",
+  "reassembled_sha256": "e7b749dd55cf44b2ec55383996b22714f3b3806ba8e64131d85944652ebb7756",
   "amendments": [
-    {"date": "2026-11-02", "pr": "https://github.com/jimmarkunas/life-os-v7/pull/746", "approval": "Jim Markunas, November 2, 2026 CT, LIFE-79 comment 11683 and chat instruction: correct only the Part 01 Status paragraph so the current life-os-automation Production Contract is binding for runtime and schedules (V1/V2 implementations remain historical)", "part": "docs/development-policy/01-status-mission-ui-first.md"}
+    {
+      "date": "2026-11-02",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/746",
+      "approval": "Jim Markunas, November 2, 2026 CT, LIFE-79 comment 11683 and chat instruction: correct only the Part 01 Status paragraph so the current life-os-automation Production Contract is binding for runtime and schedules (V1/V2 implementations remain historical)",
+      "part": "docs/development-policy/01-status-mission-ui-first.md"
+    },
+    {
+      "date": "2026-11-04",
+      "pr": "PENDING — PR URL to be added when opened",
+      "approval": "PENDING — requires Jim Markunas's explicit approval before merge: Part 04 release simplification (named-instruction start, lane label as owner, chain release, readiness minimum, Epic-envelope release)",
+      "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    }
   ]
 }
