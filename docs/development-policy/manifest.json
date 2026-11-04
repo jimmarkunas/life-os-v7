@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "e7b749dd55cf44b2ec55383996b22714f3b3806ba8e64131d85944652ebb7756",
+  "reassembled_sha256": "3fb0e3f76b7ba4fab107d7fa2a5842a51ac163fe368fd4fc2f64f9b04695d6a4",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -170,8 +170,8 @@
     },
     {
       "date": "2026-11-04",
-      "pr": "PENDING — PR URL to be added when opened",
-      "approval": "PENDING — requires Jim Markunas's explicit approval before merge: Part 04 release simplification (named-instruction start, lane label as owner, chain release, readiness minimum, Epic-envelope release)",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/752",
+      "approval": "Jim Markunas, November 4, 2026 CT, chat instruction 'Approved, mark the amendment and merge it': Part 04 release simplification as drafted (named-instruction start, lane label as owner, chain release, readiness minimum, Epic-envelope release)",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
