@@ -59,13 +59,17 @@ class IssueEligibility(Fixture):
             "permissions_missing": lambda d: d.update(permissions=[]),
             "gwt_missing": lambda d: d.update(acceptance=[]),
             "gwt_incomplete": lambda d: d.update(acceptance=[{"given": "x", "when": "y", "then": ""}]),
-            "field_absent": lambda d: d.pop("host"),
+            "field_absent": lambda d: d.pop("authorization"),
         }
         for code, mutate in cases.items():
             with self.subTest(code=code):
                 status, out, err = self.issue(mutate)
                 self.assertEqual((status, out), (2, ""))
                 self.assertIn(f"refused v1 {code} ", err)
+
+    def test_owner_host_and_source_are_optional_but_checked_when_present(self):
+        status, out, _ = self.issue(lambda d: [d.pop(k) for k in ("owner", "host", "source")])
+        self.assertEqual((status, out), (0, "ready v1\n"))
 
     def test_explicit_denial_is_refused_distinctly_even_with_approver_and_provenance(self):
         status, out, err = self.issue(lambda d: d["authorization"].update(denied=True))

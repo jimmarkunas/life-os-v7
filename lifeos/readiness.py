@@ -1,7 +1,7 @@
 """LIFE-225 (ARCH-04; LOS-74 Q24, Q30): one versioned, deterministic, offline readiness validator for coding agents and CI.
 
 Three checks, one refusal shape, stdlib only, no network, no state of its own:
-  issue      a normalized LIFE issue record is eligible for autonomous work (origin, owner/lane, host, source, native blockers, permissions, Given/When/Then)
+  issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present)
   preflight  a writer claim is safe to act on (live-fetched, unchanged GitHub baseline; no other writer on the issue or surface; with --pre only availability, otherwise this writer's own recorded claim too)
   repo       the global source index still points at real files with an owner and an authority, inside the size limit
 
@@ -20,7 +20,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 KEY = re.compile(r"(LIFE|LOS)-\d+")
 SIZE_LIMIT = 15 * 1024                        # bytes: the policy-part limit (Q12), applied to every indexed global source
 GWT = ("given", "when", "then")
-ISSUE_FIELDS = {"key", "owner", "labels", "origin", "host", "source", "blockers", "authorization", "permissions", "acceptance"}
+ISSUE_FIELDS = {"key", "labels", "origin", "blockers", "authorization", "permissions", "acceptance"}   # the lane label is the owner; owner, host and source are optional
 
 
 def refuse(code, field, detail=""):
