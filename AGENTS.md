@@ -3,6 +3,15 @@
 V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
 Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
+## AGENT LOOP — the whole job in six steps (summary; the Development Policy governs)
+
+1. **Pick:** Jim named an issue in this session → that one (Jira ID 14). Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank (ID 6). Epics and parents are never picked; skip any issue with an unfinished `Blocks` predecessor.
+2. **Gate:** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 report its `refused` line and stop. Add no refusal reasons of your own.
+3. **Claim:** `preflight --pre`, record the claim, then `preflight`; one writer per surface.
+4. **Build:** one branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data) wait for their owned human Sub-task.
+5. **Land:** merge when same-head CI is green and nothing protected is touched. Record PR, head SHA and Agent UAT evidence on the issue; Human UAT only where the issue requires judgment.
+6. **Next:** after verified Done, repeat from step 1. Nothing eligible → `NO_ELIGIBLE_WORK`.
+
 ## LIFE OS FAST PATH — all agents
 
 **Read the named LIFE issue first.** Retrieve only missing authoritative context. Reuse unchanged evidence. Parallelize independent reads. Stop when sufficient evidence exists; execute already-approved scoped work immediately. Independently verify every consequential write. Never reopen discovery, audit unrelated systems, or create duplicate planning artifacts. Exceed routine limits only for a specific safety, authorization, contradiction or missing-proof dependency.

@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "6a5fe9408ceade189eb87045b64d21197f67ec6d5fda2fb6e97a8f0db703309a",
+  "reassembled_sha256": "6ae795ced3ae3e05332e467877bc25937c60f3bd1eb96089ea20619ae912d8ef",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -172,6 +172,12 @@
       "date": "2026-11-04",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/752",
       "approval": "Jim Markunas, November 4, 2026 CT, chat instruction 'Approved, mark the amendment and merge it': Part 04 release simplification as drafted (named-instruction start, lane label as owner, chain release, readiness minimum, Epic-envelope release); scoping-flow paragraph added under Jim's Nov 4, 2026 CT chat approval of the plan ('your plan is also approved, implement that too')",
+      "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-04",
+      "pr": "PENDING — PR URL to be added when opened",
+      "approval": "PENDING — requires Jim Markunas's explicit approval before merge: narrows Part 04 chain release to leaf issues only (a container is never released or selected)",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
