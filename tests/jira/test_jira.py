@@ -512,5 +512,34 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotRegex(path.read_text(), r"atlassian\.net|api\.atlassian\.com|[0-9a-f]{8}-[0-9a-f]{4}-")
 
 
+class DstReuseTests(unittest.TestCase):
+    """Nov 1, 2026 clock change: a future sprint stamped before it (CDT) or after it (CST) must be reused, never duplicated."""
+
+    def staged(self, start_utc, end_utc):
+        first = sprint(1, "active", datetime(2026, 10, 26, tzinfo=TZ), datetime(2026, 11, 1, 23, 30, tzinfo=TZ), "AAA Sprint 1")
+        legacy = {"id": 2, "state": "future", "name": "AAA Sprint 2", "startDate": start_utc, "endDate": end_utc}
+        client = FakeJira([first])
+        client.sprints_by_id[2] = legacy
+        return client
+
+    def test_legacy_cdt_stamped_sprint_is_reused_after_the_clock_change(self):
+        client = self.staged("2026-11-02T05:00:00.000Z", "2026-11-09T04:30:00.000Z")            # midnight / 23:30 CDT
+        out = rollover.run(1, True, environ=ENV, client=client, now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ), sleep=lambda s: None, auto=True)
+        self.assertNotIn("create", client.log)
+        self.assertEqual(sum(1 for s in client.sprints_by_id.values() if s["state"] != "closed"), 1)
+        self.assertTrue(out)
+
+    def test_cst_stamped_sprint_is_reused(self):
+        client = self.staged("2026-11-02T06:00:00.000Z", "2026-11-09T05:30:00.000Z")            # midnight / 23:30 CST
+        rollover.run(1, True, environ=ENV, client=client, now=datetime(2026, 11, 2, 0, 5, tzinfo=TZ), sleep=lambda s: None, auto=True)
+        self.assertNotIn("create", client.log)
+
+    def test_a_different_week_is_still_not_a_match(self):
+        start, end = datetime(2026, 11, 2, tzinfo=TZ), datetime(2026, 11, 8, 23, 30, tzinfo=TZ)
+        for s, e in (("2026-11-09T06:00:00.000Z", "2026-11-16T05:30:00.000Z"), ("2026-11-01T06:00:00.000Z", "2026-11-08T05:30:00.000Z")):
+            self.assertFalse(rollover._matches({"startDate": s, "endDate": e}, start, end, TZ))
+        self.assertFalse(rollover._matches({"startDate": None, "endDate": None}, start, end, TZ))
+
+
 if __name__ == "__main__":
     unittest.main()

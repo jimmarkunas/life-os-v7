@@ -62,9 +62,14 @@ def sprint_name(project, start, end):
     return f"{project} Sprint — {start.strftime('%b %-d, %Y')}–{end.strftime('%b %-d, %Y')}"
 
 
+DST_TOLERANCE = timedelta(hours=2)       # a sprint stamped before a clock change is off by exactly the DST shift (1 hour); never reach a different day
+
+
 def _matches(sprint, start, end, tz):
+    """True when the sprint is the target week. Compared as instants within the DST shift, not as local dates: a legacy sprint stamped
+    05:00Z (midnight CDT) reads as 11 PM the previous day in CST, and the local-date test missed it and created a duplicate (Nov 2, 2026)."""
     s, e = _when(sprint.get("startDate")), _when(sprint.get("endDate"))
-    return bool(s and e and s.astimezone(tz).date() == start.date() and e.astimezone(tz).date() == end.date())
+    return bool(s and e and abs(s - start) <= DST_TOLERANCE and abs(e - end) <= DST_TOLERANCE)
 
 
 def _state(client, sprint_id, expected, code):
