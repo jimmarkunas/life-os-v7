@@ -176,8 +176,8 @@
     },
     {
       "date": "2026-11-04",
-      "pr": "PENDING — PR URL to be added when opened",
-      "approval": "PENDING — requires Jim Markunas's explicit approval before merge: narrows Part 04 chain release to leaf issues only (a container is never released or selected)",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/754",
+      "approval": "Jim Markunas, November 4, 2026 CT, chat instruction 'merge #754': narrows Part 04 chain release to leaf issues only; adds the six-step agent loop to AGENTS.md",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
