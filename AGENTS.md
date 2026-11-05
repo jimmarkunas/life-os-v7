@@ -5,12 +5,14 @@ Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 
 ## AGENT LOOP — the whole job in six steps (summary; the Development Policy governs)
 
-1. **Pick:** Jim named an issue in this session → that one (Jira ID 14). Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank (ID 6). Epics and parents are never picked; skip any issue with an unfinished `Blocks` predecessor.
+1. **Pick:** Jim named an issue in this session → that one (Jira ID 14). Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank (start with ID 14, the only start transition). Epics and parents are never picked; skip any issue with an unfinished `Blocks` predecessor.
 2. **Gate:** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 report its `refused` line and stop. Add no refusal reasons of your own.
 3. **Claim:** `preflight --pre`, record the claim, then `preflight`; one writer per surface.
 4. **Build:** one branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data) wait for their owned human Sub-task.
-5. **Land:** merge when same-head CI is green and nothing protected is touched. Record PR, head SHA and Agent UAT evidence on the issue; Human UAT only where the issue requires judgment.
+5. **Land:** open the PR and merge it when same-head CI is green and nothing outside Part 07 items 3/3a is touched (Jim kept this rule, November 5, 2026, 2:55 PM CT). Record PR, head SHA and one receipt on the issue; Human UAT only where the issue requires judgment.
 6. **Next:** after verified Done, repeat from step 1. Nothing eligible → `NO_ELIGIBLE_WORK`.
+
+**Delivery flow v2 — merge rule and any-status transitions approved by Jim, November 5, 2026; the rest is proposed:** one outcome ticket, one approval, one receipt, one acceptance; readiness also refuses open `needs`/`decisions`. See [docs/delivery-flow-v2-proposal.md](docs/delivery-flow-v2-proposal.md).
 
 ## LIFE OS FAST PATH — all agents
 
@@ -73,6 +75,6 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI
 - Keep diffs small. No new framework or dependency without asking. Stop and report on a schema change.
 
 ## Reporting
-Counts only. Say what you could not verify (real data, live runs). One PR per task; do not merge.
+Counts only. Say what you could not verify (real data, live runs). One PR per task; do not merge. Human UAT requests (Jim, Nov 5, 2026) list exactly what Jim verifies, step by step; agents do the preliminary Agent UAT first. A claiming agent adds one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and starts its Jira comments with `[agent-…]`; labels aid reading, not enforcement.
 **Times for Jim: Central Time only (Jim, Oct 22, 2026).** Every time shown to Jim (chat, reports, Jira receipts, PR text) is US Central Time (America/Chicago), labeled CT, 12-hour (e.g. 4:34 PM CT). Never show UTC, not even in brackets; convert any UTC from logs, APIs or cron lines first.
 

@@ -71,7 +71,7 @@ class Contract(unittest.TestCase):
         for skipped in ("incomplete incoming `Blocks` predecessor", "`acceptance-pending` hold", "conflicting or already-claimed writer", "execution environment the agent does not support"):
             self.assertIn(skipped, selector)                              # blocked or conflicting work is skipped without mutation
         self.assertIn("exclusive-writer mutation surface is free", selector)
-        self.assertIn('transition Agent Go to In Progress (ID 6, "Start authorized work")', selector)
+        self.assertIn('transition Agent Go to In Progress (ID 14, "Start work (authorization receipt required)")', selector)
         self.assertIn("transition ID 5 (To Do to Agent Go", authorization)
         self.assertIn("empty `Agent Go` queue", selector)
         for obsolete in ("unavailable on Jira Free", "queries its own lane **and** `pull-ready`", "even when labeled `pull-ready`", "readiness marker"):
