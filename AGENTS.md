@@ -24,10 +24,12 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 |---|---|---|
 | Ticket status, approval, receipt, acceptance | Jira LIFE | chat, Notion, comments-as-approval |
 | Code, tests, CI, this guide, the policy | GitHub V7 | Notion copies |
-| Product requirements and decisions | Notion + Jira LOS | Jira descriptions (link, don't copy) |
+| Product requirements and decisions | Notion Product Requirements database (REQ-n) for delivery; Jira LOS for scoping and research | Jira descriptions (link, don't copy) |
 | Runtime schedule and secrets | Production Contract, central secrets service | this repo, Jira, chat |
 
 Whoever changes a fact updates its owner in the same step and links it; a copy elsewhere is replaced by a link, not edited.
+
+Product requirements: once work moves from LOS to LIFE, the long requirement text lives on one page in [Product Requirements](https://app.notion.com/p/2ba672dd026e4d759f571ade91bcc7be) (fixed fields, fixed headings, its own change table; no running log). The LIFE ticket links the page and never copies it; a change is a new table row plus a version bump, and one line `Requirement vN — <what changed>` on the ticket. Engineering policy stays in GitHub.
 
 ## Fast path
 
