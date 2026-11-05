@@ -10,7 +10,7 @@ There is ONE Hermes, on the Oracle host `lifeos-edge-01`. The Hermes Desktop app
 | The wiki | Notion: LIFE OS / Hermes / Hermes Wiki | none | The librarian role keeps it: it finds the Notion tools with tool_search and can search, read and create pages (checked by a read-only test on Nov 5; a real write is not yet tested). The main Hermes reads and writes it too and hands upkeep to the librarian. Jim is asked before any new entry. Claude Chat reads it through its own Notion connector. |
 | About-Jim memory (`USER.md`) | Oracle (Hermes writes it) | Oracle | Never in this repo. A readable copy may be kept in Notion. |
 | Memory folder `memories/` | Oracle | Oracle | Empty at the time of writing. Limits are in `config.yaml` (about 800 tokens of notes, about 500 about Jim). |
-| Conversation history (`state.db`, per-profile databases), `sessions/`, `logs/` | Oracle | Oracle | Live databases: never in Notion, Drive or GitHub. A periodic backup copy is tracked under LIFE-301. |
+| Conversation history (`state.db`, per-profile databases), `sessions/`, `logs/` | Oracle | Oracle | Live databases: never in Notion, Drive or GitHub. Backed up nightly, encrypted, by the off-site backup (LIFE-129, extended for Hermes by LIFE-318); the copy in Drive is ciphertext only. |
 | `config.yaml`, per-profile `config.yaml`, `.env`, `auth.json`, `mcp-tokens/`, encrypted credentials | Oracle | Oracle | Secrets. Never in this repo, Notion or Drive. |
 | Skills in use | Oracle | Oracle | Most ship with the program. Skills installed from the ClawHub hub are listed by name in `hermes/skills.manifest`. A skill we write ourselves lives in `hermes/skills/<name>/`. |
 | Program (`installs/`, `tools/`, `cache/`, `plugins/`) | Nous Research | Oracle | Not knowledge. |
