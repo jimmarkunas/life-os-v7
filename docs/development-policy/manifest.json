@@ -182,7 +182,7 @@
     },
     {
       "date": "2026-11-05",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
       "approval": "PENDING Jim Markunas approval: draft proposal only (delivery-flow v2, docs/delivery-flow-v2-proposal.md); items 3/3a marked PENDING retirement and a PENDING paragraph added; nothing is in force until Jim approves",
       "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
     }
