@@ -175,6 +175,14 @@ A cheap fourth if you want it: stop agents typing clock times (use the comment's
 2. **Statuses: keep both Agent UAT and Human UAT** (no merge, no "Ready for Jim"). Agents still do the preliminary UAT. New rule in AGENTS.md: every Human UAT request must list exactly what Jim verifies, step by step, with how to verify each.
 3. **Stale-ticket cleanup: DONE except LIFE-306.** Cancelled LIFE-271, 272, 273, 274 and 293 (superseded by LIFE-307); closed LIFE-281 (final receipt); retitled and rewrote LIFE-304; reconciled LIFE-269 by comment, status left To Do until Jim records the adopt decision. LIFE-306 left open: Jim's earlier comment 11900 said both "revised: C" and "close ticket".
 4. **Agent identity by labels, not users.** Convention (in AGENTS.md): the claiming agent adds one label, `agent-claude-code`, `agent-hermes` or `agent-chatgpt`, and starts each comment it writes with `[agent-claude-code]`. Limit, stated plainly: any agent using Jim's credentials can also set or remove a label, so labels make authorship readable and queryable; they do not enforce it. A separate Jira user would.
-5. **Merge wording: awaiting Jim.** Options and recommendation are in the chat reply; the draft PR still marks Part 07 items 3/3a PENDING.
+5. **Merge rule: kept as it is (option C).** Jim, 2:55 PM CT: "Keep 3 and 3a so agents merge routine PRs on green CI. This contradicts your hard gate. <-- Approved, go". Part 07 items 3 and 3a stay in force and AGENTS.md step 5 says merge on green same-head CI. This replaces the "agents never merge" wording above for routine and Part 07 3/3a PRs; protected host operations, spend and secrets keep their gates. Merging this PR (#757) itself still waits for Jim saying `merge #757`.
 6. **Script-pack runner approved** as a protected host component with a rollback. Approval is for the component; building it needs its own outcome ticket and PR, and nothing is installed on the host until that ticket is approved and its rollback is shown.
 7. **Notion copy added** under LIFE OS: https://app.notion.com/p/40f3c5a0592681a9b2cfc7423a9479cd
+
+## Jim's decisions, November 5, 2026 (2:55 PM CT)
+
+1. **Script-pack runner:** ticket LIFE-310 created (origin/parent epic not yet named, so the readiness check may refuse it until Jim names one; UNVERIFIED).
+2. **Merge rule:** option C, see decision 5 above.
+3. **LIFE-306:** rewritten as route C (label `lane-edge-comm`); it is in Agent Go but nothing is built yet.
+4. **Hermes adopted:** LIFE-269 closed Done with comments 11912 and 11914.
+5. **Any status can move to any status:** "Move to In Progress" (ID 6) and "Move to blocked" (ID 16) were re-added as global transitions and the workflow was published. Read-back on LIFE-269 and LIFE-306 shows every status reachable. Trade-off: "Move to In Progress" does not need the authorization receipt that "Start work (authorization receipt required)" (14) names, so that rule is now convention and policy only, not enforced by Jira. The new IDs 6 and 16 reuse the numbers of the deleted transitions; the policy cites ID 14 for starting work.

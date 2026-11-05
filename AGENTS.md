@@ -9,10 +9,10 @@ Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
 2. **Gate:** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 report its `refused` line and stop. Add no refusal reasons of your own.
 3. **Claim:** `preflight --pre`, record the claim, then `preflight`; one writer per surface.
 4. **Build:** one branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data) wait for their owned human Sub-task.
-5. **Land:** open the PR with same-head CI green and nothing protected touched; Jim merges (PENDING Jim's approval, delivery-flow v2 F5; today's Part 07 items 3/3a still say the agent may merge). Record PR, head SHA and one receipt on the issue; Human UAT only where the issue requires judgment.
+5. **Land:** open the PR and merge it when same-head CI is green and nothing outside Part 07 items 3/3a is touched (Jim kept this rule, November 5, 2026, 2:55 PM CT). Record PR, head SHA and one receipt on the issue; Human UAT only where the issue requires judgment.
 6. **Next:** after verified Done, repeat from step 1. Nothing eligible → `NO_ELIGIBLE_WORK`.
 
-**Proposed delivery flow v2 — PENDING Jim's approval, not in force:** one outcome ticket, one approval, one receipt, one acceptance; readiness also refuses open `needs`/`decisions`. See [docs/delivery-flow-v2-proposal.md](docs/delivery-flow-v2-proposal.md).
+**Delivery flow v2 — merge rule and any-status transitions approved by Jim, November 5, 2026; the rest is proposed:** one outcome ticket, one approval, one receipt, one acceptance; readiness also refuses open `needs`/`decisions`. See [docs/delivery-flow-v2-proposal.md](docs/delivery-flow-v2-proposal.md).
 
 ## LIFE OS FAST PATH — all agents
 

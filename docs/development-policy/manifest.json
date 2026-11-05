@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "96409e2c88a4d0ccdc49e60a27bc613a06441a6ed1b21834b53a0eb4209b2a5b",
+  "reassembled_sha256": "34b0466b0f6c699f6c69dc26383cfa51ab31c76bf1c8861b7135f4a73e7347c6",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -183,13 +183,13 @@
     {
       "date": "2026-11-05",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
-      "approval": "PENDING Jim Markunas approval: draft proposal only (delivery-flow v2, docs/delivery-flow-v2-proposal.md); items 3/3a marked PENDING retirement and a PENDING paragraph added; nothing is in force until Jim approves",
+      "approval": "Jim Markunas, November 5, 2026 CT 2:55 PM, chat: \"Keep 3 and 3a so agents merge routine PRs on green CI. This contradicts your hard gate. <-- Approved, go\". Markers removed; items 3/3a unchanged in substance; the paragraph now records the decision",
       "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
     },
     {
       "date": "2026-11-05",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
-      "approval": "Jim Markunas, November 5, 2026 CT 2:45 PM, chat 'Approved' on process-review item 1 (remove duplicate transitions 6, 16, 20): Jira workflow edited and published Nov 5; the policy's start-transition ID 6 reference becomes ID 14. The Part 07 PENDING paragraph and items 3/3a stay PENDING",
+      "approval": "Jim Markunas, November 5, 2026 CT 2:45 PM, chat 'Approved' on process-review item 1 (remove duplicate transitions 6, 16, 20): Jira workflow edited and published Nov 5; the policy's start-transition ID 6 reference becomes ID 14.",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
