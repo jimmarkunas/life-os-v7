@@ -26,15 +26,16 @@ class RoleFiles(unittest.TestCase):
 
     def test_the_librarian_points_at_the_notion_wiki_and_not_a_local_folder(self):
         text = read("roles", "librarian", "SOUL.md")
-        for needle in ("Notion", "Hermes Wiki", "cannot write", "source: Jim", "source: outside", "ask"):
+        for needle in ("Notion", "Hermes Wiki", "write it yourself", "tool_search", "create pages", "Index", "Change log", "source: Jim", "source: outside", "asked before any new entry"):
             self.assertIn(needle.lower(), text.lower(), needle)
-        for banned in ("~/wiki", "/var/lib", "wiki folder", "index.md"):
+        for banned in ("~/wiki", "/var/lib", "wiki folder", "index.md", "cannot write"):
             self.assertNotIn(banned, text, banned)
 
     def test_the_main_role_names_the_notion_wiki_and_the_ask_first_rule(self):
         text = read("roles", "main", "SOUL.md")
         self.assertIn("Hermes Wiki", text)
-        self.assertIn("Ask Jim before adding any new entry", text)
+        self.assertIn("hand wiki upkeep to the librarian", text)
+        self.assertIn("Ask Jim before any new entry is added", text)
         self.assertIn("Keep no wiki pages on this machine", text)
 
     def test_the_repo_holds_no_user_memory_and_no_connections_change(self):

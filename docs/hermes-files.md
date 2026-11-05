@@ -7,7 +7,7 @@ There is ONE Hermes, on the Oracle host `lifeos-edge-01`. The Hermes Desktop app
 | What | Master (the copy people edit) | Live copy (the copy Hermes uses) | Notes |
 |---|---|---|---|
 | Role files: `SOUL.md` for the main profile and the claude-hermes, developer, librarian, research and writer roles | This repo, `hermes/roles/<name>/SOUL.md` | Oracle, `~/.hermes/SOUL.md` and `~/.hermes/profiles/<name>/SOUL.md` | Deployed by `hermes/deploy_roles.sh` (dry run by default; Jim runs `--apply`). Edit here, never on the host. |
-| The wiki | Notion: LIFE OS / Hermes / Hermes Wiki | none | The main Hermes reads and writes it through its Notion connector. The librarian role can search and read it and returns drafts; the main Hermes files them. Jim is asked before any new entry. Claude Chat reads it through its own Notion connector. |
+| The wiki | Notion: LIFE OS / Hermes / Hermes Wiki | none | The librarian role keeps it: it finds the Notion tools with tool_search and can search, read and create pages (checked by a read-only test on Nov 5; a real write is not yet tested). The main Hermes reads and writes it too and hands upkeep to the librarian. Jim is asked before any new entry. Claude Chat reads it through its own Notion connector. |
 | About-Jim memory (`USER.md`) | Oracle (Hermes writes it) | Oracle | Never in this repo. A readable copy may be kept in Notion. |
 | Memory folder `memories/` | Oracle | Oracle | Empty at the time of writing. Limits are in `config.yaml` (about 800 tokens of notes, about 500 about Jim). |
 | Conversation history (`state.db`, per-profile databases), `sessions/`, `logs/` | Oracle | Oracle | Live databases: never in Notion, Drive or GitHub. A periodic backup copy is tracked under LIFE-301. |
