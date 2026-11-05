@@ -1,80 +1,78 @@
 # LIFE OS V7 — agent guide (read this, not the whole repo)
 
-V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only.
-Core rule (D54): V7 must run correctly with ChatGPT completely unavailable.
+V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life-os-v2`) are read-only references: extract the smallest proven mechanic only. Core rule (D54): V7 must run correctly with ChatGPT completely unavailable. This guide is a summary; the [Development Policy](docs/life-os-development-policy.md) governs (read only the sections you need, especially work selection and the Jira-first lifecycle).
 
-## AGENT LOOP — the whole job in six steps (summary; the Development Policy governs)
+## Agent loop — the whole job
 
-1. **Pick:** Jim named an issue in this session → that one (Jira ID 14). Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank (start with ID 14, the only start transition). Epics and parents are never picked; skip any issue with an unfinished `Blocks` predecessor.
-2. **Gate:** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 report its `refused` line and stop. Add no refusal reasons of your own.
-3. **Claim:** `preflight --pre`, record the claim, then `preflight`; one writer per surface.
-4. **Build:** one branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data) wait for their owned human Sub-task.
-5. **Land:** open the PR and merge it when same-head CI is green and nothing outside Part 07 items 3/3a is touched (Jim kept this rule, November 5, 2026, 2:55 PM CT). Record PR, head SHA and one receipt on the issue; Human UAT only where the issue requires judgment.
-6. **Next:** after verified Done, repeat from step 1. Nothing eligible → `NO_ELIGIBLE_WORK`.
+1. **Pick.** Jim named an issue → that one. Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank. Never pick an Epic or parent, an issue with an unfinished `Blocks` predecessor, or anything outside Agent Go. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
+2. **Gate.** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 quote its `refused` line and stop. Add no refusal reasons of your own.
+3. **Claim.** `python -m lifeos.readiness preflight --pre CLAIM.json STATE.json`, record the claim, then `python -m lifeos.readiness preflight CLAIM.json STATE.json` before every mutation (the validator fetches `origin/main` itself; your `base_sha` must equal it). One writer per surface.
+4. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human Sub-task and named approval.
+5. **Land.** Open the PR; merge when same-head CI is green and nothing outside Part 07 items 3/3a is touched. Post one receipt on the issue (OUTCOME, REMOVAL, PROOF, REMOTE SHA, NEXT) and move it to Agent UAT. Human UAT only where judgment is needed, with exact steps for Jim. Never mark Done from CI or a merge.
+6. **Next.** After verified Done repeat from 1; nothing eligible → `NO_ELIGIBLE_WORK`. Jira or queue data missing → `QUEUE_NOT_READY — <exact gap>`.
 
-**Delivery flow v2 — merge rule and any-status transitions approved by Jim, November 5, 2026; the rest is proposed:** one outcome ticket, one approval, one receipt, one acceptance; readiness also refuses open `needs`/`decisions`. See [docs/delivery-flow-v2-proposal.md](docs/delivery-flow-v2-proposal.md).
+## Delivery flow v2 (Jim, November 5, 2026)
 
-## LIFE OS FAST PATH — all agents
+- **One outcome ticket** per feature: outcome, Given/When/Then, `needs` and `decisions` rows ({what, proof, status}), protected steps, not-in-scope. Readiness refuses any open row.
+- **One approval:** Jim's release (ID 5) or named instruction covers everything inside the written scope. A plan change is an edit to the ticket plus one line `Scope change: <what> — Jim, <time CT>`, never a pile of approval comments. The description beats comments.
+- **One receipt, one acceptance:** see step 5. **Ticket truth:** the claiming agent fixes the ticket's text the same session reality changes; a superseded ticket is Cancelled with a line naming its replacement.
+- **Agent identity:** add one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and start Jira comments with `[agent-…]`. Labels aid reading, not enforcement.
 
-**Read the named LIFE issue first.** Retrieve only missing authoritative context. Reuse unchanged evidence. Parallelize independent reads. Stop when sufficient evidence exists; execute already-approved scoped work immediately. Independently verify every consequential write. Never reopen discovery, audit unrelated systems, or create duplicate planning artifacts. Exceed routine limits only for a specific safety, authorization, contradiction or missing-proof dependency.
+## Where truth lives (one owner each)
 
-- **Routine FAST budget:** target ≤30 seconds, ≤2 remote rounds and ≤4 remote calls; STANDARD bounded change target ≤60 seconds. Targets never override required authority or proof. Batch independent reads; do not fetch whole policy/Notion pages when a specific section or exact issue is sufficient.
-- **Follow authority:** current Jim instruction → live Production Contract for runtime/scheduling, live V7 Development Policy for engineering → current LOS for new product decisions → owning Notion requirements → live LIFE execution issue for delivery → existing GitHub implementation. If these conflict, use their canonical domain authority and stop before mutation. On work in progress, use LIFE as control plane and consult LOS only for a missing or changed product decision.
-- **Scope and readiness:** LOS approved outcomes go to owning LIFE Epic → scoped Tasks → independently executable Sub-tasks; do not substitute a 25-row checklist for agent-executable tickets. An issue missing approved origin, owner/lane, correct Component/Fix Version, true dependencies, human prerequisites, Given/When/Then, host, fast proof or stop condition returns `DISCOVERY_NOT_READY` or `QUEUE_NOT_READY` with the exact gap.
-- **Execution gate:** only an approved named instruction or a correctly released Agent Go issue permits scoped work; enforce current one-writer claim, permissions and protected-operation approval. A Jira comment/status or an agent message alone does not grant authority.
-- **Evidence and closure:** targeted proof → real receiver/user outcome → independent read-back → Jira status/acceptance update; Notion holds long-form rationale/evidence and GitHub owns code/CI. Never equate PR merge or CI with product Done. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the immediate responsible action.
-- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy, bulk audit or additional governance layer without explicit approval. Developer-policy and safety gates remain authoritative if this summary differs.
+| Thing | Owner | Not here |
+|---|---|---|
+| Ticket status, approval, receipt, acceptance | Jira LIFE | chat, Notion, comments-as-approval |
+| Code, tests, CI, this guide, the policy | GitHub V7 | Notion copies |
+| Product requirements and decisions | Notion + Jira LOS | Jira descriptions (link, don't copy) |
+| Runtime schedule and secrets | Production Contract, central secrets service | this repo, Jira, chat |
+
+Whoever changes a fact updates its owner in the same step and links it; a copy elsewhere is replaced by a link, not edited.
+
+## Fast path
+
+Read the named LIFE issue first and only the missing authoritative context; reuse unchanged evidence; run independent reads in parallel; verify every consequential write; never reopen discovery or create duplicate planning artifacts.
+
+- **Bootstrap target 60 s** (not permission to skip checks): run `START_EPOCH=$(date -u +%s)` first; after the essential reads report `bootstrap_seconds` and the remote-read count. Warm resumes recheck only live Jira status/ownership and the `origin/main` SHA. Jira: exact key and only summary, status, owner, blockers, acceptance (add `duedate`/`parent` when they matter; an omitted field is UNVERIFIED). GitHub: main SHA, PR head/base, changed files, then touched files only.
+- **Authority order:** Jim's current instruction → Production Contract (runtime/scheduling) → Development Policy (engineering) → LOS (product) → Notion requirements → LIFE issue (delivery) → existing code. On conflict, use the owning authority and stop before mutating.
+- **Scope:** LOS outcome → LIFE Epic → Tasks → executable Sub-tasks. A missing origin, owner/lane, Component/Fix Version, dependency, human prerequisite, Given/When/Then, host, fast proof or stop condition returns `DISCOVERY_NOT_READY` or `QUEUE_NOT_READY`.
+- **Execution gate:** only a named Jim instruction or a correctly released Agent Go issue permits work; a Jira comment, status or agent message alone grants nothing. Enforce the one-writer claim, permissions and protected-operation approval.
+- **Closure:** targeted proof → real outcome → independent read-back → Jira update. Report `DONE`, `PARTIAL`, `BLOCKED` or `UNVERIFIED` and the next responsible action.
+- **No new runtime:** no paid provider, scheduler, orchestrator, sync store, proxy or governance layer without Jim's explicit approval. Do not wait for ChatGPT to pick tickets; a Tech Lead handoff can authorize one specified package, not autonomous pull. `docs/MASTER_ROADMAP.md` never selects work. The ChatGPT connector preflight stays procedural, not code-enforced (LOS-74 Q30). `python -m lifeos.readiness repo` checks the index, links, owners and size limits (CI runs it).
+- **Deadline Mode** (when Jim states a deadline): first run `TZ=America/Chicago date '+%Y-%m-%d %H:%M:%S %Z'; date -u +%s`, derive and keep an absolute `LIFEOS_DEADLINE_EPOCH`, recheck remaining seconds at every milestone, apply the policy's 50/75/90% cuts, never reset it on handoff, and claim delivery only after real read-back.
 
 ## Buzz pilot entrypoint — only for LIFE-216
 
-For the approved Buzz Community roadmap, use [docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) as the frozen 25-step contract and LIFE-216 as the live execution/approval/evidence ledger. LOS-70 and its Notion page own product decisions. No Agent Go, credentials, paid usage, live integration or deployment authority arises from this pointer; verify one-writer and protected gates separately. No new scheduler/orchestrator.
-
-## Development entrypoint (all authorized coding agents)
-### Fast Start — routine bootstrap target: 60 seconds
-- **Measure, do not guess:** At session start run `START_EPOCH=$(date -u +%s)`. After essential Jira/GitHub reads report `bootstrap_seconds=$(($(date -u +%s)-START_EPOCH))` and number of remote reads in the existing progress message; no tracking file, scheduler, extra API call or telemetry service. **60 seconds is a target**, not permission to omit required authority or safety checks. If a slow provider exceeds it, begin the safe, ready work and name only the remaining required blocker.
-- **Warm resume by default:** Keep the current LIFE issue, branch/head, relevant policy sections, direct file context and verified results from this session. On resume recheck only live Jira status/ownership when relevant and `origin/main` SHA; compare only changed commits touching the claimed surface. Unchanged facts do not require re-fetching comments, files, contracts or green CI. A new agent uses the specific PR/issue handoff plus these minimal authoritative checks; do not reconstruct history.
-- **Jira minimum:** Fetch the exact LIFE key and only summary, status, assignee/owner, dependencies/blockers and needed acceptance scope; request comments only when a missing decision requires them, selecting specific/latest relevant comments rather than an entire history. Follow the existing Jira-first and ownership gates; do not do broad project searches for a known task. For Jira handoffs, explicitly request the fields needed for the task, including `duedate` and `parent` when scheduling or hierarchy matters; a field omitted from the response is UNVERIFIED, not empty.
-- **GitHub minimum:** Read current V7 main SHA, active PR head/base and changed filenames/diff, then only touched files and direct callers needed for implementation/review. Compare against the last verified SHA; do not reread the repository, CODEMAP, policies or unchanged CI without a specific factual reason. Immediately before consequential writes, reverify exact base/head and required approvals.
-- **Parallel independent I/O:** Run independent Jira, GitHub and source reads concurrently when the tooling permits; preserve sequential ordering where an identifier or permission depends on a prior result. Read only the applicable V7 development-policy sections; the complete policy is for authority, not routine full-text re-onboarding.
-- **Readiness preflight (LIFE-225, fail closed):** before the first mutation (branch, push, Jira transition, claim) run the shared validator and stop on exit 2, quoting its `refused` line: `python -m lifeos.readiness issue ISSUE.json` (origin, lane label, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional), then `python -m lifeos.readiness preflight --pre CLAIM.json STATE.json` before recording a claim (nobody else holds the issue or surface; the validator fetches `origin/main` itself and your `base_sha` must equal it), and `python -m lifeos.readiness preflight CLAIM.json STATE.json` before every mutation (the same, plus your own claim must be in the claim record you read from Development Projects; reading that record stays procedural), and `python -m lifeos.readiness repo` for the index, links, owners and size limits (CI runs it). Input shapes are in `tests/contracts/test_readiness.py`. ChatGPT's connector preflight stays procedural, not code-enforced (LOS-74 Q30).
-- **Start building promptly:** The 60-second clock covers routine bootstrap through a ready-to-work state, not implementation or tests. At the target, stop optional discovery, identify the one essential blocker (if any), and continue the approved narrow work. Deadline Mode's earlier/harder deadlines take precedence.
-- Read the canonical [LIFE OS Development Policy](docs/life-os-development-policy.md), especially **Deterministic agent work selection** and **Jira-first development lifecycle**. This guide is subordinate to V7's own canonical policy. V1/V2 must never be treated as current development authority.
-- When an authorized coding session starts/resumes or an accepted package closes, **self-resume or self-pull** the next eligible `LIFE` issue from live Jira under the approved lane, dependency, rank, ownership and permission gates; read linked `LOS` context only if relevant. Do not wait for ChatGPT to choose a ticket. If Jira access or queue readiness is missing, return `QUEUE_NOT_READY` with the exact gap; a Tech Lead's fresh handoff can authorize only a specified one-off package, not autonomous pull. Historical `docs/MASTER_ROADMAP.md` never selects next work.
-- **Deadline Mode (mandatory when Jim states a deadline):** Before other work, execute `TZ=America/Chicago date '+%Y-%m-%d %H:%M:%S %Z'; date -u +%s`, derive and retain the absolute `LIFEOS_DEADLINE_EPOCH` from the user's specified duration or CT wall-clock time, and compute remaining seconds via `date -u +%s` at every milestone. Follow the policy's 50%/75%/90% automatic nonessential-work cuts; never reset the deadline on handoff. Report delivered only after real destination read-back; do not bypass permissions or paid-use restrictions.
-- Respect the policy's single-writer, permission, proof and Jim-approval gates. GitHub PR/CI success never marks LIFE Done automatically; an agent entrypoint grants no extra Jira or OpenClaw permissions.
+Use [docs/buzz-implementation-roadmap-v1.md](docs/buzz-implementation-roadmap-v1.md) as the frozen 25-step contract and LIFE-216 as the execution/approval/evidence ledger; LOS-70 owns product decisions. No Agent Go, credentials, paid usage, live integration or deployment authority arises from this pointer. No new scheduler/orchestrator.
 
 ## OpenClaw / Oracle edge
-Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture, or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and the relevant WBS evidence row in `docs/MASTER_ROADMAP.md`. The scope's "Capability registry" section lists the named capabilities, their approval gates and how to invoke them (Oracle-local `openclaw agent`; off-host not yet approved).
-- OpenClaw is a bounded capability/control plane; V7/domain owners retain business rules, canonical persistence and scheduling.
-- Do not create a second scheduler or duplicate datastore around OpenClaw.
-- Secret values do not belong in this repository or Notion; use the approved central secrets service/runtime references.
-- Ordinary assistant sessions do not get unrestricted host/file authority; destructive personal-file actions require an explicitly approved workflow.
-- Interview meeting capture stays botless: Granola is the current acquisition layer, durable normalized Meeting Evidence goes to Notion, and visible meeting-bot capture is not the Interview path.
-- Domain code should consume named OpenClaw capabilities through the approved adapter/MCP contract rather than raw SSH.
+
+Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-ops work, read `docs/EDGE_GATEWAY_SCOPE.md` and the relevant `docs/MASTER_ROADMAP.md` row (capability registry, approval gates, invocation).
+- OpenClaw is a bounded capability/control plane; V7 and domain owners keep business rules, persistence and scheduling. No second scheduler or duplicate datastore.
+- Secret values never go in this repo, Notion, Jira or chat; use the central secrets service and runtime references.
+- Assistant sessions get no unrestricted host/file authority; destructive personal-file actions need an approved workflow. Domain code uses named capabilities through the approved adapter/MCP contract, not raw SSH.
+- Interview capture stays botless: Granola is the acquisition layer, normalized Meeting Evidence goes to Notion.
 
 ## Map
-- **Start with `docs/CODEMAP.md` (or `docs/codemap.json`)**: a generated index of every stage, module (with its one-line purpose), workflow, secret name, database table and decision. It is rebuilt by `python -m lifeos.codemap`, and a test fails when it is stale, so trust it before browsing. Find the file there, then read only that file.
-- `lifeos/platform/` shared clients and primitives (Notion, Gmail, Outlook, Graph tokens, Jira, Google Calendar, db, alerts, gate, router, `rest.py` retry helper). Imports nothing from other `lifeos` layers.
-- `lifeos/jobs/`, `lifeos/interview/`, `lifeos/jira/`, `lifeos/outlook/`, `lifeos/calendar_bridge/` — one OS per package; may import `platform` only.
-- `lifeos/sources/` producers (newsletters, web, openjobs, sponsor register); may import any OS.
-- `lifeos/run.py` stage registry: one `lazy("module", "function")` line per stage. `.github/workflows/hourly.yml` runs stages; `workflow_dispatch` is at the 25-input limit: add no input.
-- `tests/` mirrors `lifeos/`. Shared fakes live in `tests/kit` (add new fakes there). `tests/contracts/` enforce the rules below.
-- Docs: `docs/DECISIONS_INDEX.md` (find a decision), `docs/DECISIONS.md` (grep, never read whole; a new decision's number comes only from `python -m lifeos.decisions claim`, LIFE-89), `docs/SETUP.md` (secrets and manual steps), `docs/MASTER_ROADMAP.md` (dated technical WBS and acceptance evidence, not a live plan: priorities are in Jira `LOS`, delivery status/dependencies/sprints in Jira `LIFE`). `docs/ROADMAP.md` is legacy prompt history, not current sequencing authority.
+
+- **Start with `docs/CODEMAP.md` (or `docs/codemap.json`)**: generated index of stages, modules, workflows, secret names, tables and decisions (`python -m lifeos.codemap`; a test fails when it is stale). Find the file there, read only that file.
+- `lifeos/platform/` shared clients (imports nothing above it); `lifeos/jobs|interview|jira|outlook|calendar_bridge/` one OS per package (platform only); `lifeos/sources/` producers (any OS); `lifeos/run.py` stage registry, one `lazy("module", "function")` line per stage; `.github/workflows/hourly.yml` runs stages (`workflow_dispatch` is at the 25-input limit: add none). `tests/` mirrors `lifeos/`; fakes live in `tests/kit`; `tests/contracts/` enforce the rules below.
+- Docs: `docs/DECISIONS_INDEX.md` (find), `docs/DECISIONS.md` (grep, never read whole; new numbers only from `python -m lifeos.decisions claim`), `docs/SETUP.md` (secrets, manual steps), `docs/MASTER_ROADMAP.md` (dated technical WBS and evidence, not a live plan: priorities are in Jira `LOS`, delivery status in Jira `LIFE`). `docs/ROADMAP.md` is legacy.
 
 ## Commands
-- All tests: `python -m unittest discover -s tests -t .` (about 2 s). A run is good only if it prints a line starting `OK`.
-- One file: `python -m unittest tests.jira.test_jira`.
+
+- All tests: `python -m unittest discover -s tests -t .` (about 2 s); good only if it prints a line starting `OK`. One file: `python -m unittest tests.jira.test_jira`.
 - `git add` new files BEFORE running the suite: the privacy test checks committed/staged files only.
 
-## Rules (each is enforced by a test)
+## Rules (each enforced by a test)
+
 - Layers: platform imports nothing; OS packages import only platform; sources may import any OS.
-- Public repo: no secrets, names, addresses or message content in code, tests, logs or errors. Use example.com and invented names. Output is counts and fixed codes only.
-- No sending or deleting mail or events (tests forbid DELETE, /send, sendMail, /forward, permanentDelete). Moves and writes are read back.
-- Fail closed: a full result or an error, never partial. A dry run is the default; writes need live.
+- Public repo: no secrets, names, addresses or message content in code, tests, logs or errors; use example.com and invented names; output is counts and fixed codes.
+- No sending or deleting mail or events (tests forbid DELETE, /send, sendMail, /forward, permanentDelete); moves and writes are read back.
+- Fail closed: a full result or an error, never partial. Dry run is the default; writes need live.
 - Isolated jobs (Interview, Jira, Outlook) blank every workflow-level secret they do not use.
 - Keep diffs small. No new framework or dependency without asking. Stop and report on a schema change.
 
 ## Reporting
-Counts only. Say what you could not verify (real data, live runs). One PR per task; do not merge. Human UAT requests (Jim, Nov 5, 2026) list exactly what Jim verifies, step by step; agents do the preliminary Agent UAT first. A claiming agent adds one label (`agent-claude-code`, `agent-hermes`, `agent-chatgpt`) and starts its Jira comments with `[agent-…]`; labels aid reading, not enforcement.
-**Times for Jim: Central Time only (Jim, Oct 22, 2026).** Every time shown to Jim (chat, reports, Jira receipts, PR text) is US Central Time (America/Chicago), labeled CT, 12-hour (e.g. 4:34 PM CT). Never show UTC, not even in brackets; convert any UTC from logs, APIs or cron lines first.
 
+Counts only; say what you could not verify (real data, live runs). One PR per task. **Times for Jim: Central Time only** (US Central, America/Chicago, labeled CT, 12-hour, e.g. 4:34 PM CT; never UTC, not even in brackets; convert logs, APIs and cron lines first; run `TZ=America/Chicago date` before stating a time).
