@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "6ae795ced3ae3e05332e467877bc25937c60f3bd1eb96089ea20619ae912d8ef",
+  "reassembled_sha256": "592883f6f0af09cce5829d4456eb38ba5ea1f6ad6ba53bd525909bbcbcc490c9",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -179,6 +179,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/754",
       "approval": "Jim Markunas, November 4, 2026 CT, chat instruction 'merge #754': narrows Part 04 chain release to leaf issues only; adds the six-step agent loop to AGENTS.md",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-05",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PENDING",
+      "approval": "PENDING Jim Markunas approval: draft proposal only (delivery-flow v2, docs/delivery-flow-v2-proposal.md); items 3/3a marked PENDING retirement and a PENDING paragraph added; nothing is in force until Jim approves",
+      "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
     }
   ]
 }

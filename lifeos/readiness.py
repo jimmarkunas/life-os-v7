@@ -1,7 +1,7 @@
 """LIFE-225 (ARCH-04; LOS-74 Q24, Q30): one versioned, deterministic, offline readiness validator for coding agents and CI.
 
 Three checks, one refusal shape, stdlib only, no network, no state of its own:
-  issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present)
+  issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present; needs/decisions: every row {what, proof, status: done} or the issue is not released)
   preflight  a writer claim is safe to act on (live-fetched, unchanged GitHub baseline; no other writer on the issue or surface; with --pre only availability, otherwise this writer's own recorded claim too)
   repo       the global source index still points at real files with an owner and an authority, inside the size limit
 
@@ -73,6 +73,13 @@ def check_issue(issue):
             out.append(refuse("authorization_missing", "authorization"))   # a Jira comment or agent message alone grants nothing; a non-boolean denied is malformed
     if "permissions" in issue and not (isinstance(issue["permissions"], list) and issue["permissions"] and all(text(p) for p in issue["permissions"])):
         out.append(refuse("permissions_missing", "permissions"))
+    for name, code in (("needs", "prerequisite_open"), ("decisions", "decision_open")):   # delivery-flow v2 (PENDING Jim): checked when present; a ticket that cannot run is not released
+        if name in issue:
+            rows = issue[name]
+            if not isinstance(rows, list):
+                out.append(refuse(f"{name}_unreadable", name))
+            else:
+                out += [refuse(code, name, f"item {i + 1}") for i, r in enumerate(rows) if not (isinstance(r, dict) and text(r.get("what")) and text(r.get("proof")) and r.get("status") == "done")]
     if "acceptance" in issue:
         items = issue["acceptance"]
         if not (isinstance(items, list) and items):
