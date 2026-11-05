@@ -194,7 +194,7 @@
     },
     {
       "date": "2026-11-05",
-      "pr": "PENDING (branch life/process-flow-v2-rules)",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/760",
       "approval": "Jim Markunas, November 5, 2026 CT 3:40 PM, chat: \"1. Build and implement this\" (delivery-flow v2: one approval, one receipt, one acceptance, ticket truth, open-prerequisites rule) and \"4. ... drastically streamline and lighten this without losing guardrails and context\": Parts 03 and 04 condensed with every rule kept; flow v2 added to Part 04; Part 07 paragraph updated",
       "part": "docs/development-policy/03-jira-issue-writing-contract.md, 04-work-selection-lifecycle-reconciliation.md, 07-bootstrap-bounded-autonomy.md"
     }
