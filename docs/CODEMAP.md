@@ -44,6 +44,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `granola` -> `lifeos.interview.granola_bridge:stage`
 - `granola-auto` -> `lifeos.sources.granola_auto:stage`
+- `hermes` -> `lifeos.hermes_requests:run`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
