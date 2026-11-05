@@ -63,6 +63,9 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 
 - All tests: `python -m unittest discover -s tests -t .` (about 2 s); good only if it prints a line starting `OK`. One file: `python -m unittest tests.jira.test_jira`.
 - `git add` new files BEFORE running the suite: the privacy test checks committed/staged files only.
+- **GitHub from a session** (GraphQL is blocked; `gh pr create` and `gh pr ready` fail): open a PR with `gh api repos/jimmarkunas/life-os-v7/pulls --input pr.json` (title, head, base, body, draft); draft to ready with `gh api -X POST repos/jimmarkunas/life-os-v7/pulls/N/ccr/ready_for_review`; merge with `gh api -X PUT repos/jimmarkunas/life-os-v7/pulls/N/merge -f merge_method=squash`.
+- **After a squash merge** the branch is deleted and the Stop hook (a platform script, not ours) warns about "unpushed commits". The commits are in main: run `git fetch origin main && git checkout -B main origin/main` and the warning clears. A warning on a branch that is not merged is real.
+- **Jira workflows** cannot be edited through the Atlassian connection: use the Jira admin page in Chrome, once, and do not retry through the API. Jira search lags after a write: read the issue by key instead.
 
 ## Rules (each enforced by a test)
 
