@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "34b0466b0f6c699f6c69dc26383cfa51ab31c76bf1c8861b7135f4a73e7347c6",
+  "reassembled_sha256": "27f5ce5aaa04e87259ff260263b03b4a3c99c2657472c7fabe874fb12c7e256d",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -191,6 +191,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
       "approval": "Jim Markunas, November 5, 2026 CT 2:45 PM, chat 'Approved' on process-review item 1 (remove duplicate transitions 6, 16, 20): Jira workflow edited and published Nov 5; the policy's start-transition ID 6 reference becomes ID 14.",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-05",
+      "pr": "PENDING (branch life/process-flow-v2-rules)",
+      "approval": "Jim Markunas, November 5, 2026 CT 3:40 PM, chat: \"1. Build and implement this\" (delivery-flow v2: one approval, one receipt, one acceptance, ticket truth, open-prerequisites rule) and \"4. ... drastically streamline and lighten this without losing guardrails and context\": Parts 03 and 04 condensed with every rule kept; flow v2 added to Part 04; Part 07 paragraph updated",
+      "part": "docs/development-policy/03-jira-issue-writing-contract.md, 04-work-selection-lifecycle-reconciliation.md, 07-bootstrap-bounded-autonomy.md"
     }
   ]
 }
