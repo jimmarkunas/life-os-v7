@@ -166,3 +166,15 @@ Proposed path: you approve "run M9a, M9e, M9f, skip the rest" once. The agent ru
 3. **Approved script pack with built-in read-back** (rule E, Option 1).
 
 A cheap fourth if you want it: stop agents typing clock times (use the comment's Jira timestamp).
+
+---
+
+## Jim's decisions, November 5, 2026 (2:45 PM CT)
+
+1. **Duplicate transitions removed: DONE.** "Start authorized work" (6), "Move to In Progress" (16) and "Move to blocked" (20) were deleted and the workflow published (Jira said "Workflow updated"). Read-back on LIFE-306 now shows 8 transitions: Cancelled, To Do, Move to Done, Move to Agent Go, Move to Agent UAT, Move to Human UAT, Report blocker (2), Start work (authorization receipt required) (14). Policy Parts 03 and 04, AGENTS.md and one test now cite ID 14 instead of 6.
+2. **Statuses: keep both Agent UAT and Human UAT** (no merge, no "Ready for Jim"). Agents still do the preliminary UAT. New rule in AGENTS.md: every Human UAT request must list exactly what Jim verifies, step by step, with how to verify each.
+3. **Stale-ticket cleanup: DONE except LIFE-306.** Cancelled LIFE-271, 272, 273, 274 and 293 (superseded by LIFE-307); closed LIFE-281 (final receipt); retitled and rewrote LIFE-304; reconciled LIFE-269 by comment, status left To Do until Jim records the adopt decision. LIFE-306 left open: Jim's earlier comment 11900 said both "revised: C" and "close ticket".
+4. **Agent identity by labels, not users.** Convention (in AGENTS.md): the claiming agent adds one label, `agent-claude-code`, `agent-hermes` or `agent-chatgpt`, and starts each comment it writes with `[agent-claude-code]`. Limit, stated plainly: any agent using Jim's credentials can also set or remove a label, so labels make authorship readable and queryable; they do not enforce it. A separate Jira user would.
+5. **Merge wording: awaiting Jim.** Options and recommendation are in the chat reply; the draft PR still marks Part 07 items 3/3a PENDING.
+6. **Script-pack runner approved** as a protected host component with a rollback. Approval is for the component; building it needs its own outcome ticket and PR, and nothing is installed on the host until that ticket is approved and its rollback is shown.
+7. **Notion copy added** under LIFE OS: https://app.notion.com/p/40f3c5a0592681a9b2cfc7423a9479cd
