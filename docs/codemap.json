@@ -802,6 +802,20 @@
     "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },
+  "hermes-stage.yml": {
+   "jobs": [
+    "hermes"
+   ],
+   "manual": true,
+   "secrets": [
+    "BUZZ_STAGE_CHANNEL",
+    "BUZZ_STAGE_HERMES_PUBKEY",
+    "BUZZ_STAGE_KEY",
+    "BUZZ_URL_LIFE_OS",
+    "JIRA_BASE_URL",
+    "LIFEOS_BWS_RUNTIME_TOKEN"
+   ]
+  },
   "hourly.yml": {
    "jobs": [
     "prep",
