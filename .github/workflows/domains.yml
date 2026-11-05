@@ -1623,9 +1623,12 @@ jobs:
           IMESSAGE_ALERTS_HOST: ${{ steps.bws_granola.outputs.IMESSAGE_ALERTS_HOST || steps.bws_granola_retry.outputs.IMESSAGE_ALERTS_HOST }}
           GRANOLA_LIVE: ${{ env.LIVE == 'true' && vars.GRANOLA_AUTO == 'on' && 'true' || 'false' }}
         run: python -m lifeos.run granola-auto $([ "$GRANOLA_LIVE" = "true" ] && echo --live)
-      - name: Granola auto warning (does not fail the run)
+      - name: Granola auto warning
         if: ${{ always() && steps.gran.outcome == 'failure' }}
         run: echo "::warning title=Granola auto::the automatic Granola run stopped; nothing is purged from Oracle that is not safely in Notion and the catalog"
+      - name: Granola auto stopped - fail this job (LIFE-312) so the run is red and the report job pushes the phone
+        if: ${{ always() && steps.gran.outcome == 'failure' }}
+        run: exit 1
 
   report:
     # A failed domain job (a provider outage, a Bitwarden 503) used to be only a workflow warning, so a stale card and a red run reached nobody. This job pushes the phone once per
