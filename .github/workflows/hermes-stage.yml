@@ -1,0 +1,58 @@
+name: hermes-stage
+# LIFE-307 (Jim, Nov 5, 2026: "Approved, go"). MANUAL run of the `hermes` stage (lifeos/hermes_requests.py): every LIFE issue in Agent Go that carries the label `hermes` gets ONE signed,
+# correlated Buzz request to Hermes; nothing new means nothing is posted. Dry run unless `live`. NO schedule, no timer, no loop: a person (or an authorized agent) starts it.
+# It holds the Jira credentials (from Bitwarden, as the `jira` job does) and the stage's own scoped Buzz member key (a repository secret). No Notion, mail, Calendar or Oracle access.
+# Counts and fixed codes only.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Actually post the Buzz requests (false = dry run: Jira and Buzz are read, nothing is posted)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-hermes-stage
+  cancel-in-progress: false
+jobs:
+  hermes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_hermes
+        name: Load the Jira credentials from Bitwarden (exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # D209: one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_hermes.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_hermes_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_hermes.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+      - name: Hermes stage (every Agent Go issue labelled hermes without a request; dry run unless live; counts and fixed codes only)
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ steps.bws_hermes.outputs.JIRA_API_TOKEN || steps.bws_hermes_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_hermes.outputs.JIRA_EMAIL || steps.bws_hermes_retry.outputs.JIRA_EMAIL }}
+          BUZZ_URL_LIFE_OS: ${{ secrets.BUZZ_URL_LIFE_OS }}
+          BUZZ_STAGE_CHANNEL: ${{ secrets.BUZZ_STAGE_CHANNEL }}
+          BUZZ_STAGE_HERMES_PUBKEY: ${{ secrets.BUZZ_STAGE_HERMES_PUBKEY }}
+          BUZZ_STAGE_KEY: ${{ secrets.BUZZ_STAGE_KEY }}
+          LIVE: ${{ inputs.live }}
+        run: python -m lifeos.run hermes $([ "$LIVE" = "true" ] && echo --live)

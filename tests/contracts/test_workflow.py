@@ -570,6 +570,11 @@ CONSUMERS = {
         direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN'],
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-interview-writer', 'cancel-in-progress': False},
         timeouts={'manual': 15}, digest="19cc00b03711f4e0"),
+    "hermes-stage": dict(                                                # LIFE-307: ONE signed Buzz request per Agent Go issue labelled hermes; dry run unless live; Jira credentials only, plus the stage's own Buzz member key
+        jobs={"hermes": {"JIRA_API_TOKEN", "JIRA_EMAIL"}},
+        direct=['BUZZ_STAGE_CHANNEL', 'BUZZ_STAGE_HERMES_PUBKEY', 'BUZZ_STAGE_KEY', 'BUZZ_URL_LIFE_OS', 'JIRA_BASE_URL', 'LIFEOS_BWS_RUNTIME_TOKEN'],
+        on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-hermes-stage', 'cancel-in-progress': False},
+        timeouts={'hermes': 10}, digest="18675f2595c40c13"),
     "interview-proof": dict(                                             # LIFE-78: the synthetic Interview journey in a fresh QA sandbox; the Interview token only, its own queue
         jobs={"proof": {"NOTION_INTERVIEW_TOKEN"}},
         direct=['LIFEOS_BWS_RUNTIME_TOKEN'],
@@ -789,6 +794,11 @@ CONSUMER_STEPS = {
             'Manual job (one job into Jobs OS and the Interview OS writer; dry run unless live is ticked; counts and fixed codes only)': DB | {"NOTION_INTERVIEW_TOKEN"},
         },
     },
+    "hermes-stage": {
+        "hermes": {
+            'Hermes stage (every Agent Go issue labelled hermes without a request; dry run unless live; counts and fixed codes only)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
+        },
+    },
     "interview-proof": {
         "proof": {
             'Interview journey proof (synthetic mail, Calendar and Ledger; real Notion in a fresh QA sandbox only; refuses unless confirm is QA)': {"NOTION_INTERVIEW_TOKEN"},
@@ -800,7 +810,7 @@ CONSUMER_STEPS = {
         },
     },
 }
-CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "granola", "granola-auto", "hourly", "interview-proof", "manual-job", "network", "outlook", "profile-sync", "recruiters")
+CUT_OVER = ("agenda", "bills", "branches", "calendar", "domains", "fit-edge-test", "granola", "granola-auto", "hermes-stage", "hourly", "interview-proof", "manual-job", "network", "outlook", "profile-sync", "recruiters")
 PILOTS = ("watchdog", "safety", "amazon", "diag")
 SECRET_FREE = ("pr-tests",)         # workflows that read no secret at all, so they have no loader to pin (their own test below pins that)
 

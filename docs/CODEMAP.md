@@ -44,6 +44,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `funnel` -> `lifeos.jobs.funnel:run`
 - `granola` -> `lifeos.interview.granola_bridge:stage`
 - `granola-auto` -> `lifeos.sources.granola_auto:stage`
+- `hermes` -> `lifeos.hermes_requests:run`
 - `hiring` -> `lifeos.sources.hiring:run`
 - `hiring-outcomes` -> `lifeos.hiring.outcomes:run`
 - `imessage-alerts` -> `lifeos.imessage.stage:run`
@@ -387,6 +388,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `fit-edge-test.yml`: jobs fit_edge; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `granola-auto.yml`: jobs auto; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `granola.yml`: jobs granola; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_BWS_RUNTIME_TOKEN
+- `hermes-stage.yml`: jobs hermes; manual yes; secrets BUZZ_STAGE_CHANNEL, BUZZ_STAGE_HERMES_PUBKEY, BUZZ_STAGE_KEY, BUZZ_URL_LIFE_OS, JIRA_BASE_URL, LIFEOS_BWS_RUNTIME_TOKEN
 - `hourly.yml`: jobs prep, jobright, linkedin, lensa, finish, interview, report; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, HIRING_PIPELINE_PAGE_ID, INTERVIEW_ACCEPTANCE_JSON, INTERVIEW_ACCEPTANCE_NEGATIVE_JSON, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_JOB_LEDGER_DATA_SOURCE_ID, V7_CLOSE_BASE_URL, V7_CLOUD_FIT_PROFILE_REF
 - `interview-proof.yml`: jobs proof; manual yes; secrets LIFEOS_BWS_RUNTIME_TOKEN
 - `manual-job.yml`: jobs manual; manual yes; secrets HIRING_PIPELINE_PAGE_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN

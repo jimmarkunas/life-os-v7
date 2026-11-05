@@ -789,6 +789,24 @@ CODES = {
     "WRAPPED_IN_CALLOUT": _r("recruiters", "blocked", False, "The block sits inside a callout, so it is not touched.", "Move it out."),
     "WRITE_FAILED": _r("hiring", "degraded", False, "A write failed.", "Retried."),
     "WRONG_PAGE": _r("hiring", "blocked", False, "The page is not the expected one, so nothing is written.", "Check the page."),
+    # --- Hermes requests: the `hermes` stage posts one signed Buzz request per new Agent Go issue (lifeos/hermes_requests.py, LIFE-307)
+    "HERMES_CONFIG_MISSING": _r("hermes", "blocked", False, "A setting the hermes stage needs is not set (the code names the setting, never a value).", "Set the named setting; Jim approves any new credential."),
+    "HERMES_CONFIG_INVALID": _r("hermes", "blocked", False, "A hermes stage setting is malformed.", "Fix the setting; no value is printed."),
+    "HERMES_READBACK_MISSING": _r("hermes", "degraded", False, "A request was published but did not read back from the relay.", "Read the channel; retry with the same key (it never duplicates)."),
+    "HERMES_BUZZ_UNEXPECTED": _r("hermes", "bug", False, "The relay answered a post with an unknown status.", "Check the Buzz client."),
+    "HERMES_BUZZ_RECIPIENT_NOT_AUTHORIZED": _r("hermes", "blocked", False, "Addressing is off, or the recipient is not approved for this sender.", "Jim approves the alias and the sender."),
+    "HERMES_BUZZ_RECIPIENT_NOT_CHANNEL_MEMBER": _r("hermes", "blocked", False, "The recipient is not a member of the channel.", "Add the recipient to the channel."),
+    "HERMES_BUZZ_WRITE_DISABLED": _r("hermes", "blocked", False, "This channel is not in the write allowlist (or the run is a dry run).", "Run with --live and an approved channel."),
+    "HERMES_BUZZ_COMMUNITY_NOT_AUTHORIZED": _r("hermes", "blocked", False, "The community is not configured for this sender.", "Check the relay address setting."),
+    "HERMES_BUZZ_KEY_NOT_CONFIGURED": _r("hermes", "blocked", False, "No member key is configured for the community.", "Set the stage key."),
+    "HERMES_BUZZ_INVALID_ARGUMENT": _r("hermes", "bug", False, "The relay client refused a malformed argument.", "Check the stage inputs."),
+    "HERMES_BUZZ_IDEMPOTENCY_CONFLICT": _r("hermes", "bug", False, "The same idempotency key was used with different text.", "Check the request template."),
+    "HERMES_BUZZ_DELIVERY_UNKNOWN": _r("hermes", "retry", False, "The relay did not confirm the post.", "Read the channel, then retry with the same key; it reads before writing."),
+    "HERMES_BUZZ_PRECHECK_UNAVAILABLE": _r("hermes", "retry", False, "The relay could not answer the read before the write.", "None; retried next run."),
+    "HERMES_BUZZ_RELAY_ERROR": _r("hermes", "retry", False, "The relay answered with a server error.", "None; retried next run."),
+    "HERMES_BUZZ_RELAY_UNREACHABLE": _r("hermes", "retry", False, "The relay could not be reached.", "None; retried next run."),
+    "HERMES_BUZZ_RELAY_REFUSED": _r("hermes", "blocked", False, "The relay refused the request.", "Check the key and the community."),
+    "HERMES_BUZZ_RELAY_BAD_RESPONSE": _r("hermes", "degraded", False, "The relay answered with something unreadable.", "None; retried next run."),
 }
 
 for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT", "LIMIT_UNCONFIGURED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE",
@@ -817,6 +835,7 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
 })
 
 NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+    "BUZZ_URL_LIFE_OS", "BUZZ_STAGE_KEY", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY",      # LIFE-307: the hermes stage settings
     "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
     "BUZZ_MCP_PUBLIC_URL", "BUZZ_MCP_ORIGINS", "BUZZ_OAUTH_ISSUER", "BUZZ_OAUTH_JWKS_URL", "BUZZ_OAUTH_CLIENTS", "BUZZ_OAUTH_USERS", "BUZZ_OAUTH_AS_URL", "BUZZ_RECIPIENTS", "BUZZ_MENTION_SENDERS",      # LIFE-216 / BUZZ-16: remote Buzz MCP settings
     "LAYOUT_SHARD",                # Jim, Oct 27: which slice (i/n) of the Ledger pages a layout run moves
