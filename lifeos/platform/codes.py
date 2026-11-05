@@ -807,6 +807,19 @@ CODES = {
     "HERMES_BUZZ_RELAY_UNREACHABLE": _r("hermes", "retry", False, "The relay could not be reached.", "None; retried next run."),
     "HERMES_BUZZ_RELAY_REFUSED": _r("hermes", "blocked", False, "The relay refused the request.", "Check the key and the community."),
     "HERMES_BUZZ_RELAY_BAD_RESPONSE": _r("hermes", "degraded", False, "The relay answered with something unreadable.", "None; retried next run."),
+    "SECRET_BAD_ARGS": _r("secrets", "blocked", False, "The broker takes exactly one purpose name; anything extra (a secret name, URL, command or value) is refused.", "Call it with the purpose name only."),
+    "SECRET_NOT_ROOT": _r("secrets", "blocked", False, "The broker was not run as root.", "Run it with sudo -n."),
+    "SECRET_REGISTRY_UNSAFE": _r("secrets", "blocked", False, "A purpose file is missing fields, malformed, or not root-owned and write-protected.", "Fix the registry file on the host; Jim approves registry changes."),
+    "SECRET_UNKNOWN_PURPOSE": _r("secrets", "blocked", False, "No such registered purpose.", "Use a registered purpose name; Jim approves a new purpose."),
+    "SECRET_CALLER_NOT_ALLOWED": _r("secrets", "blocked", False, "The caller is not on this purpose's list.", "Jim approves any change to a purpose's callers."),
+    "SECRET_RATE_LIMITED": _r("secrets", "retry", False, "More than 20 calls in a minute by this caller.", "Wait a minute."),
+    "SECRET_AUDIT_UNAVAILABLE": _r("secrets", "bug", False, "The audit log could not be written, so nothing was used.", "Oracle Claude checks the log path and disk."),
+    "SECRET_CRED_UNREADABLE": _r("secrets", "degraded", False, "The encrypted host credential could not be decrypted.", "Oracle Claude checks the credential file; no value is printed."),
+    "SECRET_FETCH_FAILED": _r("secrets", "retry", False, "The one fixed HTTPS call failed.", "None; retry later."),
+    "SECRET_BAD_REPLY": _r("secrets", "degraded", False, "The service answered with something that is not the expected JSON, or too much.", "Check the service; nothing was returned."),
+    "SECRET_FIELD_NOT_SCALAR": _r("secrets", "degraded", False, "A listed field was not a short plain value, so nothing was returned.", "Fix the purpose's field list."),
+    "SECRET_OUTPUT_TOO_LARGE": _r("secrets", "bug", False, "The answer exceeded 4096 bytes, so nothing was returned.", "Shorten the purpose's field list."),
+    "SECRET_OUTPUT_CONTAINS_SECRET": _r("secrets", "bug", False, "The answer would have contained the credential value in some spelling, so it was refused.", "Tell Oracle Claude; the purpose must not return that field."),
 }
 
 for _reason in ("NOT_ALLOWLISTED", "NONCE_REPLAYED", "COUNTER_UNAVAILABLE", "DAILY_LIMIT", "LIMIT_UNCONFIGURED", "REAL_DISABLED", "BRIEF_MISSING", "BRIEF_UNSAFE",
@@ -834,7 +847,8 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
     'BATCH_TOO_LARGE': _r("delivery context refactor", 'blocked', False, 'The batch is over the approved or hard cap.', 'Split the batch.'),
 })
 
-NOT_CODES = frozenset((            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
+NOT_CODES = frozenset((
+    "SUDO_USER",            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "BUZZ_URL_LIFE_OS", "BUZZ_STAGE_KEY", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY",      # LIFE-307: the hermes stage settings
     "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
     "BUZZ_MCP_PUBLIC_URL", "BUZZ_MCP_ORIGINS", "BUZZ_OAUTH_ISSUER", "BUZZ_OAUTH_JWKS_URL", "BUZZ_OAUTH_CLIENTS", "BUZZ_OAUTH_USERS", "BUZZ_OAUTH_AS_URL", "BUZZ_RECIPIENTS", "BUZZ_MENTION_SENDERS",      # LIFE-216 / BUZZ-16: remote Buzz MCP settings
