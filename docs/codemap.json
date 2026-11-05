@@ -307,6 +307,7 @@
    "lifeos/jira/dash_render.py": "JFM-221 (Jim, Oct 29 2026): the Notion blocks of the Jim & Matt dashboard pages. Pure: Jira facts in, Notion blocks out. Every Jira text passes dash_scrub first. Times ar",
    "lifeos/jira/dash_scrub.py": "JFM-221 (Jim, Oct 29 2026): nothing private reaches the Jim & Matt dashboard. Jira text passes through `scrub` before it becomes Notion text: e-mail addresses, phone numb",
    "lifeos/jira/dashboard.py": "JFM-221 (Jim, Oct 29 2026): the Jim & Matt Dashboard V2, fed from Jira. Jira is the source of truth; Notion is a read-only output; this stage never writes to Jira.",
+   "lifeos/jira/readiness_record.py": "LIFE-313: turn one Jira issue (REST v3 JSON) into the record `python -m lifeos.readiness issue` reads. Pure and offline except `fetch`, which does one read-only GET with ",
    "lifeos/jira/rollover.py": "Scheduled 7/14-day sprint rollover. Read-only unless live; fails closed on ambiguity; never closes a sprint before its end, never closes it before the carry-forward is ve",
    "lifeos/jira/snapshot.py": "Read-only Jira execution snapshot per board, kept in the private database (never in this public repo) for the report. Output is counts only: ticket keys, summaries and sp",
    "lifeos/jira/store.py": "Private storage for the Jira snapshot: one row per project (see platform/snapshot_store).",

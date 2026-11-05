@@ -5,7 +5,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 ## Agent loop — the whole job
 
 1. **Pick.** Jim named an issue → that one. Else resume your own In Progress issue. Else take the top `Agent Go` leaf issue in your lane (`lane-*` label) by Priority, then Rank. Never pick an Epic or parent, an issue with an unfinished `Blocks` predecessor, or anything outside Agent Go. Start with transition ID 14; resuming from blocked, UAT, Done or Cancelled uses "Resume work".
-2. **Gate.** `python -m lifeos.readiness issue ISSUE.json` must print `ready`; on exit 2 quote its `refused` line and stop. Add no refusal reasons of your own.
+2. **Gate.** `python -m lifeos.readiness issue-key LIFE-nnn` (live Jira read; or `issue ISSUE.json` on a record) must print `ready`; on exit 2 quote its `refused` line and stop. Add no refusal reasons of your own.
 3. **Claim.** `python -m lifeos.readiness preflight --pre CLAIM.json STATE.json`, record the claim, then `python -m lifeos.readiness preflight CLAIM.json STATE.json` before every mutation (the validator fetches `origin/main` itself; your `base_sha` must equal it). One writer per surface.
 4. **Build.** One branch `life/LIFE-nnn/<slug>`, one PR, the issue's fast proof first. Protected steps (secrets, production, spend, user data, host changes) wait for their owned human Sub-task and named approval.
 5. **Land.** Open the PR; merge when same-head CI is green and nothing outside Part 07 items 3/3a is touched. Post one receipt on the issue (OUTCOME, REMOVAL, PROOF, REMOTE SHA, NEXT) and move it to Agent UAT. Human UAT only where judgment is needed, with exact steps for Jim. Never mark Done from CI or a merge.
