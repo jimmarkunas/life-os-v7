@@ -1,0 +1,5 @@
+# LIFE-315: skills installed on the Oracle host from the ClawHub skill hub. NAMES ONLY: the files live on Oracle (Hermes loads skills from there) and the hub lock file on Oracle is the
+# record of the install. Read from /var/lib/hermeseval/home/.hermes/skills/.hub/lock.json on Nov 5, 2026. A skill we write ourselves lives in hermes/skills/<name>/ in this repo.
+# buzz-acp was installed on Nov 4, 2026 (install log) but is no longer present on Oracle; it is not listed.
+atlassian-mcp
+hostinger-mcp
