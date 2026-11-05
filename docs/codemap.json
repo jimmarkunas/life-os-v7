@@ -555,6 +555,7 @@
   "funnel": "lifeos.jobs.funnel:run",
   "granola": "lifeos.interview.granola_bridge:stage",
   "granola-auto": "lifeos.sources.granola_auto:stage",
+  "hermes": "lifeos.hermes_requests:run",
   "hiring": "lifeos.sources.hiring:run",
   "hiring-outcomes": "lifeos.hiring.outcomes:run",
   "imessage-alerts": "lifeos.imessage.stage:run",
@@ -798,6 +799,20 @@
    "manual": true,
    "secrets": [
     "HIRING_PIPELINE_PAGE_ID",
+    "LIFEOS_BWS_RUNTIME_TOKEN"
+   ]
+  },
+  "hermes-stage.yml": {
+   "jobs": [
+    "hermes"
+   ],
+   "manual": true,
+   "secrets": [
+    "BUZZ_STAGE_CHANNEL",
+    "BUZZ_STAGE_HERMES_PUBKEY",
+    "BUZZ_STAGE_KEY",
+    "BUZZ_URL_LIFE_OS",
+    "JIRA_BASE_URL",
     "LIFEOS_BWS_RUNTIME_TOKEN"
    ]
   },

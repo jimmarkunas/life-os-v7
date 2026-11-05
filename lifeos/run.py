@@ -69,6 +69,7 @@ STAGES = {
     "resolve-jobright": _jobright,
     "resolve-linkedin": _linkedin,
     "resolve-dice": lazy("lifeos.jobs.resolve.aggregators.dice"),
+    "hermes": lazy("lifeos.hermes_requests"),          # LIFE-307: one signed Buzz request per new `hermes`-labelled Agent Go issue; dry run unless --live
     "web": lazy("lifeos.sources.web.run"),
     "web-scale-up": lazy("lifeos.sources.web.run", lane="Scale-Up"),
     "boards": lazy("lifeos.sources.web.boards"),          # D202: the employer-board pass
