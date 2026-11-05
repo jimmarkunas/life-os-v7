@@ -60,7 +60,7 @@ class Contract(unittest.TestCase):
     def test_agent_go_is_the_human_released_priority_ordered_queue(self):
         """LIFE-126 (Jim, Nov 1 2026): Agent Go is the explicit human-released agent queue, ordered by Priority then Rank."""
         selector = POLICY.split("### Deterministic agent work selection", 1)[1].split("### Jira-first development lifecycle", 1)[0]
-        authorization = next(line for line in POLICY.splitlines() if line.startswith("- **Authorization, scope, assignment, and routing.**"))
+        authorization = POLICY.split("- **Authorization, scope, assignment, and routing.**", 1)[1].split("- **Branch and PR names.**", 1)[0]   # the bullet and its numbered sub-points
         query = 'project = LIFE AND status = "Agent Go" AND issuetype != Epic ORDER BY priority DESC, Rank ASC'
         self.assertIn(query, selector)                                   # the one selector query, Priority first and Rank as tie-breaker
         self.assertIn("Rank breaks ties", selector)
