@@ -1,5 +1,7 @@
 # LIFE OS delivery flow: why it hurts and a simpler one (PROPOSAL)
 
+> Nov 5, 2026 (LIFE-317): historical findings and evidence only. The approved requirement and its change history live in Notion, [REQ-1](https://app.notion.com/p/40f3c5a0592681699abade3542be12ba); the rules in force are in `docs/development-policy` Part 04 and AGENTS.md.
+
 Status: **PROPOSAL for Jim. Nothing in this document is in force.** The draft PR carrying it changes no Jira setting, merges nothing and is not approved. Prepared November 5, 2026 (CT) from a read-only review of Jira LIFE, V7 PRs #740–756, the policy parts and the Hermes tickets.
 
 Plain-language summary: in one week, three small Hermes tests took 37 hours and at least five approvals, a tiny feature needed four tickets, and two tickets were released that could not run. The cause is not slow agents. The process asks you to approve *actions* instead of *outcomes*, never corrects its own paperwork, and lets a ticket be "released" before it can run. The fix is one ticket per outcome, one approval, one receipt, one acceptance, plus a check that refuses unrunnable tickets.
