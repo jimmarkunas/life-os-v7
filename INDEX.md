@@ -59,6 +59,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/US_REMOTE_WEB.md`](docs/US_REMOTE_WEB.md) |
 | [`docs/buzz-implementation-roadmap-v1.md`](docs/buzz-implementation-roadmap-v1.md) |
 | [`docs/buzz-remote-mcp-deploy.md`](docs/buzz-remote-mcp-deploy.md) |
+| [`docs/delivery-flow-v2-proposal.md`](docs/delivery-flow-v2-proposal.md) |
 | [`docs/contracts/career-lifecycle.requirements.v1.json`](docs/contracts/career-lifecycle.requirements.v1.json) |
 | [`docs/prototypes/hiring-decision-center.html`](docs/prototypes/hiring-decision-center.html) |
 

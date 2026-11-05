@@ -67,6 +67,17 @@ class IssueEligibility(Fixture):
                 self.assertEqual((status, out), (2, ""))
                 self.assertIn(f"refused v1 {code} ", err)
 
+    def test_open_prerequisites_and_decisions_are_refused_when_declared(self):
+        ok = {"what": "Bitwarden project slot", "proof": "plan shows a free slot", "status": "done"}
+        self.assertEqual(self.issue(lambda d: d.update(needs=[ok], decisions=[ok]))[0], 0)
+        for field, code in (("needs", "prerequisite_open"), ("decisions", "decision_open")):
+            for row in ({**ok, "status": "open"}, {**ok, "proof": " "}, "x"):
+                with self.subTest(field=field, row=row):
+                    status, out, err = self.issue(lambda d: d.update({field: [row]}))
+                    self.assertEqual((status, out), (2, ""))
+                    self.assertIn(f"refused v1 {code} {field} item 1", err)
+        self.assertIn("needs_unreadable", self.issue(lambda d: d.update(needs="none"))[2])
+
     def test_owner_host_and_source_are_optional_but_checked_when_present(self):
         status, out, _ = self.issue(lambda d: [d.pop(k) for k in ("owner", "host", "source")])
         self.assertEqual((status, out), (0, "ready v1\n"))

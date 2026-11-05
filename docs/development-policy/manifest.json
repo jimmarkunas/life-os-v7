@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "6ae795ced3ae3e05332e467877bc25937c60f3bd1eb96089ea20619ae912d8ef",
+  "reassembled_sha256": "34b0466b0f6c699f6c69dc26383cfa51ab31c76bf1c8861b7135f4a73e7347c6",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -178,6 +178,18 @@
       "date": "2026-11-04",
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/754",
       "approval": "Jim Markunas, November 4, 2026 CT, chat instruction 'merge #754': narrows Part 04 chain release to leaf issues only; adds the six-step agent loop to AGENTS.md",
+      "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-05",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
+      "approval": "Jim Markunas, November 5, 2026 CT 2:55 PM, chat: \"Keep 3 and 3a so agents merge routine PRs on green CI. This contradicts your hard gate. <-- Approved, go\". Markers removed; items 3/3a unchanged in substance; the paragraph now records the decision",
+      "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
+    },
+    {
+      "date": "2026-11-05",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/757",
+      "approval": "Jim Markunas, November 5, 2026 CT 2:45 PM, chat 'Approved' on process-review item 1 (remove duplicate transitions 6, 16, 20): Jira workflow edited and published Nov 5; the policy's start-transition ID 6 reference becomes ID 14.",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
