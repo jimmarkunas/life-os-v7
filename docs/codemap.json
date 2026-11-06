@@ -901,6 +901,16 @@
     "NOTION_FIT_SYNC_TOKEN"
    ]
   },
+  "readiness-live.yml": {
+   "jobs": [
+    "readiness"
+   ],
+   "manual": true,
+   "secrets": [
+    "JIRA_BASE_URL",
+    "LIFEOS_BWS_RUNTIME_TOKEN"
+   ]
+  },
   "recruiters.yml": {
    "jobs": [
     "recruiters"

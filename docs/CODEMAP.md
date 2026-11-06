@@ -397,6 +397,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `outlook.yml`: jobs outlook; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, OUTLOOK_CLIENT_ID
 - `pr-tests.yml`: jobs unit-tests; manual no; secrets -
 - `profile-sync.yml`: jobs sync; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_FIT_SYNC_TOKEN
+- `readiness-live.yml`: jobs readiness; manual yes; secrets JIRA_BASE_URL, LIFEOS_BWS_RUNTIME_TOKEN
 - `recruiters.yml`: jobs recruiters; manual yes; secrets GMAIL_OAUTH_CLIENT_ID, LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN, NOTION_RECRUITERS_DATA_SOURCE_ID, OUTLOOK_CLIENT_ID
 - `safety.yml`: jobs safety; manual yes; secrets LIFEOS_ACQ_SSH_PORT, LIFEOS_BWS_RUNTIME_TOKEN
 - `watchdog.yml`: jobs watch; manual yes; secrets GITHUB_TOKEN, LIFEOS_BWS_RUNTIME_TOKEN
