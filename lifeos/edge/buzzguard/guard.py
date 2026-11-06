@@ -317,6 +317,14 @@ def decide(d, g, home):
         return "deny", "secret-shaped text in a tool input"
     if tool in BUZZ_READ:
         return "allow", "buzz read"
+    if tool == "mcp__buzz__github_pr_state":                         # Buzz's own GitHub tools (seen in the agent's tool list): reading a PR's state is a read, linking/watching is a change
+        refs, bad = _repo_refs(ti)
+        return ("allow", "buzz github pr state") if not bad and refs and {r.lower() for r in refs} <= {r.lower() for r in GITHUB_REPOS} else ("deny", "pr state outside allowed repos")
+    if tool in ("mcp__buzz__github_link_pr", "mcp__buzz__github_watch_pr"):
+        refs, bad = _repo_refs(ti)
+        if bad or not refs or not {r.lower() for r in refs} <= {r.lower() for r in GITHUB_REPOS}:
+            return "deny", "buzz github change outside allowed repos or without a repo"
+        return _write(g, "%s on %s" % (tool.split("__")[-1], ",".join(sorted(refs))))
     if tool == "Bash":
         return _decide_bash(ti)
     m = ATL.fullmatch(tool)

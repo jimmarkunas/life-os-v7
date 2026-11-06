@@ -46,6 +46,18 @@ class Table(Base):
                     self.send("x", bogus=1), self.send(""), self.send("   "), self.send("a" * 12001), self.send(5)):
             self.assertEqual(self.dec("mcp__buzz__send", bad), "deny", bad)
 
+    def test_buzz_github_tools_the_agent_really_has(self):
+        pr = {"url": "https://github.com/jimmarkunas/life-os-v7/pull/781"}
+        self.assertEqual(self.dec("mcp__buzz__github_pr_state", pr), "allow")
+        self.assertEqual(self.dec("mcp__buzz__github_pr_state", {"url": "https://github.com/evil/x/pull/1"}), "deny")
+        self.assertEqual(self.dec("mcp__buzz__github_pr_state", {}), "deny")
+        self.assertEqual(self.dec("mcp__buzz__github_link_pr", pr), "deny")                   # writes not enabled
+        self.set_mode("ask")
+        self.assertEqual(self.dec("mcp__buzz__github_link_pr", pr), "ask")
+        self.assertEqual(self.dec("mcp__buzz__github_watch_pr", pr), "ask")
+        self.assertEqual(self.dec("mcp__buzz__github_watch_pr", {"url": "https://github.com/evil/x/pull/1"}), "deny")
+        self.assertEqual(self.dec("mcp__buzz__github_delete_pr", pr), "deny")
+
     def test_the_real_reply_field_and_tool_search_the_agent_uses(self):
         eid = "ab12" * 16
         self.assertEqual(self.dec("mcp__buzz__send", self.send("Yes, I am here.", reply=eid)), "allow")           # shape seen in the agent's real transcript
