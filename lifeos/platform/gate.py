@@ -25,6 +25,7 @@ FAIL_LABEL = "pipeline-failing"
 DIGEST_HOUR_UTC = 13           # the daily check-in: 8 AM Chicago in summer time (7 AM in winter); the :17 watchdog run sends it
 DOMAINS_TITLE = "domains (after tick)"
 PENDING = "push-pending"       # the incident exists but its phone push was not accepted yet; retried by the watchdog
+REMIND_HOURS = 3               # LIFE-328/329: an incident still open and still true re-pages after this long without activity on its issue
 
 
 def _t(value):
@@ -129,10 +130,25 @@ def _push(title, body, severity, key):
     return alerts.push(key, title, body)
 
 
-def sync_incident(label, title, body, signal, open_push, close_push, push=None):
-    """One incident = one GitHub issue. signal: True open | False recovered | None unchanged. -> "opened" | "closed" | "retried" | None.
-    Push first: an incident whose push is not accepted is still opened (the record must exist) but labelled `push-pending`, so the next run pushes again."""
+def _hours_open(issue, now):
+    opened = _t(issue.get("created_at"))
+    return int((now - opened).total_seconds() // 3600) if opened else None
+
+
+def remind_due(issue, now, hours=REMIND_HOURS):
+    """LIFE-329: due when the issue has been quiet (no update: opening, a reminder comment, a label change, Jim's own comment) for `hours`.
+    The issue itself is the record, so the watchdog stays stateless; an issue with no timestamp is never reminded."""
+    quiet = _t(issue.get("updated_at") or issue.get("created_at"))
+    return bool(quiet) and (now - quiet) >= dt.timedelta(hours=hours)
+
+
+def sync_incident(label, title, body, signal, open_push, close_push, push=None, now=None):
+    """One incident = one GitHub issue. signal: True open | False recovered | None unchanged. -> "opened" | "closed" | "retried" | "reminded" | None.
+    Push first: an incident whose push is not accepted is still opened (the record must exist) but labelled `push-pending`, so the next run pushes again.
+    LIFE-329: while the signal is still True, an open incident re-pages every REMIND_HOURS (one page on Nov 3 2026 at 4 AM went unseen for a 21-hour outage);
+    an accepted reminder adds one comment to the issue, which restarts the clock. An unchanged signal (None) never reminds."""
     push = push or _push
+    now = now or dt.datetime.now(dt.timezone.utc)
     try:
         issues = _api(f"issues?state=open&labels={label}&per_page=5")
         if signal is True and not issues:
@@ -154,6 +170,12 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None):
                 if push(*open_push):
                     _api(f"issues/{issue['number']}/labels/{PENDING}", "DELETE")
                 retried = "retried"
+            elif signal is True and remind_due(issue, now):
+                age = _hours_open(issue, now)
+                still = f"{open_push[1]} Still open after {age} h." if age is not None else open_push[1]
+                if push(f"Still open: {open_push[0]}", still, *open_push[2:]):
+                    _api(f"issues/{issue['number']}/comments", "POST", {"body": f"Reminder pushed to the phone (open {age} h). The next one follows after {REMIND_HOURS} quiet hours."})
+                retried = "reminded"
         return retried
     except Exception as error:                                     # alerting must never stop the pipeline
         print(f"gate: incident update skipped ({type(error).__name__})")
@@ -171,11 +193,11 @@ def watch(now=None, push=None):
         sync_incident(LABEL, ISSUE_TITLE, "The newest successful hourly run finished more than 2.5 hours ago. Scheduled triggers may be dropped by GitHub, "
                       "or a stage is failing. Open the Actions tab. This issue closes itself when a run succeeds.", is_stale,
                       ("V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab.", "page", "pipeline_stalled"),
-                      ("V7 pipeline recovered", "A run succeeded.", "info", "pipeline_stalled_recovered")),
+                      ("V7 pipeline recovered", "A run succeeded.", "info", "pipeline_stalled_recovered"), push, now),
         sync_incident(FAIL_LABEL, FAIL_TITLE, "Three or more hourly runs failed in the last 24 hours (each one also pushed 'V7 run failed'). Open the Actions tab. "
                       "This issue closes itself after 24 hours with no failed run.", fail_signal,
                       ("V7 hourly runs failing repeatedly", "3+ failed runs in 24 hours. Open the Actions tab.", "page", "pipeline_failing"),
-                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered")),
+                      ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now),
     ]
     sent = None
     if digest_due(now):
