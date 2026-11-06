@@ -25,7 +25,8 @@ WAITING = ("queued", "pending", "waiting", "requested")
 MAX_HEAD, MAX_BODY = 8192, 16384
 REASONS = {200: "OK", 303: "See Other", 400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"}
 # same-origin, never no-referrer: under no-referrer a browser sends `Origin: null` on the form POST and the origin check below refuses every Review (iPhone Safari, Oct 16 2026)
-SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "same-origin"), ("X-Frame-Options", "DENY"), ("Connection", "close"))
+SAFE = (("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"), ("Connection", "close"))
+REFERRER = "same-origin"
 CSP = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
 # LIFE-217 (Jim, Oct 31 2026: "Google sign-in pop-up"): the Manage hub alone may load Google's Drive picker and sign-in (scripts, their frames and token calls);
 # every other screen keeps CSP. Still no inline script, form-action and base-uri unchanged, and the page itself is never framed.
@@ -34,6 +35,9 @@ PICKER_CSP = ("default-src 'self'; script-src 'self' https://apis.google.com htt
               "img-src 'self' data: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; "
               "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 PICKER_PATHS = ("/manage",)
+# LIFE-173 (Jim, Nov 6 2026: "fix both"): Google checks the picker's API key against the page's address, and same-origin sends Google none, so the picker said
+# "The API developer key is invalid". The Manage hub alone sends Google its origin (never the path or ?o=); same-origin posts still carry their Origin.
+PICKER_REFERRER = "strict-origin-when-cross-origin"
 
 
 class ReadOnly:
@@ -109,9 +113,9 @@ def admitted(req, policy):
     return 0 if same and h.get("content-type") == "application/x-www-form-urlencoded" else 403
 
 
-def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), csp=CSP):
+def respond(out, status, body=b"", ctype="text/plain; charset=utf-8", extra=(), csp=CSP, referrer=REFERRER):
     head = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}", f"Content-Type: {ctype}", f"Content-Length: {len(body)}"]
-    head += [f"{k}: {v}" for k, v in (*SAFE, ("Content-Security-Policy", csp), *extra)]
+    head += [f"{k}: {v}" for k, v in (*SAFE, ("Referrer-Policy", referrer), ("Content-Security-Policy", csp), *extra)]
     out.write(("\r\n".join(head) + "\r\n\r\n").encode("latin-1") + body)
     out.flush()
 
@@ -197,7 +201,8 @@ def main(app, stdin=None, stdout=None, lookup=ep.whois, uid=ep.loopback_peer_uid
         status, ctype, body, extra = app({**req, "form": dict(parse_qsl(req["body"].decode("utf-8", "replace")))}, who, secrets)
     except Exception:                                                      # noqa: BLE001 - no failure detail ever leaves the gate
         status, ctype, body, extra = 500, "text/plain; charset=utf-8", b"", ()
-    respond(stdout, status, body, ctype, extra, PICKER_CSP if req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html") else CSP)
+    hub = req["method"] == "GET" and req["path"] in PICKER_PATHS and status == 200 and ctype.startswith("text/html")
+    respond(stdout, status, body, ctype, extra, PICKER_CSP if hub else CSP, PICKER_REFERRER if hub else REFERRER)
     if token and after and status == 200:
         refresh(token, after)
     return 0
