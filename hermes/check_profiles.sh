@@ -49,6 +49,11 @@ for p in $names; do
   pd=$(pdir_of "$p"); dst="$pd/plugins/connector-allowlist"; problems=""
   [ -d "$pd" ] || { echo "  $p: FAIL (in the table but no profile folder)"; fail=1; continue; }
   want=$(want_of "$p")
+  if [ "$want" = "ALL " ]; then
+    if [ "$(plugin_state "$pd/config.yaml")" = enabled ]; then echo "  $p: FAIL; the table says ALL (not limited) but the plugin is enabled in it"; fail=1
+    else echo "  $p: OK (not limited, by decision: ALL)"; fi
+    continue
+  fi
   [ "$want" = NOTABLE ] && problems="$problems; UNPROTECTED: this profile is not in the table"
   for f in plugin.yaml __init__.py; do
     if [ ! -f "$dst/$f" ]; then problems="$problems; $f missing"

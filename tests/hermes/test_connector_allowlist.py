@@ -322,9 +322,8 @@ class AllProfiles(unittest.TestCase):
         return self.run_script("deploy_plugin.sh", "--all", *args)
 
     def enable_everywhere(self):
-        for name in PROFILES + ("main",):
-            enabled = ["x", "connector-allowlist"]
-            self.config(name, enabled)
+        for name in PROFILES:
+            self.config(name, ["x", "connector-allowlist"])
 
     def test_the_repo_table_covers_every_known_bot_and_lists_only_safe_names(self):
         with open(os.path.join(HERMES, "connector-allowlists.txt")) as handle:
@@ -335,8 +334,9 @@ class AllProfiles(unittest.TestCase):
                     name, _, names = line.partition(":")
                     rows[name.strip()] = [n.strip() for n in names.split(",") if n.strip()]
         self.assertEqual(sorted(rows), sorted(PROFILES + ("main",)))
+        self.assertEqual(rows["main"], ["ALL"])                                                         # Jim, Nov 6 2026: the main bot is not limited
         for name, allowed in rows.items():
-            for item in allowed:
+            for item in ([] if allowed == ["ALL"] else allowed):
                 self.assertRegex(item, r"^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$", name)
                 self.assertNotIn(item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name)           # nothing financial by default
 
@@ -344,8 +344,9 @@ class AllProfiles(unittest.TestCase):
         status, out = self.deploy()
         self.assertEqual(status, 0, out)
         self.assertIn("DRY RUN", out)
-        self.assertIn("6 profile(s)", out)
-        self.assertIn("18 file(s) would change", out)
+        self.assertIn("5 profile(s)", out)
+        self.assertIn("15 file(s) would change", out)
+        self.assertIn("not limited by decision (ALL in the table, nothing installed or touched): main", out)
         self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))
         for name in PROFILES:
             self.assertFalse(os.path.exists(os.path.join(self.pdir(name), "plugins")), name)
@@ -354,16 +355,17 @@ class AllProfiles(unittest.TestCase):
         status, out = self.deploy("--apply", "--backup", self.backup)
         self.assertEqual(status, 0, out)
         self.assertIn("read-back OK", out)
-        for name in PROFILES + ("main",):
+        self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))                           # main: nothing installed
+        for name in PROFILES:
             dst = os.path.join(self.pdir(name), "plugins", "connector-allowlist")
             for f in ("plugin.yaml", "__init__.py"):
                 with open(os.path.join(dst, f)) as got, open(os.path.join(PLUGIN, f)) as want:
                     self.assertEqual(got.read(), want.read(), (name, f))
         with open(os.path.join(self.pdir("developer"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "")                                                        # developer: nothing allowed
-        with open(os.path.join(self.pdir("main"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
+        with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "notion\n")
-        self.assertIn("  hermes plugins enable connector-allowlist", out)
+        self.assertNotIn("       hermes plugins enable connector-allowlist", out)                         # main is never enabled
         for name in PROFILES:
             self.assertIn("hermes --profile %s plugins enable connector-allowlist" % name, out)
         self.assertIn("systemctl restart hermes-eval-backend", out)
@@ -418,8 +420,9 @@ class AllProfiles(unittest.TestCase):
     def test_the_auditor_fails_on_a_bare_host_and_names_every_profile(self):
         status, out = self.run_script("check_profiles.sh")
         self.assertEqual(status, 1, out)
-        for name in PROFILES + ("main",):
+        for name in PROFILES:
             self.assertIn("  %s: FAIL" % name, out)
+        self.assertIn("  main: OK (not limited, by decision: ALL)", out)
         self.assertIn("is not in plugins.enabled", out)
         self.assertIn("FAIL: at least one profile is NOT limited correctly", out)
 
@@ -433,6 +436,15 @@ class AllProfiles(unittest.TestCase):
         self.assertIn("PASS: every profile is limited", out)
         self.assertIn("developer: OK (may use: nothing)", out)
         self.assertIn("librarian: OK (may use: notion)", out)
+        self.assertIn("main: OK (not limited, by decision: ALL)", out)
+
+    def test_a_main_bot_that_has_the_plugin_enabled_contradicts_the_table_and_fails(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        self.enable_everywhere()
+        self.config("main", ["advanced-delegation", "connector-allowlist"])
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)
+        self.assertIn("main: FAIL; the table says ALL (not limited) but the plugin is enabled in it", out)
 
     def test_a_brand_new_bot_is_reported_as_unprotected(self):
         self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
@@ -457,7 +469,7 @@ class AllProfiles(unittest.TestCase):
         self.assertIn("writer: FAIL; plugin is in plugins.disabled", out)
         self.assertIn("research: FAIL; __init__.py differs from the repo", out)
         self.assertIn("librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [notion]", out)
-        self.assertIn("main: OK", out)
+        self.assertIn("main: OK (not limited", out)
 
     def test_the_auditor_fails_when_a_table_profile_has_no_folder_and_writes_nothing(self):
         self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)

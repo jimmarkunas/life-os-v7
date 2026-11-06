@@ -3,7 +3,7 @@
 #   sudo bash deploy_plugin.sh --all                                   DRY RUN: every profile in hermes/connector-allowlists.txt (main included). Writes nothing.
 #   sudo bash deploy_plugin.sh --all --apply                           backs up what it replaces into /root/hermes-plugin-<time CT>/, installs (owner hermes, files 0600, folders 0700), reads back.
 #   sudo bash deploy_plugin.sh --profile librarian --allow notion      ONE profile with an explicit list (the LIFE-320 form); `--profile main` is the default profile.
-# Names: `notion` allows that Nous connector, `mcp:todoist` allows that MCP server; everything else is refused. An empty list (`--allow none` or an empty table row) allows nothing.
+# `ALL` in the table means that bot is deliberately NOT limited: nothing is installed in it (and it is never touched). Names: `notion` allows that Nous connector, `mcp:todoist` allows that MCP server; everything else is refused. An empty list (`--allow none` or an empty table row) allows nothing.
 # Options for tests: --home DIR (the .hermes folder), --backup DIR, --table FILE. It prints names and hashes only. It does NOT enable the plugin, touch config.yaml or toolsets, or restart anything:
 # the exact enable lines are printed at the end, and a Desktop server restart plus the live refusal test follow (docs/hermes-files.md rule 4).
 set -eu
@@ -29,7 +29,7 @@ NAMERE='^[a-z0-9][a-z0-9_-]{0,63}$'
 ITEMRE='^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$'
 for f in plugin.yaml __init__.py; do [ -s "$SRC/$f" ] || { echo "REFUSED: repo file $f is missing or empty"; exit 1; }; done
 # 1) the list of (profile, names) to deploy
-TARGETS=""
+TARGETS=""; SEEN=""; EXEMPT=""
 if [ "$ALL" = yes ]; then
   [ -z "$PROFILE" ] && [ "$HAVE_ALLOW" = no ] || { echo "REFUSED: --all cannot be combined with --profile or --allow"; exit 1; }
   [ -f "$TABLE" ] || { echo "REFUSED: no table $TABLE"; exit 1; }
@@ -38,7 +38,10 @@ if [ "$ALL" = yes ]; then
     case "$line" in *:*) ;; *) echo "REFUSED: bad table line '$line'"; exit 1 ;; esac
     name=$(echo "${line%%:*}" | tr -d '[:space:]'); names=$(echo "${line#*:}" | tr -d '[:space:]')
     echo "$name" | grep -E -q "$NAMERE" || { echo "REFUSED: '$name' is not a profile name"; exit 1; }
-    if printf '%s' "$TARGETS" | grep -q "^$name:"; then echo "REFUSED: profile '$name' is listed twice"; exit 1; fi
+    if printf '%s' "$SEEN" | grep -q "^$name\$"; then echo "REFUSED: profile '$name' is listed twice"; exit 1; fi
+    SEEN="$SEEN$name
+"
+    if [ "$names" = ALL ]; then EXEMPT="$EXEMPT $name"; continue; fi
     TARGETS="$TARGETS$name:$names
 "
   done < "$TABLE"
@@ -65,6 +68,7 @@ EOF2
 h12() { sha256sum "$1" | cut -c1-12; }
 WANTDIR=$(mktemp -d); trap 'rm -rf "$WANTDIR"' EXIT
 echo "== $([ "$APPLY" = yes ] && echo APPLY || echo 'DRY RUN (nothing is written)'): connector-allowlist -> $(echo "$TARGETS" | grep -c .) profile(s) =="
+[ -z "$EXEMPT" ] || echo " not limited by decision (ALL in the table, nothing installed or touched):$EXEMPT"
 # 3) compare
 changed=0
 while IFS= read -r t; do
