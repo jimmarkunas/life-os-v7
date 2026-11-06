@@ -9,12 +9,17 @@ import json
 import os
 
 
-def notion_id(name):
-    one = (os.environ.get("LIFEOS_NOTION_" + name) or "").strip()
+def configured_id(name, environ=os.environ):
+    """The real id for a name, or "" when neither variable holds it."""
+    one = (environ.get("LIFEOS_NOTION_" + name) or "").strip()
     if one:
         return one
     try:
-        mapped = json.loads(os.environ.get("LIFEOS_NOTION_IDS") or "{}").get(name)
+        mapped = json.loads(environ.get("LIFEOS_NOTION_IDS") or "{}").get(name)
     except (ValueError, AttributeError):
         mapped = None
-    return str(mapped).strip() if mapped else hashlib.sha256(("synthetic:" + name).encode()).hexdigest()[:32]
+    return str(mapped).strip() if mapped else ""
+
+
+def notion_id(name):
+    return configured_id(name) or hashlib.sha256(("synthetic:" + name).encode()).hexdigest()[:32]

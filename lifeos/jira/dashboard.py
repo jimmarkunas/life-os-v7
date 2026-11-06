@@ -11,6 +11,7 @@ Nothing private reaches Notion (dash_scrub). Logs carry counts and fixed codes o
 import os
 from datetime import datetime, timedelta
 
+from lifeos.platform.notion_ids import configured_id
 from lifeos.jira import dash_data as D, dash_render as R
 from lifeos.jira.dash_scrub import scrub, terms as private_terms
 from lifeos.platform import alerts
@@ -245,7 +246,7 @@ def _site(environ):
 
 
 def build(limit, live, environ=os.environ, jira=None, client=None, now=None):
-    root = (environ.get("JM_DASHBOARD_PAGE_ID") or "").strip().replace("-", "")
+    root = (environ.get("JM_DASHBOARD_PAGE_ID") or configured_id("DASHBOARD_PAGE", environ)).strip().replace("-", "")
     if len(root) != 32:
         raise DashError("JM_DASH_CONFIG_MISSING")
     now = (now or datetime.now(D.CENTRAL)).astimezone(D.CENTRAL)
