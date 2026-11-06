@@ -67,6 +67,48 @@ class Verify(unittest.TestCase):
         self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")
         self.assertEqual(vr.main([path], io.StringIO()), 1)
 
+    def test_a_failure_names_the_database_and_every_bad_database_is_reported_in_one_pass(self):
+        path = self.archive(corrupt=True)
+        with self.assertRaises(vr.RestoreError) as raised:
+            vr.verify(path)
+        self.assertIn("hermes/state.db: RESTORE_DB_CORRUPT", raised.exception.detail)
+        self.assertNotIn("role.db", raised.exception.detail)                          # the good one is not blamed
+        out = io.StringIO()
+        self.assertEqual(vr.main([path], out), 1)
+        self.assertIn("RESTORE FAILED: RESTORE_DB_CORRUPT", out.getvalue())
+        self.assertIn("  hermes/state.db: RESTORE_DB_CORRUPT", out.getvalue())
+
+    def test_two_bad_databases_are_both_named_and_a_missing_module_is_not_called_corruption(self):
+        real = vr.tables
+
+        def fake(path):
+            if path.endswith("state.db"):
+                raise vr.RestoreError("RESTORE_DB_UNCHECKED", "no such module: vec0")
+            if path.endswith("role.db"):
+                raise vr.RestoreError("RESTORE_DB_CORRUPT", "database disk image is malformed")
+            return real(path)
+        vr.tables = fake
+        self.addCleanup(setattr, vr, "tables", real)
+        archive = self.archive()
+        with self.assertRaises(vr.RestoreError) as raised:
+            vr.verify(archive)
+        self.assertIn("hermes/state.db: RESTORE_DB_UNCHECKED (no such module: vec0)", raised.exception.detail)
+        self.assertIn("hermes/profiles/role.db: RESTORE_DB_CORRUPT (database disk image is malformed)", raised.exception.detail)
+        self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")                  # mixed causes: the worse code leads
+        vr.tables = lambda path: (_ for _ in ()).throw(vr.RestoreError("RESTORE_DB_UNCHECKED", "no such module: vec0"))
+        with self.assertRaises(vr.RestoreError) as only:
+            vr.verify(archive)
+        self.assertEqual(str(only.exception), "RESTORE_DB_UNCHECKED")
+
+    def test_sqlite_error_text_is_classified(self):
+        db = os.path.join(self.tmp, "x.db")
+        with open(db, "wb") as handle:
+            handle.write(b"not a database " * 50)
+        with self.assertRaises(vr.RestoreError) as raised:
+            vr.tables(db)
+        self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")
+        self.assertTrue(raised.exception.detail)
+
     def test_an_unsafe_member_is_rejected_before_anything_is_written(self):
         def evil(tar):
             data = b"x"
