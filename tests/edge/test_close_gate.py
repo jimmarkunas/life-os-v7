@@ -83,6 +83,20 @@ class Gate(unittest.TestCase):
         _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
         self.assertEqual(csp(text), gate.CSP)
 
+    def test_only_the_manage_hub_page_tells_google_its_origin(self):
+        """LIFE-173 (Jim, Nov 6 2026): the picker's API key is restricted to this origin, so GET /manage's HTML sends Google its origin (never the path);
+        every other screen, a POST, a refusal or a script stays same-origin, and no page is ever no-referrer (that would post `Origin: null`)."""
+        def policy(text):
+            return [line.split(": ", 1)[1] for line in text.split("\r\n") if line.startswith("Referrer-Policy: ")]
+        _, status, text = self.run_gate(v2(RUNNER) + http(path="/manage?o=abc"), whois_as(PHONE))
+        self.assertEqual((status, policy(text)), (200, ["strict-origin-when-cross-origin"]))
+        for raw in (http(path="/close?l=abc"), http(path="/manage.css"), http(path="/manage-picker.js"), http("POST", "/manage", POST_OK, b"o=abc")):
+            _, _, text = self.run_gate(v2(RUNNER) + raw, whois_as(PHONE))
+            self.assertEqual(policy(text), ["same-origin"], raw[:30])
+        refused = lambda req, who, secrets: (403, "text/html; charset=utf-8", b"no", ())          # noqa: E731
+        _, _, text = self.run_gate(v2(RUNNER) + http(path="/manage"), whois_as(PHONE), app=refused)
+        self.assertEqual(policy(text), ["same-origin"])
+
     def test_the_picker_credential_reaches_only_get_manage(self):
         """LIFE-217: the optional `picker` credential (the Drive picker's browser identifiers) is read for GET /manage only; absent or broken means no picker."""
         ids = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
