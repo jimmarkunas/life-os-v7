@@ -27,6 +27,16 @@ def _r(stage, klass, attempt, meaning, action, severity="none", public=False):
 
 
 CODES = {
+    # --- the Oracle ticker (LIFE-330, lifeos/edge/ticker/ticker.py): systemd timers on lifeos-edge-01 that replace cron-job.org and run the watchdog's incident checks
+    "TICK_DISPATCHED": _r("ticker", "ok", False, "The hourly pipeline was started (GitHub accepted the dispatch).", "None."),
+    "TICK_REFUSED": _r("ticker", "blocked", False, "GitHub refused the dispatch (401/403/404/422): the token, its permissions or the workflow name is wrong.", "Replace the token (install-ticker.sh credential github) or check hourly.yml; GitHub's own crons still run meanwhile."),
+    "TICK_GITHUB_ERROR": _r("ticker", "retry", False, "GitHub answered the dispatch with an error (5xx or rate limit).", "None; the next hour tries again and GitHub's own crons still run."),
+    "TICK_NETWORK": _r("ticker", "retry", False, "The Oracle machine could not reach GitHub.", "None for one hour; persistent: check the VM's network."),
+    "TICKER_NO_CREDENTIAL": _r("ticker", "blocked", False, "A stored credential (the GitHub token or the phone topic) is missing.", "Run install-ticker.sh credential github / credential ntfy."),
+    "TICKER_VARIABLES_UNREADABLE": _r("ticker", "blocked", False, "The alert switches could not be read from the repository variables, so the watchdog check did not run (it never guesses on or off).", "Give the token Variables: read, or check GitHub; the GitHub watchdog still runs."),
+    "TICKER_WATCH_FAILED": _r("ticker", "retry", False, "The watchdog check could not read the hourly runs from GitHub.", "None; the next check (15 minutes) tries again."),
+    "WATCH_DONE": _r("ticker", "ok", False, "The watchdog check ran (incidents opened, reminded or closed as needed).", "None."),
+    "TICKER_DRY_OK": _r("ticker", "ok", False, "Dry run: both credentials are present and the alert switches are readable; nothing was dispatched or pushed.", "Run run-now tick, then enable."),
     # --- Cloud Fit: the Edge request and the backlog batch (lifeos/jobs/fit/cloud.py, edge.py, backlog.py)
     "FIT_EDGE_JUDGMENT_REJECTED": _r("fit", "terminal", True, "The model answered, but the strict judge refused the answer (not valid JSON, score or rationale).", "Counted per batch; the batch fails only when more than 3 and more than 10% of its calls are refused."),
     "FIT_EDGE_REQUEST_TOO_LARGE": _r("fit", "terminal", False, "This job's request is over the frame limit, so it was never sent.", "None; it is a fact about the job. A shortened description would clear it."),

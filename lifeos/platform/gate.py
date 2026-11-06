@@ -182,7 +182,7 @@ def sync_incident(label, title, body, signal, open_push, close_push, push=None, 
         return None
 
 
-def watch(now=None, push=None):
+def watch(now=None, push=None, checkin=True):
     """Independent watchdog (its own workflow): the gate only runs when an hourly run starts, so a total stall (no GitHub schedule, no timer tick)
     would stay silent. Two incidents, both raised from outside the pipeline: no successful run for 2.5 hours, and three or more failed ticks in 24 hours.
     Never touches job data."""
@@ -200,7 +200,7 @@ def watch(now=None, push=None):
                       ("V7 hourly runs recovered", "No failed run in 24 hours.", "info", "pipeline_failing_recovered"), push, now),
     ]
     sent = None
-    if digest_due(now):
+    if checkin and digest_due(now):                               # LIFE-330: the Oracle ticker runs incidents only; the check-in stays with the GitHub watchdog
         try:
             domain_runs = _api("actions/workflows/domains.yml/runs?per_page=60")["workflow_runs"]
         except Exception:                                          # the check-in must still go out, and say what it could not read

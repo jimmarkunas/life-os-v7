@@ -28,14 +28,20 @@ Add each one at a time in the repo's Settings -> Secrets and variables -> Action
 2. Run again with live = **true**. Re-run: it must report 0 moved.
 3. Set repo variable `V7_LIVE` = `true` so the hourly schedule is live.
 
-## Outside timer (D31) - because GitHub drops scheduled runs
+## Outside timer: the Oracle ticker (LIFE-330, replaces cron-job.org / D31) - because GitHub drops scheduled runs
+Two systemd timers on `lifeos-edge-01` (code: `lifeos/edge/ticker`): `lifeos-ticker-tick` starts the hourly pipeline at minute 17 (the same call cron-job.org made),
+and `lifeos-ticker-watch` runs the watchdog's incident checks at :05 :20 :35 :50 (the GitHub watchdog keeps the daily check-in). GitHub's own crons stay as the backup.
 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate. Resource owner: you. Repository access: **Only select repositories -> life-os-v7**.
-   Permissions: **Actions: Read and write** (nothing else). Expiration: 1 year (put a reminder in your calendar).
-2. At a free cron service (cron-job.org works): new job, URL
-   `https://api.github.com/repos/jimmarkunas/life-os-v7/actions/workflows/hourly.yml/dispatches`, method POST, schedule **every hour at minute 17**,
-   headers `Authorization: Bearer <the token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, body `{"ref":"main","inputs":{"tick":"true"}}`.
-3. Run it once from the service. A tick that arrives within 50 minutes of another run cancels itself (that is correct).
-The token lives only at the timer service. Never put it in the repo.
+   Permissions: **Actions: Read and write**, **Issues: Read and write**, **Variables: Read-only** (nothing else). Expiration: 1 year (put a reminder in your calendar).
+2. From your Mac, in an up-to-date checkout of life-os-v7 (copies only the ticker and the five watchdog modules it runs):
+   `tar czf - lifeos/edge/ticker lifeos/platform/{gate,alerts,alert_registry,alert_settings,redact}.py | ssh opc@lifeos-edge-01 "rm -rf /tmp/lifeos-ticker-src && mkdir /tmp/lifeos-ticker-src && tar xzf - -C /tmp/lifeos-ticker-src && sudo bash /tmp/lifeos-ticker-src/lifeos/edge/ticker/oracle/install-ticker.sh install /tmp/lifeos-ticker-src"`
+3. Store the two credentials (pasted into the pipe, never typed on a command line): `pbpaste | ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-ticker/install-ticker.sh credential github"`
+   with the token on the clipboard, then the same with `credential ntfy` and the phone topic on the clipboard.
+4. `ssh opc@lifeos-edge-01 "sudo bash /opt/lifeos-ticker/install-ticker.sh dry"` must print `TICKER_DRY_OK`; then `run-now tick` must print `TICK_DISPATCHED`
+   (a `tick` run appears in Actions; it cancels itself if another tick ran in the last 50 minutes, which is correct); then `run-now watch` prints `WATCH_DONE`.
+5. `... install-ticker.sh enable`, and the next day `... install-ticker.sh verify` (all PASS).
+6. Then delete the cron-job.org job and revoke its old token (GitHub -> Fine-grained tokens). Updating later: repeat step 2 (credentials and timers are kept).
+`disable` stops both timers; `uninstall` removes the code and units; `forget` removes the two credentials.
 
 
 ## Phone alerts (D53)
