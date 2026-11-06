@@ -96,7 +96,6 @@ on:
         type: boolean
         default: false
 env:
-  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
   ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
@@ -258,6 +257,7 @@ jobs:
         name: Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)
         if: ${{ inputs.jira == 'dashboard' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID }}
           MEGIBOW_BLOCK_ID: ${{ secrets.MEGIBOW_BLOCK_ID }}
           JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
@@ -1010,6 +1010,7 @@ jobs:
         continue-on-error: true
         name: Attention (Gmail label and Outlook category to Notion; counts only; writes only when live; a failed source is DEGRADED)
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
@@ -1103,6 +1104,7 @@ jobs:
         continue-on-error: true
         name: MegIBOW (Gmail, Outlook and calendars to the Notion table; counts only; writes only when live; a failed source is DEGRADED)
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
@@ -1171,6 +1173,7 @@ jobs:
         # Runs after every other Daily Report writer (the dcc job's needs), so the decisions are built from this tick's cards, not the last tick's.
         if: ${{ always() }}
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           ATTENTION_CARD_BLOCK_ID: ${{ secrets.ATTENTION_CARD_BLOCK_ID }}
           AMAZON_CARD_BLOCK_ID: ${{ secrets.AMAZON_CARD_BLOCK_ID }}
           BILLS_CARD_BLOCK_ID: ${{ secrets.BILLS_CARD_BLOCK_ID }}
@@ -1323,6 +1326,7 @@ jobs:
         continue-on-error: true
         name: Interview OS (LIFE-88; V7 is the only Interview OS writer - scheduling requests in Gmail and Outlook for jobs Jim applied to, accepted Calendar rounds, and the refresh of machine pages from the Ledger and each page's own identity; a dry run unless INTERVIEW_OS_WRITER is v7)
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
           OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
@@ -1607,6 +1611,7 @@ jobs:
         continue-on-error: true
         name: Granola auto (every meeting not yet carried; counts and fixed codes only; writes only when live and GRANOLA_AUTO is on)
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           LIFEOS_ACQ_SSH_JUMP_HOST: ${{ vars.V7_STORE_JUMP_HOST }}
