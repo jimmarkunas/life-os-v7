@@ -248,7 +248,8 @@ class Deploy(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))
         self.assertFalse(os.path.exists(os.path.join(self.home, "config.yaml")))
         self.assertFalse(os.path.exists(os.path.join(self.home, "profiles", "librarian", "config.yaml")))
-        self.assertIn("Not enabled and nothing restarted", out)
+        self.assertIn("Nothing was enabled or restarted", out)
+        self.assertIn("hermes --profile librarian plugins enable connector-allowlist", out)
         status, again = self.run_script("--apply", "--backup", os.path.join(self.tmp, "backup2"))
         self.assertEqual(status, 0, again)
         self.assertIn("0 file(s) would change", again)
@@ -260,14 +261,14 @@ class Deploy(unittest.TestCase):
         self.assertIn("1 file(s) would change", out)
         with open(os.path.join(self.dst, "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "notion\ntodoist\n")
-        with open(os.path.join(self.tmp, "b2", "allowlist.txt")) as handle:
+        with open(os.path.join(self.tmp, "b2", "librarian", "allowlist.txt")) as handle:
             self.assertEqual(handle.read(), "notion\n")
-        self.assertIn("ROLLBACK allowlist.txt", out)
+        self.assertIn("ROLLBACK librarian/allowlist.txt", out)
 
     def test_bad_arguments_are_refused_before_anything_is_written(self):
         for kwargs, needle in (({"profile": ""}, "--profile NAME is required"), ({"profile": "../x"}, "--profile NAME is required"),
-                               ({"allow": ""}, "--allow NAMES is required"), ({"allow": "notion,*"}, "is not a connector name"),
-                               ({"allow": "notion,$(x)"}, "is not a connector name"), ({"profile": "nosuch"}, "no profile folder")):
+                               ({"allow": ""}, "--allow NAMES is required"), ({"allow": "notion,*"}, "is not an allowed name"),
+                               ({"allow": "notion,$(x)"}, "is not an allowed name"), ({"profile": "nosuch"}, "no profile folder")):
             status, out = self.run_script("--apply", "--backup", self.backup, **kwargs)
             self.assertEqual(status, 1, (kwargs, out))
             self.assertIn(needle, out)
@@ -285,6 +286,192 @@ class Deploy(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertNotIn("def check", out)
         self.assertNotIn("register_hook", out)
+
+
+PROFILES = ("claude-hermes", "developer", "librarian", "research", "writer")
+
+
+class AllProfiles(unittest.TestCase):
+    """LIFE-321: the table, `deploy_plugin.sh --all` and `check_profiles.sh`."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.pack = os.path.join(self.tmp, "pack")
+        shutil.copytree(HERMES, self.pack, ignore=shutil.ignore_patterns("__pycache__"))
+        self.home = os.path.join(self.tmp, "home")
+        for name in PROFILES:
+            os.makedirs(os.path.join(self.home, "profiles", name))
+            self.config(name, ["claude-subscription-directsdk-experimental"])
+        self.config("main", ["advanced-delegation"])
+        self.backup = os.path.join(self.tmp, "backup")
+
+    def pdir(self, name):
+        return self.home if name == "main" else os.path.join(self.home, "profiles", name)
+
+    def config(self, name, enabled, disabled=()):
+        with open(os.path.join(self.pdir(name), "config.yaml"), "w") as handle:
+            handle.write("model:\n  default: x\nplugins:\n  clone_timeout_seconds: 300\n  enabled:\n" + "".join("    - %s\n" % e for e in enabled)
+                         + ("  disabled:\n" + "".join("    - %s\n" % d for d in disabled) if disabled else "  disabled: []\n") + "agent:\n  x: 1\n")
+
+    def run_script(self, script, *args):
+        done = subprocess.run(["bash", os.path.join(self.pack, script), "--home", self.home, *args], capture_output=True, text=True)
+        return done.returncode, done.stdout + done.stderr
+
+    def deploy(self, *args):
+        return self.run_script("deploy_plugin.sh", "--all", *args)
+
+    def enable_everywhere(self):
+        for name in PROFILES + ("main",):
+            enabled = ["x", "connector-allowlist"]
+            self.config(name, enabled)
+
+    def test_the_repo_table_covers_every_known_bot_and_lists_only_safe_names(self):
+        with open(os.path.join(HERMES, "connector-allowlists.txt")) as handle:
+            rows = {}
+            for line in handle:
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    name, _, names = line.partition(":")
+                    rows[name.strip()] = [n.strip() for n in names.split(",") if n.strip()]
+        self.assertEqual(sorted(rows), sorted(PROFILES + ("main",)))
+        for name, allowed in rows.items():
+            for item in allowed:
+                self.assertRegex(item, r"^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$", name)
+                self.assertNotIn(item, ("robinhood", "plaid", "paypal", "mcp:robinhood"), name)           # nothing financial by default
+
+    def test_all_defaults_to_a_dry_run_and_writes_nothing(self):
+        status, out = self.deploy()
+        self.assertEqual(status, 0, out)
+        self.assertIn("DRY RUN", out)
+        self.assertIn("6 profile(s)", out)
+        self.assertIn("18 file(s) would change", out)
+        self.assertFalse(os.path.exists(os.path.join(self.home, "plugins")))
+        for name in PROFILES:
+            self.assertFalse(os.path.exists(os.path.join(self.pdir(name), "plugins")), name)
+
+    def test_apply_all_installs_every_profile_with_its_own_list_and_main_in_the_root_folder(self):
+        status, out = self.deploy("--apply", "--backup", self.backup)
+        self.assertEqual(status, 0, out)
+        self.assertIn("read-back OK", out)
+        for name in PROFILES + ("main",):
+            dst = os.path.join(self.pdir(name), "plugins", "connector-allowlist")
+            for f in ("plugin.yaml", "__init__.py"):
+                with open(os.path.join(dst, f)) as got, open(os.path.join(PLUGIN, f)) as want:
+                    self.assertEqual(got.read(), want.read(), (name, f))
+        with open(os.path.join(self.pdir("developer"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
+            self.assertEqual(handle.read(), "")                                                        # developer: nothing allowed
+        with open(os.path.join(self.pdir("main"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
+            self.assertEqual(handle.read(), "notion\n")
+        self.assertIn("  hermes plugins enable connector-allowlist", out)
+        for name in PROFILES:
+            self.assertIn("hermes --profile %s plugins enable connector-allowlist" % name, out)
+        self.assertIn("systemctl restart hermes-eval-backend", out)
+        for name in PROFILES + ("main",):                                                              # config untouched
+            with open(os.path.join(self.pdir(name), "config.yaml")) as handle:
+                self.assertNotIn("connector-allowlist", handle.read(), name)
+        status, again = self.deploy("--apply", "--backup", os.path.join(self.tmp, "b2"))
+        self.assertIn("0 file(s) would change", again)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "b2")))
+
+    def test_an_existing_copy_is_backed_up_per_profile(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        table = os.path.join(self.pack, "connector-allowlists.txt")
+        with open(table) as handle:
+            text = handle.read()
+        with open(table, "w") as handle:
+            handle.write(text.replace("research: notion", "research: notion, mcp:todoist"))
+        status, out = self.deploy("--apply", "--backup", os.path.join(self.tmp, "b2"))
+        self.assertEqual(status, 0, out)
+        self.assertIn("1 file(s) would change", out)
+        with open(os.path.join(self.tmp, "b2", "research", "allowlist.txt")) as handle:
+            self.assertEqual(handle.read(), "notion\n")
+        with open(os.path.join(self.pdir("research"), "plugins", "connector-allowlist", "allowlist.txt")) as handle:
+            self.assertEqual(handle.read(), "notion\nmcp:todoist\n")
+        self.assertIn("ROLLBACK research/allowlist.txt", out)
+
+    def test_a_bad_table_is_refused_before_anything_is_written(self):
+        table = os.path.join(self.pack, "connector-allowlists.txt")
+        os.makedirs(os.path.join(self.home, "profiles", "extra"))
+        for line, needle in (("extra: notion, *\n", "is not an allowed name"), ("no colon here\n", "bad table line"), ("../x: notion\n", "is not a profile name"),
+                             ("writer: notion\n", "listed twice"), ("ghost: notion\n", "no profile folder")):
+            with open(os.path.join(HERMES, "connector-allowlists.txt")) as handle:
+                text = handle.read()
+            with open(table, "w") as handle:
+                handle.write(text + line)
+            status, out = self.deploy("--apply", "--backup", self.backup)
+            self.assertEqual(status, 1, (line, out))
+            self.assertIn(needle, out)
+        self.assertFalse(os.path.exists(os.path.join(self.pdir("librarian"), "plugins")))
+        self.assertFalse(os.path.exists(self.backup))
+
+    def test_all_cannot_be_mixed_with_one_profile_and_none_means_nothing_allowed(self):
+        status, out = self.run_script("deploy_plugin.sh", "--all", "--profile", "librarian")
+        self.assertEqual(status, 1, out)
+        self.assertIn("cannot be combined", out)
+        status, out = self.run_script("deploy_plugin.sh", "--profile", "main", "--allow", "none", "--apply", "--backup", self.backup)
+        self.assertEqual(status, 0, out)
+        with open(os.path.join(self.home, "plugins", "connector-allowlist", "allowlist.txt")) as handle:
+            self.assertEqual(handle.read(), "")
+
+    # ---- the auditor
+    def test_the_auditor_fails_on_a_bare_host_and_names_every_profile(self):
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)
+        for name in PROFILES + ("main",):
+            self.assertIn("  %s: FAIL" % name, out)
+        self.assertIn("is not in plugins.enabled", out)
+        self.assertIn("FAIL: at least one profile is NOT limited correctly", out)
+
+    def test_the_auditor_passes_only_when_everything_is_installed_and_enabled(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)                                                               # installed but not yet enabled
+        self.enable_everywhere()
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 0, out)
+        self.assertIn("PASS: every profile is limited", out)
+        self.assertIn("developer: OK (may use: nothing)", out)
+        self.assertIn("librarian: OK (may use: notion)", out)
+
+    def test_a_brand_new_bot_is_reported_as_unprotected(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        self.enable_everywhere()
+        os.makedirs(os.path.join(self.home, "profiles", "newbot"))
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)
+        self.assertIn("newbot: FAIL", out)
+        self.assertIn("UNPROTECTED", out)
+        self.assertIn("librarian: OK", out)
+
+    def test_the_auditor_catches_a_disabled_plugin_a_changed_file_and_a_wrong_list(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        self.enable_everywhere()
+        self.config("writer", ["connector-allowlist"], disabled=["connector-allowlist"])
+        with open(os.path.join(self.pdir("research"), "plugins", "connector-allowlist", "__init__.py"), "a") as handle:
+            handle.write("# tampered\n")
+        with open(os.path.join(self.pdir("librarian"), "plugins", "connector-allowlist", "allowlist.txt"), "w") as handle:
+            handle.write("notion\nmcp:robinhood\n")
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)
+        self.assertIn("writer: FAIL; plugin is in plugins.disabled", out)
+        self.assertIn("research: FAIL; __init__.py differs from the repo", out)
+        self.assertIn("librarian: FAIL; allowlist.txt holds [mcp:robinhood notion] but the table says [notion]", out)
+        self.assertIn("main: OK", out)
+
+    def test_the_auditor_fails_when_a_table_profile_has_no_folder_and_writes_nothing(self):
+        self.assertEqual(self.deploy("--apply", "--backup", self.backup)[0], 0)
+        self.enable_everywhere()
+        shutil.rmtree(self.pdir("writer"))
+        before = sorted(os.listdir(self.home))
+        status, out = self.run_script("check_profiles.sh")
+        self.assertEqual(status, 1, out)
+        self.assertIn("writer: FAIL (in the table but no profile folder)", out)
+        self.assertEqual(sorted(os.listdir(self.home)), before)
+
+    def test_both_scripts_have_valid_syntax(self):
+        for name in ("deploy_plugin.sh", "check_profiles.sh"):
+            self.assertEqual(subprocess.run(["bash", "-n", os.path.join(HERMES, name)]).returncode, 0, name)
 
 
 if __name__ == "__main__":
