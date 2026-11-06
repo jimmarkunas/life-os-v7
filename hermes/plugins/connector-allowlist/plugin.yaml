@@ -1,0 +1,15 @@
+name: connector-allowlist
+label: Connector Allowlist
+kind: standalone
+version: 1.0.0
+author: LIFE OS
+description: >
+  LIFE-320. Limits a Hermes profile to the Nous connectors named in allowlist.txt next to this
+  file (one connector name per line, e.g. notion). A pre_tool_call hook refuses every other
+  connector tool (connectors__<name>__*) and every manage_connections request that names another
+  connector or any MCP server. Fails closed: a missing, empty or unreadable allowlist allows no
+  connector at all. Install it in ONE profile's plugins folder; it affects only that profile.
+requires_hermes: ">=0.22.5"
+provides_tools: []
+provides_hooks:
+  - pre_tool_call
