@@ -41,7 +41,7 @@ class Check(unittest.TestCase):
         self.blocked("manage_connections", {"action": "status", "connectors": ["notion"]}, frozenset())
 
     def test_other_tools_are_never_touched(self):
-        for tool in ("terminal", "read_file", "tool_search", "delegate_task", "mcp__something", "connector", "my_connectors__x"):
+        for tool in ("terminal", "read_file", "tool_search", "delegate_task", "connector", "my_connectors__x"):
             self.assertIsNone(ca.check(tool, {"connectors": ["plaid"]}, NOTION), tool)
         self.assertIsNone(ca.check(None, None, NOTION))
         self.assertIsNone(ca.check(7, None, NOTION))
@@ -71,6 +71,47 @@ class Check(unittest.TestCase):
         self.assertIn("notion", message)
         self.assertNotIn("token", message.lower())
         self.assertIn("none", self.blocked("connectors__plaid__X", allowed=frozenset()))
+
+
+class McpTools(unittest.TestCase):
+    """LIFE-320 follow-up (live test, Nov 6 2026): Todoist and Robinhood reached the librarian as MCP servers, tools named mcp__<server>__<tool>."""
+
+    def test_every_mcp_tool_is_blocked_unless_its_server_is_listed(self):
+        for tool in ("mcp__todoist__find-projects", "mcp__robinhood__place_order", "mcp__robinhood__list_resources", "MCP__Todoist__X", "mcp__", "mcp____x", "mcp__notion__x"):
+            out = ca.check(tool, {}, NOTION)
+            self.assertEqual(out["action"], "block", tool)
+            self.assertIn("MCP server", out["message"], tool)
+        self.assertEqual(ca.check("mcp__todoist__x", {}, frozenset())["action"], "block")
+
+    def test_a_listed_mcp_server_passes_and_only_that_one(self):
+        allowed = frozenset({"notion", "mcp:todoist"})
+        self.assertIsNone(ca.check("mcp__todoist__find-projects", {}, allowed))
+        self.assertIsNone(ca.check("mcp__Todoist__find-projects", {}, allowed))
+        self.assertEqual(ca.check("mcp__robinhood__x", {}, allowed)["action"], "block")
+        self.assertEqual(ca.check("mcp__todoist2__x", {}, allowed)["action"], "block")
+        self.assertEqual(ca.check("mcp__todois__x", {}, allowed)["action"], "block")
+        self.assertEqual(ca.check("connectors__todoist__x", {}, allowed)["action"], "block")       # a connector is not an MCP server
+
+    def test_a_connector_name_never_allows_an_mcp_server_and_the_reverse(self):
+        self.assertEqual(ca.check("mcp__notion__x", {}, frozenset({"notion"}))["action"], "block")
+        self.assertEqual(ca.check("connectors__notion__x", {}, frozenset({"mcp:notion"}))["action"], "block")
+
+    def test_the_file_format_accepts_mcp_lines_and_ignores_bad_ones(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        path = os.path.join(tmp, "allowlist.txt")
+        with open(path, "w") as handle:
+            handle.write("notion\nmcp:todoist  # tasks\nmcp:\nmcp:*\nmcp:mcp:x\n")
+        self.assertEqual(ca.load_allowed(path), frozenset({"notion", "mcp:todoist"}))
+
+    def test_a_crash_blocks_mcp_tools_too(self):
+        original = ca.check
+        self.addCleanup(setattr, ca, "check", original)
+
+        def boom(*_a, **_k):
+            raise RuntimeError("x")
+        ca.check = boom
+        self.assertEqual(ca._on_pre_tool_call(tool_name="mcp__robinhood__x", args={})["action"], "block")
 
 
 class Loading(unittest.TestCase):

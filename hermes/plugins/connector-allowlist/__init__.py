@@ -1,7 +1,7 @@
 """LIFE-320 connector allowlist: a pre_tool_call veto for Hermes connector tools.
 
-The allowlist is the file `allowlist.txt` next to this module (one connector name per line, `#` starts a
-comment). It is read on every check, so a change applies without a restart, and any problem with it means
+The allowlist is the file `allowlist.txt` next to this module (one name per line, `#` starts a comment).
+A plain name (notion) allows that Nous connector; `mcp:NAME` (mcp:todoist) allows the MCP server NAME. It is read on every check, so a change applies without a restart, and any problem with it means
 "no connector is allowed". Stdlib only; the module imports nothing from Hermes.
 """
 from __future__ import annotations
@@ -11,7 +11,8 @@ import re
 from typing import Any, Optional
 
 PREFIX = "connectors__"
-NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+MCP_PREFIX = "mcp__"                                  # Hermes names a server's tools mcp__<server>__<tool>
+NAME = re.compile(r"^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$")
 ALLOWLIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "allowlist.txt")
 
 
@@ -32,7 +33,7 @@ def load_allowed(path: str = ALLOWLIST) -> frozenset:
 
 def _block(why: str, allowed: frozenset) -> dict:
     listed = ", ".join(sorted(allowed)) or "none"
-    return {"action": "block", "message": "connector-allowlist: %s. This profile may use only these connectors: %s." % (why, listed)}
+    return {"action": "block", "message": "connector-allowlist: %s. This profile may use only: %s." % (why, listed)}
 
 
 def _targets(args: Any) -> Optional[list]:
@@ -68,6 +69,11 @@ def check(tool_name: Any, args: Any, allowed: frozenset) -> Optional[dict]:
         if slug in allowed:
             return None
         return _block("the connector '%s' is not allowed" % (slug or "?"), allowed)
+    if name.startswith(MCP_PREFIX):
+        server = name[len(MCP_PREFIX):].split("__", 1)[0].replace("-", "_")
+        if server and ("mcp:" + server) in {a.replace("-", "_") for a in allowed}:
+            return None
+        return _block("the MCP server '%s' is not allowed" % (server or "?"), allowed)
     if name == "manage_connections":
         targets = _targets(args)
         if targets is None:
@@ -84,7 +90,7 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, **_: Any) -> Option
     try:
         return check(tool_name, args, load_allowed())
     except Exception:                                    # never let a bug in the check become an open door
-        if isinstance(tool_name, str) and (tool_name.lower().startswith(PREFIX) or tool_name.lower() == "manage_connections"):
+        if isinstance(tool_name, str) and (tool_name.lower().startswith((PREFIX, MCP_PREFIX)) or tool_name.lower() == "manage_connections"):
             return {"action": "block", "message": "connector-allowlist: the check failed, so the connector call was refused."}
         return None
 

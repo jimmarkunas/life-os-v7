@@ -2,7 +2,7 @@
 # LIFE-320: install the connector-allowlist plugin (hermes/plugins/connector-allowlist/) into ONE Hermes profile on the Oracle host, with that profile's allowlist.
 #   sudo bash deploy_plugin.sh --profile librarian --allow notion            DRY RUN (default): shows what would change. Writes nothing.
 #   sudo bash deploy_plugin.sh --profile librarian --allow notion --apply    backs up what it replaces into /root/hermes-plugin-<time CT>/, installs (owner hermes, files 0600, folder 0700), reads back.
-# --allow takes connector names separated by commas (letters, digits, - or _). Options for tests: --home DIR (the .hermes folder), --backup DIR.
+# --allow takes names separated by commas (letters, digits, - or _): notion allows that connector, mcp:todoist allows that MCP server (everything else is refused). Options for tests: --home DIR (the .hermes folder), --backup DIR.
 # It prints names and hashes only. It does NOT enable the plugin, does NOT touch config.yaml or toolsets, and restarts NOTHING.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -25,7 +25,7 @@ echo "$PROFILE" | grep -E -q '^[a-z0-9][a-z0-9_-]{0,63}$' || { echo "REFUSED: --
 LIST=""
 OLDIFS=$IFS; IFS=,
 for item in $ALLOW; do
-  echo "$item" | grep -E -q '^[a-z0-9][a-z0-9_-]{0,63}$' || { IFS=$OLDIFS; echo "REFUSED: '$item' is not a connector name"; exit 1; }
+  echo "$item" | grep -E -q '^(mcp:)?[a-z0-9][a-z0-9_-]{0,63}$' || { IFS=$OLDIFS; echo "REFUSED: '$item' is not a connector name"; exit 1; }
   LIST="$LIST$item
 "
 done
