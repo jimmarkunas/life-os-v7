@@ -77,6 +77,9 @@ if [ "$APPLY" = yes ]; then echo "== APPLY: $FILE -> $DEST (agent $AGENT, user $
 echo "  image: $SIZE bytes, sha256 ${GOT:0:12} matches the manifest, PNG signature ok"
 echo "  main agent's avatar now: $(current)"
 if [ -f "$DEST" ]; then echo "  existing $DEST: $(wc -c < "$DEST" | tr -d ' ') bytes, sha256 $(sha256sum "$DEST" | cut -c1-12)"; else echo "  $DEST does not exist yet"; fi
+IDMD="$WS/IDENTITY.md"
+IDLINE=$(grep -iE '^[[:space:]]*[-*][[:space:]]*Avatar:' "$IDMD" 2>/dev/null | head -1 || true)
+if [ -n "$IDLINE" ]; then echo "  IDENTITY.md avatar line now: $IDLINE (some OpenClaw surfaces read this file, so it is pointed at the same image)"; else echo "  IDENTITY.md has no '- Avatar:' line: left alone"; fi
 echo "  would run as $RUN_USER: openclaw agents set-identity --agent $AGENT --avatar avatars/openclaw.png   (nothing is restarted)"
 if [ "$APPLY" != yes ]; then echo "Dry run only. To apply, add --apply."; exit 0; fi
 mkdir -p "$BACKUP"; chmod 700 "$BACKUP"
@@ -91,10 +94,33 @@ else
   sudo -u "$RUN_USER" -H "$BIN" agents set-identity --agent "$AGENT" --avatar avatars/openclaw.png
 fi
 echo "  installed $DEST ($(sha256sum "$DEST" | cut -c1-12))"
+HADID=no
+if [ -n "$IDLINE" ] && [ "$IDLINE" != "- Avatar: avatars/openclaw.png" ]; then
+  cp -p "$IDMD" "$BACKUP/IDENTITY.md"; HADID=yes
+  python3 - "$IDMD" <<'PY'
+import re, shutil, sys, os
+p = sys.argv[1]
+t = open(p).read().split("\n")
+for i, l in enumerate(t):
+    if re.match(r"^\s*[-*]\s*Avatar:", l, re.I):
+        t[i] = re.sub(r"(Avatar:\s*).*$", r"\1avatars/openclaw.png", l, flags=re.I)
+        break
+st = os.stat(p)
+open(p, "w").write("\n".join(t))
+os.chmod(p, st.st_mode & 0o7777)
+try:
+    os.chown(p, st.st_uid, st.st_gid)
+except PermissionError:
+    pass
+PY
+  echo "  IDENTITY.md avatar line now points at avatars/openclaw.png (backup of the file in $BACKUP)"
+fi
 AFTER=$(current)
 [ "$(sha256sum "$DEST" | cut -d' ' -f1)" = "$WANT" ] || { echo "READ-BACK FAILED: the installed file's hash differs"; exit 1; }
+if [ "$HADID" = yes ] && ! grep -qiE '^[[:space:]]*[-*][[:space:]]*Avatar:[[:space:]]*avatars/openclaw.png' "$IDMD"; then echo "READ-BACK FAILED: IDENTITY.md was not updated. ROLLBACK: cp -p $BACKUP/IDENTITY.md $IDMD"; exit 1; fi
 case "$AFTER" in "path or URL: avatars/openclaw.png") ;; *) echo "READ-BACK FAILED: the main agent's avatar is now: $AFTER"; echo "ROLLBACK: cp -p $BACKUP/openclaw.json $CONF"; exit 1 ;; esac
 echo "== read-back OK: file hash equals the manifest and the main agent's avatar is avatars/openclaw.png =="
 echo "Nothing was restarted. Reload the OpenClaw Control UI; if the old picture still shows, tell Claude (a restart is a separate decision)."
 echo "ROLLBACK config: cp -p $BACKUP/openclaw.json $CONF"
 [ "$HAD" = yes ] && echo "ROLLBACK image:  cp -p $BACKUP/openclaw.png $DEST" || echo "ROLLBACK image:  rm -f $DEST"
+if [ "$HADID" = yes ]; then echo "ROLLBACK IDENTITY.md: cp -p $BACKUP/IDENTITY.md $IDMD"; fi
