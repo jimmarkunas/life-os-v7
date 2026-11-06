@@ -28,16 +28,17 @@ STOP_TEXT = ("STOPPED", "STOPPED by Jim")
 ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|claude_ai_Atlassian_Rovo(?:_2)?|atlassian|jira)__(.+)", re.I)
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
-WRITE_WORD = re.compile(r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply)")
+WRITE_WORD = re.compile(r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link(?!s|type)|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply|change|patch|mutat|fix)")
 NEVER_OP = re.compile(r"(?i)(delete|destructive|remove|archive|purge|merge|fork|force|transfer|admin|secret|token|key|webhook|permission|collaborator|invite|workflow|create_or_update_file|push_files|update_file)")
 KEY_RX = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-\d+\b")
 SHELL_META = re.compile(r"[;&|`$<>\\\n\r(){}\"'*?!~#]|--admin")
 POS = re.compile(r"[A-Za-z0-9._,-]{1,80}")
-PATHTOK = re.compile(r"[A-Za-z0-9._,/-]{1,120}")
+REV = re.compile(r"(?:HEAD|main|master|origin/main|[0-9a-f]{7,40}|life-[0-9a-z-]{1,60})")
 NUM = re.compile(r"[0-9]{1,7}")
-FLAGS = {"-R", "--repo", "--limit", "-L", "--state", "-s", "--json", "--stat", "--name-only", "--oneline", "-n", "--list", "-a", "-r", "-v", "-vv", "--short", "--branch"}
+GH_FLAGS = {"-R", "--repo", "--limit", "-L", "--state", "-s", "--json"}
+GIT_FLAGS = {"--oneline", "-n", "--stat", "--name-only", "--short", "--branch", "-a", "-r", "-v", "-vv"}
 GH_CMDS = {("pr",): {"view", "list", "diff", "checks", "status"}, ("issue",): {"view", "list", "status"}, ("repo",): {"view"}, ("run",): {"list", "view"}}
-GIT_CMDS = {"status", "log", "diff", "show", "rev-parse", "ls-files", "branch"}
+GIT_CMDS = {"status", "log", "rev-parse", "branch"}                # no show/diff (they print patches, and outside a repo `git diff A B` reads any two paths), no ls-files
 REPO_FIELDS = {"owner", "repo", "repository", "repo_full_name", "full_name", "repos", "url", "html_url", "head", "base", "head_repo", "base_repo"}
 
 
@@ -69,15 +70,23 @@ def _items(o, path=()):
 
 def _leaves(v):
     """Plain strings/ints held directly in v or in lists inside it (dict entries are visited by _items)."""
-    if isinstance(v, (str, int)) and not isinstance(v, bool):
-        yield _norm(str(v))
+    if isinstance(v, str):
+        yield v if _norm(v) == v else "~changed-by-normalisation~"
+    elif isinstance(v, int) and not isinstance(v, bool):
+        yield str(v)
     elif isinstance(v, list):
         for x in v:
             yield from _leaves(x)
 
 
+EXFIL = re.compile(r"(?i)!\[[^\]]*\]\(|/Users/[A-Za-z0-9_.-]+/\.|\.buzz/|\.ssh|(?:password|passwd|passphrase|api[ _-]?key|secret|token)\s+(?:is|was)\s+\S{3,}|\b(?:pw|pwd)\s*[:=]")
+
+
 def _secret(o):
-    return any(SECRETY.search(s) for s in _strings(o))
+    for s in _strings(o):
+        if SECRETY.search(s) or SECRETY.search(re.sub(r"\s+", "", s)) or EXFIL.search(s):
+            return True
+    return False
 
 
 def _stopped(g):
@@ -106,22 +115,28 @@ def _is_read(op):
     return bool(READ_OP.match(op)) and not WRITE_WORD.search(op)
 
 
+JIRA_WRITE_OPS = {"createJiraIssue", "editJiraIssue", "addCommentToJiraIssue", "addOrEditJiraIssueComment", "transitionJiraIssue", "createIssueLink", "addWorklogToJiraIssue"}
+PROJ_KEYS = {"project", "projectkey", "projectkeyorid", "projectid", "parent", "epic", "inwardissue", "outwardissue", "issueidorkey", "issuekey", "issueid", "issue"}
+
+
 def _project_refs(ti):
-    """Every project the input names: ABC-123 patterns anywhere, and every value under a key containing 'project' or 'issue'/'parent'/'link'. None means a value that cannot be judged."""
-    refs = set()
+    """-> (anchors, stray). anchors = projects named by project/issue fields (a numeric or odd value becomes '?...' and fails the check); stray = ABC-123 keys in free text.
+    A write needs at least one anchor, and every anchor and stray key must be in the allow-list."""
+    anchors, stray = set(), set()
     for s in _strings(ti):
-        refs.update(m.group(1) for m in KEY_RX.finditer(s))
+        stray.update(m.group(1) for m in KEY_RX.finditer(s))
     for path, v in _items(ti):
         name = path[-1].lower()
-        if "project" in name or "issue" in name or name in ("parent", "key", "id", "inwardissue", "outwardissue", "epic"):
-            for s in _leaves(v):
-                s = s.strip()
-                m = re.fullmatch(r"([A-Za-z][A-Za-z0-9]{1,9})(?:-\d+)?", s)
-                if m:
-                    refs.add(m.group(1).upper())
-                elif s and (name.startswith("project") or "issue" in name or name in ("parent", "key")):
-                    refs.add("?" + s[:12])                       # numeric ids and odd values cannot be checked: refuse
-    return refs
+        parents = [p.lower() for p in path[:-1]]
+        flagged = (name in PROJ_KEYS or "project" in name or ("issue" in name and name != "issuetype")
+                   or (name in ("id", "key") and (len(path) == 1 or any(p in ("project", "parent", "epic") or ("issue" in p and p != "issuetype") for p in parents))))
+        if not flagged:
+            continue
+        for s in _leaves(v):
+            s = s.strip()
+            m = re.fullmatch(r"([A-Za-z][A-Za-z0-9]{1,9})(?:-\d+)?", s)
+            anchors.add(m.group(1).upper() if m else "?" + s[:12])
+    return anchors, stray
 
 
 def _decide_atlassian(op, ti, g):
@@ -139,16 +154,20 @@ def _decide_atlassian(op, ti, g):
         op, force_write = inner, True
     if _is_read(op) and not force_write:
         return "allow", "jira read"
-    refs = _project_refs(ti)
-    if not refs or not refs <= JIRA_PROJECTS:
-        return "deny", "jira write outside allowed projects or naming a project that cannot be checked"
-    return _write(g, "jira %s on %s" % (op, ",".join(sorted(refs))))
+    if op not in JIRA_WRITE_OPS:
+        return "deny", "write operation not on the Jira allow-list: " + op
+    anchors, stray = _project_refs(ti)
+    if not anchors or not anchors <= JIRA_PROJECTS or not stray <= JIRA_PROJECTS:
+        return "deny", "jira write outside allowed projects, without a project or issue field, or naming one that cannot be checked"
+    return _write(g, "jira %s on %s" % (op, ",".join(sorted(anchors | stray))))
 
 
 def _repo_refs(ti):
     refs, bad = set(), False
     if isinstance(ti, dict) and isinstance(ti.get("owner"), str) and isinstance(ti.get("repo"), str):
-        refs.add("%s/%s" % (_norm(ti["owner"]), _norm(ti["repo"])))
+        if _norm(ti["owner"]) != ti["owner"] or _norm(ti["repo"]) != ti["repo"]:
+            bad = True
+        refs.add("%s/%s" % (ti["owner"], ti["repo"]))
     for path, v in _items(ti):
         if path[-1].lower() in REPO_FIELDS and path[-1].lower() not in ("owner", "repo"):
             for s in _strings(v):
@@ -161,10 +180,19 @@ def _repo_refs(ti):
                     bad = True
     for s in _strings(ti):
         refs.update(m.group(1) for m in re.finditer(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)", s))
-        refs.update(m.group(1) for m in re.finditer(r"\brepo:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)", s))
-        if re.search(r"\b(org|user|owner|author):\S", s) or ".github/workflows" in s:
+        for m in re.finditer(r"(?i)\brepo:\s*(\S*)", s):
+            v = m.group(1)
+            if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", v):
+                refs.add(v)
+            else:
+                bad = True
+        if re.search(r"(?i)\b(org|user|owner|author|team):", s) or ".github/workflows" in s:
             bad = True
     return refs, bad
+
+
+GH_WRITE_OPS = {"create_issue", "add_issue_comment", "issue_write", "update_issue", "create_pull_request", "update_pull_request", "add_pull_request_review_comment", "create_branch"}
+GH_READ_EXTRA = {"issue_read", "pull_request_read", "actions_list", "actions_get", "projects_list", "projects_get"}
 
 
 def _decide_github(op, ti, g):
@@ -172,14 +200,22 @@ def _decide_github(op, ti, g):
         return "deny", "never allowed: " + op
     refs, bad = _repo_refs(ti)
     meth = ti.get("method")
-    if bad or (isinstance(meth, str) and (NEVER_OP.search(meth) or "approve" in meth.lower())):
-        return "deny", "github input names an unchecked repo, workflow, cross-fork branch or forbidden method"
+    if bad or (isinstance(meth, str) and NEVER_OP.search(meth)) or any(re.search(r"(?i)\b(approve|request_changes|dismiss)\b", x) for x in _strings(ti)):
+        return "deny", "github input names an unchecked repo, workflow, cross-fork branch, approval or forbidden method"
     refs = {r.lower() for r in refs}
     allowed = {r.lower() for r in GITHUB_REPOS}
+    if op == "get_me":
+        return "allow", "github identity read"
     if not refs or not refs <= allowed:
-        return ("allow", "github identity read") if op == "get_me" else ("deny", "github call outside allowed repos or without a repo")
-    if _is_read(op):
+        return "deny", "github call outside allowed repos or without a repo"
+    if op.startswith("search"):                                     # a search must stay inside the allowed repos: one repo: qualifier is not enough
+        q = " ".join(x for x in _strings(ti))
+        if re.search(r"(?i)\bOR\b|[\"*]", q):
+            return "deny", "github search with OR, quotes or wildcards"
+    if _is_read(op) or op in GH_READ_EXTRA:
         return "allow", "github read"
+    if op not in GH_WRITE_OPS:
+        return "deny", "github write operation not on the allowed list: " + op
     return _write(g, "github %s on %s" % (op, ",".join(sorted(refs))))
 
 
@@ -189,37 +225,35 @@ def _decide_bash(ti):
         return "deny", "bash input not a plain read-only command"
     t = cmd.split()
     if t[:1] == ["git"] and len(t) >= 2 and t[1] in GIT_CMDS:
-        sub, rest, isgit = t[1], t[2:], True
+        sub, rest, isgit, flags = t[1], t[2:], True, GIT_FLAGS
     elif t[:1] == ["gh"] and len(t) >= 3 and (t[1],) in GH_CMDS and t[2] in GH_CMDS[(t[1],)]:
-        sub, rest, isgit = t[2], t[3:], False
+        sub, rest, isgit, flags = t[2], t[3:], False, GH_FLAGS
     else:
         return "deny", "bash command not on the read-only list (GitHub changes go through the GitHub tool with approval)"
+    allowed_repos = {r.lower() for r in GITHUB_REPOS}
     prev = None
     for tok in rest:
         if tok.startswith("-"):
-            if tok not in FLAGS:
+            if tok not in flags:
                 return "deny", "bash flag not allowed: " + tok[:20]
-        elif prev in ("-R", "--repo"):
-            if tok.lower() not in {r.lower() for r in GITHUB_REPOS}:
+        elif prev in ("-R", "--repo") and not isgit:
+            if tok.lower() not in allowed_repos:
                 return "deny", "bash repo not allowed"
         elif prev in ("--limit", "-L", "-n"):
             if not NUM.fullmatch(tok):
                 return "deny", "bash number expected"
-        elif prev in ("--state", "-s", "--json"):
+        elif prev in ("--state", "-s", "--json") and not isgit:
             if not POS.fullmatch(tok):
                 return "deny", "bash argument not allowed"
-        elif isgit:
-            if sub == "branch":
-                return "deny", "git branch takes no names (that would create one)"
-            parts = tok.split(":")
-            if len(parts) > 2 or not all(PATHTOK.fullmatch(p) for p in parts if p != "") or tok.startswith("/") or ".." in tok or any(SECRET_PATH.search(p) for p in parts[1:]) or (len(parts) == 1 and ("/" in tok or "." in tok) and SECRET_PATH.search(tok)):
-                return "deny", "git argument not allowed"
+        elif isgit:                                                 # a branch or revision name only: never a path, never a ':' object path
+            if sub == "branch" or not REV.fullmatch(tok):
+                return "deny", "git takes revision names only (no paths, no branch names)"
         else:                                                       # gh: a PR/issue/run number only; never a URL, user:branch or other repo
             if not NUM.fullmatch(tok):
                 return "deny", "gh takes a number only (use -R for the repo)"
         prev = tok
-    if not isgit and t[1] == "repo" and not any(x in ("-R", "--repo") for x in rest):
-        return "deny", "gh repo view needs -R with an allowed repo"
+    if not isgit and not any(x in ("-R", "--repo") for x in rest):
+        return "deny", "gh needs -R with an allowed repo"
     return "allow", "read-only gh/git command"
 
 
