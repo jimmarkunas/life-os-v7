@@ -193,6 +193,14 @@ class Installer(unittest.TestCase):
             self.assertTrue((ROOT / "lifeos/platform" / m).is_file(), m)
         self.assertEqual(sorted(p.name for p in ORACLE.glob("lifeos-ticker-*")), sorted(units))
 
+    def test_verify_requires_a_real_timer_run_not_just_a_success_result(self):
+        """A never-run service reports Result=success and status 0, so `verify` must also require ExecMainStartTimestamp (LIFE-330, Nov 6 2026)."""
+        text = self.SCRIPT.read_text()
+        self.assertIn("ExecMainStartTimestamp", text)
+        self.assertIn("ran_ok lifeos-ticker-tick.service", text)
+        self.assertIn("ran_ok lifeos-ticker-watch.service", text)
+        self.assertNotIn('check "last tick succeeded"', text)
+
     def test_the_copied_modules_are_all_the_watchdog_needs(self):
         """The installed tree is ticker.py plus these modules: every lifeos import they make must be in the list."""
         modules = set(re.search(r'MODULES="([^"]+)"', self.SCRIPT.read_text()).group(1).split())

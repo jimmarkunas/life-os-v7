@@ -77,8 +77,10 @@ case "${1:-}" in
     check "both encrypted credentials stored, root-only" '[ "$(stat -c %a:%U "$GH" 2>/dev/null)" = "600:root" ] && [ "$(stat -c %a:%U "$NT" 2>/dev/null)" = "600:root" ]'
     check "ubuntu cannot read the credentials" '! runuser -u ubuntu -- cat "$GH" >/dev/null 2>&1 && ! runuser -u ubuntu -- cat "$NT" >/dev/null 2>&1'
     check "both timers enabled" 'systemctl is-enabled --quiet lifeos-ticker-tick.timer && systemctl is-enabled --quiet lifeos-ticker-watch.timer'
-    check "last tick succeeded" '[ "$(systemctl show lifeos-ticker-tick.service -p Result --value)" = success ] && [ "$(systemctl show lifeos-ticker-tick.service -p ExecMainStatus --value)" = 0 ]'
-    check "last watch succeeded" '[ "$(systemctl show lifeos-ticker-watch.service -p Result --value)" = success ] && [ "$(systemctl show lifeos-ticker-watch.service -p ExecMainStatus --value)" = 0 ]'
+    # A service that has never run also reports Result=success and status 0, so a real run is required: ExecMainStartTimestamp must be set (LIFE-330).
+    ran_ok() { [ -n "$(systemctl show "$1" -p ExecMainStartTimestamp --value)" ] && [ "$(systemctl show "$1" -p Result --value)" = success ] && [ "$(systemctl show "$1" -p ExecMainStatus --value)" = 0 ]; }
+    check "tick service has run (started by its timer) and succeeded" 'ran_ok lifeos-ticker-tick.service'
+    check "watch service has run (started by its timer) and succeeded" 'ran_ok lifeos-ticker-watch.service'
     exit $ok ;;
   disable) systemctl disable --now lifeos-ticker-tick.timer lifeos-ticker-watch.timer >/dev/null 2>&1 || true; say "timers stopped" ;;
   uninstall)
