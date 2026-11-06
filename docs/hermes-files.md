@@ -15,6 +15,7 @@ There is ONE Hermes, on the Oracle host `lifeos-edge-01`. The Hermes Desktop app
 | Skills in use | Oracle | Oracle | Most ship with the program. Skills installed from the ClawHub hub are listed by name in `hermes/skills.manifest`. A skill we write ourselves lives in `hermes/skills/<name>/`. |
 | Program (`installs/`, `tools/`, `cache/`, `plugins/`) | Nous Research | Oracle | Not knowledge. |
 | Host wiring: launch and guard scripts, systemd units, firewall rules, `hold.py`, `last_seen` | Oracle (some copies under `lifeos/edge/`) | Oracle | `hold.py` keeps the firewall rules loaded and `last_seen` is the clock check before each start: do not delete either. |
+| Connector allowlist plugin (LIFE-320): limits one profile to the connectors Jim names | This repo, `hermes/plugins/connector-allowlist/` (code only) | Oracle, `~/.hermes/profiles/<name>/plugins/connector-allowlist/`; the allowlist is the file `allowlist.txt` there | Deployed by `hermes/deploy_plugin.sh --profile NAME --allow notion` (dry run by default; Jim runs `--apply`). It does not enable itself: the profile's `plugins.enabled` list is a separate, approved step. The allowlist belongs to the host profile and is never mastered here. |
 | The V7 stage that asks Hermes to work | This repo: `lifeos/hermes_requests.py`, `.github/workflows/hermes-stage.yml` | GitHub Actions | Started by hand only. |
 | Plans, decisions, receipts | Jira (LIFE) and Notion | none | Jira is the status record. |
 
@@ -24,4 +25,4 @@ Rules:
 
 1. Change a role file by pull request, then deploy it with `hermes/deploy_roles.sh`. The script refuses a file over 4096 bytes or one that looks like it contains a secret, backs up what it replaces, reads each file back, and restarts nothing.
 2. Nothing private about Jim goes in this public repo: no `USER.md` text, no wiki text, no conversation text.
-3. The librarian profile gets no `connections` toolset: that would expose every connector, including Robinhood, Plaid and PayPal.
+3. A profile gets the `connections` toolset only while the connector allowlist plugin is installed, enabled and tested in that profile: the toolset alone exposes every connector, including Robinhood, Plaid and PayPal, and Hermes has no per-profile connector limit of its own (the Nous account policy applies to every bot). As of Nov 5, 2026 no profile has the toolset except the main one.
