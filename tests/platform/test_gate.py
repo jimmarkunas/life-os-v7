@@ -173,11 +173,11 @@ class FakeGitHub:
 class Incident(unittest.TestCase):
     OPEN, CLOSE = ("T", "B", "page"), ("R", "", "info")
 
-    def sync(self, api, signal, push):
+    def sync(self, api, signal, push, now=None):
         old = gate._api
         gate._api = api
         try:
-            return gate.sync_incident("lbl", "title", "body", signal, self.OPEN, self.CLOSE, push=push)
+            return gate.sync_incident("lbl", "title", "body", signal, self.OPEN, self.CLOSE, push=push, now=now or NOW)
         finally:
             gate._api = old
 
@@ -206,7 +206,50 @@ class Incident(unittest.TestCase):
     def test_an_open_incident_is_not_pushed_again(self):
         pushed, api = [], FakeGitHub([{"number": 7, "labels": [{"name": "lbl"}]}])
         self.assertIsNone(self.sync(api, True, lambda *a: pushed.append(a) or True))
-        self.assertEqual((pushed, api.writes()), ([], []))                           # dedupe: one push per incident, not per run
+        self.assertEqual((pushed, api.writes()), ([], []))                           # dedupe: no timestamps, no reminder (LIFE-329 re-pages only after 3 quiet hours)
+
+    @staticmethod
+    def issue(opened_h, quiet_h, labels=("lbl",)):
+        stamp = lambda h: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")      # noqa: E731
+        return {"number": 7, "labels": [{"name": n} for n in labels], "created_at": stamp(opened_h), "updated_at": stamp(quiet_h)}
+
+    def test_an_incident_still_true_after_three_quiet_hours_re_pages_and_records_it(self):
+        """LIFE-329: Nov 3 2026, one 4 AM page went unseen for a 21-hour outage."""
+        pushed, api = [], FakeGitHub([self.issue(opened_h=7, quiet_h=3)])
+        self.assertEqual(self.sync(api, True, lambda *a: pushed.append(a) or True), "reminded")
+        self.assertEqual(pushed, [("Still open: T", "B Still open after 7 h.", "page")])                 # same key and severity as the first page
+        self.assertEqual(api.writes(), [("POST", "issues/7/comments")])                                  # the comment restarts the clock
+
+    def test_no_reminder_inside_the_window_or_when_the_signal_is_unchanged_or_recovered(self):
+        for signal, quiet in ((True, 2.9), (None, 10)):                                                   # unchanged = recovering: never nags
+            pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=quiet)])
+            self.assertIsNone(self.sync(api, signal, lambda *a: pushed.append(a) or True))
+            self.assertEqual((pushed, api.writes()), ([], []))
+        pushed, api = [], FakeGitHub([self.issue(opened_h=12, quiet_h=10)])
+        self.assertEqual(self.sync(api, False, lambda *a: pushed.append(a) or True), "closed")            # recovered: the recovery push only
+        self.assertEqual(pushed, [self.CLOSE])
+
+    def test_a_refused_reminder_writes_nothing_so_the_next_run_tries_again(self):
+        api = FakeGitHub([self.issue(opened_h=5, quiet_h=4)])
+        self.assertEqual(self.sync(api, True, lambda *a: False), "reminded")                              # muted, switched off, flood cap or ntfy down
+        self.assertEqual(api.writes(), [])
+
+    def test_a_pending_incident_is_retried_not_reminded(self):
+        pushed, api = [], FakeGitHub([self.issue(opened_h=5, quiet_h=4, labels=("lbl", gate.PENDING))])
+        self.assertEqual(self.sync(api, True, lambda *a: pushed.append(a) or True), "retried")
+        self.assertEqual(pushed, [self.OPEN])
+
+    def test_watch_re_pages_a_long_stall_once_per_window(self):
+        runs, pushed = [ago(10, "success", rid=1)], []
+        api = FakeGitHub([self.issue(opened_h=8, quiet_h=3.5, labels=(gate.LABEL,))])
+        old = (gate._api, gate._push)
+        gate._api = lambda path, *a, **k: {"workflow_runs": runs} if "workflows/hourly" in path else api(path, *a, **k)
+        gate._push = lambda *a: pushed.append(a) or True
+        try:
+            gate.watch(NOW)
+        finally:
+            gate._api, gate._push = old
+        self.assertIn(("Still open: V7 pipeline stalled", "No hourly run has succeeded for 2.5 hours. Check cron-job.org and the Actions tab. Still open after 8 h.", "page", "pipeline_stalled"), pushed)
 
     def test_recovery_pushes_once_and_closes_the_issue(self):
         pushed, api = [], FakeGitHub([{"number": 7, "labels": [{"name": "lbl"}]}])
