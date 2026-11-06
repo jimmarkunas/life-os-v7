@@ -160,7 +160,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "aa07f1b568a4f87dcc3f46824c7abf8b0d4f2a80c18c120f39b29f8028f25b9b",
+  "reassembled_sha256": "2f9e5f6d620c3e11b8f751de0ddc5bb339ecb5e2eb9d6b870b559544184cc52d",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -203,6 +203,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/774",
       "approval": "Jim Markunas, November 6, 2026 CT 7:53 AM, chat: \"default build LIFE-319\": the readiness command refuses a ticket from a LOS key that lacks its Notion REQ page link (first hand-off only, no Notion read); one sentence added to Queue readiness",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
+    },
+    {
+      "date": "2026-11-06",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/784",
+      "approval": "Jim Markunas, November 6, 2026 CT 1:17 PM, chat: \"make sure the V7 policy has these rules\": the public-repo data rule (personal emails, full names, phones, addresses, employer/salary, resume/mailbox content, secrets, Notion IDs; source docs/PRIVACY.md) named in the unchanged gates of Part 07 item 5 and in AGENTS.md Rules (LIFE-335)",
+      "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
     }
   ]
 }
