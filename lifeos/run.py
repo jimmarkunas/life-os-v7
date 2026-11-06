@@ -194,7 +194,7 @@ def _headline(stage, counts):
     def number(key):
         value = counts.get(key)
         return value if isinstance(value, int) and not isinstance(value, bool) else 0
-    code = counts.get("code") if re.fullmatch(r"[A-Z][A-Z0-9_]{1,48}", str(counts.get("code") or "")) else "NO_CODE"
+    code = counts.get("code") if re.fullmatch(r"[A-Z][A-Z0-9_]{1,48}", str(counts.get("code") or "")) else "no code"
     return (f"Granola auto: {code}. On Oracle: {number('meetings')}; already filed: {number('already')}; filed this run: {number('carried')}; "
             f"waiting for Jim (Unfiled): {number('unfiled_waiting') + number('unfiled_created')}; failed: {number('failed')}.")
 

@@ -68,7 +68,7 @@ class GranolaHeadlineTests(unittest.TestCase):
     def test_the_sentence_never_carries_free_text(self):
         _, out, _ = self.run_stage({**self.COUNTS, "code": "not a code <script>", "meetings": "twelve", "already": True, "title": "Secret client meeting"})
         first = out.splitlines()[0]
-        self.assertIn("Granola auto: NO_CODE.", first)
+        self.assertIn("Granola auto: no code.", first)
         self.assertIn("On Oracle: 0;", first)
         self.assertIn("already filed: 0;", first)
         self.assertNotIn("Secret", first)
