@@ -17,6 +17,20 @@ def make_db(path, rows):
     db.close()
 
 
+def make_wal_db(path, rows):
+    """A database whose header says WAL mode, as Hermes's are: a plain read-only open of it fails when no -shm file can be made."""
+    db = sqlite3.connect(path)
+    db.execute("pragma journal_mode=wal")
+    db.execute("create table sessions (id integer)")
+    db.executemany("insert into sessions values (?)", [(i,) for i in range(rows)])
+    db.commit()
+    db.execute("pragma wal_checkpoint(truncate)")
+    db.close()
+    for suffix in ("-wal", "-shm"):
+        if os.path.exists(path + suffix):
+            os.remove(path + suffix)
+
+
 class Verify(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -108,6 +122,26 @@ class Verify(unittest.TestCase):
             vr.tables(db)
         self.assertEqual(str(raised.exception), "RESTORE_DB_CORRUPT")
         self.assertTrue(raised.exception.detail)
+
+    def test_a_wal_mode_database_is_checked_not_called_corrupt(self):
+        """Jim's Nov 6 2026 run: every Hermes database came back 'unable to open database file' because they are WAL-mode."""
+        src = os.path.join(self.tmp, "walsrc", "hermes")
+        os.makedirs(src)
+        make_wal_db(os.path.join(src, "state.db"), 7)
+        make_wal_db(os.path.join(src, "kanban.db"), 3)
+        path = os.path.join(self.tmp, "wal.tar.gz")
+        with tarfile.open(path, "w:gz") as tar:
+            tar.add(os.path.join(src, "state.db"), arcname="hermes/state.db")
+            tar.add(os.path.join(src, "kanban.db"), arcname="hermes/kanban.db")
+        report = vr.verify(path, min_files=2)
+        self.assertEqual(report["databases"]["hermes/state.db"], {"sessions": 7})
+        self.assertEqual(report["databases"]["hermes/kanban.db"], {"sessions": 3})
+
+    def test_a_path_with_special_characters_is_still_opened(self):
+        folder = os.path.join(self.tmp, "odd # ? name%20x")
+        os.makedirs(folder)
+        make_wal_db(os.path.join(folder, "d.db"), 2)
+        self.assertEqual(vr.tables(os.path.join(folder, "d.db")), {"sessions": 2})
 
     def test_an_unsafe_member_is_rejected_before_anything_is_written(self):
         def evil(tar):
