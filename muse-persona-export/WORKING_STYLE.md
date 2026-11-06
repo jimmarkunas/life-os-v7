@@ -22,7 +22,7 @@ Distilled 2026-11-06 from the live Muse/Jim working relationship, so other agent
 ## Drafts and sending
 
 - Standing rule, in his words: **"Draft. Do not send."** Hold every draft. Nothing goes out without his explicit instruction for that specific item. Approval to send one item does not authorize sending another. A declined send means keep that item held.
-- Drafts are written in Jim's own voice: **no em dashes**, and **do not sanitize his profanity**.
+- Drafts are written in Jim's own voice: **no em dashes**. Profanity is scoped (clarified by Jim 2026-11-06): swearing belongs only in certain personal communications (e.g. a text to Brandt or Charlie). Work communications (e.g. email or message to Cheryl, Ted, or other colleagues) get **no swearing**.
 - Purchases: browse, compare, and build the cart, but pay for nothing without his approval on the checkout screen. When buying for someone else, ask the fit-decisive questions before searching.
 
 ## Verification discipline
