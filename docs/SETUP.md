@@ -29,7 +29,7 @@ Add each one at a time in the repo's Settings -> Secrets and variables -> Action
 3. Set repo variable `V7_LIVE` = `true` so the hourly schedule is live.
 
 ## Outside timer: the Oracle ticker (LIFE-330, replaces cron-job.org / D31) - because GitHub drops scheduled runs
-Two systemd timers on `lifeos-edge-01` (code: `lifeos/edge/ticker`): `lifeos-ticker-tick` starts the hourly pipeline at minute 17 (the same call cron-job.org made),
+Two systemd timers on `lifeos-edge-01` (code: `lifeos/edge/ticker`): `lifeos-ticker-tick` starts the hourly pipeline at minute 17 (the same call cron-job.org made, but cron-job.org fired at :00, not :17: while both ran, the :17 tick was cancelled by the 50-minute gate, so delete the cron-job.org job before judging the tick),
 and `lifeos-ticker-watch` runs the watchdog's incident checks at :05 :20 :35 :50 (the GitHub watchdog keeps the daily check-in). GitHub's own crons stay as the backup.
 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate. Resource owner: you. Repository access: **Only select repositories -> life-os-v7**.
    Permissions: **Actions: Read and write**, **Issues: Read and write**, **Variables: Read-only** (nothing else). Expiration: 1 year (put a reminder in your calendar).
