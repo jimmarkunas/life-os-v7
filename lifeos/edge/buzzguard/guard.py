@@ -298,7 +298,7 @@ def _decide_send(ti, stopped):
     return "allow", "buzz send"
 
 
-def decide(d, g, home):
+def _decide_inner(d, g, home):
     """-> (decision, reason). decision in allow, ask, deny."""
     tool, ti = d.get("tool_name"), d.get("tool_input")
     if d.get("hook_event_name") != "PreToolUse" or not isinstance(tool, str) or not isinstance(ti, dict):
@@ -334,6 +334,51 @@ def decide(d, g, home):
     if m:
         return _decide_github(m.group(1), ti, g)
     return "deny", "tool not on allowlist"
+
+
+APPROVE_CMD = "bash ~/Developer/LIFEOS/life-os-v7/lifeos/edge/buzzguard/install.sh approve"
+APPROVAL_TTL = 15 * 60
+
+
+def _action_id(tool, ti):
+    return hashlib.sha256(json.dumps({"tool": tool, "input": ti}, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def _approval(d, g, why):
+    """An 'ask' (a Jira/GitHub change) is approved OUT OF BAND: Jim runs `install.sh approve <id>` on his Mac, naming this exact action. The approval is single-use and expires in 15 minutes.
+    The Buzz app shows no approval prompt for this agent, so the hook cannot ask in the app; it refuses, records the request, and accepts the retry once approved. The agent cannot approve:
+    it has no tool that writes files, and message text never counts."""
+    tool, ti = d.get("tool_name"), d.get("tool_input")
+    aid = _action_id(tool, ti)
+    ok_file = os.path.join(g, "approved", aid)
+    try:
+        age = time.time() - os.stat(ok_file).st_mtime
+        if 0 <= age <= APPROVAL_TTL:
+            os.remove(ok_file)
+            return "allow", "approved by Jim (%s): %s" % (aid, why)
+        os.remove(ok_file)
+    except OSError:
+        pass
+    try:
+        pend = os.path.join(g, "pending")
+        os.makedirs(pend, exist_ok=True)
+        now = time.time()
+        for f in os.listdir(pend):
+            if now - os.stat(os.path.join(pend, f)).st_mtime > 86400:
+                os.remove(os.path.join(pend, f))
+        with open(os.path.join(pend, aid + ".json"), "w") as f:
+            json.dump({"id": aid, "t": time.strftime("%Y-%m-%d %I:%M:%S %p local"), "tool": tool, "why": why, "preview": json.dumps(ti, sort_keys=True, default=str)[:1500]}, f)
+    except OSError:
+        pass
+    return "deny", "approval needed (%s): %s. Jim approves this exact action by running: %s %s  (valid 15 minutes, once). Then retry the same call." % (aid, why, APPROVE_CMD, aid)
+
+
+def decide(d, g, home):
+    """-> (decision, reason). decision in allow, deny (an 'ask' becomes allow only with Jim's out-of-band approval of that exact action)."""
+    dec, why = _decide_inner(d, g, home)
+    if dec == "ask":
+        return _approval(d, g, why.replace("approval needed: ", ""))
+    return dec, why
 
 
 def main():

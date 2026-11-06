@@ -99,7 +99,29 @@ class Install(unittest.TestCase):
         self.run_script("approvals-on")
         status, out = self.run_script("install")
         self.assertEqual(status, 0, out)
-        self.assertIn("Jira comment=ask (want ask)", out)
+        self.assertIn("Jira comment=skipped", out)
+
+    def test_pending_lists_and_approve_creates_a_single_use_approval_after_showing_the_action(self):
+        self.assertEqual(self.run_script("install")[0], 0)
+        self.assertIn("nothing is waiting", self.run_script("pending")[1])
+        aid = "0123456789abcdef"
+        os.makedirs(os.path.join(self.dir, "pending"))
+        with open(os.path.join(self.dir, "pending", aid + ".json"), "w") as handle:
+            handle.write('{"id": "%s", "t": "2026-11-06 12:40:00 -0600", "tool": "mcp__x__addOrEditJiraIssueComment", "why": "jira comment on LIFE", "preview": "{\\"commentBody\\": \\"hello\\"}"}' % aid)
+        status, out = self.run_script("pending")
+        self.assertIn(aid, out)
+        self.assertIn("addOrEditJiraIssueComment", out)
+        def approve(a, *flags):
+            done = subprocess.run(["bash", SCRIPT, "approve", a, *flags, "--dir", self.dir, "--settings", self.settings], capture_output=True, text=True)
+            return done.returncode, done.stdout + done.stderr
+        status, out = approve(aid, "--yes")
+        self.assertEqual(status, 0, out)
+        self.assertIn("UNTRUSTED", out)
+        self.assertIn("hello", out)
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "approved", aid)))
+        for bad in ("zzz", "0123", "0123456789ABCDEF", ""):
+            self.assertEqual(approve(bad, "--yes")[0], 2, bad)
+        self.assertEqual(approve("ffffffffffffffff", "--yes")[0], 1)
 
     def test_refusals(self):
         status, out = self.run_script("install", "--guard", os.path.join(self.tmp, "missing.py"))

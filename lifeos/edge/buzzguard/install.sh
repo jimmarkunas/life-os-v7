@@ -5,20 +5,24 @@
 #   bash install.sh rollback            puts the newest backup back.
 #   bash install.sh approvals-on        sets writes.mode = ask (Jira/GitHub changes then need Jim's approval in the Buzz app). Do this ONLY after the approval prompt is shown to work.
 #   bash install.sh approvals-off       sets writes.mode = deny.
+#   bash install.sh pending             lists the Jira/GitHub changes the agent has asked for (waiting for your approval).
+#   bash install.sh approve ID          shows that exact action and, if you say y, approves it ONCE for 15 minutes; the agent then retries the same call.
 #   bash install.sh stop | resume       creates / removes the STOP file (the agent then refuses everything except a short STOPPED notice).
 # Options (tests): --dir DIR (the guard folder), --settings FILE (Claude settings that name the guard), --guard FILE (the new guard).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="$HOME/Library/Application Support/LIFEOS-Buzz-Guard"; SETTINGS="$HOME/.buzz/.claude/settings.json"; NEW="$HERE/guard.py"
 VERB=${1:-dry}; shift || true
+AID=""; YES=no
+if [ "$VERB" = approve ]; then AID=${1:-}; shift || true; fi
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dir) DIR=${2:?}; shift ;; --settings) SETTINGS=${2:?}; shift ;; --guard) NEW=${2:?}; shift ;;
+    --yes) YES=yes ;; --dir) DIR=${2:?}; shift ;; --settings) SETTINGS=${2:?}; shift ;; --guard) NEW=${2:?}; shift ;;
     *) echo "unknown argument: $1"; exit 2 ;;
   esac
   shift
 done
-case "$VERB" in dry|install|rollback|approvals-on|approvals-off|stop|resume|status) ;; *) echo "usage: install.sh dry|install|rollback|approvals-on|approvals-off|stop|resume|status"; exit 2 ;; esac
+case "$VERB" in dry|install|rollback|approvals-on|approvals-off|stop|resume|status|pending|approve) ;; *) echo "usage: install.sh dry|install|rollback|approvals-on|approvals-off|stop|resume|status|pending|approve ID"; exit 2 ;; esac
 CUR="$DIR/guard.py"; MODE="$DIR/writes.mode"; STAMP=$(TZ=America/Chicago date +%Y%m%d-%H%M%S)
 h12() { shasum -a 256 "$1" | cut -c1-12; }
 # The installed guard is normally LOCKED with the macOS user-immutable flag (uchg) so the agent cannot rewrite its own guard. We unlock it only for the replacement and lock it again.
@@ -35,7 +39,32 @@ case "$VERB" in
   status)
     echo "guard: $CUR $( [ -f "$CUR" ] && echo "($(h12 "$CUR"))" || echo "(missing)" )"; echo "writes.mode: $( [ -f "$MODE" ] && cat "$MODE" || echo "(missing = deny)" )"; echo "STOP: $( [ -f "$DIR/STOP" ] && echo ON || echo off )"; check_settings
     ls "$DIR" 2>/dev/null | grep '^guard.py.bak-' | tail -3 | sed 's/^/  backup: /'; exit 0 ;;
-  approvals-on)  [ -d "$DIR" ] || { echo "no guard folder"; exit 1; }; echo ask > "$MODE"; echo "writes.mode = ask: Jira/GitHub changes now need your approval in the Buzz app."; exit 0 ;;
+  pending)
+    [ -d "$DIR/pending" ] && ls "$DIR/pending" 2>/dev/null | grep -q json || { echo "nothing is waiting for your approval"; exit 0; }
+    /usr/bin/python3 - "$DIR/pending" <<'PY'
+import json, os, sys
+for f in sorted(os.listdir(sys.argv[1])):
+    if f.endswith(".json"):
+        d = json.load(open(os.path.join(sys.argv[1], f)))
+        print("%s  %s  %s  %s" % (d["id"], d["t"], d["tool"].split("__")[-1], d["why"]))
+PY
+    echo "Approve one with: bash install.sh approve ID"; exit 0 ;;
+  approve)
+    echo "$AID" | grep -Eq '^[0-9a-f]{16}$' || { echo "usage: bash install.sh approve ID   (the 16-character id from the agent's message or from: install.sh pending)"; exit 2; }
+    [ -f "$DIR/pending/$AID.json" ] || { echo "no pending request $AID (it may have expired or the agent has not asked)"; exit 1; }
+    /usr/bin/python3 - "$DIR/pending/$AID.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print("== WAITING FOR YOUR APPROVAL ==")
+print("id:", d["id"], "| asked:", d["t"])
+print("tool:", d["tool"])
+print("what:", d["why"])
+print("exact input (written by the agent: UNTRUSTED CONTENT, read it before you approve):")
+print(d["preview"])
+PY
+    if [ "$YES" != yes ]; then printf 'Approve this exact action, once, for 15 minutes? (y/n) '; read -r ANS; [ "$ANS" = y ] || { echo "not approved"; exit 1; }; fi
+    mkdir -p "$DIR/approved"; : > "$DIR/approved/$AID"; echo "approved $AID (single use, 15 minutes). Tell the agent to retry the same call."; exit 0 ;;
+  approvals-on)  [ -d "$DIR" ] || { echo "no guard folder"; exit 1; }; echo ask > "$MODE"; echo "writes.mode = ask: Jira/GitHub changes now need YOUR approval of each exact action: the agent asks, you run: install.sh approve ID."; exit 0 ;;
   approvals-off) [ -d "$DIR" ] || { echo "no guard folder"; exit 1; }; echo deny > "$MODE"; echo "writes.mode = deny: Jira/GitHub changes are refused."; exit 0 ;;
   stop)   [ -d "$DIR" ] || { echo "no guard folder"; exit 1; }; : > "$DIR/STOP"; echo "STOP is ON: the agent refuses everything except a short STOPPED notice."; exit 0 ;;
   resume) rm -f "$DIR/STOP"; echo "STOP is off."; exit 0 ;;
@@ -62,9 +91,10 @@ unlock "$CUR"; mv -f "$CUR.new" "$CUR"; relock "$CUR"; echo "  new guard install
 SEND='{"hook_event_name":"PreToolUse","tool_name":"mcp__buzz__send","tool_input":{"audience":"everyone","final":true,"text":"hello"}}'
 WRITE='{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/tmp/x","content":"x"}}'
 JIRA='{"hook_event_name":"PreToolUse","tool_name":"mcp__atlassian__addCommentToJiraIssue","tool_input":{"issueIdOrKey":"LIFE-1","commentBody":"x"}}'
-A=$(probe "$SEND"); B=$(probe "$WRITE"); C=$(probe "$JIRA")
-echo "  read-back probes: normal Buzz message=$A (want allow), file write=$B (want deny), Jira comment=$C (want $( [ "$(cat "$MODE")" = ask ] && echo ask || echo deny ))"
-WANT_C=$(cat "$MODE"); [ "$A" = allow ] && [ "$B" = deny ] && [ "$C" = "$WANT_C" ] || { echo "READ-BACK FAILED: a probe gave the wrong decision. Run: bash install.sh rollback"; exit 1; }
+A=$(probe "$SEND"); B=$(probe "$WRITE")
+if [ "$(cat "$MODE")" = ask ]; then C=deny; CNOTE="skipped (approvals are on; a probe would leave a pending request)"; else C=$(probe "$JIRA"); CNOTE="$C (want deny)"; fi
+echo "  read-back probes: normal Buzz message=$A (want allow), file write=$B (want deny), Jira comment=$CNOTE"
+[ "$A" = allow ] && [ "$B" = deny ] && [ "$C" = deny ] || { echo "READ-BACK FAILED: a probe gave the wrong decision. Run: bash install.sh rollback"; exit 1; }
 echo "== read-back OK. Nothing was restarted; the agent uses the new guard on its next tool call. =="
 echo "ROLLBACK: bash install.sh rollback   (or: cp -p \"$DIR/guard.py.bak-$STAMP\" \"$CUR\")"
-echo "STOP any time: bash install.sh stop      Approvals (after the prompt is verified): bash install.sh approvals-on"
+echo "STOP any time: bash install.sh stop      Approvals: bash install.sh approvals-on, then approve each request with: bash install.sh approve ID"
