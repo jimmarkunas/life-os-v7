@@ -1484,7 +1484,7 @@ jobs:
 
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
-    if: ${{ always() }}                    # also when prep fails (unit tests, credentials): then nothing ran and nothing reached Notion, so that is the run most needing a push (Nov 3-4 2026: 21 silent hours)
+    if: ${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}   # LIFE-328: also when an automatic run's prep fails (unit tests, credentials): nothing ran or reached Notion (Nov 3-4 2026: 21 silent hours); a failed manual prep has a person watching and loads no credential
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -70,7 +70,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("stages: $STAGES", report["run"])
         self.assertFalse(report.get("continue-on-error"))                              # a push the provider refuses turns the job red
         job = data["jobs"]["report"]                                                   # Nov 3-4 2026: prep (unit tests) failed for 21 hours and the report job was skipped, so no push
-        self.assertEqual(job["if"].split("#")[0].strip(), "${{ always() }}")         # it runs whatever prep did; a gate-cancelled prep is 'cancelled', not 'failure', and pushes nothing
+        self.assertEqual(job["if"], "${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}")   # LIFE-328: an automatic run's failed prep pushes; a gate-cancelled prep is 'cancelled' and pushes nothing
         self.assertIn("prep", job["needs"])
         self.assertIn("prep=${{ needs.prep.result }}", report["run"])                # a failed prep is named in the push
 
