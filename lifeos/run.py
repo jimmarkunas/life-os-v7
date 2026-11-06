@@ -187,6 +187,32 @@ def _step_code(counts):
             handle.write(f"cloud_fit_code={match.group(1)}\n")
 
 
+def _headline(stage, counts):
+    """Jim, Nov 6, 2026: the Granola line in the job log was one long JSON line nobody could read at a glance. One plain sentence, from the counts and the fixed code only (never a title, name or text)."""
+    if stage != "granola-auto" or not isinstance(counts, dict) or "meetings" not in counts:
+        return None
+    def number(key):
+        value = counts.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    code = counts.get("code") if re.fullmatch(r"[A-Z][A-Z0-9_]{1,48}", str(counts.get("code") or "")) else "NO_CODE"
+    return (f"Granola auto: {code}. On Oracle: {number('meetings')}; already filed: {number('already')}; filed this run: {number('carried')}; "
+            f"waiting for Jim (Unfiled): {number('unfiled_waiting') + number('unfiled_created')}; failed: {number('failed')}.")
+
+
+def _announce(stage, counts):
+    line = _headline(stage, counts)
+    if line is None:
+        return
+    print(line)
+    target = os.environ.get("GITHUB_STEP_SUMMARY")
+    if target:
+        try:
+            with open(target, "a") as handle:
+                handle.write(f"### {stage}\n\n{line}\n")
+        except OSError:
+            pass                                                                       # a summary is a convenience; never fail a stage for it
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=sorted(STAGES))
@@ -198,6 +224,7 @@ def main(argv=None):
     except (StoreError, NotionError, JiraError, OutlookError, GcalError, BridgeError, NetworkError) as error:
         print(f"{args.stage.upper()} FAILED: {error}", file=sys.stderr)
         return 1
+    _announce(args.stage, counts)
     print(f"{args.stage}:", json.dumps(counts, sort_keys=True))
     if args.live:
         from lifeos.jobs import daily                                                  # noqa: PLC0415 - LIFE-74: the monitors' daily evidence; best effort, never fails a stage
