@@ -1,0 +1,74 @@
+name: readiness-live
+# LIFE-324 (Jim, Nov 6, 2026: option 2 after the Oracle live check on LIFE-313 was BLOCKED: no host job holds the Jira values). MANUAL run only, no schedule, no timer, no loop: it proves that
+# `python -m lifeos.readiness issue-key KEY` works against live Jira through the real HTTP client (lifeos/platform/jira.py). Read-only: one GET per command, no Jira write.
+# It holds the same Jira credentials the hermes-stage job holds (from Bitwarden, same ids, same pinned action) and nothing else. It prints the readiness result, the exit codes and a leak check,
+# never a credential value; if any of the three values appears in the command output the job fails BEFORE anything is printed.
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: "LIFE or LOS issue key to check (read-only); the negative control LIFE-999999 always runs too"
+        type: string
+        default: "LIFE-317"
+permissions:
+  contents: read
+concurrency:
+  group: life-os-v7-readiness-live
+  cancel-in-progress: false
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/python
+      - id: bws_readiness
+        name: Load the Jira credentials from Bitwarden (exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
+        continue-on-error: true                 # one retry below; the retry fails the job
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+      - name: Bitwarden refused or timed out (429 / 5xx) - pause before the one retry
+        if: ${{ steps.bws_readiness.outcome == 'failure' }}
+        run: sleep $((30 + RANDOM % 45))
+      - id: bws_readiness_retry
+        name: Load the same credentials from Bitwarden - the one retry (the job fails if it fails, no fallback)
+        if: ${{ steps.bws_readiness.outcome == 'failure' }}
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793   # v3.0.1
+        with:
+          access_token: ${{ secrets.LIFEOS_BWS_RUNTIME_TOKEN }}
+          set_env: false
+          secrets: |
+            3fa6f4f4-bd6d-45e7-8f2c-b4db015ec0c3 > JIRA_API_TOKEN
+            e6466367-9a55-4899-ae1c-b4db015ec49f > JIRA_EMAIL
+      - name: Readiness against live Jira (the key, then the negative control; the leak check runs before anything is printed)
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ steps.bws_readiness.outputs.JIRA_API_TOKEN || steps.bws_readiness_retry.outputs.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ steps.bws_readiness.outputs.JIRA_EMAIL || steps.bws_readiness_retry.outputs.JIRA_EMAIL }}
+          KEY: ${{ inputs.key }}
+        run: |
+          set +e
+          if ! printf '%s' "$KEY" | grep -E -q '^(LIFE|LOS)-[0-9]{1,6}$'; then echo "REFUSED: the key must look like LIFE-123"; exit 1; fi
+          for name in JIRA_BASE_URL JIRA_EMAIL JIRA_API_TOKEN; do eval "v=\${$name}"; [ -n "$v" ] || { echo "REFUSED: $name is empty (not loaded)"; exit 1; }; done
+          python -m lifeos.readiness issue-key "$KEY" > "$RUNNER_TEMP/a.out" 2>&1; A=$?
+          python -m lifeos.readiness issue-key LIFE-999999 > "$RUNNER_TEMP/b.out" 2>&1; B=$?
+          leak=pass
+          for name in JIRA_BASE_URL JIRA_EMAIL JIRA_API_TOKEN; do
+            eval "v=\${$name}"
+            if grep -F -q -- "$v" "$RUNNER_TEMP/a.out" "$RUNNER_TEMP/b.out"; then leak=FAIL; fi
+          done
+          if [ "$leak" = FAIL ]; then echo "leak check: FAIL (a credential value appears in the output; nothing is printed)"; rm -f "$RUNNER_TEMP/a.out" "$RUNNER_TEMP/b.out"; exit 1; fi
+          echo "leak check: pass"
+          echo "a) issue-key $KEY -> exit $A"; cat "$RUNNER_TEMP/a.out"
+          echo "b) issue-key LIFE-999999 (negative control) -> exit $B"; cat "$RUNNER_TEMP/b.out"
+          { echo "### readiness-live"; echo; echo "- issue-key $KEY: exit $A"; echo "- negative control LIFE-999999: exit $B"; echo "- leak check: $leak"; } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'QUEUE_NOT_READY' "$RUNNER_TEMP/b.out"; CTRL=$?
+          rm -f "$RUNNER_TEMP/a.out" "$RUNNER_TEMP/b.out"
+          if [ "$B" != 2 ] || [ "$CTRL" != 0 ]; then echo "negative control did not print QUEUE_NOT_READY with exit 2"; exit 1; fi
+          if [ "$A" != 0 ] && [ "$A" != 2 ]; then echo "issue-key ended with an unexpected exit code"; exit 1; fi
+          exit 0
