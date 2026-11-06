@@ -69,6 +69,33 @@ class RecordTests(unittest.TestCase):
             self.assertEqual((code, out), (2, ""))
             self.assertTrue(err.startswith("QUEUE_NOT_READY — INCOMPLETE:"), err)
 
+    def test_a_los_origin_needs_its_notion_requirement_page(self):
+        """LIFE-319: GWT-GATE-01..03."""
+        from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
+        page = "\n\n**Requirement:** REQ-7 https://app.notion.com/p/0123456789abcdef0123456789abcdef"
+        code, out, err = self.check(raw(from_los))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("requirement_page_missing requirement LOS-900", err)
+        self.assertEqual(self.check(raw(from_los + page))[:2], (0, "ready v1\n"))
+        self.assertEqual(self.check(raw())[:2], (0, "ready v1\n"))                                           # no LOS origin: the check is skipped
+        self.assertEqual(rr.normalize(raw())["requirement"], {"los": "", "pages": []})
+
+    def test_a_bare_notion_link_or_a_los_key_outside_the_origin_line_does_not_count(self):
+        from_los = DESC.replace("chat: example.", "chat: example, from LOS-900.")
+        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nSee https://app.notion.com/p/0123456789abcdef0123456789abcdef"))[2])      # no REQ-n on the line
+        self.assertIn("requirement_page_missing", self.check(raw(from_los + "\n\nREQ-7 has no link yet"))[2])
+        self.assertEqual(self.check(raw(DESC + "\n\nBackground: LOS-900 was scoped earlier."))[:2], (0, "ready v1\n"))
+
+    def test_a_malformed_requirement_record_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record = Path(tmp) / "record.json"
+            data = rr.normalize(raw())
+            data["requirement"] = "yes"
+            record.write_text(json.dumps(data))
+            code, _, err = entry("issue", record)
+        self.assertEqual(code, 2)
+        self.assertIn("requirement_unreadable", err)
+
     def test_live_read_without_credentials_names_the_settings_only(self):
         done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-key", "LIFE-901"], cwd=ROOT, capture_output=True, text=True, env={"PATH": ""})
         self.assertEqual(done.returncode, 2)

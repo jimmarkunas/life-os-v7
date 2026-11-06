@@ -9,6 +9,8 @@ FIELDS = "summary,status,labels,parent,components,issuelinks,description"
 ROW = re.compile(r"^\[( |x|X)\]\s*(.+)$")
 PROOF = re.compile(r"\(proof:\s*(.*?)(?:;\s*status:[^)]*)?\)\s*\.?\s*(?:Done\.?)?\s*$")
 GWT = re.compile(r"\*{0,2}GWT-[A-Z]+-\d+\*{0,2}\s*Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)
+LOS_KEY = re.compile(r"\bLOS-\d+\b")
+REQ_PAGE = re.compile(r"\bREQ-\d+\b.*?(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+)|(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+).*?\bREQ-\d+\b")
 APPROVAL = re.compile(r"^\*{0,2}Origin\s*/\s*approval:\*{0,2}\s*(.+)$", re.I)
 
 
@@ -87,6 +89,9 @@ def normalize(raw):
             break
     record.setdefault("origin", {"approved": False})
     record.setdefault("authorization", {"approved_by": "", "provenance": ""})
+    origin_line = next((m.group(1) for m in map(APPROVAL.match, rows) if m), "")          # LIFE-319: a ticket that came from a LOS key must link its Notion requirement page (a line holding REQ-n and the page URL)
+    pages = sorted({(m.group(1) or m.group(2)).rstrip(".,;)*") for m in map(REQ_PAGE.search, (r.replace("\\", "") for r in rows)) if m})
+    record["requirement"] = {"los": (LOS_KEY.findall(origin_line) or [""])[0], "pages": pages}
     build = " ".join(section(rows, "Build"))
     for needle, perm in (("PR", "repo:write"), ("Notion", "notion:write"), ("Jira", "jira:write")):
         if needle in build:
