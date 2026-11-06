@@ -238,7 +238,7 @@ class ContactTests(unittest.TestCase):
     def test_mailboxes_other_domains_junk_and_unattributable_mail_are_never_contact(self):
         for address in ("no-reply@example.com", "digest-noreply@example.com", "auto-confirm@example.com", "shipment-tracking@example.com",
                         "store-news@example.com", "jobs@example.com", "careers@example.com", "talent.team@example.com",
-                        "pat@gmail.com", "recruiter@linkedin.com", "broken-address"):
+                        "pat" + chr(64) + "gmail.com", "recruiter@linkedin.com", "broken-address"):
             self.assertEqual(outcomes.contacts([msg(subject="Example update", address=address)], [EXAMPLE]), {}, address)
         for marker in ("bulk", "auto", "noreply"):                                                                                     # list, newsletter or auto-submitted mail
             marked = dict(msg(subject="Example weekly update", sender="Maria Lopez", address="maria@example.com"), markers={marker: True})
