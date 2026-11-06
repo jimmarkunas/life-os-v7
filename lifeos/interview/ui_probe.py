@@ -3,16 +3,17 @@ Writes only under the QA Interview OS / Opportunity Parent: the QA render of Wal
 from the Full width template the way production creates them. Prints fixed codes, block-type outlines and counts only; never content or ids."""
 import difflib
 import os
+from lifeos.platform.notion_ids import notion_id
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from . import create, notion, template, view
 from .models import ParentQuery, RoundQuery
 
-QA_PARENT = "3d43c5a0592681fdad10d75d83852fa7"        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
-UI3C = "3ff3c5a0592681aeba23e00675f097f1"             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
+QA_PARENT = notion_id("QA_PARENT")        # QA — Interview OS / Opportunity Parent (LIFE OS QA Home)
+UI3C = notion_id("UI3C")             # accepted UI 3c native QA preview (LIFE-88 comment 10869); read only
 # LIFE-88 QA acceptance: real canonical evidence, read only, rendered only into QA pages under QA_PARENT.
-UI4 = "3fa3c5a059268118ac0bd448ee12c199"              # approved UI 4 interview page (LIFE-46 10875); read only
-LEDGER_ROW = "3ff3c5a059268172a7e6f28a539b6d99"       # Walmart's Job Ledger row (LIFE-42); read only
-ROUND_PAGE = "3ff3c5a059268184a537f7678492ade8"       # Walmart Interview 1 in the Hiring Pipeline; its identity is read only
+UI4 = notion_id("UI4")              # approved UI 4 interview page (LIFE-46 10875); read only
+LEDGER_ROW = notion_id("LEDGER_ROW")       # Walmart's Job Ledger row (LIFE-42); read only
+ROUND_PAGE = notion_id("ROUND_PAGE")       # Walmart Interview 1 in the Hiring Pipeline; its identity is read only
 RENDER_TITLE = "UI 3c — V7 render · Walmart (QA, full width)"         # created from the Full width template (D16.1)
 CONTROL_TITLE = "UI 3c — V7 render · wrong-job control (QA, machine-written)"
 SEED = "QA synthetic note — written once by the QA probe; every refresh must keep it."

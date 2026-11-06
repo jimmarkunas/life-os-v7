@@ -1,5 +1,6 @@
 """LIFE-121 (Jim, Oct 26): a private report goes to a private Notion page, never into a log. The runner writes the table straight to Notion, as a child of Jim's private Reports page; the log carries counts and fixed codes only. Dry run unless live: a dry run reads, counts and writes nothing. One page per title: a page that already exists is
 left untouched (delete it in Notion to write a fresh one). Nothing is encoded, encrypted or copied out of Notion."""
+from lifeos.platform.notion_ids import notion_id
 from lifeos.platform import limits
 from lifeos.platform.notion_client import NotionError, rich_text
 
@@ -12,7 +13,7 @@ def _fail(counts, code):
     return counts
 
 
-REPORTS_PAGE = "4063c5a0592680079058c7b45bd602e6"          # Jim's private "Reports" page (shared with the Jobs integration, Oct 27 2026); an id is not a secret
+REPORTS_PAGE = notion_id("REPORTS_PAGE")          # Jim's private "Reports" page (shared with the Jobs integration, Oct 27 2026); an id is not a secret
 
 
 def _cell(text, link=False):

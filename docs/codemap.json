@@ -435,6 +435,7 @@
    "lifeos/platform/names.py": "Name and role comparison shared by every OS (Jobs: hiring-pipeline handoff, sponsor register; Interview: parent and child identity).",
    "lifeos/platform/notion_client.py": "Notion API transport (platform: free API only, paced under 3 req/s, 429 retry). Fixed error codes, no job knowledge.",
    "lifeos/platform/notion_files.py": "Notion file upload (platform, no job knowledge; LIFE-87 D234). One small file in one part: create the upload, send the bytes as multipart/form-data, and require Notion to",
+   "lifeos/platform/notion_ids.py": "Notion page and data-source ids come from the environment, never from source (LIFE-338).",
    "lifeos/platform/outlook.py": "Minimal Microsoft Graph mail client (stdlib only, platform: no product knowledge). Delegated OAuth with refresh tokens (device-code sign-in once, then silent refresh), im",
    "lifeos/platform/outlook_tokens.py": "Private storage for Outlook refresh tokens: one row per account label, replaced whenever Microsoft rotates the token. The database is private; this repo and its logs are ",
    "lifeos/platform/redact.py": "Public-safe redaction (ported, trimmed, from V2 core/security.py), with meeting credentials added.",

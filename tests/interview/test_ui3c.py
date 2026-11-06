@@ -12,8 +12,8 @@ from tests.interview.test_create import WritableFake
 from tests.interview.test_notion import ENV, block, page
 
 TODAY = "2026-10-20"
-# The approved pages' outlines (read Oct 20, 2026 from https://app.notion.com/p/3ff3c5a0592681aeba23e00675f097f1 and
-# https://app.notion.com/p/3fa3c5a059268118ac0bd448ee12c199) with the deliberate differences named in template.py: the QA-only
+# The approved pages' outlines (read Oct 20, 2026 from (Notion page, found by title) and
+# (Notion page, found by title)) with the deliberate differences named in template.py: the QA-only
 # footer toggles and "(QA preview)" / "(sandbox)" suffixes are left out, "historical" is fixture wording, and Mark Complete is
 # shown unavailable instead of as a checkbox.
 UI3C = """0:toggle ⚙️ LIFE OS [color=gray]

@@ -9,6 +9,7 @@ import collections
 import contextlib
 import os
 
+from lifeos.platform.notion_ids import notion_id
 from lifeos.megibow import card, classify as C, evidence, history, project as P, render as R, review, store, warnings as W
 from lifeos.megibow.windows import CHI, chicago, monday, window_utc
 from lifeos.platform.gcal import GcalError, GoogleCalendar
@@ -17,8 +18,8 @@ from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.outlook import OutlookError
 
 FORWARD_DAYS = 60
-DASHBOARD_PAGE = "3cf3c5a0-5926-8008-acfa-c0b4765caa92"        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
-REVIEW_SOURCE = "23953290-4ca5-4d94-802c-656aae0ddfc7"        # the MegIBOW Review data source
+DASHBOARD_PAGE = notion_id("DASHBOARD_PAGE")        # Jim & Matt Dashboard V2 (an id, not a credential); the block is found by its shape
+REVIEW_SOURCE = notion_id("REVIEW_SOURCE")        # the MegIBOW Review data source
 CUTOVER_DEFAULT = "2026-10-05"          # V7 counts from here; the weeks before come from Jim's own sheet (megibow/history.py)
 
 

@@ -96,6 +96,7 @@ on:
         type: boolean
         default: false
 env:
+  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
   ALERT_SETTINGS: ${{ vars.ALERT_SETTINGS }}      # LIFE-75: per-alert channel choices from the Alert settings page; empty = the registry defaults
@@ -257,7 +258,7 @@ jobs:
         name: Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)
         if: ${{ inputs.jira == 'dashboard' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.display_title == 'tick') || inputs.all }}
         env:
-          JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID || '3cf3c5a059268008acfac0b4765caa92' }}
+          JM_DASHBOARD_PAGE_ID: ${{ vars.JM_DASHBOARD_PAGE_ID }}
           MEGIBOW_BLOCK_ID: ${{ secrets.MEGIBOW_BLOCK_ID }}
           JIRA_SITE_URL: ${{ secrets.JIRA_SITE_URL }}
           JIRA_API_TOKEN: ${{ steps.bws_jira.outputs.JIRA_API_TOKEN || steps.bws_jira_retry.outputs.JIRA_API_TOKEN }}

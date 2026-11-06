@@ -46,9 +46,9 @@ class SandboxAccess(unittest.TestCase):
         fake = Fake()
         done = S.run(0, False, environ={}, client=fake)
         self.assertEqual(done, {"notion_sandbox_access": "read_only", "data_source": "200", "query": "200", "rows": 1, "page": "200", "failed": 0})
-        self.assertEqual(fake.calls, [("GET", "/data_sources/d364a2ba-194c-484d-b0e3-ebf838765145", None),
-                                      ("POST", "/data_sources/d364a2ba-194c-484d-b0e3-ebf838765145/query", {"page_size": 1}),
-                                      ("GET", "/pages/3fa3c5a0592681fb94bce9ebd20ee65d", None)])
+        self.assertEqual(fake.calls, [("GET", f"/data_sources/{S.SANDBOX_SOURCE}", None),
+                                      ("POST", f"/data_sources/{S.SANDBOX_SOURCE}/query", {"page_size": 1}),
+                                      ("GET", f"/pages/{S.SANDBOX_PAGE}", None)])
 
     def test_an_unshared_sandbox_reports_notions_codes_and_counts_each_refused_read(self):
         missing = refused("NOTION_HTTP_404", "object_not_found")

@@ -29,7 +29,7 @@ V7 is the active LIFE OS implementation. V1 (`life-os-automation`) and V2 (`life
 
 Whoever changes a fact updates its owner in the same step and links it; a copy elsewhere is replaced by a link, not edited.
 
-Product requirements: once work moves from LOS to LIFE, the long requirement text lives on one page in [Product Requirements](https://app.notion.com/p/2ba672dd026e4d759f571ade91bcc7be) (fixed fields, fixed headings, its own change table; no running log). The LIFE ticket links the page and never copies it; a change is a new table row plus a version bump, and one line `Requirement vN — <what changed>` on the ticket. Engineering policy stays in GitHub.
+Product requirements: once work moves from LOS to LIFE, the long requirement text lives on one page in Product Requirements (Notion, found by title) (fixed fields, fixed headings, its own change table; no running log). The LIFE ticket links the page and never copies it; a change is a new table row plus a version bump, and one line `Requirement vN — <what changed>` on the ticket. Engineering policy stays in GitHub.
 
 ## Fast path
 

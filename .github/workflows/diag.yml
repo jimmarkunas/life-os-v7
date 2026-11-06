@@ -151,12 +151,14 @@ jobs:
         if: ${{ inputs.stage == 'notion-sandbox-access' }}
         env:
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
+          LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
         run: python -m lifeos.run notion-sandbox-access --limit 0
       - name: Notion sandbox outreach proof (one synthetic sandbox page; typed confirmation; codes and counts only)
         if: ${{ inputs.stage == 'notion-sandbox-outreach-proof' }}
         env:
           NOTION_API_TOKEN: ${{ steps.bws_sandbox.outputs.NOTION_API_TOKEN || steps.bws_sandbox_retry.outputs.NOTION_API_TOKEN }}
           PROOF_CONFIRM: ${{ inputs.confirm }}
+          LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
         run: python -m lifeos.run notion-sandbox-outreach-proof --limit 0 --live
   # LIFE-88: the UI 3c REST capability probe. Its own job, so the Interview Notion token (LIFE OS Interview OS) reaches nothing else and no other value reaches it.
   # Reads the accepted UI 3c QA preview and writes only its one probe page under the QA Interview OS parent, only with confirm = QA. Codes, block types and counts only.
@@ -192,6 +194,7 @@ jobs:
         env:
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
           PROBE_CONFIRM: ${{ inputs.confirm }}
+          LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
         run: python -m lifeos.run interview-ui-probe --limit 0 --live
   # LIFE-121: the two private reports. Their own job: the Jobs Notion token reaches only these stages (and the sandbox job above), the database values only the review. The text is written straight to ONE private Notion page
   # (a child of the page that holds the Job Ledger) and never reaches a log; the log has counts and fixed codes. A dry run unless confirm = REPORT (Jim, Oct 26: "list the 59 in Notion").

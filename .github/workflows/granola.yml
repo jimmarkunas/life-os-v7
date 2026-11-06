@@ -19,6 +19,9 @@ permissions:
 concurrency:
   group: life-os-v7-granola
   cancel-in-progress: false
+env:
+  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
+
 jobs:
   granola:
     runs-on: ubuntu-24.04
