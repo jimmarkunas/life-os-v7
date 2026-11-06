@@ -1,7 +1,7 @@
 """LIFE-225 (ARCH-04; LOS-74 Q24, Q30): one versioned, deterministic, offline readiness validator for coding agents and CI.
 
 Three checks, one refusal shape, stdlib only, no network, no state of its own:
-  issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present; needs/decisions: every row {what, proof, status: done} or the issue is not released)
+  issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present; requirement: a ticket naming a LOS origin must link its Notion REQ page (LIFE-319); needs/decisions: every row {what, proof, status: done} or the issue is not released)
   preflight  a writer claim is safe to act on (live-fetched, unchanged GitHub baseline; no other writer on the issue or surface; with --pre only availability, otherwise this writer's own recorded claim too)
   issue-key  the same check on a LIVE LIFE issue read from Jira by key (LIFE-313; read-only GET with the existing JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN), and issue-json FILE on a saved REST v3 issue; unreadable or incomplete Jira data prints QUEUE_NOT_READY, never ready
   repo       the global source index still points at real files with an owner and an authority, inside the size limit
@@ -83,6 +83,12 @@ def check_issue(issue):
                 out.append(refuse(f"{name}_unreadable", name))
             else:
                 out += [refuse(code, name, f"item {i + 1}") for i, r in enumerate(rows) if not (isinstance(r, dict) and text(r.get("what")) and text(r.get("proof")) and r.get("status") == "done")]
+    if "requirement" in issue:                                              # LIFE-319: only a ticket that names a LOS origin needs a Notion requirement page; no Notion read, no credential
+        req = issue["requirement"]
+        if not (isinstance(req, dict) and isinstance(req.get("pages"), list)):
+            out.append(refuse("requirement_unreadable", "requirement"))
+        elif req.get("los") and not req["pages"]:
+            out.append(refuse("requirement_page_missing", "requirement", str(req["los"])))
     if "acceptance" in issue:
         items = issue["acceptance"]
         if not (isinstance(items, list) and items):
