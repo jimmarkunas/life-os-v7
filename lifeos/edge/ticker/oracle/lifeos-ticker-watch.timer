@@ -1,0 +1,11 @@
+# LIFE-330: the watchdog's incident checks every 15 minutes, at :05 :20 :35 :50, never at the GitHub watchdog's :17 or :47, so the two never race to open
+# the same incident. Not Persistent: a missed check is simply the next one.
+[Unit]
+Description=LIFE OS ticker: watchdog check
+
+[Timer]
+OnCalendar=*-*-* *:05,20,35,50:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

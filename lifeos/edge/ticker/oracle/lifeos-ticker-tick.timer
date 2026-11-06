@@ -1,0 +1,12 @@
+# LIFE-330: start the hourly pipeline at minute 17 of every hour (replaces the cron-job.org job, D31). Persistent: an hour missed while the machine was down
+# fires once when it comes back; the workflow's gate cancels a tick within 50 minutes of another, so a late or doubled tick never runs the pipeline twice.
+[Unit]
+Description=LIFE OS ticker: hourly pipeline tick
+
+[Timer]
+OnCalendar=*-*-* *:17:00
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
