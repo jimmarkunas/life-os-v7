@@ -378,6 +378,8 @@ class Picker(unittest.TestCase):
         for part in (b"https://www.googleapis.com/auth/drive.file", b'"https://drive.google.com/file/d/" + d.docs[0].id + "/view"', b"google.picker.Action.PICKED", b"f.submit()"):
             self.assertIn(part, js)
         self.assertNotIn(b"auth/drive\"", js)                                                           # never the full Drive scope
+        for part in (b'localStorage.setItem(KEY', b"t.exp > Date.now()", b'requestAccessToken({ prompt: "" })', b"keep(r); show();"):   # LIFE-173: one sign-in, reused
+            self.assertIn(part, js)
         self.assertTrue(manage_app.DRIVE_LINK.fullmatch("https://drive.google.com/file/d/1AbCdEfGhIjK_lmnop/view"))   # the link the picker posts is one the review accepts
 
     def test_the_identifiers_come_only_from_the_gate_and_only_in_their_exact_shapes(self):

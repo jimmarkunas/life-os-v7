@@ -126,11 +126,15 @@ CSS = (".mcard{border:1px solid var(--border);border-radius:10px;background:var(
 # (the files Jim picks); the Close service's Drive credential never reaches the browser. Its browser identifiers (an OAuth client id, a Picker API key restricted
 # to this origin, the Cloud project number) are the Close service's optional `picker` credential (install-close.sh credential picker), never in this public repository;
 # close_gate passes them on GET /manage only. Without them the picker button is not shown and the name search stays the way in.
+# LIFE-173 (Jim, Nov 6 2026: "my login should be persistent"): a pick reloads the page, so the drive.file token is kept in this browser until it expires
+# (about an hour), and a new one is asked for with prompt "" so Google reuses the existing sign-in and consent instead of asking again.
 PICKER_FIELDS = {"client_id": re.compile(r"[0-9]{6,20}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com"), "api_key": re.compile(r"AIza[0-9A-Za-z_-]{30,60}"),
                  "app_id": re.compile(r"[0-9]{6,20}")}
 PICKER_JS = """(function () {
-  var b = document.getElementById("pick-drive"), f = document.getElementById("pick-form"), token = null, ready = null;
+  var b = document.getElementById("pick-drive"), f = document.getElementById("pick-form"), token = null, ready = null, KEY = "lifeos-picker-token";
   if (!b || !f) { return; }
+  function kept() { try { var t = JSON.parse(localStorage.getItem(KEY) || "null"); return t && t.exp > Date.now() + 60000 ? t.token : null; } catch (e) { return null; } }
+  function keep(r) { try { localStorage.setItem(KEY, JSON.stringify({ token: r.access_token, exp: Date.now() + (Number(r.expires_in) || 3600) * 1000 })); } catch (e) {} }
   function load(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src; s.async = true; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
   ready = Promise.all([load("https://apis.google.com/js/api.js"), load("https://accounts.google.com/gsi/client")])
     .then(function () { return new Promise(function (ok) { gapi.load("picker", ok); }); });
@@ -148,12 +152,13 @@ PICKER_JS = """(function () {
   var client = null;
   ready.then(function () {
     client = google.accounts.oauth2.initTokenClient({ client_id: b.dataset.client, scope: "https://www.googleapis.com/auth/drive.file",
-      callback: function (r) { if (r && r.access_token) { token = r.access_token; show(); } else { fail(); } } });
+      callback: function (r) { if (r && r.access_token) { token = r.access_token; keep(r); show(); } else { fail(); } } });
     b.disabled = false;
   }, fail);
   b.addEventListener("click", function () {
     if (!client) { return; }
-    if (token) { show(); } else { client.requestAccessToken(); }
+    token = kept();
+    if (token) { show(); } else { client.requestAccessToken({ prompt: "" }); }
   });
 })();
 """
