@@ -1,0 +1,3 @@
+# LIFE-331: which image is which OpenClaw agent's avatar, with its exact hash and size. THE IMAGE IS NOT IN THIS (PUBLIC) REPOSITORY (it carries a third-party mark):
+# it is in the private repo jimmarkunas/bot-studio, folder exports/ (animated loop, APNG 256 px, seamless). Format: agent  file  sha256  bytes
+main openclaw-256.apng 617d7e2e6635ef8d40c98164cb5f14a7f20df7d63c7b2194f6fb1b5fb02af89c 935045
