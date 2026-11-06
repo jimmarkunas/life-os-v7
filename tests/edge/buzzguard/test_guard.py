@@ -47,7 +47,7 @@ class Table(Base):
             self.assertEqual(self.dec("mcp__buzz__send", bad), "deny", bad)
 
     def test_a_secret_shaped_message_is_never_sent(self):
-        for text in ("here: tskey-api-abc123", "nsec1" + "q" * 40, "sk-" + "a" * 30, "AKIA" + "A" * 16, "ghp_" + "a" * 30, "password: hunter2", "-----BEGIN PRIVATE KEY-----", "api_key=abc"):
+        for text in ("here: tskey-api-abc123", "nsec1" + "q" * 40, "sk-" + "a" * 30, "AKIA" + "A" * 16, "ghp_" + "a" * 30, "password: hunter2", "-----BEGIN " + "PRIVATE KEY-----", "api_key=abc"):
             self.assertEqual(self.dec("mcp__buzz__send", self.send(text)), "deny", text)
 
     def test_buzz_reads_are_allowed_and_unknown_buzz_tools_are_not(self):
