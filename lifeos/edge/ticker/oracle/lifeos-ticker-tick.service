@@ -1,0 +1,20 @@
+# LIFE-330: one hourly tick (POST workflow_dispatch for hourly.yml, tick=true). No port, no state; the token is an encrypted systemd credential.
+[Unit]
+Description=LIFE OS ticker: dispatch the hourly pipeline
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/lifeos-ticker/ticker.py tick
+LoadCredentialEncrypted=github:/etc/credstore.encrypted/lifeos-ticker.github
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RuntimeMaxSec=120
+MemoryMax=128M

@@ -1,0 +1,21 @@
+# LIFE-330: one watchdog check (stalled / failing incidents, LIFE-329 reminders; no daily check-in). Reads Jim's alert switches from the repository variables.
+[Unit]
+Description=LIFE OS ticker: watchdog incident check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/lifeos-ticker/ticker.py watch
+LoadCredentialEncrypted=github:/etc/credstore.encrypted/lifeos-ticker.github
+LoadCredentialEncrypted=ntfy:/etc/credstore.encrypted/lifeos-ticker.ntfy
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RuntimeMaxSec=180
+MemoryMax=192M
