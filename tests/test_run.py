@@ -4,6 +4,7 @@ import importlib
 import inspect
 import io
 import json
+import os
 import unittest
 import warnings
 from unittest.mock import patch
@@ -31,6 +32,67 @@ class RegistryTests(unittest.TestCase):
     def test_a_failing_stage_prints_a_fixed_code_and_returns_1(self):
         with patch.dict(run.STAGES, {"probe": lambda limit, live: (_ for _ in ()).throw(run.JiraError("JIRA_NETWORK"))}):
             self.assertEqual(run.main(["probe"]), 1)
+
+
+class GranolaHeadlineTests(unittest.TestCase):
+    """Jim, Nov 6, 2026: print a readable count for the hourly Granola job."""
+
+    COUNTS = {"already": 12, "carried": 0, "code": "GRAN_AUTO_NOTHING_NEW", "failed": 0, "meetings": 12, "unfiled_created": 0, "unfiled_waiting": 0, "why": {}}
+
+    def run_stage(self, counts, summary=None):
+        out, err = io.StringIO(), io.StringIO()
+        env = {"GITHUB_STEP_SUMMARY": summary} if summary else {}
+        with patch.dict(os.environ, env, clear=False), patch.dict(run.STAGES, {"granola-auto": lambda limit, live: counts}), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = run.main(["granola-auto"])
+        return status, out.getvalue(), err.getvalue()
+
+    def test_a_plain_sentence_comes_before_the_json_line(self):
+        status, out, _ = self.run_stage(self.COUNTS)
+        self.assertEqual(status, 0)
+        lines = out.splitlines()
+        self.assertEqual(lines[0], "Granola auto: GRAN_AUTO_NOTHING_NEW. On Oracle: 12; already filed: 12; filed this run: 0; waiting for Jim (Unfiled): 0; failed: 0.")
+        self.assertTrue(lines[1].startswith("granola-auto: {"))                       # the full counts line is kept unchanged
+
+    def test_a_busy_run_reports_what_was_filed_and_what_waits(self):
+        _, out, _ = self.run_stage({**self.COUNTS, "code": "GRAN_AUTO_DONE", "carried": 3, "meetings": 15, "unfiled_created": 1, "unfiled_waiting": 2})
+        self.assertIn("filed this run: 3", out.splitlines()[0])
+        self.assertIn("waiting for Jim (Unfiled): 3", out.splitlines()[0])
+
+    def test_a_failure_still_exits_1_and_names_its_code(self):
+        status, out, err = self.run_stage({**self.COUNTS, "code": "GRAN_NOTION_FAILED", "failed": 2})
+        self.assertEqual(status, 1)
+        self.assertIn("failed: 2", out.splitlines()[0])
+        self.assertIn("GRANOLA-AUTO FAILED: GRAN_AUTO_FAILED", err)
+
+    def test_the_sentence_never_carries_free_text(self):
+        _, out, _ = self.run_stage({**self.COUNTS, "code": "not a code <script>", "meetings": "twelve", "already": True, "title": "Secret client meeting"})
+        first = out.splitlines()[0]
+        self.assertIn("Granola auto: no code.", first)
+        self.assertIn("On Oracle: 0;", first)
+        self.assertIn("already filed: 0;", first)
+        self.assertNotIn("Secret", first)
+
+    def test_the_github_step_summary_gets_the_same_sentence_and_a_bad_path_is_harmless(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "summary.md")
+            self.run_stage(self.COUNTS, summary=path)
+            with open(path) as handle:
+                text = handle.read()
+            self.assertIn("### granola-auto", text)
+            self.assertIn("On Oracle: 12; already filed: 12", text)
+            status, out, _ = self.run_stage(self.COUNTS, summary=os.path.join(folder, "no", "such", "dir", "s.md"))
+            self.assertEqual(status, 0)
+            self.assertIn("On Oracle: 12", out)
+
+    def test_other_stages_and_counts_without_meetings_print_nothing_extra(self):
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict(run.STAGES, {"probe": lambda limit, live: {"x": 1}}), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            run.main(["probe"])
+        self.assertEqual(out.getvalue().splitlines(), ['probe: {"x": 1}'])
+        self.assertIsNone(run._headline("granola-auto", {"code": "X"}))
+        self.assertIsNone(run._headline("granola-auto", None))
 
 
 class PartialFailureExitTests(unittest.TestCase):
