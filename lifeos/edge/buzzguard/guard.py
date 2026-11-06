@@ -18,12 +18,15 @@ GITHUB_REPOS = {"jimmarkunas/life-os-v7", "jimmarkunas/bot-studio"}
 READ_ROOTS = (".buzz", "Developer/LIFEOS/life-os-v7")
 READ_EXT = {".md", ".txt", ".py", ".sh", ".json", ".yaml", ".yml", ".toml", ".html", ".css", ".js", ".ts", ".vue", ".rs", ".csv", ".rst", ".manifest"}
 SECRET_PATH = re.compile(r"(?i)(^|/)(\.git|\.claude|\.ssh|\.gnupg|\.aws|\.env[^/]*|keys?|keystore|private|secrets?|credentials?)(/|$)|(?i:id_[a-z0-9]+|\.netrc|nsec|priv|key|hook\.log|state\.db|identity|settings|token|secret|cred|passw|\.pem|\.key|\.jsonl|keychain|\.zsh_history|\.bash_history)")
-SECRETY = re.compile(r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,}|aiza[0-9a-z_-]{20,}|gh[pousr]_[a-z0-9]{20,}|github_pat_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY|"
-                     r"(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
+PREFIXES = r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,}|aiza[0-9a-z_-]{20,}|gh[pousr]_[a-z0-9]{20,}|github_pat_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY"
+SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
+                     r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
+COMPACT = re.compile(PREFIXES)                                      # secrets split by spaces or line breaks: only the prefix shapes are re-checked with whitespace removed
 BUZZ_READ = {"mcp__buzz__get_messages", "mcp__buzz__list_channels", "mcp__buzz__get_thread", "mcp__buzz__search_messages", "mcp__buzz__get_channel_info", "mcp__buzz__list_agents", "mcp__buzz__whoami"}
-BUZZ_SEND_KEYS = {"audience", "final", "text", "channel", "thread", "reply_to", "recipient", "mention"}
+BUZZ_SEND_KEYS = {"audience", "final", "text", "reply", "channel", "thread", "reply_to", "recipient", "mention"}   # `reply` = the 64-hex id of the message being answered (seen in the agent's real calls)
+EVENT_ID = re.compile(r"[0-9a-f]{64}")
 IDENT = re.compile(r"[A-Za-z0-9_.:@-]{1,200}")
-SEND_MAX = 4000
+SEND_MAX = 12000
 STOP_TEXT = ("STOPPED", "STOPPED by Jim")
 ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|claude_ai_Atlassian_Rovo(?:_2)?|atlassian|jira)__(.+)", re.I)
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
@@ -82,9 +85,16 @@ def _leaves(v):
 EXFIL = re.compile(r"(?i)!\[[^\]]*\]\(|/Users/[A-Za-z0-9_.-]+/\.|\.buzz/|\.ssh|(?:password|passwd|passphrase|api[ _-]?key|secret|token)\s+(?:is|was)\s+\S{3,}|\b(?:pw|pwd)\s*[:=]")
 
 
+SPLIT_HEX = re.compile(r"(?i)(?:\b[0-9a-f]{4,16}\b[\s-]+){3,}\b[0-9a-f]{4,16}\b")
+
+
+def _split_hex(s):
+    return any(len(re.sub(r"[\s-]", "", m.group(0))) >= 48 for m in SPLIT_HEX.finditer(s))
+
+
 def _secret(o):
     for s in _strings(o):
-        if SECRETY.search(s) or SECRETY.search(re.sub(r"\s+", "", s)) or EXFIL.search(s):
+        if _split_hex(s) or SECRETY.search(s) or COMPACT.search(re.sub(r"\s+", "", s)) or EXFIL.search(s):
             return True
     return False
 
@@ -281,7 +291,9 @@ def _decide_send(ti, stopped):
             return "deny", "send %s must be a plain identifier" % k
     if "mention" in ti and not (isinstance(ti["mention"], list) and len(ti["mention"]) <= 20 and all(isinstance(m, str) and IDENT.fullmatch(m) for m in ti["mention"])):
         return "deny", "send mention must be a short list of plain identifiers"
-    if _secret(ti):
+    if "reply" in ti and not (isinstance(ti["reply"], str) and EVENT_ID.fullmatch(ti["reply"])):
+        return "deny", "send reply must be a 64-hex message id"
+    if _secret({k: v for k, v in ti.items() if k != "reply"}):
         return "deny", "secret-shaped text in a message"
     return "allow", "buzz send"
 
@@ -296,6 +308,9 @@ def decide(d, g, home):
         return _decide_send(ti, stopped)
     if stopped:
         return "deny", "STOP is on"
+    if tool == "ToolSearch":
+        q = ti.get("query")
+        return ("allow", "tool search") if set(ti) <= {"query", "max_results"} and isinstance(q, str) and 0 < len(q) <= 200 and not _secret(ti) else ("deny", "tool search input not allowed")
     if tool == "Read":
         return ("allow", "read in allowed folder") if _read_ok(ti, home) else ("deny", "read outside allowed folders, a secret-shaped path or a bad argument")
     if _secret(ti):

@@ -43,8 +43,24 @@ class Table(Base):
         self.assertEqual(self.dec("mcp__buzz__send", self.send("Hi", channel="life-os-main")), "allow")
         self.assertEqual(self.dec("mcp__buzz__send", self.send("Hi", channel="anything-else")), "allow")
         for bad in ({"audience": "everyone", "final": True}, {"audience": "me", "final": True, "text": "x"}, {"audience": "everyone", "final": "yes", "text": "x"},
-                    self.send("x", bogus=1), self.send(""), self.send("   "), self.send("a" * 4001), self.send(5)):
+                    self.send("x", bogus=1), self.send(""), self.send("   "), self.send("a" * 12001), self.send(5)):
             self.assertEqual(self.dec("mcp__buzz__send", bad), "deny", bad)
+
+    def test_the_real_reply_field_and_tool_search_the_agent_uses(self):
+        eid = "ab12" * 16
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("Yes, I am here.", reply=eid)), "allow")           # shape seen in the agent's real transcript
+        for bad in ("x" * 64, eid[:-1], eid.upper(), 5, "", eid + "0", ["a"]):
+            self.assertEqual(self.dec("mcp__buzz__send", self.send("hi", reply=bad)), "deny", bad)
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("tskey-api-abc123", reply=eid)), "deny")
+        self.assertEqual(self.dec("ToolSearch", {"query": "select:mcp__atlassian__getJiraIssue", "max_results": 5}), "allow")
+        for bad in ({"query": ""}, {"query": "x" * 300}, {"query": "tskey-abc123456"}, {"query": "x", "other": 1}, {"max_results": 5}):
+            self.assertEqual(self.dec("ToolSearch", bad), "deny", bad)
+
+    def test_ordinary_long_sentences_are_not_mistaken_for_secrets(self):
+        prose = "Yes, I am here. I can acknowledge test messages and read Jira. Running shell commands or making changes needs your separate authorization first. " * 3
+        self.assertEqual(self.dec("mcp__buzz__send", self.send(prose)), "allow")
+        self.assertEqual(self.dec("mcp__buzz__send", self.send(prose * 20)), "allow")
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("sk- " + "a" * 20)), "deny")
 
     def test_a_secret_shaped_message_is_never_sent(self):
         for text in ("here: tskey-api-abc123", "nsec1" + "q" * 40, "sk-" + "a" * 30, "AKIA" + "A" * 16, "ghp_" + "a" * 30, "password: hunter2", "-----BEGIN " + "PRIVATE KEY-----", "api_key=abc"):
