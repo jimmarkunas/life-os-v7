@@ -12,6 +12,7 @@ import sqlite3
 import sys
 import tarfile
 import tempfile
+import urllib.parse
 
 MAX_TOTAL = 400 * 1024 * 1024
 
@@ -41,12 +42,28 @@ def safe_members(tar):
 MODULE_HINTS = ("no such module", "no such tokenizer", "unknown tokenizer", "no such function", "not authorized", "unsupported")
 
 
+def _open(path):
+    """Open the extracted COPY (a private throw-away file, so nothing live is touched). A plain open is used first: Hermes's databases are WAL-mode, and a
+    read-only URI open of a WAL database fails with 'unable to open database file' when its helper files cannot be made (LIFE-318, Nov 6 2026: all nine databases
+    were wrongly reported corrupt). If that still fails, an immutable open (no helper files, no locking) is tried with the path properly quoted. The SQLite
+    version is added to a failure so a machine-specific problem is visible."""
+    errors = []
+    for how in ("plain", "immutable"):
+        try:
+            if how == "plain":
+                db = sqlite3.connect(path)
+            else:
+                db = sqlite3.connect("file:%s?mode=ro&immutable=1" % urllib.parse.quote(path), uri=True)
+            db.execute("select count(*) from sqlite_master").fetchone()                  # opening is lazy: this is what really touches the file
+            return db
+        except sqlite3.DatabaseError as error:
+            errors.append("%s open: %s" % (how, error))
+    raise RestoreError("RESTORE_DB_CORRUPT", "%s [sqlite %s]" % ("; ".join(errors), sqlite3.sqlite_version))
+
+
 def tables(path):
     """{table: rows}. Raises RestoreError RESTORE_DB_CORRUPT (damage reported by SQLite) or RESTORE_DB_UNCHECKED (the check could not run here)."""
-    try:
-        db = sqlite3.connect("file:%s?mode=ro" % path, uri=True)
-    except sqlite3.DatabaseError as error:
-        raise RestoreError("RESTORE_DB_CORRUPT", str(error)) from None
+    db = _open(path)
     try:
         try:
             result = db.execute("pragma integrity_check").fetchall()
