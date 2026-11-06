@@ -14,6 +14,9 @@ permissions:
 concurrency:
   group: life-os-v7-interview-proof              # its own sandbox per run, so it shares no queue with the real Interview writer
   cancel-in-progress: false
+env:
+  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
+
 jobs:
   proof:
     runs-on: ubuntu-24.04
