@@ -109,6 +109,40 @@ class Deploy(unittest.TestCase):
         self.assertIn("ROLLBACK image:  rm -f " + dest, out)
         self.assertIn("Nothing was restarted", out)
 
+    def test_identity_md_is_pointed_at_the_same_image_with_a_backup_and_a_rollback_line(self):
+        idmd = os.path.join(self.ws, "IDENTITY.md")
+        original = "# Identity\n- Name: OpenClaw\n- Avatar: avatars/main.png\n- Emoji: x\n"
+        with open(idmd, "w") as handle:
+            handle.write(original)
+        os.chmod(idmd, 0o640)
+        status, out = self.run_script()
+        self.assertEqual(status, 0, out)
+        self.assertIn("IDENTITY.md avatar line now: - Avatar: avatars/main.png", out)
+        self.assertEqual(open(idmd).read(), original)                                        # dry run writes nothing
+        status, out = self.run_script("--apply")
+        self.assertEqual(status, 0, out)
+        self.assertEqual(open(idmd).read(), "# Identity\n- Name: OpenClaw\n- Avatar: avatars/openclaw.png\n- Emoji: x\n")
+        self.assertEqual(os.stat(idmd).st_mode & 0o777, 0o640)
+        self.assertEqual(open(os.path.join(self.backup, "IDENTITY.md")).read(), original)
+        self.assertIn("ROLLBACK IDENTITY.md: cp -p %s %s" % (os.path.join(self.backup, "IDENTITY.md"), idmd), out)
+        # a second run finds the line already right: no new IDENTITY.md backup and no rollback line for it
+        shutil.rmtree(self.backup)
+        status, out = self.run_script("--apply")
+        self.assertEqual(status, 0, out)
+        self.assertFalse(os.path.exists(os.path.join(self.backup, "IDENTITY.md")))
+        self.assertNotIn("ROLLBACK IDENTITY.md", out)
+
+    def test_without_an_identity_md_or_without_an_avatar_line_it_is_left_alone(self):
+        status, out = self.run_script()
+        self.assertIn("has no '- Avatar:' line: left alone", out)
+        idmd = os.path.join(self.ws, "IDENTITY.md")
+        with open(idmd, "w") as handle:
+            handle.write("# Identity\n- Name: OpenClaw\n")
+        status, out = self.run_script("--apply")
+        self.assertEqual(status, 0, out)
+        self.assertEqual(open(idmd).read(), "# Identity\n- Name: OpenClaw\n")
+        self.assertFalse(os.path.exists(os.path.join(self.backup, "IDENTITY.md")))
+
     def test_a_second_apply_keeps_the_existing_image_in_the_backup(self):
         dest = os.path.join(self.ws, "avatars", "openclaw.png")
         self.write(dest, b"older image")
