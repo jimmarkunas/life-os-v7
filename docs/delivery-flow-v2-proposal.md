@@ -1,6 +1,6 @@
 # LIFE OS delivery flow: why it hurts and a simpler one (PROPOSAL)
 
-> Nov 5, 2026 (LIFE-317): historical findings and evidence only. The approved requirement and its change history live in Notion, [REQ-1](https://app.notion.com/p/40f3c5a0592681699abade3542be12ba); the rules in force are in `docs/development-policy` Part 04 and AGENTS.md.
+> Nov 5, 2026 (LIFE-317): historical findings and evidence only. The approved requirement and its change history live in Notion, REQ-1 (Notion, found by title); the rules in force are in `docs/development-policy` Part 04 and AGENTS.md.
 
 Status: **PROPOSAL for Jim. Nothing in this document is in force.** The draft PR carrying it changes no Jira setting, merges nothing and is not approved. Prepared November 5, 2026 (CT) from a read-only review of Jira LIFE, V7 PRs #740–756, the policy parts and the Hermes tickets.
 
@@ -179,7 +179,7 @@ A cheap fourth if you want it: stop agents typing clock times (use the comment's
 4. **Agent identity by labels, not users.** Convention (in AGENTS.md): the claiming agent adds one label, `agent-claude-code`, `agent-hermes` or `agent-chatgpt`, and starts each comment it writes with `[agent-claude-code]`. Limit, stated plainly: any agent using Jim's credentials can also set or remove a label, so labels make authorship readable and queryable; they do not enforce it. A separate Jira user would.
 5. **Merge rule: kept as it is (option C).** Jim, 2:55 PM CT: "Keep 3 and 3a so agents merge routine PRs on green CI. This contradicts your hard gate. <-- Approved, go". Part 07 items 3 and 3a stay in force and AGENTS.md step 5 says merge on green same-head CI. This replaces the "agents never merge" wording above for routine and Part 07 3/3a PRs; protected host operations, spend and secrets keep their gates. Merging this PR (#757) itself still waits for Jim saying `merge #757`.
 6. **Script-pack runner approved** as a protected host component with a rollback. Approval is for the component; building it needs its own outcome ticket and PR, and nothing is installed on the host until that ticket is approved and its rollback is shown.
-7. **Notion copy added** under LIFE OS: https://app.notion.com/p/40f3c5a0592681a9b2cfc7423a9479cd
+7. **Notion copy added** under LIFE OS: https://example.com/notion-found-by-title
 
 ## Jim's decisions, November 5, 2026 (2:55 PM CT)
 

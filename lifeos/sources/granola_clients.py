@@ -8,12 +8,13 @@ so a meeting leaves Oracle only after its row is written and read back and the c
 Titles, names and addresses are compared here and never logged: callers get codes and counts only."""
 import re
 
+from lifeos.platform.notion_ids import notion_id
 from lifeos.interview import create, granola_write, notion
 from lifeos.interview.granola_match import central_day
 from lifeos.platform import hidden
 from lifeos.platform.notion_client import NotionError, rich_text
 
-DATA_SOURCE = "15df6ed1-58d8-47f4-9c6c-a336f04b8e7a"        # the Meetings database (an id is not a secret)
+DATA_SOURCE = notion_id("DATA_SOURCE")        # the Meetings database (an id is not a secret)
 TITLE, DATE, STATUS, FILE_AS, FILED_TO, KEY, LINES = "Meeting", "Meeting date", "Status", "File as", "Filed to", "Source key", "Transcript lines"
 SCHEMA = {TITLE: "title", DATE: "date", STATUS: "select", FILE_AS: "select", FILED_TO: "select", KEY: "rich_text", LINES: "number"}
 CLIENT, INTERNAL, PERSONAL = "TGP", "Bytalos", "Personal"       # the values of Filed to / File as that carry a transcript

@@ -3,8 +3,8 @@
   "document_id": "CAREER-LIFECYCLE-2026-10-15",
   "scope": "Jobs Apply/LinkedIn referrals, Recruiters action queue, Job Outreach, Active Opportunities, Hiring/Interview promotion, outcomes",
   "canonical_authority": {
-    "product": "https://app.notion.com/p/3d43c5a0592680f7b8c7daf8c5c5480e",
-    "jobs": "https://app.notion.com/p/3d73c5a059268046946dc83c0ab6b147",
+    "product": "https://example.com/notion-found-by-title",
+    "jobs": "https://example.com/notion-found-by-title",
     "work": "https://jimmarkunas.atlassian.net/browse/LIFE-47",
     "development_policy": "https://github.com/jimmarkunas/life-os-automation/blob/main/docs/life-os-development-policy.md",
     "note": "This JSON is a deterministic IMPLEMENTATION PROJECTION of existing Notion product decisions and Jim's current instruction; it does not supersede product authority or Jira delivery state."
@@ -67,7 +67,7 @@
       "state": "NOT_IMPLEMENTED"
     },
     "recruiters_queue": {
-      "source": "collection://d42e2ab0-34bc-43ca-83be-e92fd5b54071",
+      "source": "collection:found-by-title",
       "existing_broken_filter": "Week Ending >= Today",
       "required_groups": [
         "Needs Action",
@@ -489,7 +489,7 @@
   "ux_contract": {
     "canonical_spec_path": "docs/contracts/career-lifecycle.requirements.v1.json",
     "single_source_rule": "This JSON is the ONE machine-readable UI-to-backend acceptance contract. Current Notion Jobs/Interview product canons remain product authority and link here; Jira tracks delivery only. Do not create parallel specifications.",
-    "actual_notion_prototype_url": "https://app.notion.com/p/3fa3c5a05926817ca7c5dcfec637d8ee",
+    "actual_notion_prototype_url": "https://example.com/notion-found-by-title",
     "prototype_safety": "Synthetic database row in isolated private Notion test database mirroring the production Job Ledger To Apply view's 11 visible fields; NOT a canonical Job Ledger row. Controls change only the sandbox and do not invoke production V7.",
     "screens": [
       {
@@ -598,6 +598,6 @@
       "Jim approves layout before any production UI change",
       "actual native action selection is proven separately with read-back before turning into real operations"
     ],
-    "actual_notion_prototype_database_url": "https://app.notion.com/p/9b4eb9f9040a447d83b311a0572ae8c4"
+    "actual_notion_prototype_database_url": "https://example.com/notion-found-by-title"
   }
 }

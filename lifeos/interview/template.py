@@ -1,7 +1,7 @@
 """LIFE-88 / LIFE-46: the two Jim-approved native Notion layouts as block trees, nothing else.
 
-UI 3c opportunity page: https://app.notion.com/p/3ff3c5a0592681aeba23e00675f097f1 (LIFE-88 D01-D18, 10867, 10869).
-UI 4 interview page: https://app.notion.com/p/3fa3c5a059268118ac0bd448ee12c199 (LIFE-46 10874, 10875).
+UI 3c opportunity page: (Notion page, found by title) (LIFE-88 D01-D18, 10867, 10869).
+UI 4 interview page: (Notion page, found by title) (LIFE-46 10874, 10875).
 
 Same block types, nesting, order, labels, tables, native tabs and column ratios as those pages, filled from a view.Opportunity
 (and its round). Their ExampleCo / Smartsheet values are QA fixture data: here every value comes from the view, and a source the

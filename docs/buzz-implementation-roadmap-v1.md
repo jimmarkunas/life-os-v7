@@ -2,7 +2,7 @@
 
 **Approval:** Jim, 2026-11-01. **Change type:** documentation/traceability only. This file contains the *frozen baseline* of all 25 approved steps and is not the source of execution state. No Agent Go or production authorization arises from the approval. All implementation and verification must follow [live Development Policy](life-os-development-policy.md).
 
-**Canonical roles:** [LOS-70](https://jimmarkunas.atlassian.net/browse/LOS-70) = owner-approved product decisions; [Notion detailed LOS-70 roadmap](https://app.notion.com/p/40b3c5a05926816f8a83eb0bac0af6f3) = complete step actions and product requirements; [LIFE-216](https://jimmarkunas.atlassian.net/browse/LIFE-216) = active 25-step execution-state ledger, prerequisites, AC1–AC10, receipts and Human UAT; this file = GitHub technical handoff/unchanging baseline for agents. Historical cancelled LIFE-130 is not an active delivery gate. Do not use old handoffs as overriding authority.
+**Canonical roles:** [LOS-70](https://jimmarkunas.atlassian.net/browse/LOS-70) = owner-approved product decisions; Notion detailed LOS-70 roadmap (found by title) = complete step actions and product requirements; [LIFE-216](https://jimmarkunas.atlassian.net/browse/LIFE-216) = active 25-step execution-state ledger, prerequisites, AC1–AC10, receipts and Human UAT; this file = GitHub technical handoff/unchanging baseline for agents. Historical cancelled LIFE-130 is not an active delivery gate. Do not use old handoffs as overriding authority.
 
 ## Buzz Implementation & Configuration Roadmap v1.0 — APPROVED 2026-11-01
 

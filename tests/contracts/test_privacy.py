@@ -20,6 +20,15 @@ SECRET_SHAPES = {
     "phone number": re.compile(r"(?<!\d)(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}(?!\d)"),
     "google client id": re.compile(r"\b\d{9,}-[a-z0-9]{20,}\.apps\.googleusercontent\.com"),
 }
+# LIFE-338: live Notion page and data-source ids stay out of the repo; code reads them from LIFEOS_NOTION_<NAME> (lifeos/platform/notion_ids.py).
+NOTION_URL = re.compile(r"(?:notion\.(?:so|com)/(?:[\w-]+/)*[\w-]*?|collection://)([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})\b", re.I)
+ID_LITERAL = re.compile(r"""["']([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})["']""", re.I)
+NOT_NOTION_IDS = {"lifeos/probe.py"}      # public job ids from vendor sites
+
+
+def synthetic(value):
+    digits = set(value.replace("-", "").lower())
+    return len(digits) <= 2 or value.replace("-", "").lower() in ("1234567890abcdef1234567890abcdef",)
 
 
 def tracked_text_files():
@@ -42,6 +51,16 @@ class PrivacyGuard(unittest.TestCase):
     def test_no_secret_shaped_strings(self):
         bad = [(n, label) for n, t in tracked_text_files() for label, rx in SECRET_SHAPES.items() if rx.search(t)]
         self.assertEqual(bad, [], "secret-shaped string committed (see docs/PRIVACY.md)")
+
+    def test_no_live_notion_ids(self):
+        bad = []
+        for n, t in tracked_text_files():
+            if n.startswith("tests/") or n.endswith("manifest.json"):
+                continue
+            bad += [(n, "notion url") for m in NOTION_URL.finditer(t) if not synthetic(m.group(1))]
+            if n.startswith("lifeos/") and n.endswith(".py") and n not in NOT_NOTION_IDS:
+                bad += [(n, "id literal") for m in ID_LITERAL.finditer(t) if not synthetic(m.group(1))]
+        self.assertEqual(bad, [], "live Notion id committed; use lifeos.platform.notion_ids (see docs/PRIVACY.md)")
 
 
 if __name__ == "__main__":

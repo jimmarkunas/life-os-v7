@@ -291,7 +291,7 @@
         {"given": "the policy PR is merged", "when": "an agent opens a code PR for a LIFE issue", "then": "the branch and PR title follow the contract's formats"}
       ],
       "product_origin": {"kind": "los_idea", "los_key": "LOS-40", "approved_for_delivery": true, "approval_source": "LOS-40 October 19 approved permanent recurring composability gate"},
-      "notion_requirement": "https://app.notion.com/p/4073c5a0592681b3bce8fb46d54f0dc3",
+      "notion_requirement": "https://example.com/notion-found-by-title",
       "component": "Platform / Core OS",
       "fix_version": "Platform / Core OS 1.0.0",
       "owner": "Career Claude Code (V7 writer)",

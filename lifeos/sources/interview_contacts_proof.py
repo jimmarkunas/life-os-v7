@@ -9,6 +9,7 @@ the UI 3c renderer and Notion writer (create), then an independent read-back wit
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
+from lifeos.platform.notion_ids import notion_id
 from lifeos.interview import create, notion, template, view
 from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.interview.ui_probe import LEDGER_ROW, QA_PARENT, _seed
@@ -20,8 +21,8 @@ from lifeos.sources import interview_evidence as ev, m1m2_proof as base
 
 CONFIRM = "E10"
 SYN = "(SYNTHETIC)"
-WALMART_PAGE = "3d53c5a0592681feaa5cc61c9e6b0efe"        # the production Walmart opportunity page: read only (its source-grounded job description; the Ledger row has no body)
-SMITH_PAGE = "3d53c5a0592681f4a8ffda29dc374cb0"        # the production Smith opportunity page: read only (its recovered job description)
+WALMART_PAGE = notion_id("WALMART_PAGE")        # the production Walmart opportunity page: read only (its source-grounded job description; the Ledger row has no body)
+SMITH_PAGE = notion_id("SMITH_PAGE")        # the production Smith opportunity page: read only (its recovered job description)
 SMITH_COMPANY, SMITH_ROLE = "Smith", "Senior Project Manager — Commerce"
 SMITH_URL = "https://www.indeed.com/viewjob?jk=31a46a8ea6620375"
 WALMART_URL = "https://careers.walmart.com/us/en/jobs/R-2612137"

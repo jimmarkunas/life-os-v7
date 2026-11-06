@@ -6,10 +6,11 @@ write path and --live is refused. Prints fixed codes and counts only: "200" or N
 title, id, token or content. Any refused read counts as failed, so the step exits 1 with NOTION_SANDBOX_ACCESS_DENIED and its codes still printed."""
 import os
 
+from lifeos.platform.notion_ids import notion_id
 from lifeos.platform.notion_client import Client, NotionError
 
-SANDBOX_SOURCE = "d364a2ba-194c-484d-b0e3-ebf838765145"       # "SANDBOX — Job Ledger layout test (synthetic only)"
-SANDBOX_PAGE = "3fa3c5a0592681fb94bce9ebd20ee65d"             # "🧪 TEST — Job Ledger Apply UI · ExampleCo (SYNTHETIC)", the top-level private page holding it
+SANDBOX_SOURCE = notion_id("SANDBOX_SOURCE")       # "SANDBOX — Job Ledger layout test (synthetic only)"
+SANDBOX_PAGE = notion_id("SANDBOX_PAGE")             # "🧪 TEST — Job Ledger Apply UI · ExampleCo (SYNTHETIC)", the top-level private page holding it
 
 
 def _code(error):

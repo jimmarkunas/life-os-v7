@@ -9,12 +9,13 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 import os
 
+from lifeos.platform.notion_ids import notion_id
 from lifeos.attention import policy, reconcile
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.outlook import Outlook, OutlookError
 
-SOURCE_ID = "5cab416c-b1df-43c2-abcc-b98df6656d41"          # the canonical Attention data source (the one the Daily Report view links)
+SOURCE_ID = notion_id("SOURCE_ID")          # the canonical Attention data source (the one the Daily Report view links)
 GMAIL_LABEL, GMAIL_QUERY = "LifeOS/Attention", "label:LifeOS-Attention"
 OUTLOOK_CATEGORIES = ("LifeOS Attention", "LIFE OS Attention", "Life OS Attention")          # the Outlook category (any of these spellings): read-only for V7, the message stays in the inbox
 SCHEMA = {"Item": "title", "Category": "select", "Done": "checkbox", "Active": "checkbox", "Medium": "rich_text", "Source URL": "url", "Week Ending": "date", "Received": "date"}
