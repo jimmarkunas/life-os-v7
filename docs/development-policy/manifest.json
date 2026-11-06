@@ -200,7 +200,7 @@
     },
     {
       "date": "2026-11-06",
-      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/774",
       "approval": "Jim Markunas, November 6, 2026 CT 7:53 AM, chat: \"default build LIFE-319\": the readiness command refuses a ticket from a LOS key that lacks its Notion REQ page link (first hand-off only, no Notion read); one sentence added to Queue readiness",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
