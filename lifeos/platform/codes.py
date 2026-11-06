@@ -811,6 +811,7 @@ CODES = {
     "RESTORE_TOO_BIG": _r("backup", "blocked", False, "The backup archive unpacks to more than the 400 MB check limit.", "Tell Oracle Claude; the backup list may have grown by mistake."),
     "RESTORE_NOTHING_UNDER_PREFIX": _r("backup", "blocked", False, "The restore check found no files under the requested prefix (for example hermes/).", "Check that the archive is a recent nightly one and that the list includes that prefix."),
     "RESTORE_DB_CORRUPT": _r("backup", "bug", False, "A database inside the backup failed its integrity check.", "Do not rely on this archive; run another backup and tell Oracle Claude."),
+    "RESTORE_DB_UNCHECKED": _r("backup", "blocked", False, "SQLite on this machine could not run the integrity check on a database in the backup (for example a missing extension module); this is not proof of damage.", "Read the database name and SQLite message printed under the code; check it on a machine with the same extension, or on Oracle against the live copy."),
     "RESTORE_UNREADABLE": _r("backup", "blocked", False, "The file is not a readable tar.gz (not decrypted yet, or damaged).", "Decrypt it with the private key first, or fetch the file again."),
     "SECRET_BAD_ARGS": _r("secrets", "blocked", False, "The broker takes exactly one purpose name; anything extra (a secret name, URL, command or value) is refused.", "Call it with the purpose name only."),
     "SECRET_NOT_ROOT": _r("secrets", "blocked", False, "The broker was not run as root.", "Run it with sudo -n."),
