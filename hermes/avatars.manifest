@@ -1,0 +1,9 @@
+# LIFE-326: which image is the avatar of which Hermes profile, with its exact hash and size. THE IMAGES ARE NOT IN THIS (PUBLIC) REPOSITORY:
+# they are in the private repo jimmarkunas/bot-studio, folder exports/ (animated loops, APNG 256 px, 16 s, seamless). `main` is the default Hermes bot.
+# Install: sudo bash hermes/deploy_avatars.sh --src <folder holding these files>   (dry run first). Format: profile  file  sha256  bytes
+main hermes-256.apng a66c4be97da8774b65e53888fbd0bd8651349a4b6a4ca562bf1356d166a1aecd 497211
+claude-hermes claudehermes-256.apng a95bbef06cfe64b7ea462f37df624f003e9c304396e13622525f2764b9bed435 359751
+developer developpeur-256.apng fa21651e2743cab7229b4bc41af09fbb16f5e49e0e5198b06f873b7ea4fefb2e 499480
+librarian bibliothecaire-256.apng e6f083ec92be60f388d349b0c348d9cc7267dde7824f82b1a35e7cb5a4d783bb 496406
+research recherche-256.apng e88e0559824950a34484ac2495ab6f298facd9df2487ecfc12ae6df97299d60e 499709
+writer redacteur-256.apng 3398c0ef7000dafebc14d9a76e442c57ae82a52a1f39e1f1b0070d8b084134d3 482007
