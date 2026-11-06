@@ -34,6 +34,9 @@ permissions:
 concurrency:
   group: life-os-v7-interview-writer     # the one writer of the opportunity pages: this run, the after-tick Interview step and the Granola run take turns
   cancel-in-progress: false
+env:
+  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
+
 jobs:
   manual:
     runs-on: ubuntu-24.04
