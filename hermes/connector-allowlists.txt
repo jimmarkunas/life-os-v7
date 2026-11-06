@@ -1,0 +1,11 @@
+# LIFE-321: what each Hermes bot (profile) may use. One line per profile: NAME: allowed names separated by commas.
+#   notion          a Nous connector (Notion)
+#   mcp:todoist     an MCP server (tools named mcp__todoist__*)
+# `ALL` means Jim decided this bot is NOT limited (no plugin is installed or enabled in it; the audit fails if one is). An empty list means NO connector and NO MCP server. A profile that is NOT in this table is unprotected: hermes/check_profiles.sh reports it as a failure.
+# `main` is the default profile (the "Hermes" bot). Jim decides the lists; edit by pull request, then run hermes/deploy_plugin.sh --all.
+main: ALL
+claude-hermes: notion
+developer:
+librarian: notion
+research: notion
+writer: notion
