@@ -58,6 +58,22 @@ class Install(unittest.TestCase):
         self.assertIn("read-back OK", out)
         self.assertIn("ROLLBACK: bash install.sh rollback", out)
 
+    @unittest.skipUnless(shutil.which("chflags"), "macOS only")
+    def test_a_locked_guard_is_unlocked_replaced_and_locked_again(self):
+        subprocess.run(["chflags", "uchg", self.cur], check=True)
+        self.addCleanup(lambda: subprocess.run(["chflags", "-R", "nouchg", self.dir]))
+        status, out = self.run_script("dry")
+        self.assertIn("LOCKED (uchg)", out)
+        status, out = self.run_script("install")
+        self.assertEqual(status, 0, out)
+        self.assertEqual(digest(self.cur), digest(NEW))
+        flags = subprocess.run(["ls", "-ldO", self.cur], capture_output=True, text=True).stdout
+        self.assertIn("uchg", flags)
+        status, out = self.run_script("rollback")
+        self.assertEqual(status, 0, out)
+        self.assertEqual(open(self.cur).read(), OLD)
+        self.assertIn("uchg", subprocess.run(["ls", "-ldO", self.cur], capture_output=True, text=True).stdout)
+
     def test_rollback_restores_the_old_guard(self):
         self.assertEqual(self.run_script("install")[0], 0)
         status, out = self.run_script("rollback")

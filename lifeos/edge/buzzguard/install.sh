@@ -21,6 +21,10 @@ done
 case "$VERB" in dry|install|rollback|approvals-on|approvals-off|stop|resume|status) ;; *) echo "usage: install.sh dry|install|rollback|approvals-on|approvals-off|stop|resume|status"; exit 2 ;; esac
 CUR="$DIR/guard.py"; MODE="$DIR/writes.mode"; STAMP=$(TZ=America/Chicago date +%Y%m%d-%H%M%S)
 h12() { shasum -a 256 "$1" | cut -c1-12; }
+# The installed guard is normally LOCKED with the macOS user-immutable flag (uchg) so the agent cannot rewrite its own guard. We unlock it only for the replacement and lock it again.
+locked() { command -v chflags >/dev/null 2>&1 && [ -e "$1" ] && ls -ldO "$1" 2>/dev/null | grep -qw uchg; }
+unlock() { if command -v chflags >/dev/null 2>&1 && [ -e "$1" ]; then chflags nouchg "$1"; fi; }
+relock() { if command -v chflags >/dev/null 2>&1 && [ -e "$1" ]; then chflags uchg "$1"; fi; }
 check_settings() {
   if [ -f "$SETTINGS" ] && grep -q "LIFEOS-Buzz-Guard/guard.py" "$SETTINGS"; then echo "  settings: $SETTINGS names the guard at $DIR/guard.py (unchanged)"; else echo "  WARNING: $SETTINGS does not name $DIR/guard.py; the new guard would not be used"; fi
 }
@@ -38,7 +42,7 @@ case "$VERB" in
   rollback)
     BAK=$(ls "$DIR" 2>/dev/null | grep '^guard.py.bak-' | tail -1 || true)
     [ -n "$BAK" ] || { echo "no backup to restore"; exit 1; }
-    cp -p "$DIR/$BAK" "$CUR"; echo "restored $BAK -> $CUR ($(h12 "$CUR"))"; exit 0 ;;
+    unlock "$CUR"; cp -f "$DIR/$BAK" "$CUR"; relock "$CUR"; echo "restored $BAK -> $CUR ($(h12 "$CUR")); locked again"; exit 0 ;;
 esac
 [ -f "$NEW" ] || { echo "REFUSED: no new guard at $NEW"; exit 1; }
 [ -f "$CUR" ] || { echo "REFUSED: no current guard at $CUR (is this the right folder?)"; exit 1; }
@@ -48,9 +52,11 @@ echo "  current: $CUR ($(h12 "$CUR"))"; echo "  new:     $NEW ($(h12 "$NEW"))"
 check_settings
 echo "  writes.mode: $( [ -f "$MODE" ] && cat "$MODE" || echo "(missing) -> will be set to deny" ) (Jira/GitHub changes stay OFF until you run approvals-on)"
 echo "  STOP: $( [ -f "$DIR/STOP" ] && echo ON || echo off )"
+if locked "$CUR"; then echo "  the current guard is LOCKED (uchg): install will unlock it, replace it, and lock the new one again"; else echo "  the current guard is not locked: the new one will be locked after install"; fi
 if [ "$VERB" = dry ]; then echo "Dry run only. To install: bash install.sh install"; exit 0; fi
 cp -p "$CUR" "$DIR/guard.py.bak-$STAMP"; echo "  backed up the old guard to guard.py.bak-$STAMP"
-cp "$NEW" "$CUR.new" && chmod 644 "$CUR.new" && mv "$CUR.new" "$CUR"
+rm -f "$CUR.new"; cp "$NEW" "$CUR.new" && chmod 644 "$CUR.new"
+unlock "$CUR"; mv -f "$CUR.new" "$CUR"; relock "$CUR"; echo "  new guard installed and locked (uchg)"
 [ -f "$MODE" ] || echo deny > "$MODE"
 [ "$(h12 "$CUR")" = "$(h12 "$NEW")" ] || { echo "READ-BACK FAILED: hash differs"; exit 1; }
 SEND='{"hook_event_name":"PreToolUse","tool_name":"mcp__buzz__send","tool_input":{"audience":"everyone","final":true,"text":"hello"}}'
