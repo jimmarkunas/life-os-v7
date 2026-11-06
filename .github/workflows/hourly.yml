@@ -1484,7 +1484,7 @@ jobs:
 
   report:
     needs: [prep, jobright, linkedin, lensa, finish]
-    if: ${{ always() && needs.prep.result == 'success' }}
+    if: ${{ always() && (needs.prep.result == 'success' || (needs.prep.result == 'failure' && (github.event_name == 'schedule' || (inputs.tick && (inputs.cloud_backlog == '' || inputs.cloud_backlog == '0'))))) }}   # LIFE-328: also when an automatic run's prep fails (unit tests, credentials): nothing ran or reached Notion (Nov 3-4 2026: 21 silent hours); a failed manual prep has a person watching and loads no credential
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1517,7 +1517,7 @@ jobs:
           CODES: ${{ needs.finish.outputs.codes }}
         run: |
           failed=""
-          for pair in jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
+          for pair in prep=${{ needs.prep.result }} jobright=${{ needs.jobright.result }} linkedin=${{ needs.linkedin.result }} lensa=${{ needs.lensa.result }} finish=${{ needs.finish.result }}; do
             [ "${pair#*=}" = "failure" ] && failed="$failed ${pair%=*}"
           done
           if [ -n "$failed" ]; then
