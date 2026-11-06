@@ -72,7 +72,7 @@ Before OpenClaw, Oracle, channel, local-model, assistant, meeting-capture or AI-
 ## Rules (each enforced by a test)
 
 - Layers: platform imports nothing; OS packages import only platform; sources may import any OS.
-- Public repo: no secrets, names, addresses or message content in code, tests, logs or errors; use example.com and invented names; output is counts and fixed codes.
+- Public repo: never commit, post or log personal email addresses, full personal names, phone numbers, street or postal addresses, employer or salary details, resume or mailbox content, secrets, or Notion page and database IDs (code, tests, commits, PRs, issues, logs, errors); use example.com and invented names; output is counts and fixed codes. Full rule: docs/PRIVACY.md. On a leak: stop, open a PR removing it, tell Jim.
 - No sending or deleting mail or events (tests forbid DELETE, /send, sendMail, /forward, permanentDelete); moves and writes are read back.
 - Fail closed: a full result or an error, never partial. Dry run is the default; writes need live.
 - Isolated jobs (Interview, Jira, Outlook) blank every workflow-level secret they do not use.
