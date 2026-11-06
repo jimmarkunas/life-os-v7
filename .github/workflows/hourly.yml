@@ -108,7 +108,6 @@ on:
         type: string
         default: ""
 env:
-  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
   PIPELINE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tick)) && vars.V7_PIPELINE == 'true' && 'true' || 'false' }}
   GMAIL_OAUTH_CLIENT_ID: ${{ secrets.GMAIL_OAUTH_CLIENT_ID }}
   NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}
@@ -1457,6 +1456,7 @@ jobs:
         name: Interview stage (live only when Actually move mail is ticked)
         if: ${{ inputs.interview }}
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_interview.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_interview_retry.outputs.NOTION_INTERVIEW_TOKEN }}
         run: python -m lifeos.run interview --limit 20 $([ "$LIVE" = "true" ] && echo --live)
       - id: iacc

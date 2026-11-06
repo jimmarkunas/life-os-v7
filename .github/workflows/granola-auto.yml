@@ -20,9 +20,6 @@ permissions:
 concurrency:
   group: life-os-v7-interview-writer     # the one writer of the opportunity pages: this run, the after-tick Interview step and the manual-job run take turns
   cancel-in-progress: false
-env:
-  LIFEOS_NOTION_IDS: ${{ vars.LIFEOS_NOTION_IDS }}
-
 jobs:
   auto:
     runs-on: ubuntu-24.04
@@ -80,6 +77,7 @@ jobs:
           use-cache: "false"
       - name: Granola auto (every meeting not yet carried; dry run unless live; counts and fixed codes only)
         env:
+          LIFEOS_NOTION_IDS: ${{ secrets.LIFEOS_NOTION_IDS }}
           HIRING_PIPELINE_PAGE_ID: ${{ secrets.HIRING_PIPELINE_PAGE_ID }}
           LIFEOS_ACQ_SSH_PORT: ${{ secrets.LIFEOS_ACQ_SSH_PORT }}
           LIFEOS_ACQ_DB_NAME: ${{ steps.bws_auto.outputs.LIFEOS_ACQ_DB_NAME || steps.bws_auto_retry.outputs.LIFEOS_ACQ_DB_NAME }}
