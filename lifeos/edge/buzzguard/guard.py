@@ -22,7 +22,16 @@ PREFIXES = r"(?i)tskey-|nsec1[0-9a-z]{20,}|\bsk-[a-z0-9_-]{16,}|akia[0-9a-z]{12,
 SECRETY = re.compile(PREFIXES + r"|(?:password|passwd|passphrase|secret|api[_-]?key|apikey|bearer|token|authorization)(?:\s+(?:is|was|are))?\W{0,12}[:=]|\bbearer\s+[a-z0-9._~+/-]{8,}|"
                      r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.|\b[0-9a-f]{64}\b|\b[a-z0-9+/]{60,}={0,2}")
 COMPACT = re.compile(PREFIXES)                                      # secrets split by spaces or line breaks: only the prefix shapes are re-checked with whitespace removed
-BUZZ_READ = {"mcp__buzz__get_messages", "mcp__buzz__list_channels", "mcp__buzz__get_thread", "mcp__buzz__search_messages", "mcp__buzz__get_channel_info", "mcp__buzz__list_agents", "mcp__buzz__whoami"}
+# LIFE-397: the LIFE-333 list was guessed and missed real room-context reads (Council Challenger, Nov 7: "the hook blocked the read"). These are the read operations the Buzz
+# bridge registers (lifeos/buzz_mcp.py READ) plus the names LIFE-333 saw; a tool may carry them bare (mcp__buzz__get_event) or buzz_-prefixed (mcp__buzz__buzz_get_event).
+# Still an exact list: a name that merely starts with get_ is refused (LIFE-333 review round 1).
+BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
+                 "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities"}
+BUZZ_READ = {"mcp__buzz__" + p + op for op in BUZZ_READ_OPS for p in ("", "buzz_")}
+BUZZ_READ_RUNNERS = {"mcp__buzz__read", "mcp__buzz__buzz_read"}       # generic runner: judged by the operation it names, like Atlassian executeRead
+BUZZ_COMMUNITIES = {"life-os", "life_os"}                           # LIFE-397 GWT-BUG-02: a room read never crosses into another community (bytalos stays out)
+BUZZ_ID_KEYS = {"channel", "channel_id", "channelid", "event_id", "eventid", "id", "message_id", "root", "root_id", "thread", "thread_id", "reply", "reply_to", "before", "after", "cursor", "since", "until"}
+UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 BUZZ_SEND_KEYS = {"audience", "final", "text", "reply", "channel", "thread", "reply_to", "recipient", "mention"}   # `reply` = the 64-hex id of the message being answered (seen in the agent's real calls)
 EVENT_ID = re.compile(r"[0-9a-f]{64}")
 IDENT = re.compile(r"[A-Za-z0-9_.:@-]{1,200}")
@@ -298,6 +307,31 @@ def _decide_send(ti, stopped):
     return "allow", "buzz send"
 
 
+def _drop_ids(o, key=None):
+    """A copy of a Buzz read input without the values that are exactly an id under an id-named key (64-hex event id, channel UUID): they look like secrets to the scan
+    and made every history/thread/event read fail (LIFE-397). Free text (query) and ids under any other key are still scanned."""
+    if isinstance(o, dict):
+        return {k: _drop_ids(v, str(k).lower()) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_drop_ids(v, key) for v in o]
+    if isinstance(o, str) and key in BUZZ_ID_KEYS and (EVENT_ID.fullmatch(o) or UUID.fullmatch(o)):
+        return ""
+    return o
+
+
+def _decide_buzz_read(tool, ti):
+    if tool in BUZZ_READ_RUNNERS:
+        op = ti.get("operation")
+        if not isinstance(op, str) or op not in BUZZ_READ_OPS:
+            return "deny", "buzz read runner names an operation that is not a known read"
+    for path, v in _items(ti):
+        if path[-1].lower() in ("community", "community_id", "communityid") and not (isinstance(v, str) and v.lower() in BUZZ_COMMUNITIES):
+            return "deny", "buzz read outside the LIFE OS community"
+    if _secret(_drop_ids(ti)):
+        return "deny", "secret-shaped text in a tool input"
+    return "allow", "buzz read"
+
+
 def _decide_inner(d, g, home):
     """-> (decision, reason). decision in allow, ask, deny."""
     tool, ti = d.get("tool_name"), d.get("tool_input")
@@ -313,10 +347,10 @@ def _decide_inner(d, g, home):
         return ("allow", "tool search") if set(ti) <= {"query", "max_results"} and isinstance(q, str) and 0 < len(q) <= 200 and not _secret(ti) else ("deny", "tool search input not allowed")
     if tool == "Read":
         return ("allow", "read in allowed folder") if _read_ok(ti, home) else ("deny", "read outside allowed folders, a secret-shaped path or a bad argument")
+    if tool in BUZZ_READ or tool in BUZZ_READ_RUNNERS:
+        return _decide_buzz_read(tool, ti)
     if _secret(ti):
         return "deny", "secret-shaped text in a tool input"
-    if tool in BUZZ_READ:
-        return "allow", "buzz read"
     if tool == "mcp__buzz__github_pr_state":                         # Buzz's own GitHub tools (seen in the agent's tool list): reading a PR's state is a read, linking/watching is a change
         refs, bad = _repo_refs(ti)
         return ("allow", "buzz github pr state") if not bad and refs and {r.lower() for r in refs} <= {r.lower() for r in GITHUB_REPOS} else ("deny", "pr state outside allowed repos")
