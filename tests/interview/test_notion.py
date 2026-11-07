@@ -172,6 +172,7 @@ class LedgerParentTests(unittest.TestCase):
         scan = notion.parents(client, LENV)
         self.assertTrue(scan.complete)
         self.assertEqual([p.page_id for p in scan.items], ["r1", "q"])                 # the tree page "Example — Program Manager" is the same pursuit as the row
+        self.assertEqual((scan.ledger, scan.tree_only), (1, 1))                         # evidence that the Ledger path ran
 
     def test_without_a_ledger_source_the_page_tree_alone(self):
         client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
