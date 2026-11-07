@@ -37,6 +37,18 @@ CODES = {
     "TICKER_WATCH_FAILED": _r("ticker", "retry", False, "The watchdog check could not read the hourly runs from GitHub.", "None; the next check (15 minutes) tries again."),
     "WATCH_DONE": _r("ticker", "ok", False, "The watchdog check ran (incidents opened, reminded or closed as needed).", "None."),
     "TICKER_DRY_OK": _r("ticker", "ok", False, "Dry run: both credentials are present and the alert switches are readable; nothing was dispatched or pushed.", "Run run-now tick, then enable."),
+    # --- the script-pack runner (LIFE-310, lifeos/edge/runner/runner.py): one root-owned program on lifeos-edge-01; its terminal line is `RESULT fail <code>`.
+    #     E_STEP_<n> and E_TIMEOUT_<n> (step n failed / timed out; everything declared was restored) carry a number, so they are documented in docs/SCRIPT_PACK_RUNNER.md, not listed here.
+    "E_USAGE": _r("script-pack runner", "blocked", False, "The command was not `<LIFE-key> <8 hex characters>`.", "Type the approval exactly as the receipt gives it."),
+    "E_NOTROOT": _r("script-pack runner", "blocked", False, "The runner was not started with sudo.", "Run it with sudo."),
+    "E_BUSY": _r("script-pack runner", "retry", False, "Another pack run is in progress.", "Wait for it to finish, then run again."),
+    "E_UNKNOWN_TICKET": _r("script-pack runner", "blocked", False, "No pack is staged in /tmp/lifeos-pack-<LIFE-key>.", "Copy the pack folder to the host first."),
+    "E_PACK": _r("script-pack runner", "blocked", False, "The pack is unsafe or malformed (links, odd files, bad manifest, forbidden restore path).", "Ask the agent to rebuild and republish the pack."),
+    "E_HASH": _r("script-pack runner", "blocked", False, "The pack's sha256 does not start with the 8 characters approved: it is not the approved pack, or it was edited.", "Compare lifeos-run help with the receipt; copy the pack again."),
+    "E_TICKET": _r("script-pack runner", "blocked", False, "pack.json is for a different ticket than the one typed.", "Use the ticket key in the receipt."),
+    "E_INTERRUPTED": _r("script-pack runner", "degraded", False, "The run was interrupted (Ctrl-C, SIGTERM or SIGHUP); everything declared was restored.", "Run again when ready."),
+    "E_RESTORE": _r("script-pack runner", "bug", False, "A step failed and the restore itself could not finish; the originals are kept in /var/lib/lifeos-runner/snapshots/.", "Stop; tell the agent, who reads the result file and restores by hand with Jim."),
+    "E_RUNNER": _r("script-pack runner", "bug", False, "The runner hit an unexpected error (no traceback is printed).", "Tell the agent, who reads the result file."),
     # --- Cloud Fit: the Edge request and the backlog batch (lifeos/jobs/fit/cloud.py, edge.py, backlog.py)
     "FIT_EDGE_JUDGMENT_REJECTED": _r("fit", "terminal", True, "The model answered, but the strict judge refused the answer (not valid JSON, score or rationale).", "Counted per batch; the batch fails only when more than 3 and more than 10% of its calls are refused."),
     "FIT_EDGE_REQUEST_TOO_LARGE": _r("fit", "terminal", False, "This job's request is over the frame limit, so it was never sent.", "None; it is a fact about the job. A shortened description would clear it."),
@@ -864,6 +876,7 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
 })
 
 NOT_CODES = frozenset((
+    "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
     "SUDO_USER",            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "BUZZ_URL_LIFE_OS", "BUZZ_STAGE_KEY", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY",      # LIFE-307: the hermes stage settings

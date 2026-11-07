@@ -63,6 +63,7 @@ These repository files hold feature scoping, setup, history or one product area'
 | [`docs/contracts/career-lifecycle.requirements.v1.json`](docs/contracts/career-lifecycle.requirements.v1.json) |
 | [`docs/prototypes/hiring-decision-center.html`](docs/prototypes/hiring-decision-center.html) |
 | [`docs/hermes-files.md`](docs/hermes-files.md) |
+| [`docs/SCRIPT_PACK_RUNNER.md`](docs/SCRIPT_PACK_RUNNER.md) |
 
 ## Keeping this index true
 
