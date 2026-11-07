@@ -117,7 +117,9 @@ def _finish(counts, live, environ, notion, connection, now, today, msgs, evs, ow
     excluded = {d.strip().lower() for d in (environ.get("MEGIBOW_EXCLUDED_DOMAINS") or "").split(",") if d.strip()}
     review_id = (environ.get("MEGIBOW_REVIEW_DB_ID") or REVIEW_SOURCE).strip().replace("collection://", "")
     notion = notion or _writer(environ)
-    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip() or card.find(notion, (environ.get("MEGIBOW_PAGE_ID") or DASHBOARD_PAGE).strip())
+    block_id = (environ.get("MEGIBOW_BLOCK_ID") or "").strip()
+    if not block_id:
+        raise card._fail("BLOCK_NOT_FOUND")                  # LIFE-385 (D250-13): a fixed block id only, never found by the table's shape
     if legacy is None:                                                    # the old sheet's totals, typed once into the block as "Legacy totals: ..."; read, then remembered
         legacy = card.read_legacy(notion, block_id)
         if legacy and live and connection is not None:

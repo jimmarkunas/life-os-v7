@@ -158,12 +158,11 @@ def _megibow_rows(client, block_id):
 
 def megibow_jim(client, block_id, week_start, root=None):
     """Jim's counts for the week from the MegIBOW table V7 writes (its header names each week's Monday, e.g. "Oct 19"); None when the week or table is not there.
-    Without MEGIBOW_BLOCK_ID the table is found as the MegIBOW stage finds it: the one top-level callout on the dashboard page that holds the Activity table."""
-    if block_id:
-        rows = _megibow_rows(client, block_id)
-    else:
-        found = [r for b in (children(client, root) if root else []) if b.get("type") == "callout" for r in [_megibow_rows(client, b["id"])] if r]
-        rows = found[0] if len(found) == 1 else None
+    LIFE-385 (D250-13): the table is read from the fixed MEGIBOW_BLOCK_ID only; without it the run is refused, never guessed from the table's shape."""
+    if not block_id:
+        print("JM_DASH_LAYOUT_MISSING MEGIBOW_BLOCK_ID=absent")
+        raise DashError("JM_DASH_LAYOUT_MISSING")
+    rows = _megibow_rows(client, block_id)
     if not rows:
         return None
     want = R.day(week_start)
