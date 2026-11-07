@@ -509,7 +509,7 @@ class TranscriptPage(unittest.TestCase):
         client, round_id = self.round()
         self.assertEqual(create.transcript_state(client, round_id), ("absent", None))
         self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_unchanged")
-        client, round_id = self.round("Transcript placeholder — paste the Granola export here")
+        client, round_id = self.round(create.TRANSCRIPT_MARKER + "placeholder — paste the Granola export here")
         self.assertEqual(create.transcript_state(client, round_id), ("unverified", "ft"))
         before = notion.protected_snapshot(client, round_id)
         out = {"writes": 0}
@@ -520,15 +520,20 @@ class TranscriptPage(unittest.TestCase):
         self.assertIn({"type": "mention", "mention": {"type": "page", "page": {"id": "ft"}}}, runs)      # the line links the page
         self.assertEqual(notion.protected_snapshot(client, round_id), before)
         self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_unchanged")
-        self.assertEqual(client.blocks["ft"], [block("Transcript placeholder — paste the Granola export here", id="ft-1")])   # never edited
+        self.assertEqual(client.blocks["ft"], [block(create.TRANSCRIPT_MARKER + "placeholder — paste the Granola export here", id="ft-1")])   # never edited
         client, round_id = self.round(create.ACCEPTED + "synthetic-import-1")
         self.assertEqual(create.transcript_state(client, round_id), ("accepted", "ft"))
         create.link_transcript(client, round_id, True, {})
         self.assertEqual(self.lines(client, round_id)[1], "Full Transcript page: Accepted transcript · ")
 
+    def test_a_hand_made_page_titled_full_transcript_without_the_marker_is_not_found(self):
+        client, round_id = self.round("Jim's own notes, no machine marker")
+        self.assertEqual(create.transcript_state(client, round_id), ("absent", None))          # D250-05: recognised by marker, never by title
+
     def test_two_full_transcript_pages_are_ambiguous_and_write_nothing(self):
-        client, round_id = self.round("placeholder")
+        client, round_id = self.round(create.TRANSCRIPT_MARKER + "placeholder")
         client.blocks[round_id].append({"id": "ft2", "type": "child_page", "child_page": {"title": "Full Transcript"}})
+        client.blocks["ft2"] = [block(create.TRANSCRIPT_MARKER + "placeholder-2", id="ft2-1")]
         before = copy.deepcopy(client.blocks)
         self.assertEqual(create.link_transcript(client, round_id, True, {}), "transcript_ambiguous")
         self.assertEqual(client.blocks, before)

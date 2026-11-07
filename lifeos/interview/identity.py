@@ -46,7 +46,7 @@ def resolve_child(parent, query, scan, explicit=None):
         return Resolution(State.BLOCKED, parent.code)
     if not scan.complete:
         return Resolution(State.BLOCKED, "child_scan_incomplete")
-    candidates = [child for child in scan.items if same_notion_id(child.parent_id, parent.page_id)]
+    candidates = list(scan.items)                      # LIFE-382 (D250-04): child_scan already proved each item's parent when it listed this parent's children; no second parent comparison
     if query.explicit_child_page_id:
         if explicit is not None and not same_notion_id(explicit.parent_id, parent.page_id):
             return Resolution(State.BLOCKED, "child_wrong_parent")
