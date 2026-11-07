@@ -117,7 +117,7 @@ def run(limit, live, environ=os.environ, ready_only=False):
     opportunities = []
     pipeline_id = (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     if client and pipeline_id:
-        opportunities, state = hiring_pipeline.snapshot(client, pipeline_id)
+        opportunities, state = hiring_pipeline.snapshot(client, pipeline_id, ledger=client)
         if state != "ok":
             counts["protected"]["handoff_unreadable"] = len([1 for r, _ in bad if r[3]])
             bad = [(r, why) for r, why in bad if not r[3]]            # cannot rule out a pursuit: leave every published row alone

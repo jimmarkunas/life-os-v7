@@ -752,15 +752,20 @@ class FakeStore:
 class FakeLedger:
     source = "src"
 
-    def __init__(self, rows, broken=False):
-        self.rows, self.broken = rows, broken
+    def __init__(self, rows, broken=False, stage_rows=()):
+        self.rows, self.broken, self.stage_rows = rows, broken, list(stage_rows)        # stage_rows (LIFE-352): (id, company, role, stage, decision) Ledger rows with Stage set
 
     def call(self, method, path, body=None):
+        if method == "GET" and path.startswith("/blocks/"):                           # the row page's children (rounds, fold): none unless a test says so
+            return {"results": [], "has_more": False}
         return {"properties": {name: {"type": kind} for name, kind in ledger.REQUIRED.items()}}
 
     def query_data_source(self, source_id=None, body=None):
         if self.broken:
             raise stage.NotionError("NOTION_HTTP_500")
+        if body["filter"] == {"property": "Stage", "select": {"is_not_empty": True}}:      # LIFE-352: the Ledger-first read
+            return {"results": [{"id": i, "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}, "Stage": {"select": {"name": st}},
+                                 "Hiring Decision": {"select": {"name": d} if d else None}}} for i, c, r, st, d in self.stage_rows], "has_more": False}
         assert body["filter"] == {"property": "Applied", "checkbox": {"equals": True}}
         return {"results": [{"properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}, "Applied On": {"date": {"start": d} if d else None}}} for c, r, d in self.rows],
                 "has_more": False}
@@ -786,7 +791,7 @@ RUN_ENV = {**ENV, "HIRING_PIPELINE_PAGE_ID": "root", "HIRING_AUTO_CLOSE": "off"}
 
 
 def run(tree, store, live=True, rows=(("Acme", "Senior Program Manager", "2026-10-02"),), events=(), parents=PARENTS, ledger_broken=False, calendar_broken=False, pages_ok=True, now=NOW):
-    pages = (lambda client, root: (list(parents), "ok")) if pages_ok else (lambda client, root: ([], "unreadable"))
+    pages = (lambda client, root, ledger=None: (list(parents), "ok")) if pages_ok else (lambda client, root, ledger=None: ([], "unreadable"))
     with mock.patch.object(snapshot, "STORE", store), mock.patch.object(stage.hiring_pipeline, "snapshot", pages):
         return stage.run(0, live, RUN_ENV, ledger_client=FakeLedger(list(rows), ledger_broken), pipeline_client=object(), calendar=FakeCalendar(events, calendar_broken),
                          connection=object(), client=tree, now=now)
@@ -898,11 +903,11 @@ class RuntimePathTests(unittest.TestCase):
         ledger_client.query_data_source = lambda source_id=None, body=None: {"results": [], "has_more": True, "next_cursor": None}
         with self.assertRaises(stage.NotionError):
             stage.read_applied(ledger_client)
-        with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: ([], "unreadable")):
+        with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: ([], "unreadable")):
             with self.assertRaises(stage.NotionError):
                 stage.read_parents(object(), "root")
         retired = [hiring_pipeline.Opportunity("r", "Old - Role", hiring_pipeline.RETIRED, 1, "Old", "Role")]
-        with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (retired + PARENTS, "ok")):
+        with mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: (retired + PARENTS, "ok")):
             self.assertEqual([(p["company"], p["retired"]) for p in stage.read_parents(object(), "root")], [("Old", True), ("Acme", False)])
 
 
@@ -950,7 +955,7 @@ class OutcomeConsumerTests(unittest.TestCase):
                 raise AssertionError(f"ledger write attempted: {name}")
         t, store = page(extra_rows=0), FakeStore()
         with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND, self.SCANNED)), mock.patch.object(snapshot, "STORE", store), \
-                mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root: (list(PARENTS), "ok")):
+                mock.patch.object(stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: (list(PARENTS), "ok")):
             stage.run(0, True, RUN_ENV, ledger_client=ReadOnlyLedger([("Acme", "Senior Program Manager", "2026-10-02")]), pipeline_client=object(), calendar=FakeCalendar([]),
                       connection=object(), client=t, now=NOW)
         self.assertEqual([e for e in t.log if "Applied" in json.dumps(e)], [])

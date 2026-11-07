@@ -69,8 +69,12 @@ class Source:
         return {"properties": props}
 
     def query_data_source(self, source_id=None, body=None):
-        self.log.append(("QUERY", "data_sources"))
         flt = body["filter"]
+        if flt == {"property": "Stage", "select": {"is_not_empty": True}}:        # LIFE-352: the Ledger-first read; this stand-in holds no Stage rows and the call is not part of the write path under test
+            if self.fail_read:
+                raise NotionError("NOTION_HTTP_500")
+            return {"results": [], "has_more": False}
+        self.log.append(("QUERY", "data_sources"))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
         if flt == {"property": "Applied", "checkbox": {"equals": True}}:
@@ -138,7 +142,7 @@ class Chain:
         import contextlib
         stack = contextlib.ExitStack()
         stack.enter_context(mock.patch.object(T.snapshot, "STORE", self.store))
-        stack.enter_context(mock.patch.object(T.stage.hiring_pipeline, "snapshot", lambda client, root: (list(self.parents), "ok")))
+        stack.enter_context(mock.patch.object(T.stage.hiring_pipeline, "snapshot", lambda client, root, ledger=None: (list(self.parents), "ok")))
         return stack
 
     def project(self):

@@ -6,6 +6,10 @@ reads that tree and answers the retention question for one job: does protected h
 evidence, TRUE only on a deterministic match (company AND role), never on a company name alone, and never inferred by a model.
 Absence of a match proves nothing (a recruiter thread may exist only in Gmail), so this source can protect a pursuit but can never unprotect one.
 Legacy Lifecycle / Liveness are never read.
+
+LIFE-352 (REQ-5, LOS-88): the Job Ledger row is the job record. `from_ledger` reads the pursuits of every Ledger row whose Stage is set; `merge` puts them first
+and keeps a page-tree opportunity only when no Ledger pursuit matches it (company AND role), so a row with Stage empty is still read from the page tree exactly as before.
+Read only; an incomplete Ledger read raises (the caller fails closed), never a partial list.
 """
 from dataclasses import dataclass, field
 import re
@@ -16,6 +20,8 @@ from lifeos.platform.notion_client import NotionError
 ACTIVE, RETIRED = "ACTIVE", "RETIRED"
 INTERVIEW_ACTIVE, HIRING_ACTIVE = "INTERVIEW_ACTIVE", "HIRING_ACTIVE"
 MAX_DEPTH, MAX_BLOCKS = 4, 2000
+STAGE, DECISION, ACTIVE_STAGES = "Stage", "Hiring Decision", ("Applied", "Interviewing", "Offer")      # REQ-5 Ledger contract: an active pursuit is Stage in (Applied, Interviewing, Offer) and Hiring Decision empty
+LEDGER_MAX_PAGES = 40
 
 
 @dataclass
@@ -29,6 +35,8 @@ class Opportunity:
     lead: bool = False            # E01b: a round-less page whose machine render line names a minted recruiter key
     replied: str = ""             # E05: the day Jim marked the lead's reply action done on the page ("I replied — mark it done"), else ""
     holds: tuple = ()             # LIFE-111: the hand-set hold lines (Paused, Waiting on employer, Active) Manage wrote in the page's fold, as written
+    from_row: bool = False        # LIFE-352: read from a Ledger row (page_id is the row page id)
+    tree_id: str = ""             # LIFE-352: for a Ledger pursuit, the matching page-tree page id (the Close and Reopen writers still move that page until LIFE-353), else ""
 
 
 @dataclass
@@ -117,6 +125,76 @@ def read(client, root_id, rounds=True):
     return found
 
 
+def _text(prop, kind):
+    return "".join((p.get("plain_text") or "") for p in (prop or {}).get(kind) or []).strip()
+
+
+def _select(prop):
+    return ((prop or {}).get("select") or {}).get("name")
+
+
+def _fold_lines(client, kids, budget):
+    """The lines of the row page's "LIFE OS" fold (the first top-level toggle that holds it), else []. An unreadable fold is simply no lines, as in `read`."""
+    fold = next((c for c in kids if c.get("type") == "toggle" and c.get("has_children") and "LIFE OS" in _title_of(c)), None)
+    if not fold:
+        return []
+    try:
+        return [_title_of(c) for c in _children(client, fold["id"], budget)]
+    except NotionError:
+        return []
+
+
+def from_ledger(client, rounds=True):
+    """LIFE-352: the pursuits of every Job Ledger row whose Stage is set, as Opportunity objects (page_id = the row page id). Section: ACTIVE when Stage is Applied, Interviewing or
+    Offer and Hiring Decision is empty, else RETIRED. rounds = the child pages of the row; lead, replied and holds come from the row's fold lines with the same helpers as `read`.
+    Raises NotionError when the Ledger page set cannot be proven complete (the caller fails closed)."""
+    rows, cursor, seen = [], None, set()
+    for _ in range(LEDGER_MAX_PAGES):
+        body = {"page_size": 100, "filter": {"property": STAGE, "select": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
+        page = client.query_data_source(None, body)
+        if not isinstance(page, dict) or not isinstance(page.get("results"), list) or not isinstance(page.get("has_more"), bool):
+            raise NotionError("HIRING_LEDGER_INCOMPLETE")
+        rows += page["results"]
+        if not page["has_more"]:
+            break
+        cursor = page.get("next_cursor")
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise NotionError("HIRING_LEDGER_INCOMPLETE")
+        seen.add(cursor)
+    else:
+        raise NotionError("HIRING_LEDGER_INCOMPLETE")
+    out, budget = [], [MAX_BLOCKS]
+    for row in rows:
+        props = row.get("properties") or {}
+        company, role = _text(props.get("Company"), "rich_text"), _text(props.get("Job"), "title")
+        stage, decision = _select(props.get(STAGE)), _select(props.get(DECISION))
+        if not (company and role and stage and row.get("id")):
+            continue                                                         # an unnamed row is not a pursuit (read_applied drops it the same way)
+        active = stage in ACTIVE_STAGES and not decision
+        opp = Opportunity(row["id"], f"{company} — {role}", ACTIVE if active else RETIRED, company=company, role=role, from_row=True)
+        if rounds:
+            kids = _children(client, row["id"], budget)
+            if budget[0] <= 0:
+                raise NotionError("HIRING_LEDGER_INCOMPLETE")
+            opp.rounds = sum(1 for c in kids if c.get("type") == "child_page")
+            lines = _fold_lines(client, kids, budget)
+            if not opp.rounds:
+                opp.lead, opp.replied = any(LEAD_LINE.match(t) for t in lines), replied_on(lines)
+            opp.holds = tuple(t for t in lines if t.startswith(HOLD_PREFIX))
+        out.append(opp)
+    return out
+
+
+def merge(ledger_opps, tree_opps):
+    """Ledger pursuits first; a page-tree opportunity is kept only when no Ledger pursuit matches it on company AND role (the fallback for a row with Stage empty).
+    Each Ledger pursuit remembers its first matching tree page (tree_id) so the writers that still move tree pages keep working."""
+    for opp in ledger_opps:
+        match = next((t for t in tree_opps if same_company(t.company, opp.company) and same_role(t.role, opp.role)), None)
+        opp.tree_id = match.page_id if match else ""
+    kept = [t for t in tree_opps if not any(same_company(t.company, o.company) and same_role(t.role, o.role) for o in ledger_opps)]
+    return list(ledger_opps) + kept
+
+
 def handoff_for(company, title, opportunities):
     """Handoff for one job. protected = an ACTIVE opportunity matches on company AND role."""
     matches = [o for o in opportunities if o.section == ACTIVE and same_company(o.company, company) and same_role(o.role, title)]
@@ -127,9 +205,11 @@ def handoff_for(company, title, opportunities):
                    [{"type": "hiring_pipeline_opportunity", "source_id": o.page_id} for o in matches])
 
 
-def snapshot(client, root_id, rounds=True):
-    """-> (opportunities, status) with status 'ok' | 'unreadable'. Never raises."""
+def snapshot(client, root_id, rounds=True, ledger=None):
+    """-> (opportunities, status) with status 'ok' | 'unreadable'. Never raises. `ledger` (LIFE-352): a Job Ledger client; when given, Ledger pursuits (Stage set) come first and the
+    page tree fills in only what the Ledger does not hold. Either read failing is 'unreadable' (never a partial list)."""
     try:
-        return read(client, root_id, rounds), "ok"
+        tree = read(client, root_id, rounds)
+        return (merge(from_ledger(ledger, rounds), tree) if ledger is not None else tree), "ok"
     except NotionError:
         return [], "unreadable"

@@ -127,7 +127,7 @@ def purge_notion(live, now, environ=None):
     pipeline_id = ((environ if environ is not None else os.environ).get("HIRING_PIPELINE_PAGE_ID") or "").strip()
     opportunities = []
     if pipeline_id:                                                  # INT-7.1A: protect pursuits with a live hiring process
-        opportunities, counts["handoff"] = hiring_pipeline.snapshot(client, pipeline_id)
+        opportunities, counts["handoff"] = hiring_pipeline.snapshot(client, pipeline_id, ledger=client)
         if counts["handoff"] != "ok":
             return counts if not live else {**counts, "retired": 0}                  # unreadable handoff = UNKNOWN: fail closed
     options = {option.casefold(): option for option in ledger.select_options(client, "Visible Lane")}

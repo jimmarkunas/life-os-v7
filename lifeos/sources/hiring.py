@@ -91,12 +91,14 @@ def decide(request, live, environ=os.environ, ledger_client=None, now=None, **re
 confirm_rejected = decide                                              # the D194 name
 
 
-def read_parents(client, root_id):
-    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed."""
-    found, status = hiring_pipeline.snapshot(client, root_id)
+def read_parents(client, root_id, ledger_client=None):
+    """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed.
+    LIFE-352: with `ledger_client`, pursuits come from Job Ledger rows with Stage set first (the page tree fills in the rest); a Ledger pursuit keeps its matching page-tree page id as "id" so
+    the Close and Reopen writers, which still move tree pages until LIFE-353, are unaffected. Without it, the page tree alone, exactly as before."""
+    found, status = hiring_pipeline.snapshot(client, root_id, ledger=ledger_client)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
-    return [{"id": o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied, "holds": o.holds} for o in found]
+    return [{"id": o.tree_id or o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied, "holds": o.holds, "row_only": o.from_row and not o.tree_id} for o in found]
 
 
 def _with_deleted(calendar, time_min, time_max):
@@ -180,7 +182,7 @@ def _stale_hours(environ):
 
 def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
-    ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
+    ok, applied, parents, tree_parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], [], []
     ledger_stats = {}
     ledger_client = ledger_client or Client(environ)
     try:
@@ -192,7 +194,8 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
         if not root:
             raise NotionError("HIRING_PAGES_UNREADABLE")
         pipeline_client = pipeline_client or _pipeline_client(environ)
-        parents = read_parents(pipeline_client, root)
+        parents = read_parents(pipeline_client, root, ledger_client)               # LIFE-352: Ledger rows with Stage first, the page tree for the rest
+        tree_parents = [p for p in parents if not p["row_only"]]                    # the writers (auto-close) still act on tree pages until LIFE-353: a pursuit with no tree page is not theirs
     except Exception:
         ok["parents"] = False
     try:
@@ -216,7 +219,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
             result["reasons"] = sorted({*result["reasons"], outcome_reason})
         auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
         if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
-            auto = auto_close.run(result["rows"], applied, parents, environ, live, now, ledger_client, pipeline_client, root, lambda: read_parents(pipeline_client, root), _day)
+            auto = auto_close.run(result["rows"], applied, tree_parents, environ, live, now, ledger_client, pipeline_client, root, lambda: read_parents(pipeline_client, root), _day)
             gone = {e["key"] for e in auto["closed"]}
             result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
         recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
