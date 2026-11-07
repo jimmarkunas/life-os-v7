@@ -1,6 +1,8 @@
 """JFM-221 (Jim, Oct 29 2026): the Jim & Matt Dashboard V2, fed from Jira. Jira is the source of truth; Notion is a read-only output; this stage never writes to Jira.
 
-Runs in the domains `jira` job after every hourly tick. Under the dashboard page (JM_DASHBOARD_PAGE_ID) it keeps three things, each found by its exact title:
+Runs in the domains `jira` job after every hourly tick. Under the dashboard page (JM_DASHBOARD_PAGE_ID) it keeps three things. LIFE-384 (D250): the four folders are read from configured ids
+(LIFEOS_NOTION_IDS: DASHBOARD_CHECKINS, DASHBOARD_QBRS, DASHBOARD_ARCHIVE, DASHBOARD_MATT_MEGIBOW), never listed or matched by title; each check-in and synopsis page is remembered by its page id in the private
+store (lifeos.platform.stored_pages) and read back by id. Pages made before ids were remembered are adopted once: the newest complete page in the folder created at or after the Wednesday (or quarter start):
   * Weekly Check-ins: one page per Wednesday ("Check-in — Wed Nov 4, 2026"), made on the first run at or after 7:00 AM CT that Wednesday, then frozen. A page left half
     written by a failed run (no closing mark) is archived and made again; a whole one is never touched again, so re-runs never duplicate.
   * Quarterly QBR Records: one synopsis page per quarter ("Q4 2026 — Quarterly Synopsis"): each person's Mary Morrissey vision from their Win tickets, must-wins, the QBR
@@ -12,6 +14,7 @@ import os
 from datetime import datetime, timedelta
 
 from lifeos.platform.notion_ids import configured_id
+from lifeos.platform import db, stored_pages
 from lifeos.jira import dash_data as D, dash_render as R
 from lifeos.jira.dash_scrub import scrub, terms as private_terms
 from lifeos.platform import alerts
@@ -19,6 +22,7 @@ from lifeos.platform.jira import Jira, JiraError
 from lifeos.platform.notion_client import Client, NotionError, rich_text
 
 CHECKINS, QBRS, ARCHIVE, MATT_MEGIBOW = "Weekly Check-ins", "Quarterly QBR Records", "Completed Archive", "Matt — MegIBOW weekly (manual)"
+FOLDER_IDS = {CHECKINS: "DASHBOARD_CHECKINS", QBRS: "DASHBOARD_QBRS", ARCHIVE: "DASHBOARD_ARCHIVE", MATT_MEGIBOW: "DASHBOARD_MATT_MEGIBOW"}      # names in LIFEOS_NOTION_IDS (D250: fixed ids, not titles)
 GENERATE_AT_HOUR = 7                                      # Wednesday 7:00 AM CT
 ARCHIVE_MAX = 150                                         # archive rows created per run (a first backfill catches up over a few runs)
 
@@ -46,16 +50,10 @@ def children(client, block_id):
     raise DashError("JM_DASH_TOO_MANY_BLOCKS")
 
 
-def layout(client, root):
-    """The dashboard's machine-owned children, by exact title -> {title: id}; a missing or doubled one is refused (never guessed)."""
-    found = {}
-    for b in children(client, root):
-        name = (b.get("child_page") or {}).get("title") if b.get("type") == "child_page" else (b.get("child_database") or {}).get("title") if b.get("type") == "child_database" else None
-        if name in (CHECKINS, QBRS, ARCHIVE, MATT_MEGIBOW):
-            if name in found:
-                raise DashError("JM_DASH_LAYOUT_AMBIGUOUS")
-            found[name] = b["id"]
-    if set(found) != {CHECKINS, QBRS, ARCHIVE, MATT_MEGIBOW}:
+def layout(environ=os.environ):
+    """The dashboard's four machine-owned children -> {title: id}, from configured ids only (D250). A missing id is refused (never guessed, never found by title)."""
+    found = {title: configured_id(name, environ).strip().replace("-", "") for title, name in FOLDER_IDS.items()}
+    if any(len(v) != 32 for v in found.values()):
         raise DashError("JM_DASH_LAYOUT_MISSING")
     return found
 
@@ -85,19 +83,53 @@ def append(client, parent, blocks):
             raise DashError("JM_DASH_APPEND_MISMATCH")
 
 
-def child_pages(client, parent):
-    return {(b.get("child_page") or {}).get("title"): b["id"] for b in children(client, parent) if b.get("type") == "child_page"}
-
-
 def complete(client, page_id):
     last = children(client, page_id)[-1:] or [{}]
     return R.DONE_MARK in _plain(((last[0].get("paragraph") or {}).get("rich_text")))
 
 
-def make_page(client, parent, title, blocks):
+def make_page(client, parent, title, blocks, on_created=None):
+    """Create the page with its first blocks, hand its id to `on_created` BEFORE the rest is appended (so a failed append still leaves the id remembered), then append the rest."""
     page = client.call_once("POST", "/pages", {"parent": {"page_id": parent}, "properties": {"title": {"title": rich_text(title)}}, "children": blocks[:100]})
+    if on_created:
+        on_created(page["id"])
     append(client, page["id"], blocks[100:])
     return page["id"]
+
+
+def _created(page):
+    value = page.get("created_time")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def adopt(client, folder, since):
+    """A page made before ids were remembered: the newest COMPLETE child page of the (configured) folder created at or after `since`, else None. Read by id and by its own completion mark and
+    creation time; never by title."""
+    best = None
+    for b in children(client, folder):
+        if b.get("type") != "child_page":
+            continue
+        page = client.call("GET", f"/pages/{b['id']}")
+        made = _created(page)
+        if page.get("archived") or page.get("in_trash") or made is None or made < since or not complete(client, b["id"]):
+            continue
+        if best is None or made > best[0]:
+            best = (made, b["id"])
+    return best[1] if best else None
+
+
+def known_page(client, connect, key, folder, since, live):
+    """The remembered page id for `key`, else a page adopted from the folder (and remembered when live), else None."""
+    page = stored_pages.find(client, connect, key, live)
+    if page:
+        return page
+    page = adopt(client, folder, since)
+    if page and live:
+        stored_pages.remember(connect, key, page)
+    return page
 
 
 def wednesday(now):
@@ -191,21 +223,19 @@ def build_synopsis(jira, issues, now, label):
     return people
 
 
-def write_checkin(client, folder, wed, blocks, live):
+def write_checkin(client, folder, wed, blocks, live, existing=None, connect=None):
     title = checkin_title(wed)
-    existing = child_pages(client, folder).get(title)
     if existing and complete(client, existing):
         return "kept"
     if not live:
         return "would_write"
     if existing:                                                                      # a half-written page from a failed run is set aside (renamed, never deleted) and made again
         client.call_once("PATCH", f"/pages/{existing}", {"properties": {"title": {"title": rich_text(title + " (incomplete)")}}})
-    make_page(client, folder, title, blocks)
+    make_page(client, folder, title, blocks, lambda pid: stored_pages.remember(connect, f"dash:checkin:{wed:%Y-%m-%d}", pid))
     return "written"
 
 
-def write_synopsis(client, folder, title, blocks, mark, live):
-    existing = child_pages(client, folder).get(title)
+def write_synopsis(client, folder, title, blocks, mark, live, existing=None, key=None, connect=None):
     if existing:
         old = children(client, existing)
         if old and mark in _plain(((old[-1].get("paragraph") or {}).get("rich_text"))):
@@ -218,7 +248,7 @@ def write_synopsis(client, folder, title, blocks, mark, live):
         return "updated"
     if not live:
         return "would_write"
-    make_page(client, folder, title, blocks)
+    make_page(client, folder, title, blocks, lambda pid: stored_pages.remember(connect, key, pid))
     return "written"
 
 
@@ -245,7 +275,7 @@ def _site(environ):
     return site
 
 
-def build(limit, live, environ=os.environ, jira=None, client=None, now=None):
+def build(limit, live, environ=os.environ, jira=None, client=None, now=None, connect=None):
     root = (environ.get("JM_DASHBOARD_PAGE_ID") or configured_id("DASHBOARD_PAGE", environ)).strip().replace("-", "")
     if len(root) != 32:
         raise DashError("JM_DASH_CONFIG_MISSING")
@@ -253,35 +283,41 @@ def build(limit, live, environ=os.environ, jira=None, client=None, now=None):
     jira = jira or Jira.from_env(environ)
     client = client or _client(environ)
     terms, site = private_terms(environ), _site(environ)
-    found = layout(client, root)
+    found = layout(environ)
+    connect = connect or db.connect
     issues = D.read_all(jira, site, now)
     label = D.quarter_label(now.date())
     result = {"issues": len(issues)}
 
     wed = wednesday(now)
     week_start = (wed - timedelta(days=9)).date()                                     # the last whole Monday-Sunday week before that Wednesday
-    if child_pages(client, found[CHECKINS]).get(checkin_title(wed)) and complete(client, child_pages(client, found[CHECKINS])[checkin_title(wed)]):
+    existing = known_page(client, connect, f"dash:checkin:{wed:%Y-%m-%d}", found[CHECKINS], wed, live)
+    if existing and complete(client, existing):
         result["checkin"] = "kept"
     else:
         people = build_people(jira, issues, now, label)
         megibow = {"Jim": megibow_jim(client, (environ.get("MEGIBOW_BLOCK_ID") or "").strip(), week_start, root),
                    "Matt": megibow_matt(client, source_of(client, found[MATT_MEGIBOW]), week_start)}
         blocks = R.checkin(people, now, week_start, megibow, terms)
-        result["checkin"] = write_checkin(client, found[CHECKINS], wed, blocks, live)
+        result["checkin"] = write_checkin(client, found[CHECKINS], wed, blocks, live, existing, connect)
         result.update({f"{n.lower()}_{k}": len(v) for n, p in people.items() for k, v in list(p["window"].items()) + [("must", p["must"]), ("blocked", p["blocked"])]})
         result["megibow_entered"] = sum(1 for v in megibow.values() if v is not None)
 
     blocks, mark = R.synopsis(D.quarter_name(now.date()), label, build_synopsis(jira, issues, now, label), now, terms)
-    result["synopsis"] = write_synopsis(client, found[QBRS], f"{D.quarter_name(now.date())} — Quarterly Synopsis", blocks, mark, live)
+    q_name = D.quarter_name(now.date())
+    q_since = datetime(now.year, 3 * (D.quarter_of(now.date()) - 1) + 1, 1, tzinfo=D.CENTRAL)
+    synopsis_key = f"dash:synopsis:{q_name}"
+    result["synopsis"] = write_synopsis(client, found[QBRS], f"{q_name} — Quarterly Synopsis", blocks, mark, live,
+                                        known_page(client, connect, synopsis_key, found[QBRS], q_since, live), synopsis_key, connect)
     result.update(archive(client, jira, found[ARCHIVE], site, terms, live))
     result["notion_calls"] = client.calls
     return result
 
 
-def run(limit, live, environ=os.environ, jira=None, client=None, now=None, push=alerts.push):
+def run(limit, live, environ=os.environ, jira=None, client=None, now=None, push=alerts.push, connect=None):
     """The stage. On any failure: one phone alert (fixed code only) while this week's check-in is still owed, or once a day at 9 AM CT otherwise; then the step fails."""
     try:
-        return build(limit, live, environ, jira, client, now)
+        return build(limit, live, environ, jira, client, now, connect)
     except (DashError, JiraError, NotionError, KeyError, ValueError, TypeError) as error:
         code = str(error)[:60] if isinstance(error, (DashError, JiraError, NotionError)) else f"JM_DASH_{type(error).__name__.upper()}"
         local = (now or datetime.now(D.CENTRAL)).astimezone(D.CENTRAL)

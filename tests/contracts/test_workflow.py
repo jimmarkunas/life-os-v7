@@ -664,7 +664,7 @@ CONSUMER_STEPS = {
             'Jira rollover watch (pages the phone when the scheduled rollover has not worked for 3 hours; one private state row; counts only)': DB | JUMP | {"NTFY_TOPIC"},
             'Jira snapshot (counts only; saved to the private database only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL"},
             'Jira card (Daily Report; counts only; the page is written only when live)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN"},
-            'Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)': {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},
+            'Jim & Matt dashboard from Jira (JFM-221; Wednesday 7 AM CT check-in, quarterly synopsis, completed archive; reads Jira only; Notion written only when live; counts only)': DB | JUMP | {"JIRA_API_TOKEN", "JIRA_EMAIL", "NOTION_JIRA_TOKEN", "NTFY_TOPIC"},        # LIFE-384 (Jim approved the workflow edit): the remembered page ids live in the private store
             'Jira layout probe (read-only; counts only)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
             'Jira sprint rollover (dry run unless live; never before the sprint ends)': {"JIRA_API_TOKEN", "JIRA_EMAIL"},
         },
