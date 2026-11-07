@@ -115,7 +115,7 @@ class AcceptanceEntrypoint(unittest.TestCase):
             "interview_date": "2026-09-28", "interviewer": None, "ordinal": 1}
 
     def run_stage(self, client, live, case=None):
-        environ = {**ENV, "GITHUB_EVENT_NAME": "workflow_dispatch", "INTERVIEW_ACCEPTANCE_JSON": json.dumps(case or self.CASE)}
+        environ = {**ENV, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "", "GITHUB_EVENT_NAME": "workflow_dispatch", "INTERVIEW_ACCEPTANCE_JSON": json.dumps(case or self.CASE)}
         with patch.dict(os.environ, environ), patch.object(notion, "make_client", return_value=client):
             return STAGES["interview-acceptance"](1, live)
 
