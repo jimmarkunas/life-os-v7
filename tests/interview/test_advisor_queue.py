@@ -186,6 +186,7 @@ class AdvisorQueueTests(unittest.TestCase):
 
     def test_scan_queue_duplicate_request_title_is_conflict(self):
         client = FakeNotion(); request = queue.ensure_request(client, "queue", bundle())
+        client.pages["duplicate-page"] = page(f"Advisor Request {request.request_id}", "queue", [dict(b) for b in client.pages[request.page_id]["blocks"]], "duplicate-page")
         duplicate = block("child_page", title=f"Advisor Request {request.request_id}")
         duplicate["id"] = "duplicate-page"
         client.pages["queue"]["blocks"].append(duplicate)
@@ -221,7 +222,10 @@ class AdvisorQueueTests(unittest.TestCase):
 
     def test_existing_duplicate_or_unexpected_queue_children_fail_closed(self):
         client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
-        client.pages["queue"]["blocks"].append(block("child_page", title=f"Advisor Request {req.request_id}"))
+        twin = page(f"Advisor Request {req.request_id}", "queue", [dict(b) for b in client.pages[req.page_id]["blocks"]], "twin-request")
+        client.pages["twin-request"] = twin
+        dup = block("child_page", title=twin["properties"]["Name"]["title"][0]["plain_text"]); dup["id"] = "twin-request"
+        client.pages["queue"]["blocks"].append(dup)                                  # two pages carry the same request marker (LIFE-383: identity is the marker)
         with self.assertRaises(queue.AdvisorQueueError) as error:
             queue.ensure_request(client, "queue", bundle())
         self.assertEqual(error.exception.code, "advisor_queue_conflict")
@@ -241,12 +245,11 @@ class AdvisorQueueTests(unittest.TestCase):
         self.assertEqual(client.posts, 1)
 
     def test_queue_parent_and_marker_are_validated(self):
+        # LIFE-383 (D250): the queue page is held by its id; neither its parent nor its title is compared
         client = FakeNotion(); client.pages["queue"]["parent"]["page_id"] = "elsewhere"
-        with self.assertRaises(queue.AdvisorQueueError):
-            queue.ensure_request(client, "queue", bundle())
+        self.assertTrue(queue.ensure_request(client, "queue", bundle()).request_id)
         client = FakeNotion(); client.pages["queue"]["properties"]["Name"]["title"] = rt("Wrong")
-        with self.assertRaises(queue.AdvisorQueueError):
-            queue.ensure_request(client, "queue", bundle())
+        self.assertTrue(queue.ensure_request(client, "queue", bundle()).request_id)
         client = FakeNotion(); client.pages["queue"]["blocks"][0] = block("paragraph", "bad marker")
         with self.assertRaises(queue.AdvisorQueueError):
             queue.ensure_request(client, "queue", bundle())
@@ -289,9 +292,7 @@ class AdvisorQueueTests(unittest.TestCase):
             queue._read_request(client, [40], req.page_id, "queue")
 
     def test_request_read_rejects_wrong_title_parent_state_marker_hash_payload_and_extra_block(self):
-        mutations = (lambda p: p["properties"]["Name"].__setitem__("title", rt("Wrong")),
-                       lambda p: p["parent"].__setitem__("page_id", "other"),
-                       lambda p: p.__setitem__("archived", True), lambda p: p.__setitem__("in_trash", True),
+        mutations = (lambda p: p.__setitem__("archived", True), lambda p: p.__setitem__("in_trash", True),
                        lambda p: p["blocks"][0]["paragraph"]["rich_text"][0]["text"].__setitem__("content", "bad"),
                        lambda p: p["blocks"][0]["paragraph"]["rich_text"][0]["text"].__setitem__(
                            "content", "v7-interview-advisor-request:1;" + "0" * 32 + ";" + "f" * 64),
@@ -327,7 +328,7 @@ class AdvisorQueueTests(unittest.TestCase):
         response = response_page(req); response["blocks"].append(block("paragraph", "extra")); client.pages["response"] = response
         with self.assertRaises(queue.AdvisorQueueError): queue.read_response(client, req, "response")
         response = response_page(req); response["parent"]["page_id"] = "other"; client.pages["response"] = response
-        with self.assertRaises(queue.AdvisorQueueError): queue.read_response(client, req, "response")
+        self.assertEqual(queue.read_response(client, req, "response").request_id, req.request_id)       # LIFE-383 (D250): the parent is not compared
 
     def test_response_malformed_draft_fields_and_refs_fail_closed(self):
         client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
@@ -349,8 +350,7 @@ class AdvisorQueueTests(unittest.TestCase):
             item = p["blocks"][0]["paragraph"]["rich_text"][0]
             item["plain_text"] = value
             item["text"]["content"] = value
-        changes = (lambda p: p["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "Wrong"}),
-                   lambda p: set_text(p, "bad"),
+        changes = (lambda p: set_text(p, "bad"),
                    lambda p: set_text(p, f"v7-interview-advisor-response:1;{'0' * 32};{'f' * 64}"),
                    lambda p: p.__setitem__("archived", True), lambda p: p.__setitem__("in_trash", True),
                    lambda p: p["blocks"][1].__setitem__("has_children", True))
@@ -380,12 +380,10 @@ class AdvisorQueueTests(unittest.TestCase):
     def test_malformed_or_unexpected_response_makes_item_ambiguous(self):
         for title in ("Unexpected", "expected"):
             client = FakeNotion(); req = queue.ensure_request(client, "queue", bundle())
-            if title == "expected":
-                response = response_page(req); response["blocks"][0] = block("paragraph", "bad")
-                client.pages["response"] = response
-                child_title = f"Advisor Response {req.request_id}"
-            else:
-                child_title = title
+            response = response_page(req)
+            response["blocks"][0] = block("paragraph", "bad" if title == "expected" else f"v7-interview-advisor-response:1;{'0' * 32};{'f' * 64}")      # LIFE-383 (D250): identity is the marker, not the title
+            client.pages["response"] = response
+            child_title = f"Advisor Response {req.request_id}" if title == "expected" else title
             child = block("child_page", title=child_title); child["id"] = "response"
             client.pages[req.page_id]["blocks"].append(child)
             self.assertEqual(queue.scan_queue(client, "queue")[0].state, queue.QueueState.AMBIGUOUS)

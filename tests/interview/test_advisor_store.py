@@ -61,7 +61,9 @@ class FakeNotion:
             title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
             page_obj = page(title, body["parent"]["page_id"], body["children"], pid)
             self.pages[pid] = page_obj
-            self.pages[body["parent"]["page_id"]]["blocks"].append(block("child_page", "", title))
+            child = block("child_page", "", title)
+            child["id"] = pid                                                   # the listed child is the page just created
+            self.pages[body["parent"]["page_id"]]["blocks"].append(child)
             return page_obj
         raise AssertionError((method, path))
 
@@ -171,12 +173,19 @@ class StoreTests(unittest.TestCase):
         for pages, root, env in ((build_tree(), "", {}), (build_tree(), "missing", {})):
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_store(FakeNotion(pages), env)
-        for mutate in (lambda p: p[0]["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "Wrong"}),
-                       lambda p: p[0].__setitem__("archived", True), lambda p: p[0].__setitem__("in_trash", True),
-                       lambda p: p[0]["blocks"].pop(), lambda p: p[0]["blocks"].append(block("child_page", "", "Extra"))):
+        for mutate in (lambda p: p[0].__setitem__("archived", True), lambda p: p[0].__setitem__("in_trash", True),
+                       lambda p: p[0]["blocks"].pop()):
             pages = build_tree(); mutate(pages)
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_store(FakeNotion(pages), ROOT_ENV)
+        # LIFE-383 (D250): the root is held by its configured id, so its title is not compared, and a child page without an Advisor marker is free-form and ignored
+        for mutate in (lambda p: p[0]["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "Renamed by Jim"}),
+                       lambda p: p[0]["blocks"].append(block("child_page", "", "Extra"))):
+            pages = build_tree(); mutate(pages)
+            if any(b.get("child_page", {}).get("title") == "Extra" for b in pages[0]["blocks"]):
+                pages.append(page("Extra", "root", [block("paragraph", "Jim's own notes")], "Extra"))
+                pages[-1]["id"] = [b for b in pages[0]["blocks"] if b.get("child_page", {}).get("title") == "Extra"][0]["id"]
+            self.assertEqual(store.read_store(FakeNotion(pages), ROOT_ENV).queue_page_id, "advisor-queue")
 
     def test_duplicate_child_missing_nested_child_and_bad_marker_fail(self):
         cases = []
@@ -336,8 +345,8 @@ class StoreTests(unittest.TestCase):
         client = FakeNotion(build_tree())
         verified = store.create_preview(client, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
         self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "advisor-previews").prep, verified.prep)
-        for parent, gen, digest in (("root", None, None), ("advisor-previews", "f" * 32, None),
-                                    ("advisor-previews", None, "f" * 64)):
+        self.assertEqual(store.read_preview(client, "00000000-0000-0000-0000-000000000001", "root").prep, verified.prep)       # LIFE-383 (D250): the parent is not compared
+        for parent, gen, digest in (("advisor-previews", "f" * 32, None), ("advisor-previews", None, "f" * 64)):
             with self.assertRaises(store.AdvisorStoreError):
                 store.read_preview(client, "00000000-0000-0000-0000-000000000001", parent, gen, digest)
         page_obj = client.pages["00000000-0000-0000-0000-000000000001"]
@@ -350,7 +359,6 @@ class StoreTests(unittest.TestCase):
         store.create_preview(original, "advisor-previews", "0123456789abcdef0123456789abcdef", bundle(), draft())
         pid = "00000000-0000-0000-0000-000000000001"
         mutations = (
-            lambda p: p["properties"]["Name"]["title"].__setitem__(0, {"plain_text": "wrong"}),
             lambda p: p["blocks"][0]["paragraph"]["rich_text"][0]["text"].__setitem__("content", "bad marker"),
             lambda p: p.__setitem__("archived", True), lambda p: p.__setitem__("in_trash", True),
             lambda p: p["blocks"].__setitem__(2, block("heading_2", "Game Theory")),

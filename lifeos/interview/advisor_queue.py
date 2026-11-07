@@ -173,10 +173,7 @@ def _call(client, budget, method, path, body=None, once=False):
 def _page(client, budget, page_id, title, parent=None, unavailable="advisor_queue_incomplete"):
     page = _call(client, budget, "GET", f"/pages/{page_id}")
     _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), unavailable)
-    _need(_title(page) == title, "advisor_queue_invalid")
-    if parent is not None:
-        _need(notion.same_notion_id((page.get("parent") or {}).get("page_id"), parent), "advisor_queue_invalid")
-    return page
+    return page                                         # LIFE-383 (D250): no title or parent comparison; `title` and `parent` stay in the signature, unused; identity is the marker block
 
 
 def _children(client, budget, page_id):
@@ -197,10 +194,7 @@ def _children(client, budget, page_id):
 
 
 def _queue(client, budget, queue_page_id):
-    container = _page(client, budget, queue_page_id, _QUEUE_TITLE)
-    root_id = (container.get("parent") or {}).get("page_id")
-    _need(isinstance(root_id, str) and bool(root_id), "advisor_queue_invalid")
-    _page(client, budget, root_id, "LIFE OS — Interview Advisor")
+    _page(client, budget, queue_page_id, _QUEUE_TITLE)         # the queue page is held by ID (the store hands it over); its root is not derived from its parent (D250)
     first_data = _call(client, budget, "GET", f"/blocks/{queue_page_id}/children?page_size=1")
     _need(isinstance(first_data, dict) and isinstance(first_data.get("results"), list),
           "advisor_queue_incomplete")
@@ -213,6 +207,15 @@ def _queue(client, budget, queue_page_id):
     return blocks
 
 
+def _marker_ids(client, budget, block_id, pattern):
+    """The groups of a child page's first-block marker (`pattern`), else None: the page's own machine identity (D250), read as its first block only."""
+    data = _call(client, budget, "GET", f"/blocks/{block_id}/children?page_size=1")
+    first = data.get("results") if isinstance(data, dict) else None
+    _need(isinstance(first, list), "advisor_queue_incomplete")
+    match = pattern.fullmatch(_plain(first[0])) if first and first[0].get("type") == "paragraph" else None
+    return match.groups() if match else None
+
+
 def _payload_marker(bundle):
     payload = serialize_bundle(bundle)
     digest = advisor.bundle_digest(bundle)
@@ -222,18 +225,12 @@ def _payload_marker(bundle):
 def _read_request(client, budget, page_id, expected_parent=None):
     page = _call(client, budget, "GET", f"/pages/{page_id}")
     _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), "advisor_queue_invalid")
-    title = _title(page)
-    title_match = _REQUEST.fullmatch(title)
-    _need(title_match is not None, "advisor_queue_invalid")
-    request_id = title_match.group(1)
-    if expected_parent is not None:
-        _need(notion.same_notion_id((page.get("parent") or {}).get("page_id"), expected_parent), "advisor_queue_invalid")
     blocks = _children(client, budget, page_id)
     _need(len(blocks) >= 2 and all(not b.get("has_children") for b in blocks[:2]), "advisor_queue_invalid")
     marker = _MARKER.fullmatch(_plain(blocks[0])) if blocks[0].get("type") == "paragraph" else None
     _need(marker is not None and blocks[1].get("type") == "paragraph", "advisor_queue_invalid")
     mid, bundle_hash = marker.groups()
-    _need(mid == request_id, "advisor_queue_invalid")
+    request_id = mid                                                 # LIFE-383 (D250): the request id is the marker's own id, never parsed from the title
     payload = _plain(blocks[1])
     _need(not _reserved(payload), "advisor_queue_invalid")
     bundle = parse_bundle(payload)
@@ -271,18 +268,16 @@ def ensure_request(client, queue_page_id, bundle):
     candidates = []
     for block in queue_blocks[1:]:
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
-        child_title = (block.get("child_page") or {}).get("title", "")
-        match = _REQUEST.fullmatch(child_title)
-        _need(match is not None, "advisor_queue_invalid")
-        if child_title == title:
+        pair = _marker_ids(client, budget, block.get("id"), _MARKER)         # LIFE-383 (D250): a request page is recognised by its own marker, not by its title
+        _need(pair is not None, "advisor_queue_invalid")
+        _need(pair[1][:32] == pair[0], "advisor_queue_conflict")             # a marker whose id is not its hash's prefix is tampered: fail closed
+        if pair[0] == request_id:
             candidates.append(block.get("id"))
     if len(candidates) > 1:
         raise AdvisorQueueError("advisor_queue_conflict")
     if candidates:
         existing, trailing = _read_request(client, budget, candidates[0], queue_page_id)
-        _need(len(trailing) <= 1 and (not trailing or all(b.get("type") == "child_page" and
-              (b.get("child_page") or {}).get("title") == f"Advisor Response {request_id}" for b in trailing)),
-              "advisor_queue_conflict")
+        _need(len(trailing) <= 1 and all(b.get("type") == "child_page" for b in trailing), "advisor_queue_conflict")
         _need(existing.request_id == request_id and existing.bundle_hash == bundle_hash
               and serialize_bundle(existing.bundle) == payload, "advisor_queue_conflict")
         return existing
@@ -348,8 +343,7 @@ def _parse_draft(payload):
 def read_response(client, request, response_page_id, budget=None):
     budget = budget if budget is not None else [_CALLS]
     try:
-        page = _page(client, budget, response_page_id, f"Advisor Response {request.request_id}", request.page_id,
-                     "advisor_queue_response_invalid")
+        _page(client, budget, response_page_id, None, None, "advisor_queue_response_invalid")
         blocks = _children(client, budget, response_page_id)
         _need(len(blocks) == 2 and all(not b.get("has_children") for b in blocks), "advisor_queue_response_invalid")
         marker = _RESPONSE_MARKER.fullmatch(_plain(blocks[0])) if blocks[0].get("type") == "paragraph" else None
@@ -367,10 +361,7 @@ def read_response(client, request, response_page_id, budget=None):
 
 
 def _request_for_scan(client, budget, queue_page_id, block):
-    title = (block.get("child_page") or {}).get("title", "")
-    _need(_REQUEST.fullmatch(title) is not None, "advisor_queue_invalid")
     request, extras = _read_request(client, budget, block.get("id"), queue_page_id)
-    _need(title == f"Advisor Request {request.request_id}", "advisor_queue_invalid")
     return request, extras
 
 
@@ -381,18 +372,14 @@ def scan_queue(client, queue_page_id):
     seen_request_ids = set()
     for block in blocks[1:]:
         _need(block.get("type") == "child_page", "advisor_queue_invalid")
-        title = (block.get("child_page") or {}).get("title", "")
-        title_match = _REQUEST.fullmatch(title)
-        _need(title_match is not None, "advisor_queue_invalid")
-        request_id = title_match.group(1)
-        _need(request_id not in seen_request_ids, "advisor_queue_conflict")
-        seen_request_ids.add(request_id)
         request, extras = _request_for_scan(client, budget, queue_page_id, block)
+        _need(request.request_id not in seen_request_ids, "advisor_queue_conflict")      # LIFE-383 (D250): the id comes from the request's own marker
+        seen_request_ids.add(request.request_id)
         child_pages = [b for b in extras if b.get("type") == "child_page"]
         malformed = len(child_pages) != len(extras) or len(child_pages) > 1
         if not extras:
             items.append(QueueItem(request, None, QueueState.READY))
-        elif malformed or (child_pages[0].get("child_page") or {}).get("title") != f"Advisor Response {request.request_id}":
+        elif malformed:
             items.append(QueueItem(request, None, QueueState.AMBIGUOUS))
         else:
             try:

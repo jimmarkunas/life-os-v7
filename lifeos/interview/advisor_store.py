@@ -68,13 +68,11 @@ def _title(page):
 
 
 def _page(client, page_id, expected_title=None, parent=None, code=_CODE):
+    """A page held by ID must be readable and live. LIFE-383 (D250): its title and its parent are NOT compared (`expected_title` and `parent` stay in the signature for the callers and are unused);
+    a page's identity is its machine marker block, checked by `_marked`."""
     try:
         page = client.call("GET", f"/pages/{page_id}")
         _need(isinstance(page, dict) and not page.get("archived") and not page.get("in_trash"), code)
-        if expected_title is not None:
-            _need(_title(page) == expected_title, code)
-        if parent is not None:
-            _need(notion.same_notion_id((page.get("parent") or {}).get("page_id"), parent), code)
         return page
     except AdvisorStoreError:
         raise
@@ -126,18 +124,35 @@ def _first_marker(client, page_id, kind):
         raise AdvisorStoreError("advisor_store_unreadable") from None
 
 
-def _direct_pages(client, parent_id, allowed):
+def _kind_of(client, page_id):
+    """The `kind` in the page's first-block marker `v7-interview-advisor:1;kind=<kind>`, else None (an unmarked page is free-form and not ours)."""
+    try:
+        first = client.call("GET", f"/blocks/{page_id}/children?page_size=1")["results"][:1]     # the marker block only: a queue's contents belong to the queue contract
+    except Exception:
+        raise AdvisorStoreError("advisor_store_unreadable") from None
+    text = _plain(first[0]) if first and first[0].get("type") == "paragraph" else ""
+    match = re.fullmatch(r"v7-interview-advisor:1;kind=([a-z_]+)", text)
+    return match.group(1) if match else None
+
+
+def _direct_pages(client, parent_id, allowed, kinds=None):
+    """The held page's child pages that carry an Advisor marker, mapped name -> page id. LIFE-383 (D250): each child is identified by its own machine marker (`kinds`: name -> marker kind),
+    never by its title or its parent; a page without a marker is free-form and ignored; every expected kind must appear exactly once."""
+    kinds = kinds or {n: _MARKERS[n] for n in allowed}
     blocks = _blocks(client, parent_id)
     _need(not any(b.get("type") == "child_database" for b in blocks), "advisor_store_incomplete")
-    pages = [b for b in blocks if b.get("type") == "child_page"]
-    titles = [(b.get("child_page") or {}).get("title") for b in pages]
-    _need(all(isinstance(t, str) and t in allowed for t in titles), "advisor_store_incomplete")
-    _need(set(titles) == set(allowed) and len(titles) == len(set(titles)) == len(allowed),
-          "advisor_store_incomplete")
-    result = {}
-    for block, title in zip(pages, titles):
-        result[title] = _page(client, block.get("id"), title, parent_id)
-    return {title: result[title]["id"] for title in allowed}
+    found = {}
+    for block in blocks:
+        if block.get("type") != "child_page":
+            continue
+        kind = _kind_of(client, block.get("id"))
+        if kind is None:
+            continue
+        _need(kind in kinds.values() and kind not in found, "advisor_store_incomplete")
+        _page(client, block.get("id"))
+        found[kind] = block.get("id")
+    _need(set(found) == set(kinds.values()), "advisor_store_incomplete")
+    return {name: found[kinds[name]] for name in allowed}
 
 
 def _body_text(block):
@@ -240,7 +255,7 @@ def read_store(client, environ=os.environ):
                 _first_marker(client, page_id, "queue")
                 continue
             _marked(client, page_id, _MARKERS[name], _META.get(name))
-        sub = _direct_pages(client, pages["Advisor Inputs"], _CHILDREN["Advisor Inputs"])
+        sub = _direct_pages(client, pages["Advisor Inputs"], _CHILDREN["Advisor Inputs"], {"Guidance": "guidance", "Accepted Signals": "accepted_signals"})
         for name, page_id in sub.items():
             _marked(client, page_id, "guidance" if name == "Guidance" else "accepted_signals")
         sl = _source(client, pages["Straight Line Doctrine"], advisor.SourceKind.STRAIGHT_LINE_DOCTRINE, "straight_line_doctrine")
@@ -413,7 +428,6 @@ def read_preview(client, preview_page_id, expected_previews_parent_id, expected_
         match = re.fullmatch(r"v7-interview-advisor-preview:1;([0-9a-f]{32});([0-9a-f]{64});([0-9a-f]{64})", _plain(blocks[0]))
         _need(match is not None, "advisor_preview_invalid")
         gen, bundle_hash, body_hash = match.groups()
-        _need(_title(page) == "Advisor Preview " + gen, "advisor_preview_invalid")
         _need(expected_generation_id is None or gen == expected_generation_id, "advisor_preview_invalid")
         _need(expected_bundle_hash is None or bundle_hash == expected_bundle_hash, "advisor_preview_invalid")
         body, prep = _parse_preview_body(blocks[1:])
@@ -436,8 +450,11 @@ def create_preview(client, previews_page_id, generation_id, bundle, draft):
     _page(client, previews_page_id, "Advisor Previews")
     _marked(client, previews_page_id, "previews")
     existing = _blocks(client, previews_page_id)
-    matches = [b for b in existing if b.get("type") == "child_page" and (b.get("child_page") or {}).get("title") == title]
-    _need(not matches, "advisor_preview_conflict")
+    marker = f"v7-interview-advisor-preview:1;{generation_id};"                      # LIFE-383 (D250): an existing preview is found by its own marker (it carries the generation id), not by its title
+    for b in existing:
+        if b.get("type") == "child_page":
+            first = _blocks(client, b.get("id"))[:1]
+            _need(not (first and first[0].get("type") == "paragraph" and _plain(first[0]).startswith(marker)), "advisor_preview_conflict")
     # Once POST begins, never retry: a transport error may follow a committed insert.
     try:
         page = post("POST", "/pages", {"parent": {"type": "page_id", "page_id": previews_page_id},
