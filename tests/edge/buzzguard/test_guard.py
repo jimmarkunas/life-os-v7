@@ -472,6 +472,9 @@ class RoomContext(Base):
                          ("mcp__buzz__buzz_read", {"operation": "get_messages", "community": "bytalos", "arguments": {"channel": self.CHAN}}),
                          ("mcp__buzz__buzz_read", {"operation": "post_message", "community": "life-os"}), ("mcp__buzz__buzz_read", {"operation": "get_and_delete"}),
                          ("mcp__buzz__buzz_read", {"community": "life-os"}), ("mcp__buzz__read", {"operation": ["get_messages"]}),
+                         ("mcp__buzz__read", {"operation": "post_message", "channel": self.CHAN}), ("mcp__buzz__read", {"channel": self.CHAN, "community": "bytalos"}),
+                         ("mcp__buzz__read", {"channel": "tskey-api-abc123"}), ("mcp__buzz__canvas_set", {"channel": self.CHAN, "text": "x"}),
+                         ("mcp__buzz__canvas_update", {"channel": self.CHAN}),
                          ("mcp__buzz__buzz_publish", {"operation": "message", "arguments": {"channel": self.CHAN, "text": "x"}}),
                          ("mcp__buzz__buzz_post_message", {"channel": self.CHAN, "text": "x"}), ("mcp__buzz__get_event_and_delete", {"event_id": self.EID}),
                          ("mcp__buzz__buzz_get_nsec", {}), ("mcp__buzz__get_messages_run", {"channel": self.CHAN})):
@@ -494,3 +497,22 @@ class RoomContext(Base):
         out = subprocess.run(["python3", "-I", GUARD], input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "mcp__buzz__get_thread", "tool_input": {"root": self.EID}}),
                              capture_output=True, text=True, cwd=self.tmp, check=True).stdout
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "allow")
+
+
+class NativeReadTools(Base):
+    """LIFE-397, live failure Nov 7 5:23 PM CT: the Challenger's real calls (recovered from hook.log input hashes) were refused. Each must now be allowed."""
+    CHAN = "0a1b2c3d-1111-4222-8333-944455566677"
+
+    def test_the_exact_calls_from_hook_log_are_allowed(self):
+        self.assertEqual(self.dec("mcp__buzz__read", {"channel": self.CHAN, "limit": 30}), "allow")
+        self.assertEqual(self.dec("mcp__buzz__read", {}), "allow")
+        self.assertEqual(self.dec("mcp__buzz__canvas_get", {"channel": self.CHAN}), "allow")
+        self.assertEqual(self.dec("mcp__buzz__read", {"operation": "get_messages", "channel": self.CHAN}), "allow")
+
+    def test_hashes_match_the_logged_inputs(self):
+        import hashlib
+        h = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, default=str).encode()).hexdigest()[:16]   # same formula as guard.main's input_sha
+        real = "b995612a-678c-4861-82d1-448daffe6f97"                                                          # the LIFE-369 room (a Buzz channel id, not a Notion id)
+        self.assertEqual(h({"channel": real, "limit": 30}), "15d4fb6febf946f1")
+        self.assertEqual(h({"channel": real}), "46117809905a0b4e")
+        self.assertEqual(h({}), "44136fa355b3678a")
