@@ -5,6 +5,7 @@
   watch  run the watchdog's incident checks (lifeos.platform.gate.watch) here, incidents only: the daily check-in stays with the GitHub watchdog so it is
          never sent twice. Jim's alert switches (ALERTS_ENABLED, ALERTS_MUTED_UNTIL, ALERT_SETTINGS) are read from the repository variables on every run,
          so the Alert settings page stays the one place they are set; when they cannot be read the run stops (it never guesses "on" or "off").
+         LIFE-301: it also raises one quiet incident (phone only) when the Hermes disk image is 80% full or more, and closes it when it drops below.
   dry    check that the credentials are present and the variables readable; dispatches nothing and pushes nothing.
 
 Credentials come only from systemd (LoadCredentialEncrypted): `github` (fine-grained token for this repository: Actions read/write, Issues read/write,
@@ -12,6 +13,7 @@ Variables read) and `ntfy` (the phone topic). Output is one JSON line: the comma
 Stdlib only."""
 import json
 import os
+import shutil
 import sys
 import urllib.error
 import urllib.request
@@ -24,6 +26,8 @@ REPO = "jimmarkunas/life-os-v7"
 API = "https://api.github.com"
 VARIABLES = ("ALERTS_ENABLED", "ALERTS_MUTED_UNTIL", "ALERT_SETTINGS")
 OK = {"TICK_DISPATCHED", "WATCH_DONE", "TICKER_DRY_OK"}
+DISK_PATH, DISK_LIMIT = "/var/lib/hermeseval", 80        # LIFE-301: the Hermes loop-mounted image (10 GB, 34% used on Nov 7 2026)
+DISK_LABEL, DISK_TITLE = "hermes-disk-full", "Hermes disk is 80% full or more"
 REFUSED = (401, 403, 404, 422)          # the token, its permissions, the workflow name or the inputs are wrong: a person must act
 
 
@@ -78,7 +82,30 @@ def variables(token, opener=urllib.request.urlopen):
     return found, 200
 
 
-def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None):
+def disk_percent(path=DISK_PATH, usage=shutil.disk_usage):
+    """-> whole percent used (like df: used / (used + available)), or None when the mount cannot be read."""
+    try:
+        total = usage(path)
+        return int(100 * total.used / (total.used + total.free))
+    except (OSError, ZeroDivisionError):
+        return None
+
+
+def disk_incident(path=DISK_PATH, limit=DISK_LIMIT, usage=shutil.disk_usage, sync=None):
+    """LIFE-301: one GitHub issue + one quiet push while the Hermes disk is at or over `limit` percent; closes when it is back under. An unreadable mount leaves it unchanged."""
+    percent = disk_percent(path, usage)
+    if percent is None:
+        return None
+    if sync is None:
+        from lifeos.platform import gate                           # noqa: PLC0415
+        sync = gate.sync_incident
+    return sync(DISK_LABEL, DISK_TITLE, f"The Hermes disk image on lifeos-edge-01 is {percent}% full (alarm at {limit}%). Free space or grow the image before it fills; "
+                "LIFE-301 has the plan. This issue closes itself when usage drops below the limit.", percent >= limit,
+                ("Hermes disk 80% full", f"The Hermes disk image is {percent}% full.", "info", "hermes_disk_full"),
+                ("Hermes disk back under 80%", "The Hermes disk image is below the limit again.", "info", "hermes_disk_full_recovered"))
+
+
+def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None, disk=None):
     """-> (code, status). Sets the switches, the token and the topic for this process only, then runs the watchdog's incident checks."""
     found, status = variables(token, opener)
     if found is None:
@@ -89,10 +116,16 @@ def watch(token, topic, opener=urllib.request.urlopen, run=None, environ=None):
     if run is None:
         from lifeos.platform import gate                           # noqa: PLC0415 - only the watch command needs it
         run = gate.watch
+        disk = disk or disk_incident
     try:
         run(checkin=False)
     except Exception:                                               # noqa: BLE001 - GitHub unreadable for the run list: a fixed code, the next run tries again
         return "TICKER_WATCH_FAILED", None
+    if disk:
+        try:
+            disk()
+        except Exception:                                           # noqa: BLE001 - the disk check never fails the watchdog; the next run tries again
+            pass
     return "WATCH_DONE", None
 
 
