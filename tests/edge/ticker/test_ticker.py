@@ -257,7 +257,7 @@ class Installer(unittest.TestCase):
         """Copy exactly what `install` copies into a temporary /opt layout and run `dry` there with python -I: the imports resolve from the copy."""
         text = self.SCRIPT.read_text()
         modules = re.search(r'MODULES="([^"]+)"', text).group(1).split()
-        opt = Path(tempfile.mkdtemp())
+        opt = Path(tempfile.mkdtemp()).resolve()                  # macOS temp is a symlink (/var -> /private/var); the probe prints the resolved path
         self.addCleanup(shutil.rmtree, opt)
         (opt / "lifeos/platform").mkdir(parents=True)
         shutil.copy(ROOT / "lifeos/edge/ticker/ticker.py", opt / "ticker.py")
