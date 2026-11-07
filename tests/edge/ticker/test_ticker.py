@@ -74,6 +74,49 @@ class Tick(unittest.TestCase):
             self.assertEqual(ticker.tick(TOKEN, FakeGitHub({"dispatches": answer}))[0], code, answer)
 
 
+class Disk(unittest.TestCase):
+    """LIFE-301: the Hermes disk alarm (80%), run inside the watch; quiet (INFO) and a closing signal when it drops."""
+    def usage(self, used, free):
+        return lambda path: type("U", (), {"used": used, "free": free, "total": used + free})()
+
+    def test_percent_is_used_over_used_plus_available_like_df(self):
+        self.assertEqual(ticker.disk_percent("/x", self.usage(33, 67)), 33)
+        self.assertEqual(ticker.disk_percent("/x", self.usage(80, 20)), 80)
+        self.assertIsNone(ticker.disk_percent("/x", lambda path: (_ for _ in ()).throw(OSError("gone"))))
+        self.assertIsNone(ticker.disk_percent("/x", self.usage(0, 0)))
+
+    def test_signal_opens_at_80_closes_below_and_an_unreadable_mount_changes_nothing(self):
+        seen = []
+        sync = lambda *a: seen.append(a) or "ok"                                  # noqa: E731
+        for used, free, signal in ((79, 21, False), (80, 20, True), (95, 5, True), (34, 66, False)):
+            ticker.disk_incident(usage=self.usage(used, free), sync=sync)
+            self.assertIs(seen[-1][3], signal, (used, free))
+        n = len(seen)
+        self.assertIsNone(ticker.disk_incident(usage=lambda path: (_ for _ in ()).throw(OSError("gone")), sync=sync))
+        self.assertEqual(len(seen), n)
+
+    def test_the_pushes_are_registered_quiet_and_name_the_percent(self):
+        from lifeos.platform import alert_registry
+        seen = []
+        ticker.disk_incident(usage=self.usage(85, 15), sync=lambda *a: seen.append(a))
+        label, title, body, signal, opened, closed = seen[0]
+        self.assertEqual((label, signal, opened[3], closed[3]), ("hermes-disk-full", True, "hermes_disk_full", "hermes_disk_full_recovered"))
+        self.assertIn("85%", body)
+        for key in ("hermes_disk_full", "hermes_disk_full_recovered"):
+            self.assertEqual(alert_registry.lookup(key).severity, "info")
+
+    def test_watch_runs_the_disk_check_after_the_watchdog_and_a_disk_failure_never_fails_it(self):
+        order = []
+        code, _ = ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={}, disk=lambda: order.append("disk"))
+        self.assertEqual((code, order), ("WATCH_DONE", ["gate", "disk"]))
+        def boom():
+            raise RuntimeError("x")
+        self.assertEqual(ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: None, environ={}, disk=boom)[0], "WATCH_DONE")
+        order.clear()
+        ticker.watch(TOKEN, TOPIC, FakeGitHub(SWITCHES), run=lambda **k: order.append("gate"), environ={})
+        self.assertEqual(order, ["gate"])                                         # an injected run alone never touches the real disk check
+
+
 class Watch(unittest.TestCase):
     def test_the_switches_come_from_the_repository_variables_and_no_checkin_is_sent(self):
         calls, env = [], {}

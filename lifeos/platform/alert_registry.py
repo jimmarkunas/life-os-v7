@@ -51,6 +51,9 @@ REGISTRY = {
     "pipeline_stalled_recovered": _info("platform", "The stalled pipeline recovered."),
     "pipeline_failing": _page("platform", "Three or more hourly runs failed in 24 hours."),
     "pipeline_failing_recovered": _info("platform", "No failed hourly run in 24 hours."),
+    # --- the edge host (lifeos/edge/ticker/ticker.py, LIFE-301; INFO: phone only, Jim approved the alarm Nov 7 2026)
+    "hermes_disk_full": _info("edge", "The Hermes disk image is 80% full or more."),
+    "hermes_disk_full_recovered": _info("edge", "The Hermes disk image is back under 80%."),
     # --- one-shot events
     "attention_new": _info("attention", "New items need your attention (counts only)."),
     "physmail_new": _info("physmail", "New physical mail arrived (counts only)."),
