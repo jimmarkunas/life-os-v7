@@ -113,4 +113,30 @@ def fetch(key, client=None):
     return client.get(f"/rest/api/3/issue/{key}", {"fields": FIELDS})
 
 
-__all__ = ["normalize", "fetch", "JiraError"]
+def from_mcp(envelope, key):
+    """LIFE-363 (REQ-6): unwrap the unmodified result of the Atlassian MCP getJiraIssue (issues.nodes, exactly one node) into the `{key, fields}` shape `normalize` reads.
+    ValueError codes: INCOMPLETE:<field> (shape or a FIELDS entry missing), KEY_MISMATCH (the node is not `key`). `normalize` is unchanged."""
+    nodes = ((envelope or {}).get("issues") or {}).get("nodes") if isinstance(envelope, dict) else None
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        raise ValueError("INCOMPLETE:issues")
+    node = nodes[0]
+    if node.get("key") != key:
+        raise ValueError("KEY_MISMATCH")
+    fields = node.get("fields")
+    if not isinstance(fields, dict):
+        raise ValueError("INCOMPLETE:fields")
+    for name in FIELDS.split(","):
+        if name not in fields:
+            raise ValueError("INCOMPLETE:" + name)
+    return {"key": node["key"], "fields": fields}
+
+
+def used(raw):
+    """The fields a human compares with Jira: key, status, updated time, blocker keys with statuses."""
+    f = raw["fields"]
+    blockers = [f"{(l.get('inwardIssue') or {}).get('key')}={(((l.get('inwardIssue') or {}).get('fields') or {}).get('status') or {}).get('name')}"
+                for l in f.get("issuelinks") or [] if (l.get("type") or {}).get("name") == "Blocks" and l.get("inwardIssue")]
+    return {"key": raw["key"], "status": (f.get("status") or {}).get("name") or "unknown", "updated": f.get("updated") or "unknown", "blockers": ",".join(blockers) or "none"}
+
+
+__all__ = ["normalize", "fetch", "from_mcp", "used", "JiraError"]

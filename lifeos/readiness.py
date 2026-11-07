@@ -4,15 +4,17 @@ Three checks, one refusal shape, stdlib only, no network, no state of its own:
   issue      a normalized LIFE issue record is eligible for autonomous work (origin, lane, native blockers, authorization, permissions, Given/When/Then; owner/host/source optional, checked if present; requirement: a ticket naming a LOS origin must link its Notion REQ page (LIFE-319); needs/decisions: every row {what, proof, status: done} or the issue is not released)
   preflight  a writer claim is safe to act on (live-fetched, unchanged GitHub baseline; no other writer on the issue or surface; with --pre only availability, otherwise this writer's own recorded claim too)
   issue-key  the same check on a LIVE LIFE issue read from Jira by key (LIFE-313; read-only GET with the existing JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN), and issue-json FILE on a saved REST v3 issue; unreadable or incomplete Jira data prints QUEUE_NOT_READY, never ready
+  issue-mcp  (LIFE-363, REQ-6) the same check on the unmodified Atlassian MCP getJiraIssue result saved to FILE by the session: key must match, the file must be under 15 minutes old, every field present; no Jira credential; prints SOURCE mcp-read and the fields used
   repo       the global source index still points at real files with an owner and an authority, inside the size limit
 
 Fail closed: any refusal, unreadable input or error exits 2 before the caller mutates anything. Exit 0 prints `ready`.
-Usage: python -m lifeos.readiness issue FILE | issue-key KEY | issue-json FILE | preflight [--pre] CLAIM STATE [REPO] | repo [ROOT]   (FILE, CLAIM, STATE are JSON; main is fetched live from REPO's origin, never asserted)
+Usage: python -m lifeos.readiness issue FILE | issue-key KEY | issue-json FILE | issue-mcp FILE KEY | preflight [--pre] CLAIM STATE [REPO] | repo [ROOT]   (FILE, CLAIM, STATE are JSON; main is fetched live from REPO's origin, never asserted)
 The ChatGPT connector preflight is procedural (Q30); this module does not claim to enforce it."""
 import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 VERSION = 1
@@ -183,11 +185,44 @@ def jira_issue(mode, arg):
         return [], f"QUEUE_NOT_READY — {code}"
 
 
+MCP_MAX_AGE = 15 * 60                         # seconds: a saved MCP read older than this is stale (REQ-6)
+
+
+def mcp_issue(path, key):
+    """LIFE-363: -> (refusals, gap, fields used). The session wrote the file, so the limit (it cannot be proven unmodified) is stated in the output by the caller."""
+    from lifeos.jira import readiness_record as rr
+    p, shown = Path(path), None
+    try:
+        if time.time() - p.stat().st_mtime > MCP_MAX_AGE:
+            return [], "QUEUE_NOT_READY — STALE_MCP_READ", None
+        raw = rr.from_mcp(json.loads(p.read_text()), key)
+        shown = rr.used(raw)
+        return check_issue(rr.normalize(raw)), None, shown
+    except Exception as exc:                                  # noqa: BLE001  every failure is a fixed code, never a body or value
+        code = str(exc) if str(exc).startswith(("INCOMPLETE:", "KEY_MISMATCH")) else type(exc).__name__
+        return [], f"QUEUE_NOT_READY — {code}", shown
+
+
 def run(argv):
+    if argv[:1] == ["issue-mcp"] and len(argv) == 3:
+        refusals, gap, shown = mcp_issue(argv[1], argv[2])
+        print("SOURCE mcp-read (the session saved this file; it cannot be proven unmodified)")
+        if shown:
+            print("FIELDS " + " ".join(f"{k}={v}" for k, v in shown.items()))
+        if gap:
+            print(gap, file=sys.stderr)
+            return 2
+        for r in refusals:
+            print(f"refused v{VERSION} {r['code']} {r['field']} {r['detail']}".rstrip(), file=sys.stderr)
+        if not refusals:
+            print(f"ready v{VERSION}")
+        return 2 if refusals else 0
     if argv[:1] in (["issue-key"], ["issue-json"]) and len(argv) == 2:
         refusals, gap = jira_issue(argv[0], argv[1])
         if gap:
             print(gap, file=sys.stderr)
+            if "_MISSING:" in gap:                                    # the settings-missing gap (LIFE-313); names only
+                print("hint: no Jira settings here? Read the ticket with the Atlassian MCP, save the result and run: python -m lifeos.readiness issue-mcp FILE KEY", file=sys.stderr)
             return 2
         for r in refusals:
             print(f"refused v{VERSION} {r['code']} {r['field']} {r['detail']}".rstrip(), file=sys.stderr)

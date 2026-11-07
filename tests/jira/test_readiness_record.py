@@ -99,7 +99,9 @@ class RecordTests(unittest.TestCase):
     def test_live_read_without_credentials_names_the_settings_only(self):
         done = subprocess.run([sys.executable, "-m", "lifeos.readiness", "issue-key", "LIFE-901"], cwd=ROOT, capture_output=True, text=True, env={"PATH": ""})
         self.assertEqual(done.returncode, 2)
-        self.assertEqual(done.stderr.strip(), "QUEUE_NOT_READY — JIRA_CONFIG_MISSING:JIRA_BASE_URL,JIRA_EMAIL,JIRA_API_TOKEN")
+        first, hint = done.stderr.strip().splitlines()
+        self.assertEqual(first, "QUEUE_NOT_READY — JIRA_CONFIG_MISSING:JIRA_BASE_URL,JIRA_EMAIL,JIRA_API_TOKEN")
+        self.assertIn("issue-mcp", hint)                                              # LIFE-363: the one-line hint to the MCP route
 
     def test_fetch_is_one_read_only_get(self):
         calls = []

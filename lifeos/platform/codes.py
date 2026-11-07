@@ -327,6 +327,7 @@ CODES = {
     "JIRA_TARGET_NOT_STAGED": _r("jira", "blocked", False, "The next two-week sprint is missing from the approved roadmap.", "Plan the next sprint in Jira before enabling rollover."),
     "JIRA_TOO_MANY_PAGES": _r("jira", "degraded", False, "A Jira list ran past the page limit.", "None; narrow the query if persistent."),
     "JIRA_UNSUPPORTED_CADENCE": _r("jira", "blocked", False, "The sprint dates do not define a Monday-Sunday 7- or 14-day window.", "Correct the sprint dates in Jira."),
+    "KEY_MISMATCH": _r("jira", "blocked", False, "The saved Atlassian MCP read is for a different ticket than the one asked about (readiness issue-mcp).", "Read the ticket again through the MCP and save the result."),
     "JIRA_BLOCK": _r("hiring", "state", False, "Hiring card step label: the Jira block.", "None."),
     "JIRA_PAGE": _r("hiring", "state", False, "Hiring card step label: the Jira page.", "None."),
     # --- Notion: the shared client, the report region and file upload (lifeos/platform/notion_client.py, report_region.py, notion_files.py)
