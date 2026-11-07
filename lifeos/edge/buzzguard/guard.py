@@ -26,9 +26,12 @@ COMPACT = re.compile(PREFIXES)                                      # secrets sp
 # bridge registers (lifeos/buzz_mcp.py READ) plus the names LIFE-333 saw; a tool may carry them bare (mcp__buzz__get_event) or buzz_-prefixed (mcp__buzz__buzz_get_event).
 # Still an exact list: a name that merely starts with get_ is refused (LIFE-333 review round 1).
 BUZZ_READ_OPS = {"list_communities", "list_channels", "channel_info", "get_channel_info", "get_channel", "get_messages", "get_event", "search_messages", "get_thread",
-                 "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities"}
+                 "get_addressed", "list_agents", "get_evidence", "whoami", "capabilities", "canvas_get", "get_canvas"}
 BUZZ_READ = {"mcp__buzz__" + p + op for op in BUZZ_READ_OPS for p in ("", "buzz_")}
-BUZZ_READ_RUNNERS = {"mcp__buzz__read", "mcp__buzz__buzz_read"}       # generic runner: judged by the operation it names, like Atlassian executeRead
+# The Buzz app's own `read` tool (hook.log, Nov 7 5:23 PM CT: {"channel": <uuid>, "limit": 30} and {}) reads a channel directly; it is a read with no operation.
+# If it (or the bridge's buzz_read runner, which always names one) names an `operation`, that operation must be a known read.
+BUZZ_NATIVE_READ = {"mcp__buzz__read"}
+BUZZ_READ_RUNNERS = {"mcp__buzz__buzz_read"}
 BUZZ_COMMUNITIES = {"life-os", "life_os"}                           # LIFE-397 GWT-BUG-02: a room read never crosses into another community (bytalos stays out)
 BUZZ_ID_KEYS = {"channel", "channel_id", "channelid", "event_id", "eventid", "id", "message_id", "root", "root_id", "thread", "thread_id", "reply", "reply_to", "before", "after", "cursor", "since", "until"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -320,7 +323,7 @@ def _drop_ids(o, key=None):
 
 
 def _decide_buzz_read(tool, ti):
-    if tool in BUZZ_READ_RUNNERS:
+    if tool in BUZZ_READ_RUNNERS or "operation" in ti:
         op = ti.get("operation")
         if not isinstance(op, str) or op not in BUZZ_READ_OPS:
             return "deny", "buzz read runner names an operation that is not a known read"
@@ -347,7 +350,7 @@ def _decide_inner(d, g, home):
         return ("allow", "tool search") if set(ti) <= {"query", "max_results"} and isinstance(q, str) and 0 < len(q) <= 200 and not _secret(ti) else ("deny", "tool search input not allowed")
     if tool == "Read":
         return ("allow", "read in allowed folder") if _read_ok(ti, home) else ("deny", "read outside allowed folders, a secret-shaped path or a bad argument")
-    if tool in BUZZ_READ or tool in BUZZ_READ_RUNNERS:
+    if tool in BUZZ_READ or tool in BUZZ_READ_RUNNERS or tool in BUZZ_NATIVE_READ:
         return _decide_buzz_read(tool, ti)
     if _secret(ti):
         return "deny", "secret-shaped text in a tool input"
