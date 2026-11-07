@@ -3,9 +3,10 @@ the Interview pages on the journey's Notion fake, the sandbox Ledger and Recruit
 import copy
 import json
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 from lifeos.hiring import models as HM
+from lifeos.jobs import enrich
 from lifeos.platform.notion_client import NotionError
 from lifeos.sources import interview_evidence as ev, m1m2_proof as proof
 from lifeos.interview.ui_probe import QA_PARENT
@@ -160,7 +161,9 @@ class Scoped(unittest.TestCase):
         client, sources = workspace(refuse)
         tree, pins = report_tree()
         real_pipeline = [dict(b) for b in client.blocks["root"]]
-        with patch.object(proof, "report_page", lambda c, container: pins):
+        # The proof's posting is dated at the pinned NOW; freshness is judged by enrich._now(), so pin that clock too
+        # (otherwise the posting goes stale 15 days after NOW and this test fails on the real calendar; LIFE-349).
+        with patch.object(proof, "report_page", lambda c, container: pins), patch.object(enrich, "_now", lambda: NOW.astimezone(timezone.utc).replace(tzinfo=None)):
             counts = proof.run(M1M2, False, now=NOW, client=client, reader=client, report=tree)
         return counts, client, sources, tree, real_pipeline
 
