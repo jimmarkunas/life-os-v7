@@ -82,4 +82,4 @@ def review(limit, live, connect=store.connect, client=None):
                        "JOIN v7_job_fit f ON f.job_id = j.id WHERE j.source LIKE 'web:su-%%' AND j.status='EXCLUDED_FIT' AND f.score >= %s", (FIT_FLOOR,))
         rows = [line.split("\t") for line in review_rows(cursor.fetchall())]
     header = ["company", "title", "location", "link", "fit", "rule", "stored reason"]
-    return private_report.publish(client or Client(), "LIFE-121: Scale-Up jobs removed by exclusion rules", header, rows, live, links=(3,))
+    return private_report.publish(client or Client(), "LIFE-121: Scale-Up jobs removed by exclusion rules", header, rows, live, links=(3,), key="scale-up-exclusions-review", connect=connect)

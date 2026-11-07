@@ -1,9 +1,31 @@
 import unittest
+from contextlib import contextmanager
+from unittest import mock
 
 from lifeos.jobs import private_report as pr
 from lifeos.platform.notion_client import NotionError
 
 PARENT = pr.REPORTS_PAGE
+
+
+class FakeStore:
+    """A dict standing in for the private snapshot store (report key -> snapshot)."""
+    def __init__(self):
+        self.rows = {}
+
+    def ensure(self, connection):
+        pass
+
+    def save(self, connection, key, snapshot):
+        self.rows[key] = snapshot
+
+    def load(self, connection, key):
+        return self.rows.get(key)
+
+
+@contextmanager
+def connect():
+    yield object()
 
 
 class FakeClient:
@@ -21,7 +43,9 @@ class FakeClient:
         if path.startswith("/databases/"):
             return {"parent": {"type": "page_id", "page_id": self.parent} if self.parent else {"type": "workspace"}}
         if path == "/search":
-            return {"results": self.existing or []}
+            raise AssertionError("D250: a private report is never found by a Notion search")
+        if path.startswith("/pages/"):
+            return self.existing.get(path.split("/")[2], {"archived": False}) if isinstance(self.existing, dict) else {"archived": False}
         base = path.split("?")[0]
         return {"results": self.blocks.get(base.split("/")[2], []), "has_more": False}
 
@@ -57,11 +81,36 @@ class Private(unittest.TestCase):
         cells = body["children"][0]["table"]["children"][1]["table_row"]["cells"]
         self.assertEqual(cells[1][0]["text"]["link"]["url"], "https://example.com/1")
 
-    def test_a_page_that_already_exists_is_left_alone(self):
-        found = [{"id": "p", "parent": {"page_id": PARENT}, "properties": {"title": {"title": [{"plain_text": "T"}]}}}]
-        client = FakeClient(existing=found)
-        self.assertEqual(pr.publish(client, "T", HEADER, ROWS, True)["page"], "present")
-        self.assertEqual(client.writes, [])
+    def test_a_keyed_report_is_remembered_by_page_id_and_left_alone_next_time(self):
+        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+            first = FakeClient()
+            self.assertEqual(pr.publish(first, "T", HEADER, ROWS, True, key="k", connect=connect)["page"], "new")
+            self.assertEqual(store.rows["k"]["page_id"], "page1")
+            second = FakeClient()
+            self.assertEqual(pr.publish(second, "T", HEADER, ROWS, True, key="k", connect=connect)["page"], "present")
+            self.assertEqual(second.writes, [])
+
+    def test_a_remembered_page_that_was_archived_is_written_afresh(self):
+        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+            store.rows["k"] = {"page_id": "gone"}
+            client = FakeClient(existing={"gone": {"archived": True}})
+            self.assertEqual(pr.publish(client, "T", HEADER, ROWS, True, key="k", connect=connect)["page"], "new")
+            self.assertEqual(store.rows["k"]["page_id"], "page1")
+
+    def test_a_dry_run_with_a_key_reads_but_never_writes(self):
+        with mock.patch.object(pr, "STORE", FakeStore()) as store:
+            client = FakeClient()
+            self.assertEqual(pr.publish(client, "T", HEADER, ROWS, False, key="k", connect=connect)["page"], "dry")
+            self.assertEqual((client.writes, store.rows), ([], {}))
+
+    def test_an_unkeyed_dated_report_needs_no_lookup_and_no_store(self):
+        client = FakeClient()
+        self.assertEqual(pr.publish(client, "T dated", HEADER, ROWS, True)["page"], "new")
+
+    def test_the_module_has_no_title_search(self):
+        import inspect
+        source = inspect.getsource(pr)
+        self.assertNotIn('"/search"', source)
 
     def test_a_notion_error_is_a_fixed_code(self):
         self.assertEqual(pr.publish(FakeClient(fail=True), "T", HEADER, ROWS, True)["why"], {"PRIVATE_REPORT_NOTION_FAILED": 1})

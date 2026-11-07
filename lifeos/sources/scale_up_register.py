@@ -57,5 +57,5 @@ def run(limit, live, fetcher=fetch, client=None):
     counts, missing = compare(entries, held_keys())
     from lifeos.platform.notion_client import Client
     rows = [[" ".join(v.split()) for v in e] for e in sorted(missing)]
-    report = private_report.publish(client or Client(), "LIFE-121: London Scale-up sponsors not in the registry", ["name", "town", "county"], rows, live)
+    report = private_report.publish(client or Client(), "LIFE-121: London Scale-up sponsors not in the registry", ["name", "town", "county"], rows, live, key="london-scale-up-register-gap")
     return {"status": "OK" if not report["failed"] else "FAILED", **counts, "page": report["page"], "failed": report["failed"], "why": report["why"]}

@@ -29,7 +29,11 @@ class Register(unittest.TestCase):
 
     def test_the_registry_file_loads_and_the_log_gets_counts_only(self):
         self.assertGreaterEqual(len(reg.held_keys()), 40)
-        from tests.jobs.test_private_report import FakeClient
+        from tests.jobs.test_private_report import FakeClient, FakeStore, connect
+        from unittest import mock
+        from lifeos.jobs import private_report, store
+        self.enterContext(mock.patch.object(private_report, "STORE", FakeStore()))
+        self.enterContext(mock.patch.object(store, "connect", connect))
         pages = {reg.sponsor_register.PAGE: Page('{"x": "https://assets.publishing.service.gov.uk/media/a.csv"}'), "https://assets.publishing.service.gov.uk/media/a.csv": Page(CSV * 5)}
         client = FakeClient()
         entries = ["ExampleCo Limited"] + [f"Filler{i} Ltd" for i in range(12)]

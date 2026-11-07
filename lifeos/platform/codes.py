@@ -399,6 +399,7 @@ CODES = {
     "PRIVATE_REPORT_FAILED": _r("jobs", "degraded", False, "A private Notion report could not be written (counts say which fixed code).", "Read the counts and repeat the run."),
     "PRIVATE_REPORT_NOTION_FAILED": _r("jobs", "degraded", False, "Notion refused or did not answer the private report request.", "Repeat the run."),
     "PRIVATE_REPORT_READBACK_MISMATCH": _r("jobs", "degraded", False, "The private report page was written but its row count did not read back.", "Open the page, delete it, and repeat the run."),
+    "PRIVATE_REPORT_KEY_READBACK": _r("jobs", "degraded", False, "The private report page was written but its stored page id did not read back.", "Open the page, delete it, and repeat the run."),
     "PRIVATE_REPORT_TOO_LARGE": _r("jobs", "terminal", False, "The private report has more rows than one page holds.", "Split the report."),
     "PHYSMAIL_FILING_FAILED": _r("mail", "degraded", False, "Filing the Physical Mail notices stopped on a fixed code (counts say which).", "Read the counts and repeat the run."),
     "PHYSMAIL_FILING_GMAIL_FAILED": _r("mail", "degraded", False, "Gmail refused or did not answer while filing Physical Mail notices.", "Repeat the run."),
