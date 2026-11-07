@@ -97,7 +97,7 @@ def gevent(uid, who, start, created, summary="Intro", bridged=False):
     return e
 
 
-ENV = {"MEGIBOW_PAGE_ID": "page", "MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"}
+ENV = {"MEGIBOW_BLOCK_ID": "cal", "MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"}
 KNOWN = {"lensa"}
 
 
@@ -214,6 +214,16 @@ class Stage(unittest.TestCase):
         n = FakeNotion()
         run(FakeGmail({}), FakeGcal([]), n, live=False)
         self.assertEqual((n.patches, n.created, n.updated), ([], [], []))
+
+
+class FixedBlock(unittest.TestCase):
+    def test_without_the_block_id_the_stage_refuses_and_writes_nothing(self):
+        """LIFE-385 (D250-13): no shape discovery; a missing MEGIBOW_BLOCK_ID is a fixed code."""
+        n = FakeNotion()
+        with self.assertRaises(Exception) as caught:
+            run(FakeGmail([]) if "FakeGmail" in globals() else None, None, n, env={"MEGIBOW_REVIEW_DB_ID": "abc123", "NOTION_JIRA_TOKEN": "t"})
+        self.assertIn("BLOCK_NOT_FOUND", str(caught.exception))
+        self.assertEqual(n.callout, "old")
 
 
 if __name__ == "__main__":
