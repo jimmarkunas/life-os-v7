@@ -7,7 +7,7 @@ import re
 import time
 from datetime import datetime
 from urllib.parse import quote
-from lifeos.platform.names import tokens
+from lifeos.platform.names import same_company, same_role, split_title, tokens
 from lifeos.platform.notion_client import Client, NotionError
 from lifeos.platform.runtime import DeadlineExceeded
 from .models import Child, Ownership, Parent, Scan
@@ -159,6 +159,64 @@ def parent_scan(client, root, context=None):
         return Scan(tuple(found), True)
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
         return Scan(tuple(found), False)
+
+
+LEDGER_PAGES = 20
+LEDGER_STAGE, LEDGER_DECISION, LEDGER_ACTIVE = "Stage", "Hiring Decision", ("Applied", "Interviewing", "Offer")      # REQ-5: active = Stage in (Applied, Interviewing, Offer) and Hiring Decision empty
+
+
+def _ledger_text(prop, kind):
+    return "".join((p.get("plain_text") or "") for p in (prop or {}).get(kind) or []).strip()
+
+
+def parents_from_ledger(client, source_id, context=None):
+    """LIFE-360: every Job Ledger row whose Stage is set, as the same Parent the page-tree scan gives (page_id = the row page id, title = "Company - Role").
+    Incomplete (a bad page set, a repeated cursor, too many pages, an unreadable row) is Scan((), False): never a partial list."""
+    rows, cursor, seen = [], None, set()
+    try:
+        for _ in range(LEDGER_PAGES):
+            if context:
+                context.require_time()
+            body = {"page_size": 100, "filter": {"property": LEDGER_STAGE, "select": {"is_not_empty": True}}, **({"start_cursor": cursor} if cursor else {})}
+            page = client.query_data_source(source_id, body)
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or type(page.get("has_more")) is not bool:
+                return Scan((), False)
+            rows += page["results"]
+            if not page["has_more"]:
+                break
+            cursor = page.get("next_cursor")
+            if not isinstance(cursor, str) or not cursor or cursor in seen:
+                return Scan((), False)
+            seen.add(cursor)
+        else:
+            return Scan((), False)
+        found = []
+        for row in rows:
+            props = row.get("properties") or {}
+            company, role = _ledger_text(props.get("Company"), "rich_text"), _ledger_text(props.get("Job"), "title")
+            stage = ((props.get(LEDGER_STAGE) or {}).get("select") or {}).get("name")
+            decision = ((props.get(LEDGER_DECISION) or {}).get("select") or {}).get("name")
+            if not (company and role and stage and row.get("id")):
+                continue                                                       # an unnamed row is not a pursuit
+            found.append(Parent(row["id"], f"{company} - {role}", stage in LEDGER_ACTIVE and not decision))
+        return Scan(tuple(found), True)
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
+        return Scan((), False)
+
+
+def parents(client, environ, context=None):
+    """LIFE-360: the opportunities every Interview OS reader works from. With NOTION_JOB_LEDGER_DATA_SOURCE_ID set, Ledger rows with Stage come first and the page tree
+    fills in only what no Ledger row matches on company AND role (a row with Stage empty). Without it, the page tree alone, exactly as before. Either read incomplete is incomplete."""
+    tree = parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
+    source = ((environ or {}).get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip()
+    if not source:
+        return tree
+    ledger = parents_from_ledger(client, source, context)
+    if not ledger.complete or not tree.complete:
+        return Scan((), False)
+    keys = [split_title(p.title) for p in ledger.items]
+    kept = [p for p in tree.items if not any(same_company(split_title(p.title)[0], c) and same_role(split_title(p.title)[1], r) for c, r in keys)]
+    return Scan(tuple(ledger.items) + tuple(kept), True)
 
 
 LEGACY_TITLE = re.compile(r"^Interview (\d{1,2}):\s*(.+?)\s*\((\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\)\s*$")
