@@ -76,7 +76,10 @@ class Review(unittest.TestCase):
         self.assertIn("\tsales_role\t", lines[1])
 
     def test_the_text_goes_to_the_private_page_and_the_log_gets_counts_only(self):
-        from tests.jobs.test_private_report import FakeClient
+        from tests.jobs.test_private_report import FakeClient, FakeStore
+        from unittest import mock
+        from lifeos.jobs import private_report
+        self.enterContext(mock.patch.object(private_report, "STORE", FakeStore()))
         cursor, client = Cursor(self.ROWS), FakeClient()
         self.assertEqual(ex.review(0, False, connect=lambda: cursor, client=client), {"rows": 2, "page": "dry", "failed": 0, "why": {}})
         self.assertEqual((set(cursor.sql), client.writes), ({"SELECT"}, []))                       # a dry run reads only
