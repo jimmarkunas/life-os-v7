@@ -75,6 +75,8 @@ class NativeReadTools(Base):
         self.assertEqual(self.dec("mcp__buzz__read", {"channel": self.CHAN, "limit": 30}), "allow")
         self.assertEqual(self.dec("mcp__buzz__read", {}), "allow")
         self.assertEqual(self.dec("mcp__buzz__canvas_get", {"channel": self.CHAN}), "allow")
+        self.assertEqual(self.dec("mcp__buzz__channel_get", {"channel": self.CHAN}), "allow")   # Nov 7 5:46:55 PM CT: the Challenger's channel read, same input hash as the canvas_get call
+        self.assertEqual(self.dec("mcp__buzz__channel_delete", {"channel": self.CHAN}), "deny")  # only the exact read name is added; a look-alike change tool stays refused
         self.assertEqual(self.dec("mcp__buzz__read", {"operation": "get_messages", "channel": self.CHAN}), "allow")
 
     def test_hashes_match_the_logged_inputs(self):
