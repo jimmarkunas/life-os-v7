@@ -127,6 +127,67 @@ class NotionTests(unittest.TestCase):
         self.assertFalse(notion.child_scan(client, "p").complete)
 
 
+def row(rid, company, job, stage, decision=None):
+    sel = lambda name: {"select": {"name": name} if name else None}
+    return {"id": rid, "properties": {"Company": {"rich_text": [{"plain_text": company}]}, "Job": {"title": [{"plain_text": job}]}, "Stage": sel(stage), "Hiring Decision": sel(decision)}}
+
+
+class FakeLedger(Fake):
+    """The page tree of Fake plus a Job Ledger data source (LIFE-360)."""
+    def __init__(self, pages):
+        super().__init__()
+        self.pages_of_rows, self.queries = pages, []
+
+    def query_data_source(self, source_id=None, body=None):
+        self.queries.append((source_id, body))
+        index = int((body or {}).get("start_cursor") or 0)
+        if index >= len(self.pages_of_rows):
+            return {"results": [], "has_more": False, "next_cursor": None}
+        more = index + 1 < len(self.pages_of_rows)
+        return {"results": self.pages_of_rows[index], "has_more": more, "next_cursor": str(index + 1) if more else None}
+
+
+LENV = {**ENV, "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc123"}
+
+
+class LedgerParentTests(unittest.TestCase):
+    def test_rows_with_stage_become_parents(self):
+        client = FakeLedger([[row("r1", "Acme", "Director", "Interviewing"), row("r2", "Beta", "Lead", "Ended"), row("r3", "Gamma", "Head", "Offer", "Declined"), row("r4", "", "Nameless", "Applied")]])
+        scan = notion.parents_from_ledger(client, "abc123")
+        self.assertTrue(scan.complete)
+        self.assertEqual([(p.page_id, p.title, p.active) for p in scan.items], [("r1", "Acme - Director", True), ("r2", "Beta - Lead", False), ("r3", "Gamma - Head", False)])
+        self.assertEqual(client.queries[0][1]["filter"], {"property": "Stage", "select": {"is_not_empty": True}})
+
+    def test_incomplete_ledger_returns_nothing(self):
+        client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
+        client.query_data_source = lambda source_id=None, body=None: {"results": [], "has_more": True, "next_cursor": None}
+        scan = notion.parents_from_ledger(client, "abc123")
+        self.assertEqual((scan.items, scan.complete), ((), False))
+        client.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))
+        self.assertFalse(notion.parents_from_ledger(client, "abc123").complete)
+
+    def test_rows_come_first_and_the_tree_fills_the_rest(self):
+        client = FakeLedger([[row("r1", "Example", "Program Manager", "Interviewing")]])
+        client.blocks["root"].append({"id": "q", "type": "child_page", "child_page": {"title": "Other — Analyst"}})
+        scan = notion.parents(client, LENV)
+        self.assertTrue(scan.complete)
+        self.assertEqual([p.page_id for p in scan.items], ["r1", "q"])                 # the tree page "Example — Program Manager" is the same pursuit as the row
+
+    def test_without_a_ledger_source_the_page_tree_alone(self):
+        client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
+        scan = notion.parents(client, ENV)
+        self.assertEqual([p.page_id for p in scan.items], ["p"])
+        self.assertEqual(client.queries, [])
+
+    def test_either_read_incomplete_is_incomplete(self):
+        client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
+        client.more = True
+        self.assertEqual(notion.parents(client, LENV).items, ())
+        ledger_down = FakeLedger([[]])
+        ledger_down.query_data_source = lambda source_id=None, body=None: (_ for _ in ()).throw(NotionError("NOTION_NETWORK"))
+        self.assertFalse(notion.parents(ledger_down, LENV).complete)
+
+
 class NotionIdTests(unittest.TestCase):
     def test_format_equality_and_missing_values(self):
         dashed = "abcdefab-cdef-4abc-8def-abcdefabcdef"

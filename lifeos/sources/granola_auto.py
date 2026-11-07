@@ -53,7 +53,7 @@ def catalog_has(cursor, key, outcome):
 
 def rounds_with_parents(client, environ, context):
     """-> ([granola_match.Round], {round page id: its opportunity page id}); GRAN_PIPELINE_INCOMPLETE as a Stop when a scan is partial."""
-    scan = notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
+    scan = notion.parents(client, environ, context)
     if not scan.complete:
         raise Stop("GRAN_PIPELINE_INCOMPLETE")
     found, parent_of = [], {}

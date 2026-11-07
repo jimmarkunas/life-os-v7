@@ -128,6 +128,28 @@ class Bridge(unittest.TestCase):
             found = gb.rounds(None, {"HIRING_PIPELINE_PAGE_ID": "x"}, None, counts)
         self.assertEqual((len(found), counts), (1, {"opportunities": 1, "rounds_undated": 1}))
 
+    def test_rounds_of_a_ledger_row_carry_its_company_and_role(self):
+        """LIFE-360 GWT-IP-1: a Ledger row with two round child pages gives both rounds; GWT-IP-2: with no Stage row the page tree answers as before."""
+        from lifeos.interview.models import Child, Parent, Scan
+        kids = Scan((Child("c1", "row", "2026-10-13", None, 1, True), Child("c2", "row", "2026-10-20", None, 2, True)), True)
+        env = {"HIRING_PIPELINE_PAGE_ID": "x", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc"}
+        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)), \
+                mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((Parent("row", "Acme Corp - Program Manager", True),), True)), \
+                mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+            found = gb.rounds(None, env, None)
+        self.assertEqual([(r.page_id, r.company, r.role) for r in found], [("c1", "Acme Corp", "Program Manager"), ("c2", "Acme Corp", "Program Manager")])
+        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((Parent("pp", "Acme Corp — Program Manager", True),), True)), \
+                mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), True)), mock.patch.object(gb.notion, "child_scan", lambda *a: kids):
+            self.assertEqual(len(gb.rounds(None, env, None)), 2)
+
+    def test_an_incomplete_ledger_scan_stops_the_bridge(self):
+        from lifeos.interview.models import Scan
+        env = {"HIRING_PIPELINE_PAGE_ID": "x", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "abc"}
+        with mock.patch.object(gb.notion, "parent_scan", lambda *a: Scan((), True)), mock.patch.object(gb.notion, "parents_from_ledger", lambda *a: Scan((), False)):
+            with self.assertRaises(gb.Stop) as ctx:
+                gb.rounds(None, env, None)
+        self.assertEqual(ctx.exception.code, "GRAN_PIPELINE_INCOMPLETE")
+
     def test_a_contract_failure_writes_and_purges_nothing(self):
         seen, notion = [], FakeNotion()
         out = go_run(oracle([MEETING], transcript=json.dumps({"transcript": []}), sink=seen), notion)

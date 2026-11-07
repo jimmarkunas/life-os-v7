@@ -23,7 +23,7 @@ class Stop(Exception):
 
 def rounds(client, environ, context, counts=None):
     """The dated rounds under the Hiring Pipeline. With `counts`, also tallies what was scanned (opportunities, rounds with no interview date) so a stop can be diagnosed."""
-    scan = notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
+    scan = notion.parents(client, environ, context)
     if not scan.complete:
         raise Stop("GRAN_PIPELINE_INCOMPLETE")
     counts = counts if counts is not None else {}
