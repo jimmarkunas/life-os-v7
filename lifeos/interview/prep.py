@@ -215,7 +215,7 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         context.require_time()
         target = notion.target_check(client, environ)
         if target != "target_ok": return finish(target)
-        parent = resolve_parent(parent_query, notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context))
+        parent = resolve_parent(parent_query, notion.parents(client, environ, context))
         if parent.state != State.MATCH: return finish(parent.code)
         if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE:
             return finish("human_page" if notion.ownership(client, parent.page_id, "opportunity") == Ownership.HUMAN else "ownership_unknown")

@@ -306,7 +306,7 @@ def run(limit, live, environ=os.environ, client=None, calendar=None, now=None, l
         else:
             flag(made.code, "progression_identity" if made.code == "round_identity_incomplete" else None)
 
-    scan = notion.parent_scan(client, (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), context)
+    scan = notion.parents(client, environ, context)
     titles = [(p, *split_title(p.title)) for p in scan.items if p.active and scan.complete]
     convert = {"adopt": 0, "upgrade": 0, "awaiting_adopt_line": 0, "migrate": 0}
 
