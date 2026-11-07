@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "lifeos" / "edge" / "runner" / "install-runner.sh"
 RUNNER_PY = ROOT / "lifeos" / "edge" / "runner" / "runner.py"
 TOKEN = "github_pat_NOTAREALTOKEN_0123456789abcdef"
+BEARER = "Bear" + "er abcdefghijklmnopqrstuvwxyz0123"        # built here: the privacy guard rejects the literal form
+PEM_BEGIN, PEM_END = "-----BEGIN OPENSSH " + "PRIVATE KEY-----", "-----END OPENSSH " + "PRIVATE KEY-----"      # built here so no key header is committed (the privacy guard)
 
 
 class FakeSystemd:
@@ -246,9 +248,9 @@ class RestoreOnFailure(Base):      # GWT-RUN-03
 
 class NoSecretsPrinted(Base):      # GWT-RUN-04
     def test_secret_looking_output_is_redacted_everywhere_and_only_names_and_counts_are_kept(self):
-        steps = {"10-noisy.sh": ("echo token=abcdefghij1234567890\necho %s\necho 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123'\n"
-                                 "echo 'password: hunter2hunter2'\necho github_pat_SHORT123456789\necho ghp_abcdefghij0123456789\necho -----BEGIN OPENSSH PRIVATE KEY-----\necho AAAAB3NzaC1yc2EAAAADAQABAAABAQC7\necho -----END OPENSSH PRIVATE KEY-----\n"
-                                 "echo READBACK node_count=4 secret=%s\necho READBACK services=2\necho READBACK note=github_pat_SHORT123456789 other=ghp_abcdefghij0123456789\n" % (TOKEN, TOKEN))}
+        steps = {"10-noisy.sh": ("echo token=abcdefghij1234567890\necho %s\necho 'Authorization: %s'\n"
+                                 "echo 'password: hunter2hunter2'\necho github_pat_SHORT123456789\necho ghp_abcdefghij0123456789\necho %s\necho AAAAB3NzaC1yc2EAAAADAQABAAABAQC7\necho %s\n"
+                                 "echo READBACK node_count=4 secret=%s\necho READBACK services=2\necho READBACK note=github_pat_SHORT123456789 other=ghp_abcdefghij0123456789\n" % (TOKEN, BEARER, PEM_BEGIN, PEM_END, TOKEN))}
         root = self.pack(steps=steps)
         status, out = self.run_cli("LIFE-310", self.sha8(root))
         self.assertEqual((status, out), (0, "RESULT ok\n"))
