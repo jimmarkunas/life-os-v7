@@ -1,12 +1,17 @@
 """JFM-221 (Jim, Oct 29 2026): the Jim & Matt dashboard fed from Jira. Fakes only: invented issues, a fake Jira (read only) and a fake Notion. Nothing is live."""
 import itertools
+import json
 import unittest
+from contextlib import ExitStack
 from datetime import datetime
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 from lifeos.jira import dash_data as D, dash_render as R, dashboard as S
 from lifeos.jira.dash_scrub import scrub, terms
+from lifeos.platform import stored_pages
 from lifeos.platform.notion_client import NotionError
+from tests.jobs.test_private_report import FakeStore, connect
 
 ROOT = "a" * 32
 NOW = datetime(2026, 10, 29, 13, 5, tzinfo=D.CENTRAL)             # Thursday 1:05 PM CT: the check-in owed is Wed Oct 28
@@ -97,6 +102,7 @@ class Notion:
     def __init__(self):
         self.ids = (f"{n:032x}" for n in itertools.count(1000))
         self.kids, self.blocks, self.rows, self.calls, self.trashed = {ROOT: []}, {}, {}, 0, set()
+        self.created = {}                                                                        # page id -> created_time (LIFE-384: adopting a page made before ids were remembered)
         self.fail_on = None
         for title in (S.CHECKINS, S.QBRS):
             self._add(ROOT, {"type": "child_page", "child_page": {"title": title}})
@@ -138,6 +144,8 @@ class Notion:
             visible = [self.blocks[b] for b in self.kids[seg[1]] if b not in self.trashed]
             start = int((parse_qs(parts.query).get("start_cursor") or ["0"])[0])
             return {"results": visible[start:start + 100], "has_more": start + 100 < len(visible), "next_cursor": str(start + 100)}
+        if method == "GET" and seg[0] == "pages":
+            return {"id": seg[1], "archived": False, "in_trash": seg[1] in self.trashed, "created_time": self.created.get(seg[1], "2026-10-28T13:00:00.000Z")}
         if method == "GET" and seg[0] == "databases":
             return {"data_sources": [{"id": "ds" + seg[1]}]}
         if method == "POST" and path == "/pages":
@@ -171,8 +179,19 @@ class Notion:
 ENV = {"JM_DASHBOARD_PAGE_ID": ROOT, "JM_DASHBOARD_REDACT_TERMS": "Pat, Lisa", "JIRA_SITE_URL": SITE}
 
 
-def go(notion, live=True, jira=None, now=NOW, env=None):
-    return S.run(0, live, {**ENV, "MEGIBOW_BLOCK_ID": notion.megibow, **(env or {})}, jira=jira or Jira(), client=notion, now=now, push=lambda *a: None)
+def ids_of(notion):
+    """LIFEOS_NOTION_IDS for the four folders (D250: configured ids, not titles)."""
+    return json.dumps(dict(zip(S.FOLDER_IDS.values(), notion.kids[ROOT][:4])))
+
+
+STORE = {"v": None}
+
+
+def go(notion, live=True, jira=None, now=NOW, env=None, store=None):
+    store = store if store is not None else STORE["v"]
+    with mock.patch.object(stored_pages, "STORE", store):
+        return S.run(0, live, {**ENV, "LIFEOS_NOTION_IDS": ids_of(notion), "MEGIBOW_BLOCK_ID": notion.megibow, **(env or {})}, jira=jira or Jira(), client=notion, now=now,
+                     push=lambda *a: None, connect=connect)
 
 
 class Scrub(unittest.TestCase):
@@ -212,6 +231,9 @@ class Data(unittest.TestCase):
 
 
 class Pages(unittest.TestCase):
+    def setUp(self):
+        STORE["v"] = FakeStore()
+
     def test_one_run_writes_the_check_in_the_synopsis_and_the_archive_and_a_rerun_writes_nothing(self):
         n = Notion()
         first = go(n)
@@ -235,6 +257,7 @@ class Pages(unittest.TestCase):
         self.assertIn("JFM-7 — A QBR decision · To Do", synopsis)
         keys = sorted(r["properties"]["Key"]["rich_text"][0]["text"]["content"] for r in n.rows[n.kids[ROOT][2]])
         self.assertEqual(keys, ["JFM-1", "JFM-6", "MEJ-10"])
+        self.assertEqual(sorted(STORE["v"].rows), ["dash:checkin:2026-10-28", "dash:synopsis:Q4 2026"])          # the page ids are remembered (D250)
         calls = n.calls
         again = go(n)
         self.assertEqual((again["checkin"], again["synopsis"], again["archived"]), ("kept", "unchanged", 0))
@@ -252,6 +275,7 @@ class Pages(unittest.TestCase):
         n = Notion()
         half = n._add(n.kids[ROOT][0], {"type": "child_page", "child_page": {"title": "Check-in — Wed Oct 28, 2026"}})
         n._add(half, {"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "partial"}}]}})
+        STORE["v"].rows["dash:checkin:2026-10-28"] = {"page_id": half}                      # a failed run remembered its page id before it stopped
         self.assertEqual(go(n)["checkin"], "written")
         self.assertEqual(n.blocks[half]["child_page"]["title"], "Check-in — Wed Oct 28, 2026 (incomplete)")       # set aside, never deleted
         whole = n.page_titled(n.kids[ROOT][0], "Check-in — Wed Oct 28, 2026")
@@ -282,7 +306,53 @@ class Pages(unittest.TestCase):
         self.assertIn("Blocked with no reason in a comment (0)", shown)
 
 
+class Remembered(unittest.TestCase):
+    """LIFE-384 (D250-12): pages are found by a remembered id; an old page is adopted once by its completion mark and creation time, never by its title."""
+    def setUp(self):
+        STORE["v"] = FakeStore()
+
+    def old_page(self, n, created):
+        page = n._add(n.kids[ROOT][0], {"type": "child_page", "child_page": {"title": "Whatever Jim called it"}})
+        n._add(page, {"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": R.DONE_MARK}}]}})
+        n.created[page] = created
+        return page
+
+    def test_a_complete_page_made_since_the_wednesday_is_adopted_once_whatever_it_is_called(self):
+        n = Notion()
+        page = self.old_page(n, "2026-10-28T13:00:00.000Z")
+        first = go(n)
+        self.assertEqual(first["checkin"], "kept")
+        self.assertEqual(STORE["v"].rows["dash:checkin:2026-10-28"]["page_id"], page)
+        self.assertEqual(n.kids[n.kids[ROOT][0]], [page])                                   # nothing else was created in the folder
+
+    def test_a_page_made_before_that_wednesday_is_not_this_weeks(self):
+        n = Notion()
+        self.old_page(n, "2026-10-21T13:00:00.000Z")
+        self.assertEqual(go(n)["checkin"], "written")
+
+    def test_a_failed_append_still_leaves_the_new_page_id_remembered(self):
+        n = Notion()
+        with mock.patch.object(S, "append", side_effect=S.DashError("JM_DASH_APPEND_MISMATCH")), self.assertRaises(S.DashError):
+            go(n)
+        self.assertIn("dash:checkin:2026-10-28", STORE["v"].rows)
+
+    def test_a_dry_run_remembers_nothing(self):
+        n = Notion()
+        go(n, live=False)
+        self.assertEqual(STORE["v"].rows, {})
+
+    def test_a_missing_folder_id_is_refused_and_no_title_is_matched(self):
+        n = Notion()
+        with mock.patch.object(stored_pages, "STORE", FakeStore()):
+            with self.assertRaises(S.DashError) as caught:
+                S.run(0, True, {**ENV, "LIFEOS_NOTION_IDS": json.dumps({"DASHBOARD_CHECKINS": n.kids[ROOT][0]})}, jira=Jira(), client=n, now=NOW, push=lambda *a: None, connect=connect)
+        self.assertEqual(str(caught.exception), "JM_DASH_LAYOUT_MISSING")
+
+
 class Failure(unittest.TestCase):
+    def setUp(self):
+        STORE["v"] = FakeStore()
+
     def test_a_missing_page_is_refused_and_pushes_one_alert_while_the_check_in_is_owed(self):
         n, pushed = Notion(), []
         n.kids[ROOT] = n.kids[ROOT][1:]

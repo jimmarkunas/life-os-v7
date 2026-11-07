@@ -879,7 +879,7 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
 
 NOT_CODES = frozenset((
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
-    "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
+    "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
     "SUDO_USER",            # upper-case names that are configuration, not results: environment variables, secret names and setting keys
     "BUZZ_URL_LIFE_OS", "BUZZ_STAGE_KEY", "BUZZ_STAGE_CHANNEL", "BUZZ_STAGE_HERMES_PUBKEY",      # LIFE-307: the hermes stage settings
     "JM_DASHBOARD_PAGE_ID", "JM_DASHBOARD_REDACT_TERMS",      # JFM-221: the Jim & Matt dashboard page and Jim's private redaction terms
