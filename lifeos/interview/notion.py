@@ -577,12 +577,12 @@ def derived_blocks(client, page_id):
 
 
 def readback(client, page_id, parent_id, kind, before=None):
+    """Verify a page we created or hold by ID: it is live, its first block is the machine marker for `kind`, and its protected content is unchanged. LIFE-382 (D250-06): where the page sits
+    (its parent) is not checked; `parent_id` stays in the signature for the callers and is not used."""
     try:
         page = client.call("GET", f"/pages/{page_id}")
         if page.get("archived") or page.get("in_trash"):
             return "readback_page_gone"
-        if not same_notion_id((page.get("parent") or {}).get("page_id"), parent_id):
-            return "readback_parent_mismatch"
         blocks, _ = machine_lines(client, page_id, 1)
         if not blocks or not is_marker(text(blocks[0]), kind):
             return "readback_marker_missing"

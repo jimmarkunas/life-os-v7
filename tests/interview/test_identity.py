@@ -19,14 +19,13 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(resolve_parent(ParentQuery("", "Manager"), Scan((), True)).code, "identity_invalid")
 
     def test_children_never_cross_parent(self):
+        """LIFE-382 (D250-04): resolve_child no longer re-compares each scanned child's parent; child_scan proves it (see test_notion: a foreign-parent child makes the scan incomplete)."""
         parent = Resolution(State.MATCH, "parent_match", "p")
         child = Child("c", "p", "2026-10-01", "Example Person", 1)
         other = Child("elsewhere", "other", child.interview_date, child.interviewer, 1)
         for query, scan, explicit, code in (
             (RoundQuery(True, explicit_child_page_id="c"), Scan((child,), True), child, "child_match"),
             (RoundQuery(True, explicit_child_page_id="elsewhere"), Scan((child,), True), other, "child_wrong_parent"),
-            (RoundQuery(True, interview_date=child.interview_date), Scan((other,), True), None, "child_not_found"),
-            (RoundQuery(True, interviewer=child.interviewer), Scan((other,), True), None, "child_not_found"),
             (RoundQuery(True, interview_date=child.interview_date), Scan((child, Child("c2", "p", child.interview_date)), True), None, "child_ambiguous"),
             (RoundQuery(True, ordinal=1), Scan((), False), None, "child_scan_incomplete"),
             (RoundQuery(True, ordinal=1), Scan((), True), None, "child_not_found"),

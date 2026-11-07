@@ -247,7 +247,7 @@ def apply(client, environ, parent_query, round_query, evidence, live, context):
         after_state, after_hash, _ = _read_derived(client, child.page_id, identity.ordinal)
         if after_state != "marker" or after_hash != (current_hash, expected): return finish("derived_readback_failed")
         page = client.call("GET", f"/pages/{child.page_id}")
-        if page.get("archived") or page.get("in_trash") or not notion.same_notion_id((page.get("parent") or {}).get("page_id"), parent.page_id):
+        if page.get("archived") or page.get("in_trash"):                       # LIFE-382 (D250-03): no parent comparison here; the identity check below compares the whole re-read child (its parent included) with the one the scan proved
             return finish("derived_readback_failed")
         if notion.ownership(client, parent.page_id, "opportunity") != Ownership.MACHINE or notion.ownership(client, child.page_id, "round") != Ownership.MACHINE:
             return finish("derived_readback_failed")

@@ -271,17 +271,23 @@ def refresh(client, page_id, current, live, out, context=None, migrate=False):
 
 
 TRANSCRIPT, ACCEPTED = "Full Transcript", "v7-transcript:1;accepted="
+TRANSCRIPT_MARKER = "v7-transcript:1;"          # LIFE-382 (D250-05): a transcript page is recognised by this machine marker in its first block, never by its title
 
 
 def transcript_state(client, round_id):
-    """(state, page id) of the round's one exact "Full Transcript" child page: absent, unverified, or accepted only when its first block is the
-    accepted-import marker that a verified Granola import writes (not built yet: until then every existing page is unverified); two are ambiguous."""
-    pages = [b["id"] for b in notion.children(client, round_id, [notion.MAX_CALLS])
-             if b.get("type") == "child_page" and (b.get("child_page") or {}).get("title") == TRANSCRIPT]
-    if len(pages) != 1:
-        return ("absent" if not pages else "ambiguous"), None
-    first = notion.children(client, pages[0], [notion.MAX_CALLS])[:1]
-    return ("accepted" if first and notion.text(first[0]).startswith(ACCEPTED) else "unverified"), pages[0]
+    """(state, page id) of the round's one transcript page, found by its own machine marker (its first block starts with `v7-transcript:1;`), never by matching a title (D250):
+    absent, unverified (marked but not an accepted import), or accepted only when its first block is the accepted-import marker that a verified Granola import writes; two are ambiguous.
+    A hand-made page with no marker is free-form and is not recognised here (D250 clause 3)."""
+    found = []
+    for b in notion.children(client, round_id, [notion.MAX_CALLS]):
+        if b.get("type") != "child_page":
+            continue
+        first = notion.children(client, b["id"], [notion.MAX_CALLS])[:1]
+        if first and notion.text(first[0]).startswith(TRANSCRIPT_MARKER):
+            found.append((b["id"], notion.text(first[0])))
+    if len(found) != 1:
+        return ("absent" if not found else "ambiguous"), None
+    return ("accepted" if found[0][1].startswith(ACCEPTED) else "unverified"), found[0][0]
 
 
 def link_transcript(client, round_id, live, out):

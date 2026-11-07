@@ -73,7 +73,7 @@ def _render(client):
         round_page = notion.write_tree(client, page, template.round_page(before_rounds, query, page, create.identity_text(query)), title="Interview 1",
                                        icon=template.PAGE_ICONS["round"], template=notion.FULL_WIDTH)
         client.call("POST", "/pages", {"parent": {"type": "page_id", "page_id": round_page},
-                                       "properties": {"title": {"type": "title", "title": rich_text("Full Transcript")}}, "children": [template.para(SEED)]})
+                                       "properties": {"title": {"type": "title", "title": rich_text("Full Transcript")}}, "children": [template.para(create.TRANSCRIPT_MARKER + "qa-placeholder")]})
         tab, left = _round_parts(client, round_page)
         _seed(client, tab, notion.LIVE_PANE)
         raw = [b["id"] for i, b in enumerate(left) if i and notion.text(left[i - 1]) == notion.RAW_HEADING]

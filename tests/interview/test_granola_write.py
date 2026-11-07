@@ -85,15 +85,28 @@ class Write(unittest.TestCase):
         gw.write(client, ROUND, envelope(2), True)
         self.assertEqual(gw.write(client, ROUND, envelope(3), True)[0], "TRANSCRIPT_CHANGED_NOT_REWRITTEN")
 
+    def marked(self, text):
+        return [{"type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}, "plain_text": text}]}}]
+
     def test_an_existing_page_that_is_not_ours_is_never_touched(self):
-        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Full Transcript"}}])
-        client.pages["x"] = [{"type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "Jim wrote this"}, "plain_text": "Jim wrote this"}]}}]
+        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Notes"}}])          # D250: found by its machine marker, not its title
+        client.pages["x"] = self.marked("v7-transcript:1;draft-not-accepted")
         self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_PAGE_UNVERIFIED")
         self.assertFalse([c for c in client.calls if c[0] in ("POST", "PATCH")])
 
+    def test_a_hand_made_page_without_the_marker_is_free_form_and_not_recognised(self):
+        client = FakeNotion([{"id": "x", "type": "child_page", "child_page": {"title": "Full Transcript"}}])
+        client.pages["x"] = self.marked("Jim wrote this")
+        code, _ = gw.write(client, ROUND, envelope(), True)
+        self.assertNotEqual(code, "TRANSCRIPT_PAGE_UNVERIFIED")                                                 # no title match any more (D250-05): the import adds its own marked page
+        self.assertEqual(client.pages["x"], self.marked("Jim wrote this"))                                      # and Jim's page is never edited
+
     def test_two_transcript_pages_are_ambiguous(self):
         two = [{"id": f"x{i}", "type": "child_page", "child_page": {"title": "Full Transcript"}} for i in range(2)]
-        self.assertEqual(gw.write(FakeNotion(two), ROUND, envelope(), True)[0], "TRANSCRIPT_PAGE_AMBIGUOUS")
+        client = FakeNotion(two)
+        for i in range(2):
+            client.pages[f"x{i}"] = self.marked("v7-transcript:1;accepted=aaaa")
+        self.assertEqual(gw.write(client, ROUND, envelope(), True)[0], "TRANSCRIPT_PAGE_AMBIGUOUS")
 
     def test_a_failed_write_is_a_fixed_code(self):
         self.assertEqual(gw.write(FakeNotion(fail_on="POST"), ROUND, envelope(), True)[0], "TRANSCRIPT_WRITE_FAILED")

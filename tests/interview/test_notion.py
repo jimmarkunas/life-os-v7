@@ -73,7 +73,7 @@ class NotionTests(unittest.TestCase):
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_ok")
         client.blocks["p"][2] = block("changed", id="note")
         self.assertEqual(notion.readback(client, "p", "root", "opportunity", before), "readback_protected_changed")
-        self.assertEqual(notion.readback(client, "p", "elsewhere", "opportunity"), "readback_parent_mismatch")
+        self.assertEqual(notion.readback(client, "p", "elsewhere", "opportunity"), "readback_ok")           # LIFE-382 (D250-06): where the page sits is not checked; marker and protected content decide
         client.blocks["p"].pop()
         self.assertEqual(notion.readback(client, "p", "root", "opportunity"), "readback_protected_missing")
         client.blocks["p"][0] = block("human")
@@ -112,6 +112,13 @@ class NotionTests(unittest.TestCase):
         self.assertEqual([(c.page_id, c.ordinal, c.interview_date, c.legacy) for c in found.items], [("n1", 1, "2026-09-10", True)])    # n2 is not a round title; n3 sits under another block
         self.assertEqual(notion.child_scan(client, "p").items, ())               # an unnamed pursuit's nested pages are never read as rounds
         self.assertTrue(all(method == "GET" for method, _ in client.calls))
+
+    def test_a_listed_child_whose_parent_is_not_the_listed_page_makes_the_scan_incomplete(self):
+        """LIFE-382 (D250-04): the parent proof lives here, so resolve_child need not repeat it."""
+        client = Fake()
+        client.blocks["p"].append({"id": "c", "type": "child_page", "child_page": {"title": "Interview 1"}})
+        client.pages["c"] = page(parent="elsewhere")
+        self.assertFalse(notion.child_scan(client, "p").complete)
 
     def test_incomplete_scans_fail_closed(self):
         client = Fake()
