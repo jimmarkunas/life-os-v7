@@ -83,3 +83,5 @@ class Resolution:
 class Scan:
     items: tuple
     complete: bool
+    ledger: int = field(default=0, compare=False)           # LIFE-360: how many of the items came from Job Ledger rows (the rest from the page tree); evidence only
+    tree_only: int = field(default=0, compare=False)
