@@ -317,6 +317,26 @@ class Remembered(unittest.TestCase):
         n.created[page] = created
         return page
 
+    def test_databases_are_used_as_databases_and_pages_as_pages(self):
+        """Jim, Nov 7: DASHBOARD_ARCHIVE and DASHBOARD_MATT_MEGIBOW are Notion databases, DASHBOARD_CHECKINS and DASHBOARD_QBRS are pages. A strict Notion refuses the wrong kind."""
+        n = Notion()
+        folders = {name: n.kids[ROOT][i] for i, name in enumerate((S.CHECKINS, S.QBRS, S.ARCHIVE, S.MATT_MEGIBOW))}
+        databases = {folders[S.ARCHIVE], folders[S.MATT_MEGIBOW]}
+        real = n.call
+
+        def strict(method, path, body=None):
+            seg = urlparse(path).path.strip("/").split("/")
+            if seg[0] == "databases" and seg[1] not in databases:
+                raise NotionError("NOTION_HTTP_404")                                       # a page asked for as a database
+            if method == "POST" and path == "/pages" and (body["parent"].get("page_id") in databases):
+                raise NotionError("NOTION_HTTP_400")                                       # a database used as a page parent
+            if method == "GET" and seg[0] == "blocks" and seg[2] == "children" and seg[1] in databases:
+                raise NotionError("NOTION_HTTP_400")                                       # a database's rows are not block children
+            return real(method, path, body)
+        n.call = n.call_once = strict
+        out = go(n)
+        self.assertEqual((out["checkin"], out["synopsis"]), ("written", "written"))
+
     def test_a_complete_page_made_since_the_wednesday_is_adopted_once_whatever_it_is_called(self):
         n = Notion()
         page = self.old_page(n, "2026-10-28T13:00:00.000Z")
