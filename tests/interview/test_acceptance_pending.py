@@ -116,7 +116,9 @@ class WorkflowStep(unittest.TestCase):
         text = (Path(__file__).resolve().parents[2] / ".github/workflows/hourly.yml").read_text()
         job = text[text.index("\n  interview:\n"):text.index("\n  report:\n")]
         self.assertIn('      NOTION_JOB_LEDGER_DATA_SOURCE_ID: ""', job)                       # blank for the whole job
-        self.assertEqual(job.count("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}"), 2)
+        self.assertEqual(job.count("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}"), 3)   # LIFE-360: + the Interview stage step (read-only)
+        stage = job[job.index("id: irun\n"):job.index("id: iacc\n")]
+        self.assertIn("NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}", stage)
         main = job[job.index("id: iacc\n"):job.index("id: iaccneg")]
         negative = job[job.index("id: iaccneg"):job.index("Interview warning")]
         for step in (main, negative):

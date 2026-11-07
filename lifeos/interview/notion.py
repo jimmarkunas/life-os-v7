@@ -216,7 +216,7 @@ def parents(client, environ, context=None):
         return Scan((), False)
     keys = [split_title(p.title) for p in ledger.items]
     kept = [p for p in tree.items if not any(same_company(split_title(p.title)[0], c) and same_role(split_title(p.title)[1], r) for c, r in keys)]
-    return Scan(tuple(ledger.items) + tuple(kept), True)
+    return Scan(tuple(ledger.items) + tuple(kept), True, len(ledger.items), len(kept))
 
 
 LEGACY_TITLE = re.compile(r"^Interview (\d{1,2}):\s*(.+?)\s*\((\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\)\s*$")

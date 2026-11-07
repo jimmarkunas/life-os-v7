@@ -34,6 +34,7 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             counts.update(shape)
         scan = notion.parents(client, environ, context)
         counts["observed"] = len(scan.items)
+        counts["parents_ledger"], counts["parents_tree_only"] = scan.ledger, scan.tree_only        # LIFE-360: proof the Ledger path ran (ledger > 0), not the page-tree fallback alone
         if not scan.complete:
             counts["blocked"] += 1
             reason("pipeline_incomplete")
