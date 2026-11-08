@@ -107,7 +107,7 @@ def dispatch(relay, name, args, who):
         _, etype, need_case, need_reply = PUBLISH[op]
         if (need_case and "case" not in a) or (need_reply and "reply_to" not in a):
             raise BuzzError("invalid_argument")
-        out = relay.post_message(comm, a["channel"], a["text"], a["idempotency_key"], a.get("recipient"), etype, a.get("case"), a.get("reply_to"))
+        out = relay.post_message(comm, a["channel"], a["text"], a["idempotency_key"], a.get("recipient"), etype, a.get("case"), a.get("reply_to"), flat=(op == "reply"))
         return {"ok": True, "contract": CONTRACT, "operation": op, "data": out}
     params = READ[op][1]
     _check(params, a)

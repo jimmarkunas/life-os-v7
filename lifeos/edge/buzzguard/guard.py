@@ -303,9 +303,10 @@ def _decide_send(ti, stopped):
             return "deny", "send %s must be a plain identifier" % k
     if "mention" in ti and not (isinstance(ti["mention"], list) and len(ti["mention"]) <= 20 and all(isinstance(m, str) and IDENT.fullmatch(m) for m in ti["mention"])):
         return "deny", "send mention must be a short list of plain identifiers"
-    if "reply" in ti and not (isinstance(ti["reply"], str) and EVENT_ID.fullmatch(ti["reply"])):
-        return "deny", "send reply must be a 64-hex message id"
-    if _secret({k: v for k, v in ti.items() if k != "reply"}):
+    if any(k in ti for k in ("reply", "reply_to", "thread")):
+        return "deny", "post top level: omit reply, reply_to and thread, and @mention the asker (Jim, Nov 7: no threads unless he starts them)"   # LIFE-397; the guard cannot read the target, so a thread reply is refused whole
+
+    if _secret(ti):
         return "deny", "secret-shaped text in a message"
     return "allow", "buzz send"
 

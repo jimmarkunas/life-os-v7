@@ -213,8 +213,10 @@ class ReadOperations(unittest.TestCase):
     def test_threads_replies_and_evidence_by_type_and_case(self):
         fake, relay = setup()
         root = publish(relay, "message", channel=CHAN, text="root", idempotency_key="r")[1]["data"]["event_id"]
-        direct = publish(relay, "reply", channel=CHAN, text="direct", idempotency_key="d", reply_to=root)[1]["data"]["event_id"]
-        nested = publish(relay, "reply", channel=CHAN, text="nested", idempotency_key="n", reply_to=direct)[1]["data"]["event_id"]
+        flat = publish(relay, "reply", channel=CHAN, text="flat", idempotency_key="f", reply_to=root)[1]["data"]["event_id"]
+        self.assertEqual([t for t in {e["id"]: e["tags"] for e in fake.events if e["kind"] == 9}[flat] if t[0] == "e"], [])   # LIFE-397: a plain reply to a top-level message is posted top-level, no thread tag
+        direct = publish(relay, "handoff_ack", channel=CHAN, text="direct", idempotency_key="d", case="CASE0", reply_to=root)[1]["data"]["event_id"]   # a structured reply stays a thread reply
+        nested = publish(relay, "reply", channel=CHAN, text="nested", idempotency_key="n", reply_to=direct)[1]["data"]["event_id"]   # a plain reply to a message already in a thread keeps the thread
         tags = {e["id"]: e["tags"] for e in fake.events if e["kind"] == 9}
         self.assertIn(["e", root, "", "reply"], tags[direct])
         self.assertEqual([t for t in tags[nested] if t[0] == "e"], [["e", root, "", "root"], ["e", direct, "", "reply"]])   # NIP-10 as Buzz writes it
@@ -232,7 +234,7 @@ class ReadOperations(unittest.TestCase):
         case = read(relay, "get_evidence", case="CASE1")[1]["data"]
         self.assertEqual(sorted(m["type"] for m in case), ["handoff_ack", "handoff_request", "progress"])
         self.assertEqual({m["case"] for m in case}, {"CASE1"})
-        self.assertEqual([m["event_id"] for m in read(relay, "get_evidence", type="handoff_ack")[1]["data"]], [ack["event_id"]])
+        self.assertEqual({m["event_id"] for m in read(relay, "get_evidence", type="handoff_ack")[1]["data"]}, {direct, ack["event_id"]})   # LIFE-397: `direct` is now a structured ack so it stays a thread reply
         self.assertEqual([m["untrusted_text"] for m in read(relay, "get_evidence", type="council_decision")[1]["data"]], ["decision brief"])   # council evidence is readable
         self.assertEqual(read(relay, "get_evidence", type="blocker", channel=OTHER)[1]["data"], [])
 

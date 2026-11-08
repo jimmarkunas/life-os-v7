@@ -217,7 +217,7 @@ class Relay:
             flt["#h"] = [self._ok(channel, UUID)]
         return [self._view(e) for e in self._query(community, flt)]
 
-    def post_message(self, community, channel, text, idempotency_key, recipient=None, etype=None, case=None, reply_to=None):
+    def post_message(self, community, channel, text, idempotency_key, recipient=None, etype=None, case=None, reply_to=None, flat=False):
         self._ok(channel, UUID), self._ok(idempotency_key, TOKEN)
         if not isinstance(text, str) or not 1 <= len(text) <= MAX_TEXT:
             raise BuzzError("invalid_argument")
@@ -234,7 +234,8 @@ class Relay:
         extra, bind = ([["p", to]] if to else []), (f"p:{to}|" if to else "")
         if reply_to is not None:
             root, parent = self._parent(community, channel, reply_to)
-            extra += [["e", root, "", "reply"]] if root == parent else [["e", root, "", "root"], ["e", parent, "", "reply"]]
+            if not (flat and root == parent):               # LIFE-397 (Jim, 5:58 PM CT): a plain reply to a top-level message is posted top-level (no thread tag); it stays in a thread only when the target is already inside one
+                extra += [["e", root, "", "reply"]] if root == parent else [["e", root, "", "root"], ["e", parent, "", "reply"]]
         if etype or case or reply_to:
             extra += ([["t", etype]] if etype else []) + ([["c", case]] if case else [])
             bind += f"x:{etype or ''}|{case or ''}|{reply_to or ''}|"  # type, case and reply target are bound into the digest like the recipient

@@ -27,7 +27,7 @@ class RoomContext(Base):
     def test_the_room_read_then_reply_flow_the_challenger_needed(self):
         steps = [("mcp__buzz__get_channel_info", {"channel": self.CHAN}), ("mcp__buzz__get_messages", {"channel": self.CHAN, "limit": 50}),
                  ("mcp__buzz__get_event", {"event_id": self.EID}),
-                 ("mcp__buzz__send", self.send("This room is LIFE-369 (from the kickoff). My view: ...", reply=self.EID, channel=self.CHAN))]
+                 ("mcp__buzz__send", self.send("@Jim This room is LIFE-369 (from the kickoff). My view: ...", channel=self.CHAN))]
         self.assertEqual([self.dec(t, ti) for t, ti in steps], ["allow"] * 4)
 
     def test_ids_are_exempt_only_when_they_are_exactly_ids_under_id_keys(self):
