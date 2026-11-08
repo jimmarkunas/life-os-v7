@@ -213,7 +213,7 @@
     },
     {
       "date": "2026-11-08",
-      "pr": "PENDING",
+      "pr": "https://github.com/jimmarkunas/life-os-v7/pull/834",
       "approval": "Jim Markunas, November 7, 2026 CT 12:28 PM, chat (REQ-6 v2, LOS-94): the readiness gate runs on an Atlassian MCP read and is waivable only by Jim naming the ticket in chat; eight rules written as LIFE-365 states them (released for Agent Go)",
       "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
