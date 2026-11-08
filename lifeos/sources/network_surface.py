@@ -286,9 +286,13 @@ def _page(notion, connection, key, page_id, company, title, target, index, detai
     page = notion.call("GET", f"/pages/{page_id}")
     top, owned = surface.read_page(notion, page_id, key=key)
     counts["pages_read"] += 1
-    if ledger_body.description_duplicates(top, key):                     # V7's own description written twice: the top-most is used, the extra is counted for repair
-        counts["description_duplicate"] = counts.get("description_duplicate", 0) + 1
     why = surface.guard(page, top, key, notion.source)
+    if not why and ledger_body.description_duplicates(top, key):         # V7's own description written twice: the top-most is used; a pure copy is removed (LIFE-361)
+        counts["description_duplicate"] = counts.get("description_duplicate", 0) + 1
+        done = surface.remove_duplicate_descriptions(notion, page_id, top, key, live)
+        counts[f"description_duplicate_{done}"] = counts.get(f"description_duplicate_{done}", 0) + 1
+        if done == "removed":
+            top, owned = surface.read_page(notion, page_id, key=key)
     if why:
         counts["degraded"] = True
         counts["guard_failed"][why] = counts["guard_failed"].get(why, 0) + 1

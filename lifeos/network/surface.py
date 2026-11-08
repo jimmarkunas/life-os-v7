@@ -348,6 +348,46 @@ def _blank(block):
     return block.get("type") == "paragraph" and not _plain(block).strip() and not hidden.refs(block)
 
 
+def _description_parts(client, list_id):
+    """(description text lines, right-column blocks) of one description column_list, or None when it is not the two-column description shape."""
+    columns = [b for b in children(client, list_id) if b.get("type") == "column"]
+    if len(columns) != 2:
+        return None
+    left = children(client, columns[0]["id"])
+    text = [(b.get("type"), _plain(b)) for b in left]
+    for toggle in (b for b in left if b.get("type") == "toggle"):
+        text += [(b.get("type"), _plain(b)) for b in children(client, toggle["id"])]
+    return text, children(client, columns[1]["id"])
+
+
+def remove_duplicate_descriptions(client, page_id, top, key, live):
+    """LIFE-361 (Jim, Nov 8: "I want it"): remove V7's own repeated job description from a Ledger row. The top-most description naming this row's key is kept (it is the
+    one every reader uses). An extra one is removed ONLY when it is provably V7's identical write: the same marker key, the same description text block for block,
+    and nothing but blank paragraphs in its right column (no Network Leads, nothing a person wrote). Anything else is left and counted for Jim.
+    Live only; dry run says what it would do. Read back: exactly the removed marker and column_list are gone and every other top-level block is still there, in order.
+    -> "removed" | "would_remove" | "left" (an extra that is not provably a pure copy) | "none"."""
+    pairs = [(b, top[i + 1]) for i, b in enumerate(top[:-1]) if body.is_marker(b, key) and top[i + 1].get("type") == "column_list"]
+    if len(pairs) < 2:
+        return "none"
+    kept = _description_parts(client, pairs[0][1]["id"])
+    if kept is None:
+        return "left"
+    gone = []
+    for marker, layout in pairs[1:]:
+        parts = _description_parts(client, layout["id"])
+        if parts is None or parts[0] != kept[0] or not all(_blank(b) for b in parts[1]):
+            return "left"                                               # not a pure copy: a person may have written in it, nothing is removed
+        gone += [marker["id"], layout["id"]]
+    if not live:
+        return "would_remove"
+    for block_id in reversed(gone):                                     # the column_list before its marker
+        client.call("DELETE", f"/blocks/{quote(block_id, safe='')}")
+    after = children(client, page_id)
+    if [b["id"] for b in after] != [b["id"] for b in top if b["id"] not in gone]:
+        raise SurfaceError("NETWORK_DESCRIPTION_READBACK_MISMATCH")
+    return "removed"
+
+
 def _keep_nonempty(client, column_id, owned_ids):
     """A column cannot be empty: before the last owned block leaves the right column, one blank paragraph is put there."""
     if all(k["id"] in owned_ids for k in children(client, column_id)):
