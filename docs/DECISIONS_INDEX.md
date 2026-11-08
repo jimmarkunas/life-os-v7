@@ -250,3 +250,4 @@ This index is checked by a test: add a line here with every new decision.
 - D249 — The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)
 - D250 — V7 reads and writes Notion only through databases and fixed IDs, never a page tree, an exact title or a page location (2026-11-07, Jim; LIFE-357)
 - D251 — Every job gets the Bitwarden helper program from a saved, fingerprint-checked copy; the download, with a long retry, runs only when no copy exists (2026-11-08, Jim; LIFE-406)
+- D252 — Hiring decisions live on the Job Ledger row only: Confirm Rejected and Reopen are one Ledger write each, and no page moves (2026-11-08, Jim; LIFE-353)

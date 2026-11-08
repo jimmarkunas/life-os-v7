@@ -1,5 +1,5 @@
-"""LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the Notes pages and the S1 decision rules. One exact opportunity is resolved by its canonical page id, routed
-by the S1 decision rules, shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
+"""LIFE-47 S2 (Career): the application behind the private Close Opportunity service (the Edge gate in lifeos/edge/close_gate.py calls `handle`); a source adapter (D17): the one place that composes the Ledger, the opportunity pages and the S1 decision rules. One exact pursuit is resolved by its Job Ledger row's page id (LIFE-353: the decision lives on
+the row; no page moves), shown, reviewed and closed with one of the six outcomes; success is reported only after the S1 read-back. Nothing here is a second rule engine: identity, ambiguity, schema, idempotency,
 conflict and read-back all belong to lifeos.hiring.decision. GET and the review step never write. Mark Complete (/complete) records one opportunity page's primary action as done in that page's own fold. Manage and Reopen (/manage) live in manage_app. Fixed codes only."""
 import hashlib
 import hmac
@@ -20,6 +20,7 @@ CLOSURE = ("lifeos/hiring/close_screen.py", "lifeos/hiring/decision.py", "lifeos
            "lifeos/sources/manage_app.py", "lifeos/sources/alerts_app.py", "lifeos/platform/alerts.py", "lifeos/platform/alert_registry.py", "lifeos/platform/alert_settings.py", "lifeos/platform/redact.py")
 ROUTES = {"/sent": ("outreach_app", "handle"), "/referral": ("outreach_app", "handle_status"), "/recruiter": ("outreach_app", "handle_close"),     # D221 Mark as Sent, referral status, LIFE-20 recruiter close,
           "/resume": ("resume_app", "handle"), "/manage": ("manage_app", "handle"), "/manage.css": ("manage_app", "handle_css"), "/manage-picker.js": ("manage_app", "handle_js"), "/brief": ("outreach_app", "handle_brief"), "/alerts": ("alerts_app", "handle"), "/alerts.css": ("alerts_app", "handle_css")}                                                       # D234 Build resume, E14 Manage + Reopen (Jim, Oct 24), LIFE-35 brief (read only)
+KIND = "ledger"                                                                       # LIFE-353: the only record a decision is written on (signed into every form)
 TTL, TZ, HTML = 900, ZoneInfo("America/Chicago"), "text/html; charset=utf-8"
 
 
@@ -39,37 +40,24 @@ def _stop(status, eyebrow, title, text, detail, css="alert"):
     return status, HTML, S.result(eyebrow, title, text, detail, css), ()
 
 
-def _state(client, root, pid=None, pages=None):
-    """-> (Applied Ledger rows, Notes pages) in the shapes decision.route reads; anything short of a complete read raises. When `pid` is one of the Applied rows the Notes pages are
-    not walked: decision.route closes the one Ledger application without reading them (#497), so the walk would only cost paced calls (Jim, Oct 24: confirm too slow)."""
-    rows = [{"company": D._text(p["properties"].get("Company"), "rich_text"), "role": D._text(p["properties"].get("Job"), "title"), "id": p.get("id"),
-             "decision": ((p["properties"].get(D.DECISION) or {}).get("select") or {}).get("name")} for p in (D.applied_pages(client) if pages is None else pages)]
-    rows = [r for r in rows if r["company"] and r["role"]]
-    if pid and any(D._page_id(r["id"]) == pid for r in rows):
-        return rows, []
-    found, status = hiring_pipeline.snapshot(client, root, rounds=False)            # decision.route never reads interview counts: skip one paced call per opportunity
+def _state(client, root, pages=None):
+    """-> (Ledger pursuit rows in decision.route's shape, opportunity pages [{"id", "tree_id", "company", "role", "retired"}]); anything short of a complete read raises.
+    The pages are the Hiring Pipeline reader's (LIFE-352: Ledger pursuits first, page id = the row; the page tree for the rest); they locate an opportunity page, never a decision."""
+    rows = D.rows(D.ledger_pages(client) if pages is None else pages)
+    found, status = hiring_pipeline.snapshot(client, root, rounds=False, ledger=client)      # decision.route never reads interview counts: skip one paced call per opportunity
     if status != "ok":
         raise D.fail("PAGES_UNREADABLE")
-    return rows, [{"id": o.page_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
+    return rows, [{"id": o.page_id, "tree_id": o.tree_id, "company": o.company, "role": o.role, "retired": o.section == hiring_pipeline.RETIRED} for o in found]
 
 
 def resolve(client, config, pid):
-    """The ONE canonical record with this exact page id, routed by decision.route to that same record, or a fixed refusal: absent, duplicated, ambiguous, or closing on another record (a Notes page whose pursuit
-    has a Ledger application). -> {kind, id, company, role, closed, st}; `st` fingerprints what the screen was shown."""
-    pages = D.applied_pages(client)                                     # read once: the confirm's write selects its row from this same fresh read
-    rows, parents = _state(client, config["pipeline"], pid, pages)
-    mine = [("ledger", r) for r in rows if D._page_id(r["id"]) == pid] + [("notes", p) for p in parents if D._page_id(p["id"]) == pid]
-    if len(mine) != 1:
-        raise D.fail("NOT_FOUND" if not mine else "AMBIGUOUS")
-    kind, rec = mine[0]
-    want = {"action": D.ACTION, "id": pid, "company": rec["company"], "role": rec["role"]}
-    routed, target = D.route(rows, parents, want)
-    if routed != kind or D._page_id(target["id"]) != pid:
-        raise D.fail("STALE_IDENTITY")
-    closed = bool(target.get("decision")) if kind == "ledger" else bool(target["retired"])
-    if kind == "notes" and not closed and (blocking := D.unapplied_matches(client, want)):
-        raise D.Unapplied(blocking)                                      # a Ledger row for this role that is not marked Applied may be this application: resolve it first (LIFE-169: the screen links it)
-    return {"kind": kind, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(kind, pid, rec["company"], rec["role"], closed), "pages": pages, "parents": parents}
+    """The ONE Job Ledger pursuit row with this exact page id (decision.route), or a fixed refusal. -> {kind, id, company, role, closed, st}; `st` fingerprints what the screen was shown.
+    Only the Ledger is read: no page tree (Jim, Oct 24: confirm too slow)."""
+    rec = D.route(D.rows(D.ledger_pages(client)), {"action": D.ACTION, "id": pid})
+    if D._page_id(rec["id"]) != pid:
+        raise D.fail("NOT_FOUND")
+    closed = bool(rec.get("decision"))
+    return {"kind": KIND, "id": pid, "company": rec["company"], "role": rec["role"], "closed": closed, "st": _fingerprint(KIND, pid, rec["company"], rec["role"], closed)}
 
 
 def _fingerprint(kind, pid, company, role, closed):
@@ -84,7 +72,7 @@ def _shown(form, pid, st):
     """The open record exactly as the GET showed it, proven by the signed fingerprint `st` and read from no source: Edit and Review re-render without a Notion
     round trip (they never write). None when the carried fields are not the ones `st` was computed from. Confirm always resolves afresh."""
     kind, company, role = form.get("k", ""), form.get("co", ""), form.get("ro", "")
-    return {"kind": kind, "id": pid, "company": company, "role": role, "closed": False, "st": st} if kind in ("ledger", "notes") and _same(_fingerprint(kind, pid, company, role, False), st) else None
+    return {"kind": kind, "id": pid, "company": company, "role": role, "closed": False, "st": st} if kind == KIND and _same(_fingerprint(kind, pid, company, role, False), st) else None
 
 
 def _get(req, who, secrets):
@@ -118,7 +106,7 @@ def _post(req, who, secrets):
     fields = {"o": pid, "k": opp["kind"], "co": opp["company"], "ro": opp["role"], "exp": exp, "st": st, "t": form["t"]}     # the token was verified above; the review step adds its own
     if step == "edit":
         return 200, HTML, S.form(opp, fields, outcome, notes), ()
-    if opp["kind"] == "notes" and outcome in M.LEAD_REASONS:         # E01b: "I'm passing", "Not a real job", "Went nowhere" are recorded as an existing outcome plus a fixed note
+    if outcome in M.LEAD_REASONS:                                     # E01b: "I'm passing", "Not a real job", "Went nowhere" are recorded as an existing outcome plus a fixed note
         outcome, fixed = M.LEAD_REASONS[outcome]
         notes = (fixed + (": " + notes if notes else ""))[:D.REASON_MAX]
     if outcome not in M.OUTCOMES or len(notes) > D.REASON_MAX or not (notes or outcome != "Other") or not (notes or "x").isprintable():
@@ -131,11 +119,10 @@ def _post(req, who, secrets):
     request = {"action": D.ACTION, "confirmed": True, "id": pid, "company": opp["company"], "role": opp["role"], "reason": notes or outcome, "outcome": outcome,
                "op": _mac(secret, "op", pid, st, exp, outcome, notes)[:32]}
     try:
-        done = (D.confirm_rejected(client, request, True, _now(), opp["pages"]) if opp["kind"] == "ledger"
-                else D.move_page(client, config["pipeline"], request, True, _now(), lambda: _state(client, config["pipeline"], pages=[])[1], opp["parents"]))
+        done = D.confirm_rejected(client, request, True, _now())
     except NotionError as error:
         code = str(error)[:60]
-        if code in ("DECISION_CONFLICT", "DECISION_PENDING", "DECISION_SCHEMA_MISSING"):
+        if code in ("DECISION_CONFLICT", "DECISION_SCHEMA_MISSING"):
             return _stop(409, "Not changed", "This closure was not recorded", "A conflicting decision exists, or this outcome is not enabled on the Ledger yet.", f"Refused: {code}. Nothing was changed.")
         return _stop(500, "Unavailable", "Could not verify closure", "Do not assume the opportunity was closed or left unchanged.", f"Status: DEGRADED · {code}", "danger")
     if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
@@ -163,9 +150,9 @@ def _lines(client, block_id):
 
 
 def action(client, root, pid, key):
-    """The open opportunity page `pid` (exactly one active Notes page in the pipeline) and its fold's one primary action whose key is `key`, or a fixed refusal:
-    not that page, not a LIFE OS page, or the action changed since the link was written. -> {id, company, role, key, text, fold, done}"""
-    pages = [p for p in _state(client, root)[1] if D._page_id(p["id"]) == pid]
+    """The open opportunity page `pid` (a Ledger pursuit's row page, or an older page-tree page; LIFE-353: open or closed is read from the Ledger row when the pursuit has one) and its
+    fold's one primary action whose key is `key`, or a fixed refusal: not that page, not a LIFE OS page, or the action changed since the link was written. -> {id, company, role, key, text, fold, done}"""
+    pages = [p for p in _state(client, root)[1] if pid in (D._page_id(p["id"]), D._page_id(p["tree_id"]))]
     if len(pages) != 1:
         raise D.fail("NOT_FOUND" if not pages else "AMBIGUOUS")
     if pages[0]["retired"]:
@@ -268,4 +255,4 @@ def handle(req, who, secrets):
             return _stop(404, "Not found", "Nothing here", "This service only closes one opportunity at a time.", "Nothing was changed.")
         return (_get if req["method"] == "GET" else _post)(req, who, secrets)
     except NotionError as error:
-        return importlib.import_module("lifeos.sources.manage_app").unapplied(error.rows) if isinstance(error, D.Unapplied) else _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
+        return _stop(409, "Not changed", "This opportunity cannot be closed here", "The request was refused before anything was written.", f"Refused: {str(error)[:60]}")
