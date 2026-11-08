@@ -14,6 +14,11 @@ on:
         type: choice
         options: [page, info]
         default: page
+      bws_test:
+        description: "Test only (LIFE-406): fail forces the Bitwarden helper download to fail, to prove the retry and the clear failure message; off is normal"
+        type: choice
+        options: [off, fail]
+        default: "off"
 env:
   ALERTS_MUTED_UNTIL: ${{ vars.ALERTS_MUTED_UNTIL }}      # LIFE-73: silences every alert channel until this time (lifeos.platform.alerts.muted); empty = not muted
   ALERTS_ENABLED: ${{ vars.ALERTS_ENABLED }}      # LIFE-75: the master switch from the Alert settings page; anything but "on" means alerts are OFF (lifeos.platform.alert_settings)
@@ -28,6 +33,11 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "60"
+          test_download: ${{ inputs.bws_test || 'off' }}
       - id: bws_watch
         name: Load the push topic from Bitwarden (EDGE-1.3, the one secret this job reads; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job

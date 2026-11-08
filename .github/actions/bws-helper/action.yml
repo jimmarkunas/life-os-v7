@@ -1,0 +1,34 @@
+name: Bitwarden helper from a saved, fingerprint-checked copy
+description: LIFE-406 (extends D209). Seeds the sm-action helper program from GitHub's cache; downloads (long retry) only when no saved copy exists; every copy is checked against the fingerprint committed in helper.sha256. No credential is touched.
+inputs:
+  wait_seconds:
+    description: How long the download may keep retrying when there is no saved copy (the caller sizes it to the job's time limit).
+    default: "300"
+  test_download:
+    description: Test only. "fail" skips the saved copy and points the download at an address that never answers.
+    default: "off"
+runs:
+  using: composite
+  steps:
+    - id: where
+      shell: bash
+      run: echo "dir=$(dirname "$RUNNER_TEMP")/_actions/bitwarden/sm-action/1238aae8fc64b212641190a9227c8a734ab1a793/target/x86_64-unknown-linux-gnu/release" >> "$GITHUB_OUTPUT"   # where sm-action v3.0.1 looks for its program (index.js getBinary)
+    - id: saved
+      if: ${{ inputs.test_download != 'fail' }}
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+      with:
+        path: ${{ steps.where.outputs.dir }}/sm-action
+        key: bws-helper-3.0.1-${{ hashFiles('.github/actions/bws-helper/helper.sha256') }}
+    - id: fetch
+      shell: bash
+      env:
+        BWS_DEST: ${{ steps.where.outputs.dir }}/sm-action
+        BWS_SHA256_FILE: ${{ github.action_path }}/helper.sha256
+        BWS_WAIT_SECONDS: ${{ inputs.wait_seconds }}
+        BWS_URL: ${{ inputs.test_download == 'fail' && 'https://download-outage.invalid/sm-action' || 'https://github.com/bitwarden/sm-action/releases/download/v3.0.1/sm-action-x86_64-unknown-linux-gnu' }}
+      run: bash "$GITHUB_ACTION_PATH/fetch.sh"
+    - if: ${{ steps.fetch.outputs.source == 'downloaded' }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
+      with:
+        path: ${{ steps.where.outputs.dir }}/sm-action
+        key: bws-helper-3.0.1-${{ hashFiles('.github/actions/bws-helper/helper.sha256') }}
