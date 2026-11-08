@@ -102,12 +102,23 @@ def _kids(client, block_id):
     raise NotionError("ledger_layout_unreadable")
 
 
+def description_list(top):
+    """The description's column_list among a page's top-level blocks, or None. One column_list is it (the plain Ledger page). LIFE-361/LIFE-352: a row that is also an
+    interview opportunity carries the opportunity's own column_list above the description, so with more than one it is the column_list right after the v7-jd marker."""
+    lists = [b for b in top if b.get("type") == "column_list"]
+    if len(lists) == 1:
+        return lists[0]
+    after = [top[i + 1] for i, b in enumerate(top[:-1]) if is_marker(b) and top[i + 1].get("type") == "column_list"]
+    return after[0] if len(after) == 1 else None
+
+
 def find(client, page_id, top=None):
     """-> {"list", "left", "right", "toggle"} block ids of a v7.jd.2 page, or None for a page without the layout. Reads at most the top blocks, the column_list and the two columns."""
     top = top if top is not None else _kids(client, page_id)
-    lists = [b for b in top if b.get("type") == "column_list"]
-    if len(lists) != 1:
+    found = description_list(top)
+    if found is None:
         return None
+    lists = [found]
     columns = [b for b in _kids(client, lists[0]["id"]) if b.get("type") == "column"]
     if len(columns) != 2:
         return None

@@ -34,6 +34,8 @@ class JourneyProof(unittest.TestCase):
         self.assertNotIn("root", posts)                                                # every page this proof created sits inside its sandbox
         self.assertIn("sandbox-ledger", posts)                                         # LIFE-361: the pursuits are rows of the sandbox's own Ledger
         self.assertNotIn("ds-synthetic", posts)                                        # never the configured (real) Ledger
+        self.assertEqual(len(client.rows), 2)                                          # the two leads' own rows, real sandbox rows; the Interview step made no second row
+        self.assertFalse([s["step"] for s in counts["steps"] if "network_unreadable" in s["why"]])     # every row page the readers open is a real page
 
     def test_counts_only_never_names_ids_links_or_people(self):
         counts = proof.run({**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, False, now=NOW, client=qa_workspace())

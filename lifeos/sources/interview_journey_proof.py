@@ -43,11 +43,13 @@ INVITE = "ExampleCo Program Manager Interview"
 
 
 class Ledger:
-    """The Job Ledger, in memory, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its read-back."""
+    """The Jobs side of the Job Ledger, keyed like the real one: the target check, an exact Stable Job Key lookup, one create and its read-back.
+    LIFE-361: each row it creates is a REAL row of the sandbox's own Ledger (Job, Company, Stable Job Key), so the Interview step finds that row and every
+    reader that opens the row page (Network Leads, the opportunity itself) reads a real page; its other answers stay in memory."""
     source = "synthetic-ledger"
 
-    def __init__(self):
-        self.rows = {}
+    def __init__(self, client=None, sandbox=None):
+        self.rows, self.client, self.sandbox = {}, client, sandbox
 
     def call(self, method, path, body=None):
         if path == f"/data_sources/{self.source}":
@@ -63,6 +65,9 @@ class Ledger:
 
     def create(self, props, blocks):
         pid = f"synthetic-ledger-{len(self.rows) + 1}"
+        if self.client is not None:                                            # the row lives in the sandbox Ledger: only the properties that Ledger has
+            kept = {name: props[name] for name in ("Job", "Company", "Stable Job Key") if name in props}
+            pid = self.client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": self.sandbox}, "properties": kept})["id"]
         self.rows[pid] = {"page_id": pid, "company": props["Company"]["rich_text"][0]["text"]["content"], "role": props["Job"]["title"][0]["text"]["content"],
                           "stable_job_key": props["Stable Job Key"]["rich_text"][0]["text"]["content"], "requisition": None,
                           "lane": props["Visible Lane"]["select"]["name"]}
@@ -92,7 +97,7 @@ def drive(client, environ, pipeline_id, now, ledger_id):
     """The journey against `pipeline_id` (a sandbox Hiring Pipeline) and `ledger_id` (its sandbox Ledger): -> (steps, checks), counts and fixed codes only."""
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": pipeline_id, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "",
            "INTERVIEW_TEST_COMPANIES": "", "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": ledger_id}
-    ledger, calendar, steps = Ledger(), Calendar(), []
+    ledger, calendar, steps = Ledger(client, ledger_id), Calendar(), []
 
     def tick(records):
         return ev.run(20, True, environ=env, client=client, calendar=calendar, now=now, ledger=ledger, records=list(records),
