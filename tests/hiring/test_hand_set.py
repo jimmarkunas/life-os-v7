@@ -1,5 +1,5 @@
 """LIFE-111 / LIFE-112 (Jim, Oct 25 2026): a hand-set hold (Paused, Waiting on employer, back to Active) and a hand-set next action / due date, set on Manage through a
-signed review and confirm, stored on the opportunity's own record (its Notes page fold, or the Job Ledger row's HAND_SET property once it exists), read back; the Hiring
+signed review and confirm, stored on the opportunity's Job Ledger row (its HAND_SET property; LIFE-353: the row is the only record a decision or hold is written on), read back; the Hiring
 Pipeline shows the hold and takes it off the to-do list until new mail or Calendar evidence clears it; the opportunity page shows Jim's action beside the derived one until
 Mark Complete clears it. Every name is invented; nothing is live."""
 import html
@@ -58,14 +58,16 @@ class M2(H):
         return self.call("POST", "/manage", form={**self.fields(body), "step": step})
 
 
-def notes_page(**kw):
-    h = M2(**kw)
+def ledger_page(**kw):
+    """A pursuit whose Job Ledger row carries the HAND_SET property, and whose older opportunity page (Manage is opened from it) has the Interview writer's fold."""
+    h = M2([(TD.TARGET, COMPANY, ROLE)], **kw)
+    ledger_ready(h.world.source)
     return h, page_with_fold(h, action=DERIVED)
 
 
-class ManageNotesPage(unittest.TestCase):
+class ManageLedgerFlow(unittest.TestCase):
     def test_the_hub_shows_the_state_and_both_forms_and_review_shows_without_writing(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 200, body)
         self.assertIn("<b>State:</b> Active", body)
@@ -77,24 +79,23 @@ class ManageNotesPage(unittest.TestCase):
         self.assertIn("Set it to Paused", body)
         self.assertEqual(h.writes(), (0, 0))
 
-    def test_confirm_appends_one_line_to_the_fold_reads_it_back_and_asks_for_the_pipeline_redraw(self):
-        h, fold = notes_page()
+    def test_confirm_writes_one_line_on_the_row_reads_it_back_and_asks_for_the_pipeline_redraw(self):
+        h, fold = ledger_page()
         before = lines(h, fold)
         status, body, _ = h.hand("hold", v="waiting")
         self.assertEqual(status, 200, body)
         self.assertIn("Recorded and read back", body)
-        after = lines(h, fold)
-        self.assertEqual(after[:-1], before)
-        self.assertEqual(M.hold_of(after)["state"], M.WAITING)
-        self.assertTrue(M.HOLD_LINE.fullmatch(after[-1]))
+        self.assertEqual(lines(h, fold), before)                                                       # LIFE-353: nothing is written on the page
+        self.assertEqual(M.hold_of(hand_text(h.world.source).splitlines())["state"], M.WAITING)
         self.assertEqual(h.after, ["hiring"])
         self.assertIn("Waiting on employer · set by Jim", h.hub(h.world.ws.target)[1])
         status, body, _ = h.hand("hold", v=M.ACTIVE)                                                   # set back to Active
         self.assertEqual(status, 200, body)
-        self.assertIsNone(M.hold_of(lines(h, fold)))
+        self.assertIsNone(M.hold_of(hand_text(h.world.source).splitlines()))
+        self.assertEqual(h.world.ws.writes(), [])
 
     def test_cancel_writes_nothing_and_a_replayed_confirm_is_already_recorded(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         status, body, _ = h.hand_review("hold", v="paused")
         review = {**h.fields(body)}
         self.assertIn("Nothing changed", h.call("POST", "/manage", form={**review, "step": "cancel"})[1])
@@ -102,19 +103,19 @@ class ManageNotesPage(unittest.TestCase):
         self.assertEqual(h.call("POST", "/manage", form={**review, "step": "confirm"})[0], 200)
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertIn("already recorded", body)
-        self.assertEqual(len(h.world.ws.writes()), 1)
+        self.assertEqual(len(h.world.source.patches()), 1)
 
     def test_a_forged_expired_foreign_or_altered_form_writes_nothing(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         review = h.fields(h.hand_review("hold", v="paused")[1])
-        for patch in ({"t": "0" * 64}, {"c": "0" * 64}, {"v": "waiting"}, {"exp": "1"}, {"co": "Mallory Inc"}, {"act": "next"}, {"k": "ledger"}, {"o": "e" * 32}):
+        for patch in ({"t": "0" * 64}, {"c": "0" * 64}, {"v": "waiting"}, {"exp": "1"}, {"co": "Mallory Inc"}, {"act": "next"}, {"k": "notes"}, {"o": "e" * 32}):
             self.assertEqual(h.call("POST", "/manage", form={**review, **patch, "step": "confirm"})[0], 403, patch)
         self.assertEqual(h.call("POST", "/manage", form={**review, "step": "confirm"}, now=h.clock.replace(year=h.clock.year + 1))[0], 403)
         self.assertEqual(h.call("POST", "/manage", form={**review, "step": "confirm"}, who={"login": "someone@example.com", "node": "n"})[0], 403)
         self.assertEqual(h.writes(), (0, 0))
 
     def test_a_next_action_and_due_date_are_stored_exactly_as_typed_and_an_invalid_date_is_refused(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         for bad in ({"nx": "Call Pat", "due": "2026-02-30"}, {"nx": "Call Pat", "due": "tomorrow"}, {"nx": "Call Pat", "due": "20261102"}, {"nx": "", "due": ""}, {"nx": "x" * 201}):
             status, body, _ = h.hand_review("next", **bad)
             self.assertEqual(status, 400, bad)
@@ -122,92 +123,56 @@ class ManageNotesPage(unittest.TestCase):
         self.assertEqual(h.writes(), (0, 0))
         status, body, _ = h.hand("next", nx="Send the  work sample to Pat", due="2026-11-02")
         self.assertEqual(status, 200, body)
-        self.assertEqual({k: v for k, v in M.next_of(lines(h, fold)).items() if k in ("text", "due")}, {"text": "Send the work sample to Pat", "due": "2026-11-02"})
+        self.assertEqual({k: v for k, v in M.next_of(hand_text(h.world.source).splitlines()).items() if k in ("text", "due")}, {"text": "Send the work sample to Pat", "due": "2026-11-02"})
         status, body, _ = h.hand("next", nx="Wait for the panel")                                    # no date typed: none is invented
-        self.assertIsNone(M.next_of(lines(h, fold))["due"])
+        self.assertIsNone(M.next_of(hand_text(h.world.source).splitlines())["due"])
         self.assertEqual(h.after, [])                                                                   # the page shows it after the hourly run; no region redraw
 
-    def test_a_write_that_does_not_read_back_is_degraded(self):
-        h, fold = notes_page()
+    def test_a_pursuit_closed_after_manage_opened_is_a_409_with_nothing_written(self):
+        h, fold = ledger_page()
         review = h.fields(h.hand_review("hold", v="paused")[1])
-        real = h.world.ws.call_once
-        with mock.patch.object(h.world.ws, "call_once", lambda method, path, body=None, version=None: {} if path.endswith("/children") else real(method, path, body, version)):
-            status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
-        self.assertEqual(status, 500)
-        self.assertIn("DEGRADED · DECISION_READBACK_MISMATCH", body)
-        self.assertNotIn("Recorded and read back", body)
-        h.world.ws.fail.add("append")
-        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
-        self.assertEqual(status, 500)
-        self.assertIn("DEGRADED · DECISION_WRITE_FAILED", body)
-        self.assertEqual(h.after, [])
-
-    def test_a_pursuit_that_now_routes_to_another_record_or_closed_is_a_409_with_nothing_written(self):
-        h, fold = notes_page()
-        review = h.fields(h.hand_review("hold", v="paused")[1])
-        h.world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE)                       # an Applied Ledger row appeared: the pursuit now lives on it
-        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
-        self.assertEqual(status, 409, body)
-        self.assertIn("Opportunity changed", body)
-        del h.world.source.pages[TD.TARGET]
-        ws = h.world.ws
-        ws.relocate(ws.target, ws.retired[0])                                                           # closed (moved to Retired) since the form was opened
+        h.world.source.pages[TD.TARGET]["properties"]["Hiring Decision"] = {"select": {"name": "Rejected"}}
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409)
         self.assertIn("This opportunity was closed after Manage opened", body)
         self.assertFalse([f for f in forms(body) if f.get("act")])                                      # a closed pursuit is offered nothing to carry over
         self.assertEqual(h.writes(), (0, 0))
 
-    def test_an_entry_whose_pursuit_moved_to_its_ledger_row_is_kept_and_offered_there(self):
-        """LIFE-169 (Jim, Oct 30 2026, Becton Dickinson): Applied was ticked on the Ledger after Manage opened. Nothing is written on confirm; the screen says the
-        opportunity now lives on its Job Ledger row and offers the same next action for review there, signed for that row only."""
-        h, fold = notes_page()
+    def test_an_entry_whose_pursuit_moved_to_another_row_is_kept_and_offered_there(self):
+        """LIFE-169 (Jim, Oct 30 2026): the pursuit is carried by another Ledger row after Manage opened. Nothing is written on confirm; the screen offers the same entry for
+        review on that row, signed for that row only."""
+        h, fold = ledger_page()
         review = h.fields(h.hand_review("next", nx="Follow up via email", due="2026-11-02")[1])
-        h.world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE)
-        ledger_ready(h.world.source)
+        source = h.world.source
+        source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                         # no longer a pursuit row
+        source.pages[TD.SIBLING] = TD.Source.make(TD.SIBLING, COMPANY, ROLE)
+        source.pages[TD.SIBLING]["properties"][D.HAND_SET] = {"rich_text": []}
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409, body)
-        self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(TD.TARGET)}" target="_blank" rel="noopener">its Job Ledger row ↗</a>', body)
-        self.assertIn("marked Applied on the Job Ledger after Manage opened", body)
+        self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(TD.SIBLING)}" target="_blank" rel="noopener">another Job Ledger row ↗</a>', body)
         self.assertIn("/manage?o=" + D._page_id(h.world.ws.target), body)                              # Manage again, from the opportunity page
         self.assertEqual(h.writes(), (0, 0))
         moved = next(f for f in forms(body) if f.get("act") == "next")
-        self.assertEqual((moved["k"], moved["o"], moved["nx"], moved["due"], moved["step"]), ("ledger", D._page_id(TD.TARGET), "Follow up via email", "2026-11-02", "review"))
-        for patch in ({"k": "notes"}, {"o": D._page_id(h.world.ws.target)}, {"t": "0" * 64}):          # signed for the Ledger row only
+        self.assertEqual((moved["k"], moved["o"], moved["nx"], moved["due"], moved["step"]), ("ledger", D._page_id(TD.SIBLING), "Follow up via email", "2026-11-02", "review"))
+        for patch in ({"k": "notes"}, {"o": D._page_id(TD.TARGET)}, {"t": "0" * 64}):                   # signed for that row only
             self.assertEqual(h.call("POST", "/manage", form={**moved, **patch})[0], 403, patch)
         status, body, _ = h.call("POST", "/manage", form=moved)
         self.assertEqual(status, 200, body)
-        self.assertIn("Your next action: Follow up via email · Due: 2026-11-02", body)
-        self.assertEqual(h.writes(), (0, 0))                                                            # review writes nothing
         status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
-        self.assertEqual(M.next_of(hand_text(h.world.source).splitlines())["text"], "Follow up via email")
-        self.assertIsNone(M.next_of(lines(h, fold)))                                                    # nothing went to the Notes page
+        self.assertEqual(M.next_of(hand_text(source, TD.SIBLING).splitlines())["text"], "Follow up via email")
 
-    def test_a_hold_whose_pursuit_moved_back_to_its_notes_page_is_offered_there(self):
-        h, fold = notes_page()
-        h.world.source.pages[TD.TARGET] = TD.Source.make(TD.TARGET, COMPANY, ROLE)
-        ledger_ready(h.world.source)
-        review = h.fields(h.hand_review("hold", v="waiting")[1])
-        self.assertEqual(review["k"], "ledger")
-        h.world.source.pages[TD.TARGET]["properties"]["Applied"] = {"checkbox": False}                  # Applied unticked after Manage opened
-        status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
+    def test_a_pursuit_with_no_ledger_row_is_refused_and_nothing_is_written(self):
+        h = M2()                                                                                        # D195 superseded: an opportunity page alone carries no hold
+        page_with_fold(h, action=DERIVED)
+        status, body, _ = h.hub(h.world.ws.target)
         self.assertEqual(status, 409, body)
-        self.assertIn(f'This opportunity now lives on <a href="https://www.notion.so/{D._page_id(h.world.ws.target)}" target="_blank" rel="noopener">its Notes page ↗</a>', body)
-        moved = next(f for f in forms(body) if f.get("act") == "hold")
-        self.assertEqual((moved["k"], moved["o"], moved["v"]), ("notes", D._page_id(h.world.ws.target), "waiting"))
-        self.assertEqual(h.writes(), (0, 0))
-
-    def test_a_page_without_the_life_os_fold_is_refused(self):
-        h = M2()
-        status, body, _ = h.hand("hold", v="paused")
-        self.assertEqual(status, 409, body)
-        self.assertIn("DECISION_NOT_A_LIFE_OS_PAGE", body)
+        self.assertIn("DECISION_NO_MATCH", body)
         self.assertEqual(h.writes(), (0, 0))
 
     def test_a_closed_pursuit_offers_no_hand_set_forms(self):
-        h, fold = notes_page()
-        h.close(D._page_id(h.world.ws.target), "Withdrew")
+        h, fold = ledger_page()
+        h.close(TD.TARGET, "Withdrew")
         self.assertFalse([f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act")])
 
 
@@ -219,7 +184,7 @@ class ManageLedgerRow(unittest.TestCase):
         self.assertFalse([f for f in forms(body) if f.get("act")])
         source = h.world.source
         with self.assertRaises(D.DecisionError) as caught:
-            D.set_hand(source, "ledger", {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
+            D.set_hand(source, {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
         self.assertEqual(str(caught.exception), "DECISION_SCHEMA_MISSING")
         self.assertEqual(source.patches(), [])
 
@@ -249,14 +214,14 @@ class ManageLedgerRow(unittest.TestCase):
         self.assertIn("DEGRADED · DECISION_READBACK_MISMATCH", body)
         h.world.source.pages[TD.TARGET]["properties"]["Hiring Decision"] = {"select": {"name": "Rejected"}}
         with self.assertRaises(D.DecisionError) as caught:
-            D.set_hand(h.world.source, "ledger", {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
+            D.set_hand(h.world.source, {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
         self.assertEqual(str(caught.exception), "DECISION_CLOSED")
 
     def test_text_in_the_property_that_is_not_ours_is_never_replaced(self):
         source = ledger_ready(TD.Source(rows=[(TD.TARGET, COMPANY, ROLE)]))
         source.pages[TD.TARGET]["properties"][D.HAND_SET] = {"rich_text": [{"plain_text": "Jim's own note"}]}
         with self.assertRaises(D.DecisionError) as caught:
-            D.set_hand(source, "ledger", {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
+            D.set_hand(source, {"id": TD.TARGET, "company": COMPANY, "role": ROLE}, M.hold_line(M.PAUSED, SET_AT, OP), True)
         self.assertEqual(str(caught.exception), "DECISION_HISTORY_UNREADABLE")
         self.assertEqual(source.patches(), [])
 
@@ -416,7 +381,7 @@ class OpportunityPage(unittest.TestCase):
         self.assertEqual(create.refresh(client, page_id, current, True, out), "parent_unchanged")
 
     def test_mark_complete_on_its_key_clears_it_on_the_page_and_on_manage(self):
-        h = M2()
+        h = M2([(TD.TARGET, COMPANY, ROLE)])
         fold = page_with_fold(h, action=DERIVED)
         ws = h.world.ws
         ws.add("paragraph", fold, f"v7-action:1;key={OP};text=Send the work sample to Pat")              # what the page writer writes for it
@@ -450,9 +415,9 @@ class Contract(unittest.TestCase):
         self.assertEqual(create._undone(nodes), [{"text": notion.FOLD, "children": [{"text": notion.MARKERS["opportunity"]}]}])
 
     def test_errors_and_logs_carry_no_text_jim_typed(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         review = h.fields(h.hand_review("next", nx="Secret plan for Pat")[1])
-        h.world.ws.fail.add("append")
+        h.world.source.fail_write = True
         status, body, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 500)
         detail = re.search(r'<div class="notice danger">(.*?)</div>', body).group(1)

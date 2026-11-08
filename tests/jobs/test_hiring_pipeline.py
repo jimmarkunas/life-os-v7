@@ -181,4 +181,4 @@ class LedgerFirst(unittest.TestCase):
         from lifeos.sources import hiring as stage
         tree = {"root": [page("o1", "Acme — Program Manager")], "o1": []}
         out = stage.read_parents(Fake(tree), "root", FakeLedgerClient([[row("r1", "Acme", "Program Manager", "Applied"), row("r2", "Beta", "Analyst", "Applied")]]))
-        self.assertEqual({p["company"]: (p["id"], p["row_only"]) for p in out}, {"Acme": ("o1", False), "Beta": ("r2", True)})
+        self.assertEqual({p["company"]: (p["id"], p["row_id"]) for p in out}, {"Acme": ("o1", "r1"), "Beta": ("r2", "r2")})      # LIFE-353: the decision writers act on row_id

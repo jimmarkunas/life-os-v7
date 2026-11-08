@@ -1,5 +1,6 @@
 """LIFE-88 E14 (Jim, Oct 24): Manage (12a, a read-only hub of the existing actions) and Reopen (12b, a signed review and confirm through the S1 decision
-rules), driven the way the Edge gate calls them, against the same synthetic Ledger and Notes stand-ins as the Close screen. Every name is invented."""
+rules), driven the way the Edge gate calls them, against the same synthetic Ledger and page-tree stand-ins as the Close screen. LIFE-353: the decision lives on the Job Ledger
+row; Reopen clears it there and no page moves. Every name is invented."""
 import html
 import re
 import unittest
@@ -8,7 +9,7 @@ from unittest import mock
 from lifeos.hiring import decision as D
 from lifeos.sources import close_app, manage_app
 from tests.hiring import test_decision as TD
-from tests.hiring.test_close_app import Both, Harness
+from tests.hiring.test_close_app import STAGED, Both, Harness
 from tests.hiring.test_notes_decision import COMPANY, ROLE
 
 
@@ -47,15 +48,23 @@ class Hub(unittest.TestCase):
         self.assertIn(f'<a class="status" href="https://www.notion.so/{lid}" target="_blank" rel="noopener">Open · Job Ledger ↗</a>', body)     # LIFE-169: the record label opens it in Notion
         self.assertEqual(h.writes(), (0, 0))
 
-    def test_a_notes_only_pursuit_links_close_on_its_own_page_and_no_ledger_actions(self):
+    def test_a_pursuit_with_no_ledger_row_is_refused_with_nothing_written(self):
         h = H()
         status, body, _ = h.hub(h.world.ws.target)
-        self.assertEqual(status, 200, body)
-        self.assertIn(f"/?o={D._page_id(h.world.ws.target)}", links(body))
-        self.assertFalse([u for u in links(body) if u.startswith(("/resume", "/sent"))])
+        self.assertEqual(status, 409, body)
+        self.assertIn("DECISION_NO_MATCH", body)
+        self.assertEqual(h.writes(), (0, 0))
+
+    def test_an_interview_pursuit_row_opens_manage_from_its_own_row_page(self):
+        h = H([(STAGED, COMPANY, ROLE)])
+        h.world.source.pages[STAGED] = TD.Source.make(STAGED, COMPANY, ROLE, applied=False, stage="Interviewing")
+        for page in (STAGED, h.world.ws.target):                                            # LIFE-361 rows are the opportunity page; an older page still finds its row
+            status, body, _ = h.hub(page)
+            self.assertEqual(status, 200, body)
+            self.assertIn(f"/?o={STAGED}", links(body))
 
     def test_the_open_primary_action_is_linked_to_mark_complete_until_it_is_done(self):
-        h = H()
+        h = H([(TD.TARGET, COMPANY, ROLE)])
         ws, page = h.world.ws, h.world.ws.target
         fold = ws.add("toggle", page, close_app.FOLD)
         ws.kids[page].remove(fold)
@@ -88,31 +97,22 @@ class Reopen(unittest.TestCase):
         self.assertEqual(h.after, ["hiring", "hiring"])                                   # the close and the reopen each ask for the Hiring redraw
         self.assertGreater(h.writes(), writes)
 
-    def test_a_closed_notes_page_moves_back_to_active_opportunities(self):
-        h = H()
-        ws = h.world.ws
-        self.assertEqual(h.close(D._page_id(ws.target), "Withdrew")[0], 200)
-        self.assertEqual(ws.where(ws.target), ws.retired[0])
-        status, body, _ = h.reopen(ws.target)
+    def test_gwt_dw_2_an_interview_pursuit_row_closed_and_reopened_on_the_screens_moves_no_page(self):
+        h = H([(STAGED, COMPANY, ROLE)])
+        h.world.source.pages[STAGED] = TD.Source.make(STAGED, COMPANY, ROLE, applied=False, stage="Interviewing")
+        self.assertEqual(h.close(STAGED, "Withdrew")[0], 200)
+        self.assertEqual(h.world.source.decision(STAGED), {"name": "Withdrew"})
+        status, body, _ = h.reopen(STAGED)                                                # Jim's UAT path: close, then reopen, from the row's own Manage link
         self.assertEqual(status, 200, body)
-        self.assertEqual(ws.where(ws.target), ws.active[0])
-        self.assertIn("Hiring decision (V7) · Reopened · ", ws.digest(ws.target)[-1][2])
-
-    def test_a_notes_page_closed_as_hired_can_be_reopened_with_its_tick(self):
-        h = H()
-        ws = h.world.ws
-        self.assertEqual(h.close(D._page_id(ws.target), "Hired")[0], 200)
-        self.assertIn("If it was recorded as Hired: reopen it anyway", h.hub(ws.target)[1])
-        self.assertEqual(h.reopen(ws.target)[0], 409)
-        self.assertEqual(ws.where(ws.target), ws.retired[0])
-        status, body, _ = h.reopen(ws.target, h="1")
-        self.assertEqual(status, 200, body)
-        self.assertEqual(ws.where(ws.target), ws.active[0])
+        self.assertIsNone(h.world.source.decision(STAGED))
+        self.assertEqual([e["action"] for e in D.entries(h.world.source.history(STAGED))], [D.ACTION, D.REOPEN])
+        self.assertEqual(h.world.ws.writes(), [])
+        self.assertEqual(h.world.source.pages[STAGED]["properties"]["Stage"], {"select": {"name": "Interviewing"}})
 
     def test_reopen_is_offered_only_when_the_reopen_routing_reaches_the_same_record(self):
         h = H([(TD.TARGET, COMPANY, ROLE)])
         h.close(TD.TARGET, "Rejected")
-        with mock.patch.object(D, "route", side_effect=[("ledger", {"id": TD.TARGET, "decision": "Rejected"}), D.fail("AMBIGUOUS")]):
+        with mock.patch.object(D, "route", side_effect=[{"id": TD.TARGET, "company": COMPANY, "role": ROLE, "decision": "Rejected"}, D.fail("AMBIGUOUS")]):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn("Reopen is not available here: DECISION_AMBIGUOUS", body)
         self.assertNotIn("Reopen this opportunity", body)

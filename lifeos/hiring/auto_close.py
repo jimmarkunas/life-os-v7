@@ -2,7 +2,7 @@
 
 A row closes itself only when the outcome mail (D190) is a REJECTION that names the row's exact role as well as its company, the row was computed this run from complete,
 fresh reads, and no other role Jim pursued at that company shares its words. A company-only match ("Possible rejection") stays a line Jim confirms. The close is the same checked write the private Close screen makes, through `decision.route`:
-the one Ledger application gets `Hiring Decision = Rejected` (re-read, written, read back), else the one Active Notes page moves to Retired Opportunities. Anything the Close screen would
+the one Ledger row of the pursuit gets `Hiring Decision = Rejected` (re-read, written, read back; LIFE-353: Ledger rows only, no page moves). Anything the Close screen would
 refuse is refused here, counted by fixed code, and the row stays as it was. Nothing is deleted, sent or marked in the mailbox, and a Reopen undoes it.
 
 It runs only when the hourly run is live AND the HIRING_AUTO_CLOSE switch is on (lifeos/platform/switches.json; a repository variable "off" is Jim's kill switch). Off, the rows that would close are only counted.
@@ -26,11 +26,11 @@ def due(rows):
             and not r.get("carried")]
 
 
-def unique_role(row, applied, parents):
-    """No other role Jim pursued at this company (Ledger rows, any decision, and Notes pages, retired included) contains this role's words: the mail may be about that one."""
+def unique_role(row, pursuits):
+    """No other role Jim pursued at this company (Ledger pursuit rows, any decision) contains this role's words: the mail may be about that one."""
     words = set(names.tokens(row["role"]))
     return not any(names.same_company(o["company"], row["company"]) and not M.same(o["company"], o["role"], row["company"], row["role"]) and words <= set(names.tokens(o["role"]))
-                   for o in list(applied) + list(parents))
+                   for o in pursuits)
 
 
 def request(row, target_id, day):
@@ -40,22 +40,22 @@ def request(row, target_id, day):
             "reason": f"Auto-closed: rejection email received {day} (Jim's standing rule, Oct 24)"}
 
 
-def run(rows, applied, parents, environ, live, now, ledger_client, pipe, root, read_parents, day_of):
-    """-> {"due", "closed": [shown entries], "refused": {code: n}, "switch": bool}. `day_of(iso)` formats a received time as "Sep 17"; `read_parents()` re-reads the pages for move_page."""
+def run(rows, environ, live, now, ledger_client, day_of):
+    """-> {"due", "closed": [shown entries], "refused": {code: n}, "switch": bool}. `day_of(iso)` formats a received time as "Sep 17". The Ledger's pursuit rows are read once, only when a row is due."""
     out = {"due": 0, "closed": [], "refused": {}, "switch": bool(live) and switches.state(SWITCH, environ)}
+    pursuits = None
     for row in due(rows):
         out["due"] += 1
         if not out["switch"]:
             continue
         day = day_of(row["outcome"]["received"])
         try:
-            if not unique_role(row, applied, parents):
+            if pursuits is None:
+                pursuits = decision.rows(decision.ledger_pages(ledger_client))
+            if not unique_role(row, pursuits):
                 raise decision.fail("ROLE_NOT_UNIQUE")
-            kind, target = decision.route(applied, parents, {"company": row["company"], "role": row["role"], "action": decision.ACTION})
-            want = request(row, decision._page_id(target.get("id")), day)
-            if kind == "notes" and decision.unapplied_matches(ledger_client, decision.parse(want)):
-                raise decision.fail("LEDGER_UNAPPLIED")                  # a Ledger row for this role not marked Applied may be the application: Jim decides, as on the Close screen
-            done = decision.confirm_rejected(ledger_client, want, True, now) if kind == "ledger" else decision.move_page(pipe, root, want, True, now, read_parents)
+            target = decision.route(pursuits, {"company": row["company"], "role": row["role"], "action": decision.ACTION})
+            done = decision.confirm_rejected(ledger_client, request(row, decision._page_id(target.get("id")), day), True, now)
             if done.get("verified") is not True or done.get("status") not in ("recorded", "already_recorded"):
                 raise decision.fail("NOT_VERIFIED")
             out["closed"].append({"key": row["key"], "label": M.label(row["company"], row["role"]), "received": row["outcome"]["received"], "at": now.isoformat()})

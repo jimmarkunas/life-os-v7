@@ -33,6 +33,8 @@ class Both:
         self.source = world.source.source
 
     def call(self, method, path, body=None):
+        if path.startswith("/blocks/") and path.split("/")[2].split("?")[0].replace("-", "") in self.w.source.pages:
+            return self.w.source.call(method, path, body)                                    # a Ledger row's own page body (LIFE-361 rows are the opportunity page)
         return (self.w.source if path.startswith("/data_sources") else self.w.ws).call(method, path, body)
 
     def call_once(self, *args, **kw):
@@ -94,11 +96,19 @@ class Harness:
         return self.call("POST", form={**f, "step": "confirm"}, **kw)
 
 
+STAGED = "ee" * 16
+
+
+def staged_harness(**kw):
+    """An interview pursuit's row (LIFE-361): Stage set, Applied not ticked. LIFE-353: it closes on the row like any application."""
+    h = Harness([(STAGED, COMPANY, ROLE)], **kw)
+    h.world.source.pages[STAGED] = TD.Source.make(STAGED, COMPANY, ROLE, applied=False, stage="Interviewing")
+    return h
+
+
 class Get(unittest.TestCase):
     def test_get_shows_the_exact_record_makes_no_write_and_leaks_nothing(self):
-        for pid, rows in ((TD.TARGET, [(TD.TARGET, COMPANY, ROLE)]), (None, [])):
-            h = Harness(rows)
-            pid = pid or h.world.ws.target.replace("-", "")
+        for pid, h in ((TD.TARGET, Harness([(TD.TARGET, COMPANY, ROLE)])), (STAGED, staged_harness())):
             before = h.writes()
             status, body, fields = h.open(pid)
             self.assertEqual((status, h.writes()), (200, before))
@@ -124,7 +134,7 @@ class Get(unittest.TestCase):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
         _, _, f = h.open(TD.TARGET)
         before = h.writes()
-        for key, value in (("co", "Another Company"), ("ro", "Another Role"), ("k", "notes" if f["k"] == "ledger" else "ledger"), ("k", "other")):
+        for key, value in (("co", "Another Company"), ("ro", "Another Role"), ("k", "notes"), ("k", "other")):
             status, body, _ = h.call("POST", form={**f, key: value, "step": "review", "outcome": "Rejected"})
             self.assertEqual(status, 403, key)
             self.assertIn("no longer valid", body)
@@ -153,37 +163,29 @@ class Get(unittest.TestCase):
         self.assertEqual(h.call("GET", "/", query={})[0], 400)
         self.assertEqual(h.call("GET", "/", query={"o": "not-an-id"})[0], 400)
 
-    def test_an_unknown_ambiguous_cross_or_closed_record_is_refused_and_nothing_is_written(self):
+    def test_an_unknown_record_a_notes_page_or_a_closed_row_is_refused_and_nothing_is_written(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
-        notes_id = h.world.ws.target.replace("-", "")                                           # the Notes page of a pursuit that closes on its Ledger row
-        for pid, code in (("ab" * 16, "NOT_FOUND"), (notes_id, "STALE_IDENTITY")):
+        notes_id = h.world.ws.target.replace("-", "")                                           # LIFE-353: an opportunity page carries no decision; Close takes a Ledger row id
+        for pid in ("ab" * 16, notes_id):
             status, body, _ = h.open(pid)
             self.assertEqual(status, 409)
-            self.assertIn("DECISION_" + code, body)
-        dup = Harness([(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, ROLE)])
-        self.assertIn("DECISION_AMBIGUOUS", dup.open(TD.TARGET)[1])
-        twin = Harness()
-        twin.world.ws.opportunity(f"{COMPANY} — {ROLE}", "Pat Twin")
-        self.assertIn("DECISION_AMBIGUOUS", twin.open(twin.world.ws.target.replace("-", ""))[1])
+            self.assertIn("DECISION_NO_MATCH", body)
+        unapplied = Harness([(STAGED, COMPANY, ROLE)])
+        unapplied.world.source.pages[STAGED]["properties"]["Applied"] = {"checkbox": False}     # neither Applied nor a Stage: not a pursuit
+        self.assertIn("DECISION_NO_MATCH", unapplied.open(STAGED)[1])
         closed = Harness([(TD.TARGET, COMPANY, ROLE)])
         closed.world.source.pages[TD.TARGET]["properties"]["Hiring Decision"] = {"select": {"name": "Passed"}}
         self.assertEqual(closed.open(TD.TARGET)[0], 409)
-        retired = Harness()
-        retired.world.decide(retired.world.request())
-        self.assertEqual(retired.open(retired.world.ws.target.replace("-", ""))[0], 409)
-        for each in (h, dup, twin, closed):
-            self.assertEqual(each.writes()[0], 0)
+        for each in (h, unapplied, closed):
+            self.assertEqual(each.writes(), (0, 0))
 
-    def test_an_unapplied_ledger_row_for_the_same_role_blocks_a_notes_only_closure(self):
-        h = Harness([("ee" * 16, COMPANY, ROLE)])
-        h.world.source.pages["ee" * 16]["properties"]["Applied"] = {"checkbox": False}
-        status, body = h.open(h.world.ws.target.replace("-", ""))[:2]
-        self.assertIn("DECISION_LEDGER_UNAPPLIED", body)
-        self.assertEqual(status, 409)                                                                   # LIFE-169: it says which row blocks it and what to do, not only the code
-        self.assertIn("A Job Ledger row for this role is not marked Applied", body)
-        self.assertIn(f'href="https://www.notion.so/{"ee" * 16}"', body)
-        self.assertIn("tick <b>Applied</b> on that row", body)
-        self.assertEqual(h.writes()[0], 0)
+    def test_two_rows_for_one_company_and_role_each_open_their_own_record(self):
+        dup = Harness([(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, ROLE)])
+        for pid in (TD.TARGET, TD.SIBLING):
+            status, _, f = dup.open(pid)
+            self.assertEqual((status, f["o"]), (200, pid))
+        self.assertEqual(dup.close(TD.SIBLING, "Rejected")[0], 200)
+        self.assertEqual((dup.world.source.decision(TD.TARGET), dup.world.source.decision(TD.SIBLING)), (None, {"name": "Rejected"}))
 
 
 class Post(unittest.TestCase):
@@ -201,33 +203,22 @@ class Post(unittest.TestCase):
         self.assertEqual(h.writes(), (0, 0))
         self.assertIn("Withdrew", h.call("POST", form={**f, "step": "edit", "outcome": "Withdrew", "notes": ""})[1])
 
-    def test_every_outcome_is_recorded_on_the_ledger_path_and_the_notes_path_only_after_read_back(self):
+    def test_every_outcome_is_recorded_on_the_ledger_row_only_after_read_back_and_no_page_moves(self):
         for outcome in M.OUTCOMES:
             notes = "short explanation" if outcome == "Other" else ""
-            led = Harness([(TD.TARGET, COMPANY, ROLE)])
-            status, body, _ = led.close(TD.TARGET, outcome, notes)
-            self.assertEqual((status, led.world.source.decision(), "Opportunity closed" in body), (200, {"name": outcome}, True), outcome)
-            self.assertEqual([e["outcome"] for e in D.entries(led.world.source.history())], [outcome])
-            nts = Harness()
-            status, body, _ = nts.close(nts.world.ws.target.replace("-", ""), outcome, notes)
-            ws = nts.world.ws
-            self.assertEqual((status, ws.where(ws.target), "Opportunity closed" in body), (200, ws.retired[0], True), outcome)
-            self.assertIn(f"Hiring decision (V7) · {outcome} · ", ws.digest(ws.target)[-1][2])
+            for pid, h in ((TD.TARGET, Harness([(TD.TARGET, COMPANY, ROLE)])), (STAGED, staged_harness())):
+                status, body, _ = h.close(pid, outcome, notes)
+                self.assertEqual((status, h.world.source.decision(pid), "Opportunity closed" in body), (200, {"name": outcome}, True), outcome)
+                self.assertEqual([e["outcome"] for e in D.entries(h.world.source.history(pid))], [outcome])
+                self.assertEqual(h.world.ws.writes(), [])
 
     def test_a_lead_is_closed_with_one_of_three_reasons_recorded_as_an_existing_outcome_and_a_fixed_note(self):
         for label, outcome, fixed in (("I'm passing", "Withdrew", "Passed: not interested"), ("Not a real job", "Other", "Not a real job"), ("Went nowhere", "Other", "Went nowhere")):
-            nts = Harness()
-            pid = nts.world.ws.target.replace("-", "")
-            self.assertIn(label, html.unescape(nts.open(pid)[1]))
-            status, body, _ = nts.close(pid, label, "")
-            ws = nts.world.ws
-            self.assertEqual((status, ws.where(ws.target), "Opportunity closed" in body), (200, ws.retired[0], True), label)
-            record = ws.digest(ws.target)[-1][2]
-            self.assertIn(f"Hiring decision (V7) · {outcome} · ", record)
-            self.assertIn(fixed, record)
-        led = Harness([(TD.TARGET, COMPANY, ROLE)])
-        self.assertNotIn("Not a real job", html.unescape(led.open(TD.TARGET)[1]))              # an application on the Ledger keeps the six outcomes
-        self.assertEqual(led.review(TD.TARGET, "Not a real job")[0], 400)
+            h = staged_harness()
+            self.assertIn(label, html.unescape(h.open(STAGED)[1]))
+            status, body, _ = h.close(STAGED, label, "")
+            self.assertEqual((status, h.world.source.decision(STAGED), "Opportunity closed" in body), (200, {"name": outcome}, True), label)
+            self.assertIn(fixed, D.entries(h.world.source.history(STAGED))[-1]["reason"])
 
     def test_a_missing_ledger_option_or_a_changed_record_writes_nothing(self):
         bare = Harness([(TD.TARGET, COMPANY, ROLE)], full=False)
@@ -265,13 +256,6 @@ class Post(unittest.TestCase):
         self.assertEqual((replay[0], "already recorded" in replay[1], h.writes()[0], len(D.entries(h.world.source.history()))), (200, True, 1, 1))
         status, body, _ = h.call("POST", form={**b, "step": "confirm"})                     # a second form, issued while the job was still open
         self.assertEqual((status, h.world.source.decision(), "Opportunity closed" in body), (409, {"name": "Rejected"}, False))
-        notes = Harness()
-        pid = notes.world.ws.target.replace("-", "")
-        _, _, n = notes.review(pid, "Withdrew")
-        self.assertEqual(notes.call("POST", form={**n, "step": "confirm"})[0], 200)
-        before = len(notes.world.ws.writes())
-        self.assertIn("already recorded", notes.call("POST", form={**n, "step": "confirm"})[1])
-        self.assertEqual(len(notes.world.ws.writes()), before)
 
     def test_a_backend_failure_or_a_read_back_mismatch_never_looks_like_success(self):
         for attr in ("fail_write", "drop_write"):
@@ -282,10 +266,6 @@ class Post(unittest.TestCase):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
         h.world.source.tamper = True
         self.assertNotIn("Opportunity closed", h.close(TD.TARGET, "Rejected")[1])
-        n = Harness()
-        n.world.ws.fail = {"move"}
-        status, body, _ = n.close(n.world.ws.target.replace("-", ""), "Rejected")
-        self.assertEqual((status, "Opportunity closed" in body), (500, False))
 
     def test_success_needs_the_decision_layers_verified_read_back_and_each_form_has_its_own_stable_operation(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
@@ -306,20 +286,19 @@ class Post(unittest.TestCase):
         self.assertEqual([t for v, t in buttons if v == "edit"], ["← Edit reason"])
 
     def test_the_same_page_id_listed_twice_is_ambiguous(self):
-        h = Harness()
-        pid = h.world.ws.target.replace("-", "")
-        rows, parents = close_app._state(Both(h.world), h.cfg["pipeline"])
-        with mock.patch.object(close_app, "_state", lambda client, root, *rest: (rows, parents + [dict(p) for p in parents if p["id"].replace("-", "") == pid])):
+        h = Harness([(TD.TARGET, COMPANY, ROLE)])
+        pages = D.ledger_pages(Both(h.world))
+        with mock.patch.object(close_app.D, "ledger_pages", lambda client: pages + pages):
             with self.assertRaises(D.DecisionError) as error:
-                close_app.resolve(Both(h.world), h.cfg, pid)
+                close_app.resolve(Both(h.world), h.cfg, TD.TARGET)
         self.assertEqual(str(error.exception), "DECISION_AMBIGUOUS")
 
     def test_a_closure_the_screen_records_leaves_the_compiled_hiring_rows_for_every_outcome(self):
         for outcome in M.OUTCOMES:
             notes = "short explanation" if outcome == "Other" else ""
-            for pid_of, rows in ((lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")]), (lambda h: h.world.ws.target.replace("-", ""), [])):
+            for rows in ([(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")],):
                 h = Harness(rows)
-                self.assertEqual(h.close(pid_of(h), outcome, notes)[0], 200, outcome)
+                self.assertEqual(h.close(TD.TARGET, outcome, notes)[0], 200, outcome)
                 ledger_rows, _ = close_app._state(Both(h.world), h.cfg["pipeline"])
                 parents = hiring_source.read_parents(Both(h.world), h.cfg["pipeline"])                # the hourly job's own reader, interview counts included
                 compiled = T.compile_([dict(r, applied_on="2026-10-02") for r in ledger_rows], parents)
@@ -327,24 +306,6 @@ class Post(unittest.TestCase):
                 self.assertNotIn((COMPANY, ROLE), listed, outcome)                                    # the closed pursuit is no longer an active row
                 self.assertEqual(compiled["reasons"], [], outcome)                                     # not flagged as ambiguous either
                 self.assertIn((COMPANY, "Director, Delivery"), listed)                                # and nothing else left with it
-
-    def test_an_interrupted_or_unverified_notes_closure_never_claims_nothing_changed_or_that_it_closed(self):
-        for mode in ("fail", "drop_move"):
-            h = Harness()
-            ws, pid = h.world.ws, h.world.ws.target.replace("-", "")
-            if mode == "fail":
-                ws.fail = {"move"}                                                                      # the Pending record lands, the move does not
-            else:
-                ws.drop_move = True                                                                     # the move is acknowledged but not kept
-            status, body, _ = h.close(pid, "Withdrew")
-            text = re.sub(r"<[^>]+>", " ", html.unescape(body))
-            self.assertEqual(status, 500, mode)
-            for claim in ("Nothing else was changed", "Nothing was changed", "Opportunity closed", "read back successfully"):
-                self.assertNotIn(claim, text, (mode, claim))
-            self.assertTrue(all(w in text for w in ("Could not verify closure", "Do not assume", "DEGRADED")), mode)
-            self.assertTrue(any("Pending" in (block[2] or "") for block in ws.digest(ws.target)) or mode == "drop_move", mode)      # the page really is partially applied
-            if mode == "fail":
-                self.assertNotIn(ws.where(ws.target), ws.retired)                                       # still in the Active container
 
     def test_every_result_page_has_the_same_neutral_subtitle(self):
         h = Harness([(TD.TARGET, COMPANY, ROLE)])
@@ -424,10 +385,9 @@ class Contract(unittest.TestCase):
 class Refresh(unittest.TestCase):
     """Jim, Oct 24 ("approve the refresh trigger"): after a verified close the app asks the gate to redraw the Hiring Pipeline region now; nothing else asks."""
 
-    def test_a_verified_ledger_or_notes_close_asks_for_the_hiring_redraw_once(self):
-        for pid_of, rows in ((lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE)]), (lambda h: h.world.ws.target.replace("-", ""), [])):
-            h = Harness(rows)
-            self.assertEqual(h.close(pid_of(h), "Rejected")[0], 200)
+    def test_a_verified_close_asks_for_the_hiring_redraw_once(self):
+        for pid, h in ((TD.TARGET, Harness([(TD.TARGET, COMPANY, ROLE)])), (STAGED, staged_harness())):
+            self.assertEqual(h.close(pid, "Rejected")[0], 200)
             self.assertEqual(h.after, ["hiring"])
 
     def test_review_cancel_and_a_refused_or_unverified_close_ask_nothing(self):
@@ -451,52 +411,15 @@ class Refresh(unittest.TestCase):
 
 
 class Speed(unittest.TestCase):
-    """Jim, Oct 24: "the confirm closure button takes a bit too long". A Ledger confirm reads the Applied rows once and never walks the Notes pages; a Notes confirm still does both."""
+    """Jim, Oct 24: "the confirm closure button takes a bit too long". LIFE-353: a confirm reads the Ledger's pursuit rows once and never walks the opportunity pages."""
 
-    def confirm_reads(self, pid_of, rows):
-        h = Harness(rows)
-        pid = pid_of(h)
-        _, _, f = h.review(pid, "Rejected")
-        src, ws = len(h.world.source.log), len(h.world.ws.log)
-        status, body, _ = h.call("POST", form={**f, "step": "confirm"})
-        self.assertEqual(status, 200, body)
-        return [e for e in h.world.source.log[src:] if e[0] == "QUERY"], [e for e in h.world.ws.log[ws:] if e[:2] == ("GET", "children")]
-
-    def test_a_ledger_confirm_scans_the_ledger_once_and_never_walks_the_notes_pages(self):
-        queries, walked = self.confirm_reads(lambda h: TD.TARGET, [(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")])
-        self.assertEqual((len(queries), walked), (1, []))
-
-    def test_a_notes_confirm_walks_the_pages_twice_and_reads_the_ledger_only_where_it_decides(self):
-        queries, walked = self.confirm_reads(lambda h: h.world.ws.target.replace("-", ""), [])
-        self.assertEqual((len(queries), len(walked)), (2, 18))                                     # was 4 and 24: the first section check reuses resolve's read, the pre-write one never scans the Ledger
-
-    def test_the_check_right_before_a_notes_move_still_reads_the_pages_fresh(self):
-        h = Harness()
-        pid = h.world.ws.target.replace("-", "")
-        _, _, f = h.review(pid, "Rejected")
-        seen = []
-        real = close_app._state
-        def spy(client, root, pid=None, pages=None):
-            seen.append((pid, pages))
-            return real(client, root, pid, pages)
-        with mock.patch.object(close_app, "_state", spy):
-            self.assertEqual(h.call("POST", form={**f, "step": "confirm"})[0], 200)
-        self.assertEqual([(a, b is None) for a, b in seen], [(pid, False), (None, False)])         # resolve's read (by page id, its own Applied read), then the fresh pages-only read before the write
-        self.assertEqual(seen[1][1], [])
-
-    def test_a_page_that_left_its_section_after_the_screen_read_is_refused_by_the_fresh_check(self):
-        h = Harness()
-        pid = h.world.ws.target.replace("-", "")
-        _, _, f = h.review(pid, "Rejected")
-        real = close_app._state
-        def moved(client, root, pid_=None, pages=None):
-            rows, parents = real(client, root, pid_, pages)
-            return rows, [dict(p, retired=True) for p in parents] if pid_ is None else parents  # only the pre-write read (no page id) sees it in Retired
-        with mock.patch.object(close_app, "_state", moved):
+    def test_a_confirm_scans_the_ledger_once_and_never_walks_the_pages(self):
+        for pid, h in ((TD.TARGET, Harness([(TD.TARGET, COMPANY, ROLE), (TD.SIBLING, COMPANY, "Director, Delivery")])), (STAGED, staged_harness())):
+            _, _, f = h.review(pid, "Rejected")
+            src, ws = len(h.world.source.log), len(h.world.ws.log)
             status, body, _ = h.call("POST", form={**f, "step": "confirm"})
-        self.assertNotEqual(status, 200)
-        self.assertIn("STALE_SOURCE", body)
-        self.assertEqual(h.writes(), (0, 0))                                                       # nothing appended, nothing moved
+            self.assertEqual(status, 200, body)
+            self.assertEqual((len([e for e in h.world.source.log[src:] if e[0] == "QUERY"]), h.world.ws.log[ws:]), (1, []))
 
 
 if __name__ == "__main__":

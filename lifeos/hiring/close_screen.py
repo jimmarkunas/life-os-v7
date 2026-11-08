@@ -86,14 +86,14 @@ def page(title, sub, body, path="Daily Report / Active Opportunities / Close", t
 
 
 def _job(opp):
-    source = "Job Ledger application" if opp["kind"] == "ledger" else "Hiring Pipeline Notes page"
+    source = "Job Ledger row"
     return (f'<section class="section"><div class="eyebrow">Opportunity to be changed</div><div class="jobhead"><div><h2>{e(opp["role"])}</h2><div class="company">{e(opp["company"])} · Requisition {NONE.lower()}</div></div>'
             f'<span class="status">{e(source)}</span></div><div class="facts"><div class="fact"><small>Canonical job</small><b>{e(opp["company"])}</b></div><div class="fact"><small>Current stage</small>'
             f'<b>Unavailable on this screen</b></div><div class="fact"><small>Source</small><b>{e(source)}</b></div></div></section>')
 
 
 def form(opp, fields, picked="", note="", notice=""):
-    reasons = "".join(f'<label class="reason"><input type="radio" name="outcome" value="{e(r)}" required{" checked" if r == picked else ""}>{e(r)}</label>' for r in (tuple(M.LEAD_REASONS) if opp["kind"] == "notes" else ()) + M.OUTCOMES)
+    reasons = "".join(f'<label class="reason"><input type="radio" name="outcome" value="{e(r)}" required{" checked" if r == picked else ""}>{e(r)}</label>' for r in tuple(M.LEAD_REASONS) + M.OUTCOMES)
     warn = f'<div class="notice alert">{e(notice)}</div>' if notice else ""
     return page("Close opportunity", "Review the exact opportunity before making a decision.", _job(opp) + (
         f'<form method="post" action="/">{_hidden(fields)}<section class="section"><div class="eyebrow">Action · Close</div><p class="lead">Choose why you\'re closing this opportunity. Nothing is changed simply by opening this page.</p>'

@@ -1,7 +1,7 @@
 """Hiring Pipeline stage (HIRE-1.2, no mail): the one place that composes the canonical Job Ledger Applied state, the read-only Hiring Pipeline pages and accepted Calendar evidence
 into the pure compiler, keeps one private prior-state row and writes the floating Daily Report region.
 
-Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source except one: the Hiring Decision action (D194, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
+Lives under sources because it may read the Jobs reader; `lifeos/hiring` itself imports platform only. Read-only toward every source except one: the Hiring Decision action (D194 / LIFE-353, `confirm_rejected`, the only Ledger write, two properties of one confirmed row); no mail, no Calendar write, no Jira, no Interview page write. A source read that is not provably complete counts as unavailable, and the run shows DEGRADED with the last accepted state, never an empty table.
 Counts and fixed codes only."""
 import contextlib
 import os
@@ -61,23 +61,19 @@ def _day(value):
 
 
 def decide(request, live, environ=os.environ, ledger_client=None, now=None, **refresh):
-    """D194/D195, one confirmed action end to end for ONE correlated pursuit: `decision.route` picks the Ledger application (exact write with read-back) or, when there is no ELIGIBLE APPLIED Ledger row (an unapplied row is not an application), the one Active Notes page
-    (moved into Retired Opportunities, or back on Reopen); several matches or a Ledger-closed Reopen are refused with nothing written. THEN the Hiring Pipeline projection is refreshed, so a pursuit leaves the
-    queue only after the decision was verified, and `cleared` needs the exact pursuit absent from the rendered table. Any decision error is raised before the projection is touched; a refresh that fails after a
-    verified write is reported as `projection: FAILED` with the decision standing."""
+    """D194 / LIFE-353, one confirmed action end to end for ONE pursuit: `decision.route` finds its Job Ledger row by page id (a fresh read of the Ledger's pursuit rows) and
+    `decision.confirm_rejected` writes it with read-back; no page is moved. THEN the Hiring Pipeline projection is refreshed, so a pursuit leaves the queue only after the decision was
+    verified, and `cleared` needs the exact pursuit absent from the rendered table. Any decision error is raised before the projection is touched; a refresh that fails after a verified
+    write is reported as `projection: FAILED` with the decision standing."""
     now = (now or datetime.now(TZ)).astimezone(TZ)
     client = ledger_client or Client(environ)
     if ledger.verify(client) != ledger.OK:
         raise NotionError("HIRING_LEDGER_TARGET")
-    want, root, pipe = decision.parse(request), (environ.get("HIRING_PIPELINE_PAGE_ID") or "").strip(), refresh.get("pipeline_client") or _pipeline_client(environ)
-    if not root:
-        raise NotionError("HIRING_PAGES_UNREADABLE")
-    kind, target = decision.route(read_applied(client), read_parents(pipe, root), want)
+    want = decision.parse(request)
+    target = decision.route(decision.rows(decision.ledger_pages(client)), want)
     if decision._page_id(target["id"]) != want["id"]:
         raise decision.fail("STALE_IDENTITY")
-    if kind == "notes" and want["action"] == decision.ACTION and decision.unapplied_matches(client, want) != want["ack"]:
-        raise decision.fail("LEDGER_UNAPPLIED")                        # a Ledger row for this company and role that is not marked Applied may be this application: mark it Applied (then it closes on the Ledger), or acknowledge exactly those row ids as not this application
-    done = decision.confirm_rejected(client, request, live, now) if kind == "ledger" else decision.move_page(pipe, root, request, live, now, lambda: read_parents(pipe, root))
+    done = decision.confirm_rejected(client, request, live, now)
     done["cleared"] = False                                            # the queue is cleared only when the refreshed projection is fresh, its write verified and the exact pursuit is gone
     try:
         counts = run(0, live, environ, ledger_client=client, now=now, target=(request["company"], request["role"]), **refresh)
@@ -93,12 +89,12 @@ confirm_rejected = decide                                              # the D19
 
 def read_parents(client, root_id, ledger_client=None):
     """Opportunity pages under Active and Retired Opportunities (read only) -> [{"id", "company", "role", "rounds", "retired"}]. D189: a page under Retired Opportunities means that pursuit is closed.
-    LIFE-352: with `ledger_client`, pursuits come from Job Ledger rows with Stage set first (the page tree fills in the rest); a Ledger pursuit keeps its matching page-tree page id as "id" so
-    the Close and Reopen writers, which still move tree pages until LIFE-353, are unaffected. Without it, the page tree alone, exactly as before."""
+    LIFE-352: with `ledger_client`, pursuits come from Job Ledger rows with Stage set first (the page tree fills in the rest); a Ledger pursuit keeps its matching page-tree page id as "id"
+    (the page the report links) and its own row page id as "row_id" (LIFE-353: the record the decision writers act on). Without it, the page tree alone, exactly as before."""
     found, status = hiring_pipeline.snapshot(client, root_id, ledger=ledger_client)
     if status != "ok":
         raise NotionError("HIRING_PAGES_UNREADABLE")
-    return [{"id": o.tree_id or o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied, "holds": o.holds, "row_only": o.from_row and not o.tree_id} for o in found]
+    return [{"id": o.tree_id or o.page_id, "company": o.company, "role": o.role, "rounds": o.rounds, "retired": o.section == hiring_pipeline.RETIRED, "lead": o.lead, "replied": o.replied, "holds": o.holds, "row_id": o.page_id if o.from_row else None} for o in found]
 
 
 def _with_deleted(calendar, time_min, time_max):
@@ -161,12 +157,21 @@ def meeting(event):
     return (join, place) if join or place else None
 
 
+def pursuit_rows(applied, parents):
+    """The Ledger pursuit rows this run read, in `decision.route`'s shape: every Applied row, plus each Ledger pursuit (Stage set) the pipeline reader found. One row per page id."""
+    out = {decision._page_id(r.get("id")): {"id": r.get("id"), "company": r["company"], "role": r["role"], "decision": r.get("decision")} for r in applied}
+    for p in parents:
+        if p.get("row_id") and decision._page_id(p["row_id"]) not in out:
+            out[decision._page_id(p["row_id"])] = {"id": p["row_id"], "company": p["company"], "role": p["role"], "decision": None}
+    return [r for k, r in out.items() if k]
+
+
 def close_ids(rows, applied, parents):
-    """D194 S3: {row key: the page id `decision.route` would close it on}, the very rule the private Close screen runs; an ambiguous or unmatched pursuit has none."""
-    ids = {}
+    """D194 S3: {row key: the Job Ledger row id `decision.route` would close it on}, the very rule the private Close screen runs; an ambiguous or unmatched pursuit has none."""
+    ids, pursuits = {}, pursuit_rows(applied, parents)
     for r in rows or []:
         try:
-            pid = decision._page_id(decision.route(applied, parents, {"company": r["company"], "role": r["role"], "action": decision.ACTION})[1].get("id"))
+            pid = decision._page_id(decision.route(pursuits, {"company": r["company"], "role": r["role"], "action": decision.ACTION}).get("id"))
         except decision.DecisionError:
             continue
         if pid:
@@ -182,7 +187,7 @@ def _stale_hours(environ):
 
 def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=None, calendar=None, connection=None, client=None, now=None, target=None):
     now = (now or datetime.now(TZ)).astimezone(TZ)
-    ok, applied, parents, tree_parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], [], []
+    ok, applied, parents, events = {"ledger": True, "parents": True, "calendar": True}, [], [], []
     ledger_stats = {}
     ledger_client = ledger_client or Client(environ)
     try:
@@ -195,7 +200,6 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
             raise NotionError("HIRING_PAGES_UNREADABLE")
         pipeline_client = pipeline_client or _pipeline_client(environ)
         parents = read_parents(pipeline_client, root, ledger_client)               # LIFE-352: Ledger rows with Stage first, the page tree for the rest
-        tree_parents = [p for p in parents if not p["row_only"]]                    # the writers (auto-close) still act on tree pages until LIFE-353: a pursuit with no tree page is not theirs
     except Exception:
         ok["parents"] = False
     try:
@@ -219,7 +223,7 @@ def run(limit, live, environ=os.environ, ledger_client=None, pipeline_client=Non
             result["reasons"] = sorted({*result["reasons"], outcome_reason})
         auto = {"due": 0, "closed": [], "refused": {}, "switch": False}
         if all(ok.values()) and not result["reasons"] and result["rows"]:     # Jim, Oct 24: a known rejection closes itself, only when every source was read and nothing is degraded
-            auto = auto_close.run(result["rows"], applied, tree_parents, environ, live, now, ledger_client, pipeline_client, root, lambda: read_parents(pipeline_client, root), _day)
+            auto = auto_close.run(result["rows"], environ, live, now, ledger_client, _day)
             gone = {e["key"] for e in auto["closed"]}
             result["rows"], result["closed"] = [r for r in result["rows"] if r["key"] not in gone], result["closed"] + len(gone)
         recent = auto_close.shown(prior, auto["closed"], now, [r["key"] for r in result["rows"] or []])
