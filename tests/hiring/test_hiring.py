@@ -250,23 +250,24 @@ BASE = "https://oracle.tail1234.ts.net:47443"
 
 
 class CloseLinkTests(unittest.TestCase):
-    """D194 S3: a second Notes-cell link to the private Close screen, only for the one page id `decision.route` would close on, and only with a safely configured https origin."""
+    """D194 S3: a second Notes-cell link to the private Close screen, only for the one Job Ledger row `decision.route` would close on (LIFE-353: never a Notes page), and only with a safely configured https origin."""
     def ids(self, applied_rows, parents):
         rows = compile_(applied_rows, parents)["rows"]
         return rows, stage.close_ids(rows, applied_rows, parents)
 
-    def test_the_ledger_row_wins_and_a_pursuit_without_one_uses_its_one_notes_page(self):
+    def test_the_ledger_row_is_linked_and_a_pursuit_without_one_has_no_close_link(self):
         led = {**applied("Acme", "PM"), "id": LED}
         rows, ids = self.ids([led], [parent(PAGE, "Acme", "PM")])
         self.assertEqual(ids, {rows[0]["key"]: LED.replace("-", "")})                      # the Notes page is never substituted for the Ledger row
         rows, ids = self.ids([], [parent(PAGE, "Globex", "Dir", rounds=1)])
-        self.assertEqual(ids, {rows[0]["key"]: PAGE.replace("-", "")})
+        self.assertEqual(ids, {})                                                          # LIFE-353: a Notes page alone carries no decision
+        rows, ids = self.ids([], [{**parent(PAGE, "Globex", "Dir", rounds=1), "row_id": LED}])
+        self.assertEqual(ids, {rows[0]["key"]: LED.replace("-", "")})                      # an interview pursuit's row (Stage set, not Applied) is linked by its row id
 
     def test_an_ambiguous_or_unmatched_pursuit_has_no_id(self):
         led = {**applied("Acme", "PM"), "id": LED}
         self.assertEqual(self.ids([led, {**led, "id": "cccccccc-3333-4333-8333-cccccccccccc"}], [])[1], {})            # two Ledger rows
-        self.assertEqual(self.ids([], [parent(PAGE, "Acme", "PM"), parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM")])[1], {})
-        self.assertEqual(self.ids([], [parent(PAGE, "Acme", "PM"), {**parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM"), "retired": True}])[1], {})
+        self.assertEqual(self.ids([], [{**parent(PAGE, "Acme", "PM"), "row_id": LED}, {**parent("dddddddd-4444-4444-8444-dddddddddddd", "Acme", "PM"), "row_id": "cccccccc-3333-4333-8333-cccccccccccc"}])[1], {})
         self.assertEqual(self.ids([{**applied("Acme", "PM"), "id": "not-an-id"}], [])[1], {})                                    # an invalid id is dropped, never repaired
 
     def test_the_url_is_built_only_from_a_bare_https_origin_and_one_hex_id(self):
@@ -1013,8 +1014,10 @@ class AutoCloseTests(unittest.TestCase):
         def confirm(client, request, live_, at):
             calls.append(request)
             return write(request) if write else {"status": "recorded", "verified": True, "entries": 1}
+        pages = [{"id": f"{i:032x}", "properties": {"Company": {"rich_text": rich(c)}, "Job": {"title": rich(r)}}} for i, (c, r, _) in enumerate(rows, 1)]      # the Ledger's pursuit rows
         with mock.patch.object(stage.outcome_mail, "load", lambda conn: (self.FOUND if found is None else found, (now - timedelta(hours=2)).astimezone(timezone.utc).isoformat())), \
-                mock.patch.dict(RUN_ENV, {"HIRING_AUTO_CLOSE": switch}), mock.patch.object(stage.auto_close.decision, "route", lambda a, p, w: ("ledger", {"id": self.TARGET})), \
+                mock.patch.dict(RUN_ENV, {"HIRING_AUTO_CLOSE": switch}), mock.patch.object(stage.auto_close.decision, "route", lambda r, w: {"id": self.TARGET}), \
+                mock.patch.object(stage.auto_close.decision, "ledger_pages", lambda client: pages), \
                 mock.patch.object(stage.auto_close.decision, "confirm_rejected", confirm):
             counts = run(t, store, live=live, now=now, rows=rows, calendar_broken=calendar_broken)
         return t, store, counts, calls

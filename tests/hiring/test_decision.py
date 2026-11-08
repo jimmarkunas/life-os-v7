@@ -49,8 +49,8 @@ class Source:
         self.on_get = {}
 
     @staticmethod
-    def make(page_id, company, role, decision=None, history=""):
-        props = {"Company": {"rich_text": rich(company)}, "Job": {"title": rich(role)}, "Applied": {"checkbox": True}, "Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": None}},
+    def make(page_id, company, role, decision=None, history="", applied=True, stage=None):
+        props = {"Company": {"rich_text": rich(company)}, "Job": {"title": rich(role)}, "Applied": {"checkbox": applied}, "Stage": {"select": {"name": stage} if stage else None}, "Applied On": {"date": {"start": "2026-10-02", "end": None, "time_zone": None}},
                  "Stable Job Key": {"rich_text": rich(f"key-{page_id[:6]}")},
                  "Saturn Decision": {"select": {"name": "Submitted"}}, "Hiring Decision": {"select": {"name": decision} if decision else None},
                  "Hiring Decision History": {"rich_text": rich(history) if history else []}, "Dismissed Outcome Ref": {"rich_text": []}}
@@ -61,6 +61,8 @@ class Source:
         self.log.append((method, path.split("/")[1]))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
+        if path.startswith("/blocks/"):                                                    # a row page's body (the pipeline reader): these rows have none
+            return {"results": [], "has_more": False}
         props = {name: {"type": kind} for name, kind in ledger.REQUIRED.items()}
         if self.schema:
             props["Hiring Decision"] = {"type": "select", "select": {"options": [{"name": "Rejected"}, {"name": "Passed"}]}}
@@ -70,18 +72,18 @@ class Source:
 
     def query_data_source(self, source_id=None, body=None):
         flt = body["filter"]
-        if flt == {"property": "Stage", "select": {"is_not_empty": True}}:        # LIFE-352: the Ledger-first read; this stand-in holds no Stage rows and the call is not part of the write path under test
+        staged = lambda p: bool((p["properties"].get("Stage") or {}).get("select"))                       # noqa: E731
+        if flt == {"property": "Stage", "select": {"is_not_empty": True}}:        # LIFE-352: the Ledger-first read (the pipeline reader); not part of the write path under test
             if self.fail_read:
                 raise NotionError("NOTION_HTTP_500")
-            return {"results": [], "has_more": False}
+            return {"results": [copy.deepcopy(p) for p in self.pages.values() if staged(p)], "has_more": False}
         self.log.append(("QUERY", "data_sources"))
         if self.fail_read:
             raise NotionError("NOTION_HTTP_500")
         if flt == {"property": "Applied", "checkbox": {"equals": True}}:
             return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"]], "has_more": False}
-        word = flt["and"][0]["rich_text"]["contains"]                                                       # the unapplied-row probe: the company's first word, not yet Applied
-        assert flt == {"and": [{"property": "Company", "rich_text": {"contains": word}}, {"property": "Applied", "checkbox": {"equals": False}}]}
-        return {"results": [copy.deepcopy(p) for p in self.pages.values() if not p["properties"]["Applied"]["checkbox"] and word in "".join(r["plain_text"] for r in p["properties"]["Company"]["rich_text"]).lower()], "has_more": False}
+        assert flt == D.PURSUIT, flt                                                                         # LIFE-353: the decision writers' read, Applied ticked or Stage set
+        return {"results": [copy.deepcopy(p) for p in self.pages.values() if p["properties"]["Applied"]["checkbox"] or staged(p)], "has_more": False}
 
     def get_page(self, page_id):
         self.gets += 1
@@ -241,12 +243,15 @@ class IdentityAndAuthorizationTests(unittest.TestCase):
             self.assertNotIn(private, str(error.exception))
 
     def test_company_alone_never_selects_a_row(self):
-        self.refused(Chain(), request(role="Vice President, Something Else"), "DECISION_NO_MATCH")
-        self.refused(Chain(), request(role="Director, Delivery"), "DECISION_STALE_IDENTITY")          # the sibling role exists, but not under this page id
+        self.refused(Chain(), request(role="Vice President, Something Else"), "DECISION_STALE_IDENTITY")      # LIFE-353: the row is found by its page id, and its names must still agree
+        self.refused(Chain(), request(role="Director, Delivery"), "DECISION_STALE_IDENTITY")                  # the sibling role exists, but not under this page id
+        self.refused(Chain(), request(id="f6" * 16, role="Vice President, Something Else"), "DECISION_NO_MATCH")
 
-    def test_two_ledger_rows_for_one_company_and_role_are_ambiguous_and_nothing_is_written(self):
+    def test_two_ledger_rows_for_one_company_and_role_are_told_apart_by_page_id(self):
         chain = Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE), (OTHER, OTHER_COMPANY, "Program Manager")]))
-        self.refused(chain, request(), "DECISION_AMBIGUOUS")
+        chain.confirm()                                                                              # LIFE-353: the page id decides, as the Stable Job Key does for create
+        self.assertEqual((chain.source.decision(TARGET), chain.source.decision(SIBLING)), ({"name": "Rejected"}, None))
+        self.refused(Chain(Source([(TARGET, COMPANY, ROLE), (SIBLING, COMPANY, ROLE)])), request(id="f6" * 16), "DECISION_AMBIGUOUS")      # by names alone, two rows are never guessed
 
     def test_a_missing_row_or_a_row_that_is_no_longer_applied_has_no_match(self):
         chain = Chain(Source([(SIBLING, COMPANY, SIBLING_ROLE)]), parents=())               # no Notes page either: nothing to close (with one, the pursuit routes through its Notes page, D195)
@@ -500,18 +505,14 @@ class CompilerTests(unittest.TestCase):
 class BoundaryTests(unittest.TestCase):
     ROOT = T.ROOT
 
-    def test_the_only_writes_are_the_decision_properties_one_record_block_and_one_page_move(self):
+    def test_the_only_writes_are_the_decision_properties_and_the_hand_set_property_and_no_page_moves(self):
         text = (self.ROOT / "lifeos/hiring/decision.py").read_text()
         self.assertEqual(len(re.findall(r"update_page_properties\(", text)), 2)
-        self.assertEqual(re.findall(r"update_page_properties\(row\[\"id\"\], \{(\w+): .*?, (\w+): ", text), [("DECISION", "HISTORY")])
-        self.assertEqual(re.findall(r"update_page_properties\(row\[\"id\"\], \{(\w+): \{\"rich_text\": rich_text\(new\)\}\}\)", text), ["HAND_SET"])     # LIFE-111/112: the one hand-set property, alone
-        self.assertEqual(re.findall(r"client\.call_once\(\"(\w+)\", f\"([^\"]+)\"", text),                     # Jim, Oct 25: the record line goes in the page's own fold, then is set to its label in place
-                         [("PATCH", "/blocks/{fold or want['id']}/children"), ("POST", "/pages/{want['id']}/move"), ("PATCH", "/blocks/{pending[0]}"),
-                          ("PATCH", "/blocks/{fold}/children")])                                    # LIFE-111/112: one hand-set line appended to the same fold
-        self.assertIn('pending = (bid, kind)', text)                                                # the line set in place is only ever this operation's own Pending record
-        self.assertIn('if m.group(1) and m.group(4) == want["op"]', text)
-        for banned in ("tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira", '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": "):
-            self.assertNotIn(banned.lower(), text.lower(), banned)
+        self.assertEqual(re.findall(r"update_page_properties\(want\[\"id\"\], \{(\w+): .*?\*\*\(\{(\w+): ", text), [("DECISION", "HISTORY")])
+        self.assertEqual(re.findall(r"update_page_properties\(want\[\"id\"\], \{(\w+): \{\"rich_text\": rich_text\(new\)\}\}\)", text), ["HAND_SET"])     # LIFE-111/112: the one hand-set property, alone
+        for banned in ("call_once", "/move", "/children", "Retired Opportunities", "Active Opportunities", "tinyfish", "gmail", "outlook", ".create(", "lifeos.jobs", "lifeos.interview", "lifeos.jira",
+                       '"DELETE"', '"archived": True', '"in_trash": True', "Applied\": {\"checkbox\": ", "\"Stage\": {\"select\": {\"name"):
+            self.assertNotIn(banned.lower(), text.lower(), banned)                                 # LIFE-353: no page move, no block write, Stage and Applied never written
         self.assertNotIn("update_page_properties", (self.ROOT / "lifeos/sources/hiring.py").read_text())
 
     def test_the_action_is_not_reachable_from_any_stage_workflow_or_schedule(self):

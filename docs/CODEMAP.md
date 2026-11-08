@@ -143,7 +143,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/hiring/card.py`: Write the Hiring Pipeline into the ONE existing floating region of the Daily Report (HIRE-1.2). V7 owns it exclusively (router.OWNERS; it is NOT a callout).
 - `lifeos/hiring/close_screen.py`: LIFE-47 S2 (Career): the accepted Close Opportunity screen as server-rendered pages (reason, review, result) plus its stylesheet. Pure: strings in, bytes out; every dynam
 - `lifeos/hiring/compile.py`: The deterministic Hiring Pipeline compiler. Pure: inputs in, rows out; no clock reads, no I/O, no model.
-- `lifeos/hiring/decision.py`: D194 Hiring Decision, the first action: a person confirms an employer rejection (Confirm Rejected).
+- `lifeos/hiring/decision.py`: D194 Hiring Decision on the Job Ledger row (LIFE-353, REQ-5: the Ledger row is the job record; hiring status lives on it, D195 superseded).
 - `lifeos/hiring/models.py`: Hiring Pipeline vocabulary (Production Contract, Hiring Pipeline) and the one identity rule. Pure: no I/O.
 - `lifeos/hiring/outcomes.py`: Outcome mail for the Hiring Pipeline (D190): a rejection or an offer that reached Gmail or Outlook after the pipeline last heard from an opportunity.
 - `lifeos/hiring/render.py`: Render the compiled Hiring Pipeline into the status line and the four-column table. Pure: no clock reads, no I/O.
@@ -656,3 +656,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D249: The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)
 - D250: V7 reads and writes Notion only through databases and fixed IDs, never a page tree, an exact title or a page location (2026-11-07, Jim; LIFE-357)
 - D251: Every job gets the Bitwarden helper program from a saved, fingerprint-checked copy; the download, with a long retry, runs only when no copy exists (2026-11-08, Jim; LIFE-406)
+- D252: Hiring decisions live on the Job Ledger row only: Confirm Rejected and Reopen are one Ledger write each, and no page moves (2026-11-08, Jim; LIFE-353)

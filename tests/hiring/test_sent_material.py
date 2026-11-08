@@ -1,5 +1,5 @@
 """LIFE-114 (Jim, Oct 29 2026): Materials Sent on the opportunity page. Jim records an application form / portal answers (an optional link) or a Google Drive file
-(a project plan, an article) on Manage, through the signed review and confirm, stored on the opportunity's own record; his own emails on the job's request thread are
+(a project plan, an article) on Manage, through the signed review and confirm, stored on the opportunity's Job Ledger row (LIFE-353); his own emails on the job's request thread are
 read from Gmail (read only, metadata only). Cover letters are out. Every name is invented; nothing is live."""
 import unittest
 from dataclasses import replace
@@ -11,7 +11,7 @@ from lifeos.interview.models import ParentQuery, RoundQuery
 from lifeos.platform.gmail import Gmail, GmailError
 from lifeos.sources import interview_evidence, manage_app
 from tests.hiring import test_decision as TD
-from tests.hiring.test_hand_set import M2, SET_AT, OP, forms, hand_text, ledger_ready, notes_page
+from tests.hiring.test_hand_set import M2, SET_AT, OP, forms, hand_text, ledger_page, ledger_ready
 from tests.hiring.test_mark_complete import lines, opp, texts
 from tests.hiring.test_notes_decision import COMPANY, ROLE
 
@@ -33,15 +33,15 @@ class Drive:
 
 class Manage(unittest.TestCase):
     def test_a_form_is_reviewed_then_recorded_as_one_line_read_back_and_listed_on_manage(self):
-        h, fold = notes_page()
-        before = lines(h, fold)
+        h, fold = ledger_page()
+        before = hand_text(h.world.source).splitlines()
         status, body, _ = h.hand_review("sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1")
         self.assertEqual(status, 200, body)
         self.assertIn("Sent: Application form / portal answers · Workday application answers", body)
         self.assertEqual(h.writes(), (0, 0))                                                            # review writes nothing
         status, body, _ = h.hand("sent", sk="form", sx="Workday application answers", su="https://example.test/apply/1")
         self.assertEqual(status, 200, body)
-        after = lines(h, fold)
+        after = hand_text(h.world.source).splitlines()
         self.assertEqual(after[:-1], before)
         got = M.sent_of(after)
         self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FORM, "Workday application answers", "https://example.test/apply/1")])
@@ -49,16 +49,16 @@ class Manage(unittest.TestCase):
         self.assertEqual(h.after, [])                                                                   # sent material never redraws the Hiring Pipeline
 
     def test_a_form_needs_what_it_was_and_a_link_is_optional_but_must_be_https(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="form", sx="")[0], 400)
         self.assertEqual(h.hand_review("sent", sk="form", sx="Portal answers", su="javascript:alert(1)")[0], 400)
         self.assertEqual(h.hand_review("sent", sk="letter", sx="Cover letter")[0], 400)              # cover letters are out of scope: only form | file
         status, body, _ = h.hand("sent", sk="form", sx="Portal answers")
         self.assertEqual(status, 200, body)
-        self.assertEqual(M.sent_of(lines(h, fold))[0]["url"], None)
+        self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines())[0]["url"], None)
 
     def test_a_drive_file_must_exist_and_not_be_trashed_and_is_named_from_drive(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         self.assertEqual(h.hand_review("sent", sk="file", su="https://example.test/not-drive")[0], 400)
         with mock.patch.object(manage_app, "_drive", lambda secrets: None):
             self.assertEqual(h.hand_review("sent", sk="file", su=DRIVE_URL)[0], 409)                 # Drive not connected on the Close service
@@ -71,18 +71,18 @@ class Manage(unittest.TestCase):
             status, body, _ = h.hand("sent", sk="file", su=DRIVE_URL)
         self.assertEqual(status, 200, body)
         self.assertEqual(drive.gets, 2)                                                                 # read at review and again at confirm, never changed
-        got = M.sent_of(lines(h, fold))
+        got = M.sent_of(hand_text(h.world.source).splitlines())
         self.assertEqual([(s["kind"], s["text"], s["url"]) for s in got], [(M.FILE, "Launch plan for ExampleCo", drive.meta["webViewLink"])])
 
     def test_a_file_trashed_between_review_and_confirm_writes_nothing(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         drive = Drive()
         with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
             review = h.fields(h.hand_review("sent", sk="file", su=DRIVE_URL)[1])
             drive.meta["trashed"] = True
             status, _, _ = h.call("POST", "/manage", form={**review, "step": "confirm"})
         self.assertEqual(status, 409)
-        self.assertEqual(M.sent_of(lines(h, fold)), [])
+        self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines()), [])
 
     def test_on_the_ledger_sent_lines_are_kept_beside_the_latest_hold_and_next_action(self):
         h = M2([(TD.TARGET, COMPANY, ROLE)])
@@ -135,14 +135,14 @@ class Remove(unittest.TestCase):
             self.assertEqual(h.call("POST", "/manage", form={**review, **patch, "step": "confirm"})[0], 403, patch)
         self.assertEqual(len(h.world.source.patches()), before)
 
-    def test_on_a_notes_page_the_removal_is_appended_to_the_fold(self):
-        h, fold = notes_page()
+    def test_the_removal_is_appended_after_the_items_line(self):
+        h, fold = ledger_page()
         self.assertEqual(h.hand("sent", sk="form", sx="Test")[0], 200)
         remove = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "unsent")
         status, body, _ = h.call("POST", "/manage", form={**h.fields(h.call("POST", "/manage", form=remove)[1]), "step": "confirm"})
         self.assertEqual(status, 200, body)
-        self.assertEqual(M.sent_of(lines(h, fold)), [])
-        self.assertTrue(M.UNSENT_LINE.fullmatch(lines(h, fold)[-1]))
+        self.assertEqual(M.sent_of(hand_text(h.world.source).splitlines()), [])
+        self.assertTrue(M.UNSENT_LINE.fullmatch(hand_text(h.world.source).splitlines()[-1]))
 
     def test_the_page_leaves_a_removed_item_out_and_carries_the_removal(self):
         gone = M.unsent_line(OP, "2026-10-06T09:00:00-05:00", "e" * 16)
@@ -260,7 +260,7 @@ class Search(unittest.TestCase):
             return h.call("POST", "/manage", form={**form, "q": q}), form
 
     def test_a_hit_opens_the_review_for_that_file_and_confirm_records_it(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         drive = self.Found()
         (status, body, _), form = self.search(h, "Launch o'plan", drive)
         self.assertEqual(status, 200, body)
@@ -277,10 +277,10 @@ class Search(unittest.TestCase):
             self.assertEqual(h.writes(), (0, 0))                                                        # review writes nothing
             status, body, _ = h.call("POST", "/manage", form={**h.fields(body), "step": "confirm"})
         self.assertEqual(status, 200, body)
-        self.assertEqual([(m["kind"], m["text"]) for m in M.sent_of(lines(h, fold))], [(M.FILE, "Launch plan for ExampleCo")])
+        self.assertEqual([(m["kind"], m["text"]) for m in M.sent_of(hand_text(h.world.source).splitlines())], [(M.FILE, "Launch plan for ExampleCo")])
 
     def test_no_match_an_empty_query_a_missing_credential_or_a_forged_form_shows_nothing_and_writes_nothing(self):
-        h, fold = notes_page()
+        h, fold = ledger_page()
         (status, body, _), form = self.search(h, "nothing", self.Found(files=[]))
         self.assertEqual(status, 200)
         self.assertIn("No Drive file matches", body)
@@ -295,7 +295,7 @@ class Search(unittest.TestCase):
 
     def test_an_empty_box_lists_the_latest_files_to_pick_from(self):
         """Jim, Oct 31 2026: "I shouldn't have to type". An empty search lists the most recently edited files (folders excluded); a Pick opens the review as before."""
-        h, _ = notes_page()
+        h, _ = ledger_page()
         drive = self.Found()
         for q in ("", "   "):
             (status, body, _), _ = self.search(h, q, drive)
@@ -308,7 +308,7 @@ class Search(unittest.TestCase):
         self.assertIn("Show my Drive files", h.hub(h.world.ws.target)[1])
 
     def test_folders_and_files_without_a_drive_link_are_never_offered(self):
-        h, _ = notes_page()
+        h, _ = ledger_page()
         files = [{"name": "Odd", "webViewLink": "https://example.test/x"}, {"name": None, "webViewLink": DRIVE_URL}, {"name": "Good plan", "webViewLink": DRIVE_URL}]
         (status, body, _), _ = self.search(h, "plan", self.Found(files=files))
         self.assertEqual([f["su"] for f in forms(body) if f.get("act") == "sent"], [DRIVE_URL])
@@ -317,7 +317,7 @@ class Search(unittest.TestCase):
 class Layout(unittest.TestCase):
     """LIFE-174 (Jim, Oct 31 2026): Manage's actions are one card each, their fields and button together, styled by /manage.css (the gate's CSP allows no inline styles)."""
     def test_the_hub_links_its_stylesheet_and_every_field_sits_in_a_card(self):
-        h, _ = notes_page()
+        h, _ = ledger_page()
         body = h.hub(h.world.ws.target)[1]
         self.assertIn('<link rel="stylesheet" href="/close.css"><link rel="stylesheet" href="/manage.css">', body)
         self.assertNotIn("<style", body)
@@ -334,7 +334,7 @@ class Expiry(unittest.TestCase):
     altered form offers Manage again in one click, writing nothing."""
     def test_a_page_open_for_hours_still_works_and_an_expired_one_offers_a_reload(self):
         from datetime import timedelta
-        h, fold = notes_page()
+        h, fold = ledger_page()
         form = next(f for f in forms(h.hub(h.world.ws.target)[1]) if f.get("act") == "drive")
         drive = Search.Found()
         with mock.patch.object(manage_app, "_drive", lambda secrets: drive):
@@ -357,14 +357,14 @@ class Picker(unittest.TestCase):
     CONFIG = {"client_id": "1234567-exampleclientid.apps.googleusercontent.com", "api_key": "AIza" + "x" * 35, "app_id": "1234567"}
 
     def test_no_picker_until_it_is_configured(self):
-        h, _ = notes_page()
+        h, _ = ledger_page()
         body = h.hub(h.world.ws.target)[1]
         self.assertNotIn("pick-drive", body)
         self.assertNotIn("manage-picker.js", body)
         self.assertIn("Show my Drive files", body)                                                     # the LIFE-173 way stays
 
     def test_the_configured_picker_button_posts_the_usual_sent_form(self):
-        h, _ = notes_page()
+        h, _ = ledger_page()
         with mock.patch.object(manage_app, "picker", lambda secrets: self.CONFIG):
             body = h.hub(h.world.ws.target)[1]
         self.assertIn('<script src="/manage-picker.js" defer></script>', body)
