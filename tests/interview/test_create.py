@@ -29,6 +29,7 @@ class WritableFake(Fake):
         self.blocks["human"] = [block("human notes")]
         self.rows = {}                                         # LIFE-361: the Job Ledger data source: row id -> properties
         self.sandbox_source = None                             # a proof's own sandbox Ledger (POST /databases), the same rows
+        self.sandbox_schema = None
         self.stage_options = ["Found", "Applied", "Interviewing", "Offer", "Working", "Ended"]
         self.posts = []
         self.post_error = False
@@ -72,7 +73,9 @@ class WritableFake(Fake):
         if f"/data_sources/{source_id}/query" in self.fail:
             raise NotionError("NOTION_NETWORK")
         wanted = (body or {}).get("filter") or {}
-        if wanted.get("property") == "Stage":
+        if "or" in wanted:                                                       # LIFE-353: the decision writers' pursuit read, Applied ticked or Stage set
+            found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) or (self.rows[r].get("Applied") or {}).get("checkbox")]
+        elif wanted.get("property") == "Stage":
             found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) and not (self.hide_created and r.startswith("created-"))]
         else:
             word = wanted["rich_text"]["contains"].lower()
@@ -114,8 +117,9 @@ class WritableFake(Fake):
                     siblings[0] = block("missing marker")
                 return {"results": copy.deepcopy(items)}
             if path.startswith("/pages/"):
-                if key in self.rows and "properties" in body:            # the Ledger row's Stage
+                if key in self.rows and "properties" in body:            # the Ledger row's Stage, or (LIFE-353) its Hiring Decision and history
                     self.rows[key].update(copy.deepcopy(body["properties"]))
+                    self.edits = getattr(self, "edits", 0) + 1
                     return {"id": key}
                 self.pages.setdefault(key, page())["icon"] = body.get("icon")
                 return {"id": key}
@@ -123,17 +127,24 @@ class WritableFake(Fake):
             kind = next(k for k in body)
             target[kind]["rich_text"] = copy.deepcopy(body[kind]["rich_text"])
             return copy.deepcopy(target)
+        if method == "GET" and path.startswith("/pages/") and path.split("/")[2] in self.rows:      # a Ledger row page, as the decision writer reads it
+            rid = path.split("/")[2]
+            return {**self.row_of(rid), "archived": False, "in_trash": False, "last_edited_time": f"2026-10-22T00:00:{getattr(self, 'edits', 0):02d}.000Z",
+                    "parent": {"type": "data_source_id", "data_source_id": self.sandbox_source or "ds-synthetic"}}
         if method == "GET" and path.startswith("/data_sources/"):
             self.calls.append((method, path))
             if path in self.fail:
                 raise NotionError("NOTION_NETWORK")
+            if self.sandbox_schema is not None and path == f"/data_sources/{self.sandbox_source}":
+                return {"properties": {n: {"type": next(iter(v)), **v} for n, v in self.sandbox_schema.items()}}
             return {"properties": {"Stage": {"type": "select", "select": {"options": [{"name": n} for n in self.stage_options]}},
                                    "Source Types": {"type": "multi_select", "multi_select": {"options": [{"name": "Manual"}, {"name": "LinkedIn"}]}}}}
         if method != "POST":
             return super().call(method, path, body)
         if path == "/databases":                                       # a proof's sandbox Ledger: one data source
             self.calls.append((method, path))
-            self.sandbox_source = "sandbox-ledger"
+            self.sandbox_source = "5a" * 16                             # Notion-shaped: the decision writer checks a row's parent by id
+            self.sandbox_schema = copy.deepcopy(body["initial_data_source"]["properties"])
             return {"id": "sandbox-db", "data_sources": [{"id": self.sandbox_source}]}
         assert path == "/pages"
         self.calls.append((method, path))
@@ -142,7 +153,7 @@ class WritableFake(Fake):
             raise NotionError("private error body")
         if body["parent"]["type"] == "data_source_id":               # LIFE-361: a new Manual Ledger row (no Stage yet; no body)
             assert body["parent"]["data_source_id"] in ("ds-synthetic", self.sandbox_source) and "children" not in body
-            rid = f"created-{len(self.posts)}"
+            rid = f"created-{len(self.posts)}" if body["parent"]["data_source_id"] == "ds-synthetic" else f"{len(self.posts):032x}"      # a sandbox row gets a Notion-shaped id
             props = copy.deepcopy(body["properties"])
             for prop in props.values():                                # Notion answers with plain_text on every text run
                 for run in prop.get("title") or prop.get("rich_text") or []:
