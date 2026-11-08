@@ -197,10 +197,28 @@ class InterviewRow(unittest.TestCase):
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True)["blocks"], ledger.writes), ({"unchanged": 1}, []))
 
-    def test_two_description_markers_are_not_guessed_between(self):
+    def test_a_second_copy_of_this_jobs_description_is_counted_and_never_stalls_the_leads(self):
         ledger, pid, _ = self.row()
-        ledger.kids[pid].append(ledger._new("paragraph", f"v7-jd:1 | key={KEY1}"))
-        ledger.kids[pid].append(ledger._new("column_list", "", children=[]))
-        self.assertIsNone(body.description_list(ledger.top(pid)))
-        self.assertEqual(surface.guard({"parent": {"data_source_id": ledger.source}, "properties": {"Stable Job Key": {"rich_text": [{"plain_text": KEY1}]}}},
-                                       ledger.top(pid), KEY1, ledger.source), "no_description_marker")
+        first = body.description_list(ledger.top(pid), KEY1)
+        dup = ledger.create(PROPS, body.build(KEY1, DESC))                                          # V7's own description written a second time, at the bottom
+        ledger.kids[pid] += ledger.kids.pop(dup)
+        self.assertEqual(body.description_list(ledger.top(pid), KEY1), first)                       # the top-most one is used
+        self.assertEqual(body.description_duplicates(ledger.top(pid), KEY1), 1)
+        conn = build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")])
+        counts = go(conn, ledger, live=True)
+        self.assertEqual((counts["blocks"], counts.get("description_duplicate")), ({"created": 1}, 1))
+        self.assertEqual(ledger.right(pid), ledger.kids[first["id"]][1])
+        self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")
+
+    def test_a_description_copied_in_from_another_job_is_never_used(self):
+        ledger, pid, _ = self.row()
+        other = ledger.create({"Stable Job Key": {"rich_text": [{"text": {"content": "f" * 64}}]}}, body.build("f" * 64, DESC))
+        ledger.kids[pid][2:2] = ledger.kids.pop(other)                                               # another job's description now sits ABOVE this row's own
+        own = body.description_list(ledger.top(pid), KEY1)
+        self.assertIsNotNone(own)
+        self.assertNotEqual(own, body.description_list(ledger.top(pid), "f" * 64))
+        self.assertEqual(body.description_duplicates(ledger.top(pid), KEY1), 0)
+        conn = build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")])
+        self.assertEqual(go(conn, ledger, live=True)["blocks"], {"created": 1})
+        self.assertEqual(ledger.right(pid), ledger.kids[own["id"]][1])                               # into this job's own description column
+        self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")

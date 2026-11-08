@@ -256,21 +256,31 @@ class Top(list):
     right = None
 
 
-def _right(client, top):
-    """The right column's id on a two-column page, else None. Reads the description's column_list only (ledger_body.description_list: the only one, or on a row that is also an
-    interview opportunity the one right after the v7-jd marker)."""
-    found = body.description_list(top)
+def _right(client, top, key=None):
+    """The right column's id on a two-column page, else None. Reads the job description's column_list only (ledger_body.description_list: the one whose marker names this
+    row's Stable Job Key, so an interview row's own columns or a description copied from another job are never used)."""
+    found = body.description_list(top, key)
     if found is None:
         return None
     columns = [b for b in children(client, found["id"]) if b.get("type") == "column"]
     return columns[1]["id"] if len(columns) == 2 else None
 
 
-def read_page(client, page_id, deep=True):
+def row_key(client, page_id, top):
+    """The Ledger row's own Stable Job Key, what names its description: read (one page read) only when the page has more than one column_list, i.e. a row that is also an
+    interview opportunity; a plain Ledger page has one and needs no read."""
+    if sum(1 for b in top if b.get("type") == "column_list") < 2:
+        return None
+    page = client.get_page(page_id) if hasattr(client, "get_page") else client.call("GET", f"/pages/{page_id}")
+    props = (page or {}).get("properties") or {}
+    return "".join(t.get("plain_text", "") for t in (props.get("Stable Job Key") or {}).get("rich_text") or []) or None
+
+
+def read_page(client, page_id, deep=True, key=None):
     """-> (top-level blocks, owned blocks oldest first). owned item = {"id", "parent", "hash", "ticks": [(kind, person_id, evidence_hash, checked)]}; `parent` is the page, or the right column of the two-column page.
     Normally one; an interrupted replacement can leave two, and the next run converges them (see apply). A page whose owned block cannot be read raises."""
     top = Top(children(client, page_id))
-    top.right = _right(client, top)
+    top.right = _right(client, top, key or row_key(client, page_id, top))
     owned = []
     for parent, blocks in ((page_id, top), *(((top.right, children(client, top.right)),) if top.right else ())):
         for block in blocks:
@@ -285,7 +295,7 @@ def leads_on_page(client, page_id, limit=10):
     """LIFE-21 (Mark as Sent): the people the page's owned block lists and Jim has not dismissed, in page order -> [{person_id, evidence_hash, name, reason}].
     Read only. No owned block -> []; two (an interrupted replacement) -> the newest, as apply converges; a lead without its Dismiss tick or an unreadable page raises."""
     inner, top = None, children(client, page_id)
-    right = _right(client, top)
+    right = _right(client, top, row_key(client, page_id, top))
     for block in [*top, *(children(client, right) if right else ())]:
         head = _owned_head(client, block)
         if head:
@@ -329,8 +339,8 @@ def guard(page, top, job_key, source_id):
     key = "".join(t.get("plain_text", "") for t in ((page.get("properties") or {}).get("Stable Job Key") or {}).get("rich_text") or [])
     if key != job_key:
         return "key_mismatch"
-    if sum(body.is_marker(b, job_key) for b in top or []) != 1:
-        return "no_description_marker"                                  # exactly one description marker: first on a plain row, after the opportunity sections on an interview row (LIFE-361)
+    if not any(body.is_marker(b, job_key) for b in top or []):
+        return "no_description_marker"                                  # this row's own description, wherever it sits (LIFE-361); a copy from another job does not count
     return None
 
 

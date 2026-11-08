@@ -20,6 +20,7 @@ from datetime import date, datetime, timezone
 
 from lifeos.hiring import models as hiring_models
 from lifeos.jobs import ledger
+from lifeos.platform import ledger_body
 from lifeos.network import match, store, surface
 from lifeos.network.errors import NetworkError
 from lifeos.platform import db
@@ -283,8 +284,10 @@ def _flush(connection, recorded, counts):
 
 def _page(notion, connection, key, page_id, company, title, target, index, details, today, aliases, dismissed, live, counts, close_base="", recorded=None):
     page = notion.call("GET", f"/pages/{page_id}")
-    top, owned = surface.read_page(notion, page_id)
+    top, owned = surface.read_page(notion, page_id, key=key)
     counts["pages_read"] += 1
+    if ledger_body.description_duplicates(top, key):                     # V7's own description written twice: the top-most is used, the extra is counted for repair
+        counts["description_duplicate"] = counts.get("description_duplicate", 0) + 1
     why = surface.guard(page, top, key, notion.source)
     if why:
         counts["degraded"] = True

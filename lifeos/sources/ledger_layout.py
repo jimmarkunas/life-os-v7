@@ -83,7 +83,7 @@ def migrate(client, page_id, key, desc, live):
     start = 2 if layout else 1
     old_there = _same(top[start:start + len(old)], old)
     if layout and not old_there:
-        found = body.find(client, page_id, top)
+        found = body.find(client, page_id, top, key)
         if found and found["toggle"] and _text(top[0]) == "\u2060":    # finished: hidden marker, layout, nothing of the old description left
             return "done"
     if not layout and not old_there:
@@ -94,7 +94,7 @@ def migrate(client, page_id, key, desc, live):
         client.call("PATCH", f"/blocks/{page_id}/children", {"children": [body.column_list(desc)], "after": top[0]["id"]})
     body.fill(client, page_id, desc, strict=True)                       # (2) the toggle (a replay writes nothing)
     top = body._kids(client, page_id)
-    found = body.find(client, page_id, top)
+    found = body.find(client, page_id, top, key)
     if not found or not found["toggle"] or len([b for b in top if b.get("type") == "column_list"]) != 1:
         raise LayoutError("LAYOUT_COLUMNS_MISSING")
     want = [_text(b) for b in body.full_blocks(desc)]
