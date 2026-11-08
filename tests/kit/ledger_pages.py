@@ -54,7 +54,7 @@ class FakeLedger:
     def right(self, page_id):
         """The right-hand column's block id on a two-column page (the description's column_list: ledger_body.description_list), else None."""
         from lifeos.platform import ledger_body
-        found = ledger_body.description_list(self.top(page_id))
+        found = ledger_body.description_list(self.top(page_id), self.pages[page_id]["key"])
         return self.kids[found["id"]][1] if found else None
 
     def owned(self, page_id):

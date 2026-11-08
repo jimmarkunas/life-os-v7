@@ -47,7 +47,7 @@ def check(client, page_id, key, url, fit):
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
     if not children or not body.is_marker(children[0]) or len(children) < 2:
         return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
-    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children) or {}).get("toggle"):
+    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children, key) or {}).get("toggle"):
         return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
     return None
 
@@ -94,7 +94,7 @@ def check_listed(client, page_id, key, url, fit, pages):
     children = client.call("GET", f"/blocks/{page_id}/children?page_size=3").get("results") or []
     if not children or not body.is_marker(children[0]) or len(children) < 2:
         return "no_description"                                                      # either layout: the hidden marker (v7.jd.2) or the visible line (v7.jd.1)
-    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children) or {}).get("toggle"):
+    if children[1].get("type") == "column_list" and not (body.find(client, page_id, children, key) or {}).get("toggle"):
         return "no_description"                                                      # the two-column layout must hold its Overview column and the Full job description toggle
     return None
 

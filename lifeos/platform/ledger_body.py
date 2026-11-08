@@ -102,20 +102,32 @@ def _kids(client, block_id):
     raise NotionError("ledger_layout_unreadable")
 
 
-def description_list(top):
-    """The description's column_list among a page's top-level blocks, or None. One column_list is it (the plain Ledger page). LIFE-361/LIFE-352: a row that is also an
-    interview opportunity carries the opportunity's own column_list above the description, so with more than one it is the column_list right after the v7-jd marker."""
+def description_list(top, key=None):
+    """The job description's column_list among a page's top-level blocks, or None. LIFE-361: the description is found by WHAT it is, not where it sits.
+    With the row's Stable Job Key: the column_list right after a marker that names this key. A description copied in from another job (another key) is never
+    it; several with this key are V7's own repeated write, and the top-most is used (description_duplicates counts the rest for repair), so nothing stalls.
+    Without a key (a caller that cannot know it): the only column_list on the page, else the one right after the only marker."""
+    def after(i):
+        return top[i + 1] if i + 1 < len(top) and top[i + 1].get("type") == "column_list" else None
+    if key:
+        found = [after(i) for i, b in enumerate(top) if is_marker(b, key) and after(i)]
+        return found[0] if found else None
     lists = [b for b in top if b.get("type") == "column_list"]
     if len(lists) == 1:
         return lists[0]
-    after = [top[i + 1] for i, b in enumerate(top[:-1]) if is_marker(b) and top[i + 1].get("type") == "column_list"]
-    return after[0] if len(after) == 1 else None
+    found = [after(i) for i, b in enumerate(top) if is_marker(b) and after(i)]
+    return found[0] if len(found) == 1 else None
 
 
-def find(client, page_id, top=None):
+def description_duplicates(top, key):
+    """How many EXTRA descriptions carry this row's key (0 normally): V7's own repeated write, reported for repair; the top-most is the one in use."""
+    return max(0, sum(1 for b in top if is_marker(b, key)) - 1) if key else 0
+
+
+def find(client, page_id, top=None, key=None):
     """-> {"list", "left", "right", "toggle"} block ids of a v7.jd.2 page, or None for a page without the layout. Reads at most the top blocks, the column_list and the two columns."""
     top = top if top is not None else _kids(client, page_id)
-    found = description_list(top)
+    found = description_list(top, key)
     if found is None:
         return None
     lists = [found]
