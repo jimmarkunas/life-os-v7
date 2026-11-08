@@ -257,11 +257,12 @@ class Top(list):
 
 
 def _right(client, top):
-    """The right column's id on a two-column page, else None. Reads the column_list's children only when the page has exactly one."""
-    lists = [b for b in top if b.get("type") == "column_list"]
-    if len(lists) != 1:
+    """The right column's id on a two-column page, else None. Reads the description's column_list only (ledger_body.description_list: the only one, or on a row that is also an
+    interview opportunity the one right after the v7-jd marker)."""
+    found = body.description_list(top)
+    if found is None:
         return None
-    columns = [b for b in children(client, lists[0]["id"]) if b.get("type") == "column"]
+    columns = [b for b in children(client, found["id"]) if b.get("type") == "column"]
     return columns[1]["id"] if len(columns) == 2 else None
 
 
@@ -328,8 +329,8 @@ def guard(page, top, job_key, source_id):
     key = "".join(t.get("plain_text", "") for t in ((page.get("properties") or {}).get("Stable Job Key") or {}).get("rich_text") or [])
     if key != job_key:
         return "key_mismatch"
-    if not top or not body.is_marker(top[0], job_key):
-        return "no_description_marker"
+    if sum(body.is_marker(b, job_key) for b in top or []) != 1:
+        return "no_description_marker"                                  # exactly one description marker: first on a plain row, after the opportunity sections on an interview row (LIFE-361)
     return None
 
 
