@@ -52,11 +52,10 @@ class FakeLedger:
         return ["".join(r["plain_text"] for r in b[b["type"]]["rich_text"]) for b in self.top(page_id)]
 
     def right(self, page_id):
-        """The right-hand column's block id on a two-column page, else None."""
-        for b in self.top(page_id):
-            if b["type"] == "column_list":
-                return self.kids[b["id"]][1]
-        return None
+        """The right-hand column's block id on a two-column page (the description's column_list: ledger_body.description_list), else None."""
+        from lifeos.platform import ledger_body
+        found = ledger_body.description_list(self.top(page_id))
+        return self.kids[found["id"]][1] if found else None
 
     def owned(self, page_id):
         """The children of the page's Network Leads block (a top-level toggle or callout, or one in the right column of the two-column page)."""

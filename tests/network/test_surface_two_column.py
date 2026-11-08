@@ -170,3 +170,37 @@ class CutShortWrite(unittest.TestCase):
                 return {"results": [], "has_more": False}                # the card holds no column_list yet
 
         self.assertEqual(surface._cards(Half(), [{"id": "c1", "type": "callout"}]), [])
+
+
+class InterviewRow(unittest.TestCase):
+    """LIFE-361 / LIFE-352: a Ledger row that is also an interview opportunity has the opportunity's sections first (the machine fold, then its own two-column
+    layout) and the job description below. Network Leads still belong in the DESCRIPTION's right column, never the opportunity's."""
+    def row(self):
+        ledger, pid = page()
+        col = lambda text: {"type": "column", "column": {"rich_text": [], "children": [{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": text}}]}}]}}
+        fold = ledger._new("toggle", "\u2699\ufe0f LIFE OS", children=[{"type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": "v7-interview-opportunity:1"}}]}}])
+        opportunity = ledger._new("column_list", "", children=[col("Interviews"), col("Recruiters")])
+        ledger.kids[pid][0:0] = [fold, opportunity]
+        return ledger, pid, opportunity
+
+    def test_the_leads_go_into_the_description_column_and_read_back_from_it(self):
+        ledger, pid, opportunity = self.row()
+        conn = build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")])
+        before = [list(ledger.kids[c]) for c in ledger.kids[opportunity]]
+        counts = go(conn, ledger, live=True)
+        self.assertEqual(counts["blocks"], {"created": 1})
+        self.assertEqual(ledger.right(pid), ledger.kids[body.description_list(ledger.top(pid))["id"]][1])
+        self.assertEqual([ledger.blocks[k]["type"] for k in ledger.kids[ledger.right(pid)]], ["callout"])
+        self.assertEqual([list(ledger.kids[c]) for c in ledger.kids[opportunity]], before)           # the opportunity's columns are untouched
+        self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")          # read back as the real leads, never "none"
+        self.assertEqual(body.find(ledger, pid)["list"], ledger.kids[pid][3])                        # fold, opportunity columns, marker, description columns
+        ledger.writes.clear()
+        self.assertEqual((go(conn, ledger, live=True)["blocks"], ledger.writes), ({"unchanged": 1}, []))
+
+    def test_two_description_markers_are_not_guessed_between(self):
+        ledger, pid, _ = self.row()
+        ledger.kids[pid].append(ledger._new("paragraph", f"v7-jd:1 | key={KEY1}"))
+        ledger.kids[pid].append(ledger._new("column_list", "", children=[]))
+        self.assertIsNone(body.description_list(ledger.top(pid)))
+        self.assertEqual(surface.guard({"parent": {"data_source_id": ledger.source}, "properties": {"Stable Job Key": {"rich_text": [{"plain_text": KEY1}]}}},
+                                       ledger.top(pid), KEY1, ledger.source), "no_description_marker")
