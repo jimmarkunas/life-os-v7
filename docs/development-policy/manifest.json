@@ -62,6 +62,7 @@
       ],
       "headings": [
         "### Deterministic agent work selection — mandatory when an authorized execution session starts or resumes",
+        "### Readiness gate source and waiver — Jim-approved November 7, 2026 (LIFE-365, REQ-6)",
         "### Jira-first development lifecycle — mandatory across ChatGPT, Claude Code, Codex and approved Edge implementers",
         "### Requirement-change reconciliation — Jim-approved November 1, 2026 (LIFE-79)"
       ]
@@ -160,7 +161,7 @@
       ]
     }
   ],
-  "reassembled_sha256": "2f9e5f6d620c3e11b8f751de0ddc5bb339ecb5e2eb9d6b870b559544184cc52d",
+  "reassembled_sha256": "ff824ec74cea245d4f9442ff47f9e4f7ab6c0a6f2db813bac13a9548dbcbcbd3",
   "amendments": [
     {
       "date": "2026-11-02",
@@ -209,6 +210,12 @@
       "pr": "https://github.com/jimmarkunas/life-os-v7/pull/784",
       "approval": "Jim Markunas, November 6, 2026 CT 1:17 PM, chat: \"make sure the V7 policy has these rules\": the public-repo data rule (personal emails, full names, phones, addresses, employer/salary, resume/mailbox content, secrets, Notion IDs; source docs/PRIVACY.md) named in the unchanged gates of Part 07 item 5 and in AGENTS.md Rules (LIFE-335)",
       "part": "docs/development-policy/07-bootstrap-bounded-autonomy.md"
+    },
+    {
+      "date": "2026-11-08",
+      "pr": "PENDING",
+      "approval": "Jim Markunas, November 7, 2026 CT 12:28 PM, chat (REQ-6 v2, LOS-94): the readiness gate runs on an Atlassian MCP read and is waivable only by Jim naming the ticket in chat; eight rules written as LIFE-365 states them (released for Agent Go)",
+      "part": "docs/development-policy/04-work-selection-lifecycle-reconciliation.md"
     }
   ]
 }
