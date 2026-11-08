@@ -573,7 +573,7 @@ CONSUMERS = {
         timeouts={'granola': 15}, digest="8e4c30f30ad70e52"),
     "manual-job": dict(                                                  # LIFE-37 (Jim, Oct 26 2026): ONE job Jim names by hand into Jobs OS and the Interview OS writer; dry run unless live; the store credentials and the Interview token only
         jobs={"manual": DB | {"NOTION_INTERVIEW_TOKEN"}},
-        direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS'],
+        direct=['HIRING_PIPELINE_PAGE_ID', 'LIFEOS_ACQ_SSH_PORT', 'LIFEOS_BWS_RUNTIME_TOKEN', 'LIFEOS_NOTION_IDS', 'NOTION_JOB_LEDGER_DATA_SOURCE_ID'],   # LIFE-361: the Ledger id (a new pursuit is its row)
         on=['workflow_dispatch'], crons=[], perms={'contents': 'read'}, conc={'group': 'life-os-v7-interview-writer', 'cancel-in-progress': False},
         timeouts={'manual': 15}, digest="19cc00b03711f4e0"),
     "hermes-stage": dict(                                                # LIFE-307: ONE signed Buzz request per Agent Go issue labelled hermes; dry run unless live; Jira credentials only, plus the stage's own Buzz member key
