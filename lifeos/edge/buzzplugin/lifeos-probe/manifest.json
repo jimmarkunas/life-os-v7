@@ -1,0 +1,10 @@
+{
+  "id": "lifeos.probe",
+  "name": "LIFE OS probe",
+  "apiVersion": 1,
+  "description": "Observe-only probe for the LIFE OS access layer (LIFE-401): records which agent calls which tool and lets an agent read the last 50 observations. Blocks nothing, changes nothing, makes no network calls.",
+  "discovery": { "category": "developer-tools-and-integrations", "tags": ["coding-agents"] },
+  "host": {
+    "agentHooks": ["buzz.claude-code/claude-code", "buzz.codex/codex", "buzz.pi/pi"]
+  }
+}
