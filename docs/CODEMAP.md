@@ -655,3 +655,4 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - D248: Mail jobs keep moving while a board backfill runs: a reserved quarter in publish, non-board jobs first in Fit (2026-10-24, Jim; LIFE-76)
 - D249: The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)
 - D250: V7 reads and writes Notion only through databases and fixed IDs, never a page tree, an exact title or a page location (2026-11-07, Jim; LIFE-357)
+- D251: Every job gets the Bitwarden helper program from a saved, fingerprint-checked copy; the download, with a long retry, runs only when no copy exists (2026-11-08, Jim; LIFE-406)

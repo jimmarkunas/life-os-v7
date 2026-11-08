@@ -151,6 +151,7 @@
   "D249": "The recruiter brief is a read-only page on the Close service, built from the records on file when it opens (2026-10-24; LIFE-35 RECR-2.2)",
   "D25": "One scheduler: GitHub Actions; the platform is AI-agnostic (Jim, 2026-10-01)",
   "D250": "V7 reads and writes Notion only through databases and fixed IDs, never a page tree, an exact title or a page location (2026-11-07, Jim; LIFE-357)",
+  "D251": "Every job gets the Bitwarden helper program from a saved, fingerprint-checked copy; the download, with a long retry, runs only when no copy exists (2026-11-08, Jim; LIFE-406)",
   "D26": "Freshness has one authority; destructive Ledger operations ask the human-state guard",
   "D27": "What the first live-shaped dry runs taught (run 85, 2026-10-01)",
   "D28": "Lifecycle removed, Job Ledger target verified, guardrails as contract tests",
