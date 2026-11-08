@@ -29,6 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
       - id: bws_diag
         name: Load the database and SSH values from Bitwarden (EDGE-1.3, exactly these 7; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
@@ -74,6 +78,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
       - id: bws_trace
         name: Load the database, SSH and Gmail values from Bitwarden (the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
@@ -126,6 +134,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
       - id: bws_sandbox
         name: Load the Jobs Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
@@ -169,6 +181,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "100"
       - id: bws_interview
         name: Load the Interview Notion token from Bitwarden (exactly this 1; masked step output only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
@@ -205,6 +221,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
       - id: bws_report
         name: Load the database, SSH and Jobs Notion values from Bitwarden (the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job

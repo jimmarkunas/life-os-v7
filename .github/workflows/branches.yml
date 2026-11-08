@@ -50,6 +50,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
       - id: bws_report
         name: Load the Notion report token from Bitwarden (D244, exactly this 1; masked step outputs only; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # D209: one retry below; the retry fails the job
