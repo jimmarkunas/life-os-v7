@@ -202,6 +202,7 @@ def decide(client, ledger_id, row_id, now):
 
 
 LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job Key": {"rich_text": {}}, "Source Types": {"multi_select": {}},
+                 "Applied": {"checkbox": {}},                                       # the decision writers' pursuit read filters on it (a missing property is HTTP 400)
                  "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}},
                  "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},             # the sandbox's own options; the real Ledger is never changed
                  "Hiring Decision History": {"rich_text": {}}, "Dismissed Outcome Ref": {"rich_text": {}}}
