@@ -95,5 +95,6 @@ jobs:
           LIFEOS_ACQ_SSH_PRIVATE_KEY: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_PRIVATE_KEY }}
           LIFEOS_ACQ_SSH_USER: ${{ steps.bws_manual.outputs.LIFEOS_ACQ_SSH_USER || steps.bws_manual_retry.outputs.LIFEOS_ACQ_SSH_USER }}
           NOTION_INTERVIEW_TOKEN: ${{ steps.bws_manual.outputs.NOTION_INTERVIEW_TOKEN || steps.bws_manual_retry.outputs.NOTION_INTERVIEW_TOKEN }}
+          NOTION_JOB_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_JOB_LEDGER_DATA_SOURCE_ID }}   # LIFE-361 (Jim approved Nov 8): a new manual pursuit finds or creates its Ledger row
           LIVE: ${{ inputs.live }}
         run: python -m lifeos.run manual-job --limit 5 $([ "$LIVE" = "true" ] && echo --live)
