@@ -197,18 +197,48 @@ class InterviewRow(unittest.TestCase):
         ledger.writes.clear()
         self.assertEqual((go(conn, ledger, live=True)["blocks"], ledger.writes), ({"unchanged": 1}, []))
 
-    def test_a_second_copy_of_this_jobs_description_is_counted_and_never_stalls_the_leads(self):
+    def with_copy(self):
         ledger, pid, _ = self.row()
         first = body.description_list(ledger.top(pid), KEY1)
         dup = ledger.create(PROPS, body.build(KEY1, DESC))                                          # V7's own description written a second time, at the bottom
+        body.fill(ledger, dup, DESC)                                                                # the copy is a complete V7 description too
         ledger.kids[pid] += ledger.kids.pop(dup)
+        return ledger, pid, first
+
+    def test_a_pure_second_copy_is_removed_live_and_the_leads_go_on(self):
+        ledger, pid, first = self.with_copy()
         self.assertEqual(body.description_list(ledger.top(pid), KEY1), first)                       # the top-most one is used
         self.assertEqual(body.description_duplicates(ledger.top(pid), KEY1), 1)
+        others = [b["id"] for b in ledger.top(pid)][:-2]
         conn = build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")])
         counts = go(conn, ledger, live=True)
-        self.assertEqual((counts["blocks"], counts.get("description_duplicate")), ({"created": 1}, 1))
-        self.assertEqual(ledger.right(pid), ledger.kids[first["id"]][1])
+        self.assertEqual((counts.get("description_duplicate"), counts.get("description_duplicate_removed"), counts["blocks"]), (1, 1, {"created": 1}))
+        self.assertEqual([b["id"] for b in ledger.top(pid)], others)                                 # exactly the copy's marker and columns are gone
+        self.assertEqual(body.description_duplicates(ledger.top(pid), KEY1), 0)
         self.assertEqual(surface.leads_on_page(ledger, pid)[0]["name"], "Invented Person1")
+        self.assertIsNone(go(conn, ledger, live=True).get("description_duplicate"))                  # nothing left to repair
+
+    def test_a_dry_run_only_reports(self):
+        ledger, pid, _ = self.with_copy()
+        before = [b["id"] for b in ledger.top(pid)]
+        counts = go(build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")]), ledger)
+        self.assertEqual(counts.get("description_duplicate_would_remove"), 1)
+        self.assertEqual([b["id"] for b in ledger.top(pid)], before)
+
+    def test_a_copy_with_anything_written_in_it_or_other_text_is_left(self):
+        for mode in ("written", "other_text"):
+            with self.subTest(mode=mode):
+                ledger, pid, _ = self.with_copy()
+                copy_list = ledger.top(pid)[-1]["id"]
+                left, right = ledger.kids[copy_list]
+                if mode == "written":
+                    ledger.kids[right].append(ledger._new("paragraph", "a note Jim typed"))
+                else:
+                    ledger.kids[left].append(ledger._new("paragraph", "an edited line"))
+                before = [b["id"] for b in ledger.top(pid)]
+                counts = go(build(jobs=[(KEY1, pid, "Acme Corp", "Product Director", "ADMIT")]), ledger, live=True)
+                self.assertEqual((counts.get("description_duplicate_left"), counts["blocks"]), (1, {"created": 1}))      # left for Jim, and the leads still go on
+                self.assertEqual([b["id"] for b in ledger.top(pid)], before)
 
     def test_a_description_copied_in_from_another_job_is_never_used(self):
         ledger, pid, _ = self.row()
