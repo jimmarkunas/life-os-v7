@@ -30,8 +30,10 @@ class JourneyProof(unittest.TestCase):
         self.assertEqual(client.blocks["root"], real_pipeline)                         # the real Hiring Pipeline (here "root") is never touched
         (container,) = [b for b in client.blocks[QA_PARENT] if b.get("type") == "child_page"]
         self.assertTrue(container["child_page"]["title"].endswith("(synthetic)"))
-        posts = {p["parent"]["page_id"] for p in client.posts}
+        posts = {p["parent"].get("page_id") or p["parent"]["data_source_id"] for p in client.posts}
         self.assertNotIn("root", posts)                                                # every page this proof created sits inside its sandbox
+        self.assertIn("sandbox-ledger", posts)                                         # LIFE-361: the pursuits are rows of the sandbox's own Ledger
+        self.assertNotIn("ds-synthetic", posts)                                        # never the configured (real) Ledger
 
     def test_counts_only_never_names_ids_links_or_people(self):
         counts = proof.run({**ENV, "INTERVIEW_JOURNEY_PROOF": "QA"}, False, now=NOW, client=qa_workspace())

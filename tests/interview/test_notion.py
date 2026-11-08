@@ -4,7 +4,7 @@ from lifeos.interview import notion
 from lifeos.interview.models import Ownership
 from lifeos.platform.notion_client import NotionError
 
-ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root"}
+ENV = {"NOTION_INTERVIEW_TOKEN": "synthetic", "HIRING_PIPELINE_PAGE_ID": "root", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": "ds-synthetic"}     # LIFE-361: a new pursuit is created in the Ledger
 
 
 def block(label, kind="paragraph", id="block", **extra):
@@ -38,6 +38,9 @@ class Fake:
             return copy.deepcopy(self.pages[key])
         results = self.blocks.get(key, [])
         return {"results": copy.deepcopy(results[:1] if "page_size=1" in path and "page_size=100" not in path else results), "has_more": self.more, "next_cursor": None}
+
+    def query_data_source(self, source_id=None, body=None):
+        return {"results": [], "has_more": False, "next_cursor": None}             # an empty Job Ledger: readers fall back to the page tree as before
 
 
 class NotionTests(unittest.TestCase):
@@ -176,7 +179,7 @@ class LedgerParentTests(unittest.TestCase):
 
     def test_without_a_ledger_source_the_page_tree_alone(self):
         client = FakeLedger([[row("r1", "Acme", "Director", "Applied")]])
-        scan = notion.parents(client, ENV)
+        scan = notion.parents(client, {k: v for k, v in ENV.items() if k != "NOTION_JOB_LEDGER_DATA_SOURCE_ID"})
         self.assertEqual([p.page_id for p in scan.items], ["p"])
         self.assertEqual(client.queries, [])
 

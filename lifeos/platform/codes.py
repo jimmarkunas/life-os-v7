@@ -651,6 +651,7 @@ CODES = {
     "LEDGER_UNAPPLIED": _r("hiring", "blocked", False, "A Ledger row for this decision was not applied.", "Check the Ledger row."),
     "LEDGER_UNAVAILABLE": _r("hiring", "state", False, "Hiring evidence: the Ledger could not be read.", "None."),
     "M1M2_SANDBOX_DATABASE_UNREADABLE": _r("sandbox", "retry", False, "The sandbox database could not be read.", "None; retried."),
+    "JOURNEY_SANDBOX_LEDGER_UNREADABLE": _r("sandbox", "retry", False, "The journey proof's sandbox Ledger could not be made or read.", "None; repeat the proof run."),
     "M1M2_SANDBOX_REPORT_SHAPE": _r("sandbox", "bug", False, "The sandbox report is not the expected shape.", "Check the sandbox."),
     "MAIL_GMAIL_LISTING_INCOMPLETE": _r("mail", "degraded", False, "The Gmail listing for mail did not finish.", "None; retried."),
     "MAIL_OUTLOOK_LISTING_INCOMPLETE": _r("mail", "degraded", False, "The Outlook listing for mail did not finish.", "None; retried."),

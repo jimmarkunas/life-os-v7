@@ -87,12 +87,17 @@ class Sources:
         kind = prop.get("type")
         value = prop.get(kind)
         if "rich_text" in where or "title" in where:
-            return _plain(value) == (where.get("rich_text") or where.get("title"))["equals"]
+            test = where.get("rich_text") or where.get("title")
+            if "contains" in test:                                      # Notion's contains ignores case
+                return test["contains"].lower() in _plain(value).lower()
+            return _plain(value) == test["equals"]
         if "url" in where:
             return value == where["url"]["equals"]
         if "checkbox" in where:
             return bool(value) is where["checkbox"]["equals"]
         if "select" in where:
+            if "is_not_empty" in where["select"]:
+                return bool((value or {}).get("name"))
             return (value or {}).get("name") == where["select"]["equals"]
         if "date" in where:
             return ((value or {}).get("start") or "")[:10] == where["date"]["equals"]
@@ -118,6 +123,9 @@ class QAWorkspace(NotionLike):
         if parts[0] == "data_sources":
             return sources.query(parts[1], body) if method == "POST" else sources.schema(parts[1])
         if parts[0] == "pages" and len(parts) == 2 and parts[1] in sources.rows:
+            if method == "PATCH" and "properties" not in body:           # an icon on the row page (the opportunity is the row, LIFE-361)
+                sources.rows[parts[1]]["icon"] = copy.deepcopy(body.get("icon"))
+                return copy.deepcopy(sources.rows[parts[1]])
             return sources.update(parts[1], body["properties"]) if method == "PATCH" else copy.deepcopy(sources.rows[parts[1]])
         if method == "POST" and path == "/pages" and body["parent"].get("type") == "data_source_id":
             return sources.create(body["parent"]["data_source_id"], body["properties"])

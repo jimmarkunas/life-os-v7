@@ -27,6 +27,9 @@ class WritableFake(Fake):
         self.pages["human"] = page("Legacy — Manager")
         self.pages["human"]["parent"] = {"type": "block_id", "block_id": "left"}
         self.blocks["human"] = [block("human notes")]
+        self.rows = {}                                         # LIFE-361: the Job Ledger data source: row id -> properties
+        self.sandbox_source = None                             # a proof's own sandbox Ledger (POST /databases), the same rows
+        self.stage_options = ["Found", "Applied", "Interviewing", "Offer", "Working", "Ended"]
         self.posts = []
         self.post_error = False
         self.bad_readback = False
@@ -51,8 +54,44 @@ class WritableFake(Fake):
                 self.blocks[item["id"]] = self.register(item["id"], inner, depth + 1)
         return items
 
+    @staticmethod
+    def _value(prop):
+        if not prop:
+            return None
+        for kind in ("title", "rich_text"):
+            if kind in prop:
+                return "".join(x.get("plain_text", (x.get("text") or {}).get("content", "")) for x in prop[kind])
+        return (prop.get("select") or {}).get("name")
+
+    def row_of(self, rid):
+        return {"id": rid, "properties": copy.deepcopy(self.rows[rid])}
+
+    def query_data_source(self, source_id=None, body=None):
+        """Like the Job Ledger: the Stage reader (parents_from_ledger) and the company read (ledger_row). A hidden row is missing from the Stage reader only."""
+        self.calls.append(("GET", f"/data_sources/{source_id}/query"))           # a read (Notion's query is a POST, but it changes nothing)
+        if f"/data_sources/{source_id}/query" in self.fail:
+            raise NotionError("NOTION_NETWORK")
+        wanted = (body or {}).get("filter") or {}
+        if wanted.get("property") == "Stage":
+            found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) and not (self.hide_created and r.startswith("created-"))]
+        else:
+            word = wanted["rich_text"]["contains"].lower()
+            found = [r for r in self.rows if word in (self._value(self.rows[r].get("Company")) or "").lower()]
+        return {"results": [self.row_of(r) for r in found], "has_more": False, "next_cursor": None}
+
+    def add_row(self, rid, company, job, stage=None, decision=None, key=None):
+        self.rows[rid] = {"Job": {"title": [{"plain_text": job}]}, "Company": {"rich_text": [{"plain_text": company}]},
+                          "Stage": {"select": {"name": stage} if stage else None}, "Hiring Decision": {"select": {"name": decision} if decision else None},
+                          "Stable Job Key": {"rich_text": [{"plain_text": key}] if key else []}}
+        self.pages[rid] = page(job, "ledger")
+        self.blocks.setdefault(rid, [])
+        return rid
+
     def find(self, key):
         return next((b for blocks in self.blocks.values() for b in blocks if b.get("id") == key), None)
+
+    def call_once(self, method, path, body=None, version=None):
+        return self.call(method, path, body)
 
     def call(self, method, path, body=None):
         if method in ("PATCH", "DELETE"):
@@ -75,19 +114,43 @@ class WritableFake(Fake):
                     siblings[0] = block("missing marker")
                 return {"results": copy.deepcopy(items)}
             if path.startswith("/pages/"):
+                if key in self.rows and "properties" in body:            # the Ledger row's Stage
+                    self.rows[key].update(copy.deepcopy(body["properties"]))
+                    return {"id": key}
                 self.pages.setdefault(key, page())["icon"] = body.get("icon")
                 return {"id": key}
             target = self.find(key)
             kind = next(k for k in body)
             target[kind]["rich_text"] = copy.deepcopy(body[kind]["rich_text"])
             return copy.deepcopy(target)
+        if method == "GET" and path.startswith("/data_sources/"):
+            self.calls.append((method, path))
+            if path in self.fail:
+                raise NotionError("NOTION_NETWORK")
+            return {"properties": {"Stage": {"type": "select", "select": {"options": [{"name": n} for n in self.stage_options]}},
+                                   "Source Types": {"type": "multi_select", "multi_select": {"options": [{"name": "Manual"}, {"name": "LinkedIn"}]}}}}
         if method != "POST":
             return super().call(method, path, body)
+        if path == "/databases":                                       # a proof's sandbox Ledger: one data source
+            self.calls.append((method, path))
+            self.sandbox_source = "sandbox-ledger"
+            return {"id": "sandbox-db", "data_sources": [{"id": self.sandbox_source}]}
         assert path == "/pages"
         self.calls.append((method, path))
         self.posts.append(copy.deepcopy(body))
         if self.post_error:
             raise NotionError("private error body")
+        if body["parent"]["type"] == "data_source_id":               # LIFE-361: a new Manual Ledger row (no Stage yet; no body)
+            assert body["parent"]["data_source_id"] in ("ds-synthetic", self.sandbox_source) and "children" not in body
+            rid = f"created-{len(self.posts)}"
+            props = copy.deepcopy(body["properties"])
+            for prop in props.values():                                # Notion answers with plain_text on every text run
+                for run in prop.get("title") or prop.get("rich_text") or []:
+                    run["plain_text"] = run["text"]["content"]
+            self.rows[rid] = {**props, "Stage": {"select": None}, "Hiring Decision": {"select": None}}
+            self.pages[rid] = page(self._value(body["properties"]["Job"]), "ledger")
+            self.blocks[rid] = []
+            return {"id": rid}
         assert set(body["properties"]) == {"title"}
         parent_id = body["parent"]["page_id"]
         title = "".join(x["text"]["content"] for x in body["properties"]["title"]["title"])
@@ -138,9 +201,12 @@ class CreationTests(unittest.TestCase):
                 result = self.run_evidence(client, query=query)
                 self.assertEqual((result["writes"], result["parents_created"], result["readback_ok"]), (1, 1, 1))
                 self.assertEqual(len(client.posts), 1)
-                self.assertEqual(client.posts[0]["template"]["template_id"], notion.FULL_WIDTH)      # D16.1: created Full width
+                self.assertEqual(client.posts[0]["parent"], {"type": "data_source_id", "data_source_id": "ds-synthetic"})     # LIFE-361: the pursuit is a Ledger row
                 parent_id = "created-1"
-                self.assertEqual(client.pages[parent_id]["properties"]["title"]["title"][0]["plain_text"], "New Example — Program Manager")
+                row = client.rows[parent_id]
+                self.assertEqual([client._value(row[k]) for k in ("Job", "Company", "Stage")], ["Program Manager", "New Example", "Applied"])
+                self.assertEqual(row["Source Types"], {"multi_select": [{"name": "Manual"}]})
+                self.assertNotIn("Stable Job Key", row)                   # no posting link given: no key is invented
                 parent_blocks = client.blocks[parent_id]
                 self.assertEqual(notion.text(parent_blocks[0]), notion.FOLD)
                 lines = [notion.text(b) for b in client.blocks[parent_id + "-block-0"]]
@@ -194,7 +260,8 @@ class CreationTests(unittest.TestCase):
         self.assertEqual(len(client.posts), 2)
 
     def test_parent_fail_closed_gates(self):
-        for mode, code in (("target", "target_unreadable"), ("scan", "pipeline_incomplete"), ("invalid", "identity_invalid"), ("ambiguous", "parent_ambiguous"), ("malformed", "identity_invalid"), ("unconfirmed", "pursuit_unconfirmed"), ("missing", "active_target_incomplete"), ("duplicate", "pipeline_incomplete"), ("heading", "active_target_incomplete")):
+        for mode, code in (("target", "target_unreadable"), ("scan", "pipeline_incomplete"), ("invalid", "identity_invalid"), ("ambiguous", "parent_ambiguous"), ("malformed", "identity_invalid"), ("unconfirmed", "pursuit_unconfirmed"), ("duplicate", "pipeline_incomplete"), ("noledger", "ledger_config_missing"), ("ledgerdown", "pipeline_incomplete"),
+                           ("twins", "ledger_row_ambiguous"), ("closed", "ledger_row_closed"), ("ended", "ledger_row_closed"), ("conflict", "ledger_row_conflict")):
             with self.subTest(mode=mode):
                 client = WritableFake()
                 parent, query = PARENT, ROUND
@@ -205,10 +272,18 @@ class CreationTests(unittest.TestCase):
                     title = "New Example Program Manager" if mode == "malformed" else "New Example — Program Manager"
                     client.blocks["active"] = [{"id": f"existing-{i}", "type": "child_page", "child_page": {"title": title}} for i in range(2)]
                 if mode == "unconfirmed": query = RoundQuery(False)
-                if mode == "missing": client.blocks["root"] = []
                 if mode == "duplicate": client.blocks["root"] *= 2
-                if mode == "heading": client.blocks["root"] = [block("Active Opportunities", "heading_1")]
-                result = self.run_evidence(client, parent=parent, query=query)
+                if mode == "ledgerdown": client.fail.add("/data_sources/ds-synthetic/query")
+                if mode == "twins":
+                    client.add_row("r1", "New Example", "Program Manager")
+                    client.add_row("r2", "New Example Inc", "Program Manager")
+                if mode == "closed": client.add_row("r1", "New Example", "Program Manager", "Interviewing", "Rejected")
+                if mode == "ended": client.add_row("r1", "New Example", "Program Manager", "Ended")
+                if mode == "conflict":
+                    client.add_row("r1", "New Example", "Program Manager")
+                    client.blocks["r1"] = [block(notion.FOLD, "toggle")]
+                environ = {k: v for k, v in ENV.items() if k != "NOTION_JOB_LEDGER_DATA_SOURCE_ID"} if mode == "noledger" else ENV
+                result = stage.run(10, True, environ=environ, client=client, evidence=[(parent, query)])
                 self.assertIn(code, result["why"])
                 self.assertEqual(client.posts, [])
 
@@ -284,49 +359,42 @@ class CreationTests(unittest.TestCase):
             self.assertNotIn(private, json.dumps(result))
 
 
-class ActiveShapeTests(unittest.TestCase):
+class LedgerShapeTests(unittest.TestCase):
+    """LIFE-361 GWT-IC-3: the probe reports creation supported through the Ledger schema, with no Active Opportunities container anywhere."""
     def context(self):
         from lifeos.platform.runtime import RunContext
         return RunContext.start(60)
 
-    def test_heading_and_direct_container_coexist(self):
+    def test_no_container_is_supported_through_the_ledger_schema(self):
         client = WritableFake()
-        result = notion.active_shape(client, "root", self.context())
-        self.assertEqual(result, {"active_heading_count": 1, "active_container_count": 1,
-            "active_container_parent_verified": True, "insertion_supported": True, "code": "active_shape_supported"})
-        self.assertEqual(notion.active_target(client, "root", self.context()), "active")
+        client.blocks["root"] = [b for b in client.blocks["root"] if b.get("type") != "child_page"]          # no Active Opportunities container at all
+        self.assertEqual(notion.ledger_shape(client, "ds-synthetic", self.context()), {"ledger_stage_options": 6, "insertion_supported": True, "code": "ledger_shape_supported"})
         result = stage.probe(10, True, environ=ENV, client=client)
         self.assertTrue(result["insertion_supported"])
+        self.assertEqual(result["why"].get("ledger_shape_supported"), 1)
         self.assertEqual(result["writes"], 0)
-        self.assertTrue(all(method == "GET" for method, _ in client.calls))
-        for private in ("Legacy", "Manager", "root", "left", "http"):
+        self.assertTrue(all(method == "GET" or path.endswith("/query") for method, path in client.calls))
+        for private in ("Legacy", "Manager", "root", "left", "http", "ds-synthetic"):
             self.assertNotIn(private, json.dumps(result))
 
-    def test_invalid_containers_fail_closed(self):
-        for mode in ("missing", "duplicate", "nested", "archived", "trash", "wrong_parent", "unreadable", "retired"):
+    def test_a_wrong_or_unreadable_schema_is_not_supported(self):
+        for mode, code in (("five", "ledger_shape_incomplete"), ("extra", "ledger_shape_incomplete"), ("renamed", "ledger_shape_incomplete"),
+                           ("unreadable", "ledger_shape_unreadable"), ("missing", "ledger_config_missing")):
             with self.subTest(mode=mode):
                 client = WritableFake()
-                if mode == "missing": client.blocks["root"].pop()
-                if mode == "duplicate": client.blocks["root"].append(copy.deepcopy(client.blocks["root"][-1]))
-                if mode == "nested": client.blocks["left"].append(client.blocks["root"].pop())
-                if mode == "archived": client.pages["active"]["archived"] = True
-                if mode == "trash": client.pages["active"]["in_trash"] = True
-                if mode == "wrong_parent": client.pages["active"]["parent"] = {"type": "page_id", "page_id": "elsewhere"}
-                if mode == "unreadable": client.fail.add("/pages/active")
-                if mode == "retired": client.blocks["root"][-1]["child_page"]["title"] = "Retired Opportunities"
-                self.assertIsNone(notion.active_target(client, "root", self.context()))
-                shape = notion.active_shape(client, "root", self.context())
-                self.assertFalse(shape["insertion_supported"])
-                result = stage.run(10, True, environ=ENV, client=client, evidence=[(PARENT, ROUND)])
-                self.assertTrue({"active_target_incomplete", "pipeline_incomplete"}.intersection(result["why"]))
-                self.assertEqual(client.posts, [])
+                if mode == "five": client.stage_options = client.stage_options[:5]
+                if mode == "extra": client.stage_options = client.stage_options + ["Paused"]
+                if mode == "renamed": client.stage_options = ["Found", "Applied", "Interview", "Offer", "Working", "Ended"]
+                if mode == "unreadable": client.fail.add("/data_sources/ds-synthetic")
+                shape = notion.ledger_shape(client, "" if mode == "missing" else "ds-synthetic", self.context())
+                self.assertEqual((shape["insertion_supported"], shape["code"]), (False, code))
 
     def test_combined_active_universe_excludes_container_and_retired(self):
         from lifeos.interview.identity import resolve_parent
         client = WritableFake()
         parent_id = machine_parent(client)
         client.blocks["right"].append({"id": "retired", "type": "child_page", "child_page": {"title": "Retired — Manager"}})
-        scan = notion.parent_scan(client, "root", self.context())
+        scan = notion.parents(client, ENV, self.context())                  # LIFE-361: the new pursuit is a Ledger row; the legacy page is still read from the tree
         self.assertTrue(scan.complete)
         self.assertEqual(resolve_parent(ParentQuery("Legacy", "Manager"), scan).page_id, "human")
         self.assertEqual(resolve_parent(PARENT, scan).page_id, parent_id)
@@ -335,7 +403,7 @@ class ActiveShapeTests(unittest.TestCase):
         result = stage.run(10, True, environ=ENV, client=client, evidence=[(ParentQuery("Legacy", "Manager"), ROUND)])
         self.assertIn("human_page", result["why"])
         self.assertEqual(len(client.posts), 1)
-        self.assertEqual(client.posts[0]["parent"]["page_id"], "active")
+        self.assertEqual(client.posts[0]["parent"]["data_source_id"], "ds-synthetic")
 
     def test_dry_new_pursuit_and_replay_preserve_legacy(self):
         client = WritableFake()
@@ -409,20 +477,17 @@ class ConfiguredUuidTests(unittest.TestCase):
         client.pages[compact] = client.pages.pop("root")
         client.blocks[compact] = client.blocks.pop("root")
         client.pages["active"]["parent"] = {"type": "page_id", "page_id": dashed.upper()}
-        self.assertEqual(notion.active_target(client, compact, RunContext.start(60)), "active")
         scan = notion.parent_scan(client, compact, RunContext.start(60))
         self.assertTrue(scan.complete)
         self.assertEqual([parent.page_id for parent in scan.items], ["human"])
         env = {**ENV, "HIRING_PIPELINE_PAGE_ID": compact}
         result = stage.probe(10, False, environ=env, client=client)
-        self.assertTrue(result["active_container_parent_verified"])
         self.assertTrue(result["insertion_supported"])
         self.assertEqual(result["why"].get("pipeline_incomplete", 0), 0)
         self.assertEqual(result["writes"], 0)
         for invalid in ("fedcbafedcba4abc8defabcdefabcdef", "not-a-uuid", None, "", "---"):
             with self.subTest(parent_id=invalid):
                 client.pages["active"]["parent"]["page_id"] = invalid
-                self.assertIsNone(notion.active_target(client, compact, RunContext.start(60)))
                 self.assertFalse(notion.parent_scan(client, compact, RunContext.start(60)).complete)
 
 

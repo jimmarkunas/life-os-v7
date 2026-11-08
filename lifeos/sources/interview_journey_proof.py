@@ -3,14 +3,16 @@ no mail read), or a domains dispatch with `interview_journey_proof = QA` and Act
 The QA confirmation is this proof's only write switch.
 
 It drives the REAL Interview runner (`interview_evidence.run`) and the REAL Notion writer with the Interview token, tick after tick, against a FRESH
-sandbox made for this run under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities". Mail, Google
-Calendar and the Job Ledger are synthetic and held in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): no real mailbox,
-calendar, Ledger row or Hiring Pipeline page is read or written. Prints fixed codes and counts per step only. Proves the machine on real Notion; it
+sandbox made for this run under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities", and (LIFE-361) its own
+small Job Ledger data source where the Interview step makes each pursuit's row. Mail, Google Calendar and the Jobs side of the Ledger are synthetic and held
+in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): no real mailbox, calendar, Ledger row or Hiring Pipeline page is read or written. Prints fixed codes and counts per step only. Proves the machine on real Notion; it
 is not M1/M2 evidence."""
 from datetime import datetime, timedelta
 from lifeos.interview import create, notion
 from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import ledger as jobs_ledger
+from lifeos.platform.names import split_title
+from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.sources import interview_evidence as ev
 
 CONFIRM = "QA"
@@ -86,10 +88,10 @@ def _event(title, start, status="confirmed"):
     return {"id": title, "summary": title, "status": status, "start": {"dateTime": start}}
 
 
-def drive(client, environ, pipeline_id, now):
-    """The journey against `pipeline_id` (a sandbox Hiring Pipeline): -> (steps, checks), counts and fixed codes only."""
+def drive(client, environ, pipeline_id, now, ledger_id):
+    """The journey against `pipeline_id` (a sandbox Hiring Pipeline) and `ledger_id` (its sandbox Ledger): -> (steps, checks), counts and fixed codes only."""
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": pipeline_id, "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "",
-           "INTERVIEW_TEST_COMPANIES": "", "INTERVIEW_JOURNEY_PROOF": ""}
+           "INTERVIEW_TEST_COMPANIES": "", "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": ledger_id}
     ledger, calendar, steps = Ledger(), Calendar(), []
 
     def tick(records):
@@ -127,10 +129,10 @@ def drive(client, environ, pipeline_id, now):
     step("N request naming another requisition (second job)", mail + (REQUEST, WRONG_B),
          lambda t, w: t[0]["writes"] == 0 and w.get("requisition_conflict") == 1, settle=False)
 
-    scan = notion.parent_scan(client, pipeline_id)
-    titles = {p.title: p.page_id for p in scan.items if p.active}
-    rounds = notion.child_scan(client, titles.get("ExampleCo — Program Manager", "")).items if "ExampleCo — Program Manager" in titles else ()
-    other = notion.child_scan(client, titles.get("SampleCorp — Analyst", "")).items if "SampleCorp — Analyst" in titles else ()
+    scan = notion.parents(client, env)                                       # LIFE-361: each pursuit is its sandbox Ledger row
+    titles = {split_title(p.title): p.page_id for p in scan.items if p.active}
+    rounds = notion.child_scan(client, titles[("ExampleCo", "Program Manager")]).items if ("ExampleCo", "Program Manager") in titles else ()
+    other = notion.child_scan(client, titles[("SampleCorp", "Analyst")]).items if ("SampleCorp", "Analyst") in titles else ()
     calendar_state = create.round_calendar(client, rounds[0].page_id) if len(rounds) == 1 else (None, False)
     checks = {"pipeline_complete": scan.complete, "opportunities": len(titles), "ledger_rows": len(ledger.rows),
               "exampleco_rounds": len(rounds), "exampleco_round_dated": bool(rounds and rounds[0].interview_date == day(14)[:10]),
@@ -140,12 +142,22 @@ def drive(client, environ, pipeline_id, now):
     return steps, checks
 
 
+LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job Key": {"rich_text": {}}, "Source Types": {"multi_select": {}},
+                 "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}}, "Hiring Decision": {"select": {}}}
+
+
 def sandbox(client, now):
-    """A fresh sandbox for this run under the QA parent: container -> "Hiring Pipeline" -> "Active Opportunities". -> the pipeline page id."""
+    """A fresh sandbox for this run under the QA parent: container -> "Hiring Pipeline" -> "Active Opportunities", and the container's own small Job Ledger
+    (only the properties the Interview step reads and writes). -> (the pipeline page id, the Ledger data source id). A refused database fails the run closed."""
     container = notion.write_tree(client, QA_PARENT, [], title=f"Interview journey proof · {now.strftime('%Y-%m-%d %I:%M %p')} CT (synthetic)")
     pipeline = notion.write_tree(client, container, [], title="Hiring Pipeline")
     notion.write_tree(client, pipeline, [], title="Active Opportunities")
-    return pipeline
+    made = client.call_once("POST", "/databases", {"parent": {"type": "page_id", "page_id": container}, "title": rich_text("Job Ledger (synthetic)"),
+                                                   "initial_data_source": {"properties": LEDGER_SCHEMA}})
+    sources = made.get("data_sources") if isinstance(made, dict) else None
+    if not isinstance(sources, list) or len(sources) != 1 or not sources[0].get("id"):
+        raise NotionError("JOURNEY_SANDBOX_LEDGER_UNREADABLE")
+    return pipeline, sources[0]["id"]
 
 
 def run(environ, live, now=None, client=None):
@@ -165,6 +177,7 @@ def run(environ, live, now=None, client=None):
         return {"proof": "refused", "code": "proof_requires_dry_dispatch", "failed": 1, "why": {}, "writes": 0}      # Actually write would make the job's other steps live
     now = (now or datetime.now(ev.TZ)).astimezone(ev.TZ)
     client = client or notion.make_client(environ)
-    steps, checks = drive(client, environ, sandbox(client, now), now)
+    pipeline, ledger_id = sandbox(client, now)
+    steps, checks = drive(client, environ, pipeline, now, ledger_id)
     failed = sum(not s["pass"] for s in steps) + (not checks["pass"])
     return {"proof": "journey", "steps": steps, "checks": checks, "failed": failed, "why": {}, "writes": sum(s["writes"] for s in steps)}

@@ -28,8 +28,8 @@ def run(limit, live, environ=os.environ, client=None, evidence=(), context=None,
             counts["blocked"] += 1
             reason(target)
             return counts
-        if _probe:
-            shape = notion.active_shape(client, environ["HIRING_PIPELINE_PAGE_ID"].strip(), context)
+        if _probe:                                                      # LIFE-361: creation needs the Ledger's Stage (six options) and Manual source, not a container page
+            shape = notion.ledger_shape(client, (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip(), context)
             reason(shape.pop("code"))
             counts.update(shape)
         scan = notion.parents(client, environ, context)
