@@ -42,6 +42,10 @@ SEND_MAX = 12000
 STOP_TEXT = ("STOPPED", "STOPPED by Jim")
 ATL = re.compile(r"mcp__(?:claude_ai_Atlassian_MCP|claude_ai_Atlassian_Rovo(?:_2)?|atlassian|jira)__(.+)", re.I)
 GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
+# LIFE-397 (Jim, Nov 8: the Buzz agents need Notion, GitHub and Jira): Notion is READ ONLY and an exact list (search, fetch, SQL/row queries, comments). Every other Notion tool, every write, is denied;
+# there is no "ask" path for Notion (the approval flow covers Jira and GitHub only).
+NOTION = re.compile(r"mcp__claude_ai_Notion__(.+)")
+NOTION_READ_OPS = {"notion-search", "notion-fetch", "notion-query-data-sources", "notion-get-comments"}
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
 WRITE_WORD = re.compile(r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link(?!s|type)|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply|change|patch|mutat|fix)")
 NEVER_OP = re.compile(r"(?i)(delete|destructive|remove|archive|purge|merge|fork|force|transfer|admin|secret|token|key|webhook|permission|collaborator|invite|workflow|create_or_update_file|push_files|update_file)")
@@ -371,6 +375,9 @@ def _decide_inner(d, g, home):
     m = GH.fullmatch(tool)
     if m:
         return _decide_github(m.group(1), ti, g)
+    m = NOTION.fullmatch(tool)
+    if m:
+        return ("allow", "notion read") if m.group(1) in NOTION_READ_OPS else ("deny", "notion tool is not a read on the allowlist")
     return "deny", "tool not on allowlist"
 
 

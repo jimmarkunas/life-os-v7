@@ -86,3 +86,14 @@ class NativeReadTools(Base):
         self.assertEqual(h({"channel": real, "limit": 30}), "15d4fb6febf946f1")
         self.assertEqual(h({"channel": real}), "46117809905a0b4e")
         self.assertEqual(h({}), "44136fa355b3678a")
+
+    def test_notion_is_read_only_and_an_exact_list(self):
+        """Jim, Nov 8: the Buzz agents need Notion. Search, fetch, queries and comments are allowed; every write and every other Notion tool is denied; a secret in the input is still denied."""
+        for op, ti in (("notion-search", {"query": "REQ-7 v4"}), ("notion-fetch", {"id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"}),
+                       ("notion-query-data-sources", {"data": {"mode": "sql", "data_source_urls": ["collection://a139cff3-ed9c-48d8-aaf2-6663148a786a"], "query": "SELECT 1"}}),
+                       ("notion-get-comments", {"page_id": "4113c5a0-5926-81f9-bb8e-de0df05ef8a9"})):
+            self.assertEqual(self.dec("mcp__claude_ai_Notion__" + op, ti), "allow", op)
+        for op in ("notion-create-pages", "notion-update-page", "notion-move-pages", "notion-delete-pages", "notion-duplicate-page", "notion-create-comment", "notion-update-data-source",
+                   "notion-create-database", "notion-get-users", "notion-send-message-to-session", "notion-spawn-session", "notion-upload-skill", "notion-search-agents"):
+            self.assertEqual(self.dec("mcp__claude_ai_Notion__" + op, {"id": "x"}), "deny", op)
+        self.assertEqual(self.dec("mcp__claude_ai_Notion__notion-search", {"query": "token: ghp_" + "a" * 30}), "deny")
