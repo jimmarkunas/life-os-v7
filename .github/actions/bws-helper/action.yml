@@ -5,8 +5,8 @@ inputs:
     description: How long the download may keep retrying when there is no saved copy (the caller sizes it to the job's time limit).
     default: "300"
   test_download:
-    description: Test only. "fail" skips the saved copy and points the download at an address that never answers.
-    default: "off"
+    description: Test only. "fail" skips the saved copy and points the download at an address that never answers; anything else is normal.
+    default: "normal"
 runs:
   using: composite
   steps:
