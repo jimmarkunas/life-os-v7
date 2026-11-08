@@ -73,6 +73,10 @@ class WritableFake(Fake):
         if f"/data_sources/{source_id}/query" in self.fail:
             raise NotionError("NOTION_NETWORK")
         wanted = (body or {}).get("filter") or {}
+        if self.sandbox_schema is not None and source_id == self.sandbox_source:         # like Notion: a filter on a property the data source lacks is a 400
+            named = [f["property"] for f in wanted.get("or", wanted.get("and", [wanted])) if "property" in f]
+            if any(n not in self.sandbox_schema for n in named):
+                raise NotionError("NOTION_HTTP_400")
         if "or" in wanted:                                                       # LIFE-353: the decision writers' pursuit read, Applied ticked or Stage set
             found = [r for r in self.rows if self._value(self.rows[r].get("Stage")) or (self.rows[r].get("Applied") or {}).get("checkbox")]
         elif wanted.get("property") == "Stage":
