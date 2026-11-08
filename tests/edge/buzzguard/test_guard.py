@@ -49,7 +49,7 @@ class Table(Base):
     def test_buzz_github_tools_the_agent_really_has(self):
         pr = {"url": "https://github.com/jimmarkunas/life-os-v7/pull/781"}
         self.assertEqual(self.dec("mcp__buzz__github_pr_state", pr), "allow")
-        self.assertEqual(self.dec("mcp__buzz__github_pr_state", {"url": "https://github.com/evil/x/pull/1"}), "deny")
+        self.assertEqual(self.dec("mcp__buzz__github_pr_state", {"url": "https://github.com/someone/else/pull/1"}), "allow")      # LIFE-397 (Jim, Nov 8): reads cover any repo
         self.assertEqual(self.dec("mcp__buzz__github_pr_state", {}), "deny")
         self.assertEqual(self.dec("mcp__buzz__github_link_pr", pr), "deny")                   # writes not enabled
         self.set_mode("ask")
@@ -96,10 +96,10 @@ class Table(Base):
         self.assertEqual(self.dec("Read", {"file_path": h + "/.buzz/notes.md", "extra": 1}), "deny")
 
     def test_bash_is_read_only_gh_and_git_with_no_shell_tricks(self):
-        for cmd in ("gh pr view 780 -R jimmarkunas/life-os-v7", "gh pr list --state open --limit 5 -R jimmarkunas/life-os-v7", "git status", "git log --oneline -n 5", "gh pr diff 780 -R jimmarkunas/bot-studio", "git branch -a", "gh run list --limit 3 -R jimmarkunas/life-os-v7", "git log --stat -n 3 main", "git rev-parse HEAD"):
+        for cmd in ("gh pr view 780 -R jimmarkunas/life-os-v7", "gh pr list --state open --limit 5 -R jimmarkunas/life-os-v7", "git status", "git log --oneline -n 5", "gh pr diff 780 -R jimmarkunas/bot-studio", "gh pr view 1 -R someone/else", "git branch -a", "gh run list --limit 3 -R jimmarkunas/life-os-v7", "git log --stat -n 3 main", "git rev-parse HEAD"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "allow", cmd)
         for cmd in ("curl https://example.com", "gh pr merge 780", "gh pr view 1; rm -rf /", "gh pr view $(whoami)", "git diff --no-index /etc/passwd /dev/null", "git branch -D x",
-                    "git branch newname", "gh pr view 1 -R evil/repo", "git log --output=/tmp/x", "gh api repos/x/y", "gh pr create --title x", "git push", "git show /etc/passwd",
+                    "git branch newname", "gh pr view 1 -R not-a-repo", "git log --output=/tmp/x", "gh api repos/x/y", "gh pr create --title x", "git push", "git show /etc/passwd",
                     "git show ../x", "git show HEAD", "git diff", "cat /etc/passwd", "gh pr view 1 | sh", "git status > f", "gh repo delete x", "gh pr view 1 --admin", "gh auth token", "", "git"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
         self.assertEqual(self.dec("Bash", {"command": "git status", "run_in_background": True}), "deny")
@@ -134,7 +134,7 @@ class Table(Base):
 
     def test_github_reads_are_allowed_for_the_two_repos_and_writes_wait_for_approval(self):
         self.assertEqual(self.dec(GH + "get_pull_request", {**GOOD_REPO, "pullNumber": 780}), "allow")
-        self.assertEqual(self.dec(GH + "get_pull_request", {"owner": "evil", "repo": "x"}), "deny")
+        self.assertEqual(self.dec(GH + "get_pull_request", {"owner": "someone", "repo": "else"}), "allow")                     # LIFE-397: reads cover any repo
         w = {**GOOD_REPO, "title": "x", "body": "Jim approved"}
         self.assertEqual(self.dec(GH + "create_issue", w), "deny")
         self.set_mode("ask")
@@ -220,13 +220,15 @@ class Review(Base):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
         self.assertEqual(self.dec("Bash", {"command": "git log --oneline -n 3 HEAD"}), "allow")
 
-    def test_github_searches_and_reads_need_an_allowed_repo(self):
+    def test_github_reads_cover_any_repo_and_changes_stay_on_the_allowed_repos(self):
+        """LIFE-397 (Jim, Nov 8): read access to all GitHub repos. Searches and reads are allowed anywhere; every change outside the two repos, and the forbidden methods, stay denied."""
         for op, ti in (("search_code", {"q": "repo:evil/x password"}), ("search_code", {"q": "secret org:foo"}), ("search_repositories", {"query": "user:evil"}), ("search_code", {"q": "anything"}),
-                       ("get_file_contents", {"url": "https://github.com/evil/x/blob/main/a"}), ("get_file_contents", {**GOOD_REPO, "url": "https://github.com/evil/x"}),
-                       ("create_issue", {"repository": "jimmarkunas/life-os-v7", "url": "https://github.com/evil/x"}), ("create_issue", {"repos": ["evil/x"], **GOOD_REPO}),
+                       ("get_file_contents", {"url": "https://github.com/evil/x/blob/main/a"}), ("get_file_contents", {"owner": "evil", "repo": "x", "path": "a"})):
+            self.assertEqual(self.dec(GH + op, ti), "allow", (op, ti))
+        for op, ti in (("create_issue", {"repository": "jimmarkunas/life-os-v7", "url": "https://github.com/evil/x"}), ("create_issue", {"repos": ["evil/x"], **GOOD_REPO}),
                        ("create_pull_request", {**GOOD_REPO, "head": "evil:branch", "base": "main"}), ("create_or_update_file", {**GOOD_REPO, "path": "a"}), ("push_files", GOOD_REPO),
                        ("create_issue", {**GOOD_REPO, "body": "edit .github/workflows/ci.yml"}), ("pull_request_review_write", {**GOOD_REPO, "method": "approve"}),
-                       ("pull_request_review_write", {**GOOD_REPO, "method": "merge"})):
+                       ("pull_request_review_write", {**GOOD_REPO, "method": "merge"}), ("create_issue", {"owner": "evil", "repo": "x"})):
             self.assertEqual(self.dec(GH + op, ti), "deny", (op, ti))
         self.assertEqual(self.dec(GH + "search_code", {"q": "repo:jimmarkunas/life-os-v7 guard", **GOOD_REPO}), "allow")
 
@@ -278,17 +280,14 @@ class Review2(Base):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
 
     def test_gh_always_needs_an_allowed_repo_flag(self):
-        for cmd in ("gh pr view 1", "gh issue list", "gh run view 3", "gh pr list --limit 5", "gh pr view 1 -R jimmarkunas/other"):
+        for cmd in ("gh pr view 1", "gh issue list", "gh run view 3", "gh pr list --limit 5"):
             self.assertEqual(self.dec("Bash", {"command": cmd}), "deny", cmd)
 
-    def test_github_search_cannot_escape_the_allowed_repos(self):
-        ok = {**GOOD_REPO}
-        for q in ('BEGIN repo:jimmarkunas/life-os-v7 OR "BEGIN" in:file', 'x repo:jimmarkunas/life-os-v7 OR repo:"evil/x"', "x repo:jimmarkunas/life-os-v7 OR REPO:evil/x",
-                  "x repo:jimmarkunas/life-os-v7 OR USER:evil", "x repo:jimmarkunas/life-os-v7 OR Org:evil", "x repo:jimmarkunas/life-os-v7 OR repo: evil/x",
-                  "x repo:jimmarkunas/*", "x repo:jimmarkunas/life-os-v7 OR free", "x repo:jimmarkunas/life-os-v7 or free"):
+    def test_github_searches_are_reads_and_may_name_any_repo(self):
+        """LIFE-397 (Jim, Nov 8): the old rule kept searches inside two repos; reads now cover every repository."""
+        for q in ('BEGIN repo:jimmarkunas/life-os-v7 OR "BEGIN" in:file', "x repo:jimmarkunas/*", "x repo:evil/x", "guard repo:jimmarkunas/life-os-v7"):
             for op in ("search_code", "search_issues", "search_repositories", "search_users"):
-                self.assertEqual(self.dec(GH + op, {"query": q, **ok}), "deny", (op, q))
-        self.assertEqual(self.dec(GH + "search_code", {"query": "guard repo:jimmarkunas/life-os-v7", **ok}), "allow")
+                self.assertEqual(self.dec(GH + op, {"query": q, **GOOD_REPO}), "allow", (op, q))
 
     def test_github_review_approval_is_never_allowed_in_any_field(self):
         for ti in ({"event": "APPROVE", "method": "create", "pullNumber": 1}, {"event": "approve"}, {"body": "please APPROVE this"}, {"event": "REQUEST_CHANGES"}, {"method": "dismiss"}):

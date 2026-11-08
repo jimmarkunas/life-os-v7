@@ -46,6 +46,9 @@ GH = re.compile(r"mcp__(?:github|claude_ai_GitHub)__(.+)", re.I)
 # there is no "ask" path for Notion (the approval flow covers Jira and GitHub only).
 NOTION = re.compile(r"mcp__claude_ai_Notion__(.+)")
 NOTION_READ_OPS = {"notion-search", "notion-fetch", "notion-query-data-sources", "notion-get-comments"}
+# Jim, Nov 8: write access to Notion. Creating, editing, moving, duplicating, commenting and schema/view changes. NOT deletes or restores, and not sessions, skills, sidebar, calendar or user tools.
+NOTION_WRITE_OPS = {"notion-create-pages", "notion-update-page", "notion-move-pages", "notion-duplicate-page", "notion-create-comment", "notion-update-comment", "notion-create-database",
+                    "notion-update-data-source", "notion-create-view", "notion-update-view", "notion-create-folder", "notion-update-folder"}
 READ_OP = re.compile(r"(?i)(get|search|list|lookup|find|fetch|read|atlassianUserInfo|whoami)")
 WRITE_WORD = re.compile(r"(?i)(create|edit|update|transition(?!s)|assign|set|move|post|send|publish|upload|write|push|close|reopen|add|link(?!s|type)|rank|vote|clone|bulk|apply|run|enable|share|restore|approve|cancel|import|copy|exec|install|spawn|register|join|kick|ban|mute|pin|react|rename|subscribe|resolve|clear|export|reply|change|patch|mutat|fix)")
 NEVER_OP = re.compile(r"(?i)(delete|destructive|remove|archive|purge|merge|fork|force|transfer|admin|secret|token|key|webhook|permission|collaborator|invite|workflow|create_or_update_file|push_files|update_file)")
@@ -226,20 +229,18 @@ def _decide_github(op, ti, g):
         return "deny", "never allowed: " + op
     refs, bad = _repo_refs(ti)
     meth = ti.get("method")
-    if bad or (isinstance(meth, str) and NEVER_OP.search(meth)) or any(re.search(r"(?i)\b(approve|request_changes|dismiss)\b", x) for x in _strings(ti)):
-        return "deny", "github input names an unchecked repo, workflow, cross-fork branch, approval or forbidden method"
+    if (isinstance(meth, str) and NEVER_OP.search(meth)) or any(re.search(r"(?i)\b(approve|request_changes|dismiss)\b", x) for x in _strings(ti)):
+        return "deny", "github input names an approval or forbidden method"
     refs = {r.lower() for r in refs}
     allowed = {r.lower() for r in GITHUB_REPOS}
     if op == "get_me":
         return "allow", "github identity read"
-    if not refs or not refs <= allowed:
-        return "deny", "github call outside allowed repos or without a repo"
-    if op.startswith("search"):                                     # a search must stay inside the allowed repos: one repo: qualifier is not enough
-        q = " ".join(x for x in _strings(ti))
-        if re.search(r"(?i)\bOR\b|[\"*]", q):
-            return "deny", "github search with OR, quotes or wildcards"
-    if _is_read(op) or op in GH_READ_EXTRA:
+    if _is_read(op) or op in GH_READ_EXTRA:                          # LIFE-397 (Jim, Nov 8): reads may cover ANY repository (org:, wildcards, URLs); only changes stay limited to GITHUB_REPOS
         return "allow", "github read"
+    if bad:
+        return "deny", "github change names an unchecked repo, workflow or cross-fork branch"
+    if not refs or not refs <= allowed:
+        return "deny", "github change outside allowed repos or without a repo"
     if op not in GH_WRITE_OPS:
         return "deny", "github write operation not on the allowed list: " + op
     return _write(g, "github %s on %s" % (op, ",".join(sorted(refs))))
@@ -263,8 +264,8 @@ def _decide_bash(ti):
             if tok not in flags:
                 return "deny", "bash flag not allowed: " + tok[:20]
         elif prev in ("-R", "--repo") and not isgit:
-            if tok.lower() not in allowed_repos:
-                return "deny", "bash repo not allowed"
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", tok):   # LIFE-397: read-only gh may name any repository
+                return "deny", "bash repo must be owner/name"
         elif prev in ("--limit", "-L", "-n"):
             if not NUM.fullmatch(tok):
                 return "deny", "bash number expected"
@@ -361,7 +362,7 @@ def _decide_inner(d, g, home):
         return "deny", "secret-shaped text in a tool input"
     if tool == "mcp__buzz__github_pr_state":                         # Buzz's own GitHub tools (seen in the agent's tool list): reading a PR's state is a read, linking/watching is a change
         refs, bad = _repo_refs(ti)
-        return ("allow", "buzz github pr state") if not bad and refs and {r.lower() for r in refs} <= {r.lower() for r in GITHUB_REPOS} else ("deny", "pr state outside allowed repos")
+        return ("allow", "buzz github pr state") if not bad and refs else ("deny", "pr state without a valid repo")
     if tool in ("mcp__buzz__github_link_pr", "mcp__buzz__github_watch_pr"):
         refs, bad = _repo_refs(ti)
         if bad or not refs or not {r.lower() for r in refs} <= {r.lower() for r in GITHUB_REPOS}:
@@ -377,7 +378,7 @@ def _decide_inner(d, g, home):
         return _decide_github(m.group(1), ti, g)
     m = NOTION.fullmatch(tool)
     if m:
-        return ("allow", "notion read") if m.group(1) in NOTION_READ_OPS else ("deny", "notion tool is not a read on the allowlist")
+        return ("allow", "notion read" if m.group(1) in NOTION_READ_OPS else "notion write (Jim, Nov 8)") if m.group(1) in NOTION_READ_OPS | NOTION_WRITE_OPS else ("deny", "notion tool is not on the allowlist (no deletes, restores, sessions, skills or user tools)")
     return "deny", "tool not on allowlist"
 
 
