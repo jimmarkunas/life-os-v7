@@ -58,12 +58,14 @@ class Table(Base):
         self.assertEqual(self.dec("mcp__buzz__github_watch_pr", {"url": "https://github.com/evil/x/pull/1"}), "deny")
         self.assertEqual(self.dec("mcp__buzz__github_delete_pr", pr), "deny")
 
-    def test_the_real_reply_field_and_tool_search_the_agent_uses(self):
+    def test_a_top_level_send_is_allowed_and_any_thread_field_is_refused(self):
+        """LIFE-397 (Jim, Nov 7: no threads unless he starts them): the agent posts top level and @mentions the asker; reply, reply_to and thread are refused with a fixed reason."""
         eid = "ab12" * 16
-        self.assertEqual(self.dec("mcp__buzz__send", self.send("Yes, I am here.", reply=eid)), "allow")           # shape seen in the agent's real transcript
-        for bad in ("x" * 64, eid[:-1], eid.upper(), 5, "", eid + "0", ["a"]):
-            self.assertEqual(self.dec("mcp__buzz__send", self.send("hi", reply=bad)), "deny", bad)
-        self.assertEqual(self.dec("mcp__buzz__send", self.send("tskey-api-abc123", reply=eid)), "deny")
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("@Jim Yes, I am here.")), "allow")
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("@Jim Yes, I am here.", channel="b995612a-678c-4861-82d1-448daffe6f97", mention=["Jim"])), "allow")
+        for field in ("reply", "reply_to", "thread"):
+            self.assertEqual(self.dec("mcp__buzz__send", self.send("hi", **{field: eid})), "deny", field)
+        self.assertEqual(self.dec("mcp__buzz__send", self.send("tskey-api-abc123")), "deny")
         self.assertEqual(self.dec("ToolSearch", {"query": "select:mcp__atlassian__getJiraIssue", "max_results": 5}), "allow")
         for bad in ({"query": ""}, {"query": "x" * 300}, {"query": "tskey-abc123456"}, {"query": "x", "other": 1}, {"max_results": 5}):
             self.assertEqual(self.dec("ToolSearch", bad), "deny", bad)
