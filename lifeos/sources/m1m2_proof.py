@@ -17,6 +17,7 @@ from lifeos.jobs import enrich, identity, lanes, ledger as jobs_ledger, publish,
 from lifeos.jobs.fit.profile import Profile
 from lifeos.jobs.fit.score import evaluate
 from lifeos.platform import report_region as R
+from lifeos.platform.names import split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.recruiters import notion as rstore, outreach
 from lifeos.recruiters.identity import week_ending
@@ -30,7 +31,7 @@ TITLE, INVITE = f"{COMPANY} — {ROLE}", f"{COMPANY} {ROLE} Interview"
 RECRUITER, AGENCY, DECOY_AGENCY = "Riley Synthetic", "Staffing Example Inc", "Other Staffing Example"     # the decoy has the SAME person name
 FIXTURE = json.loads((pathlib.Path(__file__).with_name("m1m2_fixture.json")).read_text())
 PROFILE, DESCRIPTION, SALARY, PLACE = Profile(FIXTURE["profile"]), FIXTURE["description_html"], "$170,000 - $190,000", "Remote, United States"
-READ_FIELDS = {"Hiring Decision": "select", "Dismissed Outcome Ref": "rich_text"}       # what the Hiring readers read from a Ledger row
+READ_FIELDS = {"Hiring Decision": "select", "Dismissed Outcome Ref": "rich_text", "Stage": "select"}       # what the Hiring readers read from a Ledger row (LIFE-361: Stage too)
 ACTIONS = ("Needs Action", "Waiting", *rstore.CONVERSATION, *rstore.HISTORY)
 SLEEP, WAITS = time.sleep, 10                                             # a data-source query can trail a write: wait (bounded) to SEE the case's own write
 
@@ -197,7 +198,7 @@ def drive(client, environ, box, now, results, counts, report=None):
     visible(lambda: pipeline.read_applied(ledger))
 
     def hiring_card(events=()):                                              # 5. the real Hiring card from the sandbox Ledger and pipeline, read back from Notion
-        result = hiring.compile_rows(pipeline.read_applied(ledger), pipeline.read_parents(client, box["pipe"]), list(events), None,
+        result = hiring.compile_rows(pipeline.read_applied(ledger), pipeline.read_parents(client, box["pipe"], ledger), list(events), None,
                                      {"ledger": True, "parents": True, "calendar": True}, now)
         status, cells, _ = render.render(result, None, now)
         done = card.present(report, pins, status, cells, True)
@@ -214,7 +215,7 @@ def drive(client, environ, box, now, results, counts, report=None):
         rstore.create(recruiters, {"person": RECRUITER, "company": agency, "client": COMPANY, "role": ROLE, "medium": "Email", "what": "", "needs_review": False,
                                    "last_contact": (now - timedelta(hours=24)).replace(second=0, microsecond=0).isoformat(), "week_ending": week_ending(now - timedelta(hours=24)), "source_url": url})
     env = {**environ, "HIRING_PIPELINE_PAGE_ID": box["pipe"], "INTERVIEW_OS_WRITER": "v7", "INTERVIEW_LEADS": "on", "INTERVIEW_CONVERT": "", "INTERVIEW_TEST_COMPANIES": "",
-           "INTERVIEW_JOURNEY_PROOF": ""}
+           "INTERVIEW_JOURNEY_PROOF": "", "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]}     # LIFE-361: the opportunity is the sandbox Ledger row
     calendar = Calendar()
 
     def tick(records):                                                       # 6-7. the real Interview runner and Notion writer, with negatives and replays
@@ -236,7 +237,7 @@ def drive(client, environ, box, now, results, counts, report=None):
         return ticks, why, ticks[-1]["writes"] == 0 and ticks[-1]["failed"] == 0
 
     def opportunity():
-        mine = [p for p in notion.parent_scan(client, box["pipe"]).items if p.active and p.title == TITLE]
+        mine = [p for p in notion.parents(client, env).items if p.active and split_title(p.title) == (COMPANY, ROLE)]
         return mine, (notion.child_scan(client, mine[0].page_id).items if len(mine) == 1 else ())
 
     t, _, _ = settle(mail)
@@ -302,9 +303,9 @@ def readback(reader, box, report=None):
                 and (job_rows[0]["action"], job_rows[0]["person"]) == ("Replied", RECRUITER) and len(thread) == 1 and thread[0]["company"] == AGENCY))
     hiring_rows = _hiring_rows(report or reader, box["report"])
     out.append(("9c Hiring Pipeline read-back: one row for the job, Interviewing", len(hiring_rows) == 1 and hiring_rows[0][1].startswith("Interviewing")))
-    scan = notion.parent_scan(reader, box["pipe"])
+    scan = notion.parents(reader, {"HIRING_PIPELINE_PAGE_ID": box["pipe"], "NOTION_JOB_LEDGER_DATA_SOURCE_ID": box["ledger"]})      # LIFE-361: Ledger rows first, then the tree
     active = [p for p in scan.items if p.active]
-    opp = [p for p in active if p.title == TITLE]
+    opp = [p for p in active if split_title(p.title) == (COMPANY, ROLE)]
     rounds = {r.ordinal: r for r in (notion.child_scan(reader, opp[0].page_id).items if len(opp) == 1 else ())}
     machine = [p for p in active if notion.ownership(reader, p.page_id, "opportunity") == Ownership.MACHINE]
     return out + [("9d Interview read-back: the pipeline reads completely; one machine opportunity; the human page still human", scan.complete and len(opp) == 1

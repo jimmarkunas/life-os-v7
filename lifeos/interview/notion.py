@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from urllib.parse import quote
 from lifeos.platform.names import same_company, same_role, split_title, tokens
-from lifeos.platform.notion_client import Client, NotionError
+from lifeos.platform.notion_client import Client, NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from .models import Child, Ownership, Parent, Scan
 
@@ -217,6 +217,91 @@ def parents(client, environ, context=None):
     keys = [split_title(p.title) for p in ledger.items]
     kept = [p for p in tree.items if not any(same_company(split_title(p.title)[0], c) and same_role(split_title(p.title)[1], r) for c, r in keys)]
     return Scan(tuple(ledger.items) + tuple(kept), True, len(ledger.items), len(kept))
+
+
+LEDGER_STAGES = ("Found", "Applied", "Interviewing", "Offer", "Working", "Ended")   # REQ-5 Ledger contract: exactly these six
+MANUAL = "Manual"
+
+
+def _ledger_row(row):
+    props = row.get("properties") or {}
+    return {"id": row.get("id"), "company": _ledger_text(props.get("Company"), "rich_text"), "role": _ledger_text(props.get("Job"), "title"),
+            "key": _ledger_text(props.get("Stable Job Key"), "rich_text"),
+            "stage": ((props.get(LEDGER_STAGE) or {}).get("select") or {}).get("name"),
+            "decision": ((props.get(LEDGER_DECISION) or {}).get("select") or {}).get("name")}
+
+
+def ledger_row(client, source_id, company, role, key=None, context=None):
+    """LIFE-361: the one Job Ledger row for a pursuit: the row holding its Stable Job Key when one is given, else the row whose Company and Job (role) match
+    (same rules as every Interview OS reader). Reads every row whose Company contains the company's first word, completely or not at all.
+    -> (code, row): ledger_row_found with the row, ledger_row_missing, ledger_row_ambiguous (two or more match: nothing is guessed) or ledger_unreadable."""
+    words = tokens(company)
+    if not words or not role.strip():
+        return "ledger_unreadable", None
+    rows, cursor, seen = [], None, set()
+    try:
+        for _ in range(LEDGER_PAGES):
+            if context:
+                context.require_time()
+            page = client.query_data_source(source_id, {"page_size": 100, "filter": {"property": "Company", "rich_text": {"contains": words[0]}},
+                                                        **({"start_cursor": cursor} if cursor else {})})
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list) or type(page.get("has_more")) is not bool:
+                return "ledger_unreadable", None
+            rows += [_ledger_row(r) for r in page["results"] if not r.get("archived") and not r.get("in_trash")]
+            if not page["has_more"]:
+                break
+            cursor = page.get("next_cursor")
+            if not isinstance(cursor, str) or not cursor or cursor in seen:
+                return "ledger_unreadable", None
+            seen.add(cursor)
+        else:
+            return "ledger_unreadable", None
+    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError):
+        return "ledger_unreadable", None
+    keyed = [r for r in rows if key and r["key"] == key]
+    named = keyed or [r for r in rows if same_company(r["company"], company) and same_role(r["role"], role)]
+    if len(named) > 1:
+        return "ledger_row_ambiguous", None
+    return ("ledger_row_found", named[0]) if named else ("ledger_row_missing", None)
+
+
+def create_ledger_row(client, source_id, company, role, key=None):
+    """LIFE-361 (REQ-5 Ledger contract): a new Manual row: Job = role, Company = company, Source Types = Manual, Stable Job Key only when the caller holds the one Jobs OS gave
+    (manual jobs: the posting link's key); Stage is set later, as the commit point. One request, never retried: a create whose answer is lost is found by name on the next run."""
+    props = {"Job": {"title": rich_text(role)}, "Company": {"rich_text": rich_text(company)}, "Source Types": {"multi_select": [{"name": MANUAL}]}}
+    if key:
+        props["Stable Job Key"] = {"rich_text": rich_text(key)}
+    return client.call_once("POST", "/pages", {"parent": {"type": "data_source_id", "data_source_id": source_id}, "properties": props})["id"]
+
+
+def set_stage(client, row_id, stage):
+    if stage not in LEDGER_STAGES:
+        raise ValueError("stage")                                       # a caller bug, never a value from Notion
+    client.call("PATCH", f"/pages/{row_id}", {"properties": {LEDGER_STAGE: {"select": {"name": stage}}}})
+
+
+def ledger_shape(client, source_id, context=None):
+    """GET-only probe (LIFE-361, replaces the Active Opportunities container probe): creation is supported when the Ledger's Stage is a select with exactly the six
+    REQ-5 options and Source Types offers Manual. Counts and fixed codes only."""
+    out = {"ledger_stage_options": 0, "insertion_supported": False, "code": "ledger_shape_incomplete"}
+    if not source_id:
+        out["code"] = "ledger_config_missing"
+        return out
+    try:
+        if context:
+            context.require_time()
+        props = (client.call("GET", f"/data_sources/{source_id}") or {}).get("properties") or {}
+        stage, sources = props.get(LEDGER_STAGE) or {}, props.get("Source Types") or {}
+        names = [o.get("name") for o in ((stage.get("select") or {}).get("options") or [])]
+        out["ledger_stage_options"] = len(names)
+        manual = MANUAL in [o.get("name") for o in ((sources.get("multi_select") or {}).get("options") or [])]
+        if stage.get("type") == "select" and sorted(names) == sorted(LEDGER_STAGES) and len(names) == len(LEDGER_STAGES) and manual:
+            out["insertion_supported"], out["code"] = True, "ledger_shape_supported"
+    except DeadlineExceeded:
+        out["code"] = "ledger_shape_incomplete"
+    except (NotionError, KeyError, TypeError, ValueError, AttributeError):
+        out["code"] = "ledger_shape_unreadable"
+    return out
 
 
 LEGACY_TITLE = re.compile(r"^Interview (\d{1,2}):\s*(.+?)\s*\((\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\)\s*$")
@@ -477,9 +562,10 @@ def clear_template_filler(client, page_id, budget):
     return gone
 
 
-def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None):
+def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, icon=None, template=None, start=False):
     """Write `blocks` (nested `children` at any depth) under parent_id, or as a new page titled `title` under it; returns the
-    id written into. Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
+    id written into. `start` puts them above everything already on the page (LIFE-361: the machine fold goes first on a Ledger row that has a body).
+    Fails closed (NotionError) on an unwritable shape or an exhausted call budget."""
     budget = budget if budget is not None else [TREE_MAX_CALLS]
     plans = [_shell(block, 0) for block in blocks]
     if any(plan is None for plan in plans):
@@ -503,7 +589,8 @@ def write_tree(client, parent_id, blocks, after=None, title=None, budget=None, i
         made = children(client, target, budget)
     else:
         target = parent_id
-        made = client.call("PATCH", f"/blocks/{parent_id}/children", {**body, **({"after": after} if after else {})})["results"]
+        place = {"after": after} if after else {"position": {"type": "start"}} if start else {}
+        made = client.call("PATCH", f"/blocks/{parent_id}/children", {**body, **place})["results"]
     if len(made) < len(plans):
         raise NotionError("INTERVIEW_TREE_INCOMPLETE")
     for plan, item in zip(plans, made):
@@ -652,57 +739,3 @@ def readback(client, page_id, parent_id, kind, before=None):
         return "readback_page_gone" if str(error) == "NOTION_HTTP_404" else "readback_unreadable"
     except (KeyError, TypeError, ValueError):
         return "readback_unreadable"
-
-
-def active_target(client, root, context):
-    """Exactly one verified direct child page; legacy headings are not infrastructure."""
-    try:
-        blocks = children(client, root, [MAX_CALLS], context)
-        targets = [b["id"] for b in blocks if b.get("type") == "child_page"
-                   and (b.get("child_page") or {}).get("title") == "Active Opportunities"]
-        if len(targets) != 1 or same_notion_id(targets[0], root):
-            return None
-        context.require_time()
-        page = client.call("GET", f"/pages/{targets[0]}")
-        titles = [p["title"] for p in page.get("properties", {}).values() if p.get("type") == "title"]
-        title = "".join(p.get("plain_text", (p.get("text") or {}).get("content", "")) for p in titles[0]) if len(titles) == 1 else ""
-        parent = page.get("parent") or {}
-        valid = same_notion_id(parent.get("page_id"), root) and parent.get("type", "page_id") == "page_id"
-        return targets[0] if valid and title == "Active Opportunities" and not page.get("archived") and not page.get("in_trash") else None
-    except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError):
-        return None
-
-
-def active_shape(client, root, context):
-    """GET-only probe of direct insertion infrastructure and untouched legacy headings."""
-    out = {"active_heading_count": 0, "active_container_count": 0,
-           "active_container_parent_verified": False, "insertion_supported": False,
-           "code": "active_shape_incomplete"}
-    budget = [MAX_CALLS]
-    def headings(blocks, depth):
-        if depth > MAX_DEPTH:
-            raise DeadlineExceeded("bounded shape exhausted")
-        for block in blocks:
-            kind = block.get("type", "")
-            if kind.startswith("heading") and text(block) == "Active Opportunities":
-                out["active_heading_count"] += 1
-            elif block.get("has_children") and kind in ("column_list", "column", "toggle"):
-                headings(children(client, block["id"], budget, context), depth + 1)
-    try:
-        blocks = children(client, root, budget, context)
-        out["active_container_count"] = sum(b.get("type") == "child_page" and
-            (b.get("child_page") or {}).get("title") == "Active Opportunities" for b in blocks)
-        headings(blocks, 0)
-        if out["active_container_count"] > 1:
-            out["code"] = "active_shape_ambiguous"
-        elif out["active_container_count"] == 1:
-            valid = active_target(client, root, context) is not None
-            out["active_container_parent_verified"] = out["insertion_supported"] = valid
-            out["code"] = "active_shape_supported" if valid else "active_shape_incomplete"
-    except DeadlineExceeded:
-        out["code"] = "active_shape_incomplete"
-    except NotionError as error:
-        out["code"] = "active_shape_incomplete" if str(error) == "INTERVIEW_SCAN_INCOMPLETE" else "active_shape_unreadable"
-    except (KeyError, TypeError, ValueError):
-        out["code"] = "active_shape_incomplete"
-    return out
