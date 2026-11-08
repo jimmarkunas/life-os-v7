@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/python
+      - name: Bitwarden helper from a saved, fingerprint-checked copy (LIFE-406; downloads, with a long retry, only when no saved copy exists)
+        uses: ./.github/actions/bws-helper
+        with:
+          wait_seconds: "200"
       - id: bws_readiness
         name: Load the Jira credentials from Bitwarden (exactly these 2; masked step outputs only, nothing exported job-wide; the job fails if retrieval fails, no fallback)
         continue-on-error: true                 # one retry below; the retry fails the job
