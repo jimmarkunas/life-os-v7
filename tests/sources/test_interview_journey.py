@@ -78,6 +78,13 @@ class Journey(unittest.TestCase):
     def setUp(self):
         self.notion, self.ledger, self.events, self.recruiters = NotionLike(), Ledger(), [], None
         self.human = [dict(b) for b in self.notion.blocks["human"]]
+        made = self.ledger.create                                       # LIFE-361: one Job Ledger: the row the lead writer makes is the row the Interview step finds
+        def create(props, blocks):
+            pid = made(props, blocks)
+            row = self.ledger.rows[pid]
+            self.notion.add_row(pid, row["company"], row["role"], key=row["stable_job_key"])
+            return pid
+        self.ledger.create = create
 
     def tick(self, *records):
         """One natural run of the Interview step, exactly as the runner calls it, with the mailbox and Calendar as they are now."""
@@ -107,7 +114,7 @@ class Journey(unittest.TestCase):
 
     def pages(self):
         """The opportunities this journey made (the fake pipeline also holds one human page, "Legacy — Manager", which must stay untouched)."""
-        scan = notion.parent_scan(self.notion, "root")
+        scan = notion.parents(self.notion, LIVE)                        # LIFE-361: an opportunity is its Ledger row
         return [(p, notion.child_scan(self.notion, p.page_id).items) for p in scan.items if p.active and p.page_id != "human"]
 
     def test_recruiter_lead_to_interview_scheduled_rescheduled_cancelled_on_one_page(self):
@@ -118,7 +125,7 @@ class Journey(unittest.TestCase):
         self.assertEqual((row["stable_job_key"], row["lane"]), (KEY, "Recruiter"))
         self.settle(LEAD, NO_REQ)
         (page, kids), = self.pages()
-        self.assertEqual((page.title, kids), ("ExampleCo — Program Manager", ()))
+        self.assertEqual((page.page_id, page.title, kids), ("ledger-1", "ExampleCo - Program Manager", ()))      # the lead's own row, no second one
         notes = notion.protected_snapshot(self.notion, page.page_id, "opportunity")
 
         # 2. Replay of the same mail: nothing new anywhere.

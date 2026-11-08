@@ -6,7 +6,7 @@ import re
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from lifeos.platform.names import core, norm, split_title
+from lifeos.platform.names import core, norm, same_company, same_role, split_title
 from lifeos.platform.notion_client import NotionError, rich_text
 from lifeos.platform.runtime import DeadlineExceeded
 from . import notion, view as views
@@ -507,6 +507,50 @@ def transition(client, parent_id, child_id, current, want, live, out, context=No
     return {"confirm": "round_confirmed", "reschedule": "round_rescheduled", "cancel": "round_cancelled", "details": "round_details"}[kind]
 
 
+def _create_in_row(client, environ, source, row, parent_query, query, current, blocks, out, context, deferred):
+    """LIFE-361: a new pursuit's opportunity sections go on its Job Ledger row page (REQ-5: the row is the job record; machine fold first, then Jim's notes,
+    then the round pages). No row: one Manual row is created first. The row's Stage is set to Applied LAST, after the sections read back, so an interrupted
+    run leaves a row that no reader lists and the next run finds it by name and finishes it (never a second row). A body already on the row (a Jobs OS
+    description) stays, unchanged and in order, below the new sections."""
+    company, role = parent_query.company.strip(), parent_query.role.strip()
+    try:
+        if row is None:
+            row_id = notion.create_ledger_row(client, source, company, role, query.stable_job_key)
+            out["rows_created"] = 1
+        else:
+            row_id = row["id"]
+    except NotionError:
+        return "write_failed"
+    deferred.add(row_id)                                                # one write per opportunity per run
+    out["writes"] = out["readback_failed"] = 1
+    context.require_time()
+    original = notion.children(client, row_id, [notion.MAX_CALLS], context)
+    try:
+        notion.write_tree(client, row_id, blocks, start=bool(original))
+    except NotionError:
+        return "write_failed"
+    check = notion.readback(client, row_id, row_id, "opportunity")
+    if check == "readback_ok":
+        check = finalize(client, row_id, current, blocks)
+    if check != "readback_ok":
+        return check
+    if original:
+        after = notion.children(client, row_id, [notion.MAX_CALLS], context)
+        if [b.get("id") for b in after[-len(original):]] != [b.get("id") for b in original] or [notion.text(b) for b in after[-len(original):]] != [notion.text(b) for b in original]:
+            return "readback_protected_changed"                        # the row's own body must still be there, whole and in order, under the sections
+    if not row or row["stage"] in (None, "Found"):
+        try:
+            notion.set_stage(client, row_id, "Applied")                 # the commit point: from here every reader lists the pursuit
+        except NotionError:
+            return "write_failed"
+    refreshed = resolve_parent(parent_query, notion.parents(client, environ, context))
+    if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, row_id):
+        return "readback_identity_mismatch"
+    out["readback_failed"], out["readback_ok"] = 0, 1
+    out["parents_created"] = 1
+    return "parent_created"
+
+
 def apply(client, environ, parent_query, query, live, context, deferred):
     """Private evidence in, counts and fixed code out. deferred forbids parent+round in one run."""
     out = {"writes_planned": 0, "writes": 0, "readback_ok": 0, "readback_failed": 0,
@@ -519,7 +563,7 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         target = notion.target_check(client, environ)
         if target != "target_ok":
             return finish(target)
-        scan = notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context)
+        scan = notion.parents(client, environ, context)                  # LIFE-361: Ledger rows with Stage first (LIFE-360), the page tree for the rest
         parent = resolve_parent(parent_query, scan)
         if parent.state == State.BLOCKED:
             return finish(parent.code)
@@ -543,9 +587,23 @@ def apply(client, environ, parent_query, query, live, context, deferred):
                 return finish("identity_invalid")
             if query.confirmed_round is not True:
                 return finish("pursuit_unconfirmed")
-            insertion = notion.active_target(client, environ["HIRING_PIPELINE_PAGE_ID"], context)
-            if insertion is None:
-                return finish("active_target_incomplete")
+            source = (environ.get("NOTION_JOB_LEDGER_DATA_SOURCE_ID") or "").strip()
+            if not source:
+                return finish("ledger_config_missing")                  # LIFE-361: a new pursuit lives in its Ledger row; there is no container page to fall back to
+            found, row = notion.ledger_row(client, source, company, role, query.stable_job_key, context)
+            if found not in ("ledger_row_found", "ledger_row_missing"):
+                return finish(found)
+            if row and any(notion.same_notion_id(row["id"], key) for key in deferred):
+                return finish("parent_exists")
+            if row and not (same_company(row["company"], company) and same_role(row["role"], role)):
+                return finish("ledger_row_name_mismatch")                # found by its key under other names: every reader matches a pursuit by company and role, so nothing is written
+            if row and (row["decision"] or (row["stage"] and row["stage"] not in ("Found",) + notion.LEDGER_ACTIVE)):
+                return finish("ledger_row_closed")                       # a closed or ended job is reopened by Jim's Reopen, never by an interview write
+            if row:
+                labels = [notion.text(b) for b in notion.children(client, row["id"], [notion.MAX_CALLS], context)]
+                if notion.FOLD in labels or notion.ADOPT in labels or notion.JIM_NOTES in labels or any("v7-interview" in label for label in labels):
+                    return finish("ledger_row_conflict")                 # the row already carries LIFE OS sections: nothing is written twice
+            insertion = row["id"] if row else None
             kind, code = "opportunity", "parent_create_allowed"
             current = _view(client, environ, parent_query, query, pipeline, today=today())
             blocks = rendered(current, tail=None)[0]
@@ -608,6 +666,8 @@ def apply(client, environ, parent_query, query, live, context, deferred):
             if before is None:
                 return finish("readback_protected_missing")
         context.require_time()
+        if kind == "opportunity":
+            return finish(_create_in_row(client, environ, source, row, parent_query, query, current, blocks, out, context, deferred))
         try:
             page_id = notion.write_tree(client, insertion, blocks, title=title, icon=PAGE_ICONS[kind], template=notion.FULL_WIDTH)
         except NotionError:
@@ -615,29 +675,22 @@ def apply(client, environ, parent_query, query, live, context, deferred):
         out["writes"] = 1
         out["readback_failed"] = 1
         check = notion.readback(client, page_id, insertion, kind)
-        if check == "readback_ok" and kind == "opportunity":
-            check = finalize(client, page_id, current, blocks)
         if check != "readback_ok":
             return finish(check)
-        if kind == "opportunity":
-            refreshed = resolve_parent(parent_query, notion.parent_scan(client, environ["HIRING_PIPELINE_PAGE_ID"], context))
-        else:
-            scan = notion.child_scan(client, insertion, context)
-            if scan.complete and not any(notion.same_notion_id(c.page_id, page_id) for c in scan.items):
-                # LIFE-108: Notion can list a parent's children without a just-created page for a few seconds; the new round is read by its
-                # own id (its parent was proven above) and still checked against every listed sibling for a duplicate identity
-                created = notion.explicit_child(client, page_id)
-                scan = Scan(scan.items + ((created,) if created else ()), True)
-            refreshed = resolve_child(parent, query, scan)
-            if notion.protected_snapshot(client, insertion, "opportunity") != before:
-                return finish("readback_protected_changed")
+        scan = notion.child_scan(client, insertion, context)
+        if scan.complete and not any(notion.same_notion_id(c.page_id, page_id) for c in scan.items):
+            # LIFE-108: Notion can list a parent's children without a just-created page for a few seconds; the new round is read by its
+            # own id (its parent was proven above) and still checked against every listed sibling for a duplicate identity
+            created = notion.explicit_child(client, page_id)
+            scan = Scan(scan.items + ((created,) if created else ()), True)
+        refreshed = resolve_child(parent, query, scan)
+        if notion.protected_snapshot(client, insertion, "opportunity") != before:
+            return finish("readback_protected_changed")
         if refreshed.state != State.MATCH or not notion.same_notion_id(refreshed.page_id, page_id):
             return finish("readback_identity_mismatch")
-        if kind == "opportunity":
-            deferred.add(page_id)
         out["readback_failed"], out["readback_ok"] = 0, 1
-        out["parents_created" if kind == "opportunity" else "rounds_created"] = 1
-        return finish("parent_created" if kind == "opportunity" else "round_created")
+        out["rounds_created"] = 1
+        return finish("round_created")
     except (NotionError, DeadlineExceeded, KeyError, TypeError, ValueError, AttributeError) as error:
         out["cause"] = cause_of(error)                                 # counts only: a fixed code or the exception's class name, never its text
         return finish("readback_unreadable" if out["writes"] else "pipeline_incomplete")
