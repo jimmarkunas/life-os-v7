@@ -4,10 +4,12 @@ The QA confirmation is this proof's only write switch.
 
 It drives the REAL Interview runner (`interview_evidence.run`) and the REAL Notion writer with the Interview token, tick after tick, against a FRESH
 sandbox made for this run under the QA Interview OS parent: a container page, its own "Hiring Pipeline" and "Active Opportunities", and (LIFE-361) its own
-small Job Ledger data source where the Interview step makes each pursuit's row. Mail, Google Calendar and the Jobs side of the Ledger are synthetic and held
+small Job Ledger data source where the Interview step makes each pursuit's row. LIFE-353: the journey ends with Confirm Rejected and then Reopen on the
+ExampleCo row of that sandbox Ledger (the production `hiring.decision` writer, each repeated to prove it is a no-op), read back. Mail, Google Calendar and the Jobs side of the Ledger are synthetic and held
 in memory (ExampleCo / SampleCorp, invented requisitions, example.test links): no real mailbox, calendar, Ledger row or Hiring Pipeline page is read or written. Prints fixed codes and counts per step only. Proves the machine on real Notion; it
 is not M1/M2 evidence."""
 from datetime import datetime, timedelta
+from lifeos.hiring import decision as D
 from lifeos.interview import create, notion
 from lifeos.interview.ui_probe import QA_PARENT
 from lifeos.jobs import ledger as jobs_ledger
@@ -144,11 +146,65 @@ def drive(client, environ, pipeline_id, now, ledger_id):
               "exampleco_round_cancelled": calendar_state == (ev.reference(INVITE), True), "samplecorp_rounds": len(other)}
     checks["pass"] = (checks["pipeline_complete"] and checks["opportunities"] == 2 and checks["ledger_rows"] == 2 and checks["exampleco_rounds"] == 1
                       and checks["exampleco_round_dated"] and checks["exampleco_round_cancelled"] and checks["samplecorp_rounds"] == 0)
+    steps.append(decide(client, ledger_id, titles.get(("ExampleCo", "Program Manager")), now))
     return steps, checks
 
 
+class Rows:
+    """The sandbox Ledger as the decision writer reads it: its own data source id, the row page read and one properties write (no retry)."""
+    def __init__(self, client, source):
+        self.client, self.source = client, source
+
+    def call(self, method, path, body=None):
+        return self.client.call(method, path, body)
+
+    def query_data_source(self, source_id=None, body=None):
+        return self.client.query_data_source(self.source, body)
+
+    def get_page(self, page_id):
+        return self.client.call("GET", f"/pages/{page_id}")
+
+    def update_page_properties(self, page_id, properties):
+        return self.client.call_once("PATCH", f"/pages/{page_id}", {"properties": properties})
+
+
+def decide(client, ledger_id, row_id, now):
+    """LIFE-353 GWT-DW-1/2 on the sandbox: Confirm Rejected then Reopen on the ExampleCo row, each sent twice (the second is `already_recorded`), the row read back
+    after each: Hiring Decision set then cleared, two history lines, Stage unchanged. -> one step, codes and counts only."""
+    out = {"step": "D Confirm Rejected then Reopen on the Ledger row", "ticks": 0, "writes": 0, "lead_rows": 0, "lead_review": {}, "why": {}, "settled_failed": 0, "pass": False}
+    if not row_id:
+        out["why"] = {"decision_row_missing": 1}
+        return out
+    rows, stamp = Rows(client, ledger_id), now.strftime("%Y%m%d%H%M")
+    base = {"confirmed": True, "id": row_id, "company": "ExampleCo", "role": "Program Manager"}
+    close = {**base, "action": D.ACTION, "outcome": D.REJECTED, "reason": "Synthetic proof close", "op": f"proof-close-{stamp}"}
+    reopen = {**base, "action": D.REOPEN, "reason": "Synthetic proof reopen", "op": f"proof-reopen-{stamp}"}
+
+    def state():
+        props = (rows.get_page(row_id) or {}).get("properties") or {}
+        return (((props.get(D.DECISION) or {}).get("select") or {}).get("name"), len(D.entries(D._text(props.get(D.HISTORY), "rich_text"))),
+                ((props.get("Stage") or {}).get("select") or {}).get("name"))
+    try:
+        routed = D._page_id(D.route(D.rows(D.ledger_pages(rows)), close)["id"]) == D._page_id(row_id)
+        before = state()
+        done = [D.confirm_rejected(rows, close, True, now)["status"], D.confirm_rejected(rows, close, True, now)["status"]]
+        closed = state()
+        done += [D.confirm_rejected(rows, reopen, True, now)["status"], D.confirm_rejected(rows, reopen, True, now)["status"]]
+        opened = state()
+    except NotionError as error:
+        out["why"] = {str(error)[:60]: 1}
+        return out
+    out["why"] = {f"decision_{s}": done.count(s) for s in sorted(set(done))}
+    out["writes"] = done.count("recorded")
+    out["pass"] = (routed and done == ["recorded", "already_recorded", "recorded", "already_recorded"] and before[:2] == (None, 0)
+                   and closed[:2] == (D.REJECTED, 1) and opened[:2] == (None, 2) and before[2] == closed[2] == opened[2] and before[2] is not None)
+    return out
+
+
 LEDGER_SCHEMA = {"Job": {"title": {}}, "Company": {"rich_text": {}}, "Stable Job Key": {"rich_text": {}}, "Source Types": {"multi_select": {}},
-                 "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}}, "Hiring Decision": {"select": {}}}
+                 "Stage": {"select": {"options": [{"name": n} for n in notion.LEDGER_STAGES]}},
+                 "Hiring Decision": {"select": {"options": [{"name": D.REJECTED}, {"name": D.PASSED}]}},             # the sandbox's own options; the real Ledger is never changed
+                 "Hiring Decision History": {"rich_text": {}}, "Dismissed Outcome Ref": {"rich_text": {}}}
 
 
 def sandbox(client, now):
