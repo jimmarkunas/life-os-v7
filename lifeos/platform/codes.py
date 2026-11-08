@@ -479,6 +479,7 @@ CODES = {
     "NETWORK_SURFACE_CONFIG_MISSING": _r("network", "blocked", False, "The Network surface configuration is missing.", "Set the variables."),
     "NETWORK_SURFACE_DEGRADED": _r("network", "degraded", False, "The Network surface ran with a part failed.", "Read the stage's own code."),
     "NETWORK_SURFACE_PAGE_INCOMPLETE": _r("network", "degraded", False, "A surface page read did not finish.", "None; retried."),
+    "NETWORK_DESCRIPTION_READBACK_MISMATCH": _r("network", "degraded", False, "After removing a repeated job description, the row's blocks did not read back as expected.", "Open the row; nothing else was removed. The next run checks it again."),
     "NETWORK_SURFACE_READBACK_MISMATCH": _r("network", "bug", False, "A surface write did not read back as written.", "Retried."),
     "LAYOUT_COLUMNS_MISSING": _r("network", "bug", False, "A Ledger page's two-column layout did not read back.", "None; the page is retried next run."),
     "LAYOUT_TOGGLE_MISMATCH": _r("network", "bug", False, "A Ledger page's Full job description toggle did not read back as written.", "None; the old description is untouched and the page is retried."),
