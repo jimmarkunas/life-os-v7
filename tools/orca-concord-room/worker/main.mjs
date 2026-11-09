@@ -121,6 +121,45 @@ export async function getAgents(repoRoot, executable, runner = execFileAsync) {
   return { repoRoot: root, agents: parseWho(output.stdout) }
 }
 
+/**
+ * Which kinds of agent Concord can wake while idle, from `concord adapters status` (a supported command). It prints one block per
+ * harness: "  <name>  <state>  <mode>" then "    capabilities: pull, busy, ...". Returns { "<kind>": ["pull", ...] }.
+ * Only the harness name and the capability list are read; everything else on the line is ignored.
+ */
+export function parseAdapterCapabilities(text) {
+  const kinds = {}
+  let current = null
+  for (const line of String(text).split('\n')) {
+    const head = /^ {2}([a-z][a-z0-9-]*)\s+\S+\s+\S+\s*$/u.exec(line)
+    if (head) { current = head[1]; continue }
+    const caps = /^\s+capabilities:\s*(.*)$/u.exec(line)
+    if (caps && current) kinds[current] = caps[1].split(',').map((c) => c.trim()).filter(Boolean)
+  }
+  return kinds
+}
+
+/** { "<kind>": true | false }: can Concord wake an idle agent of this kind. A kind Concord says nothing about is left out (unknown, not marked). */
+export function wakeFromCapabilities(kinds) {
+  return Object.fromEntries(Object.entries(kinds).filter(([, caps]) => !(caps.length === 1 && caps[0] === 'none')).map(([kind, caps]) => [kind, caps.includes('idle')]))
+}
+
+let wakeCache = { at: 0, value: {} }
+/** Cached for a minute: the adapter report changes only when Concord or a harness is installed or upgraded. Any failure means "unknown": nothing is marked. */
+export async function getWakeKinds(repoRoot, executable, runner = execFileAsync, now = Date.now()) {
+  if (now - wakeCache.at < 60000) return wakeCache.value
+  let value = {}
+  try {
+    const root = await validateRepo(repoRoot)
+    const output = await runner(validateExecutable(executable), ['-C', root, 'adapters', 'status'], {
+      cwd: root, env: { ...process.env, CONCORD_TELEMETRY_DISABLED: '1' },
+      timeout: 8000, maxBuffer: 256 * 1024, windowsHide: true, shell: false
+    })
+    value = wakeFromCapabilities(parseAdapterCapabilities(output.stdout))
+  } catch { value = {} }
+  wakeCache = { at: now, value }
+  return value
+}
+
 function mcpExecutable(concordExecutable) {
   const binary = validateExecutable(concordExecutable)
   return path.isAbsolute(binary) ? path.join(path.dirname(binary), 'concord-mcp') : 'concord-mcp'
@@ -664,7 +703,7 @@ export default function activate(orca) {
   orca.panels.handle('concord.agents', async () => {
     const s = await settings()
     const { agents } = await getAgents(s.repoRoot, s.executable)
-    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden: parseHidden(await orca.settings.get('hiddenAgents')) }
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')), hidden: parseHidden(await orca.settings.get('hiddenAgents')), wake: await getWakeKinds(s.repoRoot, s.executable) }
   })
   const handoffSettings = async () => ({
     handoffDir: await orca.settings.get('handoffDir'),

@@ -120,6 +120,12 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 - **Remove an agent from the room:** each agent chip has an **x**. It hides the agent from the room, the **To** box, the **@** list, **@everyone** and handoff targets, and says so. It does not stop the agent, and messages already sent stay in the history. A **N removed · show** link shows the hidden ones dimmed, each with a bring-back button. Stored as a list of agent ids in the new `hiddenAgents` setting (same `settings:own` access; no new capability).
 - Helpers for @mentions are in `panel/mentions.js` (pure, no DOM), unit-tested in a Node `vm`; the panel and the center-tab editor both load it before `room.js`.
 
+## v0.12.1: say which agents Concord can wake
+
+- **Why:** an agent shown as "live" is not necessarily listening. "live" only means it ran recently. Concord can wake an idle agent only when its harness adapter reports the `idle` capability: `concord adapters status` says Claude Code has it (`native-monitor`) and Codex does not (`pull, busy` only), so a message to an idle Codex is queued (`queued_pull`) until that Codex next takes a turn. The room used to show "Codex 1 (live)" and no warning, so a message to it looked like it should be answered.
+- **What changed:** the worker reads `concord adapters status` (cached for a minute; any failure means "unknown", nothing is marked) and sends the room a `wake` map by agent kind. Agents Concord cannot wake are marked **pull-only** on their chip, in the **To** box and in the **@** list; a line under the box says so before you send (`Codex 1 can't be woken while idle: it reads this the next time it takes a turn`), and after sending the note says it again and how to get an answer now (type in that agent's own chat or terminal). An **away** agent is also called out after sending. Claude Code is not marked.
+- It reads only a supported command's output, not Concord's database.
+
 ## v0.10.0: Concord Room in the + menu
 
 - The tab bar **+** menu and the command palette now have a **Concord Room** entry (Orca's own `contributes.newFiles`, as the plugin-authoring guide describes). It creates an untitled `.concord-room` file in the active workspace, which opens in the center column in the room editor. Opening an existing `.concord-room` file still works. No new access: the approval is for the same worker and settings, but a new version always needs a new approval when installed.

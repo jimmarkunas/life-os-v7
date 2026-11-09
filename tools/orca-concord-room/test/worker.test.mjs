@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, parseAdapterCapabilities, wakeFromCapabilities, getWakeKinds } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -539,6 +539,59 @@ test('the panel wires removing agents and @mentions: markup, scripts, loader, wo
   assert.match(worker, /orca\.panels\.handle\('concord\.hide'/)
   assert.ok(manifest.contributes.settings.some((s) => s.key === 'hiddenAgents' && s.default === '[]'))
   assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])      // no new access
+})
+
+// v0.12.1: which agents can Concord wake while idle? Fixture = the real `concord adapters status` output (Concord 0.20.0, Nov 9 2026).
+const ADAPTERS_STATUS = `Harness adapters
+
+  claude-code  installed           native-monitor
+    capabilities: pull, inject, steer, idle, busy
+    Native plugin monitor wakes idle sessions; lifecycle hooks cover busy turns.
+  codex        action_required     managed-controller
+    capabilities: pull, busy
+    Global hooks are installed, but the managed app-server daemon is not ready.
+  cursor       not_detected        harness-monitor
+    capabilities: none
+    The Cursor extension and global lifecycle hooks are not both installed.
+  gemini       not_detected        harness-monitor
+    capabilities: pull, steer, idle, busy, monitor-command
+    A one-shot Gemini background shell monitor injects its completion into the agent.
+`
+
+test('adapter status is read into "can Concord wake an idle agent of this kind": Claude Code yes, Codex no, kinds with no capability left unknown', () => {
+  const kinds = parseAdapterCapabilities(ADAPTERS_STATUS)
+  assert.deepEqual(kinds['claude-code'], ['pull', 'inject', 'steer', 'idle', 'busy'])
+  assert.deepEqual(kinds.codex, ['pull', 'busy'])
+  assert.deepEqual(kinds.cursor, ['none'])
+  assert.deepEqual(wakeFromCapabilities(kinds), { 'claude-code': true, codex: false, gemini: true })     // cursor ("none") is not claimed either way
+  assert.deepEqual(parseAdapterCapabilities(''), {}); assert.deepEqual(parseAdapterCapabilities('garbage\n  capabilities: idle'), {})   // no harness header: nothing to attach it to
+})
+
+test('getWakeKinds asks only for `adapters status`, caches for a minute, and reports unknown (nothing marked) on any failure', async t => {
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-wake-')))
+  await mkdir(path.join(repo, '.concord'))
+  t.after(() => rm(repo, { recursive: true, force: true }))
+  const calls = []
+  const runner = async (cmd, args) => { calls.push(args); return { stdout: ADAPTERS_STATUS } }
+  const t0 = 1_000_000_000_000 + 10 * 60 * 1000          // beyond any cache left by an earlier call in this process
+  assert.deepEqual(await getWakeKinds(repo, 'concord', runner, t0), { 'claude-code': true, codex: false, gemini: true })
+  assert.deepEqual(calls[0], ['-C', repo, 'adapters', 'status'])
+  await getWakeKinds(repo, 'concord', runner, t0 + 30_000); assert.equal(calls.length, 1)               // cached
+  await getWakeKinds(repo, 'concord', runner, t0 + 61_000); assert.equal(calls.length, 2)               // a minute later: asked again
+  const broken = async () => { throw new Error('boom') }
+  assert.deepEqual(await getWakeKinds(repo, 'concord', broken, t0 + 200_000), {})                       // failure: unknown, not "can't wake"
+  assert.deepEqual(await getWakeKinds(path.join(repo, 'missing'), 'concord', runner, t0 + 400_000), {})  // bad repo: unknown too
+})
+
+test('the panel shows pull-only agents before and after sending, wired to the worker\'s wake map', () => {
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
+  const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
+  assert.match(html, /id="warn"/)
+  assert.match(js, /wake = people\.wake \|\| \{\}/)
+  assert.match(js, /pullOnly\(a\.id\) \? ' · pull-only'/)
+  assert.match(js, /can't be woken while idle/)
+  assert.match(worker, /wake: await getWakeKinds\(/)
 })
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
