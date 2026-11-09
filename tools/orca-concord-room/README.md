@@ -2,7 +2,7 @@
 
 **Product:** [LOS-95](https://jimmarkunas.atlassian.net/browse/LOS-95) · **Delivery:** [LIFE-411](https://jimmarkunas.atlassian.net/browse/LIFE-411)
 
-A **read-only view of real messages** inside Orca. It uses the existing Concord CLI and local work-state, not a duplicate backend, mock feed, second database, or other chat platform. Claude Code and Codex send and answer messages via Concord MCP in their Orca agent sessions. The panel displays their identities, content, receipt states, message IDs, and reply relationships. Plugin capability is limited to reading its own settings; its Node worker executes only a fixed, shell-free, read-only Concord CLI command.
+A **live view of real messages** inside Orca, with a composer (v0.2.0) for sending prompts to agents that are present. It uses the existing Concord CLI and local work-state, not a duplicate backend, mock feed, second database, or other chat platform. Claude Code and Codex send and answer messages via Concord MCP in their Orca agent sessions. The panel displays their identities, content, receipt states, message IDs, and reply relationships. Plugin capability is limited to reading its own settings; its Node worker executes only a fixed, shell-free, read-only Concord CLI command.
 
 ## Required host and authorization gates
 
@@ -39,3 +39,13 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 **Rollback:** Stop the dev watcher; disable/uninstall the plugin; inspect configuration diffs and reverse only the isolated pilot's known changes. No broad reset of user-level Claude/Codex/Orca settings.
 
 **Sources:** [Orca plugin authoring](https://github.com/stablyai/orca/blob/main/docs/reference/plugin-authoring.md), [Concord MCP](https://github.com/Get-Concord-AI/concord-mcp), [Concord Codex integration](https://github.com/Get-Concord-AI/concord-mcp/blob/main/docs/codex.md).
+
+
+## v0.2.0: composer (human to agent)
+
+- The panel lists agents currently present (`concord who`) and lets you send one a prompt. It sends through Concord's own MCP `update_work` (operation `prompt`) as a human sender, `human:<macOS username>` unless you set **Your sender id**. It never sends as an agent identity.
+- The worker refuses empty or over-4000-character text, an absent or malformed recipient, sending to yourself, and a malformed sender id. It reports success only when Concord returns a message ID, and shows Concord's own delivery state (`queued_pull` is not delivered).
+- The worker derives `concord-mcp` from the folder of the configured Concord executable (or looks up `concord-mcp` on PATH).
+- Replies to a human sender are stored as `sent`; a human has no live inbox, so there are no read receipts for you.
+- Orca did not ask for a fresh approval for this version, because its declared access (`settings:own`) is unchanged and trusted-worker code can already run processes. Review the worker code before trusting this plugin.
+- Not yet covered: chat-vs-terminal labels, other repositories, Codex chat agents (see the LOS-95 follow-up tickets).

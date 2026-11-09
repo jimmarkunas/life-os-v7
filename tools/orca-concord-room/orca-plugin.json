@@ -3,8 +3,8 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.1.0",
-  "description": "Read-only live Concord message room inside Orca, using Concord's own local message store.",
+  "version": "0.2.0",
+  "description": "Live Concord message room inside Orca: shows real agent messages and lets you send prompts to present agents, using Concord\u0027s own local store and MCP server.",
   "engines": {
     "orca": ">=1.4.246"
   },
@@ -25,6 +25,13 @@
         "key": "repoRoot",
         "title": "Concord repository root (absolute path)",
         "description": "Choose the existing repository/worktree whose local Concord messages to display. Leave blank to fail closed.",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "senderId",
+        "title": "Your sender id in Concord (optional)",
+        "description": "How you appear to agents, like human:jim. Leave blank to use human:<your macOS username>.",
         "type": "string",
         "default": ""
       },
