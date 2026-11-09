@@ -27,6 +27,11 @@ export async function validateRepo(value) {
   if (!path.isAbsolute(value)) fail('invalid_params', 'Concord repo root must be an absolute path.')
   const root = await realpath(value).catch(() => fail('invalid_params', 'Configured repository path does not exist.'))
   if (!(await stat(root)).isDirectory()) fail('invalid_params', 'Configured repository root is not a folder.')
+  // The Concord CLI creates a new empty store in any folder it is pointed at, even for
+  // read-only commands. Require an existing workspace so a mistyped path fails closed
+  // instead of showing a healthy "0 messages" feed and leaving a stray .concord behind.
+  const store = await stat(path.join(root, '.concord')).catch(() => null)
+  if (!store?.isDirectory()) fail('invalid_params', 'No Concord workspace (.concord) in the configured repository. Run concord setup there first.')
   return root
 }
 
