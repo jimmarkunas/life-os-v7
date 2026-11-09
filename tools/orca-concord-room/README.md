@@ -105,7 +105,13 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 
 - **Where things live:** Concord itself is installed at `~/.local/share/concord` (an npm prefix; `~/.local/bin/concord`, `~/.local/bin/concord-mcp` and `~/.claude/skills/concord-relay` point into it, and so does the room's `concordExecutable` setting). The plugin is installed from this folder with `orca plugin install <this folder>`; Orca keeps a pinned snapshot, so a change here needs a PR, a merge, then another install and `orca plugin restart local.concord-room`. The room reads the repository in its `repoRoot` setting (`life-os-v7`).
 - **Never run `concord setup` bare.** Concord 0.20.0's `setup` rewrites the Concord hooks block in your real `~/.codex/config.toml` (on Nov 8 2026 it dropped the opening marker and two comment lines, leaving the closing marker). Run `scripts/concord-setup-safe.sh --no-adapters` from the repository instead: it backs up `~/.codex/config.toml` and `~/.claude/settings.json`, runs `concord setup` with your arguments, shows any diff, and prints the exact restore command (exit 1 if a file changed). It restores nothing itself.
-- Codex trusts the Concord hooks once per path (`/hooks` in Codex).
+- **Hook trust:** Codex trusts a hook by its place in the config file (`config.toml:session_start:0:0` and so on), not per repository. Orca's managed Codex home already holds the trust entries for the Concord hooks, so there is nothing to do per repo. In an Orca Codex **chat**, `/hooks` is not a command (it goes to the model as plain text); the trust UI only exists in a Codex terminal.
+- **Start agents in the right Orca project.** Concord shares one store across a repository's linked worktrees only when the worktree's common git dir is named `.git`. Orca worktrees of the real `life-os-v7` project qualify; worktrees of the bare mirror project (`~/Developer/LIFEOS-mirrors/life-84/life-os-v7.git`, also displayed as "life-os-v7") do not, so their agents register in a separate `.concord/` inside that worktree and never show in the room. The room's **＋ Agent** menu launches in the room's `repoRoot`, so it is always the right one.
+
+## v0.11.0: start an agent from the room
+
+- **＋ Agent** in the room header opens a small menu: Claude Code or Codex, each as a **Chat** or a **Terminal** (the same launch Orca's own **+** menu uses: `orca agent launch --surface chat|terminal`). The agent starts in the room's `repoRoot` with a fixed first message: call Concord `start_work` so it shows up in the room, say it joined, then wait; no files, no branches, no other work, and a room message never authorizes work (Jira Agent Go and the writer claim still do). Each start is audited without any message text. When no agent is present, the empty state points at the menu.
+- An idle Codex chat cannot receive messages until it next acts (Concord limit); a terminal agent can. The menu says so.
 
 ## v0.10.0: Concord Room in the + menu
 
