@@ -12,6 +12,7 @@
     --card: color-mix(in srgb, var(--fg) 7%, var(--bg));
     --mine: color-mix(in srgb, #4d8dff 28%, var(--bg));
     --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --claude: #f2a65a; --codex: #10a37f; --human: #4d8dff; --other: #9aa0a6;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -23,19 +24,31 @@
   .badge.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--bg)); }
   .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--bg)); }
   #chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .chip { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--card); color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+  .chip { --c: var(--other); font-size: 11.5px; padding: 2px 9px 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 20%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); color: var(--fg); display: inline-flex; align-items: center; gap: 5px; cursor: text; }
+  .chip.claude { --c: var(--claude); } .chip.codex { --c: var(--codex); }
   .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
   .chip.live i { background: var(--ok); }
+  .chip .st { color: var(--muted); }
+  .chip input { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--c); border-radius: 6px; padding: 0 4px; width: 130px; outline: none; }
   #banner { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 16%, var(--bg)); color: var(--fg); border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--bg)); font-size: 12px; }
   #wrap { position: relative; flex: 1; min-height: 0; }
   #messages { height: 100%; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .empty { margin: auto; text-align: center; color: var(--muted); max-width: 240px; }
-  .msg { display: flex; flex-direction: column; max-width: 88%; }
-  .msg.mine { align-self: flex-end; align-items: flex-end; }
-  .msg.theirs { align-self: flex-start; align-items: flex-start; }
-  .who { font-size: 11px; color: var(--muted); margin: 0 4px 2px; }
-  .bubble { padding: 7px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .mine .bubble { background: var(--mine); border-bottom-right-radius: 4px; }
+  .msg { display: flex; gap: 8px; max-width: 94%; align-items: flex-end; --c: var(--other); }
+  .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.theirs { align-self: flex-start; }
+  .msg { --bub: var(--card); --bubfg: var(--fg); }
+  .msg.claude { --c: var(--claude); --bub: #f6b681; --bubfg: #2b1706; }
+  .msg.codex { --c: var(--codex); --bub: #2bbf9a; --bubfg: #03241b; }
+  .msg.human { --c: var(--human); --bub: #2f6fe0; --bubfg: #ffffff; }
+  .col { display: flex; flex-direction: column; min-width: 0; }
+  .mine .col { align-items: flex-end; }
+  .av { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 22%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); }
+  .av svg, .chip svg { width: 15px; height: 15px; display: block; }
+  .who { font-size: 11px; color: color-mix(in srgb, var(--c) 70%, var(--fg)); margin: 0 4px 2px; font-weight: 600; }
+  .who .to { font-weight: 400; color: var(--muted); }
+  .bubble { padding: 7px 10px; border-radius: 14px; background: var(--bub); color: var(--bubfg); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mine .bubble { border-bottom-right-radius: 4px; }
   .theirs .bubble { border-bottom-left-radius: 4px; }
   .meta { font-size: 10.5px; color: var(--muted); margin: 2px 4px 0; display: flex; gap: 6px; align-items: center; }
   .st-replied, .st-read { color: var(--ok); }
@@ -80,10 +93,29 @@
   const $ = (id) => document.getElementById(id)
   const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
-  let stick = true, me = '', sending = false, lastRoster = '', chosenByUser = false
+  let stick = true, me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
 
   const kind = (id) => id.split(':')[0]
-  const short = (id) => { const [k, rest] = id.split(':'); return rest ? `${k} · ${rest.slice(0, 8)}` : id }
+  const brand = (id) => ({ 'claude-code': 'claude', codex: 'codex', human: 'human' }[kind(id)] || 'other')
+  const BASE = { claude: 'Claude', codex: 'Codex', human: 'Human', other: 'Agent' }
+  // Simplified marks, drawn here (not the official artwork).
+  const ICONS = {
+    claude: () => { const r = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.2" y="-10.5" width="2.4" height="7.6" rx="1.2" transform="rotate(${a})"/>`).join(''); return `<svg viewBox="-12 -12 24 24" fill="#f2a65a" aria-hidden="true">${r}</svg>` },
+    codex: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#10a37f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="6"/><path d="M8 9l3.5 3L8 15M13 16h3.5"/></svg>',
+    human: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#4d8dff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></svg>',
+    other: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'
+  }
+  const icon = (id) => ICONS[brand(id)]()
+  // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
+  // numbered when several of the same kind exist (in order of first appearance).
+  function nameOf(id) {
+    if (nicks[id]) return nicks[id]
+    const b = brand(id)
+    if (b === 'human') return id === me ? 'You' : 'Human'
+    const same = order.filter((x) => brand(x) === b)
+    return same.length > 1 ? `${BASE[b]} ${same.indexOf(id) + 1}` : BASE[b]
+  }
+  function noteIds(ids) { ids.forEach((id) => { if (id && !order.includes(id)) order.push(id) }) }
   const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 48
   const toBottom = () => { list.scrollTop = list.scrollHeight; stick = true; jump.style.display = 'none' }
@@ -100,15 +132,18 @@
     const isMine = m.from === me || kind(m.from) === 'human'
     if (!el) {
       el = document.createElement('div')
-      el.className = 'msg ' + (isMine ? 'mine' : 'theirs')
-      el.innerHTML = '<div class="who"></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><span class="id"></span></div>'
-      el.querySelector('.who').textContent = `${short(m.from)} → ${short(m.to)}`
+      el.className = 'msg ' + brand(m.from) + ' ' + (isMine ? 'mine' : 'theirs')
+      el.innerHTML = '<div class="av"></div><div class="col"><div class="who"><span class="from"></span> <span class="to"></span></div><div class="bubble"></div><div class="meta"><span class="time"></span><span class="st"></span><span class="rep"></span><span class="id"></span></div></div>'
+      el.querySelector('.av').innerHTML = icon(m.from)
       el.querySelector('.bubble').textContent = m.content
       el.querySelector('.time').textContent = clock(m.at)
       el.querySelector('.rep').textContent = m.replyTo ? '↩ reply' : ''
       el.querySelector('.id').textContent = m.id.slice(0, 8)
       nodes.set(m.id, el)
     }
+    el.querySelector('.from').textContent = nameOf(m.from)
+    el.querySelector('.to').textContent = '→ ' + nameOf(m.to)
+    el.title = `${m.from} → ${m.to}\n${m.id}`
     const st = el.querySelector('.st')
     const label = m.receipt || m.status
     if (st.textContent !== label) { st.textContent = label; st.className = 'st st-' + (m.status || '') }
@@ -131,21 +166,42 @@
 
   function renderRoster(agents) {
     const targets = agents.filter((a) => kind(a.id) !== 'human' && a.id !== me)
-    const key = JSON.stringify(targets) + me
+    noteIds(agents.map((a) => a.id))
+    const key = JSON.stringify(targets) + me + JSON.stringify(nicks) + order.join()
     if (key === lastRoster) return
     lastRoster = key
     $('chips').replaceChildren(...targets.map((a) => {
-      const c = document.createElement('span'); c.className = 'chip' + (a.state.startsWith('live') ? ' live' : '')
-      const dot = document.createElement('i'); const label = document.createElement('span'); label.textContent = `${short(a.id)} · ${a.state}`
-      c.append(dot, label); return c
+      const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '')
+      c.title = `${a.id}\nClick the name to rename`
+      const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id)
+      const label = document.createElement('span'); label.textContent = nameOf(a.id)
+      const st = document.createElement('span'); st.className = 'st'; st.textContent = a.state.split('/')[0]
+      label.addEventListener('click', () => startRename(c, label, a.id))
+      c.append(ic.firstChild, label, dot, st); return c
     }))
     const prev = toSel.value
     toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
-      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${a.id} (${a.state})` : 'No agents present'; return o
+      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${a.state.split('/')[0]})` : 'No agents present'; return o
     }))
     toSel.disabled = targets.length === 0
     if (targets.some((a) => a.id === prev)) toSel.value = prev
     updateSend()
+  }
+
+  function startRename(chip, label, id) {
+    const input = document.createElement('input'); input.value = nicks[id] || nameOf(id); input.maxLength = 32; input.setAttribute('aria-label', 'Agent name')
+    label.replaceWith(input); input.focus(); input.select()
+    let done = false
+    const finish = async (save) => {
+      if (done) return; done = true
+      if (save) {
+        try { const out = await orca.plugin.request('concord.rename', { id, name: input.value }, { timeoutMs: 8000 }); nicks = out.nicknames || {} }
+        catch (e) { setNote((e && e.message) || String(e), 'bad') }
+      }
+      lastRoster = ''; await refresh()
+    }
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false) })
+    input.addEventListener('blur', () => finish(true))
   }
 
   function updateSend() { sendBtn.disabled = sending || !toSel.value || !text.value.trim() }
@@ -160,8 +216,11 @@
       setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
       try {
         const people = await orca.plugin.request('concord.agents', {}, { timeoutMs: 12000 })
-        me = people.me; $('me').textContent = 'Sending as ' + me; renderRoster(people.agents)
+        me = people.me; nicks = people.nicknames || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
+        noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
+        renderRoster(people.agents)
       } catch (e) { /* roster is optional for reading */ }
+      noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
       renderMessages(snap.messages)
     } catch (e) {
       setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))

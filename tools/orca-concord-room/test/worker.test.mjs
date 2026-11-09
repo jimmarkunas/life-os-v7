@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -127,4 +127,15 @@ test('MCP client surfaces a tool error and a missing executable as failures', as
   await assert.rejects(callConcordTool('concord-mcp', {}, 'update_work', {}, 2000, fakeMcp({ result: { isError: true, content: [{ text: 'agent not found' }] } })), /agent not found/)
   const missing = () => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.stdin = { write() {} }; c.kill = () => {}; setImmediate(() => c.emit('error', Object.assign(Error('x'), { code: 'ENOENT' }))); return c }
   await assert.rejects(callConcordTool('/nope/concord-mcp', {}, 'update_work', {}, 2000, missing), /not found/)
+})
+
+test('nicknames: parse is defensive, rename validates the id, clearing removes the name', () => {
+  assert.deepEqual(parseNicknames('{"claude-code:2d46a09c":"Claude (terminal)","bad id":"x","codex:bf5867fb":"  "}'), { 'claude-code:2d46a09c': 'Claude (terminal)' })
+  assert.deepEqual(parseNicknames('not json'), {})
+  assert.deepEqual(parseNicknames('[1,2]'), {})
+  const one = withNickname({}, 'codex:bf5867fb', ' Codex\u0007 (terminal) ')
+  assert.deepEqual(one, { 'codex:bf5867fb': 'Codex (terminal)' })
+  assert.equal(withNickname({ 'codex:bf5867fb': 'x' }, 'codex:bf5867fb', '')['codex:bf5867fb'], undefined)
+  assert.equal(Object.values(withNickname({}, 'codex:bf5867fb', 'y'.repeat(100)))[0].length, 32)
+  assert.throws(() => withNickname({}, 'rm -rf', 'x'), /Unknown agent id/)
 })

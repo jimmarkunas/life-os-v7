@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Live Concord message room inside Orca: shows real agent messages and lets you send prompts to present agents, using Concord's own local store and MCP server.",
   "engines": {
     "orca": ">=1.4.246"
@@ -40,6 +40,13 @@
         "description": "Absolute path or command on Orca PATH; never a shell command.",
         "type": "string",
         "default": "concord"
+      },
+      {
+        "key": "nicknames",
+        "title": "Agent names (managed by the room)",
+        "description": "Click an agent's name in the Concord Room to rename it. Stored here as JSON.",
+        "type": "string",
+        "default": "{}"
       }
     ]
   },

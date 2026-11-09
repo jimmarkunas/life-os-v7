@@ -195,6 +195,34 @@ export async function sendMessage({ repoRoot, executable, senderId, to, content 
   }
 }
 
+const MAX_NAME = 32
+
+/** Nicknames are stored as one JSON string in the plugin's own settings: { "<agent id>": "<name>" }. */
+export function parseNicknames(raw) {
+  let parsed
+  try { parsed = typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : {} } catch { parsed = {} }
+  const out = {}
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    for (const [id, name] of Object.entries(parsed)) {
+      if (AGENT_ID.test(id) && typeof name === 'string' && name.trim()) out[id] = cleanName(name)
+    }
+  }
+  return out
+}
+
+function cleanName(name) {
+  return String(name).replace(/[\u0000-\u001f\u007f]/gu, '').trim().slice(0, MAX_NAME)
+}
+
+export function withNickname(current, id, name) {
+  if (typeof id !== 'string' || !AGENT_ID.test(id)) fail('invalid_params', 'Unknown agent id.')
+  const next = { ...current }
+  const cleaned = typeof name === 'string' ? cleanName(name) : ''
+  if (cleaned) next[id] = cleaned
+  else delete next[id]
+  return next
+}
+
 export default function activate(orca) {
   const settings = async () => ({
     repoRoot: await orca.settings.get('repoRoot'),
@@ -208,7 +236,12 @@ export default function activate(orca) {
   orca.panels.handle('concord.agents', async () => {
     const s = await settings()
     const { agents } = await getAgents(s.repoRoot, s.executable)
-    return { agents, me: defaultSenderId(s.senderId) }
+    return { agents, me: defaultSenderId(s.senderId), nicknames: parseNicknames(await orca.settings.get('nicknames')) }
+  })
+  orca.panels.handle('concord.rename', async (input) => {
+    const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
+    await orca.settings.set('nicknames', JSON.stringify(next))
+    return { nicknames: next }
   })
   orca.panels.handle('concord.send', async (input) => {
     const s = await settings()
