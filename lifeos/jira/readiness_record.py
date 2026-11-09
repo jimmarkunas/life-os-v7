@@ -8,7 +8,7 @@ from lifeos.platform.jira import Jira, JiraError
 FIELDS = "summary,status,labels,parent,components,issuelinks,description"
 ROW = re.compile(r"^\[( |x|X)\]\s*(.+)$")
 PROOF = re.compile(r"\(proof:\s*(.*?)(?:;\s*status:[^)]*)?\)\s*\.?\s*(?:Done\.?)?\s*$")
-GWT = re.compile(r"\*{0,2}GWT-[A-Z]+-\d+\*{0,2}\s*Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)
+GWT = re.compile(r"\*{0,2}GWT-[A-Z0-9]+-\d+\*{0,2}\s*Given (.+?),\s*when (.+?),\s*then (.+)$", re.I)
 LOS_KEY = re.compile(r"\bLOS-\d+\b")
 REQ_PAGE = re.compile(r"\bREQ-\d+\b.*?(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+)|(https://(?:www\.)?(?:app\.)?notion\.(?:com|so)/\S+).*?\bREQ-\d+\b")
 APPROVAL = re.compile(r"^\*{0,2}Origin\s*/\s*approval:\*{0,2}\s*(.+)$", re.I)

@@ -51,6 +51,11 @@ class RecordTests(unittest.TestCase):
         code, _, err = self.check(raw(DESC.replace("None open.", "\n\n- [ ] Pick one (proof: none; status: open).")))
         self.assertIn("decision_open decisions item 1", err)
 
+    def test_a_task_numbered_gwt_id_parses(self):
+        desc = DESC.replace("GWT-EX-01", "GWT-T04-01")
+        self.assertEqual(rr.normalize(raw(desc))["acceptance"], [{"given": "a ready issue", "when": "the check runs", "then": "it reports ready."}])
+        self.assertEqual(self.check(raw(desc))[:2], (0, "ready v1\n"))
+
     def test_each_gap_is_its_own_refusal(self):
         self.assertIn("lane_missing", self.check(raw(labels=()))[2])
         self.assertIn("component_missing", self.check(raw(components=()))[2])
