@@ -382,6 +382,7 @@ Start here. Find a stage, then its module; find the file for a feature in Packag
 - `lifeos/synthetic/authz.py`: The V7 in-process policy gate for synthetic tools (LIFE-374, order and cases from LIFE-372). One pure function, `preflight`, answers a tool request with exactly one final
 - `lifeos/synthetic/authz_fixture.py`: The fake world for the policy-gated tool contract (LIFE-374, fixture plan LIFE-372). Fake data only; nothing here talks to a network or a provider.
 - `lifeos/synthetic/fixture.py`: The fake world for LIFE-373 (fixture contract: LIFE-372). Tenants use neutral labels; the mapping to the labels in the Jira text is PERSONAL-TEST = TENANT-A-TEST, BYTALOS
+- `lifeos/synthetic/handoff.py`: A synthetic signed handoff and a fake receiver (LIFE-375, LOS-86 T06). Fake data only: no Buzz relay, no network, no agent is started.
 - `lifeos/synthetic/knowledge.py`: Cited source reading with tenant isolation, revision checks and revoked-source refusal (LIFE-373). The earliest failing check wins: writer/replay (4), wrong tenant (6), r
 - `lifeos/synthetic/receipt.py`: The fixed, redacted receipt (field names from LIFE-372). It never holds source text, a foreign source id or a foreign tenant.
 - `lifeos/synthetic/tools.py`: Registered fake tools and their handlers (LIFE-374). A tool is known by name, belongs to one service and carries its risk classes. The handlers touch only the fake world:
