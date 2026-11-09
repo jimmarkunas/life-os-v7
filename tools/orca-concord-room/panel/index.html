@@ -1,0 +1,172 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --fg: var(--orca-foreground, #e6e6e6);
+    --bg: var(--orca-background, #151515);
+    --muted: color-mix(in srgb, var(--fg) 55%, var(--bg));
+    --line: color-mix(in srgb, var(--fg) 14%, var(--bg));
+    --card: color-mix(in srgb, var(--fg) 7%, var(--bg));
+    --mine: color-mix(in srgb, #4d8dff 28%, var(--bg));
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --claudecode: #b5532f; --claudechat: #d97757; --chatgpt: #10a37f; --codex: #5b5fef; --human: #ff2fae; --other: #9aa0a6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font: 13px/1.4 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); }
+  header { flex: none; padding: 10px 12px 8px; border-bottom: 1px solid var(--line); }
+  .title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--bg)); }
+  .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--bg)); }
+  #chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { --c: var(--other); font-size: 11.5px; padding: 2px 9px 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 20%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); color: var(--fg); display: inline-flex; align-items: center; gap: 5px; cursor: text; }
+  .chip.claudecode { --c: var(--claudecode); } .chip.claudechat { --c: var(--claudechat); } .chip.chatgpt { --c: var(--chatgpt); } .chip.codex { --c: var(--codex); }
+  .avimg { width: 100%; height: 100%; border-radius: inherit; display: block; image-rendering: auto; }
+  .avimg.pix { image-rendering: pixelated; }
+  .chip .avimg { width: 16px; height: 16px; border-radius: 50%; }
+  .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .chip.live i { background: var(--ok); }
+  .chip .st { color: var(--muted); }
+  .chip input { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--c); border-radius: 6px; padding: 0 4px; width: 130px; outline: none; }
+  #banner { display: none; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 16%, var(--bg)); color: var(--fg); border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--bg)); font-size: 12px; }
+  #wrap { position: relative; flex: 1; min-height: 0; }
+  #messages { height: 100%; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .empty { margin: auto; text-align: center; color: var(--muted); max-width: 240px; }
+  .msg { display: flex; gap: 8px; max-width: 94%; align-items: flex-end; --c: var(--other); }
+  .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.theirs { align-self: flex-start; }
+  .msg { --bub: var(--card); --bubfg: var(--fg); }
+  .msg.claudecode { --c: var(--claudecode); --bub: #b5532f; --bubfg: #ffffff; }
+  .msg.claudechat { --c: var(--claudechat); --bub: #d97757; --bubfg: #2b1206; }
+  .msg.chatgpt { --c: var(--chatgpt); --bub: #10a37f; --bubfg: #ffffff; }
+  .msg.codex { --c: var(--codex); --bub: #5b5fef; --bubfg: #ffffff; }
+  .msg.human { --c: var(--human); --bub: #ff2fae; --bubfg: #090909; }
+  .col { display: flex; flex-direction: column; min-width: 0; }
+  .mine .col { align-items: flex-end; }
+  .av { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; }
+  .av:has(svg) { background: color-mix(in srgb, var(--c) 22%, var(--bg)); }
+  .msg.human .av:has(svg) { background: #ff2fae; }
+  .msg.human .av svg { stroke: #090909; width: 16px; height: 16px; }
+  .av svg, .chip svg { width: 15px; height: 15px; display: block; }
+  .who { font-size: 11px; color: color-mix(in srgb, var(--c) 70%, var(--fg)); margin: 0 4px 2px; font-weight: 600; }
+  .who .to { font-weight: 400; color: var(--muted); }
+  .bubble { padding: 7px 10px; border-radius: 14px; background: var(--bub); color: var(--bubfg); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mine .bubble { border-bottom-right-radius: 4px; }
+  .theirs .bubble { border-bottom-left-radius: 4px; }
+  .meta { font-size: 10.5px; color: var(--muted); margin: 2px 4px 0; display: flex; gap: 6px; align-items: center; }
+  .st-replied, .st-read { color: var(--ok); }
+  .st-failed { color: var(--bad); }
+  .st-sent, .st-queued { color: var(--warn); }
+  #jump { display: none; position: absolute; right: 14px; bottom: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; padding: 4px 10px; font-size: 11px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  footer { flex: none; border-top: 1px solid var(--line); padding: 8px 10px 10px; background: var(--bg); }
+  .row { display: flex; gap: 6px; align-items: center; }
+  select, textarea, button { font: inherit; color: var(--fg); }
+  select { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+  .box { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+  textarea { flex: 1; resize: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; max-height: 140px; min-height: 36px; outline: none; }
+  textarea:focus, select:focus { border-color: #ff2fae; }
+  button#send { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: #ff2fae; color: #090909; font-size: 16px; cursor: pointer; }
+  button#send:disabled { background: var(--card); color: var(--muted); cursor: default; }
+  #note { font-size: 11.5px; margin-top: 6px; min-height: 0; }
+  #note.ok { color: var(--ok); } #note.bad { color: var(--bad); }
+  .hint { font-size: 10.5px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; }
+  #messages { padding-left: max(12px, calc((100% - 880px) / 2)); padding-right: max(12px, calc((100% - 880px) / 2)); }
+  footer { padding-left: max(10px, calc((100% - 880px) / 2)); padding-right: max(10px, calc((100% - 880px) / 2)); }
+  .title .right { display: flex; gap: 6px; align-items: center; }
+  button.badge { background: transparent; color: var(--fg); cursor: pointer; font: inherit; font-size: 11px; }
+  button.badge:hover { border-color: #ff2fae; }
+  #sheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+  #sheet.open { display: flex; }
+  #sheet .card { width: 100%; max-width: 540px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  #sheet h2 { margin: 0; font-size: 14px; }
+  #sheet .jhead { display: flex; justify-content: space-between; align-items: center; }
+  #sheet .jhead button { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; }
+  #sheet .tabs { display: flex; gap: 6px; }
+  #sheet .tabs button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+  #sheet .tabs button.on { background: #ff2fae; border-color: #ff2fae; color: #090909; }
+  #sheet input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; }
+  #sheet input:focus { outline: none; border-color: #ff2fae; }
+  #jlist { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .jrow { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font-size: 12px; }
+  .jrow:hover { background: var(--card); } .jrow.sel { border-color: #ff2fae; background: var(--card); }
+  .jrow .k { font-weight: 600; flex: none; } .jrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { font-size: 10.5px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); flex: none; }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--bg)); } .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--bg)); }
+  #jdetail { display: none; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  #jdetail.on { display: flex; }
+  #jdetail h3 { margin: 0; font-size: 13px; }
+  #jdetail .meta2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
+  #jdetail .desc { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; color: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+  #jdetail .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #jdetail .row2 .hint { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+  #jdetail .row2 select { flex: 1 1 130px; min-width: 0; }
+  #jdetail select { font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  #sheet #jdetail button { font: inherit; font-size: 12px; border-radius: 8px; padding: 5px 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  #sheet #jdetail button.primary { background: #ff2fae; border-color: #ff2fae; color: #090909; }
+  #sheet #jdetail button:disabled { opacity: .5; cursor: default; }
+  #jiractx { display: none; flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); gap: 6px; flex-wrap: wrap; align-items: center; }
+  #jiractx.on { display: flex; }
+  #jiractx .lbl { font-size: 11px; color: var(--muted); }
+  #jiractx button { font: inherit; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, #ff2fae 55%, var(--bg)); background: color-mix(in srgb, #ff2fae 12%, var(--bg)); color: var(--fg); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #handoffs { display: none; flex: none; max-height: 42%; overflow-y: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); gap: 8px; flex-direction: column; background: color-mix(in srgb, var(--warn) 6%, var(--bg)); }
+  #handoffs.on { display: flex; }
+  .ho { --c: var(--other); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); border-radius: 12px; padding: 8px 10px; background: var(--card); display: flex; flex-direction: column; gap: 5px; }
+  .ho.claudechat { --c: var(--claudechat); } .ho.chatgpt { --c: var(--chatgpt); }
+  .ho .top { display: flex; align-items: center; gap: 8px; }
+  .ho .top .av { width: 26px; height: 26px; border-radius: 50%; }
+  .ho .who2 { font-weight: 600; font-size: 12px; flex: 1; min-width: 0; }
+  .ho .key { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .ho .key.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--bg)); }
+  .ho .key.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, var(--bg)); }
+  .ho .scope { font-size: 12px; font-weight: 600; }
+  .ho .brief { font-size: 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .ho .act { display: flex; gap: 6px; align-items: center; }
+  .ho select { flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  .ho button { font: inherit; font-size: 12px; border-radius: 8px; padding: 4px 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+  .ho button.go { background: #ff2fae; border-color: #ff2fae; color: #090909; }
+  .ho button:disabled { opacity: .5; cursor: default; }
+  .ho .note { font-size: 11px; color: var(--muted); } .ho .note.bad { color: var(--bad); }
+  .ho.done .key { white-space: nowrap; flex: none; }
+  .ho.done { padding: 4px 10px; flex-direction: row; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+  .hint { font-size: 11px; color: var(--muted); }
+  #jnote { font-size: 12px; min-height: 0; } #jnote.ok { color: var(--ok); } #jnote.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="title"><h1>Concord Room</h1><div class="right"><button id="jiraBtn" class="badge" type="button" title="Pull in a Jira issue">＋ Jira</button><span id="status" class="badge">Connecting</span></div></div>
+    <div id="chips"></div>
+    <div id="banner"></div>
+  </header>
+  <div id="handoffs" aria-label="Handoffs waiting for you"></div>
+  <div id="jiractx" aria-label="Jira issues pulled into this room"></div>
+  <div id="wrap">
+    <div id="messages"><div class="empty" id="empty">Connecting to Concord…</div></div>
+    <button id="jump" type="button">New messages ↓</button>
+  </div>
+  <footer>
+    <div class="row"><select id="to" aria-label="Send to"></select></div>
+    <div class="box">
+      <textarea id="text" rows="1" maxlength="4000" placeholder="Message an agent…" aria-label="Message"></textarea>
+      <button id="send" type="button" title="Send" aria-label="Send" disabled>↑</button>
+    </div>
+    <div id="note" role="status"></div>
+    <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
+  </footer>
+<div id="sheet" role="dialog" aria-modal="true" aria-label="Pull in a Jira issue"><div class="card">
+  <div class="jhead"><h2>Pull in a Jira issue</h2><button id="jclose" type="button" aria-label="Close">✕</button></div>
+  <div class="tabs" id="jtabs"><button type="button" data-f="assigned" class="on">Assigned</button><button type="button" data-f="reported">Reported</button><button type="button" data-f="all">All</button><button type="button" data-f="done">Done</button></div>
+  <input id="jq" placeholder="Search: a key like LIFE-375, or words" aria-label="Search Jira" />
+  <div id="jlist" aria-label="Jira issues"></div>
+  <div id="jdetail"></div>
+  <div id="jnote" role="status"></div>
+</div></div>
+<script src="avatars.js"></script>
+<script src="room.js"></script>
+</body>
+</html>

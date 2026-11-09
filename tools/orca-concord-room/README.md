@@ -2,7 +2,7 @@
 
 **Product:** [LOS-95](https://jimmarkunas.atlassian.net/browse/LOS-95) · **Delivery:** [LIFE-411](https://jimmarkunas.atlassian.net/browse/LIFE-411)
 
-A **read-only view of real messages** inside Orca. It uses the existing Concord CLI and local work-state, not a duplicate backend, mock feed, second database, or other chat platform. Claude Code and Codex send and answer messages via Concord MCP in their Orca agent sessions. The panel displays their identities, content, receipt states, message IDs, and reply relationships. Plugin capability is limited to reading its own settings; its Node worker executes only a fixed, shell-free, read-only Concord CLI command.
+A **live view of real messages** inside Orca, with a composer (v0.2.0) for sending prompts to agents that are present. It uses the existing Concord CLI and local work-state, not a duplicate backend, mock feed, second database, or other chat platform. Claude Code and Codex send and answer messages via Concord MCP in their Orca agent sessions. The panel displays their identities, content, receipt states, message IDs, and reply relationships. Plugin capability is limited to reading its own settings; its Node worker executes only a fixed, shell-free, read-only Concord CLI command.
 
 ## Required host and authorization gates
 
@@ -39,3 +39,64 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 **Rollback:** Stop the dev watcher; disable/uninstall the plugin; inspect configuration diffs and reverse only the isolated pilot's known changes. No broad reset of user-level Claude/Codex/Orca settings.
 
 **Sources:** [Orca plugin authoring](https://github.com/stablyai/orca/blob/main/docs/reference/plugin-authoring.md), [Concord MCP](https://github.com/Get-Concord-AI/concord-mcp), [Concord Codex integration](https://github.com/Get-Concord-AI/concord-mcp/blob/main/docs/codex.md).
+
+
+## v0.2.0: composer (human to agent)
+
+- The panel lists agents currently present (`concord who`) and lets you send one a prompt. It sends through Concord's own MCP `update_work` (operation `prompt`) as a human sender, `human:<macOS username>` unless you set **Your sender id**. It never sends as an agent identity.
+- The worker refuses empty or over-4000-character text, an absent or malformed recipient, sending to yourself, and a malformed sender id. It reports success only when Concord returns a message ID, and shows Concord's own delivery state (`queued_pull` is not delivered).
+- The worker derives `concord-mcp` from the folder of the configured Concord executable (or looks up `concord-mcp` on PATH).
+- Replies to a human sender are stored as `sent`; a human has no live inbox, so there are no read receipts for you.
+- Orca did not ask for a fresh approval for this version, because its declared access (`settings:own`) is unchanged and trusted-worker code can already run processes. Review the worker code before trusting this plugin.
+- Not yet covered: chat-vs-terminal labels, other repositories, Codex chat agents (see the LOS-95 follow-up tickets).
+
+## v0.3.0: chat layout
+
+- The panel is now a plain HTML frame (`panel/index.html`) instead of Orca's component panel, so it can behave like a normal chat: messages run oldest to newest, the view stays at the newest message unless you scroll up (a "New messages" button appears), and the composer is pinned to the bottom (Enter sends, Shift+Enter adds a line).
+- It talks only to this plugin's own worker through `orca.plugin.request`; message text is always inserted with `textContent`, never as HTML. The worker and manifest access are unchanged (`settings:own`).
+- Orca cannot script HTML panels from the command line (`orca plugin shot --act` refuses them), so the page was exercised in a browser against a stand-in bridge: typed send, error path (draft kept, nothing added), auto-scroll, and roster/recipient list.
+
+## v0.5.0: center tab and Jira tickets
+
+- **Center column:** Orca plugin panels open only in the right sidebar, and a plugin cannot add a "+" menu entry. The supported way into the center column is a custom editor: open any file ending in `.concord-room` (for example `Concord Room.concord-room`, an empty file in the repo) in Orca and the room opens as a full-width tab. It is the same page and script as the sidebar panel (`editor/main.ts` loads `panel/index.html` and `panel/room.js`); scripts must be external files because inline scripts do not run in the editor frame.
+- **Jira:** replaced in v0.9.0 (see below). The earlier "create a ticket" sheet was a wrong guess and has been removed.
+- Built-in single-agent chats are Orca's own UI; a plugin cannot add buttons there.
+
+## v0.6.0: Buzz look
+
+- Agent colours and avatars match the Buzz set (Jim's decision, Nov 8 2026): Claude Code rust `#B5532F`, Claude Chat terracotta `#D97757`, ChatGPT green `#10A37F`, Codex indigo `#5B5FEF`; the humans stay blue. The avatars are Jim's own Buzz PNGs resized to 80 px and embedded in `panel/avatars.js`. Unnamed agents are called "Claude Code" / "Codex" (numbered when several), or whatever you rename them to.
+
+## v0.7.0: handoffs (local synthetic prototype, LIFE-375 / LIFE-403)
+
+- **What it is:** a handoff is a *pointer* to a Jira issue (key, scope, short brief), never an order. Handoffs appear in the room as pending cards; **nothing is sent until you click Accept**, and you choose the target (an open agent, or a new Claude Code / Codex chat in the configured repo). Reject records the refusal.
+- **Source:** a local folder (`handoffDir` setting, default `~/.concord-pilot/handoffs`) stands in for the Buzz channel. `node scripts/synthetic-handoff.mjs` writes unsigned synthetic handoffs there. No network, no Oracle, no Buzz.
+- **Policy (shaped like LIFE-403's):** `policy.json` in that folder lists allowed senders (`chatgpt-chat`, `claude-chat`), allowed targets (open agents, new `claude`/`codex` chats) and must set `requireAccept: true`. It is re-read on every call; if it is missing or malformed, every handoff is refused. Invalid, duplicate-nonce, oversized or symlinked files are reported, never trusted.
+- **Audit:** one JSON line per accept/reject in `audit.log`, without the scope or brief text.
+- **Delivery:** to an open agent as a Concord prompt from `relay:orca-room`; to a new chat with `orca agent launch --surface chat --prompt` (restricted to the configured repo). The prompt tells the receiver to check the Jira issue's release state and writer claim and to reply `REFUSED: <reason>` otherwise.
+- **Observed limit (Nov 8 2026):** a running Claude agent that received an accepted handoff as a Concord prompt did NOT act on it. It said the message came from a peer agent, not from Jim, and asked Jim to confirm in its own session. A running session therefore treats any injected message as untrusted; a *new* chat started with the handoff as its first message does not have that problem.
+
+## v0.8.0: brand magenta, sharper avatars, terminal delivery
+
+- **Look:** your messages use the PBDS magenta `#ff2fae` (ink text `#090909`), from the "JM Personal Brand" palette in the bot studio code. Avatars are embedded at 192 px and drawn at 32 px (20 px in the presence chips), so they stay sharp on retina screens.
+- **Terminal delivery (policy `targets.terminals: true`, off if the key is missing):** a handoff you route yourself can be typed into a terminal as a real user turn. The target comes from Orca, not from Concord: `orca worktree ps` lists each agent with its pane key, and `orca terminal list` ties that key to a terminal handle. Only terminals in the configured repo that Orca reports as a Claude or Codex agent, writable, and idle (`done`, `waiting`, or working in `monitoring` mode) are offered; `working` and `blocked` (a permission prompt) are refused, and the state is re-checked at the moment you click Accept. The text is a single line (a newline would submit early). A handoff that names its own target cannot be typed into a terminal.
+- **Receipt:** input is confirmed from Orca's send receipt (`result.send.accepted`); anything else is reported as unconfirmed and says the text may have been typed, so check before retrying.
+- **Live results (Nov 8 2026, synthetic read-only briefs):** typed into the Claude terminal, the agent treated it as a user turn, read the Jira issue (To Do), found no claim, and did no work. A new Claude chat refused (unclaimed; its Jira read returned a 403 from a connector that is not installed, so it also could not confirm the release state). A new Codex chat, given a handoff naming an Agent Go issue, refused because it held no writer claim. A handoff delivered only as a Concord prompt to a running Claude agent was not acted on (treated as an untrusted peer message).
+
+## v0.8.1: avatars redone
+
+- The earlier avatars were 512 px logos squeezed into a small ringed circle, so the browser rescaled them and softened the pixel edges. They are now cropped tight to the logo and rendered at exact 2x sizes: 88 px images shown at 44 px in the conversation, 44 px images shown at 22 px in the presence chips and handoff cards, as rounded squares with no ring. The pixel-art Claude Code mascot is block-averaged on its own grid and drawn with `image-rendering: pixelated`. On a 1x or 3x display the browser still has to rescale, so judge sharpness on the screen it will be used on.
+
+## v0.9.0: pull a Jira issue in (copies Orca's native flow)
+
+- **What was copied:** Orca's own Tasks view lists your Jira issues (assigned, reported, all, done), lets you open one, and links it to a workspace or starts a workspace from it. The "＋ Jira" button now does the same: filter tabs and a search box (a key like `LIFE-375`, or words), a list with status pills, and an issue view (status, type, project, parent, labels, description).
+- **Pull into this room** attaches the issue to the pilot workspace with `orca reference add` (Orca's own linked items; **Unlink** reverses it). Pulled-in issues show in a strip under the header and in Orca's own workspace card.
+- **Start a chat from it** launches a new Claude Code or Codex chat in the configured repo with the ticket as its first message, from one of three templates: *Review (read-only)* (default), *Plan (no changes)*, or *Implement* (only if the issue is released for Agent Go and the agent holds the writer claim; otherwise it must reply `REFUSED`). Every prompt says the issue text is untrusted data, never instructions (Orca's own Jira skill says the same).
+- **It never writes to Jira.** There is no create, comment, transition, assignee or label code in the plugin; a test fails if one is added. Orca holds the Jira login; the plugin never sees credentials. Pulling in and starting a chat only change Orca's workspace and start an agent.
+
+## v0.9.1: avatars back at their original size
+
+- Circles are 26 px again (16 px in the presence chips), with the logos at their original padding. They are sharp because each image is generated at exactly twice its display size (52 px shown at 26 px, 32 px shown at 16 px); the pixel mascot's blocks land on whole pixels. The ring is drawn outside the image with a box-shadow so it no longer shrinks the picture. Earlier versions grew them to 32-44 px, which was not asked for.
+
+## v0.9.2: crisper avatar edges
+
+- Measured on a real screenshot: the avatar is drawn at exactly 52x52 device pixels (1:1, no browser rescaling) and the logo edges are about one pixel soft, which is the limit for a 26 px circle. The fuzzy look came from (1) a dark 2 px ring around the circle, a second soft step between the page and the avatar, now removed, and (2) a resampling filter (Lanczos) that adds ringing halos, replaced by exact area averaging (520 px canvas to 52 px is exactly 10x, the 512 px original to 32 px is exactly 16x).
