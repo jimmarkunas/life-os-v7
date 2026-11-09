@@ -20,19 +20,23 @@ export const BRIEF = [
   'For THIS first task: finish with worker_done whose result text is exactly READY followed by a space and your Concord agent id (the claude-code:xxxxxxxx or codex:xxxxxxxx id your session start hook printed), or READY none if you did not see one.'
 ].join(' ')
 
-const emptyState = (repoRoot) => ({ version: 1, repoRoot, coordinator: '', run: '', members: [], log: [], seen: [] })
+const emptyState = (repoRoot) => ({ version: 1, repoRoot, coordinator: '', run: '', members: [], log: [], seen: [], rounds: [] })
+
+/** The worker is one process: every read-modify-write of council.json goes through this queue so a sync and a send never overwrite each other. */
+let chain = Promise.resolve()
+const locked = (fn) => { const run = chain.then(fn, fn); chain = run.catch(() => {}); return run }
 
 export async function loadState(file, repoRoot) {
   try {
     const s = JSON.parse(await readFile(file, 'utf8'))
-    if (s && s.version === 1 && Array.isArray(s.members) && Array.isArray(s.log) && Array.isArray(s.seen)) return s.repoRoot === repoRoot ? s : emptyState(repoRoot)
+    if (s && s.version === 1 && Array.isArray(s.members) && Array.isArray(s.log) && Array.isArray(s.seen)) return s.repoRoot === repoRoot ? { ...s, rounds: Array.isArray(s.rounds) ? s.rounds : [] } : emptyState(repoRoot)
   } catch { /* first use, or unreadable: start empty */ }
   return emptyState(repoRoot)
 }
 
 export async function saveState(file, state) {
   await mkdir(path.dirname(file), { recursive: true })
-  const trimmed = { ...state, log: state.log.slice(-MAX_LOG), seen: state.seen.slice(-2000) }
+  const trimmed = { ...state, log: state.log.slice(-MAX_LOG), seen: state.seen.slice(-2000), rounds: (state.rounds ?? []).slice(-20) }
   const tmp = `${file}.${process.pid}.tmp`
   await writeFile(tmp, JSON.stringify(trimmed, null, 1), { mode: 0o600 })
   await rename(tmp, file)
@@ -71,7 +75,8 @@ export async function ensureRun(ctx, state) {
 }
 
 /** Start one kept-open council member (a chat). It reports READY plus its Concord id when it is up, which sync() reads. */
-export async function startMember(ctx, { agent }) {
+export const startMember = (ctx, input) => locked(() => startMemberLocked(ctx, input))
+async function startMemberLocked(ctx, { agent }) {
   if (!['claude', 'codex'].includes(agent)) ctx.fail('invalid_params', 'Choose Claude or Codex.')
   const state = await loadState(ctx.stateFile, ctx.repoRoot)
   const { coordinator, run } = await ensureRun(ctx, state)
@@ -83,24 +88,105 @@ export async function startMember(ctx, { agent }) {
   return { id: member.id, agent }
 }
 
-/** One send per member. The task id Orca returns is what the answer will carry, so it joins question to answer. */
-export async function askMembers(ctx, { ids, text, from }) {
+/** One orchestration send to one member; the task id Orca returns is what its answer will carry, so it joins question to answer. */
+async function sendOne(ctx, state, m, framed, logText, from) {
+  const out = result(await ctx.orca(['orchestration', 'send', '--from', state.coordinator, '--run', state.run, '--to', `dispatch:${m.dispatchId}`, '--subject', 'Room question', '--body', framed, '--json'], 30000))
+  if (typeof out?.taskId !== 'string') ctx.fail('invalid_output', 'Orca did not confirm the question.')
+  state.log.push({ k: 'q', id: out.taskId, to: m.id, from, text: logText, at: ctx.now() })
+  return { id: m.id, taskId: out.taskId, delivery: String(out.delivery ?? '') }
+}
+
+const frame = (from, body) => `From ${String(from).replace(/^human:/u, '')}: ${body}\n\n(Council question. Answer concisely and honestly. Read-only: do not edit anything. Report your answer with worker_done; the result text is your answer.)`
+
+/** One send per member. */
+export const askMembers = (ctx, input) => locked(() => askMembersLocked(ctx, input))
+async function askMembersLocked(ctx, { ids, text, from }) {
   const body = String(text ?? '').trim()
   if (!body) ctx.fail('invalid_params', 'Type a message first.')
   const state = await loadState(ctx.stateFile, ctx.repoRoot)
   if (!state.coordinator || !state.run) ctx.fail('conflict', 'There is no council yet. Start a member first.')
-  const framed = `From ${String(from).replace(/^human:/u, '')}: ${body}\n\n(Council question. Answer concisely and honestly. Read-only: do not edit anything. Report your answer with worker_done; the result text is your answer.)`
   const sent = []
   for (const id of ids) {
     const m = active(state).find((x) => x.id === id)
     if (!m) ctx.fail('invalid_params', `${id} is not a council member.`)
-    const out = result(await ctx.orca(['orchestration', 'send', '--from', state.coordinator, '--run', state.run, '--to', `dispatch:${m.dispatchId}`, '--subject', 'Room question', '--body', framed, '--json'], 30000))
-    if (typeof out?.taskId !== 'string') ctx.fail('invalid_output', 'Orca did not confirm the question.')
-    state.log.push({ k: 'q', id: out.taskId, to: m.id, from, text: body, at: ctx.now() })
-    sent.push({ id: m.id, taskId: out.taskId, delivery: String(out.delivery ?? '') })
+    sent.push(await sendOne(ctx, state, m, frame(from, body), body, from))
   }
   await saveState(ctx.stateFile, state)
   return sent
+}
+
+export const MAX_FOLLOWUPS = 3
+const ROUND_GIVE_UP_MS = 10 * 60 * 1000
+const clip = (t, n = 2500) => (t.length > n ? `${t.slice(0, n)}… (cut)` : t)
+const labelOf = (state, m) => {
+  const same = state.members.filter((x) => x.agent === m.agent)
+  const base = m.agent === 'codex' ? 'Codex' : 'Claude'
+  return same.length > 1 ? `${base} council member ${same.indexOf(m) + 1}` : `${base} council member`
+}
+
+/**
+ * A Round: the question goes to every chosen member, then the room relays each member's answer to the others as a follow-up, `followups` times.
+ * Members cannot message each other (Orca workers only report to their coordinator), so the room is the go-between and every relay shows in the room.
+ */
+export const startRound = (ctx, input) => locked(() => startRoundLocked(ctx, input))
+async function startRoundLocked(ctx, { ids, text, from, followups }) {
+  const body = String(text ?? '').trim()
+  if (!body) ctx.fail('invalid_params', 'Type a message first.')
+  const n = Math.floor(Number(followups))
+  if (!Number.isFinite(n) || n < 1 || n > MAX_FOLLOWUPS) ctx.fail('invalid_params', `Choose 1 to ${MAX_FOLLOWUPS} follow-up rounds.`)
+  const state = await loadState(ctx.stateFile, ctx.repoRoot)
+  if (!state.coordinator || !state.run) ctx.fail('conflict', 'There is no council yet. Start a member first.')
+  const members = [...new Set(ids)].map((id) => active(state).find((x) => x.id === id) ?? ctx.fail('invalid_params', `${id} is not a council member.`))
+  if (members.length < 2) ctx.fail('invalid_params', 'A round needs at least two council members.')
+  const sent = []
+  for (const m of members) sent.push(await sendOne(ctx, state, m, frame(from, body), body, from))
+  state.rounds.push({ id: `round_${sent[0].taskId}`, from, question: body, ids: members.map((m) => m.id), done: 0, max: n, pending: Object.fromEntries(sent.map((x) => [x.taskId, x.id])), answers: {}, sentAt: ctx.now(), finished: false })
+  await saveState(ctx.stateFile, state)
+  return sent
+}
+
+/** An answer arrived for `taskId`: if a round is waiting on it, keep the text for the relay. */
+function noteRoundAnswer(state, taskId, memberId, text) {
+  if (!taskId) return
+  for (const r of state.rounds) {
+    if (!r.finished && r.pending[taskId] === memberId) { delete r.pending[taskId]; r.answers[memberId] = text }
+  }
+}
+
+/** Rounds whose members have all answered (or timed out) get the next relay, or finish. Sends inside the caller's lock. */
+async function advanceRounds(ctx, state) {
+  let changed = false
+  for (const r of state.rounds) {
+    if (r.finished) continue
+    try { if (await advanceRound(ctx, state, r)) changed = true } catch (e) {
+      r.finished = true; changed = true
+      state.log.push({ k: 'n', id: `${r.id}-stop`, text: `The round stopped: ${(e && e.message) || e}`, at: ctx.now() })
+    }
+  }
+  return changed
+}
+
+async function advanceRound(ctx, state, r) {
+  const live = r.ids.filter((id) => active(state).some((m) => m.id === id))
+  for (const [taskId, id] of Object.entries(r.pending)) if (!live.includes(id)) delete r.pending[taskId]      // released members no longer count
+  const timedOut = Object.keys(r.pending).length > 0 && Date.parse(ctx.now()) - Date.parse(r.sentAt) > ROUND_GIVE_UP_MS
+  if (Object.keys(r.pending).length > 0 && !timedOut) return false
+  if (timedOut) r.pending = {}
+  const who = live.filter((id) => typeof r.answers[id] === 'string')
+  if (r.done >= r.max || who.length < 2) {
+    r.finished = true
+    if (r.done < r.max) state.log.push({ k: 'n', id: `${r.id}-end`, text: `The round ended early: fewer than two members answered${timedOut ? ' in time' : ''}.`, at: ctx.now() })
+    return true
+  }
+  const sent = {}
+  for (const id of who) {
+    const m = active(state).find((x) => x.id === id)
+    const others = who.filter((o) => o !== id).map((o) => `- ${labelOf(state, active(state).find((x) => x.id === o))}: ${clip(r.answers[o])}`).join('\n')
+    const framed = `From the room (round ${r.done + 2} of ${r.max + 1}): ${String(r.from).replace(/^human:/u, '')} asked: ${r.question}\n\nThe other council members answered:\n${others}\n\nRespond to them: say where you agree or disagree, and change your answer if they changed your mind. Concise and honest. Read-only: do not edit anything. Report with worker_done; the result text is your answer.`
+    sent[id] = await sendOne(ctx, state, m, framed, `Round ${r.done + 2}: relayed ${who.length - 1} other answer${who.length === 2 ? '' : 's'} and asked for a response.`, r.from)
+  }
+  r.done += 1; r.answers = {}; r.pending = Object.fromEntries(Object.values(sent).map((x) => [x.taskId, x.id])); r.sentAt = ctx.now()
+  return true
 }
 
 /** The row's payload as an object (Orca stores it as a JSON string; tolerate an object). */
@@ -128,7 +214,8 @@ async function recoverAnswer(ctx, member) {
 }
 
 /** Read the Run's mailbox and append anything new to the log. Cheap when idle: one `inbox` call. Returns true if something changed. */
-export async function syncCouncil(ctx) {
+export const syncCouncil = (ctx) => locked(() => syncCouncilLocked(ctx))
+async function syncCouncilLocked(ctx) {
   const state = await loadState(ctx.stateFile, ctx.repoRoot)
   if (!state.run || active(state).length === 0) return false
   const inbox = result(await ctx.orca(['orchestration', 'inbox', '--terminal', `run:${state.run}`, '--limit', '200', '--full', '--json'], 30000))
@@ -146,20 +233,23 @@ export async function syncCouncil(ctx) {
       if (!member.joined && /^READY\b/u.test(body)) {
         member.joined = true; member.concordId = (CONCORD_ID.exec(body) || [null])[0]
         state.log.push({ k: 'join', id: msg.id, from: member.id, at: ctx.now() })
-      } else state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: body, at: ctx.now() })
+      } else { state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: body, at: ctx.now() }); noteRoundAnswer(state, taskId, member.id, body) }
     } else if (msg.type === 'escalation') {
       const got = await recoverAnswer(ctx, member)
       state.log.push({ k: 'a', id: msg.id, taskId, from: member.id, text: got ? got.text : '(It ended its turn without an answer. Ask again.)', at: got ? got.at : ctx.now(), note: got ? 'answered in its chat without reporting' : 'no answer' })
+      if (got) noteRoundAnswer(state, taskId, member.id, got.text)
     } else if (msg.type === 'question') {
       state.log.push({ k: 'a', id: msg.id, taskId: null, from: member.id, text: body, at: ctx.now(), note: 'asks you' })
     }
   }
+  if (await advanceRounds(ctx, state)) changed = true
   if (changed) await saveState(ctx.stateFile, state)
   return changed
 }
 
 /** Hand a member back to Jim (Orca keeps its chat open as an ordinary chat) and drop it from the council. */
-export async function releaseMember(ctx, id) {
+export const releaseMember = (ctx, id) => locked(() => releaseMemberLocked(ctx, id))
+async function releaseMemberLocked(ctx, id) {
   const state = await loadState(ctx.stateFile, ctx.repoRoot)
   const m = active(state).find((x) => x.id === id)
   if (!m) ctx.fail('invalid_params', `${id} is not a council member.`)
@@ -183,6 +273,7 @@ export function councilMessages(state) {
   return state.log.flatMap((e) => {
     if (e.k === 'q') return [{ id: `council-q-${e.id}`, from: e.from, to: e.to, content: e.text, at: e.at, status: 'sent', replyTo: null, receipt: null }]
     if (e.k === 'a') return [{ id: `council-a-${e.id}`, from: e.from, to: askers.get(e.taskId) ?? 'human:me', content: e.note ? `${e.text}\n(${e.note})` : e.text, at: e.at, status: 'replied', replyTo: e.taskId ? `council-q-${e.taskId}` : null, receipt: null }]
+    if (e.k === 'n') return [{ id: `council-n-${e.id}`, from: 'relay:council', to: 'human:me', content: e.text, at: e.at, status: 'replied', replyTo: null, receipt: null }]
     return []
   })
 }
