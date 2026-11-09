@@ -3,7 +3,10 @@
   const emptyEl = $('empty'), list = $('messages'), toSel = $('to'), text = $('text'), sendBtn = $('send'), note = $('note'), jump = $('jump')
   const nodes = new Map()
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
-  let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = []
+  let hidden = [], showHidden = false, mentionAgents = [], peopleAgents = [], wake = {}
+  // Concord can wake an idle agent only when its adapter reports "idle" (the worker reads `concord adapters status`); a kind it says nothing about is not marked.
+  const pullOnly = (id) => wake[kind(id)] === false
+  const PULL_TIP = "Concord can't wake this agent while it is idle: it reads messages the next time it takes a turn."
   // @mentions: pure helpers in mentions.js. If that file failed to load, the room still works with the "To" box alone.
   const RM = window.RoomMentions || { active: () => null, candidates: () => [], insert: (t, c) => ({ text: t, caret: c }), parse: () => [] }
 
@@ -89,9 +92,10 @@
     const everyone = agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me).sort((x, y) => rank(x) - rank(y))
     const targets = everyone.filter((a) => !hidden.includes(a.id))
     const gone = everyone.filter((a) => hidden.includes(a.id))
-    mentionAgents = targets.map((a) => ({ id: a.id, name: nameOf(a.id), state: a.state.split('/')[0] }))
+    const live = (a) => a.state.split('/')[0]
+    mentionAgents = targets.map((a) => ({ id: a.id, name: nameOf(a.id), state: live(a) + (pullOnly(a.id) ? ' · pull-only' : ''), pull: pullOnly(a.id), away: live(a) === 'away' }))
     noteIds(agents.map((a) => a.id))
-    const key = JSON.stringify(targets) + JSON.stringify(gone) + showHidden + me + JSON.stringify(nicks) + order.join()
+    const key = JSON.stringify(targets) + JSON.stringify(gone) + showHidden + me + JSON.stringify(nicks) + JSON.stringify(wake) + order.join()
     if (key === lastRoster) return
     lastRoster = key
     const removedBtn = $('removedBtn')
@@ -99,10 +103,10 @@
     removedBtn.textContent = showHidden ? 'Hide removed agents' : `${gone.length} removed · show`
     const chip = (a, isGone) => {
       const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '') + (isGone ? ' gone' : '')
-      c.title = isGone ? `${a.id}\nRemoved from the room` : `${a.id}\nClick the name to rename`
+      c.title = (isGone ? `${a.id}\nRemoved from the room` : `${a.id}\nClick the name to rename`) + (pullOnly(a.id) ? `\n${PULL_TIP}` : '')
       const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id, true)
       const label = document.createElement('span'); label.textContent = nameOf(a.id)
-      const st = document.createElement('span'); st.className = 'st'; st.textContent = a.state.split('/')[0]
+      const st = document.createElement('span'); st.className = 'st'; st.textContent = live(a) + (pullOnly(a.id) ? ' · pull-only' : '')
       const x = document.createElement('button'); x.type = 'button'; x.className = 'x'
       x.textContent = isGone ? '↺' : '×'
       x.title = isGone ? 'Bring back into the room' : 'Remove from the room. It keeps running; this only hides it here.'
@@ -114,7 +118,7 @@
     $('chips').replaceChildren(...targets.map((a) => chip(a, false)), ...(showHidden ? gone.map((a) => chip(a, true)) : []))
     const prev = toSel.value
     toSel.replaceChildren(...(targets.length ? targets : [{ id: '', state: 'no agents present' }]).map((a) => {
-      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${a.state.split('/')[0]})` : 'No agents present'; return o
+      const o = document.createElement('option'); o.value = a.id; o.textContent = a.id ? `${nameOf(a.id)} (${live(a)}${pullOnly(a.id) ? ', pull-only' : ''})` : 'No agents present'; return o
     }))
     toSel.disabled = targets.length === 0
     if (chosenByUser && targets.some((a) => a.id === prev)) toSel.value = prev
@@ -154,6 +158,8 @@
   function updateSend() {
     sendBtn.disabled = sending || recipients().length === 0 || !text.value.trim()
     const ids = mentioned(); $('toline').textContent = ids.length ? 'Sending to: ' + ids.map(nameOf).join(', ') : ''
+    const slow = recipients().filter(pullOnly)
+    $('warn').textContent = slow.length ? `${slow.map(nameOf).join(', ')} can't be woken while idle: ${slow.length === 1 ? 'it reads' : 'they read'} this the next time ${slow.length === 1 ? 'it takes' : 'they take'} a turn.` : ''
   }
   function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 140) + 'px' }
 
@@ -171,7 +177,7 @@
       setBanner(''); setStatus('Live', 'ok'); $('status').title = snap.repoRoot
       try {
         const people = await ask('concord.agents', {}, 12000)
-        me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
+        me = people.me; nicks = people.nicknames || {}; hidden = people.hidden || []; wake = people.wake || {}; $('me').textContent = 'Sending as ' + nameOf(me) + ' (' + me + ')'
         noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
         rosterAgents = people.agents.filter((a) => kind(a.id) !== 'human' && kind(a.id) !== 'relay' && a.id !== me && !hidden.includes(a.id))
         renderRoster(people.agents)
@@ -199,8 +205,12 @@
         } catch (e) { bad.push(`${nameOf(id)}: ${(e && e.message) || e}`) }
       }
       if (ok.length) { text.value = ''; autosize(); closeMention() }
-      const quiet = to.filter((id) => (mentionAgents.find((a) => a.id === id) || {}).state !== 'live').length
-      const idle = quiet ? (quiet === 1 ? ' One agent is not live and sees this only when it next acts (an idle Codex chat may not at all).' : ` ${quiet} agents are not live and see this only when they next act (an idle Codex chat may not at all).`) : ''
+      const names = (ids) => ids.map(nameOf).join(', ')
+      const slow = to.filter(pullOnly)
+      const away = to.filter((id) => !pullOnly(id) && (mentionAgents.find((a) => a.id === id) || {}).away)
+      const one = slow.length === 1
+      const idle = (slow.length ? ` ${names(slow)} can't be woken while idle, so ${one ? 'it reads' : 'they read'} this the next time ${one ? 'it takes' : 'they take'} a turn. Type in ${one ? 'its' : 'their'} own chat or terminal to make ${one ? 'it' : 'them'} act now.` : '')
+        + (away.length ? ` ${names(away)} ${away.length === 1 ? 'is' : 'are'} away and may not see this until active again.` : '')
       if (bad.length) setNote(`${ok.length ? 'Sent to ' + ok.join(', ') + '. ' : ''}Failed: ${bad.join('; ')}`, 'bad')
       else setNote(`Sent to ${ok.join(', ')}. "queued" is not "delivered", so watch the receipt.${idle}`, 'ok')
       stick = true
