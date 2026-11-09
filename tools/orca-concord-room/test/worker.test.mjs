@@ -175,11 +175,20 @@ test('jira project and type lists are filtered', async () => {
 
 test('editor tab and sidebar panel share one page and script, with no inline script (inline scripts do not run in the editor frame)', () => {
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  assert.match(html, /<script src="avatars\.js"><\/script>/)
   assert.match(html, /<script src="room\.js"><\/script>/)
   assert.equal(/<script(?![^>]*\bsrc=)[^>]*>/u.test(html), false)
   const loader = readFileSync(new URL('../editor/main.ts', import.meta.url), 'utf8')
-  assert.match(loader, /panel\/index\.html/); assert.match(loader, /panel\/room\.js/)
+  assert.match(loader, /panel\/index\.html/); assert.match(loader, /panel\/room\.js/); assert.match(loader, /panel\/avatars\.js/)
   const manifest = JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8'))
   assert.equal(manifest.contributes.customEditors[0].entry, 'editor/main.ts')
   assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])
+})
+
+test('avatars are small embedded PNGs for the four Buzz identities and the brand colours match Buzz', () => {
+  const avatars = readFileSync(new URL('../panel/avatars.js', import.meta.url), 'utf8')
+  for (const key of ['claudecode', 'codex', 'claudechat', 'chatgpt']) assert.match(avatars, new RegExp(`"${key}": "data:image/png;base64,`))
+  assert.ok(avatars.length < 40000)
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  for (const hex of ['#b5532f', '#d97757', '#10a37f', '#5b5fef']) assert.ok(html.includes(hex), hex)
 })

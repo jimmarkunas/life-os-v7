@@ -5,8 +5,8 @@
   let stick = true, lastMsgs = [], me = '', sending = false, lastRoster = '', chosenByUser = false, nicks = {}, order = [], lastMessages = []
 
   const kind = (id) => id.split(':')[0]
-  const brand = (id) => ({ 'claude-code': 'claude', codex: 'codex', human: 'human' }[kind(id)] || 'other')
-  const BASE = { claude: 'Claude', codex: 'Codex', human: 'Human', other: 'Agent' }
+  const brand = (id) => ({ 'claude-code': 'claudecode', codex: 'codex', human: 'human', 'claude-chat': 'claudechat', 'chatgpt-chat': 'chatgpt' }[kind(id)] || 'other')
+  const BASE = { claudecode: 'Claude Code', claudechat: 'Claude Chat', chatgpt: 'ChatGPT', codex: 'Codex', human: 'Human', other: 'Agent' }
   // Simplified marks, drawn here (not the official artwork).
   const ICONS = {
     claude: () => { const r = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.2" y="-10.5" width="2.4" height="7.6" rx="1.2" transform="rotate(${a})"/>`).join(''); return `<svg viewBox="-12 -12 24 24" fill="#f2a65a" aria-hidden="true">${r}</svg>` },
@@ -14,7 +14,9 @@
     human: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#4d8dff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></svg>',
     other: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'
   }
-  const icon = (id) => ICONS[brand(id)]()
+  ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
+  const AV = window.ROOM_AVATARS || {}
+  const icon = (id) => { const b = brand(id); return AV[b] ? `<img class="avimg" alt="" src="${AV[b]}">` : (ICONS[b] || ICONS.other)() }
   // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
   // numbered when several of the same kind exist (in order of first appearance).
   function nameOf(id) {

@@ -3,7 +3,7 @@
   "execution": "trusted-worker",
   "id": "concord-room",
   "name": "Concord Room",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Live Concord message room inside Orca (right sidebar or a center tab): shows real agent messages, lets you message present agents, and can create a Jira ticket from the conversation through Orca's Jira connection.",
   "engines": {
     "orca": ">=1.4.248"
