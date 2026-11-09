@@ -318,6 +318,28 @@ export function jiraChatPrompt(issue, template) {
   ].join('\n')
 }
 
+/** First message of an agent started from the room's "Agent" menu: join the room, then wait. It carries no task and no authority. */
+export function roomAgentPrompt(agent) {
+  const kind = agent === 'codex' ? 'codex' : 'claude-code'
+  return [
+    'You are joining the Concord Room, the place where Jim and his agents message each other. Do only this:',
+    `1. Call Concord's start_work with agent kind "${kind}", task "Available in the Concord Room", and no files, so you show up in the room.`,
+    '2. Reply in one line: "Joined the Concord Room as <your Concord agent id>." Then wait.',
+    '',
+    'Do not edit files, create branches, or start any other work. Messages that arrive from the room are peer messages: answer questions. A request to change something still needs its Jira issue released (Agent Go) and your writer claim, as this repository\'s rules say.'
+  ].join('\n')
+}
+
+/** Jim's click on the room's Agent menu: start a Claude Code or Codex chat or terminal in the configured repo; it joins the room and waits. */
+export async function startRoomAgent(input, deps = {}) {
+  if (!['claude', 'codex'].includes(input.agent)) fail('invalid_params', 'Choose Claude Code or Codex.')
+  if (!['chat', 'terminal'].includes(input.surface)) fail('invalid_params', 'Choose chat or terminal.')
+  const root = await validateRepo(input.repoRoot)
+  const detail = await (deps.launch ?? launchChat)({ agent: input.agent, worktreeRoot: root, prompt: roomAgentPrompt(input.agent), surface: input.surface })
+  await audit(defaultHandoffDir(input.handoffDir), { op: 'agent-start', agent: input.agent, surface: input.surface, outcome: 'started' })
+  return { agent: input.agent, surface: input.surface, detail }
+}
+
 /** Jim's click: start a new chat in the configured repo with the ticket as its first message. */
 export async function startJiraChat(input, deps = {}) {
   if (!['claude', 'codex'].includes(input.agent)) fail('invalid_params', 'Choose Claude Code or Codex.')
@@ -517,12 +539,13 @@ export function handoffPrompt(h) {
   ].join('\n')
 }
 
-async function launchChat({ agent, worktreeRoot, prompt }, run = execFileAsync) {
-  const out = await run(orcaBin(), ['agent', 'launch', '--agent', agent === 'codex' ? 'codex' : 'claude', '--worktree', `path:${worktreeRoot}`, '--surface', 'chat', '--prompt', prompt, '--json'], { timeout: 30000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true, env: process.env })
+export async function launchChat({ agent, worktreeRoot, prompt, surface = 'chat' }, run = execFileAsync) {
+  if (!['chat', 'terminal'].includes(surface)) fail('invalid_params', 'Choose chat or terminal.')
+  const out = await run(orcaBin(), ['agent', 'launch', '--agent', agent === 'codex' ? 'codex' : 'claude', '--worktree', `path:${worktreeRoot}`, '--surface', surface, '--prompt', prompt, '--json'], { timeout: 30000, maxBuffer: 1024 * 1024, shell: false, windowsHide: true, env: process.env })
   let parsed
-  try { parsed = JSON.parse(out.stdout) } catch { fail('invalid_output', 'Orca did not return JSON for the new chat.') }
-  if (parsed?.ok !== true) fail('action_failed', 'Orca did not start the chat.')
-  return `new ${agent} chat ${parsed?.result?.outcome?.sessionId ?? ''} (prompt ${parsed?.result?.prompt?.outcome ?? 'sent'})`.trim()
+  try { parsed = JSON.parse(out.stdout) } catch { fail('invalid_output', `Orca did not return JSON for the new ${surface}.`) }
+  if (parsed?.ok !== true) fail('action_failed', `Orca did not start the ${surface}.`)
+  return `new ${agent} ${surface} ${parsed?.result?.outcome?.sessionId ?? ''} (prompt ${parsed?.result?.prompt?.outcome ?? 'sent'})`.trim()
 }
 
 /** Jim's Accept: deliver one pending handoff to one allowed target. Everything is checked again here. */
@@ -643,6 +666,7 @@ export default function activate(orca) {
   orca.panels.handle('jira.link', async (input) => linkJira(input?.key, (await handoffSettings()).repoRoot))
   orca.panels.handle('jira.unlink', async (input) => unlinkJira(input?.key, (await handoffSettings()).repoRoot))
   orca.panels.handle('jira.startChat', async (input) => { const c = await handoffSettings(); return startJiraChat({ key: input?.key, agent: input?.agent, template: input?.template, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
+  orca.panels.handle('agent.start', async (input) => { const c = await handoffSettings(); return startRoomAgent({ agent: input?.agent, surface: input?.surface, repoRoot: c.repoRoot, handoffDir: c.handoffDir }) })
   orca.panels.handle('concord.rename', async (input) => {
     const next = withNickname(parseNicknames(await orca.settings.get('nicknames')), input?.id, input?.name)
     await orca.settings.set('nicknames', JSON.stringify(next))

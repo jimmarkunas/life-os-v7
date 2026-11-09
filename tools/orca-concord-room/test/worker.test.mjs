@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -432,6 +432,49 @@ test('terminal input is confirmed from Orca\'s send receipt, in either shape, an
   for (const bad of [{ ok: true, result: { send: { accepted: false } } }, { ok: true, result: {} }, { ok: false }]) {
     await assert.rejects(typeIntoTerminal({ handle: 'term_x', text: 'hello' }, reply(bad)), /did not confirm/)
   }
+})
+
+// The room's "+ Agent" menu: start Claude Code or Codex, as a chat or a terminal, in the room's repository (v0.11.0).
+test('launchChat passes the surface to orca agent launch, defaults to chat, and refuses anything else', async () => {
+  const seen = []
+  const run = async (cmd, args) => { seen.push(args); return { stdout: JSON.stringify({ ok: true, result: { outcome: { sessionId: 's1' }, prompt: { outcome: 'sent' } } }) } }
+  assert.match(await launchChat({ agent: 'codex', worktreeRoot: '/r', prompt: 'p', surface: 'terminal' }, run), /new codex terminal s1/)
+  await launchChat({ agent: 'claude', worktreeRoot: '/r', prompt: 'p' }, run)
+  assert.deepEqual(seen[0], ['agent', 'launch', '--agent', 'codex', '--worktree', 'path:/r', '--surface', 'terminal', '--prompt', 'p', '--json'])
+  assert.deepEqual(seen[1].slice(seen[1].indexOf('--surface'), seen[1].indexOf('--surface') + 2), ['--surface', 'chat'])
+  await assert.rejects(launchChat({ agent: 'claude', worktreeRoot: '/r', prompt: 'p', surface: 'browser' }, run), /chat or terminal/)
+  await assert.rejects(launchChat({ agent: 'claude', worktreeRoot: '/r', prompt: 'p' }, async () => ({ stdout: JSON.stringify({ ok: false }) })), /did not start the chat/)
+})
+
+test('startRoomAgent starts the chosen agent and surface in the configured repo with a join-and-wait prompt, and audits it', async t => {
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-agent-repo-')))
+  await mkdir(path.join(repo, '.concord'))
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-agent-aud-')))
+  t.after(() => Promise.all([repo, dir].map(d => rm(d, { recursive: true, force: true }))))
+  let seen
+  const deps = { launch: async (a) => { seen = a; return 'new chat' } }
+  const out = await startRoomAgent({ agent: 'codex', surface: 'terminal', repoRoot: repo, handoffDir: dir }, deps)
+  assert.deepEqual([out.agent, out.surface], ['codex', 'terminal'])
+  assert.equal(seen.worktreeRoot, repo); assert.equal(seen.surface, 'terminal'); assert.equal(seen.agent, 'codex')
+  assert.match(seen.prompt, /start_work with agent kind "codex"/)
+  assert.match(roomAgentPrompt('claude'), /agent kind "claude-code"/)
+  assert.match(seen.prompt, /Do not edit files, create branches, or start any other work/)
+  assert.match(seen.prompt, /needs its Jira issue released \(Agent Go\) and your writer claim/)    // a room message never authorizes work
+  assert.match(await readF(path.join(dir, 'audit.log'), 'utf8'), /"op":"agent-start","agent":"codex","surface":"terminal"/)
+  await assert.rejects(startRoomAgent({ agent: 'rm', surface: 'chat', repoRoot: repo, handoffDir: dir }, deps), /Claude Code or Codex/)
+  await assert.rejects(startRoomAgent({ agent: 'claude', surface: 'browser', repoRoot: repo, handoffDir: dir }, deps), /chat or terminal/)
+  await assert.rejects(startRoomAgent({ agent: 'claude', surface: 'chat', repoRoot: path.join(repo, 'missing'), handoffDir: dir }, deps), /does not exist/)
+})
+
+test('the panel has the Agent menu with all four choices, wired to agent.start, and the empty state points at it', () => {
+  const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
+  const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
+  const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
+  assert.match(html, /id="agentBtn"/)
+  for (const agent of ['claude', 'codex']) for (const surface of ['chat', 'terminal']) assert.match(html, new RegExp(`data-agent="${agent}" data-surface="${surface}"`))
+  assert.match(js, /ask\('agent\.start'/)
+  assert.match(worker, /orca\.panels\.handle\('agent\.start'/)
+  assert.match(js, /Use ＋ Agent \(top right\)/)
 })
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
