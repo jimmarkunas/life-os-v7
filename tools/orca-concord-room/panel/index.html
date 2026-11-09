@@ -115,7 +115,8 @@
   #hokeys { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
   .hobtns { display: flex; gap: 8px; }
   #honote { font-size: 12px; min-height: 1em; }
-  .ho { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0; }
+  .hoff { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0; }
+  .hoff[hidden], .ans[hidden] { display: none; }
   #sheet { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; z-index: 5; }
   #sheet.open { display: flex; }
   #sheet .card { width: 100%; max-width: 540px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
