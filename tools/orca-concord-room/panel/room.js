@@ -16,9 +16,10 @@
     other: () => '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>'
   }
   ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
-  const AV = window.ROOM_AVATARS || {}
-  const iconB = (b) => AV[b] ? `<img class="avimg" alt="" src="${AV[b]}">` : (ICONS[b] || ICONS.other)()
-  const icon = (id) => iconB(brand(id))
+  const AV = window.ROOM_AVATARS || {}, AVS = window.ROOM_AVATARS_SMALL || {}
+  // Avatars are rendered at exact 2x sizes (88 px shown at 44 px, 44 px shown at 22 px), so the browser never rescales them.
+  const iconB = (b, small) => { const set = small ? AVS : AV; return set[b] ? `<img class="avimg${b === 'claudecode' ? ' pix' : ''}" alt="" width="${small ? 22 : 44}" height="${small ? 22 : 44}" src="${set[b]}">` : (ICONS[b] || ICONS.other)() }
+  const icon = (id, small) => iconB(brand(id), small)
   // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
   // numbered when several of the same kind exist (in order of first appearance).
   function nameOf(id) {
@@ -87,7 +88,7 @@
     $('chips').replaceChildren(...targets.map((a) => {
       const c = document.createElement('span'); c.className = 'chip ' + brand(a.id) + (a.state.startsWith('live') ? ' live' : '')
       c.title = `${a.id}\nClick the name to rename`
-      const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id)
+      const dot = document.createElement('i'); const ic = document.createElement('span'); ic.innerHTML = icon(a.id, true)
       const label = document.createElement('span'); label.textContent = nameOf(a.id)
       const st = document.createElement('span'); st.className = 'st'; st.textContent = a.state.split('/')[0]
       label.addEventListener('click', () => startRename(c, label, a.id))
@@ -216,7 +217,7 @@
     const [b, label] = SENDER[h.sender] || ['other', h.sender]
     const el = document.createElement('div'); el.className = 'ho ' + b
     const top = document.createElement('div'); top.className = 'top'
-    const av = document.createElement('div'); av.className = 'av'; av.innerHTML = iconB(b)
+    const av = document.createElement('div'); av.className = 'av'; av.innerHTML = iconB(b, true)
     const who = document.createElement('div'); who.className = 'who2'; who.textContent = `${label} hands off work`
     const key = document.createElement('span'); key.className = 'key ' + (h.jiraStatus === 'Agent Go' ? 'ok' : 'warn')
     key.textContent = `${h.jiraKey} · ${h.jiraStatus || 'status unknown'}`; key.title = h.jiraStatus === 'Agent Go' ? 'Released for Agent Go' : 'Not released for Agent Go: the receiving agent must refuse to do work'

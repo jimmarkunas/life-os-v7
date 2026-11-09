@@ -188,6 +188,7 @@ test('editor tab and sidebar panel share one page and script, with no inline scr
 test('avatars are small embedded PNGs for the four Buzz identities and the brand colours match Buzz', () => {
   const avatars = readFileSync(new URL('../panel/avatars.js', import.meta.url), 'utf8')
   for (const key of ['claudecode', 'codex', 'claudechat', 'chatgpt']) assert.match(avatars, new RegExp(`"${key}": "data:image/png;base64,`))
+  for (const key of ['claudecode', 'codex', 'claudechat', 'chatgpt']) assert.match(avatars.split('ROOM_AVATARS_SMALL')[1], new RegExp(`"${key}": "data:image/png;base64,`))
   assert.ok(avatars.length < 120000)
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
   for (const hex of ["#b5532f", "#d97757", "#10a37f", "#5b5fef", "#ff2fae"]) assert.ok(html.includes(hex), hex)
