@@ -286,7 +286,7 @@ class WorkflowTests(unittest.TestCase):
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
 class PullRequestTestsWorkflow(unittest.TestCase):
-    """pr-tests.yml is the secret-free pull request check (and, since Oct 25 2026, the check of every merge to main): read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 75 s suite limits (75 since Jim, Oct 25 2026)."""
+    """pr-tests.yml is the secret-free pull request check (and, since Oct 25 2026, the check of every merge to main): read-only, no secret, no loader, no database, the one accepted test command and the 45 s / 90 s suite limits (90 since Jim, Nov 9 2026)."""
     path = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-tests.yml"
 
     def test_it_runs_on_pull_requests_and_main_only_read_only_and_holds_no_secret(self):
@@ -306,7 +306,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         self.assertIn("python -m tests.shard 1 2", run)                      # Jim, Oct 26 2026: two parallel shards of whole test modules; tests/contracts/test_shards.py proves every test runs in exactly one
         self.assertIn("python -m tests.shard 2 2", run)
         self.assertNotIn("unittest discover", run)
-        self.assertRegex(run, r'-ge 75 \]; then .*exit 1')
+        self.assertRegex(run, r'-ge 90 \]; then .*exit 1')
         self.assertRegex(run, r'-ge 45 \]; then echo "::warning::')
 
     def test_it_also_runs_the_concord_room_plugin_tests_after_the_python_suite_with_no_secret_or_install(self):
@@ -316,7 +316,7 @@ class PullRequestTestsWorkflow(unittest.TestCase):
         names = [s.get("name", "") for s in steps]
         python_suite = next(i for i, n in enumerate(names) if "Unit tests" in n)
         room = next(i for i, n in enumerate(names) if "Concord Room plugin tests" in n)
-        self.assertGreater(room, python_suite)                                       # the 45 s / 75 s limits above stay about the Python suite alone
+        self.assertGreater(room, python_suite)                                       # the 45 s / 90 s limits above stay about the Python suite alone
         self.assertEqual(steps[room]["run"], "node --test tools/orca-concord-room/test/worker.test.mjs")
         self.assertEqual(steps[room - 1]["uses"], "actions/setup-node@v5")
         self.assertEqual(steps[room - 1]["with"], {"node-version": "24"})
