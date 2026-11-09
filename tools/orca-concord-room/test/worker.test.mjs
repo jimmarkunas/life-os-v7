@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
-import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, parseAdapterCapabilities, wakeFromCapabilities, getWakeKinds } from '../worker/main.mjs'
+import { getMessages, validateRecords, validateExecutable, parseWho, sendMessage, callConcordTool, defaultSenderId, parseNicknames, withNickname, jiraIssues, jiraIssue, linkedJira, linkJira, unlinkJira, jiraChatPrompt, startJiraChat, readPolicy, validateHandoff, listHandoffs, acceptHandoff, rejectHandoff, handoffPrompt, defaultHandoffDir, terminalAgents, handoffLine, typeIntoTerminal, launchChat, roomAgentPrompt, startRoomAgent, parseHidden, withHidden, terminalHandleFrom, reachOf, getReach, getSummaries, wakeLine, wakeAgent } from '../worker/main.mjs'
 
 test('reads genuine CLI JSON using fixed argv, without a shell, and sorts by time', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-orca-')))
@@ -55,7 +55,7 @@ const never = async () => { throw Error('must not call Concord') }
 
 test('parseWho reads live agent ids and states', () => {
   const agents = parseWho("Workspace: x\nWho's here\n  claude-code:2d46a09c live/active  -  (0s ago)\n  codex:bf5867fb     idle/active   -  (714s ago)\n")
-  assert.deepEqual(agents, [{ id: 'claude-code:2d46a09c', state: 'live/active' }, { id: 'codex:bf5867fb', state: 'idle/active' }])
+  assert.deepEqual(agents, [{ id: 'claude-code:2d46a09c', state: 'live/active', summary: '' }, { id: 'codex:bf5867fb', state: 'idle/active', summary: '' }])
   assert.deepEqual(parseWho('Who\'s here\n  none\n'), [])
 })
 
@@ -458,7 +458,8 @@ test('startRoomAgent starts the chosen agent and surface in the configured repo 
   assert.equal(seen.worktreeRoot, repo); assert.equal(seen.surface, 'terminal'); assert.equal(seen.agent, 'codex')
   assert.match(seen.prompt, /start_work with agent kind "codex"/)
   assert.match(roomAgentPrompt('claude'), /agent kind "claude-code"/)
-  assert.match(seen.prompt, /Do not edit files, create branches, or start any other work/)
+  assert.match(seen.prompt, /Do not edit files, create branches, or start other work because of it/)
+  assert.match(seen.prompt, /ORCA_TERMINAL_HANDLE/)
   assert.match(seen.prompt, /needs its Jira issue released \(Agent Go\) and your writer claim/)    // a room message never authorizes work
   assert.match(await readF(path.join(dir, 'audit.log'), 'utf8'), /"op":"agent-start","agent":"codex","surface":"terminal"/)
   await assert.rejects(startRoomAgent({ agent: 'rm', surface: 'chat', repoRoot: repo, handoffDir: dir }, deps), /Claude Code or Codex/)
@@ -541,57 +542,94 @@ test('the panel wires removing agents and @mentions: markup, scripts, loader, wo
   assert.deepEqual(manifest.capabilities, [{ kind: 'settings:own' }])      // no new access
 })
 
-// v0.12.1: which agents can Concord wake while idle? Fixture = the real `concord adapters status` output (Concord 0.20.0, Nov 9 2026).
-const ADAPTERS_STATUS = `Harness adapters
+// v0.13.0: wake an agent through its Orca terminal (what Buzz's harness does, with Orca's terminal API).
+const TERM_A = 'term_097d19e2-a76f-4b8c-bc2a-eaeb238849e1'
+const TERM_B = 'term_16aa60b6-71ae-45b6-80e5-f84178b765ea'
 
-  claude-code  installed           native-monitor
-    capabilities: pull, inject, steer, idle, busy
-    Native plugin monitor wakes idle sessions; lifecycle hooks cover busy turns.
-  codex        action_required     managed-controller
-    capabilities: pull, busy
-    Global hooks are installed, but the managed app-server daemon is not ready.
-  cursor       not_detected        harness-monitor
-    capabilities: none
-    The Cursor extension and global lifecycle hooks are not both installed.
-  gemini       not_detected        harness-monitor
-    capabilities: pull, steer, idle, busy, monitor-command
-    A one-shot Gemini background shell monitor injects its completion into the agent.
-`
-
-test('adapter status is read into "can Concord wake an idle agent of this kind": Claude Code yes, Codex no, kinds with no capability left unknown', () => {
-  const kinds = parseAdapterCapabilities(ADAPTERS_STATUS)
-  assert.deepEqual(kinds['claude-code'], ['pull', 'inject', 'steer', 'idle', 'busy'])
-  assert.deepEqual(kinds.codex, ['pull', 'busy'])
-  assert.deepEqual(kinds.cursor, ['none'])
-  assert.deepEqual(wakeFromCapabilities(kinds), { 'claude-code': true, codex: false, gemini: true })     // cursor ("none") is not claimed either way
-  assert.deepEqual(parseAdapterCapabilities(''), {}); assert.deepEqual(parseAdapterCapabilities('garbage\n  capabilities: idle'), {})   // no harness header: nothing to attach it to
+test('parseWho keeps each agent\'s task text and drops the "(Ns ago)" tail', () => {
+  const agents = parseWho(`Who's here\n  claude-code:898a1d54 live/active          Available in the Concord Room (terminal ${TERM_A})  (0s ago)\n  codex:35be1109     idle/active          -  (1205s ago)\n`)
+  assert.deepEqual(agents, [{ id: 'claude-code:898a1d54', state: 'live/active', summary: `Available in the Concord Room (terminal ${TERM_A})` }, { id: 'codex:35be1109', state: 'idle/active', summary: '' }])
 })
 
-test('getWakeKinds asks only for `adapters status`, caches for a minute, and reports unknown (nothing marked) on any failure', async t => {
+test('the terminal an agent reports is read exactly, and anything else is ignored', () => {
+  assert.equal(terminalHandleFrom(`Available in the Concord Room (terminal ${TERM_A})`), TERM_A)
+  for (const bad of ['Available in the Concord Room (chat)', '', undefined, 'terminal term_123', `mentions ${TERM_A} without the word`, 'terminal term_097d19e2-a76f-4b8c-bc2a-eaeb238849eZ']) assert.equal(terminalHandleFrom(bad), null, String(bad))
+})
+
+test('reach: a terminal the room can type into wins, then a Concord receiver, else none; the terminal must match the agent kind', () => {
+  const terms = [{ handle: TERM_A, agentType: 'claude' }, { handle: TERM_B, agentType: 'codex' }]
+  const said = (h) => `Available in the Concord Room (terminal ${h})`
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: said(TERM_A) }, terms), 'terminal')
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: true, summary: said(TERM_A) }, terms), 'terminal')      // typing carries Jim's authority; a Concord message is only a peer message
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: true, summary: '' }, terms), 'concord')
+  assert.equal(reachOf({ id: 'codex:ccc', promptable: false, summary: said(TERM_B) }, terms), 'terminal')
+  assert.equal(reachOf({ id: 'codex:ccc', promptable: false, summary: said(TERM_A) }, terms), 'none')                 // a Codex claiming a Claude's terminal
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: said('term_00000000-0000-0000-0000-000000000000') }, terms), 'none')   // not open in Orca
+  assert.equal(reachOf({ id: 'claude-code:aaa', promptable: false, summary: 'Available in the Concord Room (chat)' }, terms), 'none')
+})
+
+test('getReach asks Concord per agent, caches 15 s, leaves out an agent it cannot ask about, and gives nothing for a bad repo', async t => {
+  const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-reach-')))
+  await mkdir(path.join(repo, '.concord'))
+  t.after(() => rm(repo, { recursive: true, force: true }))
+  const asked = []
+  const deps = {
+    callTool: async (cmd, env, name, args) => { asked.push(args.agent_id); if (args.agent_id === 'codex:boom') throw new Error('boom'); return { promptable: args.agent_id === 'claude-code:rcv' } },
+    getSummaries: async () => ({ 'claude-code:term': `Available in the Concord Room (terminal ${TERM_A})` }),
+    terminalAgents: async () => [{ handle: TERM_A, agentType: 'claude' }]
+  }
+  const agents = [{ id: 'claude-code:term' }, { id: 'claude-code:rcv' }, { id: 'codex:chat' }, { id: 'codex:boom' }]
+  const t0 = 2_000_000_000_000
+  assert.deepEqual(await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0), { 'claude-code:term': 'terminal', 'claude-code:rcv': 'concord', 'codex:chat': 'none' })
+  const n = asked.length
+  await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0 + 10_000); assert.equal(asked.length, n)    // cached
+  await getReach({ repoRoot: repo, executable: 'concord', agents }, deps, t0 + 16_000); assert.ok(asked.length > n)       // asked again
+  assert.deepEqual(await getReach({ repoRoot: path.join(repo, 'missing'), executable: 'concord', agents }, deps, t0 + 100_000), {})
+})
+
+test('wakeLine is one line from the room with the message id and the instruction to reply through Concord', () => {
+  const line = wakeLine({ sender: 'human:jimmarkunas', content: 'Council:\n  what is 2+2?', messageId: 'abc-123' })
+  assert.equal(line.includes('\n'), false)
+  assert.match(line, /^\[Concord Room, message from jimmarkunas, Concord message id abc-123\] Council: what is 2\+2\?/)
+  assert.match(line, /reply to that Concord message with update_work, operation reply/)
+  assert.ok(wakeLine({ sender: 'human:j', content: 'x'.repeat(5000), messageId: 'm' }).length <= 1900)
+})
+
+test('wakeAgent types the message into the agent\'s own idle terminal, and only when the terminal really is that agent\'s', async t => {
   const repo = await realpath(await mkdtemp(path.join(tmpdir(), 'concord-wake-')))
   await mkdir(path.join(repo, '.concord'))
   t.after(() => rm(repo, { recursive: true, force: true }))
-  const calls = []
-  const runner = async (cmd, args) => { calls.push(args); return { stdout: ADAPTERS_STATUS } }
-  const t0 = 1_000_000_000_000 + 10 * 60 * 1000          // beyond any cache left by an earlier call in this process
-  assert.deepEqual(await getWakeKinds(repo, 'concord', runner, t0), { 'claude-code': true, codex: false, gemini: true })
-  assert.deepEqual(calls[0], ['-C', repo, 'adapters', 'status'])
-  await getWakeKinds(repo, 'concord', runner, t0 + 30_000); assert.equal(calls.length, 1)               // cached
-  await getWakeKinds(repo, 'concord', runner, t0 + 61_000); assert.equal(calls.length, 2)               // a minute later: asked again
-  const broken = async () => { throw new Error('boom') }
-  assert.deepEqual(await getWakeKinds(repo, 'concord', broken, t0 + 200_000), {})                       // failure: unknown, not "can't wake"
-  assert.deepEqual(await getWakeKinds(path.join(repo, 'missing'), 'concord', runner, t0 + 400_000), {})  // bad repo: unknown too
+  const said = (h) => `Available in the Concord Room (terminal ${h})`
+  const typed = []
+  const base = { repoRoot: repo, executable: 'concord', sender: 'human:jim', content: 'hello', messageId: 'm1' }
+  const mk = (summaries, terms, promptable = false) => ({ getSummaries: async () => summaries, terminalAgents: async () => terms, callTool: async () => ({ promptable }), type: async (x) => { typed.push(x) } })
+  // idle terminal: typed, even when a Concord receiver exists too
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({ 'claude-code:a': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: true }], true)), { how: 'terminal' })
+  assert.equal(typed.length, 1); assert.equal(typed[0].handle, TERM_A); assert.match(typed[0].text, /Concord message id m1\] hello/)
+  // busy terminal: not typed (a running turn takes it through Concord's hooks)
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({ 'claude-code:a': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: false }])), { how: 'busy', why: 'it is busy' })
+  assert.equal(typed.length, 1)
+  // no terminal known: Concord's receiver if there is one, else nothing can wake it
+  assert.deepEqual(await wakeAgent({ ...base, to: 'claude-code:a' }, mk({}, [], true)), { how: 'concord' })
+  assert.equal((await wakeAgent({ ...base, to: 'codex:c' }, mk({ 'codex:c': 'Available in the Concord Room (chat)' }, []))).how, 'none')
+  // a Codex claiming a Claude's terminal is never typed into
+  assert.equal((await wakeAgent({ ...base, to: 'codex:c' }, mk({ 'codex:c': said(TERM_A) }, [{ handle: TERM_A, agentType: 'claude', eligible: true }]))).how, 'none')
+  assert.equal(typed.length, 1)
 })
 
-test('the panel shows pull-only agents before and after sending, wired to the worker\'s wake map', () => {
+test('the panel and worker are wired for reach, terminal waking and the join prompt that reports the terminal', () => {
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8')
   const js = readFileSync(new URL('../panel/room.js', import.meta.url), 'utf8')
   const worker = readFileSync(new URL('../worker/main.mjs', import.meta.url), 'utf8')
   assert.match(html, /id="warn"/)
-  assert.match(js, /wake = people\.wake \|\| \{\}/)
-  assert.match(js, /pullOnly\(a\.id\) \? ' · pull-only'/)
-  assert.match(js, /can't be woken while idle/)
-  assert.match(worker, /wake: await getWakeKinds\(/)
+  assert.match(js, /reach = people\.reach \|\| \{\}/)
+  assert.match(js, /out\.wake/)
+  assert.match(js, /typed into /)
+  assert.match(js, /can\u2019t wake/)
+  assert.match(worker, /reach: await getReach\(/)
+  assert.match(worker, /wake = await wakeAgent\(/)
+  assert.match(roomAgentPrompt('claude'), /echo "\$ORCA_TERMINAL_HANDLE"/)
+  assert.match(roomAgentPrompt('claude'), /terminal <the handle>/)
 })
 
 // concord-setup-safe.sh: Concord 0.20.0's `setup` rewrote the real ~/.codex/config.toml, so the wrapper backs up the user-level
