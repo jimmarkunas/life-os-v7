@@ -879,6 +879,14 @@ CODES.update({    # --- Jira/Notion context refactor planner (lifeos/delivery/co
     'BATCH_TOO_LARGE': _r("delivery context refactor", 'blocked', False, 'The batch is over the approved or hard cap.', 'Split the batch.'),
 })
 
+CODES.update({    # --- synthetic cited knowledge and topic adapter (lifeos/synthetic/, LIFE-373); fake data only, every one is a refusal before any change
+    'DENY_TENANT': _r("synthetic", 'terminal', False, 'The source or topic belongs to another tenant, or does not exist for this one; nothing was read or changed.', 'Use the tenant that owns the source.'),
+    'DENY_SOURCE_REVOKED': _r("synthetic", 'terminal', False, 'The source was revoked, so it and the topics built from it are refused (the topics are quarantined in the fake ledger).', 'Re-approve the source, or rebuild the topic from other sources.'),
+    'DENY_STALE_SOURCE': _r("synthetic", 'terminal', False, 'The source revision is not the one the update was built from.', 'Read the source again and rebuild the update.'),
+    'DENY_REPLAY_OR_WRITER': _r("synthetic", 'terminal', False, 'The request was replayed, or another writer holds the topic, or the topic version moved.', 'Read the topic again and retry with a new nonce.'),
+    'SOURCE_STALE': _r("synthetic", 'state', False, 'The kind of source failure behind a stale-source refusal.', 'None.'),
+})
+
 NOT_CODES = frozenset((
     "LC_ALL", "LIFE_KEY", "PACK_DIR", "O_NOFOLLOW",     # LIFE-310: environment names the runner gives a step, and an os flag
     "LIFEOS_NOTION_IDS", "DASHBOARD_PAGE", "DASHBOARD_CHECKINS", "DASHBOARD_QBRS", "DASHBOARD_ARCHIVE", "DASHBOARD_MATT_MEGIBOW", "DATA_SOURCE", "FULL_WIDTH_TEMPLATE", "LEDGER_ROW", "QA_PARENT", "REPORTS_PAGE", "REVIEW_SOURCE", "ROUND_PAGE", "SANDBOX_PAGE", "SANDBOX_SOURCE", "SMITH_PAGE", "SOURCE_ID", "UI3C", "UI4", "WALMART_PAGE",      # LIFE-338: the <NAME> of a LIFEOS_NOTION_<NAME> variable (lifeos/platform/notion_ids.py)
