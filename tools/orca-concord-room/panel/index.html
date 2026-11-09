@@ -28,7 +28,7 @@
   .chip.claudecode { --c: var(--claudecode); } .chip.claudechat { --c: var(--claudechat); } .chip.chatgpt { --c: var(--chatgpt); } .chip.codex { --c: var(--codex); }
   .avimg { width: 100%; height: 100%; border-radius: inherit; display: block; image-rendering: auto; }
   .avimg.pix { image-rendering: pixelated; }
-  .chip .avimg { width: 22px; height: 22px; border-radius: 6px; }
+  .chip .avimg { width: 20px; height: 20px; border-radius: 50%; }
   .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
   .chip.live i { background: var(--ok); }
   .chip .st { color: var(--muted); }
@@ -48,11 +48,11 @@
   .msg.human { --c: var(--human); --bub: #ff2fae; --bubfg: #090909; }
   .col { display: flex; flex-direction: column; min-width: 0; }
   .mine .col { align-items: flex-end; }
-  .av { flex: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; overflow: hidden; }
-  .av:has(svg) { background: color-mix(in srgb, var(--c) 22%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); }
-  .msg.human .av:has(svg) { background: #ff2fae; border-color: #ff2fae; }
-  .msg.human .av svg { stroke: #090909; width: 26px; height: 26px; }
-  .av svg, .chip svg { width: 22px; height: 22px; display: block; }
+  .av { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; }
+  .av:has(svg) { background: color-mix(in srgb, var(--c) 22%, var(--bg)); }
+  .msg.human .av:has(svg) { background: #ff2fae; }
+  .msg.human .av svg { stroke: #090909; width: 24px; height: 24px; }
+  .av svg, .chip svg { width: 20px; height: 20px; display: block; }
   .who { font-size: 11px; color: color-mix(in srgb, var(--c) 70%, var(--fg)); margin: 0 4px 2px; font-weight: 600; }
   .who .to { font-weight: 400; color: var(--muted); }
   .bubble { padding: 7px 10px; border-radius: 14px; background: var(--bub); color: var(--bubfg); border: 1px solid transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -84,22 +84,42 @@
   #sheet.open { display: flex; }
   #sheet .card { width: 100%; max-width: 540px; max-height: 94vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
   #sheet h2 { margin: 0; font-size: 14px; }
-  #sheet label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
-  #sheet input, #sheet textarea, #sheet select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 100%; }
-  #sheet textarea { min-height: 150px; resize: vertical; }
-  #sheet .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #sheet .actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
-  #sheet button { font: inherit; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
-  #sheet button.primary { background: #ff2fae; border-color: #ff2fae; color: #090909; }
-  #sheet button:disabled { opacity: .5; cursor: default; }
-  #sheet .warn { font-size: 11px; color: var(--warn); }
+  #sheet .jhead { display: flex; justify-content: space-between; align-items: center; }
+  #sheet .jhead button { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; }
+  #sheet .tabs { display: flex; gap: 6px; }
+  #sheet .tabs button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+  #sheet .tabs button.on { background: #ff2fae; border-color: #ff2fae; color: #090909; }
+  #sheet input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; }
+  #sheet input:focus { outline: none; border-color: #ff2fae; }
+  #jlist { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .jrow { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font-size: 12px; }
+  .jrow:hover { background: var(--card); } .jrow.sel { border-color: #ff2fae; background: var(--card); }
+  .jrow .k { font-weight: 600; flex: none; } .jrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { font-size: 10.5px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); flex: none; }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--bg)); } .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--bg)); }
+  #jdetail { display: none; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  #jdetail.on { display: flex; }
+  #jdetail h3 { margin: 0; font-size: 13px; }
+  #jdetail .meta2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
+  #jdetail .desc { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; color: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+  #jdetail .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #jdetail .row2 .hint { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+  #jdetail .row2 select { flex: 1 1 130px; min-width: 0; }
+  #jdetail select { font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+  #sheet #jdetail button { font: inherit; font-size: 12px; border-radius: 8px; padding: 5px 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  #sheet #jdetail button.primary { background: #ff2fae; border-color: #ff2fae; color: #090909; }
+  #sheet #jdetail button:disabled { opacity: .5; cursor: default; }
+  #jiractx { display: none; flex: none; padding: 6px 12px; border-bottom: 1px solid var(--line); gap: 6px; flex-wrap: wrap; align-items: center; }
+  #jiractx.on { display: flex; }
+  #jiractx .lbl { font-size: 11px; color: var(--muted); }
+  #jiractx button { font: inherit; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, #ff2fae 55%, var(--bg)); background: color-mix(in srgb, #ff2fae 12%, var(--bg)); color: var(--fg); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #handoffs { display: none; flex: none; max-height: 42%; overflow-y: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); gap: 8px; flex-direction: column; background: color-mix(in srgb, var(--warn) 6%, var(--bg)); }
   #handoffs.on { display: flex; }
   .ho { --c: var(--other); border: 1px solid color-mix(in srgb, var(--c) 55%, var(--bg)); border-radius: 12px; padding: 8px 10px; background: var(--card); display: flex; flex-direction: column; gap: 5px; }
   .ho.claudechat { --c: var(--claudechat); } .ho.chatgpt { --c: var(--chatgpt); }
   .ho .top { display: flex; align-items: center; gap: 8px; }
-  .ho .top .av { width: 22px; height: 22px; border-radius: 6px; }
-  .ho .top .av svg { width: 16px; height: 16px; }
+  .ho .top .av { width: 20px; height: 20px; border-radius: 50%; }
+  .ho .top .av svg { width: 14px; height: 14px; }
   .ho .who2 { font-weight: 600; font-size: 12px; flex: 1; min-width: 0; }
   .ho .key { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
   .ho .key.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--bg)); }
@@ -114,17 +134,18 @@
   .ho .note { font-size: 11px; color: var(--muted); } .ho .note.bad { color: var(--bad); }
   .ho.done .key { white-space: nowrap; flex: none; }
   .ho.done { padding: 4px 10px; flex-direction: row; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
-  #handoffs .hint { font-size: 11px; color: var(--muted); }
+  .hint { font-size: 11px; color: var(--muted); }
   #jnote { font-size: 12px; min-height: 0; } #jnote.ok { color: var(--ok); } #jnote.bad { color: var(--bad); }
 </style>
 </head>
 <body>
   <header>
-    <div class="title"><h1>Concord Room</h1><div class="right"><button id="jiraBtn" class="badge" type="button" title="Create a Jira ticket from this conversation">＋ Jira</button><span id="status" class="badge">Connecting</span></div></div>
+    <div class="title"><h1>Concord Room</h1><div class="right"><button id="jiraBtn" class="badge" type="button" title="Pull in a Jira issue">＋ Jira</button><span id="status" class="badge">Connecting</span></div></div>
     <div id="chips"></div>
     <div id="banner"></div>
   </header>
   <div id="handoffs" aria-label="Handoffs waiting for you"></div>
+  <div id="jiractx" aria-label="Jira issues pulled into this room"></div>
   <div id="wrap">
     <div id="messages"><div class="empty" id="empty">Connecting to Concord…</div></div>
     <button id="jump" type="button">New messages ↓</button>
@@ -138,16 +159,13 @@
     <div id="note" role="status"></div>
     <div class="hint"><span id="me"></span><span>Enter sends · Shift+Enter new line</span></div>
   </footer>
-<div id="sheet" role="dialog" aria-modal="true" aria-label="Create Jira ticket"><div class="card">
-  <h2>Create a Jira ticket</h2>
-  <div class="two"><label>Project<select id="jproject"></select></label><label>Type<select id="jtype"></select></label></div>
-  <label>Title<input id="jtitle" maxlength="255" placeholder="What is this ticket?" /></label>
-  <label>Description<textarea id="jbody" maxlength="20000"></textarea></label>
-  <div class="two"><label>Include last N messages<input id="jcount" type="number" min="0" max="40" value="6" /></label><label>&nbsp;<button id="jrefill" type="button">Re-fill description from messages</button></label></div>
-  <div class="two"><label>Labels (space separated)<input id="jlabels" value="concord" /></label><label>Parent (optional)<input id="jparent" placeholder="e.g. LIFE-125" /></label></div>
-  <div class="warn">This text goes to Jira through your Orca Jira connection. Review it first; messages can contain private details.</div>
+<div id="sheet" role="dialog" aria-modal="true" aria-label="Pull in a Jira issue"><div class="card">
+  <div class="jhead"><h2>Pull in a Jira issue</h2><button id="jclose" type="button" aria-label="Close">✕</button></div>
+  <div class="tabs" id="jtabs"><button type="button" data-f="assigned" class="on">Assigned</button><button type="button" data-f="reported">Reported</button><button type="button" data-f="all">All</button><button type="button" data-f="done">Done</button></div>
+  <input id="jq" placeholder="Search: a key like LIFE-375, or words" aria-label="Search Jira" />
+  <div id="jlist" aria-label="Jira issues"></div>
+  <div id="jdetail"></div>
   <div id="jnote" role="status"></div>
-  <div class="actions"><button id="jcancel" type="button">Close</button><button id="jcreate" class="primary" type="button" disabled>Create ticket</button></div>
 </div></div>
 <script src="avatars.js"></script>
 <script src="room.js"></script>

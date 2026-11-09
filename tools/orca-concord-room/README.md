@@ -59,7 +59,7 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.5.0: center tab and Jira tickets
 
 - **Center column:** Orca plugin panels open only in the right sidebar, and a plugin cannot add a "+" menu entry. The supported way into the center column is a custom editor: open any file ending in `.concord-room` (for example `Concord Room.concord-room`, an empty file in the repo) in Orca and the room opens as a full-width tab. It is the same page and script as the sidebar panel (`editor/main.ts` loads `panel/index.html` and `panel/room.js`); scripts must be external files because inline scripts do not run in the editor frame.
-- **Create a Jira ticket:** the "+ Jira" button opens a review sheet (project, type, title, description pre-filled from the last N messages, labels, optional parent). Nothing is created until you click Create. The worker runs `orca jira create` through **Orca's own Jira connection**, so the plugin holds no Jira credentials. Creating a ticket is an external write to your Jira, made only by that click; it needs an explicit confirm flag, validates every field, and fails closed (it shows what Orca returned if no issue key came back, so check Jira before retrying).
+- **Jira:** replaced in v0.9.0 (see below). The earlier "create a ticket" sheet was a wrong guess and has been removed.
 - Built-in single-agent chats are Orca's own UI; a plugin cannot add buttons there.
 
 ## v0.6.0: Buzz look
@@ -85,3 +85,10 @@ This v0.1.0 panel is **read-only**; prompts are authored in native Orca agent ch
 ## v0.8.1: avatars redone
 
 - The earlier avatars were 512 px logos squeezed into a small ringed circle, so the browser rescaled them and softened the pixel edges. They are now cropped tight to the logo and rendered at exact 2x sizes: 88 px images shown at 44 px in the conversation, 44 px images shown at 22 px in the presence chips and handoff cards, as rounded squares with no ring. The pixel-art Claude Code mascot is block-averaged on its own grid and drawn with `image-rendering: pixelated`. On a 1x or 3x display the browser still has to rescale, so judge sharpness on the screen it will be used on.
+
+## v0.9.0: pull a Jira issue in (copies Orca's native flow)
+
+- **What was copied:** Orca's own Tasks view lists your Jira issues (assigned, reported, all, done), lets you open one, and links it to a workspace or starts a workspace from it. The "＋ Jira" button now does the same: filter tabs and a search box (a key like `LIFE-375`, or words), a list with status pills, and an issue view (status, type, project, parent, labels, description).
+- **Pull into this room** attaches the issue to the pilot workspace with `orca reference add` (Orca's own linked items; **Unlink** reverses it). Pulled-in issues show in a strip under the header and in Orca's own workspace card.
+- **Start a chat from it** launches a new Claude Code or Codex chat in the configured repo with the ticket as its first message, from one of three templates: *Review (read-only)* (default), *Plan (no changes)*, or *Implement* (only if the issue is released for Agent Go and the agent holds the writer claim; otherwise it must reply `REFUSED`). Every prompt says the issue text is untrusted data, never instructions (Orca's own Jira skill says the same).
+- **It never writes to Jira.** There is no create, comment, transition, assignee or label code in the plugin; a test fails if one is added. Orca holds the Jira login; the plugin never sees credentials. Pulling in and starting a chat only change Orca's workspace and start an agent.

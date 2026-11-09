@@ -17,7 +17,7 @@
   }
   ICONS.claudecode = ICONS.claude; ICONS.claudechat = ICONS.claude; ICONS.chatgpt = ICONS.other
   const AV = window.ROOM_AVATARS || {}, AVS = window.ROOM_AVATARS_SMALL || {}
-  // Avatars are rendered at exact 2x sizes (88 px shown at 44 px, 44 px shown at 22 px), so the browser never rescales them.
+  // Avatars are rendered at exact 2x sizes (80 px shown at 40 px, 40 px shown at 20 px), so the browser never rescales them.
   const iconB = (b, small) => { const set = small ? AVS : AV; return set[b] ? `<img class="avimg${b === 'claudecode' ? ' pix' : ''}" alt="" width="${small ? 22 : 44}" height="${small ? 22 : 44}" src="${set[b]}">` : (ICONS[b] || ICONS.other)() }
   const icon = (id, small) => iconB(brand(id), small)
   // What an agent is called: your nickname if you gave one, else "Claude" / "Codex" / "You",
@@ -144,6 +144,7 @@
       noteIds(snap.messages.flatMap((m) => [m.from, m.to]))
       lastMsgs = snap.messages; repoRootShown = snap.repoRoot
       void refreshHandoffs()
+      if (Date.now() - linkedAt > 30000) void refreshLinked()
       renderMessages(snap.messages)
     } catch (e) {
       setStatus('Unavailable', 'bad'); setBanner((e && e.message) || String(e))
@@ -253,56 +254,87 @@
     el.append(badge, text); return el
   }
 
-  // ---- Create a Jira ticket (through Orca's own Jira connection; only on the Create click) ----
-  const sheet = $('sheet'), jproject = $('jproject'), jtype = $('jtype'), jtitle = $('jtitle'), jbody = $('jbody'), jcount = $('jcount'), jlabels = $('jlabels'), jparent = $('jparent'), jcreate = $('jcreate'), jnote = $('jnote')
-  let projectsLoaded = false, jbusy = false
+  // ---- Pull in a Jira issue: copies what Orca's Tasks view does (browse, open, link to the workspace, start a chat). Never writes to Jira. ----
+  const sheet = $('sheet'), jlist = $('jlist'), jdetail = $('jdetail'), jq = $('jq'), jnote = $('jnote'), jctx = $('jiractx')
+  let jfilter = 'assigned', jsel = '', linked = [], jtimer = null, jseq = 0, linkedAt = 0
   const setJNote = (m, c) => { jnote.textContent = m || ''; jnote.className = c || '' }
-  const excerpt = () => {
-    const n = Math.max(0, Math.min(40, parseInt(jcount.value, 10) || 0))
-    const rows = lastMsgs.slice(-n).map((m) => `- [${clock(m.at)}] ${nameOf(m.from)} → ${nameOf(m.to)} (${m.receipt || m.status}): ${m.content.replace(/\s+/g, ' ').slice(0, 600)}`)
-    return `Created from the Concord Room${repoRootShown ? ' (' + repoRootShown + ')' : ''}.\n\n` + (rows.length ? 'Recent conversation:\n' + rows.join('\n') + '\n' : '')
+  const pillClass = (cat) => cat === 'done' ? 'pill ok' : cat === 'indeterminate' ? 'pill warn' : 'pill'
+  const isLinked = (k) => linked.some((x) => x.key === k)
+  function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n }
+
+  async function refreshLinked() {
+    try { const out = await ask('jira.linked', {}, 12000); linked = out.issues || []; linkedAt = Date.now() } catch (e) { linked = [] }
+    renderCtx()
   }
-  const updateCreate = () => { jcreate.disabled = jbusy || !jproject.value || !jtype.value || !jtitle.value.trim() }
-  async function loadTypes() {
-    jtype.replaceChildren(); updateCreate()
-    if (!jproject.value) return
+  function renderCtx() {
+    if (!linked.length) { jctx.className = ''; jctx.replaceChildren(); return }
+    jctx.className = 'on'
+    const nodes = [el('span', 'lbl', 'Pulled in:')]
+    for (const x of linked) { const b = el('button', '', `${x.key} · ${x.title}`); b.type = 'button'; b.title = 'Open ' + x.key; b.addEventListener('click', () => openSheet(x.key)); nodes.push(b) }
+    jctx.replaceChildren(...nodes)
+  }
+
+  async function loadList() {
+    const mine = ++jseq
+    jlist.replaceChildren(el('div', 'hint', 'Loading…'))
     try {
-      const out = await orca.plugin.request('jira.types', { project: jproject.value }, { timeoutMs: 20000 })
-      jtype.replaceChildren(...out.types.map((t) => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; return o }))
-      const task = out.types.find((t) => t.name === 'Task'); if (task) jtype.value = task.id
-    } catch (e) { setJNote((e && e.message) || String(e), 'bad') }
-    updateCreate()
+      const out = await ask('jira.list', { filter: jfilter, query: jq.value }, 25000)
+      if (mine !== jseq) return
+      if (!out.issues.length) { jlist.replaceChildren(el('div', 'hint', jq.value.trim() ? 'No matching issues.' : 'No issues here.')); return }
+      jlist.replaceChildren(...out.issues.map((i) => {
+        const row = el('div', 'jrow' + (i.key === jsel ? ' sel' : ''))
+        row.append(el('span', 'k', i.key), el('span', 't', i.title), el('span', pillClass(i.statusCategory), i.status || '—'))
+        row.title = `${i.key} — ${i.title}`
+        row.addEventListener('click', () => selectIssue(i.key))
+        return row
+      }))
+    } catch (e) { if (mine === jseq) jlist.replaceChildren(el('div', 'hint', (e && e.message) || String(e))) }
   }
-  async function openSheet() {
-    sheet.classList.add('open'); setJNote(''); jbody.value = excerpt(); jtitle.focus()
-    if (!projectsLoaded) {
-      try {
-        const out = await orca.plugin.request('jira.projects', {}, { timeoutMs: 20000 })
-        jproject.replaceChildren(...out.projects.map((p) => { const o = document.createElement('option'); o.value = p.key; o.textContent = `${p.key} — ${p.name}`; return o }))
-        if (out.projects.some((p) => p.key === 'LIFE')) jproject.value = 'LIFE'
-        projectsLoaded = true
-      } catch (e) { setJNote('Could not load Jira projects from Orca: ' + ((e && e.message) || e), 'bad'); return }
-    }
-    await loadTypes()
+
+  async function selectIssue(key) {
+    jsel = key; setJNote(''); for (const r of jlist.children) r.classList.toggle('sel', r.firstChild && r.firstChild.textContent === key)
+    jdetail.className = 'on'; jdetail.replaceChildren(el('div', 'hint', 'Loading ' + key + '…'))
+    try { renderDetail((await ask('jira.issue', { key }, 20000)).issue) } catch (e) { jdetail.replaceChildren(el('div', 'hint', (e && e.message) || String(e))) }
   }
-  async function createTicket() {
-    if (jcreate.disabled) return
-    jbusy = true; updateCreate(); setJNote('Creating…')
-    try {
-      const out = await orca.plugin.request('jira.create', { confirm: true, project: jproject.value, typeId: jtype.value, title: jtitle.value, body: jbody.value, labels: jlabels.value.split(/\s+/).filter(Boolean), parent: jparent.value.trim() }, { timeoutMs: 40000 })
-      setJNote('Created ' + out.key + (out.url ? ' — ' + out.url : ''), 'ok')
-      jtitle.value = ''
-      if (out.url && orca.host && orca.host.call) { const b = document.createElement('button'); b.textContent = 'Open ' + out.key; b.type = 'button'; b.addEventListener('click', () => orca.host.call('shell.openExternal', { url: out.url }).catch(() => {})); jnote.append(' ', b) }
-    } catch (e) { setJNote((e && e.message) || String(e), 'bad') }
-    finally { jbusy = false; updateCreate() }
+
+  function renderDetail(i) {
+    const meta = el('div', 'meta2'); meta.append(el('span', pillClass(i.statusCategory), i.status || '—'), el('span', '', i.type), el('span', '', i.project))
+    if (i.parent) meta.append(el('span', '', 'in ' + i.parent)); for (const l of i.labels) meta.append(el('span', 'pill', l))
+    const desc = el('div', 'desc', i.description || '(no description)')
+    const row1 = el('div', 'row2')
+    const link = el('button', 'primary', isLinked(i.key) ? 'Pulled in ✓ — unlink' : 'Pull into this room'); link.type = 'button'
+    link.addEventListener('click', async () => {
+      link.disabled = true
+      try { await ask(isLinked(i.key) ? 'jira.unlink' : 'jira.link', { key: i.key }, 20000); await refreshLinked(); setJNote(isLinked(i.key) ? `${i.key} is linked to this workspace, the way Orca's own Tasks view links it.` : `${i.key} was unlinked.`, 'ok'); renderDetail(i) }
+      catch (e) { setJNote((e && e.message) || String(e), 'bad'); link.disabled = false }
+    })
+    row1.append(link)
+    if (i.url) { const open = el('button', '', 'Open in Jira'); open.type = 'button'; open.addEventListener('click', () => orca.host.call('shell.openExternal', { url: i.url }).catch(() => {})); row1.append(open) }
+    const row2 = el('div', 'row2'); row2.append(el('span', 'hint', 'Start a chat from it:'))
+    const agent = el('select'); agent.setAttribute('aria-label', 'Agent'); for (const [v, t] of [['claude', 'Claude Code'], ['codex', 'Codex']]) { const o = el('option', '', t); o.value = v; agent.append(o) }
+    const tpl = el('select'); tpl.setAttribute('aria-label', 'Prompt template'); for (const [v, t] of [['review', 'Review (read-only)'], ['plan', 'Plan (no changes)'], ['implement', 'Implement (needs Agent Go + claim)']]) { const o = el('option', '', t); o.value = v; tpl.append(o) }
+    const go = el('button', '', 'Start chat'); go.type = 'button'
+    go.addEventListener('click', async () => {
+      go.disabled = true; setJNote('Starting…')
+      try { const out = await ask('jira.startChat', { key: i.key, agent: agent.value, template: tpl.value }, 40000); setJNote(`Started: ${out.detail}`, 'ok') }
+      catch (e) { setJNote((e && e.message) || String(e), 'bad') } finally { go.disabled = false }
+    })
+    row2.append(agent, tpl, go)
+    jdetail.className = 'on'; jdetail.replaceChildren(el('h3', '', `${i.key} — ${i.title}`), meta, desc, row1, row2)
   }
-  $('jiraBtn').addEventListener('click', openSheet)
-  $('jcancel').addEventListener('click', () => sheet.classList.remove('open'))
-  $('jrefill').addEventListener('click', () => { jbody.value = excerpt() })
-  jproject.addEventListener('change', loadTypes)
-  jtitle.addEventListener('input', updateCreate)
-  jcreate.addEventListener('click', createTicket)
+
+  function openSheet(key) {
+    sheet.classList.add('open'); setJNote('')
+    if (key) { jq.value = key; jdetail.className = ''; jdetail.replaceChildren(); jsel = '' }
+    loadList().then(() => { if (key) selectIssue(key) }); jq.focus()
+  }
+  $('jiraBtn').addEventListener('click', () => openSheet())
+  $('jclose').addEventListener('click', () => sheet.classList.remove('open'))
+  $('jtabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-f]'); if (!b) return; jfilter = b.dataset.f; jq.value = ''; for (const x of $('jtabs').children) x.classList.toggle('on', x === b); loadList() })
+  jq.addEventListener('input', () => { clearTimeout(jtimer); jtimer = setTimeout(loadList, 350) })
+  jq.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(jtimer); loadList() } })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') sheet.classList.remove('open') })
+  void refreshLinked()
 
   // Custom editor tab: Orca expects the editor to ask for its (empty, read-only) document once.
   try { if (orca.document && orca.document.get) orca.document.get().catch(() => {}) } catch (e) { /* panel surface has no document */ }
